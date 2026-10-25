@@ -59,12 +59,12 @@ SKEY="bundle/deploy_${TS}.sh"
 echo "[deploy] ref=$REF ($SHA) -> box=$INSTANCE_ID  invalidate=$INVALIDATE  dry_run=$DRY_RUN"
 
 # (1) whole-package tar from the git ref (never the dirty tree, never file-by-file)
-git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" app data_pipeline
+git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" app data_pipeline trading_core
 # Consume tar's full listing before searching: grep -q can otherwise close the
 # pipe early and make a valid archive fail with SIGPIPE under `set -o pipefail`.
 CONTENTS="$TMPD/bundle.contents"
 tar -tzf "$BUNDLE" > "$CONTENTS"
-for p in app/server.py app/schema.py data_pipeline/; do
+for p in app/server.py app/schema.py data_pipeline/ trading_core/__init__.py; do
   grep -Fxq -- "$p" "$CONTENTS" || { echo "[deploy] FATAL: bundle missing $p — aborting"; exit 1; }
 done
 echo "[deploy] bundle ok ($(wc -c <"$BUNDLE") bytes)"
@@ -76,21 +76,24 @@ set -uo pipefail
 cd ${BOX_DIR}
 T=\$(date +%s)
 aws s3 cp "s3://${BUCKET}/${BKEY}" /tmp/tau_bundle.tgz || { echo "S3 FETCH FAILED"; exit 1; }
-cp -r app app.bak.\$T && cp -r data_pipeline data_pipeline.bak.\$T || { echo "BACKUP FAILED"; exit 1; }
-rollback(){ echo "[box] ROLLBACK"; rm -rf app data_pipeline; mv app.bak.\$T app; mv data_pipeline.bak.\$T data_pipeline; systemctl restart ${SERVICES}; }
+# trading_core/ (ARCHITECTURE.md) is new on the box at its first deploy: mkdir -p gives it an empty
+# backup, so a rollback then restores "no core" exactly.
+mkdir -p trading_core
+cp -r app app.bak.\$T && cp -r data_pipeline data_pipeline.bak.\$T && cp -r trading_core trading_core.bak.\$T || { echo "BACKUP FAILED"; exit 1; }
+rollback(){ echo "[box] ROLLBACK"; rm -rf app data_pipeline trading_core; mv app.bak.\$T app; mv data_pipeline.bak.\$T data_pipeline; mv trading_core.bak.\$T trading_core; systemctl restart ${SERVICES}; }
 tar -xzf /tmp/tau_bundle.tgz -C ${BOX_DIR} || { rollback; echo "EXTRACT FAILED"; exit 1; }
 set -a; . ${BOX_DIR}/.env.aws; . ${BOX_DIR}/.env.app; set +a; unset AWS_PROFILE
 # 2>&1 on these two: their failure detail (a py_compile SyntaxError, an app.schema DB traceback)
 # goes to STDERR, which SSM stores in a separate stream the poller didn't fetch — so a failure read
 # as a bare "SCHEMA FAILED" with no cause. Fold stderr into stdout so the real error is in the log.
-${BOX_PY} -m py_compile app/*.py data_pipeline/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
+${BOX_PY} -m py_compile app/*.py data_pipeline/*.py trading_core/*.py trading_core/*/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
 ${BOX_PY} -m app.schema 2>&1 || { rollback; echo "SCHEMA FAILED"; exit 1; }
 for cap in ${MEMORY_CAPS}; do systemctl set-property "\${cap%%=*}.service" "MemoryMax=\${cap#*=}" || echo "[box] WARN could not set \$cap"; done
 systemctl restart ${SERVICES}
 sleep 5
 CODE=\$(curl -fsS -o /dev/null -w "%{http_code}" http://127.0.0.1:8090/ || echo 000)
 case "\$CODE" in 200|301|302|401|403) :;; *) rollback; echo "HEALTH FAILED (\$CODE)"; exit 1;; esac
-rm -rf app.bak.\$T data_pipeline.bak.\$T
+rm -rf app.bak.\$T data_pipeline.bak.\$T trading_core.bak.\$T
 echo "[box] DEPLOY OK (\$CODE) ts=\$T"
 EOF
 

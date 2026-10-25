@@ -48,10 +48,10 @@ SKEY="bundle/deploy_collector_${TS}.sh"
 echo "[deploy-collector] ref=$REF ($SHA) -> box=$INSTANCE_ID  dry_run=$DRY_RUN"
 
 UNIT_PATHS=""; for u in $UNITS; do UNIT_PATHS="$UNIT_PATHS scripts/systemd/$u"; done
-git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" data_pipeline $UNIT_PATHS
+git archive --format=tar.gz -o "$BUNDLE" "$REF:kalshi_trade_infra" data_pipeline trading_core $UNIT_PATHS
 CONTENTS="$TMPD/bundle.contents"
 tar -tzf "$BUNDLE" > "$CONTENTS"
-for p in data_pipeline/forward_collector.py data_pipeline/common.py; do
+for p in data_pipeline/forward_collector.py data_pipeline/common.py trading_core/__init__.py; do
   grep -Fxq -- "$p" "$CONTENTS" || { echo "[deploy-collector] FATAL: bundle missing $p, aborting"; exit 1; }
 done
 echo "[deploy-collector] bundle ok ($(wc -c <"$BUNDLE") bytes)"
@@ -64,10 +64,13 @@ set -uo pipefail
 cd ${BOX_DIR}
 T=\$(date +%s)
 aws s3 cp "s3://${BUCKET}/${BKEY}" /tmp/collector_bundle.tgz || { echo "S3 FETCH FAILED"; exit 1; }
-cp -r data_pipeline data_pipeline.bak.\$T || { echo "BACKUP FAILED"; exit 1; }
-rollback(){ echo "[box] ROLLBACK"; rm -rf data_pipeline; mv data_pipeline.bak.\$T data_pipeline; systemctl restart ${SERVICES}; }
+# trading_core/ (ARCHITECTURE.md) may import nothing from data_pipeline, but data_pipeline may import it,
+# so it ships here too. New at its first deploy: mkdir -p gives it an empty backup to roll back to.
+mkdir -p trading_core
+cp -r data_pipeline data_pipeline.bak.\$T && cp -r trading_core trading_core.bak.\$T || { echo "BACKUP FAILED"; exit 1; }
+rollback(){ echo "[box] ROLLBACK"; rm -rf data_pipeline trading_core; mv data_pipeline.bak.\$T data_pipeline; mv trading_core.bak.\$T trading_core; systemctl restart ${SERVICES}; }
 tar -xzf /tmp/collector_bundle.tgz -C ${BOX_DIR} || { rollback; echo "EXTRACT FAILED"; exit 1; }
-${BOX_PY} -m py_compile data_pipeline/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
+${BOX_PY} -m py_compile data_pipeline/*.py trading_core/*.py trading_core/*/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
 mkdir -p ${BOX_DIR}/logs ${BOX_DIR}/ticks
 RELOAD=0
 for u in ${UNITS}; do
@@ -88,7 +91,7 @@ if [ -n "\$DOWN" ]; then
   for s in \$DOWN; do journalctl -u "\$s" -n 20 --no-pager 2>&1; done
   rollback; echo "HEALTH FAILED:\$DOWN"; exit 1
 fi
-rm -rf data_pipeline.bak.\$T
+rm -rf data_pipeline.bak.\$T trading_core.bak.\$T
 echo "[box] DEPLOY OK ts=\$T"
 EOF
 

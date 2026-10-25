@@ -3,7 +3,7 @@
 Each port is a ``typing.Protocol``: an adapter satisfies it structurally, with no inheritance
 from the core and no import of it beyond the domain types it passes around.
 
-    Venue             submit / cancel orders, report positions and cash (Kalshi, Alpaca, sim)
+    Venue             submit orders, report net positions and cash (Kalshi, Alpaca, sim)
     MarketDataFeed    the live top of book per instrument (REST poll, websocket, replay)
     FeatureProvider   point-in-time features keyed by name (Deribit surface, weather, odds)
     Strategy          quotes + positions + features in, order intents out
