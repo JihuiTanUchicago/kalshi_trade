@@ -1184,7 +1184,7 @@
     document.body.classList.add('landing-body');
     // Links out of the legal pages load the app afresh: boot.js serves these pages in Tau for
     // everyone, so a Meridian user has to reload to get their own theme back.
-    const away = S.me ? '<a href="/" data-native>Dashboard</a>' : '<a href="/signin" data-native>Sign in</a>';
+    const away = S.me ? '<a class="legal-away" href="/" data-native>Dashboard</a>' : '<a class="legal-away" href="/signin" data-native>Sign in</a>';
     root.innerHTML = `<div class="legal-wrap">
       <header class="legal-top"><a class="lbrand" href="/" data-native>${ICON.mark}<span>Tau</span></a>
         <nav class="legal-nav"><a href="/terms">Terms</a><a href="/privacy">Privacy</a>${away}</nav></header>
@@ -1193,6 +1193,12 @@
         ${bodyHtml}
         <footer class="legal-foot"><a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a> · <span>© 2026 Tau</span></footer>
       </main></div>`;
+    // Public pages skip the boot /api/me, so a signed-in reader was offered "Sign in". Ask quietly
+    // (a 401 here never redirects) and point the link at the dashboard when there is a session.
+    if (!S.me) api('/api/me').then((me) => {
+      const a = root.querySelector('.legal-away');
+      if (me && me.user && a) { a.setAttribute('href', '/'); a.textContent = 'Dashboard'; }
+    }).catch(() => {});
   }
   async function viewTerms() {
     legalShell('Terms of Service',

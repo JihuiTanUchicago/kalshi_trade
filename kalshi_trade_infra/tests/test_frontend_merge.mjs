@@ -633,6 +633,17 @@ test('Tau has a page for every app path the server serves', () => {
   assert.equal(page('/settings/theme'), 'viewSettings');
 });
 
+test('the legal pages offer a signed-in reader the dashboard, not Sign in', async () => {
+  for (const [me, href, label] of [[response({user: {id: 7}}), '/', 'Dashboard'], [response({error: 'Please sign in.'}, 401), '/signin', 'Sign in']]) {
+    const f = frontend({fetchImpl: path => (path === '/api/me' ? me : response({}))});
+    f.S.me = null;
+    await f.routes.find(([re]) => re.test('/terms'))[1](); await flush(); await flush();
+    const a = f.root.querySelector('.legal-away');
+    assert.equal(a.getAttribute('href'), href); assert.equal(a.textContent, label);
+    assert.deepEqual(f.navigations, []);
+  }
+});
+
 test('a shared demo deployment says demo, not paper', () => {
   const f = frontend();
   const snap = (mode) => f.postSnapshot({kind: 'deployment', id: 1, title: 'Fade', market: 'btc15m', mode, realized_pnl: 1.5, closed_trades: 3});
