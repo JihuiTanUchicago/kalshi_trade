@@ -99,19 +99,21 @@ class KalshiNextBarFill:
     An entry fills at this bar's ask, sized from its stake at that price and capped at the displayed
     top-of-book size, and only if the ask is within ``execution_kernel.reservation_price`` for its own
     fair value and the spec's ``min_edge`` (the cap live and paper enforce); otherwise it is missed.
-    Exits and stops take the touch through ``CrossTheTouch``."""
+    ``max_ask`` is the highest ask an entry may lift (``backtest.MAX_ENTRY_ASK``: a 99c buy can't
+    profit after the fee). Exits and stops take the touch through ``CrossTheTouch``."""
 
-    def __init__(self, min_edge: float, exits: Optional[CrossTheTouch] = None) -> None:
+    def __init__(self, min_edge: float, exits: Optional[CrossTheTouch] = None, max_ask: float = 0.99) -> None:
         self.min_edge = min_edge
         self.exits = exits or CrossTheTouch(max_quote_age_seconds=0.0)
+        self.max_ask = max_ask
 
     def execute(self, intent: OrderIntent, instrument: Instrument, quote: Optional[Quote], venue: Venue,
                 client_order_id: str, now: float) -> ExecutionReport:
         if intent.reduce_only or intent.side is Side.SELL:
             return self.exits.execute(intent, instrument, quote, venue, client_order_id, now)
         ask = quote.ask if quote is not None else None
-        if ask is None or not 0.0 < ask < 1.0:
-            return ExecutionReport(intent, "rejected", message="no ask")
+        if ask is None or not 0.0 < ask <= self.max_ask:
+            return ExecutionReport(intent, "rejected", message="no ask at or below %.2f" % self.max_ask)
         price = min(0.99, ask)
         qty = specmod.contracts_for(intent.meta["stake"], price)
         size = quote.features.get("yes_ask_size" if intent.instrument.outcome == "yes" else "yes_bid_size")
@@ -178,7 +180,8 @@ def simulate_on_loop(spec: Dict, ds, start_ts: int, end_ts: int, fees: Optional[
     if next_bar:
         stop = backtest.POSITION_STOP_PCT if position_stop_pct is None else float(position_stop_pct)
         bar = max(int(getattr(ds.market, "decision_seconds", 60) or 60), 1)
-        extra = dict(execution=KalshiNextBarFill(float(spec["entry"]["min_edge"])), next_step_fills=True,
+        extra = dict(execution=KalshiNextBarFill(float(spec["entry"]["min_edge"]), max_ask=backtest.MAX_ENTRY_ASK),
+                     next_step_fills=True,
                      pending_ttl=backtest.FILL_MAX_DELAY_BARS * bar, exit_rules=[position_stop(stop)],
                      risk=RiskChain([max_open_positions(spec["sizing"]["max_positions"], book),
                                      one_position_per_symbol(book)]))
