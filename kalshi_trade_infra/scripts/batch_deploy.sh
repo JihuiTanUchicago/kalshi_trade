@@ -12,6 +12,10 @@
 #   5. deploy_collector.sh too when data_pipeline/ or trading_core/ changed since the collector's ref
 #   6. alarm: fails the run when merges on main have waited longer than STALE_MINUTES to ship
 #
+# Runs on the :20/:50 schedule and after every CI run on main (GitHub drops or delays scheduled
+# runs under load). A CI-triggered run holds while the web box's last deploy is under
+# MIN_GAP_MINUTES old, so deploys stay batched however often main merges.
+#
 # Usage: scripts/batch_deploy.sh [--dry-run]   (needs AWS creds, GITHUB_TOKEN and GITHUB_REPOSITORY)
 set -euo pipefail
 
@@ -24,6 +28,8 @@ REQUIRED_CHECKS=${REQUIRED_CHECKS-"test money-path-mysql"}
 STAGING_PATHS='^kalshi_trade_infra/(app|data_pipeline|trading_core|staging)/|^kalshi_trade_infra/requirements\.txt$|^kalshi_trade_infra/scripts/(paper|kalshi_perps)_staging_smoke\.py$|^kalshi_trade_infra/tests/test[^/]*staging|^\.github/workflows/paper-staging\.yml$'
 
 STALE_MINUTES=${STALE_MINUTES:-90}
+MIN_GAP_MINUTES=${MIN_GAP_MINUTES:-25}
+BATCH_EVENT=${BATCH_EVENT:-}
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 if [[ -n "${AWS_PROFILE:-}" ]]; then export AWS_PROFILE; else unset AWS_PROFILE; fi
@@ -33,6 +39,18 @@ HEAD_SHA=$(git rev-parse HEAD)
 marker() { aws s3 cp "s3://${BUCKET}/bundle/markers/$1" - --region "$AWS_REGION" 2>/dev/null | tr -d '[:space:]' || true; }
 WEB=$(marker web_sha); WEB_FULL=$(marker web_full_sha); COLLECTOR=$(marker collector_sha)
 echo "[batch] main=${HEAD_SHA:0:7} web=${WEB:0:7} web_full=${WEB_FULL:0:7} collector=${COLLECTOR:0:7}"
+
+# A CI-triggered run waits out the batch gap; the schedule (and the next CI run) picks it up.
+if [[ "$BATCH_EVENT" == workflow_run ]]; then
+  last=$(aws s3api head-object --bucket "$BUCKET" --key bundle/markers/web_sha --region "$AWS_REGION" \
+         --query LastModified --output text 2>/dev/null || true)
+  if [[ -n "$last" && "$last" != None ]]; then
+    age=$(( ( $(date +%s) - $(date -d "$last" +%s) ) / 60 ))
+    if (( age < MIN_GAP_MINUTES )); then
+      echo "[batch] last web deploy was ${age} min ago (gap ${MIN_GAP_MINUTES}); this CI run ships nothing"; exit 0
+    fi
+  fi
+fi
 
 known() { [[ -n "$1" ]] && git cat-file -e "$1^{commit}" 2>/dev/null; }
 
