@@ -143,7 +143,7 @@ def test_series_is_as_of_receive_time_and_ages_out():
     b = _surface(snap=T0 + 60, atm=0.6, known_ns=(T0 + 62) * 10 ** 9)
     ser = osf.SurfaceSeries([b, a])
     assert ser.at(T0 + 1) is None                      # snapped at T0 but received at T0+2
-    assert ser.at(T0 + 3) is a and ser.at(T0 + 62) is a and ser.at(T0 + 63) is b
+    assert ser.at(T0 + 2) is a and ser.at(T0 + 61) is a and ser.at(T0 + 62) is b   # known at ts counts
     assert ser.at(T0 + 60 + osf.MAX_AGE_S + 1) is None
-    idx = ser.indexes(np.array([T0 + 1, T0 + 3, T0 + 63, T0 + 60 + int(osf.MAX_AGE_S) + 1]))
-    assert list(idx) == [-1, 0, 1, -1]
+    idx = ser.indexes(np.array([T0 + 1, T0 + 2, T0 + 61, T0 + 62, T0 + 60 + int(osf.MAX_AGE_S) + 1]))
+    assert list(idx) == [-1, 0, 0, 1, -1]
