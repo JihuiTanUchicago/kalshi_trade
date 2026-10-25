@@ -198,3 +198,33 @@ def test_replay_scores_rewards_and_pnl():
     assert rep["fills"] == 1 and rep["filled_qty"] == 500.0
     assert 0 < rep["rewards"] < 20.0
     assert rep["trading_pnl"] == pytest.approx(500 * (0.415 - 0.40))   # marked at the last mid
+
+
+def test_a_contract_is_benched_once_fills_cost_more_than_its_rewards():
+    v = _venue()
+    inst = _inst()
+    loop = QuotingLoop(v, {YES: inst, NO: inst.complement()},
+                       MakerConfig(quote_size=100, rewarded_only=False, contract_loss_limit=2.0))
+    loop.step(0.0, {YES: Quote(YES, 0.0, 0.40, 0.43, 500, 300)}, secs_to_close={YES: 600})
+    v.on_trade(1_000, YES.symbol, "no", 0.39, 10)                     # our 100 YES fill at .40
+    dropped = {YES: Quote(YES, 1.0, 0.36, 0.38, 500, 300)}            # mid .37: -3.00 marked
+    step = loop.step(1.0, dropped, secs_to_close={YES: 599}, earned={YES: 0.5})
+    assert YES in loop.stopped
+    assert [(d.instrument.outcome, d.qty) for d in step.posts] == [("no", 100.0)]   # unwind the 100 YES only
+    assert all(o.instrument.outcome == "no" for o in v.open_orders())
+    v2 = _venue()
+    loop2 = QuotingLoop(v2, {YES: inst, NO: inst.complement()},
+                        MakerConfig(quote_size=100, rewarded_only=False, contract_loss_limit=2.0))
+    loop2.step(0.0, {YES: Quote(YES, 0.0, 0.40, 0.43, 500, 300)}, secs_to_close={YES: 600})
+    v2.on_trade(1_000, YES.symbol, "no", 0.39, 10)
+    loop2.step(1.0, dropped, secs_to_close={YES: 599}, earned={YES: 1.5})   # rewards cover it
+    assert not loop2.stopped
+
+
+def test_max_touch_size_skips_the_side_with_a_deep_queue():
+    cfg = MakerConfig(quote_size=100, rewarded_only=False, max_touch_size=1000)
+    q = Quote(YES, 0.0, 0.40, 0.43, 5000, 300)                        # 5,000 on the YES bid
+    out = maker_quotes(_inst(), q, None, 0.0, 600, cfg)
+    assert [d.instrument.outcome for d in out] == ["no"]
+    wide = MakerConfig(quote_size=100, rewarded_only=False, max_touch_size=1000, improve_min_spread_ticks=2)
+    assert len(maker_quotes(_inst(), q, None, 0.0, 600, wide)) == 2    # stepping inside starts a new level
