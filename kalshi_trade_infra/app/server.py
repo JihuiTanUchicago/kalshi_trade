@@ -1849,11 +1849,16 @@ def billing_state(ctx: Ctx):
             reload_amount = float(cust["reload_amount"])
         if cust.get("reload_threshold") is not None:
             reload_threshold = float(cust["reload_threshold"])
+    balance = repo.credit_balance(cur, ctx.uid)
+    spent_7d = repo.credit_spent_total(cur, ctx.uid, repo.now_utc() - timedelta(days=7))
     return {
         "configured": billing.configured(),
         "publishable_key": billing.STRIPE_PUBLISHABLE_KEY,
-        "balance": round(repo.credit_balance(cur, ctx.uid), 4),
+        "balance": round(balance, 4),
         "spent": round(repo.credit_spent_total(cur, ctx.uid), 4),
+        "spent_7d": round(spent_7d, 4),
+        # Days the balance lasts at last week's pace; research stops at zero.
+        "runway_days": round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None,
         "free_bonus": float(billing.FREE_BONUS),
         "topup_fee_pct": float(billing.TOPUP_FEE) * 100,
         "autoreload_threshold": reload_threshold,

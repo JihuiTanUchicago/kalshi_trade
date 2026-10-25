@@ -2074,6 +2074,22 @@ for (const [label, path, data] of [['System', '/system', systemData], ['Billing'
   }
 }
 
+test('Billing swaps the welcome credit for a credit runway once there is usage this week', async () => {
+  let data = billingData({spent_7d: 3.5, runway_days: 20});
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/billing'); return response(data); }});
+  await f.viewBilling();
+  let figs = f.root.querySelector('#bfigs').innerHTML;
+  assert.match(figs, /Credits last/); assert.match(figs, /About 20 days/); assert.match(figs, /at \$3\.50 a week/);
+  assert.doesNotMatch(figs, /Welcome credit/);
+  data = billingData({runway_days: 200, spent_7d: 0.35});
+  await f.viewBilling();
+  assert.match(f.root.querySelector('#bfigs').innerHTML, /Over 3 months/);
+  data = billingData({});
+  await f.viewBilling();
+  figs = f.root.querySelector('#bfigs').innerHTML;
+  assert.match(figs, /Welcome credit/); assert.doesNotMatch(figs, /Credits last/);
+});
+
 test('System reports a current read failure and clears the notice after a successful poll', async () => {
   let reads = 0;
   const f = frontend({fetchImpl: path => {

@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewDashboard, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -283,6 +283,25 @@ test('Funds preserves account controls and history without mounting unavailable 
   assert.equal(mounts.length, 0); assert.equal(f.root.querySelector('#broker-connections'), null);
   assert.ok(f.root.querySelector('#kalshi')); assert.ok(f.root.querySelector('#demo')); assert.ok(f.root.querySelector('#paper'));
   assert.equal(f.requests.some(({path}) => path.startsWith('/api/brokers')), false);
+});
+
+test('Billing shows how long credits last at last week\'s pace, and the welcome credit before any usage', async () => {
+  const billing = (o) => ({balance: 14, spent: 6, spent_7d: 7, runway_days: 14, free_bonus: 20, ledger: [], cards: [], configured: false,
+    topup_fee_pct: 5, autoreload_amount: 20, autoreload_threshold: 5, min_reload_amount: 5, min_reload_threshold: 1, min_topup: 5, max_topup: 1000, ...o});
+  let data = billing({});
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/billing'); return response(data); }});
+  await f.viewBilling();
+  let figs = f.root.querySelector('#bfigs').innerHTML;
+  assert.match(figs, /Credits last/); assert.match(figs, /About 14 days/); assert.match(figs, /at \$7\.00 a week/);
+  assert.doesNotMatch(figs, /Welcome credit/);
+  data = billing({runway_days: 0.4});
+  await f.viewBilling();
+  figs = f.root.querySelector('#bfigs').innerHTML;
+  assert.match(figs, /Under a day/); assert.match(figs, /tint neg/);
+  data = billing({spent_7d: 0, runway_days: null});
+  await f.viewBilling();
+  figs = f.root.querySelector('#bfigs').innerHTML;
+  assert.match(figs, /Welcome credit/); assert.doesNotMatch(figs, /Credits last/);
 });
 
 test('a late Funds read cannot replace the next page or mount stale broker controls', async () => {

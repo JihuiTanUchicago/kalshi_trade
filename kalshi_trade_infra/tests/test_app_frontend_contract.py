@@ -83,9 +83,25 @@ def test_unconfigured_billing_is_a_complete_readonly_frontend_payload(monkeypatc
     data = server.billing_state(context())
     assert data['configured'] is False
     assert data['balance'] == 98.4 and data['spent'] == 1.6
+    assert data['spent_7d'] == 1.6 and data['runway_days'] == 430.5
     assert data['cards'] == [] and data['ledger'] == []
     assert data['min_topup'] <= data['max_topup']
     assert data['autoreload_amount'] >= data['min_reload_amount']
+
+
+def test_billing_runway_is_absent_without_recent_usage_or_balance(monkeypatch):
+    monkeypatch.setattr(server.billing, 'configured', lambda: False)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_rows', lambda *a: [])
+    seen = []
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: seen.append(since) or (0.0 if since else 5.0))
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 15.0)
+    data = server.billing_state(context())
+    assert data['spent'] == 5.0 and data['spent_7d'] == 0.0 and data['runway_days'] is None
+    assert any(s is not None for s in seen)
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: 2.0)
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: -1.0)
+    assert server.billing_state(context())['runway_days'] is None
 
 
 def test_admin_read_endpoint_keeps_server_side_authorization():

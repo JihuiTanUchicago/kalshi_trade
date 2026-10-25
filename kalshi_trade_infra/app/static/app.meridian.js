@@ -3762,6 +3762,9 @@
   }
 
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
+  // How long the balance lasts at last week's spend. Research pauses at $0, so autopilot users
+  // need this more than the one-time welcome credit.
+  const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
   async function viewBilling() {
     const gen = S.gen;
     shell('/billing', boardTitle('Billing') + '<details class="billing-pricing"><summary>Credit pricing</summary><p>Credits pay for research and chat at model list price. Paper and live trading are free.</p></details>' +
@@ -3773,7 +3776,9 @@
       root.querySelector('#bfigs').innerHTML =
         fig('Credit balance', usd(d.balance), { v: d.balance < 0 ? -1 : 0 }) +
         fig('Spent on usage', usd(d.spent)) +
-        fig('Welcome credit', usd(d.free_bonus));
+        (d.runway_days != null
+          ? fig('Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${usd(d.spent_7d)} a week` })
+          : fig('Welcome credit', usd(d.free_bonus)));
       const feeNote = `Credits plus a ${d.topup_fee_pct}% purchase fee.`;
       const cardLines = d.cards.length
         ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
