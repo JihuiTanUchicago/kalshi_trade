@@ -334,7 +334,7 @@ test('the dashboard offers one-click autopilot, and once on shows what it is doi
   assert.equal(f.S.me.user.autopilot, true);
   const html = card().innerHTML;
   assert.match(html, /Autopilot · paper/); assert.match(html, /&lt;b&gt;BTC&lt;\/b&gt;/);
-  assert.match(html, /\+\$12\.50/); assert.match(html, /1,234 tested · 0 passed/); assert.match(html, /4 of 30 paper trades/);
+  assert.match(html, /\+\$12\.50/); assert.match(html, /1,234 tested · 0 passed/); assert.match(html, /<a href="\/strategies\/3"[^>]*>4 of 30 paper trades<\/a>/);
   assert.doesNotMatch(html, /undefined|NaN|<b>BTC/);
 });
 
