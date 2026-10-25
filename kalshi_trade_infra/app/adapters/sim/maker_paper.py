@@ -29,9 +29,13 @@ SERIES = [s for s in os.getenv("TAU_LIP_PAPER_SERIES", ",".join(REWARD_SERIES)).
 # Series that charge makers. Unset: every series whose fee_type in the latest LIP snapshot names maker
 # fees (quadratic_with_maker_fees); the crypto ones are plain quadratic, no maker fee.
 MAKER_FEE_SERIES = [s for s in os.getenv("TAU_LIP_PAPER_MAKER_FEE_SERIES", "").split(",") if s]
+# The inventory cap drives the outcome noise: on KXCRYPTOLEAD15M 09:15-13:00Z 10-25 (15 windows) the
+# per-window total had SD $408 at a 1,000 cap, $177 at 300 and $58 at 100.
 CONFIGS: Dict[str, MakerConfig] = {
     "q100": MakerConfig(quote_size=100, max_inventory=500),
     "q1000": MakerConfig(quote_size=1000, max_inventory=1000),
+    "q1000_i300": MakerConfig(quote_size=1000, max_inventory=300),
+    "q1000_i100": MakerConfig(quote_size=1000, max_inventory=100),
 }
 
 
