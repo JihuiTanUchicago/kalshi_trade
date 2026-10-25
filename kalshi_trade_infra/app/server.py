@@ -733,7 +733,8 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
         return
     real: Dict[int, Dict[bool, Dict]] = {}
     for d in repo.list_deployments(cur, uid):
-        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"] == "live", {"pnl": 0.0, "trades": 0, "open": 0})
+        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"] == "live", {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
+        r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
         r["pnl"] += float(d["realized_pnl"] or 0)
         r["trades"] += int(d["closed_trades"] or 0)
         r["open"] += int(d["open_positions"] or 0)
