@@ -216,3 +216,13 @@ def test_a_null_exit_means_hold_to_settlement():
     assert spec["exit"] == {"take_profit": None, "stop_loss": None, "min_edge_to_hold": None}
     with pytest.raises(specmod.SpecError):
         specmod.validate({"market": "btc15m", "side": "yes", "exit": "settle"})
+
+
+def test_a_sub_cent_exit_snaps_to_one_cent():
+    """Prod run 2887 lost an idea to "exit.stop_loss=0.008 is outside 0.01..0.99". Prices move in
+    whole cents, so a 0.8c stop fires exactly when a 1c stop does."""
+    spec = specmod.validate({"market": "btc15m", "side": "yes",
+                             "exit": {"stop_loss": 0.008, "take_profit": 0.005}})
+    assert spec["exit"]["stop_loss"] == 0.01 and spec["exit"]["take_profit"] == 0.01
+    with pytest.raises(specmod.SpecError):
+        specmod.validate({"market": "btc15m", "side": "yes", "exit": {"stop_loss": -0.02}})
