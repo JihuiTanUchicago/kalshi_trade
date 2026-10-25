@@ -158,7 +158,9 @@ class MakerReplay:
             if close:
                 secs_to_close[yid] = close - sec
         if sec % self.decide_every_s == 0:
-            fills = self.loop.step(float(sec), quotes, secs_to_close=secs_to_close, rewarded=rewarded).fills
+            earned = {InstrumentId("kalshi", t, "yes"): r for t, r in self.rewards.items()}
+            fills = self.loop.step(float(sec), quotes, secs_to_close=secs_to_close, rewarded=rewarded,
+                                   earned=earned).fills
         else:
             fills = self.loop.book_fills()
         self.fills += len(fills)
@@ -256,7 +258,7 @@ class MakerReplay:
         rewards = sum(self.rewards.values())
         return {"rewards": round(rewards, 2), "trading_pnl": round(pnl, 2), "total": round(rewards + pnl, 2),
                 "fills": self.fills, "filled_qty": self.filled_qty, "peak_collateral": round(self.peak_collateral, 2),
-                "max_abs_inventory": self.max_abs_inventory,
+                "max_abs_inventory": self.max_abs_inventory, "stopped_contracts": len(self.loop.stopped),
                 "per_contract": {t: {k: round(v, 2) if isinstance(v, float) else v for k, v in d.items()}
                                  for t, d in sorted(per.items(), key=lambda kv: -(kv[1]["reward"] + kv[1]["pnl"]))}}
 
@@ -286,6 +288,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
     ap.add_argument("--all-contracts", action="store_true", help="quote contracts without a reward program too")
     ap.add_argument("--pool-per-hour", type=float, default=None, help="hypothetical pool per contract-hour")
     ap.add_argument("--target-size", type=float, default=300)
+    ap.add_argument("--contract-loss-limit", type=float, default=None,
+                    help="bench a contract once rewards + its P&L fall below minus this many dollars")
+    ap.add_argument("--max-touch-size", type=float, default=None,
+                    help="skip a side whose touch already rests more than this many contracts")
     ap.add_argument("--maker-fee-series", default="", help="series that charge makers (comma separated)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
@@ -296,7 +302,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
     programs = [] if a.pool_per_hour else load_programs(boto3.client("s3"), BUCKET, PREFIX, start, end)
     cfg = MakerConfig(quote_size=a.quote_size, max_inventory=a.max_inventory, min_edge=a.min_edge,
                       pull_before_close_s=a.pull_before_close, improve_min_spread_ticks=a.improve_min_spread_ticks,
-                      rewarded_only=not a.all_contracts)
+                      rewarded_only=not a.all_contracts, contract_loss_limit=a.contract_loss_limit,
+                      max_touch_size=a.max_touch_size)
     rep = MakerReplay(series, cfg, programs, pool_per_hour=a.pool_per_hour, target_size=a.target_size,
                       fees=MakerFees([s for s in a.maker_fee_series.split(",") if s])).run(TickStore(), start, end)
     text = json.dumps(rep, indent=1)

@@ -10,6 +10,9 @@ crosses it, and keeps an order that is already at the right price so it keeps it
 queue. It quotes a side only while that side clears ``min_edge`` against the fair value, stays
 inside ``max_inventory`` (YES held minus NO held, since one of each settles to the payout), and the
 contract is more than ``pull_before_close_s`` from its close, when the price jumps to 0 or 1.
+Contract selection: ``max_touch_size`` skips a side whose queue is too deep to win a useful share,
+and ``contract_loss_limit`` benches a contract whose fills cost more than its rewards pay (it then
+quotes only the side that unwinds its inventory).
 ``rewarded_only`` restricts it to instruments that carry a resting-liquidity reward
 (pricing.depth_rewards), the reason to quote at all on a book with no edge.
 
@@ -37,6 +40,12 @@ class MakerConfig:
     pull_before_close_s: float = 60.0
     improve_min_spread_ticks: int = 0    # 0 = only join; N >= 2 = step one tick inside a spread of N+ ticks
     rewarded_only: bool = True
+    # Stop quoting a contract for good once rewards earned + its trading P&L (marked at the mid)
+    # fall below -contract_loss_limit: a toxic book costs more in fills than its pool pays.
+    contract_loss_limit: Optional[float] = None
+    # Skip a side whose touch already rests more than this: we would join the back of a deep queue,
+    # earn a sliver of the pool and get filled only when the whole level is swept.
+    max_touch_size: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -72,13 +81,16 @@ def maker_quotes(yes: Instrument, quote: Optional[Quote], fair: Optional[float],
     spread_ticks = int(round((quote.ask - quote.bid) / tick))
     step = tick if cfg.improve_min_spread_ticks >= 2 and spread_ticks >= cfg.improve_min_spread_ticks else 0.0
     out: List[DesiredQuote] = []
+    cap = cfg.max_touch_size
+    yes_ok = cap is None or step > 0 or (quote.bid_size or 0.0) <= cap      # improving starts a fresh level
+    no_ok = cap is None or step > 0 or (quote.ask_size or 0.0) <= cap
     yes_px = yes.round_price(quote.bid + step)
     room = cfg.max_inventory - inventory
-    if room > _EPS and fv - yes_px >= cfg.min_edge - _EPS:
+    if yes_ok and room > _EPS and fv - yes_px >= cfg.min_edge - _EPS:
         out.append(DesiredQuote(yes.id, yes_px, min(cfg.quote_size, room)))
     no_px = yes.round_price(payout - quote.ask + step)
     room = cfg.max_inventory + inventory
-    if room > _EPS and (payout - fv) - no_px >= cfg.min_edge - _EPS:
+    if no_ok and room > _EPS and (payout - fv) - no_px >= cfg.min_edge - _EPS:
         out.append(DesiredQuote(replace(yes.id, outcome="no"), no_px, min(cfg.quote_size, room)))
     return out
 
@@ -118,7 +130,18 @@ class QuotingLoop:
         self.venue, self.instruments, self.cfg = venue, instruments, cfg
         self.book = book if book is not None else Portfolio()
         self.strategy_id = strategy_id
+        self.stopped: Set[InstrumentId] = set()   # YES ids benched by contract_loss_limit (unwind only)
         self._seq = 0
+
+    def contract_pnl(self, yid: InstrumentId, mid: Optional[float]) -> float:
+        """Trading P&L on one binary (YES and NO legs, fees paid), marked at the YES mid."""
+        payout = getattr(self.instruments[yid].terms, "payout", 1.0) or 1.0
+        out = 0.0
+        for iid, mark in ((yid, mid), (replace(yid, outcome="no"), None if mid is None else payout - mid)):
+            pos = self.book.positions.get(iid)
+            if pos is not None:
+                out += pos.realized + pos.unrealized(mark) - pos.fees
+        return out
 
     def book_fills(self) -> List[Fill]:
         fills = list(self.venue.take_fills())
@@ -131,8 +154,10 @@ class QuotingLoop:
 
     def step(self, now: float, quotes: Mapping[InstrumentId, Quote], fair: Mapping[InstrumentId, float] = None,
              secs_to_close: Mapping[InstrumentId, float] = None, rewarded: Optional[Set[InstrumentId]] = None,
-             universe: Optional[Sequence[InstrumentId]] = None) -> QuoteStep:
-        """One pass over the YES instruments in ``universe`` (default: every quoted one)."""
+             universe: Optional[Sequence[InstrumentId]] = None,
+             earned: Optional[Mapping[InstrumentId, float]] = None) -> QuoteStep:
+        """One pass over the YES instruments in ``universe`` (default: every quoted one).
+        ``earned``: rewards accrued so far per YES id, for ``contract_loss_limit``."""
         out = QuoteStep(now, fills=self.book_fills())
         fair, secs_to_close = fair or {}, secs_to_close or {}
         positions = self.book.open_positions()
@@ -141,8 +166,18 @@ class QuotingLoop:
             inst = self.instruments.get(yid)
             if inst is None:
                 continue
+            cfg = self.cfg
+            if cfg.contract_loss_limit is not None and yid not in self.stopped:
+                q = quotes.get(yid)
+                net = self.contract_pnl(yid, q.mid if q is not None else None) + (earned or {}).get(yid, 0.0)
+                if net < -cfg.contract_loss_limit:
+                    self.stopped.add(yid)
+            if yid in self.stopped:
+                # Benched: only the side that works the inventory back to flat (max_inventory 0),
+                # since walking away leaves an outright bet on the outcome.
+                cfg = replace(cfg, max_inventory=0.0)
             desired += maker_quotes(inst, quotes.get(yid), fair.get(yid), net_yes(positions, yid),
-                                    secs_to_close.get(yid), self.cfg,
+                                    secs_to_close.get(yid), cfg,
                                     rewarded=True if rewarded is None else yid in rewarded)
         out.cancels, out.posts = reconcile(desired, self.venue.open_orders())
         for oid in out.cancels:
