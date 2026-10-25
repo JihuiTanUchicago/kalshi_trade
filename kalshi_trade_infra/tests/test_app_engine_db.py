@@ -169,6 +169,24 @@ def test_the_interactive_lane_skips_research(conn, user):
     assert repo.claim_run(conn, "w1")["kind"] == "research"
 
 
+def test_weekly_passed_count_only_counts_this_weeks_research_runs(conn, user):
+    # The panel says "this week it tested N ideas and M passed": M must come from the same runs as
+    # N, never from chat adjustments or shared copies (no research run) or a review run.
+    from app import repository as repo
+    from app import spec as specmod
+
+    cur = conn.cursor()
+    cur.execute("UPDATE app_agent_runs SET status='cancelled' WHERE status='queued'")
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1}})
+    research = repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    review = repo.create_run(cur, user["id"], "review", None, "scheduled")
+    for run_id, status in ((research, "passed"), (research, "rejected"), (None, "passed"), (review, "passed")):
+        repo.insert_strategy(cur, user["id"], run_id, None, "btc15m", "momentum", "T", "t", spec, status, {})
+    since = repo.now_utc() - timedelta(days=7)
+    assert repo.strategies_passed_since(cur, user["id"], since) == 1
+    assert repo.strategies_passed_since(cur, user["id"], repo.now_utc() + timedelta(minutes=5)) == 0
+
+
 def test_loss_guard_pauses_and_asks_for_review(conn, user):
     from app import engine
     from app import repository as repo

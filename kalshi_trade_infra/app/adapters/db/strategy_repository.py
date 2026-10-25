@@ -8,9 +8,12 @@ from app.adapters.db.sql import _json, _loads, now_utc
 
 
 def strategies_passed_since(cur, user_id: int, since) -> int:
-    """Strategies that cleared every gate (status 'passed') created since `since`. The runs'
+    """Strategies that cleared every gate (status 'passed') from research runs started since
+    `since`: the same runs research_week counts ideas over, so "tested N, M passed" never reads
+    M > N because of shared copies or chat adjustments (they have no research run). The runs'
     strategies_passed counter is not this: a 2026-10-17 run counted 68 backtest-only rows there."""
-    cur.execute("SELECT COUNT(*) AS n FROM app_strategies WHERE user_id=%s AND status='passed' AND created_at>=%s",
+    cur.execute("""SELECT COUNT(*) AS n FROM app_strategies s JOIN app_agent_runs r ON r.id=s.run_id
+                   WHERE s.user_id=%s AND s.status='passed' AND r.kind='research' AND r.created_at>=%s""",
                 (user_id, since))
     return int((cur.fetchone() or {}).get("n") or 0)
 
