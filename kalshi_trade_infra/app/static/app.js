@@ -2836,10 +2836,19 @@
     host.className = 'sect dash-track'; host.id = 'track-record'; host.innerHTML = loading(260);
     wrap.appendChild(host);  // after <main>, its last child, so the board's repaint never touches it
     const last = { at: null };
-    try { await mountTrackRecord(host, last); } catch (e) { if (gen === S.gen) host.innerHTML = notice(e.message, 'bad'); return; }
-    if (gen !== S.gen) return;
-    if (location.hash === '#track-record') host.scrollIntoView();
-    poll(() => mountTrackRecord(host, last), 60000);
+    // A failed first read offers a retry; before, the record stayed an error until a reload.
+    const first = async () => {
+      try { await mountTrackRecord(host, last); } catch (e) {
+        if (gen !== S.gen) return;
+        host.innerHTML = loadFail(e.message);
+        host.querySelector('[data-retry]').onclick = () => { host.innerHTML = loading(260); return first(); };
+        return;
+      }
+      if (gen !== S.gen) return;
+      if (location.hash === '#track-record') host.scrollIntoView();
+      poll(() => mountTrackRecord(host, last), 60000);
+    };
+    await first();
   }
 
   // ---------- funds ----------
