@@ -1261,7 +1261,9 @@ def _autopilot_story(d: Dict) -> List[str]:
         quiet = _quiet_minutes(d.get("last_review_at"))
         if quiet:
             # A stalled worker would leave "checks in every 10 minutes" on screen for hours; say how long it's been.
-            ago = _plural(quiet // 60, "hour") if quiet >= 120 else _plural(quiet, "minute")
+            # Same steps as the "Last reviewed" figure beside it (sinceMin), so the two never disagree.
+            ago = (_plural(quiet, "minute") if quiet < 90 else _plural(int(quiet / 60 + .5), "hour") if quiet < 2880
+                   else _plural(int(quiet / 1440 + .5), "day"))
             now = "Right now it's between research runs. Its last check-in was %s ago, longer than usual." % ago
     lines = [now]
     if d.get("focus"):
