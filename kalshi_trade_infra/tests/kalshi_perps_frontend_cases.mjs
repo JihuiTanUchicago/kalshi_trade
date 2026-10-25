@@ -87,6 +87,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades · 2 open/);
     assert.match(html, /Demo<\/span> No closed trades yet/);
     assert.ok(html.indexOf('>Demo<') < html.indexOf('>Paper<'), 'demo before paper');
+    // Unseen-data backtest: +$12 over 6 trades at a $5 stake = $2 a trade, so 7 paper trades -> +$14.
+    assert.match(html, /backtest's unseen-data pace, 7 trades would have made \+\$14\.00 · too few trades to judge yet/);
+    assert.equal((html.match(/real-pace/g) || []).length, 1, 'no pace line for a mode with no closed trades');
+    // Scaled to each deployment's own stake: 10 trades at $10 a trade -> 10 x $2 x 2 = +$40, enough to judge.
+    const big = strategyFrontend(detailStrategy({deployments: [{id: 4, mode: 'live', status: 'running', realized_pnl: 30, closed_trades: 10, open_positions: 0, stake: 10}]}));
+    await big.viewStrategy(42); await flush();
+    const bigHtml = big.root.querySelector('main').innerHTML;
+    assert.match(bigHtml, /10 trades would have made \+\$40\.00<\/p>/);
+    const untested = strategyFrontend(detailStrategy({out_of_sample: null, deployments}));
+    await untested.viewStrategy(42); await flush();
+    assert.doesNotMatch(untested.root.querySelector('main').innerHTML, /real-pace/);
     const none = strategyFrontend(detailStrategy({deployments: []}));
     await none.viewStrategy(42); await flush();
     assert.doesNotMatch(none.root.querySelector('main').innerHTML, /Since deploying/);
