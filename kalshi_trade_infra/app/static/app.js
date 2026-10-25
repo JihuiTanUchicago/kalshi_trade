@@ -640,7 +640,8 @@
     wireBell();
     // Phones scroll the section tabs in one row; bring the current one into view.
     const tabs = root.querySelector('.services-in'), curTab = tabs && tabs.querySelector('[aria-current="page"]');
-    if (tabs && curTab && phone()) tabs.scrollLeft = Math.max(0, curTab.offsetLeft - 24);
+    // Show the tab before the current one whole, not a clipped letter of it, so the row reads as scrollable.
+    if (tabs && curTab && phone()) { const prev = curTab.previousElementSibling; tabs.scrollLeft = prev ? Math.max(0, prev.offsetLeft - tabs.offsetLeft - 4) : 0; }
     const at = root.querySelector('[data-action="admintoggle"]');
     if (at) at.onclick = () => {
       const turningOff = adminViewOn();
