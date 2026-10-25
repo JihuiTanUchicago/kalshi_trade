@@ -150,7 +150,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -462,6 +462,57 @@ const dashboardDeployment = (mode, status = 'running') => ({id: 91, strategy_id:
 const dashboardPosition = (id, overrides = {}) => ({id, ticker: `KXBTC15M-26OCT181230-${id}`, title: `Strategy ${id}`,
   side: 'yes', qty: 10, entry_price: 0.35, mode: 'paper', unrealized: null, pnl: 4.25,
   market_close_time: '2026-10-18T12:30:00Z', opened_at: '2020-01-01T12:30:00Z', closed_at: '2020-01-02T12:30:00Z', ...overrides});
+
+const apStatus = {autopilot: true, mode: 'paper', story: ['Right now it’s researching BTC 15m.'],
+  research: {tested_7d: 12, passed_7d: 0, active: []}, live_running: 0, demo_running: 0, paper_running: 1};
+const apDashboard = (data, status) => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(data);
+    if (path === '/api/autopilot/status') return response(status);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true;
+  return f;
+};
+
+test('Overview paper P&L says "since reset" after a reset and its day figure says realized', async () => {
+  for (const reset_at of [null, '2026-10-20T09:00:00Z']) {
+    const f = apDashboard(dashboardData({paper: {reset_at}}), apStatus);
+    await f.viewDashboard(); await flush();
+    f.S.ap = apStatus; f.paintDashAp();
+    const paper = f.root.querySelector('.paper-summary').textContent;
+    // total_pnl restarts at a reset; the track record keeps every closed trade, so "all time" would disagree.
+    assert.match(paper, reset_at ? /P&amp;L since reset \+\$111\.25/ : /All-time P&amp;L \+\$111\.25/);
+    if (reset_at) assert.doesNotMatch(paper, /All-time/);
+    // Today is closed trades only (realized_pnl), unlike the equity P&L beside it; the live group says so too.
+    assert.match(paper, /Realized today−\$7\.50/);
+    const card = f.root.querySelector('#dash-ap').innerHTML;
+    assert.match(card, new RegExp(`<dt>Paper P&amp;L, ${reset_at ? 'since reset' : 'all time'}</dt><dd><span class="[^"]*">\\+\\$111\\.25`));
+  }
+});
+
+test('Overview empty Deployed box never says autopilot is researching while the card says it is quiet or paused', async () => {
+  const quiet = {...apStatus, story: ['Right now it’s between research runs. Its last check-in was 3 hours ago, longer than usual.']};
+  for (const status of [quiet, {...apStatus, billing_blocked: true, billing_reason: 'card', story: []}]) {
+    const f = apDashboard(dashboardData(), status);
+    await f.viewDashboard(); await flush();
+    f.S.ap = status; f.paintDashAp();
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, status.billing_blocked ? /Paused: / : /longer than usual/);
+    const deps = f.root.querySelector('#deps-empty').innerHTML;
+    assert.match(deps, /Autopilot is on\./); assert.doesNotMatch(deps, /is researching/);
+  }
+});
+
+test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
+  const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /\+\$2\.00[\s\S]*paper money, not real · strategies listed below/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized[\s\S]*\+\$5\.00[\s\S]*real money, strategies listed below · \+\$2\.00 on paper, counted apart/]]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments, open_positions: []}); }});
+    await f.viewDeploy(); await flush();
+    const figs = f.root.querySelector('#dfigs').innerHTML;
+    assert.match(figs, re); assert.doesNotMatch(figs, /\$7\.00/);
+  }
+});
 
 test('Overview "paused, needs you" jumps to the first paused deployment', async () => {
   const deployments = [{...dashboardDeployment('paper'), id: 91, strategy_id: 41},

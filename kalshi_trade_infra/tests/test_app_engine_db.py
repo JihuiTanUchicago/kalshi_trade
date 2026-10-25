@@ -175,6 +175,31 @@ def test_research_week_leaves_out_the_seeded_demo_session(conn, user):
     assert sum(int(r["tried"]) for r in every) == 5 and sum(int(r["runs"]) for r in every) == 2
 
 
+def test_research_spend_is_the_ledger_debits_of_research_runs_only(conn, user):
+    """The autopilot panel's "$X spent" is what research debited this week: not chat, not
+    autopilot reviews, not the seeded demo, not last week."""
+    from decimal import Decimal
+    from app import repository as repo
+
+    cur = conn.cursor()
+    since = repo.now_utc() - timedelta(days=7)
+    repo.seed_demo_session(cur, user["id"])
+    cur.execute("SELECT id FROM app_agent_runs WHERE user_id=%s AND direction='random_walk'", (user["id"],))
+    demo = cur.fetchone()["id"]
+    research = repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    chat = repo.create_run(cur, user["id"], "chat")
+    review = repo.create_run(cur, user["id"], "review")
+    cur.execute("UPDATE app_agent_runs SET status='cancelled' WHERE id IN (%s,%s,%s)", (research, chat, review))
+    for run_id, amount in ((research, "-1.250000"), (research, "-0.500000"), (chat, "-0.300000"),
+                           (review, "-0.700000"), (demo, "-9.000000")):
+        repo.add_credit(cur, user["id"], "usage", Decimal(amount), "Agent usage", run_id=run_id)
+    repo.add_credit(cur, user["id"], "usage", Decimal("-4"), "Agent usage", run_id=research)
+    cur.execute("UPDATE app_credit_ledger SET created_at=%s WHERE user_id=%s AND amount_usd=-4",
+                (since - timedelta(days=1), user["id"]))  # last week's debit on the same run
+    repo.add_credit(cur, user["id"], "topup", Decimal("20"), "Added credits")
+    assert repo.research_spent_since(cur, user["id"], since) == pytest.approx(1.75)
+
+
 def test_the_interactive_lane_skips_research(conn, user):
     from app import repository as repo
 

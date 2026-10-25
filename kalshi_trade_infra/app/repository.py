@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from app.adapters.db.sql import _json, _loads, now_utc, transaction  # noqa: F401
 from app.adapters.db.billing_repository import (  # noqa: F401
     add_credit, credit_balance, credit_rows, credit_spent_total, get_stripe_customer,
-    save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
+    research_spent_since, save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
 )
 from app.adapters.db.kalshi_keys_repository import (  # noqa: F401
     delete_kalshi_key, get_kalshi_key, save_kalshi_key,
@@ -63,7 +63,7 @@ from app.adapters.db.position_repository import (  # noqa: F401
 )
 from app.adapters.db.paper_ledger_repository import (  # noqa: F401
     STARTING_PAPER_BALANCE, add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits,
-    reset_paper_account,
+    paper_reset_at, reset_paper_account,
 )
 from app.adapters.db.demo_capital_repository import (  # noqa: F401
     demo_account, demo_equity, reload_demo,

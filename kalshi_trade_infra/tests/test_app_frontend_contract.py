@@ -150,6 +150,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'last_review_at', lambda *a: None)
     monkeypatch.setattr(server.repo, 'list_runs', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, 'research_spent_since', lambda *a, **k: 0.0)
     monkeypatch.setattr(server.repo, 'strategies_passed_since', lambda *a, **k: 0)
     monkeypatch.setattr(server.billing, 'configured', lambda: True)
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)

@@ -1479,7 +1479,7 @@
       const liveFigure = fig('Live account', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>' });
       const liveSummary = `<div class="m live-summary"><dt class="lab vh">Live account · Kalshi</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Live account · Kalshi</span><strong class="fig${!d.live.connected || d.live.balance == null ? ' balance-state' : ''}">${d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected'}</strong><span class="portfolio-return">${d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : `${money(d.live.realized_pnl)} realized all time`) : '<a href="/funds">Connect Kalshi</a>'}</span></div><div class="portfolio-detail"><span class="lab">Realized today</span><strong>${money(d.live.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(d.live.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(d.live.open_at_cost)}</strong></div></div></dd></div>`;
       const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: (d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L` : `${usd(d.demo.capital)} capital · No demo deployments` });
-      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return">All-time P&amp;L ${money(p.total_pnl)}</span></div><div class="portfolio-detail"><span class="lab">Today</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
+      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return">${p.reset_at ? 'P&amp;L since reset' : 'All-time P&amp;L'} ${money(p.total_pnl)}</span></div><div class="portfolio-detail"><span class="lab">Realized today</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}
@@ -2752,7 +2752,8 @@
     const loadBoard = async () => {
       const d = await api('/api/deployments');
       const running = d.deployments.filter((x) => x.status === 'running');
-      // Real-money and practice (paper/demo) results are never summed into one figure.
+      // Real-money and practice (paper/demo) results are never summed into one figure. Removed
+      // deployments aren't listed, so their P&L isn't here (the dashboard and track record keep it).
       const sumPnl = (xs) => xs.reduce((a, x) => a + x.realized_pnl, 0);
       const liveDeps = d.deployments.filter((x) => x.mode === 'live'), practice = d.deployments.filter((x) => x.mode !== 'live');
       const liveRealized = sumPnl(liveDeps), practiceRealized = sumPnl(practice);
@@ -2760,8 +2761,8 @@
       const live = d.deployments.filter((x) => x.mode === 'live' && x.status === 'running');
       root.querySelector('#dfigs').innerHTML = fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
         (liveDeps.length
-          ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: practice.length ? `real money · ${usd(practiceRealized, true)} on ${practiceKind}, counted apart` : 'real money' })
-          : fig('Realized', usd(practiceRealized, true), { v: practiceRealized, small: `${practiceKind} money, not real` })) +
+          ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: practice.length ? `real money, strategies listed below · ${usd(practiceRealized, true)} on ${practiceKind}, counted apart` : 'real money, strategies listed below' })
+          : fig('Realized', usd(practiceRealized, true), { v: practiceRealized, small: `${practiceKind} money, not real · strategies listed below` })) +
         fig('Open positions', d.open_positions.length) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, true)).join(''), true)
@@ -3467,6 +3468,9 @@
     try { S.ap = await req; S.apAt = Date.now(); renderAutopilot(box, S.ap); paintDashAp(); }
     catch (e) { /* floating window is best-effort; never block the app */ }
   }
+  // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
+  // "since reset" then; the track record keeps every closed trade and would otherwise disagree.
+  function paperSpan(p) { return p && p.reset_at ? 'since reset' : 'all time'; }
   // Dashboard autopilot card: the one-click way in while autopilot is off, and once it's on a
   // plain "what is it doing, is it making money" strip. Painted from the float's status poll
   // (S.ap) plus the dashboard's paper book (S.dashPaper), so it never needs its own request.
@@ -3492,7 +3496,7 @@
     const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
     const pnl = S.dashPaper ? S.dashPaper.total_pnl : null;
     const cells = [
-      d.live_running ? ['Live P&amp;L today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, all time', pnl == null ? '—' : money(pnl)],
+      d.live_running ? ['Live P&amp;L today', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, ' + paperSpan(S.dashPaper), pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
       ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested · ${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${prog.trades} of ${prog.trades_needed} paper trades</a>`]
@@ -3515,10 +3519,12 @@
   }
   // One-click autopilot line for empty states; the [data-research-ap] click handler turns it on.
   // The empty Deployed box speaks to the autopilot switch; with autopilot on, its button asked for
-  // work the autopilot is already doing. It follows the switch live (syncApCopy).
+  // work the autopilot is already doing. It follows the switch live (syncApCopy). It says only that
+  // autopilot is on: the card above says what it is doing, and "is researching" contradicted a card
+  // reporting a stale check-in or a billing pause.
   function depsEmpty(on) {
     return on
-      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is researching. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
       : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or start a session yourself.</p><a class="btn" href="/research?new=1">New session</a></div>`;
   }
   // Copy that depends on the switch follows it without a reload, so turning autopilot on doesn't leave

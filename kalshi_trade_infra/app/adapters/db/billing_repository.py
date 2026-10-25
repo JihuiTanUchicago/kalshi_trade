@@ -47,6 +47,20 @@ def credit_spent_total(cur, user_id: int, since=None) -> float:
     return float(cur.fetchone()["s"])
 
 
+def research_spent_since(cur, user_id: int, since) -> float:
+    """Dollars actually debited for RESEARCH since `since` (the autopilot panel's week). Every usage
+    row carries the run it billed (agent._bill), and the run's kind tells research from chat and
+    autopilot reviews. The seeded demo session is left out, as research_week leaves it out."""
+    cur.execute(
+        """SELECT COALESCE(-SUM(l.amount_usd),0) AS s
+           FROM app_credit_ledger l JOIN app_agent_runs r ON r.id = l.run_id
+           WHERE l.user_id=%s AND l.kind='usage' AND l.created_at >= %s
+             AND r.kind='research' AND (r.direction IS NULL OR r.direction <> 'random_walk')""",
+        (user_id, since),
+    )
+    return float(cur.fetchone()["s"])
+
+
 def get_stripe_customer(cur, user_id: int) -> Optional[Dict]:
     cur.execute(
         "SELECT user_id, stripe_customer_id, default_pm_id, auto_reload, reload_amount, reload_threshold "

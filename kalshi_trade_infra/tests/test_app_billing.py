@@ -135,3 +135,24 @@ def test_billing_copy_does_not_promise_list_price_while_a_markup_applies():
     for bundle in ("app.js", "app.meridian.js"):
         src = (static / bundle).read_text()
         assert "list price" not in src, bundle
+
+
+def test_research_spend_reads_the_ledger_for_research_runs_only():
+    # The autopilot panel's week cost is what was debited (kind='usage' ledger rows), scoped by the
+    # billed run's kind so chat and autopilot reviews don't count as research. MySQL twin:
+    # test_app_engine_db.test_research_spend_is_the_ledger_debits_of_research_runs_only.
+    from app import repository as repo
+
+    class Cur:
+        def execute(self, sql, params):
+            self.sql, self.params = " ".join(sql.split()), params
+
+        def fetchone(self):
+            return {"s": Decimal("3.140000")}
+
+    cur = Cur()
+    assert repo.research_spent_since(cur, 7, "since") == 3.14
+    assert cur.params == (7, "since")
+    assert "FROM app_credit_ledger l JOIN app_agent_runs r ON r.id = l.run_id" in cur.sql
+    assert "l.kind='usage'" in cur.sql and "l.created_at >= %s" in cur.sql and "r.kind='research'" in cur.sql
+    assert "r.direction <> 'random_walk'" in cur.sql  # the seeded demo never ran, as in research_week
