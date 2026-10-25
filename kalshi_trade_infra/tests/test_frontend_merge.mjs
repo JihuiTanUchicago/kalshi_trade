@@ -1329,3 +1329,89 @@ test('beside Start session the form says what a session usually costs, from ledg
     assert.equal(cost().hidden, true); assert.equal(cost().textContent, '');
   }
 });
+
+test('autopilot says why it is not trading: the card and the panel lead with one line and its action', async () => {
+  // One store both harnesses take: Tau's reads getItem/setItem, Meridian's a Map.
+  const stored = new Map(); stored.getItem = key => stored.get(key) ?? null; stored.setItem = (key, value) => stored.set(key, String(value));
+  const f = frontend({storage: stored,
+    fetchImpl: path => {
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      return response({});
+    }});
+  f.S.me.user.autopilot = true;
+  f.root.innerHTML = '<div id="dash-ap"></div>';
+  const box = new Element('div', {id: 'autopilot-float'}); f.root.parent.appendChild(box);
+  const base = {autopilot: true, mode: 'paper', research: {tested_7d: 0, passed_7d: 0, active: []}, live_running: 0, demo_running: 0,
+    paper_running: 0, paper_progress: null, focus: [], story: ['Right now it’s between research runs.', 'Nothing trades real money until...']};
+  const card = () => f.root.querySelector('#dash-ap .apcard-now');
+  const idleP = () => box.querySelector('#apf-story .apf-idle');
+  // Every paper strategy paused by its stop: the line and a link to Deploy, on the card and atop the panel.
+  f.S.ap = {...base, idle: {code: 'stopped', line: 'Nothing is trading: Fade <tails> is paused: it hit its loss guard.', action: {label: 'Open Deploy', href: '/deploy'}}};
+  f.paintDashAp();
+  assert.equal(card().innerHTML, 'Nothing is trading: Fade &lt;tails&gt; is paused: it hit its loss guard. <a href="/deploy">Open Deploy</a>');
+  f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  assert.equal(idleP().innerHTML, 'Nothing is trading: Fade &lt;tails&gt; is paused: it hit its loss guard. <a href="/deploy">Open Deploy</a>');
+  const lines = box.querySelectorAll('#apf-story p').map(p => p.innerHTML);
+  assert.equal(lines.length, 3); assert.equal(lines[1], 'Right now it’s between research runs.');
+  // A stalled engine has no action: the line alone, in place of a healthy-looking "between research runs".
+  f.S.ap = {...base, paper_running: 1, idle: {code: 'engine', line: 'Nothing is trading right now: Tau’s trading engine isn’t running.', action: null}};
+  f.paintDashAp(); f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  assert.equal(card().innerHTML, 'Nothing is trading right now: Tau’s trading engine isn’t running.');
+  assert.doesNotMatch(card().innerHTML, /between research runs/);
+  assert.equal(idleP().innerHTML, 'Nothing is trading right now: Tau’s trading engine isn’t running.');
+  // Focus with nothing inside it: Change focus opens the control, from the card and from the panel.
+  f.S.ap = {...base, focus: ['sports'], idle: {code: 'focus', line: 'Nothing is on paper: your focus is sports.', action: {label: 'Change focus', do: 'focus'}}};
+  f.paintDashAp();
+  assert.equal(card().innerHTML, 'Nothing is on paper: your focus is sports. <button type="button" data-apcard="idle-focus">Change focus</button>');
+  f.root.querySelector('#dash-ap [data-apcard="idle-focus"]').onclick(); await flush();
+  assert.equal(box.querySelector('.apf-prefs').open, true);
+  box.querySelector('.apf-prefs').open = false;
+  idleP().querySelector('[data-ap="idle-focus"]').onclick();
+  assert.equal(box.querySelector('.apf-prefs').open, true);
+  // Billing keeps its own lines (card and gates); the panel adds no idle line over them.
+  f.S.ap = {...base, billing_blocked: true, billing_reason: 'card', story: [],
+    idle: {code: 'billing', line: 'Nothing is on paper, and it can’t research.', action: {label: 'Add a payment method', href: '/billing'}}};
+  f.paintDashAp(); f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  assert.match(card().innerHTML, /^Paused: <a href="\/billing">add a payment method<\/a>/);
+  assert.equal(idleP(), null);
+  // Trading (no idle): the card goes back to what it's doing.
+  f.S.ap = {...base, paper_running: 2, idle: null};
+  f.paintDashAp();
+  assert.equal(card().innerHTML, 'Right now it’s between research runs.');
+});
+
+// Each deployment row draws its cumulative realized P&L: two points or more, a line coloured by its
+// last value and labelled with it and the trade count; one trade draws nothing. Each mode keeps its
+// own dollar axis, so a paper curve that peaked at $500 doesn't flatten a live one that lost $3.
+const sparkDeployment = (id, mode, closed, curve) => ({id, strategy_id: id, title: `Spark ${id}`, market: 'btc15m', mode,
+  status: 'running', stake: 5, max_positions: 2, backtest: {out_of_sample: null}, created_at: '2026-10-17T10:00:00Z',
+  realized_pnl: curve.length ? curve[curve.length - 1][1] : 0, unrealized_pnl: null, closed_trades: closed, open_positions: 0, curve});
+const sparkPayload = () => ({...emptyDashboard(), deployments: [
+  sparkDeployment(1, 'paper', 48, [[1760000000, 2], [1760003600, -1], [1760007200, 500], [1760010800, 12.4]]),
+  sparkDeployment(2, 'live', 2, [[1760000000, -1], [1760003600, -3]]),
+  sparkDeployment(3, 'paper', 1, [[1760000000, 1]]),
+]});
+for (const [label, view, endpoint, selector] of [['The dashboard', 'viewDashboard', '/api/dashboard', '#dash-deps'], ['Deploy', 'viewDeploy', '/api/deployments', '#deps']]) {
+  test(`${label} draws a cumulative P&L sparkline per deployment, by mode, with a labelled sign`, async () => {
+    const f = frontend({fetchImpl: path => {
+      if (path === endpoint) return response(sparkPayload());
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f[view](); await flush(); await flush();
+    const html = f.root.querySelector(selector).innerHTML;
+    const svgs = [...html.matchAll(/<svg class="spark (up|down|flat)"[^>]*aria-label="([^"]*)"[^>]*>.*?<\/svg>/g)];
+    assert.equal(svgs.length, 2, html);  // the one-trade deployment draws none
+    const [up, down] = [svgs.find((m) => m[1] === 'up'), svgs.find((m) => m[1] === 'down')];
+    assert.equal(up[2], 'Cumulative P&amp;L, +$12.40 over 48 trades');
+    assert.equal(down[2], 'Cumulative P&amp;L, −$3.00 over 2 trades');
+    for (const m of svgs) {
+      assert.match(m[0], /role="img"/); assert.match(m[0], /viewBox="0 0 80 24"/);
+      assert.match(m[0], /<line class="spark-zero"/);
+    }
+    // The live line uses live's own axis: its -$1 sits well above the bottom, not squashed by paper's $500.
+    const livePts = down[0].match(/points="([^"]+)"/)[1].split(' ').map((p) => +p.split(',')[1]);
+    assert.ok(livePts[0] < 12 && livePts[1] === 22, livePts.join(' '));
+  });
+}

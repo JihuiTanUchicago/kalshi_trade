@@ -7,6 +7,20 @@ from app.markets import MARKETS
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 
 
+def test_the_strategy_equity_curve_keeps_a_one_trade_crash_and_its_exact_end():
+    # Display only (evaluate's equity, the kalshi-dev second line); the gates and metrics read every
+    # trade. Every 2,000/160th point used to step over a crash that recovered on the next trade.
+    curve = [(T0 + 60 * i, float(i)) for i in range(2000)]
+    curve[1013] = (T0 + 60 * 1013, -500.0)
+    assert 1013 not in [int(i * 2000 / 160) for i in range(159)]  # the old rule's picks
+    out = backtest._downsample(curve)
+    assert len(out) <= backtest.EQUITY_POINTS
+    assert (T0 + 60 * 1013, -500.0) in out  # the crash, as the real point
+    assert out[0] == curve[0] and out[-1] == curve[-1]
+    assert [ts for ts, _ in out] == sorted(ts for ts, _ in out)
+    assert backtest._downsample(curve[:100]) == curve[:100]  # short curves are untouched
+
+
 def _dataset(n_contracts=40, minutes=15, result="yes", ask=0.40, bid=0.38, spot_above=True):
     """Synthetic 15-minute contracts back to back. BTC sits 2% above (or below)
     every strike, so the GBM fair value is ~1 (or ~0)."""

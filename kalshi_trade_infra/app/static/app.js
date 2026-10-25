@@ -778,20 +778,26 @@
     if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
     return { lo, hi };
   }
-  function spark(curve, reg, label) {
-    const W = 300, H = 46;
-    if (!curve || curve.length < 2) {
-      return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="No closed trades yet"><line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" stroke="var(--rule-2)" stroke-dasharray="3 4"/></svg>`;
-    }
-    const t0 = curve[0][0], t1 = curve[curve.length - 1][0] || t0 + 1;
-    const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * W;
-    const y = (v) => H - 3 - ((v - reg.lo) / (reg.hi - reg.lo)) * (H - 6);
-    const pts = curve.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const last = curve[curve.length - 1][1];
-    const color = 'var(--ink)';
-    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}: ${usd(last, true)}">
-      <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
-      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+  // Each mode's deployments share one axis, so paper's dollars never squash live's or demo's.
+  function curveRegs(deps) {
+    const by = {};
+    deps.forEach((d) => (by[d.mode] = by[d.mode] || []).push(d.curve));
+    return Object.fromEntries(Object.entries(by).map(([mode, curves]) => [mode, registry(curves)]));
+  }
+  // A deployment's cumulative realized P&L, oldest trade first: a zero baseline and a line coloured
+  // by where it ends. `trades` is the closed-trade count for the label: a long curve arrives cut down
+  // to 120 points that keep its ends and every dip and peak. Nothing under two points.
+  function spark(curve, reg, trades) {
+    if (!curve || curve.length < 2) return '';
+    const W = 80, H = 24;
+    reg = reg || registry([curve]);
+    const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
+    const x = t1 > t0 ? (p) => ((p[0] - t0) / (t1 - t0)) * W : (p, i) => (i / (curve.length - 1)) * W;
+    const y = (v) => H - 2 - ((v - reg.lo) / (reg.hi - reg.lo)) * (H - 4);
+    const pts = curve.map((p, i) => `${x(p, i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
+    const last = curve[curve.length - 1][1], n = trades == null ? curve.length : +trades;
+    const label = `Cumulative P&L, ${usd(last, true)} over ${n} trade${n === 1 ? '' : 's'}`;
+    return `<svg class="spark ${last > 0 ? 'up' : last < 0 ? 'down' : 'flat'}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}"><line class="spark-zero" x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" vector-effect="non-scaling-stroke"/><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg>`;
   }
   // devCurve (optional): a second, realized series replayed read-only against
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
@@ -924,11 +930,14 @@
   }
 
   // 3. underwater drawdown.
-  function rpUnderwater(curve) {
-    if (!curve || curve.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
-    let peak = -Infinity; const dd = curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
+  // `drawn`: a drawdown series the server already built from every trade (the track record sends
+  // one, since its equity curve is thinned and could have lost the peak a drop started from).
+  function rpUnderwater(curve, drawn) {
+    const src = drawn || curve;
+    if (!src || src.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
+    let peak = -Infinity; const dd = drawn || curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
     const W = 340, H = 180, L = 54, R = 10, T = 14, B = 22;
-    const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
+    const t0 = src[0][0], t1 = src[src.length - 1][0];
     const minDd = Math.min(0, ...dd.map((p) => p[1])), lo = minDd < 0 ? minDd : -0.5;
     const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
     const y = (v) => T + (1 - (v - lo) / (0 - lo)) * (H - T - B);
@@ -1135,7 +1144,7 @@
   // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
   const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
-  function deploymentSlip(d, reg, controls) {
+  function deploymentSlip(d, regs, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
     // Realized beside what the backtest's unseen-data average per trade says the same trades should
     // have made: the comparable number, not the backtest's own total over a different trade count.
@@ -1151,7 +1160,7 @@
         <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7 ' + esc(d.status_reason) : ''}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${d.status === 'running' ? modeTag : mark(d.status, live)}</td>
-      <td class="num" data-lab="Realized">${money(d.realized_pnl)}</td>
+      <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
       <td class="num" data-lab="Backtest pace">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : '<span class="sub-fig">no closed trades</span>'}</td>
@@ -1495,14 +1504,14 @@
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7 ${d.demo.open_positions} open \u00b7 ${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7 no demo strategies yet`} \u00b7 ${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: `${usd(p.cash)} cash \u00b7 ${usd(p.open_at_cost)} at cost \u00b7 ${usd(p.total_pnl, true)} ${paperSpan(p)}${tradesCsv('paper', p)}` })}
         </dl>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
-      const reg = registry(d.deployments.map((x) => x.curve));
+      const regs = curveRegs(d.deployments);
       // The dashboard is a summary: the first few deployments (paused ones, which need the user, then
       // real money, demo, paper) and a link to Deploy for the rest. Six phone cards ran ~1,400px.
       const depRank = (x) => x.status === 'paused' ? 0 : x.mode === 'live' ? 1 : x.mode === 'demo' ? 2 : 3;
       const dashDeps = [...d.deployments].sort((a, b) => depRank(a) - depRank(b)).slice(0, DASH_ROWS);
       const more = (n, what) => n > DASH_ROWS ? `<a class="stub-all" href="/deploy">See all ${n} ${what} on Deploy \u2192</a>` : '';
       const deps = d.deployments.length
-        ? deploymentTable(dashDeps.map((x) => deploymentSlip(x, reg, true)).join(''), true) + more(d.deployments.length, 'deployments')  // same controls as Deploy
+        ? deploymentTable(dashDeps.map((x) => deploymentSlip(x, regs, true)).join(''), true) + more(d.deployments.length, 'deployments')  // same controls as Deploy
         : `<div id="deps-empty" data-on="${S.me.user && S.me.user.autopilot ? 1 : 0}">${depsEmpty(S.me.user && S.me.user.autopilot)}</div>`;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
@@ -2811,8 +2820,8 @@
         (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} · strategies listed below` }) : '') +
         fig('Open positions', d.open_positions.length) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
-      const reg = registry(d.deployments.map((x) => x.curve));
-      root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, reg, true)).join(''), true)
+      const regs = curveRegs(d.deployments);
+      root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies">See passed strategies</a></div>`;
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
@@ -2896,7 +2905,7 @@
     return `${notice(s.text, good ? 'good' : '')}${cav}${figs}
       <div class="rp-figs">
         <div class="rp-fig wide"><h5>Equity curve</h5>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">${trCurveCap(m)}</div></div>
-        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(trCurve(m.curve))}</div>
+        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(trCurve(m.curve), m.underwater && trCurve(m.underwater))}</div>
         <div class="rp-fig"><h5>Risk and trade detail</h5>${risk}</div>
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
@@ -3570,7 +3579,7 @@
     ].filter(Boolean);
     const now = d.billing_blocked
       ? `Paused: <a href="/billing">${d.billing_reason === 'card' ? 'add a payment method' : 'add credits'}</a> so it can keep researching.`
-      : esc((d.story && d.story[0]) || 'Autopilot is on.');
+      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc((d.story && d.story[0]) || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${Array.isArray(d.focus) ? `
@@ -3578,7 +3587,17 @@
         <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>${apWeek(d.week)}</div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
+    const idleFocus = host.querySelector('[data-apcard="idle-focus"]');
+    if (idleFocus) idleFocus.onclick = () => { apOpen(); apShowFocus(document.getElementById('autopilot-float')); };
     apBindFocus(host);
+  }
+  // Why autopilot isn't trading right now (the server's d.idle): one plain line, plus the action to
+  // take when there is one (a link, or the focus control). The card and the panel both lead with it.
+  function apIdleHtml(idle, focusAttr) {
+    const a = idle.action;
+    const act = !a ? '' : a.href ? ` <a href="${esc(a.href)}">${esc(a.label)}</a>`
+      : a.do === 'focus' ? ` <button type="button" ${focusAttr}>${esc(a.label)}</button>` : '';
+    return esc(idle.line) + act;
   }
   // The market focus is binding on research, deploys and the picker, so it reads as a plain line on
   // the card and the panel, with a Change that opens the control (it lives in "Model and markets").
@@ -3932,7 +3951,13 @@
     if (!d) return;
     // Plain-language summary from the server (what it's doing, why no trades yet, what live needs).
     const story = box.querySelector('#apf-story');
-    if (story) story.innerHTML = (d.story || []).map((line) => `<p>${esc(line)}</p>`).join('');
+    if (story) {
+      // The billing pause has its own line under the switch, so the idle line skips it.
+      story.innerHTML = (d.idle && !d.billing_blocked ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"')}</p>` : '')
+        + (d.story || []).map((line) => `<p>${esc(line)}</p>`).join('');
+      const idleFocus = story.querySelector('[data-ap="idle-focus"]');
+      if (idleFocus) idleFocus.onclick = () => apShowFocus(box);
+    }
     // Live figures once real money is armed or running. A paper-only panel used to show "Live P&L
     // today $0.00" and a loss budget that can't apply to it, and nothing about the paper book it has.
     const liveInPlay = !!(d.autopilot_live || d.live_running);

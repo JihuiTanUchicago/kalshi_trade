@@ -182,6 +182,18 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(thinned, /one point per closed trade/);
   });
 
+  test(`${name}: the track record underwater chart draws the server's drawdown series, not one derived from the thinned curve`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const th = {min_sharpe_days: 14, min_trades: 30};
+    // The thinned equity curve lost the $50 peak, so it only ever rises; the server's series has the drop.
+    const m = {trades: 5000, wins: 1, losses: 1, label: 'Paper', net_pnl: 100, fees: 0, monthly: [], strategies: [], max_drawdown: 50,
+      curve: [[1760000000, 0], [1760003600, 0], [1760007200, 100], [1760010800, 100]],
+      underwater: [[1760000000, 0], [1760005400, -50], [1760010800, 0]], sample: {level: 'solid', edge: 'positive', text: 'Solid.'}};
+    assert.match(f.trackRecordPanel(m, 'paper', th), /Underwater drawdown plot; worst drawdown −\$50\.00/);
+    // An older payload without the series still derives one from the curve.
+    assert.match(f.trackRecordPanel({...m, underwater: undefined}, 'paper', th), /Underwater drawdown plot; worst drawdown \$0\.00/);
+  });
+
   test(`${name}: the seeded example's strategies and session say the app ran them for free`, async () => {
     const f = frontend({fetchImpl: path => {
       assert.equal(path, '/api/runs/5?after=0');
