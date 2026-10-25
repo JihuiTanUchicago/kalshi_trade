@@ -157,6 +157,25 @@ const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false}
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
   ]}});
 
+test('road to live says plainly when paper is losing money against the backtest', async () => {
+  for (const [realization, said] of [[-0.18, /Paper is <b>losing money<\/b> per trade, while the backtest made money on unseen data\./], [0.6, /Paper earns <b>60%<\/b> of the backtest/]]) {
+    const readiness = {ready: false, blocking: 'the gatekeeper has not cleared it', deployment_candidate: false, live_autopilot: {ok: false},
+      paper: {trades: 12, trades_needed: 30, net_pnl: -0.76, events: 12, events_needed: 20, span_hours: 5, span_needed_hours: 48,
+        p_value: null, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 2.64, realization,
+        checks: {realistic_trades: false, net_pnl: false, events: false, span: false, edge: false, recent: true}}};
+    const f = strategyFrontend(detailStrategy(), path => {
+      if (path === '/api/strategies/42/live-readiness') return response(readiness);
+      return response({});
+    });
+    await f.viewStrategy(42); await flush(); await flush();
+    const body = f.root.querySelector('#road-live-body');
+    assert.ok(body, 'road to live panel renders');
+    assert.match(body.innerHTML, said);
+    assert.doesNotMatch(body.innerHTML, /-18%/);
+    f.clearTimers();
+  }
+});
+
 test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
   const f = strategyFrontend(); await f.viewStrategy(42); await flush();
   const output = f.root.querySelector('main').innerHTML;
