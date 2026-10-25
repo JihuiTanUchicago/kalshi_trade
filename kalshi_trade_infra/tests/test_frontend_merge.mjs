@@ -172,6 +172,8 @@ test('road to live says plainly when paper is losing money against the backtest'
     assert.ok(body, 'road to live panel renders');
     assert.match(body.innerHTML, said);
     assert.doesNotMatch(body.innerHTML, /-18%/);
+    // The span gate measures first to last trade, not time since deploying, which the page shows separately.
+    assert.match(body.innerHTML, /First to last paper trade/); assert.doesNotMatch(body.innerHTML, /Paper track record/);
     f.clearTimers();
   }
 });
