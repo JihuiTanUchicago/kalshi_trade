@@ -1186,7 +1186,7 @@
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}</span></header>
-      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} · $${esc(d.stake)} / trade</p><div class="monitor-limits"><span>· Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' · ' + esc(d.status_reason) : ''}</span></div></div></div>
+      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} · $${esc(d.stake)} / trade</p><div class="monitor-limits"><span> · Max ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' · ' + esc(d.status_reason) : ''}</span></div></div></div>
       <dl class="monitor-metrics">
         <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd></div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? '<span class="unavailable">Unavailable</span>' : money(d.unrealized_pnl)}</dd></div>
@@ -1616,18 +1616,6 @@
   }
 
   // ---------- research ----------
-  // "Build on what's worked": the user's best passed edges, one click from a deeper search line.
-  function winCard(s) {
-    const oos = s.out_of_sample;
-    const pnl = oos && oos.pnl != null ? oos.pnl : null;
-    return `<div class="win-card">
-      <a class="win-title" href="/strategies/${s.id}"><b>${esc(s.title)}</b></a>
-      <span class="win-meta">${esc(marketShort(s.market))} · ${esc(dirLabel(s.direction))}</span>
-      <div class="win-foot">
-        <span class="win-pnl"><span class="lab">Backtest P&amp;L (unseen)</span><span class="fig sm ${pnl > 0 ? 'tint pos' : pnl < 0 ? 'tint neg' : ''}">${pnl == null ? '—' : usd(pnl, true)}</span></span>
-        <span class="win-act"><a class="btn sm" href="/strategies/${s.id}">Open</a><button class="btn sm primary" type="button" data-dig="${s.id}">${ICON.spark2}Dig deeper</button></span>
-      </div></div>`;
-  }
   // The RSI loop made legible on the index: the engine rewrites its own search policy and keeps
   // the new one only if it beats the old on the user's own history. Same card language as the run
   // page. Hidden on a brand-new account (no history to evolve from yet).

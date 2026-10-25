@@ -681,6 +681,7 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.equal(monitor.classList.contains('live-row'), d.mode === 'live');
     assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min · \$12\.5 \/ trade/);
     assert.ok(monitor.querySelector('.monitor-limits').textContent.includes('Max 4 open'));
+    assert.ok(monitor.querySelector('.monitor-limits').textContent.startsWith(' · Max 4 open'), 'a space before the separator, so it never reads "trade· Max"');
     assert.equal(monitor.querySelector('.monitor-limits').textContent.includes('Risk &lt;cap&gt; reached'), d.status !== 'running');
     assert.equal(field('Realized').textContent, d.status === 'running' ? '—' : d.status === 'paused' ? '$0.00' : '−$3.25');
     assert.equal(field('Unrealized').textContent.trim(), d.status === 'running' ? 'Unavailable' : d.status === 'paused' ? '$0.00' : '−$2.50');
@@ -2899,4 +2900,18 @@ test('a run poll never stacks a second read on one that is still hanging', async
   for (let i = 0; i < 7; i++) { f.shiftClock(2000); tick(); await flush(); }  // 14s of 2s ticks while one read hangs
   assert.equal(f.requests.length, before + 1);  // it used to send seven
   assert.equal(f.root.querySelector('#run-stale').textContent, 'Last updated 14s ago, retrying');
+});
+
+test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or more', () => {
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.ok(!/winCard|data-dig|win-card/.test(source), 'winCard has no callers; its markup and click hook stay deleted');
+  assert.ok(!/\.wins?\b|\.win-(card|title|meta|foot|pnl|act)\b/.test(css), 'and so does its CSS');
+  const touch = css.slice(css.indexOf('@media (pointer: coarse)'));
+  const block = touch.slice(0, touch.indexOf('\n}\n'));
+  assert.match(block, /\.masthead \.bell-trig \{ min-width: 44px;/);
+  assert.match(block, /\.market-control \.hot-tab \{ width: 44px; \}/);
+  assert.match(block, /\.info \{ width: 40px; height: 40px;/);
+  assert.match(css, /\.research-ap button \{[^}]*padding: 10px 4px; margin: -10px -4px;/);
+  assert.match(css, /\.ap-focus button \{[^}]*padding: 10px 4px; margin: -10px -4px -10px 0;/);
+  assert.match(css, /\.rsidisc \.pipechev \{ position: absolute; right: 14px;/);
 });

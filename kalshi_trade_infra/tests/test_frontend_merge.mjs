@@ -1543,3 +1543,20 @@ test('a run poll never stacks a second read on one that is still hanging', async
   assert.equal(f.requests.length, before + 1);  // it used to send seven
   assert.equal(f.root.querySelector('#run-stale').textContent, 'Last updated 14s ago, retrying');
 });
+
+test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or more', () => {
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  assert.ok(!/winCard|data-dig|win-card/.test(source), 'winCard has no callers; its markup and click hook stay deleted');
+  assert.ok(!/\.wins?\b|\.win-(card|title|meta|foot|pnl|act)\b/.test(css), 'and so does its CSS');
+  const touch = css.slice(css.indexOf('@media (pointer: coarse)'));
+  const block = touch.slice(0, touch.indexOf('\n}\n'));
+  assert.match(block, /\.bell-trig \{ min-width: 44px;/);
+  assert.match(block, /\.apf-pill \{ min-height: 40px; \}/);
+  assert.match(block, /\.t-explore \.xlink a \{ min-width: 44px; min-height: 44px;/);
+  assert.match(block, /\.info \{ width: 40px; height: 40px;/);
+  // Inline text buttons get a 41px tall hit area from padding that a matching negative margin cancels out.
+  assert.match(css, /\.research-ap button \{[^}]*padding: 10px 4px; margin: -10px -4px;/);
+  assert.match(css, /\.ap-focus button \{[^}]*padding: 10px 4px; margin: -10px -4px -10px 0;/);
+  // The RSI disclosure's chevron is pinned right, so a long caption never pushes it onto a row of its own.
+  assert.match(css, /\.rsidisc \.pipechev \{ position: absolute; right: 14px;/);
+});
