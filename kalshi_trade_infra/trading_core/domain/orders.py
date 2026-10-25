@@ -86,3 +86,17 @@ class ExecutionReport:
     @property
     def fees(self) -> float:
         return sum(f.fee for f in self.fills)
+
+
+@dataclass(frozen=True)
+class RestingOrder:
+    """A passive limit order working on a venue's book (a market maker's quote): it fills when
+    someone else trades into it, possibly in pieces, until filled or cancelled."""
+
+    order_id: str
+    instrument: InstrumentId
+    side: Side
+    price: float
+    qty: float                            # still working
+    client_order_id: str = ""
+    placed_at: float = 0.0
