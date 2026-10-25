@@ -132,6 +132,12 @@
   paper deployments... Released 8 stuck positions" while both pauses were refused and 7 positions
   were open. The prompt also says to write actions as requests and to quote dollar and trade counts
   only as the context states them (a later reply invented "$3.54 gone" for a $0.91 paper loss).
+- Research "interrupted" stops (2026-10-25, PR #212): every "interrupted before it explored a
+  hypothesis" run since 21:40Z has heartbeat_at after finished_at, so the 90s abandon reaper
+  stopped live runs during process-wide stalls. Swap was full: 91 orphaned /tmp/strat_* sandbox
+  dirs (3.2 GB on RAM-backed tmpfs) left by os._exit on deploy restarts. The agents worker now
+  sweeps strat_* dirs older than 10 min at startup. Abandon-window and reaper changes belong to
+  the research thread.
 
 ## Did the stop help? Early exits scored against holding (2026-10-24)
 
