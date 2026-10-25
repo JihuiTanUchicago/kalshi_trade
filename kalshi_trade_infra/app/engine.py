@@ -72,6 +72,9 @@ LATE_FRACTION = 0.25
 # than its backtest's worst unseen-data drawdown is paused.
 LOSS_GUARD_MULTIPLE = 2.0
 COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/%s/candles"  # %s = product, e.g. BTC-USD
+COINBASE_TRADES_URL = "https://api.exchange.coinbase.com/products/%s/trades"
+TRADE_PAGES = 3            # x1000 trades: ~20 min of BTC, enough for any candle-batch delay
+MAX_TRADE_FILL_S = 900     # an older newest-candle is a dead feed, not a batch delay: leave it stale
 # Mark-staleness gate (P1-2): a risk TRIGGER (drawdown / position-stop force-sell) must not fire
 # off a mark older than this. Marks refresh every tick (~15s), so the default of 90s (6 ticks) only
 # trips when marking has actually stalled; 0 disables the gate. A stale mark is treated like an
@@ -160,9 +163,72 @@ def fetch_spot_series(market: Market) -> Optional[BtcSeries]:
     e.g. sports): it has no spot series and trades on the contract's own book features alone."""
     if market.underlying is None:
         return None
-    resp = requests.get(COINBASE_CANDLES_URL % market.underlying, params={"granularity": 60}, timeout=10)
+    return fetch_minute_series(market.underlying)
+
+
+def _trade_ts(s: str) -> Optional[float]:
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def trade_closes(trades: List[Dict], after_ts: int, now_ts: float) -> Optional[Dict[int, float]]:
+    """Minute start -> close (the last trade's price) for every minute after `after_ts` that has
+    fully closed by `now_ts`, from Coinbase /trades rows (any order). That is exactly how Coinbase
+    builds a candle's close, so the rebuilt minutes match the candles the backtest reads. None when
+    the trades don't reach back to `after_ts` (a hole would shift every n-minute window)."""
+    last: Dict[int, Tuple[float, int, float]] = {}
+    oldest = None
+    for t in trades:
+        ts, px = _trade_ts(t.get("time")), t.get("price")
+        if ts is None or px is None:
+            continue
+        oldest = ts if oldest is None else min(oldest, ts)
+        m = int(ts // 60) * 60
+        key = (ts, int(t.get("trade_id") or 0))
+        if m not in last or key > last[m][:2]:
+            last[m] = (ts, key[1], float(px))
+    if oldest is None or int(oldest // 60) * 60 > after_ts + 60:
+        return None
+    return {m: v[2] for m, v in last.items() if m > after_ts and m + 60 <= now_ts}
+
+
+def fetch_minute_series(product: str, now: Optional[float] = None) -> BtcSeries:
+    """One-minute Coinbase closes of `product`, current to the last closed minute.
+
+    The public candles endpoint publishes in batches: the newest candle is often 3-5 minutes old,
+    past MAX_BTC_GAP_SECONDS, so the engine would skip ticks the backtest (complete history) takes.
+    When minutes are missing they are rebuilt from the public trades endpoint (the newest 1000
+    trades span about 7 minutes of BTC, longer for alts; it pages back up to TRADE_PAGES). Any
+    failure there keeps the candles as they are."""
+    resp = requests.get(COINBASE_CANDLES_URL % product, params={"granularity": 60}, timeout=10)
     resp.raise_for_status()
-    return BtcSeries([(int(r[0]), float(r[4])) for r in resp.json()])
+    rows = {int(r[0]): float(r[4]) for r in resp.json()}
+    now = time.time() if now is None else now
+    newest = max(rows) if rows else None
+    if newest is not None and newest + 120 <= now <= newest + 60 + MAX_TRADE_FILL_S:
+        try:
+            rows.update(_fill_from_trades(product, newest, now))
+        except Exception as e:  # noqa: BLE001 - the candles alone still price the tick (or skip it)
+            print("[engine] trade fill failed for %s: %r" % (product, e), flush=True)
+    return BtcSeries(sorted(rows.items()))
+
+
+def _fill_from_trades(product: str, after_ts: int, now: float) -> Dict[int, float]:
+    trades: List[Dict] = []
+    params: Dict = {"limit": 1000}
+    for _ in range(TRADE_PAGES):
+        resp = requests.get(COINBASE_TRADES_URL % product, params=params, timeout=10)
+        resp.raise_for_status()
+        page = resp.json() or []
+        trades.extend(page)
+        closes = trade_closes(trades, after_ts, now)
+        cursor = (getattr(resp, "headers", None) or {}).get("cb-after")
+        if closes is not None or not page or not cursor:
+            return closes or {}
+        params = {"limit": 1000, "after": cursor}
+    return {}
 
 
 _cross_cache: Dict[str, Tuple[float, BtcSeries]] = {}
@@ -175,9 +241,7 @@ def fetch_product_series(product: str) -> Optional[BtcSeries]:
     hit = _cross_cache.get(product)
     if hit and time.time() - hit[0] < CROSS_CACHE_SECONDS:
         return hit[1]
-    resp = requests.get(COINBASE_CANDLES_URL % product, params={"granularity": 60}, timeout=10)
-    resp.raise_for_status()
-    series = BtcSeries([(int(r[0]), float(r[4])) for r in resp.json()])
+    series = fetch_minute_series(product)
     _cross_cache[product] = (time.time(), series)
     return series
 

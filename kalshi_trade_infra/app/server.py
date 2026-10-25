@@ -32,6 +32,7 @@ from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
 from app import spec as specmod
+from app import track_record
 from app import webperf
 from app.markets import MARKETS
 from data_pipeline.common import get_db_conn
@@ -61,7 +62,7 @@ MAX_ACTIVE_DEPLOYMENTS = 100
 MAX_PAPER_BALANCE = 1_000_000.0
 MAX_WAITLIST_PER_MINUTE = 10
 ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|devlog|settings(?:/(?:account|billing|system|theme))?|signin|terms|privacy)$")
+SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|devlog|track-record|settings(?:/(?:account|billing|system|theme))?|signin|terms|privacy)$")
 
 CSP = (
     "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
@@ -478,6 +479,22 @@ def dashboard(ctx: Ctx):
         "agents": repo.active_run_counts(cur, ctx.uid),
         "freshness": _freshness(cur),
     }
+
+
+TRACK_RECORD_TTL = 60.0  # seconds; the record moves only when a trade closes
+_TRACK_RECORD: Dict[int, Tuple[float, Dict]] = {}
+
+
+def get_track_record(ctx: Ctx):
+    """The fund-grade track record: realized results per money bucket (live / demo / paper), from
+    the user's own closed trades. A plain per-user TTL cache (never served stale past the TTL), so
+    a page that is reloaded or left open costs one grouped scan a minute at most."""
+    hit = _TRACK_RECORD.get(ctx.uid)
+    if hit and time.time() - hit[0] < TRACK_RECORD_TTL:
+        return hit[1]
+    val = track_record.build(repo.track_record_rows(ctx.cur, ctx.uid))
+    _TRACK_RECORD[ctx.uid] = (time.time(), val)
+    return val
 
 
 def _freshness(cur) -> Dict:
@@ -2416,6 +2433,7 @@ ROUTES: List[Route] = [
         ("POST", r"/api/brokers/(alpaca|robinhood|ibkr)/disconnect", broker_disconnect, True),
         ("GET", r"/auth/brokers/(alpaca|robinhood|ibkr)/callback", broker_callback, True),
         ("GET", "/api/dashboard", dashboard, True),
+        ("GET", "/api/track-record", get_track_record, True),
         ("GET", "/api/explore", explore_list, True),
         ("GET", "/api/explore/hot", explore_hot, True),
         ("GET", "/api/explore/market", explore_market, True),

@@ -1226,6 +1226,28 @@ def paper_round_trips(cur, user_id: int, strategy_id: int, ref_prefix: str = "si
             for r in cur.fetchall()]
 
 
+def track_record_rows(cur, user_id: int) -> List[Dict]:
+    """Every trade in the user's book for the track record page (app/track_record.py): one row per
+    (mode, deployment, entry fill). Partial-exit slices share the entry's order_ref and are summed;
+    `open_slices` > 0 marks a trade not yet fully closed. A row with no order_ref is its own trade.
+    One pass over idx_pos_user; the strategy title rides along so the page needs no second query."""
+    cur.execute(
+        """SELECT p.mode, MAX(d.strategy_id) AS strategy_id, MAX(s.title) AS title, MAX(s.market) AS market,
+                  MAX(p.order_ref) AS order_ref,
+                  SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END) AS open_slices,
+                  COALESCE(SUM(p.pnl),0) AS pnl,
+                  COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0) AS fees,
+                  COALESCE(SUM(p.qty * p.entry_price),0) AS cost,
+                  MIN(p.opened_at) AS opened_at, MAX(p.closed_at) AS closed_at
+           FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
+           LEFT JOIN app_strategies s ON s.id=d.strategy_id
+           WHERE p.user_id=%s
+           GROUP BY p.mode, p.deployment_id, COALESCE(p.order_ref, CONCAT('row:', p.id))""",
+        (user_id,),
+    )
+    return cur.fetchall()
+
+
 def paper_progress(cur, user_id: int, strategy_ids: List[int], ref_prefix: str = "sim:") -> Dict[int, Tuple[int, float]]:
     """{strategy_id: (closed realistic paper round trips, their net P&L)} for the given strategies,
     in one query. Same counting as `paper_round_trips` (one row per order_ref, still-open slices
