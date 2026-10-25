@@ -2532,7 +2532,7 @@
         // exists — so this was NOT validated, whatever the status says. Never claim it "cleared
         // the gatekeeper" (that would be a lie); flag the missing record honestly. A correctly
         // validated 'passed' always has an experiment and takes the rich path above, not this one.
-        passed: ['sig', 'armed', 'Not validated (record missing)', 'Marked passed, but no statistical-gatekeeper record (pre-registration, validation, holdout) can be found for it — so the numbers below are the in-sample backtest only, not held-out evidence. Treat it as unvalidated; the row is being reclassified to backtest-only.'],
+        passed: ['sig', 'armed', 'Not validated (record missing)', 'Marked passed, but no statistical-gatekeeper record (pre-registration, validation, holdout) can be found for it — so the backtest figures on this page are in-sample only, not held-out evidence. Treat it as unvalidated; the row is being reclassified to backtest-only.'],
         'backtest-only': btOnly,
         failed: ['sig', 'armed', 'Void', 'It reached the unseen-data gate and failed it, so it was not validated.'],
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
@@ -2659,7 +2659,7 @@
         ];
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = gatesHtml(rows)
-          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's unseen-data P&amp;L per trade.</p>` : '')
+          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? 'Paper is <b>losing money</b> per trade, while the backtest made money on unseen data.' : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's unseen-data P&amp;L per trade.`}</p>` : '')
           + `<p class="hint" style="margin-top:6px">${r.ready ? 'Every gate is clear. Autopilot may move this to live money within your caps.' : 'Blocked: ' + esc(r.blocking) + '.'} Paper counts only fills simulated against the live order book.</p>`;
       } catch (e) {
         const body = root.querySelector('#road-live-body');
