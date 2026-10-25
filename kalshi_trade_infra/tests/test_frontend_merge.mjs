@@ -123,7 +123,7 @@ function frontend({fetchImpl, brokerMount} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -356,6 +356,23 @@ test('the dashboard lists five deployments and positions, paused first, and link
   assert.match(f.root.querySelector('.statusline').innerHTML, /<a class="needs-link" href="#dash-deps"><em>1 paused, needs you<\/em><\/a>/);
   const html = f.root.querySelector('main').innerHTML;
   assert.equal((html.match(/class="stub"/g) || []).length, 5); assert.match(html, /See all 6 open positions on Deploy/);
+});
+
+test('the research status line links its "add an idea" ask to the form', async () => {
+  for (const [autopilot, tried, ask] of [[true, 2, 'add an idea below'], [false, 2, 'Seed another idea'], [false, 0, 'Describe an idea below']]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/runs') return response({runs: tried ? [{id: 6, status: 'done', market: 'btc15m', hypothesis: 'Idea', hypotheses_tried: tried, strategies_passed: 0, created_at: '2026-10-25T08:00:00Z'}] : [], counts: {research_running: 0, research_queued: 0}, policy: null});
+      if (path.startsWith('/api/research/scoreboard')) return response({});
+      if (path === '/api/autopilot/status') return response({autopilot, mode: autopilot ? 'paper' : 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = autopilot;
+    await f.viewResearch(); await flush(); await flush();
+    assert.ok(f.root.querySelector('form#dispatch'));
+    assert.match(f.root.querySelector('#rstatus .said').innerHTML, new RegExp(`<a href="#dispatch">${ask}</a>`));
+  }
 });
 
 test('only the admin view shows backtest-history lag on the dashboard status line', async () => {

@@ -1731,8 +1731,8 @@
       const said = running
         ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now${queued ? ` · <em>${queued}</em> waiting` : ''} — <em>${tried}</em> hypotheses tested, <em>${passed}</em> through every gate.`
         : tried
-          ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; add an idea below to steer it.' : 'Seed another idea to keep hunting.'}`
-          : `Describe an idea below — the engine turns it into strategies and tests each on data it never saw.`;
+          ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea below</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
+          : `<a href="#dispatch">Describe an idea below</a> — the engine turns it into strategies and tests each on data it never saw.`;
       root.querySelector('#rstatus .said').innerHTML = said;
       root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
