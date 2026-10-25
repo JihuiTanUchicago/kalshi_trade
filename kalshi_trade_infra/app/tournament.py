@@ -261,20 +261,24 @@ def book(trips: List[Dict], history: Dict[int, List[Tuple]]) -> Dict:
             w = weight
         return w
 
-    points, total, counted = [], 0.0, 0
+    points, total, counted, daily = [], 0.0, 0, {}
     for t in sorted((t for t in trips if t.get("closed_at") and t.get("opened_at")), key=lambda t: t["closed_at"]):
         w = weight_at(t["strategy_id"], t["opened_at"])
         if w is None:
             continue
-        total += t["pnl"] * (w * TOURNAMENT_CAPITAL) / t["capital"]
+        pnl = t["pnl"] * (w * TOURNAMENT_CAPITAL) / t["capital"]
+        total += pnl
         counted += 1
         points.append((t["closed_at"], round(total, 2)))
+        day = t["closed_at"].date().isoformat() if hasattr(t["closed_at"], "date") else str(t["closed_at"])[:10]
+        daily[day] = daily.get(day, 0.0) + pnl
     peak, dd = 0.0, 0.0
     for _ts, v in points:
         peak = max(peak, v)
         dd = max(dd, peak - v)
     return {"capital": TOURNAMENT_CAPITAL, "trips": counted, "pnl": round(total, 2),
             "return_pct": round(100 * total / TOURNAMENT_CAPITAL, 3), "max_drawdown": round(dd, 2),
+            "daily": [(d, round(v, 2)) for d, v in sorted(daily.items())],  # realized P&L by UTC close day
             "curve": [(ts.isoformat() if hasattr(ts, "isoformat") else ts, v) for ts, v in points[-500:]]}
 
 

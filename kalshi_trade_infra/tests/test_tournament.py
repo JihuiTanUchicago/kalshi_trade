@@ -60,6 +60,7 @@ def test_book_only_counts_trips_opened_after_a_weight_was_set():
     # trip 1 predates any weight: left out. $10 on a $100 entrant at 50% of $10k = +$500; -$4 at 25% = -$100.
     assert b["trips"] == 2 and b["pnl"] == 400.0 and b["max_drawdown"] == 100.0
     assert b["return_pct"] == 4.0
+    assert b["daily"] == [(NOW.date().isoformat(), 400.0)]
 
 
 def test_pooled_sample_reports_pace_and_eta(monkeypatch):
