@@ -390,3 +390,22 @@ def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apar
     assert seen[0][0] == 7 and abs((server.repo.now_utc() - seen[0][1]).total_seconds() - 7 * 86400) < 5
     off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
     assert 'week' not in off and len(seen) == 1  # an off autopilot reads nothing extra
+
+
+def test_research_estimate_uses_own_median_then_the_typical_one_per_model(monkeypatch):
+    # What a session usually costs: the user's own last 10 finished sessions once there are 3, else
+    # a server-wide median per model that only exists with 5+ sessions behind it. Cached.
+    own = [[1.0, 3.0], [2.0, 9.0, 1.0, 4.0]]
+    monkeypatch.setattr(server.repo, 'finished_session_costs', lambda cur, uid, limit: own[0])
+    reads = []
+    rows = [(None, 1.0), ('opus-4-6', 3.0), (None, 2.0), (None, 5.0), (None, 4.0),
+            ('haiku-4-5', 0.2), ('haiku-4-5', 0.3)]
+    monkeypatch.setattr(server.repo, 'recent_session_costs', lambda cur, since: reads.append(since) or rows)
+    monkeypatch.setattr(server, '_TYPICAL_SESSION_COST', [0.0, {}])
+    out = server.research_estimate(context())
+    # The default model's NULL runs count as that model; Haiku has too few sessions to show.
+    assert out == {'yours': None, 'sessions': 2, 'typical': {server.catalog.DEFAULT_KEY: 3.0}}
+    own[0] = own[1]
+    assert server.research_estimate(context())['yours'] == 3.0  # median of 1, 2, 4, 9
+    assert len(reads) == 1  # the server-wide medians are cached
+    assert server._median([5.0, 1.0, 3.0]) == 3.0

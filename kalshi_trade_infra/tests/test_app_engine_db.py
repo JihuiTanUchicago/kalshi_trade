@@ -262,6 +262,39 @@ def test_autopilot_paper_week_counts_only_what_the_autopilot_put_on_paper(conn, 
     assert week == {"started": 1, "pnl": pytest.approx(1.5), "trades": 2}
 
 
+def test_finished_session_costs_are_set_size_research_sessions_that_debited(conn, user):
+    """The cost hint's samples: research sessions that ran to their end on a set number of ideas,
+    each totalled from its own ledger rows. Not run-forever, cancelled, demo, chat, or zero-cost."""
+    from decimal import Decimal
+    from app import repository as repo
+
+    cur = conn.cursor()
+    repo.seed_demo_session(cur, user["id"])
+
+    def run(kind="research", status="succeeded", forever=False, debits=()):
+        rid = repo.create_run(cur, user["id"], kind, "btc15m", "momentum", run_forever=forever)
+        cur.execute("UPDATE app_agent_runs SET status=%s WHERE id=%s", (status, rid))
+        for amount in debits:
+            repo.add_credit(cur, user["id"], "usage", Decimal(amount), "Agent usage", run_id=rid)
+        return rid
+
+    run(debits=("-1.000000", "-0.500000"))
+    run(forever=True, debits=("-9.137000",))
+    run(status="cancelled", debits=("-8.137000",))
+    run(kind="chat", debits=("-7.137000",))
+    run(debits=())  # debited nothing
+    run(debits=("-2.250000",))
+    cur.execute("SELECT id FROM app_agent_runs WHERE user_id=%s AND direction='random_walk'", (user["id"],))
+    demo = cur.fetchone()["id"]
+    cur.execute("UPDATE app_agent_runs SET status='succeeded' WHERE id=%s", (demo,))
+    repo.add_credit(cur, user["id"], "usage", Decimal("-6.137"), "Agent usage", run_id=demo)
+    assert repo.finished_session_costs(cur, user["id"], 10) == [pytest.approx(2.25), pytest.approx(1.5)]
+    assert repo.finished_session_costs(cur, user["id"], 1) == [pytest.approx(2.25)]
+    every = repo.recent_session_costs(cur, repo.now_utc() - timedelta(days=1))
+    assert (None, pytest.approx(2.25)) in every and (None, pytest.approx(1.5)) in every
+    assert not any(round(cost, 3) in (9.137, 8.137, 7.137, 6.137) for _, cost in every)
+
+
 def test_the_interactive_lane_skips_research(conn, user):
     from app import repository as repo
 

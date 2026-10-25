@@ -2541,6 +2541,44 @@ def _research_context(feed_markets: List[Dict]) -> List[Dict]:
     return out
 
 
+SESSION_COST_MIN_OWN = 3       # the user's own finished sessions needed before their median is used
+SESSION_COST_MIN_TYPICAL = 5   # sessions on a model before the server-wide median is shown at all
+SESSION_COST_TTL = 600.0       # seconds the server-wide medians are cached
+_TYPICAL_SESSION_COST: List[Any] = [0.0, {}]
+
+
+def _median(xs: List[float]) -> float:
+    xs = sorted(xs)
+    n = len(xs)
+    return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+
+def _typical_session_costs(cur) -> Dict[str, float]:
+    """Median credits per finished research session for each model, over every user's sessions of
+    the last 14 days. Only the per-model median leaves this function, and only for a model with
+    SESSION_COST_MIN_TYPICAL sessions, so no single user's spend can be read off it. Cached."""
+    at, val = _TYPICAL_SESSION_COST
+    if time.time() - at < SESSION_COST_TTL:
+        return val
+    by_model: Dict[str, List[float]] = {}
+    for model, cost in repo.recent_session_costs(cur, repo.now_utc() - timedelta(days=14)):
+        key = catalog.resolve(model).key  # a NULL model ran on the catalog default
+        if len(by_model.setdefault(key, [])) < 200:  # the newest 200 per model
+            by_model[key].append(cost)
+    val = {k: round(_median(v), 2) for k, v in by_model.items() if len(v) >= SESSION_COST_MIN_TYPICAL}
+    _TYPICAL_SESSION_COST[:] = [time.time(), val]
+    return val
+
+
+def research_estimate(ctx: Ctx):
+    """What a research session usually costs, for the hint beside Start session: the median credits
+    of the user's own last 10 finished sessions, or (with fewer than 3) the server-wide median for
+    each model. Read-only; what a run is charged does not change."""
+    own = repo.finished_session_costs(ctx.cur, ctx.uid, 10)
+    return {"yours": round(_median(own), 2) if len(own) >= SESSION_COST_MIN_OWN else None,
+            "sessions": len(own), "typical": _typical_session_costs(ctx.cur)}
+
+
 def research_context(ctx: Ctx):
     """Live book context for the researchable markets, for the Research cockpit's picker."""
     data = _explore_feed()
@@ -2692,6 +2730,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/explore/hot", explore_hot, True),
         ("GET", "/api/explore/market", explore_market, True),
         ("GET", "/api/research/context", research_context, True),
+        ("GET", "/api/research/estimate", research_estimate, True),
         ("GET", "/api/research/scoreboard", research_scoreboard, True),
         ("GET", "/api/models", models, True),
         ("GET", "/api/runs", list_runs, True),

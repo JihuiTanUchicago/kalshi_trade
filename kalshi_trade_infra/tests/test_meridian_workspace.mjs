@@ -1569,6 +1569,7 @@ function researchFrontend(runs = [], {policy = null, ...options} = {}) {
     if (path === '/api/models') return response({models: [{key: 'offline', label: 'Offline model'}], default: 'offline'});
     if (path === '/api/research/context') return response({markets: []});
     if (path.startsWith('/api/research/scoreboard')) return response({total: {runs: 0}});
+    if (path === '/api/research/estimate') return response(options.estimate || {yours: null, sessions: 0, typical: {}});
     assert.equal(path, '/api/runs');
     return response({runs, counts: {research_running: runs.filter(run => run.status === 'running').length,
       research_queued: runs.filter(run => run.status === 'queued').length}, policy: typeof policy === 'function' ? policy() : policy});
@@ -1681,7 +1682,7 @@ test('Research setup is a native closed disclosure unless requested and retains 
     assert.equal(f.root.querySelector('#dispatch'), form); assert.equal(prompt.value, 'Keep my unsent idea');
     assert.equal(f.document.activeElement, prompt); assert.equal(postRequests(f).length, 0);
     assert.deepEqual([...new Set(f.requests.map(request => request.path))].sort(),
-      ['/api/models', '/api/notifications', '/api/research/context', '/api/research/scoreboard?days=14', '/api/runs']);
+      ['/api/models', '/api/notifications', '/api/research/context', '/api/research/estimate', '/api/research/scoreboard?days=14', '/api/runs']);
   }
 });
 
@@ -2623,4 +2624,17 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   assert.equal(f.root.querySelector('#dash-ap .ap-week'), null);
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);
   f.clearTimers();
+});
+
+test('Research says what a session usually costs beside Start session, and nothing without data', async () => {
+  let f = researchFrontend([], {estimate: {yours: 0.42, sessions: 4, typical: {}}}); await f.viewResearch(); await flush();
+  const cost = () => f.root.querySelector('#rcost');
+  assert.equal(cost().hidden, false);
+  assert.equal(cost().textContent, 'Each round of ideas usually costs about $0.42 (your recent sessions); it keeps starting new rounds until you stop it.');
+  const rf = f.root.querySelector('#runforever'); rf.checked = false; rf.dispatchEvent({type: 'change'});
+  assert.equal(cost().textContent, 'Usually about $0.42 (your recent sessions).');
+  f = researchFrontend([], {estimate: {yours: null, sessions: 2, typical: {offline: 3.1}}}); await f.viewResearch(); await flush();
+  assert.match(cost().textContent, /about \$3\.10 \(recent sessions on this model\)/);
+  f = researchFrontend([]); await f.viewResearch(); await flush();
+  assert.equal(cost().hidden, true); assert.equal(cost().textContent, '');
 });
