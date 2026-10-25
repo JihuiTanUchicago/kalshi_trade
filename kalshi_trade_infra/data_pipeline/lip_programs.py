@@ -13,6 +13,9 @@ the active and upcoming liquidity programs verbatim:
   ticks/v1/lip_programs/date=YYYY-MM-DD/HHMM.json.gz   one snapshot per run
   ticks/lip_programs/latest.json.gz                    the newest snapshot (readers start here)
 
+Each snapshot also keeps the fee terms of FEE_SERIES (GET /series/{ticker}: fee_type,
+fee_multiplier), since whether a series charges makers decides the sign of a quote's edge.
+
 Run:  python -m data_pipeline.lip_programs snapshot   (unit kalshi-lip-programs.timer, COLLECTOR box)
       python -m data_pipeline.lip_programs summary    (print the latest snapshot by series)
 """
@@ -29,6 +32,7 @@ PREFIX = os.getenv("TAU_TICK_PREFIX", "ticks")
 LATEST_KEY = f"{PREFIX}/lip_programs/latest.json.gz"
 STATUSES = ("active", "upcoming")
 PAGE = 1000
+FEE_SERIES = [s for s in os.getenv("TAU_LIP_FEE_SERIES", "KXBTC15M,KXBTCD,KXBTC,KXETH15M,KXETHD").split(",") if s]
 MAX_PAGES = 50
 
 
@@ -99,12 +103,28 @@ def summarize(programs: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(rows, key=lambda r: -r["usd_per_day"])
 
 
+def series_fees(series: Iterable[str], get: Optional[Callable] = None) -> Dict[str, Dict[str, Any]]:
+    """{series: {fee_type, fee_multiplier}} from GET /series/{ticker}; a failed series is skipped."""
+    if get is None:
+        from data_pipeline.common import api_get as get
+    out: Dict[str, Dict[str, Any]] = {}
+    for t in series:
+        try:
+            s = (get(f"/series/{t}", params=None) or {}).get("series") or {}
+        except Exception as e:  # noqa: BLE001 - one bad series must not lose the program snapshot
+            print(f"lip programs: series {t} failed: {e}", flush=True)
+            continue
+        out[t] = {"fee_type": s.get("fee_type"), "fee_multiplier": s.get("fee_multiplier")}
+    return out
+
+
 def snapshot(s3=None, get: Optional[Callable] = None, now: Optional[datetime] = None) -> Dict[str, Any]:
     """Fetch active + upcoming liquidity programs and write them to S3 (dated copy and latest)."""
     now = now or datetime.now(timezone.utc)
     doc: Dict[str, Any] = {"fetched_at": now.isoformat(), "programs": {}}
     for st in STATUSES:
         doc["programs"][st] = fetch_programs(st, get=get)
+    doc["series_fees"] = series_fees(FEE_SERIES, get=get)
     if s3 is None:
         import boto3
         s3 = boto3.client("s3")
@@ -144,6 +164,7 @@ def main(argv: List[str]) -> int:
             print("no snapshot yet")
             return 1
         print("fetched_at", doc["fetched_at"])
+        print("series_fees", json.dumps(doc.get("series_fees") or {}))
         for st in STATUSES:
             print(f"== {st}")
             for r in summarize(doc["programs"].get(st) or []):

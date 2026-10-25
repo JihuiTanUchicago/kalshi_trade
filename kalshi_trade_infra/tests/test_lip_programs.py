@@ -62,12 +62,17 @@ def test_snapshot_writes_a_dated_copy_and_latest():
     now = datetime(2026, 10, 25, 9, 7, tzinfo=timezone.utc)
 
     def get(path, params):
+        if path == "/series/KXBTC15M":
+            return {"series": {"ticker": "KXBTC15M", "fee_type": "quadratic_with_maker_fees", "fee_multiplier": 1}}
+        if path.startswith("/series/"):
+            raise RuntimeError("GET failed 404")
         return {"incentive_programs": [_prog(1, "KXBTCD-26OCT2817-T80000", 1)] if params["status"] == "active" else []}
 
     lp.snapshot(s3=s3, get=get, now=now)
     assert set(s3.objects) == {"ticks/v1/lip_programs/date=2026-10-25/0907.json.gz", lp.LATEST_KEY}
     doc = json.loads(gzip.decompress(s3.objects[lp.LATEST_KEY]))
     assert len(doc["programs"]["active"]) == 1 and doc["programs"]["upcoming"] == []
+    assert doc["series_fees"] == {"KXBTC15M": {"fee_type": "quadratic_with_maker_fees", "fee_multiplier": 1}}
     assert lp.load_latest(s3=s3)["fetched_at"] == now.isoformat()
 
 
