@@ -144,6 +144,13 @@
   All-time read at 07:30Z: breachers saved $121.84 on 11 scored exits; collateral +$3.58 on 3,
   with Todd's #78 rain flatten (6 exits) unscored and provisionally about -$1.5. Too thin for a
   "close only the breacher" decision; bring it to Todd once collateral n >= 20.
+- Batch deploys run in GitHub Actions (2026-10-25): `.github/workflows/batch-deploy.yml` runs
+  `scripts/batch_deploy.sh` at :20/:50. It ships main when CI is green on its head, needs 0 sent
+  order intents before a full restart, restarts recursive-web alone for UI/test/doc-only diffs, and
+  deploys the collector when data_pipeline/ or trading_core/ changed. deploy_web.sh and
+  deploy_collector.sh write the S3 markers it reads (bundle/markers/web_sha, web_full_sha,
+  collector_sha). A run fails, and GitHub mails the owner, when merges wait more than 90 minutes.
+  This replaced a session-only cron that lapsed twice on 2026-10-25 (10:30-13:16Z, 14:30-16:36Z).
 - Underpowered verdicts enter paper on their unseen trades (2026-10-25): a below-min-sample
   validation verdict now records its validation net P&L (no p-value, no alpha), and paper
   probation admits it only if that P&L is up. Older rows fall back to the research fold (#284).
