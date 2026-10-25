@@ -154,7 +154,8 @@ def fail_abandoned_runs(cur, stale_after: timedelta, max_resumes: int = MAX_RESU
             # got. Only a genuine external/infra error (caught in run_research) is `failed`. The card
             # shows "Explored N hypotheses" in neutral, not a red FAILED. Carry the explored/passed
             # counts off the checkpoint so that readout is accurate even though finish_run never ran.
-            tried_n = len(ck.get("tried") or []) if ck else 0
+            # explored = developed + dropped, as run_research reports it (most theses are dropped)
+            tried_n = len(ck.get("tried") or []) + int(ck.get("dropped_n") or 0) if ck else 0
             passed_n = int(ck.get("total_passed") or 0) if ck else 0
             msg = ("Explored %d hypothes%s, then the session was interrupted and stopped — start a new "
                    "one to keep going." % (tried_n, "is" if tried_n == 1 else "es")) if tried_n \

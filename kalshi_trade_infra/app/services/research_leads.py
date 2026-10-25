@@ -29,7 +29,11 @@ import zlib
 from collections import defaultdict
 from typing import Dict, List, Optional, Sequence, Tuple
 
-LEADS_SHARE = min(1.0, max(0.0, float(os.getenv("APP_LEADS_SHARE", "0.5"))))
+# 0, not 0.5: stopped 2026-10-25 10:00Z. The leads arm developed 0 of 43 ideas against 8 of 56 in
+# control (at least 35 of the 43 outside the screen arm, P < 0.01), and the prod probe found no
+# surviving lead cell on any crypto market. Likely the power line and counterparty rule talked the
+# developer out of every thesis. Research is judged on ideas that reach the gate.
+LEADS_SHARE = min(1.0, max(0.0, float(os.getenv("APP_LEADS_SHARE", "0"))))
 LEAD_FDR = 0.10
 MIN_EVENTS = 30          # a cell needs this many settled events to be tested
 MAX_SNAPSHOTS = 150_000  # decision frames are strided down to about this many snapshots
