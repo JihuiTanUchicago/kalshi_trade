@@ -18,6 +18,19 @@ from app.adapters.db.billing_repository import (  # noqa: F401
     add_credit, credit_balance, credit_rows, credit_spent_total, get_stripe_customer,
     save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
 )
+from app.adapters.db.kalshi_keys_repository import (  # noqa: F401
+    delete_kalshi_key, get_kalshi_key, save_kalshi_key,
+)
+from app.adapters.db.kalshi_dev_keys_repository import (  # noqa: F401
+    delete_kalshi_dev_key, get_kalshi_dev_key, set_kalshi_dev_key,
+)
+from app.adapters.db.paper_ledger_repository import (  # noqa: F401
+    add_ledger, ledger_rows, paper_balance, paper_deposits, reset_paper_account,
+)
+from app.adapters.db.chat_repository import (  # noqa: F401
+    add_chat, chat_contains, chat_messages, create_proposal, decide_proposal, get_proposal,
+    last_autopilot_action, last_review_at, recent_chat_same,
+)
 from app.adapters.db.community_repository import (  # noqa: F401
     add_comment, create_post, edit_post, get_image, list_comments, list_posts, post_author, post_exists,
     reactions_for, recent_posts_count, store_image, toggle_like, toggle_reaction,
@@ -270,88 +283,13 @@ def pop_oauth_state(cur, state: str) -> Optional[Dict]:
     return row
 
 
-# -- Kalshi keys ---------------------------------------------------------------
+# -- Kalshi keys: app/adapters/db/kalshi_keys_repository.py (re-exported at the top) ----
 
 
-def save_kalshi_key(cur, user_id: int, key_id: str, private_key_enc: bytes) -> None:
-    cur.execute(
-        """INSERT INTO app_kalshi_keys (user_id, key_id, private_key_enc, created_at) VALUES (%s,%s,%s,%s)
-           ON DUPLICATE KEY UPDATE key_id=VALUES(key_id), private_key_enc=VALUES(private_key_enc),
-             created_at=VALUES(created_at)""",
-        (user_id, key_id, private_key_enc, now_utc()),
-    )
+# -- Kalshi DEMO (sandbox) keys: app/adapters/db/kalshi_dev_keys_repository.py (re-exported at the top) ----
 
 
-def get_kalshi_key(cur, user_id: int) -> Optional[Dict]:
-    cur.execute("SELECT key_id, private_key_enc, created_at FROM app_kalshi_keys WHERE user_id=%s", (user_id,))
-    return cur.fetchone()
-
-
-def delete_kalshi_key(cur, user_id: int) -> None:
-    cur.execute("DELETE FROM app_kalshi_keys WHERE user_id=%s", (user_id,))
-
-
-# -- Kalshi DEMO (sandbox) keys ------------------------------------------------
-# Exact mirror of the live-key accessors above, against app_kalshi_dev_keys. The
-# demo execution path reads ONLY these, so a user's demo orders can never pick up
-# their live key.
-
-
-def set_kalshi_dev_key(cur, user_id: int, key_id: str, private_key_enc: bytes) -> None:
-    cur.execute(
-        """INSERT INTO app_kalshi_dev_keys (user_id, key_id, private_key_enc, created_at) VALUES (%s,%s,%s,%s)
-           ON DUPLICATE KEY UPDATE key_id=VALUES(key_id), private_key_enc=VALUES(private_key_enc),
-             created_at=VALUES(created_at)""",
-        (user_id, key_id, private_key_enc, now_utc()),
-    )
-
-
-def get_kalshi_dev_key(cur, user_id: int) -> Optional[Dict]:
-    cur.execute("SELECT key_id, private_key_enc, created_at FROM app_kalshi_dev_keys WHERE user_id=%s", (user_id,))
-    return cur.fetchone()
-
-
-def delete_kalshi_dev_key(cur, user_id: int) -> None:
-    cur.execute("DELETE FROM app_kalshi_dev_keys WHERE user_id=%s", (user_id,))
-
-
-# -- paper ledger --------------------------------------------------------------
-
-
-def add_ledger(cur, user_id: int, kind: str, amount: float, memo: str, position_id: Optional[int] = None) -> None:
-    cur.execute(
-        "INSERT INTO app_ledger (user_id, kind, amount, position_id, memo, created_at) VALUES (%s,%s,%s,%s,%s,%s)",
-        (user_id, kind, round(amount, 4), position_id, memo[:255], now_utc()),
-    )
-
-
-def paper_balance(cur, user_id: int) -> float:
-    cur.execute("SELECT COALESCE(SUM(amount),0) AS b FROM app_ledger WHERE user_id=%s", (user_id,))
-    return float(cur.fetchone()["b"])
-
-
-def paper_deposits(cur, user_id: int) -> float:
-    """Net money the user put in - the denominator of account ROI."""
-    cur.execute(
-        "SELECT COALESCE(SUM(amount),0) AS b FROM app_ledger WHERE user_id=%s AND kind IN ('deposit','withdrawal')",
-        (user_id,),
-    )
-    return float(cur.fetchone()["b"])
-
-
-def ledger_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
-    cur.execute(
-        "SELECT id, kind, amount, memo, created_at FROM app_ledger WHERE user_id=%s ORDER BY id DESC LIMIT %s",
-        (user_id, limit),
-    )
-    return cur.fetchall()
-
-
-def reset_paper_account(cur, user_id: int, amount: float) -> None:
-    """Wipe the paper ledger and start fresh at `amount`. Only safe with no open paper
-    positions (the caller guards this) — otherwise their debited cost would be orphaned."""
-    cur.execute("DELETE FROM app_ledger WHERE user_id=%s", (user_id,))
-    add_ledger(cur, user_id, "deposit", amount, "Paper account reset")
+# -- paper ledger: app/adapters/db/paper_ledger_repository.py (re-exported at the top) ----
 
 
 # -- demo (sandbox) app-controlled capital -------------------------------------
@@ -2022,93 +1960,7 @@ def daily_pnl(cur, user_id: int, mode: str, days: int = 60) -> List[Dict]:
     return cur.fetchall()
 
 
-# -- chat & proposals ----------------------------------------------------------
-
-
-def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
-    """Most recent agent/system line about autopilot, for the floating status window."""
-    cur.execute(
-        """SELECT content, created_at FROM app_chat_messages
-           WHERE user_id=%s AND role='system'
-                 AND (content LIKE '%%utopilot%%' OR content LIKE '%%LIVE%%' OR content LIKE '%%Kill%%')
-           ORDER BY id DESC LIMIT 1""",
-        (user_id,),
-    )
-    r = cur.fetchone()
-    return {"text": r["content"], "at": r["created_at"]} if r else None
-
-
-def last_review_at(cur, user_id: int):
-    """Timestamp of the most recent autopilot REVIEW run (whether or not it acted), for the panel's
-    liveness readout. A quiet review takes no action and posts nothing, so without this a working
-    autopilot looks dead between actions; this shows it is alive and on cadence."""
-    cur.execute(
-        "SELECT created_at FROM app_agent_runs WHERE user_id=%s AND kind='review' ORDER BY id DESC LIMIT 1",
-        (user_id,),
-    )
-    r = cur.fetchone()
-    return r["created_at"] if r else None
-
-
-def add_chat(cur, user_id: int, role: str, content: str, proposal_id: Optional[int] = None) -> int:
-    cur.execute(
-        "INSERT INTO app_chat_messages (user_id, role, content, proposal_id, created_at) VALUES (%s,%s,%s,%s,%s)",
-        (user_id, role, content, proposal_id, now_utc()),
-    )
-    return cur.lastrowid
-
-
-def chat_contains(cur, user_id: int, role: str, needle: str) -> bool:
-    """True if the user already has a chat line of `role` containing `needle` (a one-time marker)."""
-    cur.execute("SELECT 1 FROM app_chat_messages WHERE user_id=%s AND role=%s AND content LIKE %s LIMIT 1",
-                (user_id, role, "%" + needle + "%"))
-    return cur.fetchone() is not None
-
-
-def recent_chat_same(cur, user_id: int, role: str, content: str, since) -> bool:
-    """True if the user got this exact `role` line at or after `since` (repeat-notice suppression)."""
-    cur.execute("SELECT 1 FROM app_chat_messages WHERE user_id=%s AND role=%s AND created_at>=%s AND content=%s LIMIT 1",
-                (user_id, role, since, content))
-    return cur.fetchone() is not None
-
-
-def chat_messages(cur, user_id: int, after_id: int = 0, limit: int = 100) -> List[Dict]:
-    cur.execute(
-        """SELECT m.id, m.role, m.content, m.created_at, m.proposal_id,
-                  p.kind AS proposal_kind, p.status AS proposal_status, p.deployment_id, p.strategy_id
-           FROM app_chat_messages m LEFT JOIN app_proposals p ON p.id=m.proposal_id
-           WHERE m.user_id=%s AND m.id>%s ORDER BY m.id DESC LIMIT %s""",
-        (user_id, after_id, limit),
-    )
-    return list(reversed(cur.fetchall()))
-
-
-def create_proposal(
-    cur, user_id: int, kind: str, reason: str, deployment_id: Optional[int] = None,
-    strategy_id: Optional[int] = None, status: str = "pending", payload: Optional[Dict] = None,
-) -> int:
-    cur.execute(
-        """INSERT INTO app_proposals (user_id, kind, deployment_id, strategy_id, reason, status, payload, created_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
-        (user_id, kind, deployment_id, strategy_id, reason, status, _json(payload), now_utc()),
-    )
-    return cur.lastrowid
-
-
-def get_proposal(cur, user_id: int, proposal_id: int) -> Optional[Dict]:
-    cur.execute("SELECT * FROM app_proposals WHERE id=%s AND user_id=%s", (proposal_id, user_id))
-    p = cur.fetchone()
-    if p is not None and "payload" in p:
-        p["payload"] = _loads(p["payload"])
-    return p
-
-
-def decide_proposal(cur, proposal_id: int, status: str) -> bool:
-    cur.execute(
-        "UPDATE app_proposals SET status=%s, decided_at=%s WHERE id=%s AND status='pending'",
-        (status, now_utc(), proposal_id),
-    )
-    return cur.rowcount == 1
+# -- chat & proposals: app/adapters/db/chat_repository.py (re-exported at the top) ----
 
 
 # -- dataset ---------------------------------------------------------------------
