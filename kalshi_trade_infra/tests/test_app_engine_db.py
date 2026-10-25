@@ -169,6 +169,10 @@ def test_research_week_leaves_out_the_seeded_demo_session(conn, user):
     cur.execute("UPDATE app_agent_runs SET status='cancelled', hypotheses_tried=3 WHERE id=%s", (rid,))
     week = repo.research_week(cur, user["id"], since)
     assert sum(int(r["tried"]) for r in week) == 3 and sum(int(r["runs"]) for r in week) == 1
+    # The Research page lists the demo, so its all-time headline counts it.
+    cur.execute("UPDATE app_agent_runs SET hypotheses_tried=2 WHERE user_id=%s AND direction='random_walk'", (user["id"],))
+    every = repo.research_week(cur, user["id"], since, include_demo=True)
+    assert sum(int(r["tried"]) for r in every) == 5 and sum(int(r["runs"]) for r in every) == 2
 
 
 def test_the_interactive_lane_skips_research(conn, user):
