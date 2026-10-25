@@ -16,7 +16,7 @@ import threading
 import time
 from datetime import timedelta
 
-from app import agent, billing, engine
+from app import agent, billing, engine, sandbox
 from app import repository as repo
 from data_pipeline.common import get_db_conn
 
@@ -204,6 +204,9 @@ def main() -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     if mode == "agents":
         base = "%s:%d" % (socket.gethostname(), os.getpid())
+        swept = sandbox.sweep_stale_scratch()  # scratch dirs the last restart's os._exit left behind
+        if swept:
+            print("[agents] removed %d stale strategy scratch dirs" % swept, flush=True)
         threads = [threading.Thread(target=agent_loop, args=("%s:%d" % (base, i),), daemon=True) for i in range(CONCURRENCY)]
         threads += [threading.Thread(target=agent_loop, args=("%s:chat%d" % (base, i), True), daemon=True)
                     for i in range(INTERACTIVE_LANES)]

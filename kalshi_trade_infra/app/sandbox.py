@@ -448,6 +448,38 @@ def _safe_scratch(scratch: str) -> str:
     return scratch
 
 
+SCRATCH_PREFIX = "strat_"
+
+
+def sweep_stale_scratch(max_age_s: float = 600.0, root: Optional[str] = None) -> int:
+    """Remove strategy scratch dirs a killed worker left behind, and return how many. _run_entry's
+    `finally` cleans up a normal run, but the agents worker's SIGTERM handler ends with os._exit, so
+    a deploy restart mid-run skips it. /tmp is RAM-backed tmpfs on the web box, so each orphan's
+    in.json (75-145 MB of dataset) sat in memory: 91 of them held 3.2 GB and the box's swap was full
+    (2026-10-25). Only dirs older than `max_age_s`, far past the 120s wall limit, so a live run's
+    scratch is never touched."""
+    import time
+    root = root or tempfile.gettempdir()
+    cut = time.time() - max_age_s
+    removed = 0
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return 0
+    for name in names:
+        path = os.path.join(root, name)
+        if not name.startswith(SCRATCH_PREFIX) or os.path.islink(path) or not os.path.isdir(path):
+            continue
+        try:
+            if os.path.getmtime(path) >= cut:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(path, ignore_errors=True)
+        removed += not os.path.exists(path)
+    return removed
+
+
 def _confiner() -> Optional[str]:
     """Which OS-level sandbox is available here, or None."""
     if sys.platform == "darwin" and os.path.exists(_SANDBOX_EXEC):
@@ -540,7 +572,7 @@ def _run_entry(code: str, window: Dict, entry: str, *, cpu_s: int, mem_bytes: in
     channel — the only state crossing from fit to signals is the frozen params in the spec."""
     validate_strategy_code(code)
     created = scratch_dir is None
-    scratch = _safe_scratch(scratch_dir or tempfile.mkdtemp(prefix="strat_"))
+    scratch = _safe_scratch(scratch_dir or tempfile.mkdtemp(prefix=SCRATCH_PREFIX))
     in_path = os.path.join(scratch, "in.json")
     out_path = os.path.join(scratch, "out.json")
     # Scoped file access: a persistent data dir the strategy reads/writes across runs. It is keyed
