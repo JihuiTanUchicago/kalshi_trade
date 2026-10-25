@@ -3802,6 +3802,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         pid = repo.create_proposal(cur, user_id, "deploy", reason, None, strat["id"], "applied" if autopilot else "pending")
         if autopilot:
             repo.create_deployment(cur, user_id, strat["id"], strat["market"], "paper")
+            # The bell too: the first strategy autopilot finds is the moment a user turned it on for,
+            # and the chat line only reaches someone who opens the panel.
+            repo.add_notification(cur, user_id, "deployed",
+                                  "Autopilot put “%s” on paper: it passed every research gate." % strat["title"][:120],
+                                  "/strategies/%d" % strat["id"])
             return "Autopilot deployed %s on paper." % strat["title"], pid
         return "Proposed deploying %s on paper." % strat["title"], pid
     if kind == "deploy_live":
