@@ -266,6 +266,74 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(paper, /Realized/); assert.doesNotMatch(paper, /Live realized/); assert.match(paper, /paper money, not real/);
   });
 
+  test(`${name}: the Deploy board counts open positions per book, never all together`, async () => {
+    const dep = (id, mode) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+      realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});
+    const pos = (mode) => ({title: 'Dep', ticker: 'KXBTC15M-' + mode, side: 'yes', qty: 1, entry_price: 0.4, entry_fee: 0.01, mode, unrealized: null, market_close_time: '2026-10-25T07:45:00Z'});
+    const openFig = async (deployments, open_positions, liveOn) => {
+      const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions}) : response({})});
+      f.S.me.live_trading_available = liveOn;
+      await f.viewDeploy(); await flush(); await flush();
+      const m = f.root.querySelector('#dfigs').innerHTML.match(/Open positions<\/dt><dd><span class="fig ">([^<]*)<\/span>/);
+      f.clearTimers && f.clearTimers();
+      assert.ok(m, 'the open positions figure renders');
+      // Each book's number and name are joined by a no-break space so a phone never splits them.
+      assert.doesNotMatch(m[1], /\d /);
+      return m[1].replace(/ /g, ' ');
+    };
+    const mixed = [pos('paper'), pos('paper'), pos('demo'), pos('paper')];
+    assert.equal(await openFig([dep(1, 'paper'), dep(2, 'demo')], mixed, true), '3 paper · 1 demo · 0 live');
+    // Live off: a book with nothing open is left out, live too.
+    assert.equal(await openFig([dep(1, 'paper'), dep(2, 'demo')], mixed, false), '3 paper · 1 demo');
+    assert.equal(await openFig([dep(1, 'paper')], [pos('paper'), pos('live')], false), '1 paper · 1 live');
+    // A listed live deployment keeps live in the figure even with the server switch off.
+    assert.equal(await openFig([dep(1, 'paper'), dep(3, 'live')], [pos('paper')], false), '1 paper · 0 live');
+    assert.equal(await openFig([], [], false), 'None');
+    assert.equal(await openFig([], [], true), '0 live');
+  });
+
+  test(`${name}: the strategy ladder gives each running book its own line and says what the next rung needs`, async () => {
+    const d = (id, mode, closed_trades, realized_pnl, status = 'running') => ({id, mode, status, closed_trades, realized_pnl, open_positions: 0, stake: 5, created_at: '2026-10-20T08:00:00Z'});
+    const readiness = {ready: false, blocking: 'it needs 30+ closed paper trades on realistic fills first (has 12)', deployment_candidate: true, live_autopilot: {ok: false},
+      paper: {trades: 12, trades_needed: 30, net_pnl: 3.4, events: 12, events_needed: 20, span_hours: 50, span_needed_hours: 48,
+        p_value: 0.2, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 1, realization: null,
+        checks: {realistic_trades: false, net_pnl: true, events: false, span: true, edge: false, recent: true}}};
+    const ladder = async (overrides, road, me = {}) => {
+      const f = strategyFrontend(detailStrategy(overrides), path => {
+        if (path === '/api/strategies/42/live-readiness') return road ? response(road) : response({error: 'down'}, 503);
+        return response({});
+      });
+      Object.assign(f.S.me, me);
+      await f.viewStrategy(42); await flush(); await flush();
+      const el = f.root.querySelector('#ladder-body');
+      f.clearTimers && f.clearTimers();
+      return el ? el.innerHTML : null;
+    };
+    const both = await ladder({deployments: [d(1, 'paper', 12, 3.4), d(2, 'demo', 5, -1.2), d(3, 'paper', 2, 1, 'paused')]}, readiness);
+    // Paper's own trades and P&L (the paused paper deployment is still paper's book), demo's apart.
+    assert.match(both, /<span class="mk ">Paper<\/span> running · 14 closed trades · (?:<span[^>]*>)?\+\$4\.40/);
+    assert.match(both, /<span class="mk dep">Demo<\/span> running · 5 closed trades · (?:<span[^>]*>)?−\$1\.20/);
+    assert.doesNotMatch(both, /19 closed|\$3\.20|\$5\.60/);  // what a sum across books would read
+    assert.match(both, /Next rung, live: blocked because it needs 30\+ closed paper trades on realistic fills first \(has 12\)\./);
+    assert.ok(both.indexOf('Paper</span>') < both.indexOf('Demo</span>'), 'books run up the ladder in order');
+    // Without Road to live data the live rung is left out, not guessed.
+    const noRoad = await ladder({deployments: [d(1, 'paper', 12, 3.4), d(2, 'demo', 5, -1.2)]}, null);
+    assert.match(noRoad, /Demo<\/span> running/); assert.doesNotMatch(noRoad, /Next rung/);
+    const unvalidated = await ladder({status: 'failed', deployments: [d(2, 'demo', 5, -1.2)]}, readiness);
+    assert.doesNotMatch(unvalidated, /Next rung, live/);
+    assert.match(await ladder({deployments: [d(2, 'demo', 5, -1.2)]}, {...readiness, ready: true}), /Next rung, live: every gate is clear\./);
+    // Paper only: the next rung is demo, and it names the missing demo key.
+    assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness, {kalshi_dev_connected: false}),
+      /Paper<\/span> running · 0 closed trades[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
+    assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /Next rung, demo: nothing needed/);
+    // Nothing running yet; a paused book is not running.
+    const idle = await ladder({deployments: [d(1, 'paper', 2, 1, 'paused')]}, readiness);
+    assert.doesNotMatch(idle, /running/); assert.match(idle, /Next rung, paper: nothing needed/);
+    assert.match(await ladder({deployments: [d(1, 'paper', 1, 1), d(4, 'live', 3, 0.5)]}, readiness), /Live<\/span> running · 3 closed trades[\s\S]*Top rung: it trades live money\./);
+    // Research-only strategies have no ladder at all.
+    assert.equal(await ladder({research_only: true, deployments: [d(1, 'paper', 1, 1)]}, readiness), null);
+  });
+
   test(`${name}: Deploy lists paused deployments first, otherwise in server order`, async () => {
     const dep = (id, status) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status, status_reason: status === 'paused' ? 'loss guard' : null,
       realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});

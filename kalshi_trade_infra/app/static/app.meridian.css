@@ -823,6 +823,8 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .real-record .paper-h { color: var(--ink-3); margin-bottom: 8px; }
 .real-record p + p { margin-top: 6px; }
 .real-record .real-paused b { background: var(--neg); padding: 0 6px; border-radius: 3px; }
+.rung-books { font-size: 13.5px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.rung-books p + p { margin-top: 6px; }
 .paper-abstract { margin-top: 22px; background: var(--stock); border: 1px solid var(--rule); padding: 16px 18px; }
 .paper-ab { font-size: clamp(15.5px, 1.5vw, 17px); line-height: 1.62; color: var(--ink); max-width: 68ch; }
 .paper-ab-result { margin-top: 10px; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); max-width: 68ch; font-variant-numeric: tabular-nums; }
