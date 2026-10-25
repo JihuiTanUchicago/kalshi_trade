@@ -1440,7 +1440,7 @@
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : usd(r.qty * r.entry_price))}</span>
             <small>${esc(r.title)} · <span class="tick">${esc(r.ticker)}</span> · ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'} · ${when(closed ? r.closed_at : r.opened_at)}</small></div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
-      const main = `<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash">
+      const main = `<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash-wrap"><div class="dash">
           <div>
             <section class="sect"><div class="sect-head"><h2>Deployed</h2></div><div id="dash-deps">${deps}</div></section>
           </div>
@@ -1448,7 +1448,7 @@
             <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions, false)}</section>
             <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed, true)}</section>
           </aside>
-        </div>`;
+        </div></div>`;
       root.querySelector('#boardbody').innerHTML = board;
       root.querySelector('main').innerHTML = main;
       S.dashPaper = p;
