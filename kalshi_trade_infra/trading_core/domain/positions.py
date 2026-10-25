@@ -4,8 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, Mapping, Optional
 
-from trading_core.domain.instruments import InstrumentId
-from trading_core.domain.orders import Fill
+from trading_core.domain.instruments import Instrument, InstrumentId
+from trading_core.domain.orders import ExecutionReport, Fill
 
 _EPS = 1e-12
 
@@ -116,6 +116,11 @@ class Portfolio:
         pnl = pos.settle(price)
         self._reindex(pos)
         return pnl
+
+    def record(self, report: ExecutionReport, instruments: Mapping[InstrumentId, Instrument]) -> None:
+        """The ``Book`` port: apply the report's fills at each instrument's multiplier."""
+        for fill in report.fills:
+            self.apply(fill, multiplier=instruments[fill.instrument].multiplier)
 
     def apply_all(self, fills: Iterable[Fill]) -> None:
         for f in fills:

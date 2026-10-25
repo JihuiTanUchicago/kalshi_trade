@@ -11,7 +11,8 @@
              ``pending_ttl`` seconds; an entry gets one chance.
 
 The loop owns no I/O: the clock, feed, venue, providers and the ``on_report`` sink are adapters.
-The book here is the strategy's own view (its fills); the venue's book is the exchange truth.
+The book is the strategy's own view (its fills) behind the ``Book`` port: a ``Portfolio`` in a
+backtest, the database in paper and live. The venue's book is the exchange truth.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, 
 from trading_core.domain import ExecutionReport, Instrument, InstrumentId, OrderIntent, Portfolio, Quote, RiskDecision
 from trading_core.engine.execution import CrossTheTouch, ExecutionPolicy
 from trading_core.engine.risk import RiskChain
+from trading_core.ports.book import Book
 from trading_core.ports.clock import Clock
 from trading_core.ports.features import FeatureProvider
 from trading_core.ports.market_data import MarketDataFeed
@@ -29,7 +31,7 @@ from trading_core.ports.strategy import DecisionContext, Strategy
 from trading_core.ports.venue import Venue
 
 # (book, quotes, now) -> exits to send now. Portfolio-level rules the strategy cannot opt out of.
-ExitRule = Callable[[Portfolio, Mapping[InstrumentId, Quote], float], Sequence[OrderIntent]]
+ExitRule = Callable[[Book, Mapping[InstrumentId, Quote], float], Sequence[OrderIntent]]
 
 
 @dataclass
@@ -45,7 +47,7 @@ class TradingLoop:
     def __init__(self, strategy: Strategy, instruments: Mapping[InstrumentId, Instrument], feed: MarketDataFeed,
                  venue: Venue, clock: Clock, *, execution: Optional[ExecutionPolicy] = None,
                  risk: Optional[RiskChain] = None, features: Sequence[FeatureProvider] = (),
-                 book: Optional[Portfolio] = None, capital: Optional[Callable[[], float]] = None,
+                 book: Optional[Book] = None, capital: Optional[Callable[[], float]] = None,
                  on_report: Optional[Callable[[ExecutionReport], None]] = None,
                  settlement: Optional[SettlementSource] = None,
                  universe: Optional[Callable[[float], Iterable[InstrumentId]]] = None,
@@ -102,8 +104,7 @@ class TradingLoop:
         inst = self.instruments[intent.instrument]
         report = self.execution.execute(intent, inst, quotes.get(intent.instrument), self.venue,
                                         self._client_order_id(now), now)
-        for fill in report.fills:
-            self.book.apply(fill, multiplier=self.instruments[fill.instrument].multiplier)
+        self.book.record(report, self.instruments)
         result.reports.append(report)
         if self._on_report is not None:
             self._on_report(report)

@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from typing import Callable, Iterable, List, Mapping, Optional
 
-from trading_core.domain import Instrument, InstrumentId, OrderIntent, Portfolio, RiskDecision, first_refusal
+from trading_core.domain import Instrument, InstrumentId, OrderIntent, RiskDecision, first_refusal
 from trading_core.domain.risk import RiskCheck
+from trading_core.ports.book import Book
 
 
 class RiskChain:
@@ -41,7 +42,7 @@ def max_order_notional(limit: float, instruments: Mapping[InstrumentId, Instrume
     return check
 
 
-def max_position(limit: float, book: Portfolio) -> RiskCheck:
+def max_position(limit: float, book: Book) -> RiskCheck:
     """Refuse an entry that would take |position| in its instrument above ``limit`` units."""
     def check(intent: OrderIntent) -> RiskDecision:
         held = book.positions.get(intent.instrument)
@@ -52,7 +53,7 @@ def max_position(limit: float, book: Portfolio) -> RiskCheck:
     return check
 
 
-def max_open_positions(limit: int, book: Portfolio) -> RiskCheck:
+def max_open_positions(limit: int, book: Book) -> RiskCheck:
     """Refuse an entry into a new instrument once ``limit`` instruments are already held."""
     def check(intent: OrderIntent) -> RiskDecision:
         held = book.open_positions()
@@ -62,7 +63,7 @@ def max_open_positions(limit: int, book: Portfolio) -> RiskCheck:
     return check
 
 
-def one_position_per_symbol(book: Portfolio) -> RiskCheck:
+def one_position_per_symbol(book: Book) -> RiskCheck:
     """Refuse an entry into a venue symbol already held on any outcome: one Kalshi ticker is one
     position, YES or NO, never both and never stacked."""
     def check(intent: OrderIntent) -> RiskDecision:
