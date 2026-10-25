@@ -1640,7 +1640,8 @@ body.landing-body .apf { display: none; }
 .rp-verdict.sig { border-color: var(--signal); background: var(--signal-wash); }
 .rp-verdict.quiet { border-color: var(--rule-2); background: var(--stock); }
 .rp-verdict .mk { flex: none; }
-.rp-verdict p { font-size: 13.5px; line-height: 1.55; color: var(--ink); max-width: 70ch; }
+.rp-verdict p { font-size: 13.5px; line-height: 1.55; color: var(--ink); max-width: 70ch; flex: 1 1 28ch; min-width: 0; }
+.rp-verdict { flex-wrap: wrap; }  /* phones: the words drop under a long chip instead of a one-word column spilling out of the box */
 
 /* charts */
 .rp-figs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
