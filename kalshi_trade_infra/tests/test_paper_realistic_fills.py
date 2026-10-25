@@ -314,6 +314,7 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     monkeypatch.setattr(server.repo, "list_runs", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "research_week", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "research_spent_since", lambda *a, **k: 0.0)
+    monkeypatch.setattr(server.repo, "autopilot_paper_week", lambda *a, **k: {"started": 0, "pnl": 0.0, "trades": 0})
     monkeypatch.setattr(server.repo, "strategies_passed_since", lambda *a, **k: 0)
     seen = {}
     monkeypatch.setattr(server.repo, "paper_progress",

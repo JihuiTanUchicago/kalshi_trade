@@ -1656,8 +1656,21 @@ def autopilot_status(ctx: Ctx):
         "early_exits_7d": _early_exits(cur, ctx.uid),
         "tournament": _tournament_summary(cur, ctx.uid, deps),
     }
+    if u.get("autopilot"):
+        out["week"] = _autopilot_week(cur, ctx.uid, out["research"])
     out["story"] = _autopilot_story(out)
     return out
+
+
+def _autopilot_week(cur, uid: int, research: Dict) -> Dict:
+    """The autopilot's last 7 days, for its scorecard. Research reuses the panel's week (every
+    research session, the user's and the autopilot's; credits are what the ledger debited). Paper
+    covers only the strategies the autopilot put on paper itself. Credits are real money and paper
+    P&L is not, so they are separate fields the page shows apart and never adds up."""
+    paper = repo.autopilot_paper_week(cur, uid, repo.now_utc() - timedelta(days=7))
+    return {"research_credits": research.get("cost_7d", 0.0), "tested": research.get("tested_7d", 0),
+            "passed": research.get("passed_7d", 0), "paper_started": paper["started"],
+            "paper_pnl": round(paper["pnl"], 2), "paper_trades": paper["trades"]}
 
 
 def autopilot_focus(ctx: Ctx):

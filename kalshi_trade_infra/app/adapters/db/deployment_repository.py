@@ -252,3 +252,28 @@ def claim_decision(cur, deployment_id: int, decision_ts: int) -> bool:
         (decision_ts, deployment_id, decision_ts),
     )
     return cur.rowcount == 1
+
+
+# The strategies the autopilot itself put on paper. Every autopilot deploy writes a 'deploy'
+# proposal already 'applied' (agent.act, auto_paper_probation) and never decided; one the user
+# approved went through decide_proposal, which stamps decided_at, and a manual deploy writes none.
+_AUTOPILOT_STRATEGIES = ("SELECT strategy_id FROM app_proposals WHERE user_id=%s AND kind='deploy' "
+                         "AND status='applied' AND decided_at IS NULL AND strategy_id IS NOT NULL")
+
+
+def autopilot_paper_week(cur, user_id: int, since) -> Dict:
+    """The autopilot's paper week for its scorecard, in one read: strategies it first put on paper
+    since `since`, and the closed paper trades of its strategies since then (count and P&L)."""
+    cur.execute(
+        "SELECT st.started, pt.pnl, pt.trades FROM "
+        "(SELECT COUNT(*) AS started FROM (SELECT d.strategy_id FROM app_deployments d "
+        "  WHERE d.user_id=%s AND d.mode='paper' AND d.strategy_id IN (" + _AUTOPILOT_STRATEGIES + ") "
+        "  GROUP BY d.strategy_id HAVING MIN(d.created_at) >= %s) s) st, "
+        "(SELECT COALESCE(SUM(p.pnl),0) AS pnl, COUNT(*) AS trades FROM app_positions p "
+        "  JOIN app_deployments d ON d.id=p.deployment_id "
+        "  WHERE p.user_id=%s AND p.status='closed' AND p.closed_at >= %s AND p.mode='paper' "
+        "  AND d.strategy_id IN (" + _AUTOPILOT_STRATEGIES + ")) pt",
+        (user_id, user_id, since, user_id, since, user_id),
+    )
+    r = cur.fetchone() or {}
+    return {"started": int(r.get("started") or 0), "pnl": float(r.get("pnl") or 0), "trades": int(r.get("trades") or 0)}

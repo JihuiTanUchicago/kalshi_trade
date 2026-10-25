@@ -2490,3 +2490,17 @@ body.landing-body .apf { display: none; }
 .ap-focus { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
 .ap-focus button { background: none; border: 0; padding: 0; margin-left: 4px; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .apf-top > .ap-focus { margin: 0 0 6px; }
+/* The autopilot's last 7 days: real credits and paper P&L side by side, never summed. */
+.ap-week { margin: 2px 0 0; padding-top: 10px; border-top: 1px solid var(--rule); }
+.ap-week h3 { margin: 0 0 6px; font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
+.ap-week dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 20px; margin: 0; }
+.ap-week dl > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ap-week dt { margin: 0; font-size: 12px; color: var(--ink-3); }
+.ap-week dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ap-week dd small { display: block; font-size: 12px; font-weight: 400; color: var(--ink-3); }
+.ap-week dd .pos { color: #0E5C33; }
+.ap-week dd .neg { color: #8A1021; }
+.ap-week-note { margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.apf .ap-week dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#apf-week:empty { display: none; }
+@media (max-width: 760px) { .ap-week dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; } }

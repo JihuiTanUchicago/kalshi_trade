@@ -1176,3 +1176,32 @@ test('switching autopilot on in the panel opens the market focus control', async
   assert.equal(f.S.me.user.autopilot, true); assert.equal(prefs.open, true);
   f.clearTimers();
 });
+
+test('the autopilot card and panel show the last 7 days with real credits and paper P&L kept apart', async () => {
+  const week = {research_credits: 7.26, tested: 1234, passed: 2, paper_started: 1, paper_pnl: -3.46, paper_trades: 4};
+  const stored = new Map();
+  const f = frontend({storage: {getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, String(value))}, fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/autopilot/status') return response({...apOn, week});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true; f.S.ap = {...apOn, week};
+  await f.viewDashboard(); await flush();
+  const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
+  assert.match(card, /<h3>Last 7 days<\/h3>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money<\/small><\/dd>/);
+  assert.match(card, /<dt>Ideas<\/dt><dd>1,234 tested · 2 passed<\/dd>/);
+  assert.match(card, /<dt>Started on paper<\/dt><dd>1 strategy<\/dd>/);
+  assert.match(card, /<dt>Paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money · 4 closed trades<\/small><\/dd>/);
+  assert.match(card, /Paper counts only the strategies the autopilot put on paper itself/);
+  assert.doesNotMatch(card, /\$3\.80|\$10\.72/);  // never netted or summed
+  assert.doesNotMatch(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);  // the scorecard says it
+  await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
+  const box = f.root.parent.querySelector('#autopilot-float');
+  assert.match(box.querySelector('#apf-week').innerHTML, /Credits spent on research[\s\S]*paper, not real money/);
+  f.apUpdate(box, {...apOn, autopilot: false, mode: 'off', week});
+  assert.equal(box.querySelector('#apf-week').innerHTML, '');  // off: no scorecard
+  f.clearTimers();
+});
