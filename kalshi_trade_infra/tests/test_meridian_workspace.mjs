@@ -2119,6 +2119,24 @@ test('System ignores an in-flight poll after navigation without replacing live s
   assert.equal(f.intervals.size, intervalCount); assert.equal(reads, 2);
 });
 
+test('Buying credits says how long the amount lasts at the user\'s own pace', async () => {
+  const stripe = stripeFixture();
+  let data = billingData({configured: true, spent_7d: 7, runway_days: 10});
+  const f = frontend({stripeLoader: async () => stripe.Stripe, fetchImpl: path => {
+    if (path === '/api/billing') return response(data);
+    return response({client_secret: 'synthetic-secret'});
+  }});
+  await f.viewBilling(); await flush();
+  const note = () => f.root.querySelector('#topup-note').textContent;
+  // $20 at $7 a week ($1 a day) -> about 20 days.
+  assert.match(note(), /You'll pay \$21\.00 \(\$20\.00 credits \+ 5% fee\)\. At your pace \(\$7\.00 a week\) that's about 20 days of research\./);
+  const amt = f.root.querySelector('#topup-amt'); amt.value = '200'; amt.oninput();
+  assert.match(note(), /over 3 months of research/);
+  data = billingData({configured: true, spent_7d: 0});
+  await f.viewBilling(); await flush();
+  assert.match(note(), /5% fee\)\.$/); assert.doesNotMatch(note(), /At your pace/);
+});
+
 test('Billing does not create a setup intent when Stripe loading completes after departure', async () => {
   const pending = deferred(), stripe = stripeFixture();
   const f = frontend({stripeLoader: () => pending.promise, fetchImpl: path => {

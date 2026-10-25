@@ -3826,7 +3826,9 @@
       // top-up fee preview
       const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');
       const fee = d.topup_fee_pct / 100;
-      const upd = () => { const v = +amt.value || 0; note.textContent = `You'll pay ${usd(v * (1 + fee))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).`; };
+      // At the user's own pace, how long the amount being bought would last: picks the amount for them.
+      const lasts = (v) => (+d.spent_7d > 0 && v > 0) ? ` At your pace (${usd(d.spent_7d)} a week) that's ${runwayLabel(v / (d.spent_7d / 7)).toLowerCase()} of research.` : '';
+      const upd = () => { const v = +amt.value || 0; note.textContent = `You'll pay ${usd(v * (1 + fee))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).${lasts(v)}`; };
       amt.oninput = upd; upd();
       root.querySelector('#topup-btn').onclick = (e) => {
         if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', 'Add a card first.', 'bad'); return; }
