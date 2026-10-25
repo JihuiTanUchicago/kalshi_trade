@@ -267,7 +267,7 @@ def research_week(cur, user_id: int, since, include_demo: bool = False) -> List[
     The demo session every new account is seeded with (direction 'random_walk', see
     repository.seed_demo_session) is left out unless `include_demo`: a brand-new autopilot read
     "2 tested" it never ran, but the Research page lists the demo and its headline must agree."""
-    demo = "" if include_demo else " AND (direction IS NULL OR direction <> 'random_walk')"
+    demo = "" if include_demo else " AND (direction IS NULL OR direction <> 'random_walk')"  # strategy_repository.DEMO_DIRECTION
     cur.execute(
         """SELECT model, COUNT(*) AS runs, COALESCE(SUM(hypotheses_tried),0) AS tried,
                   COALESCE(SUM(strategies_passed),0) AS passed, COALESCE(SUM(input_tokens),0) AS input_tokens,
@@ -281,11 +281,19 @@ def research_week(cur, user_id: int, since, include_demo: bool = False) -> List[
 def get_run(cur, user_id: int, run_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT id, kind, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
-                  max_hypotheses, run_forever, model, created_at, started_at, finished_at
+                  max_hypotheses, run_forever, model, created_at, started_at, finished_at, heartbeat_at
            FROM app_agent_runs WHERE id=%s AND user_id=%s""",
         (run_id, user_id),
     )
     return cur.fetchone()
+
+
+def research_queue_ahead(cur, run_id: int) -> int:
+    """GLOBAL count of queued research runs that a worker will take before this one (claim_run takes
+    the lowest id first), so a long wait can say how many sessions are ahead of it."""
+    cur.execute("SELECT COUNT(*) AS n FROM app_agent_runs WHERE kind='research' AND status='queued' AND id<%s",
+                (run_id,))
+    return int(cur.fetchone()["n"])
 
 
 def set_run_counts(cur, run_id: int, tried: int, passed: int) -> None:

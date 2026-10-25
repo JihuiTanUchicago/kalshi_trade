@@ -31,14 +31,17 @@ def last_review_at(cur, user_id: int):
     return r["created_at"] if r else None
 
 
-def review_in_flight(cur, user_id: int) -> bool:
-    """True while an autopilot review run is queued or running. Switching autopilot on queues its
-    first review at once, so the panel can say it is reviewing now instead of "between runs"."""
+def active_agent_run(cur, user_id: int, kind: Optional[str] = None) -> Optional[Dict]:
+    """The user's oldest queued or running chat/review run (only `kind` when given), with the times
+    the panel needs to tell a run that is working from one that has waited or gone quiet too long:
+    status, created_at and heartbeat_at. None when nothing is in flight."""
+    kinds = "kind=%s" if kind else "kind IN ('chat','review')"
     cur.execute(
-        "SELECT 1 FROM app_agent_runs WHERE user_id=%s AND kind='review' AND status IN ('queued','running') LIMIT 1",
-        (user_id,),
+        "SELECT id, kind, status, created_at, heartbeat_at FROM app_agent_runs "
+        "WHERE user_id=%s AND " + kinds + " AND status IN ('queued','running') ORDER BY id LIMIT 1",
+        (user_id, kind) if kind else (user_id,),
     )
-    return cur.fetchone() is not None
+    return cur.fetchone()
 
 
 def add_chat(cur, user_id: int, role: str, content: str, proposal_id: Optional[int] = None) -> int:

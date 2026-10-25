@@ -334,9 +334,32 @@ def test_count_strategies_uses_count_star_grouped():
     cur = StratCur([{"status": "passed", "n": 600}, {"status": "failed", "n": 500}, {"status": "rejected", "n": 133}])
     counts = server.repo.count_strategies(cur, 1)
     assert "COUNT(*)" in cur.sql and "GROUP BY s.status" in cur.sql
-    assert counts == {"passed": 600, "failed": 500, "rejected": 133, "total": 1233, "deployed": 0}
+    assert counts == {"passed": 600, "failed": 500, "rejected": 133, "total": 1233, "deployed": 0, "examples": {}}
     cur = StratCur([{"status": "passed", "n": 6, "dep": 4}, {"status": "rejected", "n": 2, "dep": None}])
-    assert server.repo.count_strategies(cur, 1) == {"passed": 6, "rejected": 2, "total": 8, "deployed": 4}
+    assert server.repo.count_strategies(cur, 1) == {"passed": 6, "rejected": 2, "total": 8, "deployed": 4, "examples": {}}
+
+
+def test_count_strategies_leaves_the_seeded_example_out():
+    # A new account read "Rejected (2)" from the example session the app seeded, not research it ran.
+    cur = StratCur([{"status": "rejected", "n": 2, "dep": 0, "ex": 2}])
+    counts = server.repo.count_strategies(cur, 1)
+    assert counts == {"rejected": 0, "total": 0, "deployed": 0, "examples": {"rejected": 2}}
+    assert "s.direction=%s" in cur.sql and cur.params[0] == server.repo.DEMO_DIRECTION and cur.params[1] == 1
+    cur = StratCur([{"status": "passed", "n": 3, "dep": 1, "ex": 0}, {"status": "rejected", "n": 7, "dep": 0, "ex": 2}])
+    assert server.repo.count_strategies(cur, 1) == {"passed": 3, "rejected": 5, "total": 8, "deployed": 1, "examples": {"rejected": 2}}
+
+
+def test_strategies_list_still_shows_the_example_rows_and_marks_them(monkeypatch):
+    counts = {"rejected": 0, "total": 0, "deployed": 0, "examples": {"rejected": 2}}
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: dict(counts))
+    rows = [{"id": 1, "direction": "random_walk"}, {"id": 2, "direction": "random_walk"}]
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: rows)
+    monkeypatch.setattr(server, "_strategy_card", lambda s: {**s, "example": s["direction"] == server.repo.DEMO_DIRECTION})
+    # The default (Kept) view hides rejected rows, examples included; the Rejected chip lists them.
+    assert server.list_strategies(ctx(query={}))["matched"] == 0
+    out = server.list_strategies(ctx(query={"status": "rejected"}))
+    assert out["matched"] == 2 and out["pages"] == 1 and out["counts"]["rejected"] == 0
+    assert all(c["example"] for c in out["strategies"])
 
 
 def test_list_strategies_applies_limit_and_offset():
@@ -693,8 +716,19 @@ def test_research_totals_are_all_time_and_cached(monkeypatch):
     assert server._research_totals(None, 77) == {"tried": 1240, "passed": 4}
     assert server._research_totals(None, 77) == {"tried": 1240, "passed": 4} and len(calls) == 1  # cached
     assert calls[0][0] < server.repo.now_utc() - server.timedelta(days=365 * 10)
-    assert calls[0][1] is True  # the page lists the seeded demo, so its headline counts it
+    assert calls[0][1] is False  # the seeded example session is the app's, not the user's research
     server._RUN_TOTALS.clear()
+
+
+def test_runs_list_marks_the_seeded_example_session(monkeypatch):
+    # The example is listed, flagged so the page can say the app ran it for free, and out of the headline.
+    monkeypatch.setattr(server.repo, "get_policy", lambda cur, uid: None)
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: [{"id": 2, "direction": "momentum"}, {"id": 1, "direction": "random_walk"}])
+    monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
+    monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid: {})
+    monkeypatch.setattr(server, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
+    runs = {r["id"]: r for r in server.list_runs(ctx())["runs"]}
+    assert runs[1]["example"] is True and runs[2]["example"] is False
 
 
 def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys):

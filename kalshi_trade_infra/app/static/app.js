@@ -1106,6 +1106,10 @@
   // The server sends one book (live, else paper, else demo) and a paper strategy's demo book beside it
   // under r.demo, so sandbox dollars are never added to paper ones.
   const realTrades = (n) => `${n} trade${n === 1 ? '' : 's'}`;
+  // The example session (and its strategies) every account is seeded with: the server flags it
+  // `example`, leaves it out of every headline count, and the lists say the app ran it for free.
+  const EXAMPLE_NOTE = 'An example Tau ran for you when you signed up. It cost you nothing.';
+  const EXAMPLE_TAG = `<span class="mk quiet example-tag" title="${EXAMPLE_NOTE}">Example</span>`;
   const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : ''}since deploying \u00b7 ${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7 ${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
@@ -1116,7 +1120,7 @@
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
-      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
+      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : ''}<div class="sub-fig cellwrap">${esc(s.thesis)}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7 ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
@@ -1764,8 +1768,10 @@
       root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
-      const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', d.runs.length > 0);  // phones: progress before the form
-      root.querySelector('#rcount').textContent = d.runs.length ? `${d.runs.length} run${d.runs.length > 1 ? 's' : ''}` : '';
+      // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
+      const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
+      const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0);  // phones: progress before the form
+      root.querySelector('#rcount').textContent = [own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7 ');
       root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
     };
@@ -1786,8 +1792,8 @@
     // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
     const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     return `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-title"><b>${esc(sessionTitle(r))}</b></span>
-      <span class="run-meta">${esc(marketShort(r.market))}${r.spent_usd != null ? ' \u00b7 ' + runSpent(r) : ''}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
+      <span class="run-title"><b>${esc(sessionTitle(r))}</b>${r.example ? ' ' + EXAMPLE_TAG : ''}</span>
+      <span class="run-meta">${esc(marketShort(r.market))}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7 ' + runSpent(r) : ''}${r.error ? ' \u00b7 ' + esc(r.error) : ''}</span>
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
   }
 
@@ -2001,7 +2007,7 @@
     const log = section.querySelector('.log');
     const jump = section.querySelector('.jumplatest');
     const pulse = section.querySelector('.runpulse');
-    let unseen = 0, first = true, appended = 0, pulseSt = null, lastAt = Date.now();
+    let unseen = 0, first = true, appended = 0, pulseSt = null, pulseKey = '', lastAt = Date.now(), queuedAt = null;
     const cards = new Map();   // hypothesis title -> card controller (most recent wins on a title clash)
     let think = null;          // the currently-open thinking card, if any
     const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
@@ -2037,8 +2043,8 @@
     // Count up the seconds since the last event every second (independent of the 2s poll) so a
     // long call that isn't streaming still reads as working, not stuck.
     const ptick = setInterval(() => {
-      if (pulse.hidden || pulseSt === 'paused' || pulseSt === 'done') return;
-      const secs = Math.round((Date.now() - lastAt) / 1000);
+      if (pulse.hidden || pulseSt === 'paused' || pulseSt === 'done' || pulse.classList.contains('late')) return;
+      const secs = Math.round((Date.now() - (pulseSt === 'queued' && queuedAt != null ? queuedAt : lastAt)) / 1000);
       const lab = pulse.querySelector('[data-plabel]');
       if (lab && secs >= 3) lab.textContent = `${pulseSt === 'queued' ? 'Queued' : 'Researching'} · ${secs}s`;
     }, 1000);
@@ -2055,14 +2061,19 @@
         else if (appended) { unseen += appended; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
         first = false;
       },
-      state(st) {  // 'queued' | 'running' | 'paused' | 'done'
+      state(st, wait) {  // 'queued' | 'running' | 'paused' | 'done'; wait = the server's run.wait
         if (st === 'done') { pulseSt = st; sealThink(); pulse.hidden = true; return; }
         const stick = atBottom();
         pulse.hidden = false;
-        if (st !== pulseSt) {
-          pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : '');
+        // Count the queue from the server's clock: "Queued · 19s" restarted on every reload.
+        queuedAt = st === 'queued' && wait && wait.state === 'queued' ? Date.now() - wait.seconds * 1000 : null;
+        const late = st !== 'paused' && wait && wait.overdue ? runWaitLine(wait) : '';
+        if (st + late !== pulseKey) {
+          pulseKey = st + late;
+          pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : late ? ' late' : '');
           pulse.innerHTML = st === 'paused'
             ? '<span class="pulse-bar" aria-hidden="true"></span><span>Paused — resume and it picks up exactly where it left off.</span>'
+            : late ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${esc(late)}</span>`
             : st === 'queued'
               ? '<span class="working" aria-hidden="true"></span><span data-plabel>Queued — waiting for a free agent to pick this up…</span>'
               : '<span class="working" aria-hidden="true"></span><span data-plabel>Researching<span class="ell" aria-hidden="true"></span></span>';
@@ -2146,6 +2157,7 @@
           ${RSI_STAGES.map(station).join('')}</svg>
         <div class="rsi-labels">${RSI_STAGES.map(([s, l]) => `<span class="rsi-lab" data-stage="${s}">${l}</span>`).join('')}</div></div>
       <p class="rsiobs-phase" data-phase>Waiting for the agent to start.</p>
+      <p class="rsiobs-phase rsiobs-wait" data-wait hidden></p>
       <figure class="rsiobs-tree" data-tree hidden><figcaption>Discovery tree <span>how each winner seeded the next</span></figcaption>
         <div class="rsiobs-treewrap"><svg class="rsiobs-treesvg" data-treesvg></svg></div></figure>`;
 
@@ -2155,7 +2167,9 @@
     RSI_STAGES.forEach(([s]) => { groups[s] = host.querySelector(`.rsi-st[data-stage="${s}"]`); labs[s] = host.querySelector(`.rsi-lab[data-stage="${s}"]`); });
     const links = host.querySelectorAll('.rsi-link, .rsi-arc');
     const fired = new Set();
-    let stage = null, lastAt = Date.now(), runState = 'queued';
+    let stage = null, lastAt = Date.now(), runState = 'queued', wait = null, waitAt = 0;
+    const waitEl = host.querySelector('[data-wait]');
+    const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
     const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
 
     function paintStages() {
@@ -2170,6 +2184,11 @@
 
     function paintLive() {
       host.classList.remove('is-quiet');
+      const w = ['queued', 'running'].includes(runState) ? waitNow() : null, late = !!(w && w.overdue);
+      waitEl.hidden = !late;
+      if (late) waitEl.textContent = runWaitLine(w);
+      if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
+      if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
       if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
       if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Cancelled' : 'Stopped'; return; }
@@ -2205,6 +2224,7 @@
 
     return {
       push(events, state, run) {
+        wait = (run && run.wait) || null; waitAt = Date.now();
         runState = state || runState;
         (events || []).forEach((ev) => {
           const d = ev.data || {};
@@ -2269,10 +2289,12 @@
       const d = await api(`/api/runs/${id}?after=${after}`);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
-      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}`);
+      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7 ${dirLabel(r.direction)}${r.example ? ' \u00b7 ' + EXAMPLE_NOTE : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
-      const statusText = r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
+      const late = r.wait && r.wait.overdue ? r.wait : null;
+      const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
+        : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
         : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped'
@@ -2303,7 +2325,7 @@
       runControls(root.querySelector('#runact'), id, r.status, load);
       d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });
       stream.push(d.events);
-      stream.state(active ? r.status : 'done');
+      stream.state(active ? r.status : 'done', r.wait);
       obs.push(d.events, r.status, r);
       if (!active) clearTimers();
     };
@@ -2861,6 +2883,9 @@
     const setTab = (t) => {
       host.querySelectorAll('[data-trtab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.trtab === t)));
       host.querySelector('.trpanel').innerHTML = trackRecordPanel(d.modes[t], t, d.thresholds);
+      // The empty paper record's copy depends on the autopilot switch; syncApCopy repaints it on a flip
+      // (the record itself only repaints when the server's 60s cache moves, so it kept "Go to Deploy").
+      trAp = { host, on: apSwitchOn(), repaint: () => setTab(t) };
       try { localStorage.setItem('tau_tr_tab', t); } catch (e) { /* private mode */ }
     };
     host.querySelectorAll('[data-trtab]').forEach((b) => (b.onclick = () => setTab(b.dataset.trtab)));
@@ -3309,6 +3334,18 @@
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 172800 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };
 
+  // A run past the reaper's limit (the server's run.wait / agent_wait / review_wait, timed on the
+  // server so a reload doesn't restart the count) is said plainly instead of under a spinner.
+  const waitSpan = (s) => { const m = Math.max(1, Math.floor((+s || 0) / 60)); return m < 90 ? m + ' min' : Math.round(m / 60) + ' hr'; };
+  function runWaitLine(w) {
+    const t = waitSpan(w.seconds);
+    if (w.state === 'queued') {
+      const ahead = +w.ahead || 0;
+      return `Still waiting for a free research worker (${t}). ${ahead ? `${ahead === 1 ? '1 session is' : num(ahead) + ' sessions are'} ahead of it; it starts` : 'It’s next in line and starts'} when one frees up.`;
+    }
+    return `No word from the agent for ${t}. A session this quiet is normally interrupted and resumed from its last checkpoint.`;
+  }
+
   function priceChart(points) {
     if (!points || points.length < 2) return '<div class="empty"><h3>Not enough history yet</h3><p>This market is new or thinly traded — its price curve fills in as it trades.</p></div>';
     const W = 760, H = 260, pl = 44, pr = 14, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb;
@@ -3433,7 +3470,13 @@
     // a refresh after a change always reads fresh.
     let req = share && apReq;
     if (!req) { req = apReq = api('/api/autopilot/status', undefined, { keep: true }); req.finally(() => { if (apReq === req) apReq = null; }).catch(() => {}); }
-    try { S.ap = await req; S.apAt = Date.now(); renderAutopilot(box, S.ap); paintDashAp(); }
+    try {
+      S.ap = await req; S.apAt = Date.now();
+      // The status read is the switch's truth (another tab or device may have flipped it); copy that
+      // reads S.me.user.autopilot, like the empty paper track record, follows it through syncApCopy.
+      if (S.me && S.me.user && typeof S.ap.autopilot === 'boolean') S.me.user.autopilot = S.ap.autopilot;
+      renderAutopilot(box, S.ap); paintDashAp();
+    }
     catch (e) { /* floating window is best-effort; never block the app */ }
   }
   // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
@@ -3541,10 +3584,13 @@
   }
   // Copy that depends on the switch follows it without a reload, so turning autopilot on doesn't leave
   // "Turn on autopilot above" or a Turn on nudge under a card that already says it's on.
+  let trAp = null;  // the mounted track record's tab, to repaint when the switch flips
+  const apSwitchOn = () => !!(S.me && S.me.user && S.me.user.autopilot);
   function syncApCopy(on) {
     const box = document.getElementById('deps-empty');
     if (box && box.dataset.on !== (on ? '1' : '0')) { box.dataset.on = on ? '1' : '0'; box.innerHTML = depsEmpty(on); }
     if (document.body) document.body.querySelectorAll('.research-ap').forEach((p) => { p.hidden = on; });
+    if (trAp && trAp.host.isConnected && trAp.on !== apSwitchOn()) trAp.repaint();
   }
   function apNudge(lead, rest) {
     return S.me && S.me.user && !S.me.user.autopilot ? `<p class="research-ap">${lead} <button type="button" data-research-ap>Turn on autopilot</button> ${rest}</p>` : '';
@@ -3649,7 +3695,11 @@
     if (pulse) {
       pulse.hidden = false;
       pulse.className = 'runpulse apf-pulse-row';
-      pulse.innerHTML = d.agent_busy
+      // Past the reaper's limit the spinner would claim work nobody is doing; say how long instead.
+      const w = d.agent_wait;
+      pulse.innerHTML = w
+        ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it'} for ${waitSpan(w.seconds)}, longer than usual</span>`
+        : d.agent_busy
         ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
         : `<span class="apf-idle-dot" aria-hidden="true"></span><span>${apIdleLine(box)}</span>`;
     }
@@ -3726,6 +3776,8 @@
       try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; } catch (e) { sw.checked = !on; alert0(e.message); return; }
       // Right after switching on, show where it may trade, so the focus is a choice and not a default nobody saw.
       if (on) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
+      if (S.ap) S.ap = Object.assign({}, S.ap, { autopilot: on, mode: !on ? 'off' : S.ap.mode === 'off' ? 'paper' : S.ap.mode });
+      paintDashAp();  // copy that follows the switch flips now, not on the next status read
       refreshAutopilot(box);
     };
     const msgs = box.querySelector('#apf-messages');
@@ -3823,7 +3875,8 @@
       `<dt>${liveInPlay ? 'Live' : 'Paper'} P&amp;L today</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
     ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
-      .concat(d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+      .concat(d.review_wait ? [`<dt>Review</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
+        : d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `

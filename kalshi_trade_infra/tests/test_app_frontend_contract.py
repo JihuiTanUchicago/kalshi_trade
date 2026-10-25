@@ -148,7 +148,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'realized_pnl', lambda *a: 0.0)
     monkeypatch.setattr(server.repo, 'last_autopilot_action', lambda *a: None)
     monkeypatch.setattr(server.repo, 'last_review_at', lambda *a: None)
-    monkeypatch.setattr(server.repo, 'review_in_flight', lambda *a: False)
+    monkeypatch.setattr(server.repo, 'active_agent_run', lambda *a: None)
     monkeypatch.setattr(server.repo, 'list_runs', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [])
     monkeypatch.setattr(server.repo, 'research_spent_since', lambda *a, **k: 0.0)
@@ -170,14 +170,93 @@ def test_autopilot_status_flags_billing_blocked(monkeypatch):
 
 
 def test_autopilot_status_says_when_a_review_is_in_flight(monkeypatch):
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 25, 16, 0)
+    monkeypatch.setattr(server.repo, 'now_utc', lambda: now)
     ctx = _ap_ctx(monkeypatch, autopilot=1)
     monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
-    monkeypatch.setattr(server.repo, 'review_in_flight', lambda cur, uid: True)
+    review = {'status': 'queued', 'created_at': now - timedelta(seconds=30), 'heartbeat_at': None}
+    monkeypatch.setattr(server.repo, 'active_agent_run', lambda cur, uid, kind=None: kind == 'review' and review)
     out = server.autopilot_status(ctx)
-    assert out['reviewing'] is True
+    assert out['reviewing'] is True and out['review_wait'] is None
     assert out['story'][0].startswith("Right now it's reviewing the markets")
     off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
     assert off['reviewing'] is False  # an off autopilot reads nothing extra
+
+
+def test_a_review_queued_or_silent_past_the_reaper_limit_stops_reading_as_reviewing(monkeypatch):
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 25, 16, 0)
+    limit = int(server.worker.ABANDONED_AFTER.total_seconds())
+    assert server.RUN_OVERDUE_SECONDS == limit
+    monkeypatch.setattr(server.repo, 'now_utc', lambda: now)
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid: True)
+    review = {}
+    monkeypatch.setattr(server.repo, 'active_agent_run', lambda cur, uid, kind=None: review)
+    # Right at the limit it is still reviewing; one second past, it isn't.
+    review.update(status='queued', created_at=now - timedelta(seconds=limit), heartbeat_at=None)
+    assert server.autopilot_status(ctx)['reviewing'] is True
+    review.update(created_at=now - timedelta(seconds=limit + 1))
+    out = server.autopilot_status(ctx)
+    assert out['reviewing'] is False
+    assert out['review_wait'] == {'state': 'queued', 'seconds': limit + 1, 'overdue': True}
+    # A re-queued run waits from its re-queue, not from when it was first created.
+    review.update(created_at=now - timedelta(hours=3), heartbeat_at=now - timedelta(seconds=60))
+    assert server.autopilot_status(ctx)['reviewing'] is True
+    # Running: only a heartbeat past the limit (the point the reaper stops it) reads as silent.
+    review.update(status='running', created_at=now - timedelta(hours=1), started_at=now - timedelta(minutes=50),
+                  heartbeat_at=now - timedelta(seconds=limit - 10))
+    assert server.autopilot_status(ctx)['reviewing'] is True
+    review.update(heartbeat_at=now - timedelta(minutes=7))
+    out = server.autopilot_status(ctx)
+    assert out['reviewing'] is False and out['review_wait']['state'] == 'silent'
+    assert out['story'][0] == ("Its review hasn't checked in for 7 minutes. A review that quiet is normally "
+                               "stopped, and the next one starts on schedule.")
+
+
+def test_chat_pulse_reports_a_wait_only_past_the_reaper_limit(monkeypatch):
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 25, 16, 0)
+    monkeypatch.setattr(server.repo, 'now_utc', lambda: now)
+    monkeypatch.setattr(server.repo, 'chat_messages', lambda *a: [])
+    run = {'status': 'queued', 'created_at': now - timedelta(seconds=20), 'heartbeat_at': None}
+    monkeypatch.setattr(server.repo, 'active_agent_run', lambda cur, uid, kind=None: run)
+    out = server.get_chat(context())
+    assert out['agent_busy'] is True and out['agent_wait'] is None
+    run['created_at'] = now - timedelta(minutes=9)
+    assert server.get_chat(context())['agent_wait'] == {'state': 'queued', 'seconds': 540, 'overdue': True}
+    monkeypatch.setattr(server.repo, 'active_agent_run', lambda *a, **k: None)
+    out = server.get_chat(context())
+    assert out['agent_busy'] is False and out['agent_wait'] is None
+
+
+def test_run_page_times_the_queue_on_the_server_and_counts_who_is_ahead(monkeypatch):
+    from datetime import datetime, timedelta
+    now = datetime(2026, 10, 25, 16, 0)
+    monkeypatch.setattr(server.repo, 'now_utc', lambda: now)
+    run = {'id': 9, 'kind': 'research', 'status': 'queued', 'created_at': now - timedelta(seconds=19), 'heartbeat_at': None}
+    monkeypatch.setattr(server.repo, 'get_run', lambda cur, uid, rid: dict(run))
+    monkeypatch.setattr(server.repo, 'runs_spent', lambda *a: {})
+    monkeypatch.setattr(server.repo, 'list_strategies', lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, 'get_policy', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'latest_dream_event', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'run_events', lambda *a: [])
+    ahead = []
+    monkeypatch.setattr(server.repo, 'research_queue_ahead', lambda cur, rid: ahead.append(rid) or 2)
+    ctx = context()
+    ctx.params = ('9',)
+    assert server.get_run(ctx)['run']['wait'] == {'state': 'queued', 'seconds': 19, 'overdue': False}
+    assert ahead == []  # only counted once the wait is overdue
+    run['created_at'] = now - timedelta(minutes=6)
+    assert server.get_run(ctx)['run']['wait'] == {'state': 'queued', 'seconds': 360, 'overdue': True, 'ahead': 2}
+    assert ahead == [9]
+    run.update(status='running', started_at=now - timedelta(minutes=30), heartbeat_at=now - timedelta(seconds=20))
+    assert server.get_run(ctx)['run']['wait'] is None  # beating normally
+    run.update(heartbeat_at=now - timedelta(minutes=5))
+    assert server.get_run(ctx)['run']['wait'] == {'state': 'silent', 'seconds': 300, 'overdue': True}
+    run.update(status='paused')
+    assert server.get_run(ctx)['run']['wait'] is None
 
 
 def test_me_states_what_auto_reload_will_charge_the_card(monkeypatch):

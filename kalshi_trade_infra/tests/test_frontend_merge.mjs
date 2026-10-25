@@ -124,7 +124,7 @@ function frontend({fetchImpl, brokerMount, storage} = {}) {
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel, viewMarketDetail, render};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -468,6 +468,33 @@ test('the research headline uses all-time totals, not the 50 newest runs', async
   assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> hypotheses and kept <em>4<\/em>/);
 });
 
+test('the seeded example session is listed as an example, not counted as the user\'s research', async () => {
+  const example = {id: 1, status: 'succeeded', market: 'btc15m', direction: 'random_walk', example: true, prompt: 'Random walk',
+    hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};
+  const mine = {id: 6, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Mine',
+    hypotheses_tried: 3, strategies_passed: 1, spent_usd: 0.42, created_at: '2026-10-25T08:00:00Z'};
+  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 run · 1 example']]) {
+    const own = runs.filter((r) => !r.example);
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/runs') return response({runs, counts: {research_running: 0, research_queued: 0}, policy: null,
+        totals: {tried: own.reduce((a, r) => a + r.hypotheses_tried, 0), passed: own.reduce((a, r) => a + r.strategies_passed, 0)}});
+      if (path.startsWith('/api/research/scoreboard')) return response({});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = false;
+    await f.viewResearch(); await flush(); await flush();
+    const list = f.root.querySelector('#runs').innerHTML, said = f.root.querySelector('#rstatus .said').innerHTML;
+    assert.equal(f.root.querySelector('#rcount').textContent, count);
+    assert.match(list, /Example<\/span>/); assert.match(list, /An example Tau ran for you when you signed up\. It cost you nothing\./);
+    assert.doesNotMatch(list, /Cost: \$0\.00/);
+    if (own.length) { assert.match(said, /tested <em>3<\/em> hypotheses/); assert.match(list, /Cost: \$0\.42/); }
+    else assert.doesNotMatch(said, /Your engine has tested/);
+  }
+});
+
 test('the research hint says a run-forever session keeps spending credits', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/models') return response({models: [], default: ''});
@@ -606,6 +633,33 @@ test('the empty Deployed box follows the autopilot switch without a reload', asy
   f.S.me.user.autopilot = false; f.S.ap = {...apOn, autopilot: false, mode: 'off'};
   f.paintDashAp();
   assert.match(deps(), /Turn on autopilot above/);
+});
+
+test('the empty paper track record follows the autopilot switch when a status read flips it', async () => {
+  let status = {autopilot: false, mode: 'off'};
+  const empty = (label) => ({trades: 0, label});
+  const tr = {generated_at: 1, default_mode: 'paper', method: [], thresholds: {min_sharpe_days: 14, min_trades: 30},
+    modes: {live: empty('Live money'), demo: empty('Kalshi demo'), paper: empty('Paper')}};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/track-record') return response(tr);
+    if (path === '/api/autopilot/status') return response(status);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); await flush();
+  // The dashboard mounts the record after <main>; mount it the same way on a host of its own here.
+  const host = new Element('section'); f.root.appendChild(host);
+  await f.mountTrackRecord(host, {at: null});
+  const panel = () => host.querySelector('.trpanel').innerHTML;
+  assert.match(panel(), /Go to Deploy/);
+  // Switched on elsewhere (another tab, the chat): the next status poll carries it. The record's own
+  // poll skips an unchanged payload, so before this the panel kept "Go to Deploy".
+  status = {autopilot: true, mode: 'paper', story: [], research: {}, live_running: 0, demo_running: 0, paper_running: 0};
+  for (const tick of [...f.intervals.values()]) tick();
+  await flush(); await flush();
+  assert.equal(f.S.me.user.autopilot, true);
+  assert.match(panel(), /Autopilot runs the strategies that pass every gate on paper/); assert.doesNotMatch(panel(), /Go to Deploy/);
 });
 
 test('the empty Deployed box never says autopilot is researching while the card says it is quiet or paused', async () => {
@@ -941,6 +995,43 @@ test('the current research run renders a safe streaming log and its paused statu
   assert.doesNotMatch(f.root.querySelector('#runboard').innerHTML, /<script>/);
   assert.match(f.root.querySelector('#runfigs').innerHTML, /Paused/);
   assert.ok(f.root.querySelector('#resume')); assert.match(f.root.querySelector('#runpulse').innerHTML, /resume/);
+});
+
+test('a queued run counts its wait from the server, and past the reaper limit says plainly it is waiting', async () => {
+  const at = (wait, status = 'queued') => {
+    const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', wait};
+    return frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
+  };
+  // Under the limit: the spinner stays, but the count is the server's (a reload used to restart it at 0s).
+  let f = at({state: 'queued', seconds: 200, overdue: false});
+  await f.viewRun(9);
+  [...f.intervals.values()].forEach(tick => tick());
+  assert.match(f.root.querySelector('#runpulse [data-plabel]').textContent, /^Queued · 20\ds$/);
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
+  f.clearTimers();
+  // Past it: no spinner, how long, and how many sessions a worker takes first.
+  f = at({state: 'queued', seconds: 360, overdue: true, ahead: 2});
+  await f.viewRun(9);
+  const line = 'Still waiting for a free research worker (6 min). 2 sessions are ahead of it; it starts when one frees up.';
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Waiting 6 min/);
+  assert.ok(f.root.querySelector('#runpulse').classes.has('late'));
+  assert.ok(f.root.querySelector('#runpulse').innerHTML.includes(line));
+  assert.doesNotMatch(f.root.querySelector('#runpulse').innerHTML, /class="working"/);
+  const wait = f.root.querySelector('#rsiobs [data-wait]');
+  assert.equal(wait.hidden, false); assert.equal(wait.textContent, line);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 6 min');
+  f.clearTimers();
+  f = at({state: 'queued', seconds: 300, overdue: true, ahead: 0});
+  await f.viewRun(9);
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').textContent, 'Still waiting for a free research worker (5 min). It’s next in line and starts when one frees up.');
+  f.clearTimers();
+  // A running session whose heartbeat is past the limit reads as silent, not Researching.
+  f = at({state: 'silent', seconds: 420, overdue: true}, 'running');
+  await f.viewRun(9);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Silent 7 min/);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Silent 7 min');
+  assert.ok(f.root.querySelector('#runpulse').innerHTML.includes('No word from the agent for 7 min. A session this quiet is normally interrupted and resumed from its last checkpoint.'));
+  f.clearTimers();
 });
 
 test('phone labels on strategy rows say the P&L is a backtest', () => {

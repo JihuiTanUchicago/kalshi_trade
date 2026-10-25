@@ -24,8 +24,8 @@ from app.adapters.db.kalshi_dev_keys_repository import (  # noqa: F401
     delete_kalshi_dev_key, get_kalshi_dev_key, set_kalshi_dev_key,
 )
 from app.adapters.db.chat_repository import (  # noqa: F401
-    add_chat, chat_contains, chat_messages, create_proposal, decide_proposal, get_proposal,
-    last_autopilot_action, last_review_at, recent_chat_same, review_in_flight,
+    active_agent_run, add_chat, chat_contains, chat_messages, create_proposal, decide_proposal, get_proposal,
+    last_autopilot_action, last_review_at, recent_chat_same,
 )
 from app.adapters.db.order_intent_repository import (  # noqa: F401
     _naive_utc, claim_intent_booking, insert_order_intent, mark_order_intent, open_sent_intents,
@@ -34,12 +34,12 @@ from app.adapters.db.order_intent_repository import (  # noqa: F401
 from app.adapters.db.agent_run_repository import (  # noqa: F401
     MAX_RESUMES, RUN_ACTIVE, _has_progress, add_event, cancel_run, claim_run, count_active_research,
     count_runs, create_run, fail_abandoned_runs, finish_run, get_run, heartbeat, list_runs,
-    load_checkpoint, pause_run, research_week, resume_run, run_events, run_worker, save_checkpoint,
+    load_checkpoint, pause_run, research_queue_ahead, research_week, resume_run, run_events, run_worker, save_checkpoint,
     set_run_counts, set_run_market, update_run_progress, yield_run,
 )
 from app.adapters.db.strategy_repository import (  # noqa: F401
-    NOISE_STATUSES, count_strategies, delete_strategy, get_strategy, insert_strategy,
-    list_strategies, set_strategy_outcome, share_strategy, strategies_passed_since,
+    DEMO_DIRECTION, NOISE_STATUSES, count_strategies, delete_strategy, get_strategy,
+    insert_strategy, list_strategies, set_strategy_outcome, share_strategy, strategies_passed_since,
     _strategy_filter_sql, strategy_records, _strategy_row,
 )
 from app.adapters.db.order_latency_repository import (  # noqa: F401

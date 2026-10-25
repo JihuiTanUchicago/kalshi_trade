@@ -673,7 +673,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .jumplatest:hover { background: #000; }
 /* the live edge: the pulse the agent writes to while it works, or the held state while paused */
 .runpulse { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--rule); background: var(--stock); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .03em; color: var(--ink-3); }
-.runpulse.paused { color: var(--ink); background: var(--stock-sunk); }
+.runpulse.paused, .runpulse.late { color: var(--ink); background: var(--stock-sunk); }
 .pulse-bar { flex: none; position: relative; width: 11px; height: 12px; }
 .pulse-bar::before, .pulse-bar::after { content: ""; position: absolute; top: 0; bottom: 0; width: 3px; background: var(--ink); }
 .pulse-bar::before { left: 1px; } .pulse-bar::after { right: 1px; }

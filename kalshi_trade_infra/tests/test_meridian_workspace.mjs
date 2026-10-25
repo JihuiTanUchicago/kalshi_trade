@@ -151,7 +151,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -490,6 +490,31 @@ test('Overview paper P&L says "since reset" after a reset and its day figure say
     const card = f.root.querySelector('#dash-ap').innerHTML;
     assert.match(card, new RegExp(`<dt>Paper P&amp;L, ${reset_at ? 'since reset' : 'all time'}</dt><dd><span class="[^"]*">\\+\\$111\\.25`));
   }
+});
+
+test('Overview empty paper track record follows the autopilot switch when a status read flips it', async () => {
+  let status = {autopilot: false, mode: 'off'};
+  const empty = (label) => ({trades: 0, label});
+  const tr = {generated_at: 1, default_mode: 'paper', method: [], thresholds: {min_sharpe_days: 14, min_trades: 30},
+    modes: {live: empty('Live money'), demo: empty('Kalshi demo'), paper: empty('Paper')}};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData());
+    if (path === '/api/track-record') return response(tr);
+    if (path === '/api/autopilot/status') return response(status);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); await flush();
+  // The dashboard mounts the record after <main>; mount it the same way on a host of its own here.
+  const host = new Element('section'); f.root.appendChild(host);
+  await f.mountTrackRecord(host, {at: null});
+  const panel = () => host.querySelector('.trpanel').innerHTML;
+  assert.match(panel(), /Go to Deploy/);
+  status = {autopilot: true, mode: 'paper', story: [], research: {}, live_running: 0, demo_running: 0, paper_running: 0};
+  for (const tick of [...f.intervals.values()]) tick();
+  await flush(); await flush();
+  assert.equal(f.S.me.user.autopilot, true);
+  assert.match(panel(), /Autopilot runs the strategies that pass every gate on paper/); assert.doesNotMatch(panel(), /Go to Deploy/);
 });
 
 test('Overview empty Deployed box never says autopilot is researching while the card says it is quiet or paused', async () => {
@@ -1334,6 +1359,31 @@ test('the current research run renders a safe streaming log and its paused statu
   assert.ok(f.root.querySelector('#resume')); assert.equal(f.root.querySelector('#runpulse'), null);
 });
 
+test('a Research run queued or silent past the reaper limit says how long instead of Queued', async () => {
+  const at = (wait, status = 'queued') => {
+    const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', wait};
+    return frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
+  };
+  let f = at({state: 'queued', seconds: 90, overdue: false});
+  await f.viewRun(9);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Queued');
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
+  f.clearTimers();
+  f = at({state: 'queued', seconds: 540, overdue: true, ahead: 1});
+  await f.viewRun(9);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Waiting 9 min/);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 9 min');
+  const wait = f.root.querySelector('#rsiobs [data-wait]');
+  assert.equal(wait.hidden, false);
+  assert.equal(wait.textContent, 'Still waiting for a free research worker (9 min). 1 session is ahead of it; it starts when one frees up.');
+  f.clearTimers();
+  f = at({state: 'silent', seconds: 300, overdue: true}, 'running');
+  await f.viewRun(9);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Silent 5 min/);
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').textContent, 'No word from the agent for 5 min. A session this quiet is normally interrupted and resumed from its last checkpoint.');
+  f.clearTimers();
+});
+
 test('opening a terminal Research run seals hydrated thoughts and keeps native history inspectable without polling', async () => {
   for (const status of ['succeeded', 'failed', 'cancelled']) {
     const run = researchRun(9, status), events = [{id: 1, kind: 'thinking', message: 'Saved **reasoning** <script>unsafe</script>', data: {block: 1}, created_at: run.created_at}];
@@ -1493,6 +1543,20 @@ function researchFrontend(runs = [], {policy = null, ...options} = {}) {
       research_queued: runs.filter(run => run.status === 'queued').length}, policy: typeof policy === 'function' ? policy() : policy});
   }});
 }
+
+test('Research lists the seeded example as an example and does not count it as a session', async () => {
+  const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};
+  const mine = {...researchRun(6, 'succeeded'), example: false, spent_usd: 0.42};
+  for (const [runs, count] of [[[example], ''], [[mine, example], '1']]) {
+    const f = researchFrontend(runs);
+    await f.viewResearch(); await flush();
+    const list = f.root.querySelector('#runs').innerHTML;
+    assert.equal(f.root.querySelector('#rcount').textContent, count);
+    assert.match(list, /Example<\/span>/); assert.match(list, /An example Tau ran for you when you signed up\. It cost you nothing\./);
+    assert.doesNotMatch(list, /Cost: \$0\.00/);
+    if (count) assert.match(list, /Cost: \$0\.42/);
+  }
+});
 
 test('Research index shows the research loop scoreboard, escaped, and keeps it open while polling', async () => {
   const board = {total: {runs: 3, explored: 24, gated: 5, passed: 1, holdout_passed: 0, cost_usd: 30,
@@ -2474,7 +2538,7 @@ test('the Overview autopilot card and panel say where it may trade, with a Chang
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(dashboardData());
     if (path === '/api/autopilot/status') return response(status);
-    if (path === '/api/settings') return response({ok: true});
+    if (path === '/api/settings') { status = {...status, autopilot: true, mode: 'paper'}; return response({ok: true}); }  // the server now reports it on
     if (path === '/api/models') return response({models: [], default: ''});
     if (path.startsWith('/api/chat')) return response({messages: []});
     throw new Error('Unexpected offline request: ' + path);

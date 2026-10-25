@@ -167,6 +167,19 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(f.trackRecordPanel({...m, label: 'Paper'}, 'paper', th), /sandbox/);
   });
 
+  test(`${name}: the seeded example's strategies and session say the app ran them for free`, async () => {
+    const f = frontend({fetchImpl: path => {
+      assert.equal(path, '/api/runs/5?after=0');
+      return response({run: {id: 5, prompt: 'Random walk', status: 'succeeded', market: 'btc15m', direction: 'random_walk', example: true,
+        hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T10:00:00Z'}, events: [], strategies: []});
+    }});
+    const tag = /<span class="mk quiet example-tag" title="An example Tau ran for you when you signed up\. It cost you nothing\.">Example<\/span>/;
+    assert.match(f.strategySlip(detailStrategy({id: 49, title: 'Walk', example: true}), null, {}), tag);
+    assert.doesNotMatch(f.strategySlip(detailStrategy({id: 50, title: 'Mine'}), null, {}), /example-tag/);
+    await f.viewRun(5);
+    assert.match(f.root.querySelector('#runboard').innerHTML, /An example Tau ran for you when you signed up\. It cost you nothing\./);
+  });
+
   test(`${name}: the Deploy board never adds paper dollars to real ones`, async () => {
     const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
       realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});
