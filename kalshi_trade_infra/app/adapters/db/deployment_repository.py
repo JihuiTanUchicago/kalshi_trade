@@ -103,7 +103,8 @@ def paper_fills_for_gate(cur, user_id: int, strategy_id: int, ref_prefix: str = 
 def track_record_rows(cur, user_id: int) -> List[Dict]:
     """Every trade in the user's book for the track record page (app/track_record.py): one row per
     (mode, deployment, entry fill). Partial-exit slices share the entry's order_ref and are summed;
-    `open_slices` > 0 marks a trade not yet fully closed. A row with no order_ref is its own trade.
+    `open_slices` > 0 marks a trade not yet fully closed; its `pnl` is what the sold slices already
+    realized and `open_cost` what is still held at cost. A row with no order_ref is its own trade.
     One pass over idx_pos_user; the strategy title rides along so the page needs no second query."""
     cur.execute(
         """SELECT p.mode, MAX(d.strategy_id) AS strategy_id, MAX(s.title) AS title, MAX(s.market) AS market,
@@ -112,6 +113,7 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
                   COALESCE(SUM(p.pnl),0) AS pnl,
                   COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0) AS fees,
                   COALESCE(SUM(p.qty * p.entry_price),0) AS cost,
+                  COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price END),0) AS open_cost,
                   MIN(p.opened_at) AS opened_at, MAX(p.closed_at) AS closed_at
            FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
            LEFT JOIN app_strategies s ON s.id=d.strategy_id
