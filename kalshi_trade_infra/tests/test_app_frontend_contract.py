@@ -225,3 +225,16 @@ def test_me_exposes_perps_live_available(monkeypatch):
     assert server.me(context())['perps_live_available'] is False
     monkeypatch.setattr(server.kalshi_perps_trading, 'enabled', lambda: True)
     assert server.me(context())['perps_live_available'] is True
+
+
+@pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
+def test_every_market_has_a_short_label(bundle):
+    # A market missing from MKT_SHORT falls back to its long label, which reads oddly in
+    # filters and cards next to the short ones ("Bitcoin 15-minute, per-second data").
+    import re
+    from pathlib import Path
+    from app import markets
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / bundle).read_text()
+    block = src[src.index('const MKT_SHORT = {'):]
+    keys = set(re.findall(r'(\w+):', block[:block.index('};')]))
+    assert set(markets.MARKETS) - keys == set()
