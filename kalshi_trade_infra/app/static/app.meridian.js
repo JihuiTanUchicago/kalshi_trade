@@ -2686,7 +2686,6 @@
     await loadBoard();
     poll(loadBoard, 10000);
   }
-  const confirmAutopilot = { armed: false };
 
   // ---------- track record ----------
   // What an allocator would check: realized results from closed trades only, one money bucket at a
@@ -3549,8 +3548,8 @@
     const sw = box.querySelector('#apf-apswitch');
     sw.onchange = async () => {
       const on = sw.checked;
-      if (on && !confirmAutopilot.armed) { sw.checked = false; confirmAutopilot.armed = true; box.querySelector('#apf-ap-copy').innerHTML = '<b>Turn on autopilot?</b>Flip again to confirm. The agent will act on paper strategies without asking you first.'; setTimeout(() => (confirmAutopilot.armed = false), 6000); return; }
-      confirmAutopilot.armed = false;
+      // One flip, like the dashboard card and the empty-page nudges: paper-only and undone by flipping
+      // back. Real money keeps its own typed LIVE AUTOPILOT confirm below.
       try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; } catch (e) { sw.checked = !on; alert0(e.message); return; }
       refreshAutopilot(box);
     };
@@ -3619,7 +3618,7 @@
     const ap = box.querySelector('#apf-ap'); if (ap) ap.classList.toggle('on', !!on);
     const sw = box.querySelector('#apf-apswitch'); if (sw && document.activeElement !== sw) sw.checked = !!on;
     const copy = box.querySelector('#apf-ap-copy');
-    if (copy && !confirmAutopilot.armed) copy.innerHTML = on
+    if (copy) copy.innerHTML = on
       ? '<b>Autopilot</b>Researches, deploys and tunes paper strategies on its own, and adjusts your risk &amp; execution controls within safe bounds. It never touches live money without the step below.'
       : '<b>Autopilot</b>Off — the agent only proposes (research, deploys, risk/execution/parameter changes); you approve each one.';
     if (!d) return;
