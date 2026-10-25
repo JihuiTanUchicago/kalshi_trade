@@ -30,6 +30,11 @@ pytestmark = pytest.mark.skipif(os.getenv("APP_TEST_MYSQL") != "1", reason="need
 SIX = Decimal("0.000001")
 
 
+def _four(v) -> str:
+    """The receipt's 4-place amount: half up from the exact decimal."""
+    return str(Decimal(str(v)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+
+
 @pytest.fixture(scope="module")
 def conn():
     from app import schema
@@ -206,16 +211,13 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     rows = list(csv.reader(io.StringIO(data)))
     head = {r[0]: r[1] for r in rows[:5] if len(r) == 2}
     assert head["Account"] == "credits@example.com"
-    assert head["Current balance (USD)"] == "%.4f" % balance
-    assert head["Total spent (USD)"] == "%.4f" % spent_total
+    assert head["Current balance (USD)"] == _four(balance)
+    assert head["Total spent (USD)"] == _four(spent_total)
     table = rows[rows.index(["Date (UTC)", "Type", "Amount (USD)", "Memo"]) + 1:]
     assert len(table) == len(ledger)
     assert sorted(r[1] for r in table) == sorted(r["kind"] for r in ledger)
-    # Each row is its ledger amount to 4 places. The receipt formats through a float, so a debit that
-    # ends in exactly half a ten-thousandth (-4.666650) can print -4.6666: within 0.00005, never a cent.
-    assert sorted(r[2] for r in table) == sorted("%.4f" % float(r["amount_usd"]) for r in ledger)
-    for r in table:
-        assert any(abs(Decimal(r[2]) - Decimal(x["amount_usd"])) <= Decimal("0.00005") for x in ledger)
+    # Each row is its ledger amount to 4 places, rounded half up from the exact decimal (-4.666650 -> -4.6667).
+    assert sorted(r[2] for r in table) == sorted(_four(r["amount_usd"]) for r in ledger)
     assert _cents(sum(Decimal(r[2]) for r in table)) == _cents(balance)
     assert _cents(-sum(Decimal(r[2]) for r in table if r[1] == "usage")) == _cents(spent_total)
 
