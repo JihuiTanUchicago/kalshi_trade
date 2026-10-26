@@ -2271,6 +2271,16 @@ test('Tau: a running session counts its ideas and passes live, and a set-size on
   assert.match(f.root.querySelector('#runfigs').innerHTML, />5 hr</);
 });
 
+test('Tau: a running session quiet for hours reads its age in minutes and hours, not raw seconds', async () => {
+  const ago = (s) => new Date(Date.now() - s * 1000).toISOString();
+  for (const [secs, said] of [[3 * 3600 + 40, 'Last step 3 hr ago ·\u00a0still working'], [5 * 60 + 2, 'Last step 5 min ago ·\u00a0still working'], [20, 'active 20s ago']]) {
+    const f = await RUN_AT({status: 'running', started_at: ago(secs + 60)}, [{id: 1, kind: 'step', message: 'Loading data…', created_at: ago(secs)}]);
+    const said0 = f.root.querySelector('#rsiobs [data-livetext]').textContent;
+    assert.equal(said0, said);
+    assert.doesNotMatch(said0, /\d{3,}s|likely a long model call/);
+  }
+});
+
 test('Tau: a stopped session leaves no idea spinning on "Testing", and a provider failure is said once', async () => {
   const error = 'The research models are at capacity right now, so the session stopped. Start it again in a little while.';
   const f = await RUN_AT({status: 'failed', error}, [{id: 1, kind: 'hypothesis', message: 'Vol', data: {}, created_at: '2026-10-25T10:00:00Z'}]);

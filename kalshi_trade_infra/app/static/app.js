@@ -2983,7 +2983,11 @@
       const secs = Math.max(0, Math.round((Date.now() - lastAt) / 1000)), stalled = secs >= 75;
       host.classList.toggle('is-quiet', stalled);
       liveWrap.className = 'rsiobs-live' + (stalled ? ' is-stall' : '');
-      liveText.textContent = stalled ? `quiet ${secs}s — likely a long model call` : secs < 6 ? 'live' : `active ${secs}s ago`;
+      // A backtest or a long model call can go minutes without a line while the server still hears from the
+      // worker (a silent one is caught above, from the server's own clock). Raw seconds read "quiet 13246s —
+      // likely a long model call" three hours on; the age reads in minutes and hours, as on Meridian.
+      const age = secs < 60 ? `${secs}s` : secs < 3600 ? `${Math.floor(secs / 60)} min` : `${Math.floor(secs / 3600)} hr`;
+      liveText.textContent = secs < 6 ? 'live' : stalled ? `Last step ${age} ago ·\u00a0still working` : `active ${age} ago`;
     }
     // 1s ticker keeps "Ns ago" honest between the 2s polls and flips to the quiet state on its own.
     S.timers.push(setInterval(paintLive, 1000));
