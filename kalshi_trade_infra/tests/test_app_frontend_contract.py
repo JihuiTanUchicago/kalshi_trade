@@ -79,11 +79,15 @@ def test_unconfigured_billing_is_a_complete_readonly_frontend_payload(monkeypatc
     monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 98.4)
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a: 1.6)
     monkeypatch.setattr(server.repo, 'credit_rows', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE, research=1.2, autopilot_review=0.4))
     monkeypatch.setattr(server.billing, '_stripe', lambda *a, **k: pytest.fail('provider contacted'))
     data = server.billing_state(context())
     assert data['configured'] is False
     assert data['balance'] == 98.4 and data['spent'] == 1.6
     assert data['spent_7d'] == 1.6 and data['runway_days'] == 430.5
+    # The pace, read-only: the last day and the week by what spent it, beside the research floor.
+    assert data['spent_24h'] == 1.6 and data['spent_7d_by']['research'] == 1.2 and data['spent_7d_by']['autopilot_review'] == 0.4
+    assert data['min_run_balance'] == float(server.billing.MIN_RUN_BALANCE)
     assert data['cards'] == [] and data['ledger'] == []
     assert data['min_topup'] <= data['max_topup']
     assert data['autoreload_amount'] >= data['min_reload_amount']
@@ -93,6 +97,7 @@ def test_billing_runway_is_absent_without_recent_usage_or_balance(monkeypatch):
     monkeypatch.setattr(server.billing, 'configured', lambda: False)
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
     monkeypatch.setattr(server.repo, 'credit_rows', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE))
     seen = []
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: seen.append(since) or (0.0 if since else 5.0))
     monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 15.0)
@@ -158,7 +163,11 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
     monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 10.0)
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a: 0.0)
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a, **k: dict(_NO_USAGE))
     return ctx
+
+
+_NO_USAGE = {'research': 0.0, 'autopilot_research': 0.0, 'autopilot_review': 0.0, 'chat': 0.0, 'other': 0.0}
 
 
 def test_autopilot_status_flags_billing_blocked(monkeypatch):
@@ -386,10 +395,15 @@ def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apar
                         lambda cur, uid, since: seen.append((uid, since)) or {'started': 1, 'pnl': -3.456, 'trades': 4})
     week = server.autopilot_status(ctx)['week']
     assert week == {'research_credits': 7.26, 'tested': 41, 'passed': 2, 'paper_started': 1,
-                    'paper_pnl': -3.46, 'paper_trades': 4}
+                    'paper_pnl': -3.46, 'paper_trades': 4,
+                    'checkin_credits': 0.0, 'credits_left': 10.0, 'runway_days': None}
     assert seen[0][0] == 7 and abs((server.repo.now_utc() - seen[0][1]).total_seconds() - 7 * 86400) < 5
     off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
     assert 'week' not in off and len(seen) == 1  # an off autopilot reads nothing extra
+    # Its check-ins bill too, and the balance lasts as long as the Billing page says at the week's pace.
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a, **k: dict(_NO_USAGE, research=6.58, autopilot_review=0.424))
+    week = server.autopilot_status(ctx)['week']
+    assert week['checkin_credits'] == 0.42 and week['credits_left'] == 10.0 and week['runway_days'] == 10.0
 
 
 def test_research_estimate_uses_own_median_then_the_typical_one_per_model(monkeypatch):
@@ -402,9 +416,12 @@ def test_research_estimate_uses_own_median_then_the_typical_one_per_model(monkey
             ('haiku-4-5', 0.2), ('haiku-4-5', 0.3)]
     monkeypatch.setattr(server.repo, 'recent_session_costs', lambda cur, since: reads.append(since) or rows)
     monkeypatch.setattr(server, '_TYPICAL_SESSION_COST', [0.0, {}])
+    monkeypatch.setattr(server.repo, 'forever_session_rates', lambda *a: [])
+    monkeypatch.setattr(server, '_TYPICAL_FOREVER_RATE', [0.0, {}])
     out = server.research_estimate(context())
     # The default model's NULL runs count as that model; Haiku has too few sessions to show.
-    assert out == {'yours': None, 'sessions': 2, 'typical': {server.catalog.DEFAULT_KEY: 3.0}}
+    assert out == {'yours': None, 'sessions': 2, 'typical': {server.catalog.DEFAULT_KEY: 3.0},
+                   'per_hour': {'yours': None, 'typical': {}}}
     own[0] = own[1]
     assert server.research_estimate(context())['yours'] == 3.0  # median of 1, 2, 4, 9
     assert len(reads) == 1  # the server-wide medians are cached

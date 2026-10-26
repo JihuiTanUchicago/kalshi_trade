@@ -29,8 +29,13 @@ def add_credit(cur, user_id: int, kind: str, amount_usd, memo: str,
 
 
 def credit_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
+    """The newest ledger rows. A usage row also carries the kind of run it billed (`run_kind`:
+    research, review, chat; NULL with no run) and whether the autopilot started it (`run_brief`),
+    so Billing can say what each charge was for. Read through the run's primary key."""
     cur.execute(
-        "SELECT kind, amount_usd, memo, created_at FROM app_credit_ledger WHERE user_id=%s ORDER BY id DESC LIMIT %s",
+        "SELECT l.kind, l.amount_usd, l.memo, l.created_at, r.kind AS run_kind, r.brief AS run_brief "
+        "FROM app_credit_ledger l LEFT JOIN app_agent_runs r ON r.id = l.run_id "
+        "WHERE l.user_id=%s ORDER BY l.id DESC LIMIT %s",
         (user_id, limit),
     )
     return cur.fetchall()
@@ -59,6 +64,45 @@ def research_spent_since(cur, user_id: int, since) -> float:
         (user_id, since),
     )
     return float(cur.fetchone()["s"])
+
+
+def usage_by_source(cur, user_id: int, since) -> Dict[str, float]:
+    """Usage dollars since `since`, split by what spent them: research the user started
+    ("research"), research the autopilot started ("autopilot_research", a brief run), autopilot
+    check-ins ("autopilot_review"), chat ("chat") and anything else ("other"). The parts add up to
+    credit_spent_total over the same window. One grouped read through idx_credit_user_kind_time."""
+    cur.execute(
+        "SELECT r.kind AS run_kind, COALESCE(r.brief, 0) AS brief, COALESCE(-SUM(l.amount_usd),0) AS s "
+        "FROM app_credit_ledger l LEFT JOIN app_agent_runs r ON r.id = l.run_id "
+        "WHERE l.user_id=%s AND l.kind='usage' AND l.created_at >= %s GROUP BY r.kind, COALESCE(r.brief, 0)",
+        (user_id, since),
+    )
+    out = {"research": 0.0, "autopilot_research": 0.0, "autopilot_review": 0.0, "chat": 0.0, "other": 0.0}
+    for r in cur.fetchall():
+        kind = r["run_kind"]
+        key = (("autopilot_research" if int(r["brief"] or 0) else "research") if kind == "research"
+               else "autopilot_review" if kind == "review" else "chat" if kind == "chat" else "other")
+        out[key] += float(r["s"])
+    return out
+
+
+def forever_session_rates(cur, since, user_id: Optional[int] = None, limit: int = 500) -> List[Tuple[Optional[str], float, float]]:
+    """(model, dollars, hours) for each run-until-stopped research session created since `since`
+    (one user's, or every user's), where hours is the span from its first debit to its last. Only
+    sessions that billed for at least half an hour, so a rate is never read off one call. Newest
+    first; callers keep only rates and medians."""
+    sql = ("SELECT r.id, r.model, -SUM(l.amount_usd) AS s, "
+           "TIMESTAMPDIFF(SECOND, MIN(l.created_at), MAX(l.created_at)) AS secs "
+           "FROM app_agent_runs r JOIN app_credit_ledger l ON l.run_id = r.id AND l.kind='usage' "
+           "WHERE r.kind='research' AND r.run_forever=1 AND r.created_at >= %s")
+    params: Tuple = (since,)
+    if user_id is not None:
+        sql += " AND r.user_id=%s"
+        params += (user_id,)
+    sql += " GROUP BY r.id, r.model HAVING secs >= 1800 ORDER BY r.id DESC LIMIT %s"
+    cur.execute(sql, params + (int(limit),))
+    return [(r["model"], float(r["s"]), int(r["secs"]) / 3600.0) for r in cur.fetchall()
+            if r["s"] is not None and float(r["s"]) > 0]
 
 
 def runs_spent(cur, user_id: int, run_ids: Iterable[int]) -> Dict[int, float]:

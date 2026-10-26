@@ -204,6 +204,17 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert sorted(round(r["amount"], 6) for r in state["ledger"]) == sorted(round(float(r["amount_usd"]), 6) for r in ledger)
     assert _cents(sum(Decimal(str(r["amount"])) for r in state["ledger"])) == _cents(balance)
     assert state["runway_days"] == round(state["balance"] / (state["spent_7d"] / 7), 1)
+    # The week split by what spent it adds up to the week, and the chat turn is its own part.
+    by = state["spent_7d_by"]
+    assert _cents(sum(Decimal(str(v)) for v in by.values())) == _cents(state["spent_7d"])
+    assert _cents(by["research"]) == _cents(research_usd) and _cents(by["chat"]) == _cents(per_run[chat_id])
+    assert state["spent_24h"] == state["spent_7d"]  # everything here happened just now
+    # Each usage line says what it was for and the model's name; the invokable id never shows.
+    used = [r for r in state["ledger"] if r["kind"] == "usage"]
+    assert {r["item"] for r in used} == {"Research session", "Chat"}
+    assert all(r["model"] and "anthropic" not in r["memo"] and "us." not in r["model"] for r in used)
+    week = server._autopilot_week(cur, uid, status["research"])
+    assert week["credits_left"] == round(state["balance"], 2) and week["checkin_credits"] == 0.0
 
     # -- the receipt CSV -------------------------------------------------------------------------
     kind, fname, ctype, data = server.billing_receipt(ctx())

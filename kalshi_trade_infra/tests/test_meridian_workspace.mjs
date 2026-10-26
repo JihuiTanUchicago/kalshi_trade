@@ -4081,3 +4081,68 @@ test('Meridian: the autopilot pill keeps keyboard focus through a status repaint
   assert.equal(f.document.activeElement, box.querySelector('.apf-pill'));
   assert.match(box.querySelector('.apf-pill').innerHTML, /paper/);
 });
+
+// -- Spend: what each charge was for, how fast credits go, and what happens when they run out ------
+
+test('Billing shows the spend pace, what spent it, and what each line was for, never a model id', async () => {
+  const f = billingPage(cardedBilling({spent_24h: 1.4, spent_7d_by: {research: 4.2, autopilot_research: 5.1, autopilot_review: 0.5, chat: 0, other: 0}, min_run_balance: 1,
+    ledger: [{kind: 'usage', amount: -0.2104, memo: 'Autopilot research · Claude Opus 4.6', item: 'Autopilot research', model: 'Claude Opus 4.6', created_at: '2026-10-25T17:00:00Z'}]}));
+  await f.viewBilling(); await flush();
+  const figs = f.root.querySelector('#bfigs').innerHTML;
+  assert.match(figs, /Spent, last 7 days[\s\S]*\$9\.80[\s\S]*\$1\.40 in the last 24 hours ·\u00a0\$47\.58 all time/);
+  assert.equal(f.root.querySelector('#bsplit').innerHTML, 'Last 7 days: autopilot research $5.10 ·\u00a0your research sessions $4.20 ·\u00a0autopilot check-ins $0.50.');
+  const row = f.root.querySelector('.t-ledger tbody tr').innerHTML;
+  assert.match(row, /Autopilot research<div class="sub-fig">Claude Opus 4\.6<\/div>/);
+  assert.match(row, /<time datetime="2026-10-25T17:00:00Z">[^<]*\d\d:\d\d [A-Z+\-0-9:]+<\/time>/);  // a time, with its zone
+  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /anthropic|list price/i);
+  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /role="status"/);  // enough credits: no out-of-credits notice
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.bill-detail \.t-dep \{ min-width: 0; \}/);  // Amount stays in view beside Add credits
+});
+
+test('Billing under the research floor says research stopped and the next step', async () => {
+  const f = billingPage(cardedBilling({balance: 0.4, min_run_balance: 1, auto_reload: false}));
+  f.S.me.user.autopilot = true;
+  await f.viewBilling(); await flush();
+  const main = f.root.querySelector('main').innerHTML;
+  assert.match(main, /You have \$0\.40 in credits\. New research needs at least \$1\.00 to start, so none is starting and autopilot is paused\. Add credits here, or turn on auto-reload so it doesn’t stop again\. Autopilot picks up again on its own\./);
+  assert.match(f.root.querySelector('#bfigs').innerHTML, /neg/);  // the balance reads as a problem
+  assert.match(f.root.querySelector('#autorel-when').innerHTML, /^<b>Off\.<\/b> Below \$1\.00 no new research starts and autopilot pauses; a session already running stops at \$0\./);
+  const on = billingPage(cardedBilling({balance: -0.3, min_run_balance: 1}));
+  await on.viewBilling(); await flush();
+  assert.match(on.root.querySelector('main').innerHTML, /You’re out of credits\.[\s\S]*Auto-reload is on but hasn’t topped you up: add credits here, or check your card\./);
+});
+
+test('run-until-stopped says what an hour costs at recent rates, how long the balance covers, and when it stops', async () => {
+  let f = researchFrontend([], {estimate: {yours: 0.42, sessions: 4, typical: {}, per_hour: {yours: 1.25, typical: {}}}});
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 23.4, auto_reload: null};
+  await f.viewResearch(); await flush();
+  const cost = () => f.root.querySelector('#rcost');
+  assert.equal(cost().textContent, 'Each round of ideas usually costs about $0.42 (your recent sessions); it keeps starting new rounds until you stop it. '
+    + 'At recent rates it costs about $1.25 an hour (your recent sessions). Your $23.40 covers about 19 hours. It stops by itself if your credits run out.');
+  f = researchFrontend([], {estimate: {yours: null, sessions: 0, typical: {}, per_hour: {yours: null, typical: {offline: 3}}}});
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 100, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
+  await f.viewResearch(); await flush();
+  assert.equal(cost().textContent, 'At recent rates it costs about $3.00 an hour (recent sessions on this model). Your $100.00 covers about 33 hours. Auto-reload adds $20.00 when your balance falls to $5.00.');
+});
+
+test('the autopilot card puts credits left and the only limit beside its spend, and a credits pause says how much it needs', async () => {
+  const week = {research_credits: 0.5, tested: 12, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0, checkin_credits: 0.42, credits_left: 23.4, runway_days: 6.1};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData());
+    if (path === '/api/autopilot/status') return response({...apStatus, week});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 23.4, min_run_balance: 1, auto_reload: null};
+  f.S.me.user.autopilot = true;
+  await f.viewDashboard(); await flush();
+  f.S.ap = {...apStatus, week}; f.paintDashAp();
+  const card = f.root.querySelector('#dash-ap').innerHTML;
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money ·\u00a0plus \$0\.42 on its check-ins<\/small><\/dd>/);
+  assert.match(card, /Credits left: <b>\$23\.40<\/b>, about 6 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
+  f.S.ap = {...apStatus, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
+  f.clearTimers();
+});

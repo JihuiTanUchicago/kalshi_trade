@@ -1886,6 +1886,8 @@ body.landing-body .apf { display: none; }
 .ap-week dd .pos { color: #0E5C33; }
 .ap-week dd .neg { color: #8A1021; }
 .ap-week-note { margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.ap-week-left { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: var(--ink-2); }
+.ap-week-left b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .apf .ap-week dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #apf-week:empty { display: none; }
 @media (max-width: 760px) { .ap-week dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; } }
@@ -2003,6 +2005,10 @@ body.landing-body .apf { display: none; }
 /* Billing: in one column (phones, narrow windows), Add credits sits right under the balance, not below every ledger line. */
 @media (max-width: 1080px) { .bill-detail > aside { order: -1; } }
 .autorel-when { margin-top: 8px; line-height: 1.45; }
+/* The card list and the ledger are 3-4 short columns: the tables' 620px floor scrolled Amount out of the
+   column beside Add credits (and the hot-markets rail) at desktop width. */
+.bill-detail .t-dep { min-width: 0; }
+.bill-split { margin: 10px 0 14px; }
 .ledger-key { margin: 10px 0; }
 
 /* Keyboard focus you can see. `input:focus { outline: none }` (fields show focus with their border)

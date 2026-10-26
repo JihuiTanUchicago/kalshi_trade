@@ -1905,6 +1905,17 @@
       ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
       : `Usually about ${usd(v)} (${basis}).`;
   }
+  // Run-until-stopped has no natural size, so say its pace: about what an hour costs at recent rates
+  // (/api/research/estimate per_hour, the user's own else the model's typical) and how long the
+  // balance covers that. It stops by itself only when credits run out, unless auto-reload tops up.
+  function foreverRateLine(hourly, own, me) {
+    let s = hourly == null ? '' : `At recent rates it costs about ${usd(hourly)} an hour (${own ? 'your recent sessions' : 'recent sessions on this model'}).`;
+    if (!me || !me.billing_enabled) return s;
+    const bal = +me.credit_balance || 0, h = hourly > 0 ? bal / hourly : null;
+    if (h != null && bal > 0) s += ` Your ${usd(bal)} covers ${h < 1 ? 'less than an hour' : h < 48 ? `about ${Math.round(h)} hour${Math.round(h) === 1 ? '' : 's'}` : `about ${Math.round(h / 24)} days`}.`;
+    const ar = me.auto_reload;
+    return (s + (ar ? ` Auto-reload adds ${usd(ar.amount)} when your balance falls to ${usd(ar.threshold)}.` : ' It stops by itself if your credits run out.')).trim();
+  }
   async function viewResearch() {
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
@@ -1990,10 +2001,13 @@
       if (!rc) return;
       let est = null;
       const sync = syncCost = () => {
-        const own = !!est && est.yours != null;
-        const v = !est ? null : own ? est.yours : (est.typical || {})[(msel && msel.value) || mdl.default];
-        rc.hidden = v == null;
-        rc.textContent = v == null ? '' : sessionCostLine(+v, !!(rf && rf.checked), own);
+        const own = !!est && est.yours != null, key = (msel && msel.value) || mdl.default;
+        const v = !est ? null : own ? est.yours : (est.typical || {})[key];
+        const forever = !!(rf && rf.checked), ph = (est && est.per_hour) || {};
+        const hourly = ph.yours != null ? ph.yours : (ph.typical || {})[key];
+        const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ph.yours != null, me) : '';
+        rc.hidden = v == null && !pace;
+        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace].filter(Boolean).join(' ');
       };
       if (msel) msel.addEventListener('change', sync);
       api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; }).then(sync);
@@ -4155,6 +4169,10 @@
     if (d.demo && d.demo.health) needs.push(d.demo.health.need ? `Demo can’t trade: it needs ${esc(d.demo.health.need)}.${actionLink(d.demo.health)}` : demoHealthLine(d.demo.health));
     if (d.reconcile && d.reconcile.length) needs.push(`${plural(d.reconcile.length, 'live position disagrees', 'live positions disagree')} with Kalshi. <a href="/funds">Check Funds</a>`);
     if (failed) needs.push(`<a href="/research">${plural(failed, 'research session', 'research sessions')} failed</a>`);
+    // Under the floor a research session needs, nothing new researches (autopilot included) until they add credits.
+    const me = S.me || {};
+    if (me.billing_enabled && !me.needs_card && me.min_run_balance != null && me.credit_balance < me.min_run_balance)
+      needs.push(`Credits are at ${usd(me.credit_balance)}: new research needs ${usd(me.min_run_balance)} to start. <a href="/billing">Add credits</a>`);
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
       <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>
@@ -4201,7 +4219,8 @@
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
     ].filter(Boolean);
     const now = d.billing_blocked
-      ? `Paused: <a href="/billing">${d.billing_reason === 'card' ? 'add a payment method' : 'add credits'}</a> so it can keep researching.`
+      ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.'
+        : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.`)
       : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc((d.story && d.story[0]) || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
@@ -4292,11 +4311,23 @@
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>real money</small></dd></div>
+      <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>real money${+w.checkin_credits >= 0.01 ? ` · plus ${usd(w.checkin_credits)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot's paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
-    </dl><p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
+    </dl>${apCreditsLeft(w)}<p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
+  }
+  // Why a credits pause happened, in the server's figure: research needs this much to start.
+  const apFloorText = () => (S.me && S.me.min_run_balance != null ? `starting research needs ${usd(S.me.min_run_balance)} in credits.` : 'it’s out of credits.');
+  // Beside the week's spend: what is left, how long it lasts at that pace (the Billing page's runway),
+  // and the only limit there is. Autopilot has no spending budget of its own: it researches until the
+  // balance is under what a session needs to start, then pauses.
+  function apCreditsLeft(w) {
+    const me = S.me;
+    if (!w || w.credits_left == null || !me || !me.billing_enabled) return '';
+    const pace = w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at this week’s pace` : '';
+    const floor = me.min_run_balance != null ? ` until your balance is under ${usd(me.min_run_balance)}, then pauses` : '';
+    return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}. It has no daily spending cap: it uses credits${floor}${me.auto_reload ? ` (auto-reload adds ${usd(me.auto_reload.amount)} at ${usd(me.auto_reload.threshold)})` : ''}. <a href="/billing">Billing</a> lists every charge.</p>`;
   }
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
   // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
@@ -4773,7 +4804,7 @@
         // Autopilot is on but can't spend — tell the user WHY it's quiet (so it doesn't look broken).
         gates.innerHTML = d.billing_reason === 'card'
           ? 'Autopilot is paused — <a href="/billing">add a payment method</a> to let it run.'
-          : 'Autopilot is paused — <a href="/billing">add credits</a> to let it keep researching.';
+          : `Autopilot is paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.`;
         gates.classList.add('warn');
       } else if (d.credits_low_days != null) {
         gates.innerHTML = `Credits run out ${d.credits_low_days < 1 ? 'within a day' : 'in about ' + Math.round(d.credits_low_days) + ' day' + (Math.round(d.credits_low_days) === 1 ? '' : 's')} at this week's pace, then research pauses. <a href="/billing">Add credits or turn on auto-reload</a>.`;
@@ -4891,22 +4922,32 @@
   const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
   async function viewBilling() {
     shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token for the model you pick. Paper and live trading themselves are free. The <a href="/research">research form</a> shows what a session usually costs before you start.') +
-      '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl>', loading(360));
+      '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl><p class="hint bill-split" id="bsplit"></p>', loading(360));
     let stripe = null, card = null;
     const load = async () => {
       const d = await api('/api/billing');
+      // Below the research floor no new research starts, so the balance reads as a problem, not a gain.
+      const low = d.configured && d.min_run_balance != null && d.balance < d.min_run_balance;
       root.querySelector('#bfigs').innerHTML =
-        fig('Credit balance', usd(d.balance), { v: d.balance > 0 ? 1 : (d.balance < 0 ? -1 : 0) }) +
-        fig('Spent on usage', usd(d.spent), { small: 'research and chat' }) +
+        fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : (d.balance > 0 ? 1 : 0) }) +
+        fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(' · ') }) +
         (d.runway_days != null
           ? fig('Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${usd(d.spent_7d)} a week` })
           : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' }));
+      const split = spendSplit(d.spent_7d_by);
+      root.querySelector('#bsplit').innerHTML = split ? `Last 7 days: ${split}.` : '';
       const feeNote = `Credits plus a ${d.topup_fee_pct}% purchase fee.`;
       const payCard = d.cards.find((c) => c.id === d.default_pm) || d.cards[0];
       const payName = payCard ? `your ${esc((payCard.brand || 'card').toUpperCase())} •••• ${esc(payCard.last4 || '')}` : 'your card';
       const reloadWhen = (on, amount, threshold) => on
         ? `<b>On.</b> When a research or chat charge takes your balance to ${usd(threshold)} or less, we charge ${payName} for ${usd(amount)} of credits plus the ${d.topup_fee_pct}% purchase fee.`
-        : '<b>Off.</b> When your credits run low, new research sessions won’t start until you add more.';
+        : d.min_run_balance != null
+          ? `<b>Off.</b> Below ${usd(d.min_run_balance)} no new research starts and autopilot pauses; a session already running stops at $0. Add credits and it all picks up again.`
+          : '<b>Off.</b> When your credits run low, new research sessions won’t start until you add more.';
+      // Out of credits (under the floor a research session needs): say what stopped and the next step.
+      const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
+      const lowNote = !low ? '' : `<div class="notice" role="status">${ICON.warn}<span>${d.balance <= 0 ? 'You’re out of credits' : `You have ${usd(d.balance)} in credits`}. New research needs at least ${usd(d.min_run_balance)} to start, so none is starting${apOn ? ' and autopilot is paused' : ''}. ${
+        !d.cards.length ? 'Add a card, then add credits.' : d.auto_reload ? 'Auto-reload is on but hasn’t topped you up: add credits here, or check your card.' : 'Add credits here, or turn on auto-reload so it doesn’t stop again.'}${apOn ? ' Autopilot picks up again on its own.' : ''}</span></div>`;
       const cardLines = d.cards.length
         ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
             <td class="name" data-lab="Card">${esc((c.brand || 'card').toUpperCase())} •••• ${esc(c.last4 || '')}</td>
@@ -4917,7 +4958,7 @@
       const main = !d.configured
         ? `<div class="notice">${ICON.warn}<span>Payments aren’t enabled on this server yet. You can still use your free credits.</span></div>
            <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d.ledger, d.topup_fee_pct)}</section>`
-        : `<div class="detail bill-detail">
+        : `${lowNote}<div class="detail bill-detail">
             <div>
               <section class="panel"><h3>Payment method</h3><div id="cards">${cardLines}</div>
                 <div id="card-add" style="margin-top:14px">
@@ -5014,16 +5055,22 @@
   // A charge under a cent (one short model call) shows three decimals instead of a misleading −$0.00.
   const ledgerAmount = (v) => { const n = +v; return n && Math.abs(n) < 0.005 ? (n < 0 ? '−' : '+') + '$' + Math.abs(n).toFixed(3) : usd(v, true); };
   const USAGE_PREFIX = /^Agent usage\s\u00b7\s/;  // the server's memo, "Agent usage" then a middle dot
+  // A usage line: what it was for (`item`: research session, autopilot research or check-in, chat)
+  // over the model's name (`model`). The server sends both and never the model's internal id.
   function ledgerNote(r, feePct) {
-    if (r.kind === 'usage') return r.memo ? esc(r.memo.replace(USAGE_PREFIX, '')) : '';  // the model; the key above says it's one call
+    if (r.kind === 'usage') return r.model ? esc(r.model) : r.memo && !r.item ? esc(r.memo.replace(USAGE_PREFIX, '')) : '';
     if ((r.kind === 'topup' || r.kind === 'autoreload') && feePct != null) return `Card charged for these credits plus the ${esc(feePct)}% purchase fee`;
     return '';
   }
+  // The week's usage by what spent it (/api/billing spent_7d_by), biggest first; '' when nothing did.
+  const SPEND_SOURCE = { research: 'your research sessions', autopilot_research: 'autopilot research', autopilot_review: 'autopilot check-ins', chat: 'chat', other: 'other agent calls' };
+  const spendSplit = (by) => Object.entries(by || {}).filter(([k, v]) => SPEND_SOURCE[k] && +v >= 0.005)
+    .sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SPEND_SOURCE[k]} ${usd(v)}`).join(' \u00b7\u00a0');
   function ledgerTable(rows, feePct) {
     if (!rows.length) return '<p class="hint">No credit activity yet.</p>';
     return `<p class="hint ledger-key">Newest first. Research and chat bill one line per model call, named by its model. The receipt has every line, with exact amounts.</p><div class="sheet"><table class="table stack t-dep t-ledger"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${rows.map((r) => `<tr>
-      <td class="hint" data-lab="When">${when(r.created_at)}</td>
-      <td class="name" data-lab="Item">${esc(KIND_LABEL[r.kind] || r.kind)}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
+      <td class="hint" data-lab="When"><time datetime="${esc(r.created_at)}">${settleAt(r.created_at)}</time></td>
+      <td class="name" data-lab="Item">${esc((r.kind === 'usage' && r.item) || KIND_LABEL[r.kind] || r.kind)}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
       <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${ledgerAmount(r.amount)}</span></td></tr>`).join('')}</tbody></table></div>`;
   }
 
