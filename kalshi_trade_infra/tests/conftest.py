@@ -173,4 +173,8 @@ def _fresh_server_shared_cache():
     if server is not None:
         server._SHARED.clear()
         server._LAST_DREAM.clear()
+    # The position sums the polled pages keep (services.book_memo) are per user id, and fake cursors reuse ids.
+    book_memo = sys.modules.get("app.services.book_memo")
+    if book_memo is not None:
+        book_memo.clear()
     yield

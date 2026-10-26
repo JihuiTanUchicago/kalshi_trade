@@ -63,7 +63,8 @@ from app.adapters.db.position_repository import (  # noqa: F401
     STOP_EXIT_REASONS, _newest_closed, book_partial_exit, claim_position_close, close_position, closed_book_totals,
     closed_trade_counts, closed_trades_for_export, daily_pnl,
     deployment_realized_series, early_exit_scorecard, insert_closed_position, insert_position,
-    market_has_open_positions, open_positions, orphaned_open_positions, positions_for_strategy, realized_pnl,
+    market_has_open_positions, open_positions, orphaned_open_positions, positions_for_strategy, positions_version,
+    realized_pnl, realized_pnl_between,
     score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions, user_positions_in_ticker,
 )
 from app.adapters.db.paper_ledger_repository import (  # noqa: F401
@@ -78,13 +79,13 @@ from app.adapters.db.demo_record_repository import (  # noqa: F401
     insert_demo_sweep,
 )
 from app.adapters.db.deployment_repository import (  # noqa: F401
-    _DEPLOYMENT_SELECT, _PAPER_SOURCE, activity_since, autopilot_paper_week, claim_decision, create_deployment, deployment_closed_stats,
+    DISPLAY_TOTALS, _DEPLOYMENT_SELECT, _PAPER_SOURCE, activity_since, autopilot_paper_week, claim_decision, create_deployment, deployment_closed_stats,
     deployment_closed_totals, deployment_order_refs, deployments_with_open_positions, get_deployment, list_deployments,
-    list_deployments_brief, list_deployments_for_display, paper_event_counts,
+    deployment_rows_for_display, deployment_strategies, list_deployments_brief, list_deployments_for_display, paper_event_counts,
     book_trade_stats, paper_fills_for_gate, paper_progress, paper_round_trips, paper_round_trips_by_strategy, paused_deployments_with_open_positions,
     running_code_paper_deployments, running_deployments, scan_outcome, scan_tally, set_deployment_scan, set_deployment_status,
     set_deployment_strategy,
-    track_record_rows,
+    track_record_deployments, track_record_join, track_record_rows, track_record_trades,
 )
 from app.adapters.db.email_prefs_repository import (  # noqa: F401
     community_email_recipients, mark_community_emailed, optional_email_address, set_email_opt_out,

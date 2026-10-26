@@ -33,7 +33,7 @@ from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
 from app import spec as specmod
-from app.services import backtest_check, gate_explain, trade_why
+from app.services import backtest_check, book_memo, gate_explain, trade_why
 from app import track_record
 from app import client_errors, webperf
 from app import worker
@@ -526,14 +526,16 @@ def dashboard(ctx: Ctx):
         u = p.get("unrealized")
         if u is not None and p.get("deployment_id") is not None:
             unreal_by_dep[p["deployment_id"]] = round(unreal_by_dep.get(p["deployment_id"], 0.0) + u, 2)
-    deps = repo.list_deployments_for_display(cur, ctx.uid)
+    # The reads summed from the positions alone are kept until the positions change (services.book_memo).
+    memo = book_memo.BookMemo(cur, ctx.uid)
+    deps = book_memo.deployments_for_display(memo)
     # Curves only for the deployments the Deployed table shows (a stopped one's history is not drawn).
-    curves = repo.deployment_curves(cur, ctx.uid, deployment_ids=[d["id"] for d in deps])
+    curves = book_memo.deployment_curves(memo, [d["id"] for d in deps])
     ledger = repo.paper_ledger_summary(cur, ctx.uid)  # balance, deposits and reset: one read
     balance, deposited = ledger["balance"], ledger["deposited"]
     visit, first = _visit_since(ctx.query.get("since"))
     # Every book's realized P&L and closed-trade count (today and since the last visit), in one read.
-    realized, closed, recent = repo.closed_book_totals(cur, ctx.uid, day, visit)
+    realized, closed, recent = book_memo.closed_book_totals(memo, day, visit)
     _BOOK_SHAPE[ctx.uid] = _book_shape(closed, len(open_pos))  # the track record's cache checks it
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
@@ -546,7 +548,7 @@ def dashboard(ctx: Ctx):
         deposited=round(deposited, 2),
         total_pnl=round(equity - deposited, 2),
         roi=round((equity - deposited) / deposited, 4) if deposited > 0 else None,
-        daily=repo.daily_pnl(cur, ctx.uid, "paper"),
+        daily=book_memo.daily_pnl(memo, "paper"),
         # total_pnl restarts at a reset (the ledger is wiped), so its label says "since reset", not
         # "all time", while the track record still counts every closed trade.
         reset_at=ledger["reset_at"],
@@ -641,9 +643,9 @@ def get_track_record(ctx: Ctx):
     if (hit and hit[2] >= TRACK_RECORD_CACHE_MIN_TRADES and time.time() - hit[0] < TRACK_RECORD_TTL
             and hit[3] == shape):
         return hit[1]
-    rows = repo.track_record_rows(ctx.cur, ctx.uid)
-    val = track_record.build(rows)
-    _TRACK_RECORD[ctx.uid] = (time.time(), val, len(rows), shape)
+    val = book_memo.track_record(ctx.cur, ctx.uid)  # the trades and their buckets kept until the book changes
+    n = sum(int(m.get("trades") or 0) for m in (val.get("modes") or {}).values())
+    _TRACK_RECORD[ctx.uid] = (time.time(), val, n, shape)
     return val
 
 
@@ -1058,7 +1060,7 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     if not any(c.get("deployed") for c in cards):
         return
     real: Dict[int, Dict[str, Dict]] = {}
-    for d in repo.list_deployments_for_display(cur, uid):
+    for d in book_memo.deployments_for_display(book_memo.BookMemo(cur, uid)):
         r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"], {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
         r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
         r["pnl"] += float(d["realized_pnl"] or 0)
@@ -1336,7 +1338,8 @@ BACKTEST_CHECK_TTL = 60.0  # seconds; a book's figures move only when one of its
 _BACKTEST_CHECKS: Dict[Tuple[int, Tuple[int, ...]], Tuple[float, Dict[int, List[Dict]]]] = {}
 
 
-def _backtest_checks(cur, uid: int, strategies: Dict[int, Dict]) -> Dict[int, List[Dict]]:
+def _backtest_checks(cur, uid: int, strategies: Dict[int, Dict],
+                     memo: Optional[book_memo.BookMemo] = None) -> Dict[int, List[Dict]]:
     """{strategy_id: [one comparison per book]} (services.backtest_check) for {strategy_id: a row with
     the strategy's spec and result}: each book's realized per-trade P&L and win rate against the
     strategy's backtest, never summed across books. A per-user TTL cache, since the Deploy board
@@ -1347,7 +1350,9 @@ def _backtest_checks(cur, uid: int, strategies: Dict[int, Dict]) -> Dict[int, Li
     hit = _BACKTEST_CHECKS.get(key)
     if hit and time.time() - hit[0] < BACKTEST_CHECK_TTL:
         return hit[1]
-    stats = repo.book_trade_stats(cur, uid, list(strategies))
+    # The Deploy board's sums for every strategy it lists are kept (book_memo); one strategy's are cheap.
+    stats = (book_memo.book_trade_stats(memo, list(strategies)) if memo is not None
+             else repo.book_trade_stats(cur, uid, list(strategies)))
     val = {sid: backtest_check.checks(stats.get(sid, {}), s.get("result"),
                                       ((s.get("spec") or {}).get("sizing") or {}).get("stake"))
            for sid, s in strategies.items()}
@@ -1402,10 +1407,11 @@ def strategy_dev_curve(ctx: Ctx):
 def list_deployments(ctx: Ctx):
     # Display reads: the deployments' totals summed before their rows are joined, and curves only
     # for the deployments listed (not every stopped one's history). Same payload as before.
-    deps = repo.list_deployments_for_display(ctx.cur, ctx.uid)
-    curves = repo.deployment_curves(ctx.cur, ctx.uid, deployment_ids=[d["id"] for d in deps])
-    checks = _backtest_checks(ctx.cur, ctx.uid, {d["strategy_id"]: d for d in deps})
-    roads = _deploy_roads(ctx.cur, ctx.uid, deps)
+    memo = book_memo.BookMemo(ctx.cur, ctx.uid)  # position sums kept until the positions change
+    deps = book_memo.deployments_for_display(memo)
+    curves = book_memo.deployment_curves(memo, [d["id"] for d in deps])
+    checks = _backtest_checks(ctx.cur, ctx.uid, {d["strategy_id"]: d for d in deps}, memo)
+    roads = _deploy_roads(ctx.cur, ctx.uid, deps, memo)
     paper_sids = _paper_strategy_ids(deps)
     return {
         # Each row carries its own book's backtest comparison (same strategy, same mode), and a paper
@@ -1523,7 +1529,7 @@ FAILING_TTL = 300.0
 _FAILING: Dict[Tuple, Tuple[float, List[str]]] = {}
 
 
-def _deploy_roads(cur, uid: int, deps: List[Dict]) -> Dict[int, Dict]:
+def _deploy_roads(cur, uid: int, deps: List[Dict], memo: Optional[book_memo.BookMemo] = None) -> Dict[int, Dict]:
     """{strategy_id: its paper record toward the live check} for the strategies running or paused on
     paper: the counts the strategy page's Road to live shows (trades, events, hours, each with what
     the check needs) and when they could be met at its pace. Once those are in, `failing` lists the
@@ -1537,7 +1543,9 @@ def _deploy_roads(cur, uid: int, deps: List[Dict]) -> Dict[int, Dict]:
     hit = _ROADS.get(key)
     if hit and time.time() - hit[0] < ROAD_TTL:
         return hit[1]
-    trips = repo.paper_round_trips_by_strategy(cur, uid, sids)
+    # The Deploy board passes its request's kept position sums (book_memo).
+    trips = (book_memo.paper_round_trips_by_strategy(memo, sids) if memo is not None
+             else repo.paper_round_trips_by_strategy(cur, uid, sids))
     out = {}
     for sid in sids:
         rec = _paper_record(trips.get(sid, []))
@@ -2205,7 +2213,8 @@ def autopilot_status(ctx: Ctx):
     paper_progress = None
     if paper_run:
         sids = sorted({int(d["strategy_id"]) for d in paper_run})
-        prog = repo.paper_progress(cur, ctx.uid, sids)
+        # Both readouts are kept until the positions (or which deployments count toward them) change.
+        prog, events = book_memo.paper_readouts(book_memo.BookMemo(cur, ctx.uid), sids)
         titles = {int(d["strategy_id"]): d.get("title") or "" for d in paper_run}
         best = max(sids, key=lambda s: (prog.get(s, (0, 0.0))[0], prog.get(s, (0, 0.0))[1]))
         trades, net = prog.get(best, (0, 0.0))
@@ -2215,7 +2224,6 @@ def autopilot_status(ctx: Ctx):
         # When the soonest one could have a full record for the live check, at the pace each trades.
         from app import rsi
         dep_of = {int(d["strategy_id"]): d for d in reversed(paper_run)}  # oldest deployment per strategy
-        events = repo.paper_event_counts(cur, ctx.uid, sids)
         etas = {s: rsi.paper_eta_days(dep_of[s], prog.get(s, (0, 0.0))[0], events=events.get(s)) for s in sids}
         etas = {s: v for s, v in etas.items() if v is not None}
         if etas:
