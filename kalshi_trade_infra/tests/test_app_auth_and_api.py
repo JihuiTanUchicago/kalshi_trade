@@ -262,7 +262,7 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
         "passed_since": lambda cur, uid, since: {"n": 0, "items": []},
         "demo_equity": lambda cur, uid, realized=None: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
         "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
-        "active_run_counts": lambda cur, uid: {},
+        "active_run_counts": lambda cur, uid, **kw: {},
     }.items():
         monkeypatch.setattr(server.repo, name, fn)
     monkeypatch.setattr(server, "_freshness", lambda cur: {})
@@ -826,7 +826,7 @@ def test_runs_list_marks_the_seeded_example_session(monkeypatch):
     monkeypatch.setattr(server.repo, "get_policy", lambda cur, uid: None)
     monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: [{"id": 2, "direction": "momentum"}, {"id": 1, "direction": "random_walk"}])
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
-    monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid: {})
+    monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, **kw: {})
     monkeypatch.setattr(server, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
     runs = {r["id"]: r for r in server.list_runs(ctx())["runs"]}
     assert runs[1]["example"] is True and runs[2]["example"] is False

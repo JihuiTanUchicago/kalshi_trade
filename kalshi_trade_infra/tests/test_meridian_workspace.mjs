@@ -151,7 +151,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -706,7 +706,8 @@ test('Overview autopilot card says what switching it on costs, and a running fir
     live_running: 0, demo_running: 0, paper_running: 0, reviewing: true, last_review_at: at, last_action: {at, text: 'Autopilot is ON: …'}};
   f.S.apAt = Date.now();
   await f.viewDashboard(); await flush();
-  assert.match(card().innerHTML, /<dt>Last move<\/dt><dd>Reviewing now<\/dd>/);
+  assert.match(card().innerHTML, /<dt>Last check-in<\/dt><dd>Reviewing now<\/dd>/);
+  assert.match(card().innerHTML, /Last move <time [^>]+>just now<\/time>: Autopilot switched on\./);
 });
 
 test('Overview deployment monitors preserve every mode, status, risk field and unknown-versus-zero result', async () => {
@@ -3184,7 +3185,7 @@ test('a returning user reads what happened since the last visit at the top of th
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
   assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
   assert.match(text, /3 research sessions started/);
-  assert.match(text, /It put 1 on paper, paused 2, 1 other change\./);
+  assert.match(text, /It put 1 on paper, paused 2, made 1 other change\./);
   assert.match(text, /<a href="#dash-paused">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);
   assert.match(text, /<a href="\/research">1 research session failed<\/a>/);
   const host = f.root.querySelector('main').innerHTML;
@@ -3839,4 +3840,30 @@ test('Meridian money pages: open positions name their market, settle with date a
   // An empty paper record whose closed trades were all instant fills doesn't claim none closed.
   const left = g.trackRecordPanel({trades: 0, label: 'Paper', excluded_instant_fills: 8}, 'paper', {min_sharpe_days: 14, min_trades: 30});
   assert.match(left, /<h3>No paper trades in the record yet<\/h3>/); assert.match(left, /8 instant-fill paper trades left out/);
+});
+
+test('autopilot walk (Meridian): the last move says what and when, the pill says what it is doing, the pulse never reads Idle over research', () => {
+  const f = frontend();
+  const t = (text) => f.apMoveText({text, at: new Date().toISOString()});
+  assert.equal(t('Autopilot deployed **Lean into it** on paper.'), 'Deployed Lean into it on paper');
+  assert.equal(t('Autopilot is ON: the agent may research, deploy and tune paper strategies'), 'Autopilot switched on');
+  const paper = {label: 'Autopilot · paper'}, live = {label: 'Autopilot · LIVE'};
+  const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
+  assert.equal(f.apPillLabel({...ap, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · researching');
+  assert.equal(f.apPillLabel({...ap, paper_running: 1}, paper), 'Autopilot · 1 on paper');
+  assert.equal(f.apPillLabel({...ap, mode: 'live', paper_running: 1}, live), 'Autopilot · LIVE');
+  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute']}};
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute');
+  f.S.ap = {...ap, autopilot: false, mode: 'off'};
+  assert.match(f.apIdleLine(), /^Off: it acts only when you message it/);
+  f.S.ap = ap;
+  assert.equal(f.apIdleLine(), 'Idle');
+});
+
+test('autopilot walk (Meridian): the since strip counts the research sessions the autopilot started', () => {
+  const f = frontend();
+  f.S.me.user.autopilot = true;
+  const d = {deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: false, books: {}, passed: {n: 0, items: []},
+    autopilot: {research: 2, set_risk: 1}, runs: {}}};
+  assert.match(f.sinceStrip(d, '#dash-paused'), /It started 2 research sessions, made 1 other change\./);
 });

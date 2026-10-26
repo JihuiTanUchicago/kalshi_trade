@@ -3893,7 +3893,7 @@
   // The strip itself, from /api/dashboard's `since` block and the page's own deployments: each book's
   // realized P&L (never added together), what passed, what the autopilot changed, and what needs the
   // user, linking to it. `pausedHref` is where this page lists its paused deployments.
-  const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'stopped %s'], ['adjust', 'adjusted %s']];
+  const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'stopped %s'], ['adjust', 'adjusted %s'], ['research', 'started %s']];
   // A deployment's pause reason, short: no "Autopilot:" prefix, no closing period, cut at a word.
   const shortReason = (r) => {
     const s = String(r).replace(/^Autopilot:\s*/, '').replace(/\.\s*$/, '');
@@ -3920,9 +3920,9 @@
       : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started${pass.n ? '' : ', <a href="/research">see what each idea missed</a>'}</span>` : '') + '.');
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
-    const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', num(ap[k])));
+    const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', k === 'research' ? plural(ap[k], 'research session', 'research sessions') : num(ap[k])));
     const other = Object.entries(ap).filter(([k]) => !known.has(k)).reduce((a, [, n]) => a + n, 0);
-    if (other) did.push(plural(other, 'other change', 'other changes'));
+    if (other) did.push('made ' + plural(other, 'other change', 'other changes'));
     const auto = did.length ? `It ${did.join(', ')}.` : apOn ? 'On. It made no changes.' : 'Off.';
     const needs = d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
       .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_reason))}</span>` : ''}`);
@@ -3974,14 +3974,14 @@
       ['Strategies running', running ? String(running) : 'None yet'],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a>`]
-        : ['Last move', d.reviewing ? 'Reviewing now' : d.last_action && d.last_action.at ? sinceMin(d.last_action.at) : (d.last_review_at ? 'Reviewed ' + sinceMin(d.last_review_at) : 'Starting up')],
+        : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
     ].filter(Boolean);
     const now = d.billing_blocked
       ? `Paused: <a href="/billing">${d.billing_reason === 'card' ? 'add a payment method' : 'add credits'}</a> so it can keep researching.`
       : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc((d.story && d.story[0]) || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
-        <p class="apcard-now">${now}</p>${Array.isArray(d.focus) ? `
+        <p class="apcard-now">${now}</p>${apLastHtml(d.last_action)}${Array.isArray(d.focus) ? `
         <p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}
         <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl><p class="stale-note" id="dash-ap-stale" role="status">${apStale()}</p>${apWeek(d.week)}</div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
@@ -3989,6 +3989,42 @@
     const idleFocus = host.querySelector('[data-apcard="idle-focus"]');
     if (idleFocus) idleFocus.onclick = () => { apOpen(); apShowFocus(document.getElementById('autopilot-float')); };
     apBindFocus(host);
+  }
+  // The autopilot's latest move (the server's last_action: its newest system line about itself) as one
+  // line, what and when: the card said "Last move 12m ago" and never what the move was. The line's first
+  // sentence, without the "Autopilot" lead-in or Markdown; the switch note reads as the switch. The time
+  // is relative, with the clock time and zone on hover.
+  function apMoveText(la) {
+    const raw = String((la && la.text) || '').replace(/[*_`]+/g, '').replace(/\s+/g, ' ').trim();
+    const flip = /^(LIVE )?autopilot is (ON|OFF)\b/i.exec(raw);
+    if (flip) return `${flip[1] ? 'Live autopilot' : 'Autopilot'} switched ${/on/i.test(flip[2]) ? 'on' : 'off'}`;
+    let t = raw.replace(/^Autopilot:?\s+(?=[a-z])/, '').split(/(?<=[.!?])\s| — /)[0].replace(/[.!?]$/, '');
+    // agent.act names a research session's market by its key ("on btc15m"); say it the way the app does.
+    const keys = new Set(((S.me && S.me.markets) || []).map((m) => m.key));
+    t = t.replace(/\bon ([a-z0-9_]+)$/, (all, k) => keys.has(k) ? 'on ' + marketShort(k) : all);
+    if (t.length > 90 && t.indexOf(': ') > 10) t = t.slice(0, t.indexOf(': '));
+    if (t.length > 90) t = t.slice(0, 90).replace(/\s+\S*$/, '') + '\u2026';
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
+  }
+  function apLastHtml(la) {
+    const text = apMoveText(la);
+    if (!text || !la.at) return '';
+    return `<p class="ap-last">Last move <time datetime="${esc(la.at)}" title="${esc(settleAt(la.at))}">${sinceMin(la.at)}</time>: ${esc(text)}.</p>`;
+  }
+  // What it is doing right now in a word or two, for the pill on every page: "researching",
+  // "reviewing", "2 on paper", or "paused" while billing stops it. '' when there's nothing to add.
+  function apDoing(d) {
+    if (!d || !d.autopilot) return '';
+    if (d.billing_blocked) return 'paused';
+    if (d.research && (d.research.active || []).length) return 'researching';
+    if (d.reviewing) return 'reviewing';
+    return d.paper_running ? `${d.paper_running} on paper` : '';
+  }
+  // The pill's label: in paper mode the word for what it is doing takes the place of "paper" (each one
+  // is paper-only or no money at all); the live modes keep their label, so LIVE always shows.
+  function apPillLabel(d, m) {
+    const doing = d && d.mode === 'paper' ? apDoing(d) : '';
+    return doing ? 'Autopilot ·\u00a0' + doing : m.label;
   }
   // Why autopilot isn't trading right now (the server's d.idle): one plain line, plus the action to
   // take when there is one (a link, or the focus control). The card and the panel both lead with it.
@@ -4147,7 +4183,18 @@
   // The float is the single home for autopilot: the on/off toggle, live controls, and the agent
   // chat. The expanded shell is built ONCE; the 20s status poll updates only dynamic bits so it
   // never wipes the chat/composer. apChatTimer polls chat (3s) only while expanded.
-  let apChatLastId = 0, apChatTimer = null, apFeedFirst = true;
+  let apChatLastId = 0, apChatTimer = null, apFeedFirst = true, apFeedDay = '';
+  // The feed's day line: the rail's times are the reader's clock, so each day starts with its date and zone.
+  const tzShort = () => { try { return (new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName') || {}).value || ''; } catch (e) { return ''; } };
+  function apDayLi(iso) {
+    const d = new Date(iso), li = document.createElement('li'), today = new Date();
+    const yest = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    const label = d.toDateString() === today.toDateString() ? 'Today' : d.toDateString() === yest.toDateString() ? 'Yesterday'
+      : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    li.className = 'ap-day';
+    li.textContent = label + (tzShort() ? ' ·\u00a0times in ' + tzShort() : '');
+    return li;
+  }
   function apStopChat() { if (apChatTimer) { clearInterval(apChatTimer); apChatTimer = null; } }
   // The autopilot's autonomous moves, keyed by the proposal kind on a system line — the clear,
   // plain verb a reader scans ("Promoted", "Tuned"), plus the timeline lane that tints the node.
@@ -4165,7 +4212,7 @@
   // m.detail are OPTIONAL structured fields the backend can add later (see the note in PLAN.md).
   function apFeedLi(m) {
     const li = document.createElement('li');
-    const t = `<time>${clock(m.created_at)}</time><span class="node" aria-hidden="true"></span>`;
+    const t = `<time datetime="${esc(m.created_at)}" title="${esc(settleAt(m.created_at))}">${clock(m.created_at)}</time><span class="node" aria-hidden="true"></span>`;
     if (m.role === 'user') {
       li.className = 'ln lane-state apf-you';
       li.innerHTML = `${t}<div class="say"><span class="say-kind">You</span>${mdLite(m.content)}</div>`;
@@ -4200,11 +4247,13 @@
     const msgs = box.querySelector('#apf-messages'); if (!msgs) return;
     let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId), undefined, { keep: true }); } catch (e) { return; }
     const stick = full || msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 70;
-    if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; }
+    if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; apFeedDay = ''; }
     const empty = msgs.querySelector('.ap-empty'); if (empty && d.messages.length) empty.remove();
     msgs.querySelectorAll('.apf-typing').forEach((n) => n.remove());
     d.messages.forEach((m) => {
       apChatLastId = Math.max(apChatLastId, m.id);
+      const day = new Date(m.created_at).toDateString();
+      if (day !== apFeedDay) { apFeedDay = day; msgs.appendChild(apDayLi(m.created_at)); }
       const li = apFeedLi(m);
       if (!apFeedFirst) li.classList.add('in');   // backlog lands silently; new moves rise in
       msgs.appendChild(li);
@@ -4222,16 +4271,27 @@
         ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it'} for ${waitSpan(w.seconds)}, longer than usual</span>`
         : d.agent_busy
         ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
-        : `<span>${apIdleLine(box)}</span>`;
+        : `<span data-ap-idle>${esc(apIdleLine(box))}</span>`;
     }
     if (stick) msgs.scrollTop = msgs.scrollHeight;
   }
   // Idle pulse copy: lead with the autopilot's most recent move (from the status poll, always
   // available even if chat is slow), else a plain "on a schedule" line.
   function apIdleLine(box) {
-    const la = S.ap && S.ap.last_action;
-    if (la && la.at) return 'Idle ·\u00a0last move ' + sinceMin(la.at);
-    return 'Idle';
+    const d = S.ap, la = d && d.last_action;
+    const last = la && la.at ? ' ·\u00a0last move ' + sinceMin(la.at) : '';
+    if (!(d ? d.autopilot : apSwitchOn())) return 'Off: it acts only when you message it' + last;
+    return apNowWord(d) + last;
+  }
+  // The pulse's lead: what the status read says it is doing, so it never reads "Idle" over research.
+  function apNowWord(d) {
+    if (!d) return 'Idle';
+    if (d.billing_blocked) return 'Paused until it can pay for research';
+    const names = [...new Set((d.research && d.research.active) || [])], picked = names.filter((n) => n !== "a market it's still picking");
+    if (names.length) return picked.length ? 'Researching ' + picked.join(' ·\u00a0') : 'Picking a market to research';
+    if (d.reviewing) return 'Reviewing the markets';
+    // Between reviews with strategies on paper is not idle: they trade on their own between its moves.
+    return d.paper_running ? `Between reviews ·\u00a0${d.paper_running} on paper` : 'Idle';
   }
   function renderAutopilot(box, d) {
     if (!apExpanded()) {
@@ -4241,8 +4301,9 @@
       const m = d ? (AP_MODE[d.mode] || AP_MODE.off) : (S.me && S.me.user && S.me.user.autopilot ? AP_PENDING_ON : AP_MODE.off);
       box.className = 'apf' + (m.cls ? ' ' + m.cls : '');
       box.dataset.shell = '';
-      box.innerHTML = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false" title="Autonomous research and deployment. Existing strategies run independently.">
-        <span class="apf-pill-label">${esc(m.label)}</span>${ICON.chev || ''}</button>`;
+      const tip = d && d.autopilot ? ((d.story && d.story[0]) || '') : '';
+      box.innerHTML = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false" title="${esc(tip || 'Autonomous research and deployment. Existing strategies run independently.')}">
+        <span class="apf-pill-label">${esc(apPillLabel(d, m))}</span>${ICON.chev || ''}</button>`;
       box.querySelector('[data-ap]').onclick = (e) => apAction(box, 'toggle', e);
       return;
     }
@@ -4261,6 +4322,7 @@
         </div>
         <dl class="apf-stats" id="apf-stats"></dl>
         <p class="stale-note" id="apf-stale" role="status"></p>
+        <div id="apf-last"></div>
         <div id="apf-week"></div>
         <div class="apf-story" id="apf-story" aria-live="polite"></div>
         <p class="ap-focus" id="apf-focusline" hidden></p>
@@ -4414,6 +4476,9 @@
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
+    // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.
+    const idleEl = box.querySelector('[data-ap-idle]'); if (idleEl) idleEl.textContent = apIdleLine(box);
+    const lastEl = box.querySelector('#apf-last'); if (lastEl) lastEl.innerHTML = d.autopilot ? apLastHtml(d.last_action) : '';
     const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week) : '';
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);

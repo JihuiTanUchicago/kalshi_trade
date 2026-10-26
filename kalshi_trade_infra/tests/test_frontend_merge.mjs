@@ -125,7 +125,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -904,9 +904,11 @@ test('right after switching on, the card says the first review is running, not t
   const at = new Date().toISOString();
   f.S.ap = {...apOn, paper_running: 0, paper_progress: null, reviewing: true, last_review_at: at, last_action: {at, text: 'Autopilot is ON: …'}};
   await f.viewDashboard(); await flush();
-  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>Reviewing now<\/dd>/);
+  // The cell says when it last checked in; the switch is the move, said as the switch, not as a review.
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last check-in<\/dt><dd>Reviewing now<\/dd>/);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<p class="ap-last">Last move <time datetime="[^"]+" title="[^"]+">just now<\/time>: Autopilot switched on\.<\/p>/);
   f.S.ap = {...f.S.ap, reviewing: false}; f.paintDashAp();
-  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last move<\/dt><dd>just now<\/dd>/);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last check-in<\/dt><dd>just now<\/dd>/);
 });
 
 test('the floating autopilot pill steps aside while it would cover a primary or submit button', () => {
@@ -1909,7 +1911,7 @@ test('a returning user reads what happened since the last visit at the top of th
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
   assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
   assert.match(text, /3 research sessions started/);
-  assert.match(text, /It put 1 on paper, paused 2, 1 other change\./);
+  assert.match(text, /It put 1 on paper, paused 2, made 1 other change\./);
   assert.match(text, /<a href="#dash-deps">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);
   assert.match(text, /<a href="\/research">1 research session failed<\/a>/);
   const host = f.root.querySelector('#boardbody').innerHTML;
@@ -2575,4 +2577,47 @@ test('track record: the calendar-day count is named as such, so it never contrad
   const left = f.trackRecordPanel({trades: 0, label: 'Paper', excluded_instant_fills: 8}, 'paper', th);
   assert.match(left, /<h3>No paper trades in the record yet<\/h3>/); assert.match(left, /8 instant-fill paper trades left out/);
   assert.match(f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th), /<h3>No closed paper trades yet<\/h3>/);
+});
+
+test('autopilot walk: the last move says what and when, the pill says what it is doing, the pulse never reads Idle over research', () => {
+  const f = frontend();
+  f.S.me.markets = [{key: 'sol15m', label: 'Solana 15-minute'}];
+  const t = (text) => f.apMoveText({text, at: new Date().toISOString()});
+  // The first sentence, without the "Autopilot" lead-in or Markdown; the switch reads as the switch.
+  assert.equal(t('Autopilot deployed **Lean into it** on paper.'), 'Deployed Lean into it on paper');
+  assert.equal(t('Autopilot paused Fade the spike. It lost 22% of its money.'), 'Paused Fade the spike');
+  assert.equal(t('Autopilot is ON: the agent may research, deploy and tune paper strategies'), 'Autopilot switched on');
+  assert.equal(t('LIVE autopilot is OFF.'), 'Live autopilot switched off');
+  // A research start (agent.act names the market by its key) reads the way the app names markets.
+  assert.match(t('Started a fresh research session on sol15m — same gates as any run (pre-registration, holdout, diversification).'), /^Started a fresh research session on (?!sol15m)\S/);
+  assert.equal(f.apMoveText(null), '');
+  // The pill: in paper mode the word for what it is doing; LIVE keeps its label.
+  const paper = {label: 'Autopilot · paper'}, live = {label: 'Autopilot · LIVE'};
+  const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
+  assert.equal(f.apPillLabel({...ap, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · researching');
+  assert.equal(f.apPillLabel({...ap, reviewing: true}, paper), 'Autopilot · reviewing');
+  assert.equal(f.apPillLabel({...ap, paper_running: 2}, paper), 'Autopilot · 2 on paper');
+  assert.equal(f.apPillLabel({...ap, billing_blocked: true, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · paused');
+  assert.equal(f.apPillLabel(ap, paper), 'Autopilot · paper');
+  assert.equal(f.apPillLabel({...ap, mode: 'live', research: {active: ['Bitcoin 15-minute']}}, live), 'Autopilot · LIVE');
+  assert.equal(f.apPillLabel(null, paper), 'Autopilot · paper');
+  // The feed's pulse follows the status read: researching, off, or idle on its schedule.
+  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute']}};
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute');
+  f.S.ap = {...ap, research: {active: ["a market it's still picking"]}};
+  assert.equal(f.apIdleLine(), 'Picking a market to research');
+  f.S.ap = {...ap, autopilot: false, mode: 'off'};
+  assert.match(f.apIdleLine(), /^Off: it acts only when you message it/);
+  f.S.ap = ap;
+  assert.equal(f.apIdleLine(), 'Idle — reviews run on a schedule');
+});
+
+test('autopilot walk: the since strip counts the research sessions the autopilot started and reads as a sentence', () => {
+  const f = frontend();
+  f.S.me.user.autopilot = true;
+  const d = {deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: false, books: {}, passed: {n: 0, items: []},
+    autopilot: {research: 2, deploy: 1, set_risk: 1}, runs: {succeeded: 2}}};
+  assert.match(f.sinceStrip(d, '#dash-deps'), /<dt>Autopilot<\/dt><dd>It put 1 on paper, started 2 research sessions, made 1 other change\.<\/dd>/);
+  d.since.autopilot = {research: 1};
+  assert.match(f.sinceStrip(d, '#dash-deps'), /It started 1 research session\./);
 });

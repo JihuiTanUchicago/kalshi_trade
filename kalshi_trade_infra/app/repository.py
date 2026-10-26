@@ -924,11 +924,17 @@ def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS,
     return out
 
 
-def active_run_counts(cur, user_id: int) -> Dict[str, int]:
+def active_run_counts(cur, user_id: int, silent_before=None) -> Dict[str, int]:
+    """Queued, running and paused runs by kind. With `silent_before`, a running run whose last beat
+    (or start) is older than it is left out: its worker died, and the reaper that would stop it runs
+    in that worker, so "1 agent researching" stayed up for hours beside an autopilot card saying it
+    was between research runs."""
+    silent = ("" if silent_before is None else
+              " AND NOT (status='running' AND COALESCE(heartbeat_at, started_at, created_at) < %s)")
     cur.execute(
         """SELECT kind, status, COUNT(*) AS n FROM app_agent_runs
-           WHERE user_id=%s AND status IN ('queued','running','paused') GROUP BY kind, status""",
-        (user_id,),
+           WHERE user_id=%s AND status IN ('queued','running','paused')""" + silent + " GROUP BY kind, status",
+        (user_id,) if silent_before is None else (user_id, silent_before),
     )
     out = {"research_running": 0, "research_queued": 0, "chat_active": 0}
     for r in cur.fetchall():

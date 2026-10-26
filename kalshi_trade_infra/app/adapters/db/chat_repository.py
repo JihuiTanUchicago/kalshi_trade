@@ -16,13 +16,17 @@ def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
     (user_id, id) alone. The status poll runs every 20s, and without the bound a user with no such
     line scanned back through their whole chat history each time (20k rows, ~30ms on a busy account).
     A line further back than that is not shown; the card then says when it last reviewed, and the
-    panel's idle line says reviews run on a schedule."""
+    panel's idle line says reviews run on a schedule.
+    A research session the autopilot starts is a move too (agent.act's "Started a fresh research
+    session on ..." line, which never names the autopilot): without it a busy autopilot's card read
+    "Last move: Autopilot switched on" from days back while it started a session every hour."""
     cur.execute(
         """SELECT c.content, c.created_at FROM
              (SELECT id FROM app_chat_messages WHERE user_id=%s ORDER BY id DESC LIMIT %s) recent
            JOIN app_chat_messages c ON c.id=recent.id
            WHERE c.role='system'
-                 AND (c.content LIKE '%%utopilot%%' OR c.content LIKE '%%LIVE%%' OR c.content LIKE '%%Kill%%')
+                 AND (c.content LIKE '%%utopilot%%' OR c.content LIKE '%%LIVE%%' OR c.content LIKE '%%Kill%%'
+                      OR c.content LIKE 'Started a fresh research session%%')
            ORDER BY c.id DESC LIMIT 1""",
         (user_id, LAST_ACTION_WINDOW),
     )
