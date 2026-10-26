@@ -1844,6 +1844,8 @@ body.landing-body .apf { display: none; }
 .holdlist-figs b { color: var(--ink); font-weight: 600; }
 /* A trade's one-line entry/exit reason (server trade_why), in the UI face even inside a .tick cell. */
 .pos-why { font-family: var(--f-ui); letter-spacing: normal; white-space: normal; }
+/* A contract's readable market under its ticker (contractMarket), in the same UI face. */
+.pos-mkt { font-family: var(--f-ui); letter-spacing: normal; white-space: normal; }
 /* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
 #openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
