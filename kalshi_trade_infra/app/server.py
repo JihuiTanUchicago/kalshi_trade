@@ -2286,6 +2286,12 @@ def save_kalshi_key(ctx: Ctx):
     except RuntimeError:
         raise ApiError(503, "This server can't store keys yet (encryption key not configured).")
     with repo.transaction(ctx.conn) as tx:
+        repo.lock_user(tx, ctx.uid)
+        # Replacing the key while live deployments run would point their open positions' exits at
+        # another Kalshi account; the same rule as disconnecting.
+        if any(d["mode"] == "live" and d["status"] == "running" for d in repo.list_deployments(tx, ctx.uid)) \
+                and repo.get_kalshi_key(tx, ctx.uid) is not None:
+            raise ApiError(409, "Pause or stop your live deployments before replacing your Kalshi key.")
         _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "production")
         repo.save_kalshi_key(tx, ctx.uid, key_id.strip(), blob)
     kalshi_account.remember_balance(ctx.uid, cash)

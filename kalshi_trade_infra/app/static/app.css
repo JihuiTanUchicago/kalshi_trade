@@ -1985,6 +1985,7 @@ body.landing-body .apf { display: none; }
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */
 .key-ok { margin: 0 0 12px; font-size: 15px; color: var(--ink); }
 .key-ok b { color: var(--gain-ink); font-weight: 600; }
+.key-ok.key-unread b { color: var(--ink); }  /* saved, but Kalshi gave no balance: no green "it worked" */
 .key-steps { font-size: 13.5px; gap: 6px; }
 .key-diff { margin: -4px 0 14px; font-size: 13px; line-height: 1.45; }
 

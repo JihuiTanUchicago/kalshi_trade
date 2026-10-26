@@ -2072,6 +2072,8 @@ const keyFunds = (state) => frontend({fetchImpl: (path, options = {}) => {
   if (path === '/api/funds') { state.reads++; return response({...funds(), kalshi: state.live, kalshi_dev: state.dev}); }
   if (path === '/api/kalshi-key') { state.live = {connected: true, balance: state.liveBalance, key_id: 'a952…608c', funding_url: 'https://kalshi.com/account/funding'}; return response({ok: true, balance: state.liveBalance}); }
   if (path === '/api/kalshi-dev-key') { state.dev = {connected: true, key_id: 'a952…608c', balance: state.devBalance}; return response({ok: true}); }
+  if (path === '/api/kalshi-key/delete') { state.live = {connected: false}; return response({ok: true}); }
+  if (path === '/api/kalshi-dev-key/delete') { state.dev = {connected: false}; return response({ok: true}); }
   throw new Error('Unexpected offline request: ' + path);
 }});
 const submitKey = async (f, id, kid, pem) => {
@@ -2128,10 +2130,38 @@ test('connecting a Kalshi key confirms it with the balance: "Connected ✓ (bala
   const sent = postRequests(f).map(({path}) => path);
   assert.deepEqual(sent, ['/api/kalshi-key', '/api/kalshi-dev-key']);
   assert.doesNotMatch(f.root.querySelector('main').innerHTML, /MIIE|BEGIN RSA PRIVATE KEY-----\n/);  // the key is never shown back
-  // A balance Kalshi couldn't read just now still says it connected, without inventing a figure.
+  // No balance from Kalshi (down, or the key deleted there) is "saved", never a green check, and says what to do.
   const g = keyFunds({reads: 0, live: {connected: true, balance: null, key_id: 'a952…608c'}, dev: {connected: true, key_id: 'a952…608c', balance: null}});
   await g.viewFunds();
-  assert.equal((g.root.querySelector('main').innerHTML.match(/<b>Connected ✓<\/b> \(couldn’t read the balance just now\)/g) || []).length, 2);
+  const gm = g.root.querySelector('main').innerHTML;
+  assert.doesNotMatch(gm, /Connected ✓/);
+  assert.equal((gm.match(/<p class="key-ok key-unread"><b>Key saved<\/b> \(Kalshi didn’t send a balance for it just now\)<\/p>/g) || []).length, 2);
+  assert.match(gm, /the key may have been deleted on kalshi\.com: disconnect it and connect a new one\./);
+  assert.match(gm, /the key may have been deleted on demo\.kalshi\.co: remove it and connect a new one\./);
+  assert.doesNotMatch(gm, /has \$0\.00/);  // unknown is not empty
+});
+
+test('a $0 Kalshi demo account is explained, and keys are changed or removed with plain feedback', async () => {
+  const state = {reads: 0, live: {connected: true, balance: 1234.5, key_id: 'a952…608c', funding_url: 'https://kalshi.com/account/funding'}, dev: {connected: true, key_id: 'a952…608c', balance: 0}};
+  const f = keyFunds(state);
+  await f.viewFunds();
+  const main = f.root.querySelector('main').innerHTML;
+  assert.match(main, /Your Kalshi demo account has \$0\.00, so Kalshi refuses demo orders\. Add demo funds in your account on <a href="https:\/\/demo\.kalshi\.co\/" target="_blank" rel="noopener">demo\.kalshi\.co<\/a>/);
+  assert.match(main, /To use a different key, disconnect this one and connect the new one\./);
+  assert.match(main, /To use a different demo key, remove this one and connect the new one\./);
+  // Removing takes a second tap, then says the key still works at Kalshi until deleted there.
+  const dc = f.root.querySelector('#disconnect');
+  dc.onclick(); assert.equal(postRequests(f).length, 0);
+  await dc.onclick(); await flush();
+  assert.deepEqual(postRequests(f).map(({path}) => path), ['/api/kalshi-key/delete']);
+  assert.match(f.root.querySelector('#kflash').innerHTML, /Disconnected\. Tau deleted its copy of the key; the key itself stays valid until you delete it on kalshi\.com\./);
+  const dvc = f.root.querySelector('#dev-disconnect');
+  dvc.onclick(); await dvc.onclick(); await flush();
+  assert.match(f.root.querySelector('#kdflash').innerHTML, /Demo key removed\. Tau deleted its copy; delete the key on demo\.kalshi\.co too/);
+  // Both key forms are back, with no autofill and no phone auto-capitalising of the Key ID or the key.
+  const fresh = f.root.querySelector('main').innerHTML;
+  assert.equal((fresh.match(/name="key_id" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/g) || []).length, 2);
+  assert.equal((fresh.match(/name="private_key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/g) || []).length, 2);
 });
 
 const cardedBilling = (o = {}) => ({configured: true, publishable_key: 'synthetic-only', balance: 7.4213, spent: 47.5787, spent_7d: 9.8, runway_days: 5.3,
