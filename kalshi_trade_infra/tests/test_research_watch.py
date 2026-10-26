@@ -92,3 +92,47 @@ def test_a_spec_invalid_drop_stays_in_the_report_past_the_newest_twelve():
     kept = rw._kept_drops(drops)
     assert kept[0]["title"] == "bad" and len(kept) == 13 and kept[1:] == drops[-12:]
     assert rw._kept_drops(drops[:5]) == drops[:5]
+
+
+class _IdleCur:
+    """Answers load_idle's queries from a dict of users: {uid: (last_run_or_None, active, note)}."""
+    def __init__(self, users):
+        self.users, self.rows = users, []
+
+    def execute(self, sql, args=()):
+        uid = args[0] if args else None
+        if "FROM app_users" in sql:
+            self.rows = [{"id": u} for u in self.users]
+        elif "ORDER BY id DESC LIMIT 1" in sql and "app_agent_runs" in sql:
+            self.rows = [self.users[uid][0]] if self.users[uid][0] else []
+        elif "status IN" in sql:
+            self.rows = [{"1": 1}] if self.users[uid][1] else []
+        elif "app_chat_messages" in sql:
+            self.rows = [{"content": self.users[uid][2]}] if self.users[uid][2] else []
+
+    def fetchall(self):
+        return self.rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+
+def test_an_autopilot_user_with_credit_and_no_research_for_30_min_is_flagged(monkeypatch):
+    """Prod 2026-10-26: no research started 06:03-07:58Z (every review asked for ltc15m) and nobody
+    noticed for two hours. Users without credit are skipped: their reviews are off by design."""
+    from app import billing
+    monkeypatch.setattr(billing, "is_ready", lambda cur, uid: uid != 2)
+    refusal = "I can't research that market — pick one Tau supports, or let me choose."
+    cur = _IdleCur({
+        1: ({"id": 3337, "created_at": NOW - timedelta(minutes=95)}, False, refusal),  # idle, with credit
+        2: ({"id": 3321, "created_at": NOW - timedelta(minutes=200)}, False, None),     # idle, no credit
+        3: ({"id": 3350, "created_at": NOW - timedelta(minutes=10)}, False, None),     # started recently
+        4: ({"id": 3300, "created_at": NOW - timedelta(minutes=90)}, True, None),      # one is running
+    })
+    idle = rw.load_idle(cur, NOW)
+    assert [u["user_id"] for u in idle] == [1]
+    assert idle[0]["idle_min"] == 95 and idle[0]["reason"] == refusal
+    report = rw.build_report([], {}, NOW, 3, idle)
+    flag = report["anomalies"][0]
+    assert flag["severity"] == "high" and flag["kind"] == "idle" and flag["user_id"] == 1
+    assert "95 min (last run 3337)" in flag["detail"] and "can't research that market" in flag["detail"]

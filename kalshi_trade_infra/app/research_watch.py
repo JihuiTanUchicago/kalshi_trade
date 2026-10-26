@@ -12,6 +12,8 @@ runs of the last few hours (plus everything still queued or running) and their e
   wrong_fit     the proposer spent several ideas on mechanisms the market cannot support
   unclassified  many drops the classifier can't tag (rsi._DROP_RULES needs rules)
   repeat        one market researched again and again with nothing gated
+  idle          an autopilot user with credit has had no research start for IDLE_MIN minutes, with
+                the newest system line the reviews posted (usually the refusal that is blocking it)
 
 The report goes to S3 (datalake research-watch/latest.json plus one file per run of the watch), so
 it can be read without database access, and to stdout. Read-only on the database.
@@ -36,6 +38,10 @@ BURN_USD = float(os.getenv("TAU_WATCH_BURN_USD", "5"))
 # minutes, so by then they were reported at their real severity, and repeating a handled failure as
 # "high" for the whole 3h window buries the new ones.
 FRESH_MIN = float(os.getenv("TAU_WATCH_FRESH_MIN", "60"))
+# Prod 2026-10-26: research sat idle 06:03-07:58Z (every review asked for ltc15m, which isn't a Tau
+# market) and nobody noticed for two hours. Users without credit are skipped: their reviews are
+# off by design (worker.autopilot_review_ok), so they are not idle by mistake.
+IDLE_MIN = float(os.getenv("TAU_WATCH_IDLE_MIN", "30"))
 BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-east-1")
 PREFIX = "research-watch"
 _RUN_COLS = ("id, user_id, market, status, error, model, prompt, hypotheses_tried, strategies_passed, "
@@ -142,7 +148,49 @@ def anomalies(summaries: List[Dict]) -> List[Dict]:
     return sorted(out, key=lambda a: rank[a["severity"]])
 
 
-def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime, hours: float) -> Dict:
+def idle_anomalies(idle: List[Dict]) -> List[Dict]:
+    """One high flag per autopilot user whose research has stopped starting (see load_idle)."""
+    out: List[Dict] = []
+    for u in idle:
+        since = ("for %.0f min (last run %s)" % (u["idle_min"], u["last_run_id"]) if u["last_run_id"]
+                 else "and has never started one")
+        _flag(out, "high", "idle", None, "user %s: no research started %s; latest review note: %s" % (
+            u["user_id"], since, u["reason"] or "none posted"))
+        out[-1]["user_id"] = u["user_id"]
+    return out
+
+
+def load_idle(cur, now: datetime) -> List[Dict]:
+    """Autopilot users with credit and no research queued or running whose newest research run was
+    created IDLE_MIN+ minutes ago. `reason` is the newest system chat line since that run: act()'s
+    refusal ("I can't research that market", "on cooldown", ...) is posted there by the review."""
+    from app import billing
+    cur.execute("SELECT id FROM app_users WHERE autopilot=1 ORDER BY id")
+    out: List[Dict] = []
+    for row in cur.fetchall():
+        uid = row["id"]
+        cur.execute("SELECT id, created_at FROM app_agent_runs WHERE user_id=%s AND kind='research' "
+                    "ORDER BY id DESC LIMIT 1", (uid,))
+        last = cur.fetchone()
+        cur.execute("SELECT 1 FROM app_agent_runs WHERE user_id=%s AND kind='research' AND status IN "
+                    "('queued','running') LIMIT 1", (uid,))
+        if cur.fetchone():
+            continue
+        idle = _minutes(_naive(last["created_at"]), now) if last else None
+        if last and idle < IDLE_MIN:
+            continue
+        if not billing.is_ready(cur, uid):
+            continue
+        cur.execute("SELECT content FROM app_chat_messages WHERE user_id=%s AND role='system' AND created_at >= %s "
+                    "ORDER BY id DESC LIMIT 1", (uid, _naive(last["created_at"]) if last else now - timedelta(hours=6)))
+        note = cur.fetchone()
+        out.append({"user_id": uid, "idle_min": idle, "last_run_id": last and last["id"],
+                    "reason": note and str(note["content"])[:300]})
+    return out
+
+
+def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime, hours: float,
+                 idle: Optional[List[Dict]] = None) -> Dict:
     summaries = [run_summary(r, events.get(r["id"], []), now) for r in runs]
     finished = [s for s in summaries if s["status"] in ("succeeded", "stopped", "failed")]
     cards = [rsi.run_card(r, [e for e in events.get(r["id"], []) if e.get("kind") == "verdict"])
@@ -156,7 +204,8 @@ def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime,
                    for m, v in _group(finished, "model").items()},
         "screen_ab": screen_ab(cards),
         "leads_ab": screen_ab(cards, "leads_arm"),
-        "anomalies": anomalies(summaries),
+        "anomalies": idle_anomalies(idle or []) + anomalies(summaries),
+        "idle_users": idle or [],
         "runs": sorted(summaries, key=lambda s: -s["run_id"]),
     }
 
@@ -234,11 +283,18 @@ def main() -> None:
     a = ap.parse_args()
     from data_pipeline.common import get_db_conn
     conn = get_db_conn()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
-        runs, events = load(conn.cursor(), a.hours)
+        cur = conn.cursor()
+        runs, events = load(cur, a.hours)
+        try:
+            idle = load_idle(cur, now)
+        except Exception as e:  # noqa: BLE001 - the run report still goes out without it
+            print("[watch] idle check failed: %r" % e, flush=True)
+            idle = []
     finally:
         conn.close()
-    report = build_report(runs, events, datetime.now(timezone.utc).replace(tzinfo=None), a.hours)
+    report = build_report(runs, events, now, a.hours, idle)
     print(json.dumps({k: report[k] for k in ("generated_at", "status_counts", "anomalies")}, default=str), flush=True)
     if not a.no_s3:
         try:
