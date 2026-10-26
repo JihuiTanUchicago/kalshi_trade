@@ -1853,6 +1853,10 @@ body.landing-body .apf { display: none; }
 .holdlist li { padding: 9px 0; border-bottom: 1px solid var(--rule); }
 .holdlist li:first-child { padding-top: 2px; }
 .holdlist .tick { overflow-wrap: anywhere; }
+/* The strategy page's unseen trades sit in a column beside the sidebar: the date and contract wrap,
+   so Exit and P&L stay in view instead of running under the sidebar. */
+.t-unseen td:not(.num) { white-space: normal; }
+.t-unseen td.tick { overflow-wrap: anywhere; }
 .holdlist-figs { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 4px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .holdlist-figs b { color: var(--ink); font-weight: 600; }
 /* A trade's one-line entry/exit reason (server trade_why), in the UI face even inside a .tick cell. */
