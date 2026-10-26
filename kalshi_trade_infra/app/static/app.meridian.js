@@ -393,7 +393,8 @@
     : !status ? "Can't reach Tau. Check your connection."
     : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
     : status >= 500 ? `Tau is having trouble right now (${status}). Try again in a moment.`
-    : `Request failed (${status}).`;
+    // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code.
+    : `Tau couldn't do that (${status}). Reload the page and try again.`;
   // A failure the page shows as an error goes to the operator's readout on /admin (boot.js sends it).
   // An API call that broke: no reply (not our own timeout), the server's 5xx, or a reply that isn't
   // JSON. A 4xx is Tau answering, not a broken page. The path goes without its query, ids as :id.
@@ -438,7 +439,9 @@
     try { data = await res.json(); } catch (e) { /* non-JSON: the edge's error page, or a reply cut off */ }
     if (scoped && gen !== S.gen) return STALE();
     // Several reads can come back 401 at once: the first one goes to sign-in and keeps the page as next.
-    if (res.status === 401 && path !== '/api/me') { S.me = null; if (location.pathname !== '/signin') go(signinPath(), true); throw new ApiError(401, 'Please sign in.'); }
+    // A session that ended mid-use says so on the sign-in page (a write: that it wasn't saved), instead of
+    // dropping the reader on the landing page with no word why.
+    if (res.status === 401 && path !== '/api/me') { if (S.me) S.sessionEnded = body !== undefined ? 'write' : 'read'; S.me = null; if (location.pathname !== '/signin') go(signinPath(), true); throw new ApiError(401, 'Please sign in.'); }
     const said = data && typeof data === 'object' && typeof data.error === 'string' && data.error;
     if (!res.ok) {
       if (res.status >= 500) apiBroke(path, body !== undefined, `failed (${res.status})`);
@@ -727,13 +730,25 @@
           } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message || 'Could not save the card.')}</p>`; return; }
           if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
-          S.me = await api('/api/me', undefined, { keep: true });
+          // The card is saved: a failed re-read of the account must not leave the wall up over it.
+          S.me = await api('/api/me', undefined, { keep: true }).catch(() => Object.assign({}, S.me, { needs_card: false }));
           closePay();
           render();
         });
       };
-    } catch (err) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; }
+    } catch (err) {
+      // The card form didn't load (no network, Stripe's script blocked, Tau busy). Save can't work, and it
+      // used to submit the bare form and reload with no word why: it says what happened and becomes Try again.
+      dlg.querySelector('#pay-el').innerHTML = '';
+      hint.innerHTML = `<p class="wl-err">${esc(cardFormFail(err))}</p>`;
+      const again = dlg.querySelector('#pay-submit');
+      again.textContent = 'Try again';
+      dlg.querySelector('#payform').onsubmit = (e) => { e.preventDefault(); closePay(); paymentGate(); };
+    }
   }
+  // Why the card form isn't there: Tau's own words for something it refused, otherwise what to do.
+  const cardFormFail = (err) => err instanceof ApiError && err.status >= 400 && err.status < 500 ? err.message
+    : 'The card form didn\u2019t load. Check your connection, or allow js.stripe.com if a blocker is on, then try again.';
 
   // ---------- shell ----------
   const NAV = [['/', 'Dashboard', 'dashboard'], ['/research', 'Research', 'research'], ['/strategies', 'Strategies', 'strategies'], ['/explore', 'Explore', 'explore'], ['/deploy', 'Deploy', 'deploy'], ['/community', 'Community', 'community'], ['/funds', 'Funds', 'funds'], ['/devlog', 'Dev Logs', 'devlog']];
@@ -965,6 +980,11 @@
     btn.classList.add('busy'); btn.disabled = true;
     try { return await fn(); } finally { btn.classList.remove('busy'); btn.disabled = false; }
   }
+  // After a write lands, the page re-reads to show it. That read failing is not the write failing: shown
+  // as the write's error, a top-up that went through read as one that didn't, and invited buying twice.
+  // refreshed() says whether the re-read came back; a write that landed says so either way, plus BEHIND.
+  const refreshed = (p) => Promise.resolve(p).then(() => true, () => false);
+  const BEHIND = ' The page didn’t refresh, so reload to see it.';
   // A poll repaints a region only when its markup changed. The Deploy board rewrote every row and
   // every open position each 10s even when nothing moved: ~190ms of layout and style a poll on a
   // phone-speed CPU at 30 deployments and 60 positions, and an armed "Confirm stop" was reset. The
@@ -1565,6 +1585,12 @@
     ['How do deposits and withdrawals work?', 'Paper money is simulated and free to add or remove. Live trading uses your own Kalshi account — you fund and withdraw at Kalshi, and Tau only places the trades for strategies you deploy. We never hold your money.'],
     ['How safe is this?', 'Paper trading risks nothing. Live trading is off by default and takes a deliberate, confirmed step; strategies have hard loss guards that pause them automatically, and your Kalshi key is encrypted and never shared.'],
   ];
+  // Said once, on the sign-in page a 401 sent the reader to; sign-in brings them back to the same page.
+  function sessionEndedText() {
+    const why = S.sessionEnded; S.sessionEnded = null;
+    return why === 'write' ? 'You were signed out, so that last change wasn\u2019t saved. Sign in to go back to the page and try it again.'
+      : why ? 'You were signed out. Sign in to go back to the page you were on.' : '';
+  }
   async function viewSignin() {
     const hr = document.getElementById('hotrail'); if (hr) hr.remove();
     document.body.classList.remove('hot-open');
@@ -1576,7 +1602,7 @@
     const err = q.get('error');
     const msg = q.has('pending')
       ? "You're on the waitlist — we'll email you the moment you're approved. (Access is invite-only right now.)"
-      : { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. We may not have added you to the waitlist yet." }[err];
+      : { cancelled: 'Sign-in was cancelled.', expired: 'That sign-in link expired. Try again.', google: "Google couldn't confirm your account. We may not have added you to the waitlist yet." }[err] || sessionEndedText();
     const nextQ = signinNext();
     document.body.classList.add('landing-body');
     root.innerHTML = `
@@ -3773,7 +3799,7 @@
       if (df) df.onsubmit = async (e) => {
         e.preventDefault();
         await busy(df.querySelector('button'), async () => {
-          try { await api('/api/funds/demo', { amount: +df.amount.value }); if (gen !== S.gen) return; await load(); if (gen === S.gen) flash('#dmflash', 'Demo account reloaded.', 'good'); } catch (err) { if (gen === S.gen) flash('#dmflash', err.message, 'bad'); }
+          try { await api('/api/funds/demo', { amount: +df.amount.value }); if (gen !== S.gen) return; const fresh = await refreshed(load()); if (gen === S.gen) flash('#dmflash', 'Demo account reloaded.' + (fresh ? '' : BEHIND), 'good'); } catch (err) { if (gen === S.gen) flash('#dmflash', err.message, 'bad'); }
         });
       };
       const pf = root.querySelector('#paper');
@@ -3791,7 +3817,7 @@
         e.preventDefault();
         const btn = pf.querySelector(`[data-kind="${kind}"]`);
         await busy(btn, async () => {
-          try { await api('/api/funds/paper', { kind, amount: +pf.amount.value }); if (gen !== S.gen) return; await load(); if (gen === S.gen) flash('#pflash', kind === 'deposit' ? 'Added to your paper account.' : kind === 'withdraw' ? 'Withdrawn from your paper account.' : 'Paper account reset.', 'good'); } catch (err) { if (gen === S.gen) flash('#pflash', err.message, 'bad'); }
+          try { await api('/api/funds/paper', { kind, amount: +pf.amount.value }); if (gen !== S.gen) return; const fresh = await refreshed(load()); if (gen === S.gen) flash('#pflash', (kind === 'deposit' ? 'Added to your paper account.' : kind === 'withdraw' ? 'Withdrawn from your paper account.' : 'Paper account reset.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { if (gen === S.gen) flash('#pflash', err.message, 'bad'); }
         });
       };
       // The downloaded .key file fills the box, so nobody has to open it in an editor (hard on a phone).
@@ -3810,12 +3836,12 @@
         const bad = keyProblem(kf.key_id.value, kf.private_key.value, 'live');
         if (bad) { flash('#kflash', bad, 'bad'); return; }
         await busy(kf.querySelector('button'), async () => {
-          try { const r = await api('/api/kalshi-key', { key_id: kf.key_id.value, private_key: kf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_connected = true; await load(); if (gen === S.gen) flash('#kflash', r && r.balance != null ? `Connected ✓ (balance ${usd(r.balance)}). Kalshi confirmed the key.` : 'Connected ✓. Kalshi confirmed the key.', 'good'); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
+          try { const r = await api('/api/kalshi-key', { key_id: kf.key_id.value, private_key: kf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_connected = true; const fresh = await refreshed(load()); if (gen === S.gen) flash('#kflash', (r && r.balance != null ? `Connected ✓ (balance ${usd(r.balance)}). Kalshi confirmed the key.` : 'Connected ✓. Kalshi confirmed the key.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
         });
       };
       const dc = root.querySelector('#disconnect');
       if (dc) dc.onclick = () => armed(dc, 'Confirm disconnect', () => busy(dc, async () => {
-        try { await api('/api/kalshi-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_connected = false; await load(); if (gen === S.gen) flash('#kflash', 'Disconnected. Tau deleted its copy of the key; the key itself stays valid until you delete it on kalshi.com.', 'good'); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
+        try { await api('/api/kalshi-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_connected = false; const fresh = await refreshed(load()); if (gen === S.gen) flash('#kflash', 'Disconnected. Tau deleted its copy of the key; the key itself stays valid until you delete it on kalshi.com.' + (fresh ? '' : BEHIND), 'good'); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
       }));
       const kdf = root.querySelector('#kalshi-dev');
       if (kdf) kdf.onsubmit = async (e) => {
@@ -3823,12 +3849,12 @@
         const bad = keyProblem(kdf.key_id.value, kdf.private_key.value, 'demo');
         if (bad) { flash('#kdflash', bad, 'bad'); return; }
         await busy(kdf.querySelector('button'), async () => {
-          try { await api('/api/kalshi-dev-key', { key_id: kdf.key_id.value, private_key: kdf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_dev_connected = true; const now = await load(); const bal = now && now.kalshi_dev && now.kalshi_dev.balance; if (gen === S.gen) flash('#kdflash', bal != null ? `Connected ✓ (balance ${usd(bal)}). Kalshi’s demo exchange confirmed the key.` : 'Connected ✓. Kalshi’s demo exchange confirmed the key.', 'good'); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
+          try { await api('/api/kalshi-dev-key', { key_id: kdf.key_id.value, private_key: kdf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_dev_connected = true; let now = null; const fresh = await refreshed(load().then((d) => { now = d; })); const bal = now && now.kalshi_dev && now.kalshi_dev.balance; if (gen === S.gen) flash('#kdflash', (bal != null ? `Connected ✓ (balance ${usd(bal)}). Kalshi’s demo exchange confirmed the key.` : 'Connected ✓. Kalshi’s demo exchange confirmed the key.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
         });
       };
       const dvc = root.querySelector('#dev-disconnect');
       if (dvc) dvc.onclick = () => armed(dvc, 'Confirm remove', () => busy(dvc, async () => {
-        try { await api('/api/kalshi-dev-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_dev_connected = false; await load(); if (gen === S.gen) flash('#kdflash', 'Demo key removed. Tau deleted its copy; delete the key on demo.kalshi.co too if you’re done with it.', 'good'); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
+        try { await api('/api/kalshi-dev-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_dev_connected = false; const fresh = await refreshed(load()); if (gen === S.gen) flash('#kdflash', 'Demo key removed. Tau deleted its copy; delete the key on demo.kalshi.co too if you’re done with it.' + (fresh ? '' : BEHIND), 'good'); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
       }));
       return d;
     };
@@ -3968,25 +3994,37 @@
       });
     }).catch(() => {});
     const form = root.querySelector('#composer-post');
+    // One post at a time: Post and Share my P&L both lock while either is sent (a second tap on Share
+    // my P&L, which busy() didn't lock, posted it twice). A post that landed says so even when the feed
+    // doesn't refresh after it, so it isn't posted again.
     const submit = async (kind, ref_id) => {
       const body = root.querySelector('#post-body').value.trim();
-      const btn = form.querySelector('[type=submit]');
-      await busy(btn, async () => {
-        try {
-          await api('/api/community', { body, kind, ref_id, image: pendingImage || undefined });
-          root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = ''; growTa();
-          pendingImage = null; photoInput.value = ''; root.querySelector('#photo-preview').hidden = true;
-          await load();
-        } catch (e) { flash('#post-flash', e.message, 'bad'); }
-      });
+      const btn = form.querySelector('[type=submit]'), share = form.querySelector('[data-share="pnl"]');
+      if (btn.disabled || share.disabled) return;
+      const other = kind === 'pnl' ? btn : share;
+      other.disabled = true;
+      try {
+        await busy(kind === 'pnl' ? share : btn, async () => {
+          try {
+            await api('/api/community', { body, kind, ref_id, image: pendingImage || undefined });
+            root.querySelector('#post-body').value = ''; root.querySelector('#post-strat').value = ''; growTa();
+            pendingImage = null; photoInput.value = ''; root.querySelector('#photo-preview').hidden = true;
+            if (!(await refreshed(load()))) flash('#post-flash', 'Posted.' + BEHIND, 'good');
+          } catch (e) { flash('#post-flash', e.message, 'bad'); }
+        });
+      } finally { other.disabled = false; }
     };
     form.onsubmit = (e) => { e.preventDefault(); const ref = root.querySelector('#post-strat').value; submit(ref ? 'strategy' : 'note', ref || undefined); };
     form.querySelector('[data-share="pnl"]').onclick = () => submit('pnl');
     const feed = root.querySelector('#feed');
     const renderReactions = (art, list) => { art.querySelector('.reactions').innerHTML = reactionChips(list); };
+    // One reaction at a time per post: each send toggles, so a double tap took it straight back off.
     const react = async (pid, art, emoji) => {
+      if (art.dataset.reacting) return;
+      art.dataset.reacting = '1';
       try { const r = await api(`/api/community/${pid}/react`, { emoji }); renderReactions(art, r.reactions); }
       catch (err) { alert0(err.message); }
+      finally { delete art.dataset.reacting; }
     };
     feed.addEventListener('click', async (e) => {
       const retry = e.target.closest('[data-replies-retry]');
@@ -4010,7 +4048,7 @@
         // Edit the text as written: the rendered body has lost its **bold**, `code` and [link](url) marks.
         const current = bodies.has(pid) ? bodies.get(pid) : bodyEl.textContent;
         const ef = document.createElement('form'); ef.className = 'edit-form';
-        ef.innerHTML = `<textarea class="input" maxlength="2000">${esc(current)}</textarea><div class="edit-actions"><button class="btn sm" type="button" data-cancel>Cancel</button><button class="btn primary sm" type="submit">Save</button></div>`;
+        ef.innerHTML = `<textarea class="input" maxlength="2000">${esc(current)}</textarea><div class="edit-actions"><button class="btn sm" type="button" data-cancel>Cancel</button><button class="btn primary sm" type="submit">Save</button></div><div class="form-flash"></div>`;
         bodyEl.hidden = true; bodyEl.insertAdjacentElement('afterend', ef);
         const ta = ef.querySelector('textarea'); ta.focus(); ta.setSelectionRange(current.length, current.length);
         ef.querySelector('[data-cancel]').onclick = () => { ef.remove(); bodyEl.hidden = false; };
@@ -4021,7 +4059,7 @@
               await api(`/api/community/${pid}/edit`, { body: nb });
               bodies.set(pid, nb); bodyEl.innerHTML = mdLite(nb); bodyEl.hidden = false; ef.remove();
               const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += ' ·\u00a0edited';
-            } catch (err) { alert0(err.message); }
+            } catch (err) { flash(ef.querySelector('.form-flash'), err.message, 'bad'); }
           });
         };
       } else {
@@ -4037,7 +4075,7 @@
         box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
           ${d.comments.length > PAGE ? '<button type="button" class="btn sm cmt-more"></button>' : ''}
           <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${authorLine(c.author, c.username)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
-          <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form>`;
+          <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form><div class="form-flash"></div>`;
         // Show the latest 10 (newest stay by the reply box); "Load earlier" reveals older in 10s.
         // Search (when present) filters the whole loaded set. ponytail: client-side over the ≤100
         // fetched — add a server offset if a thread ever tops that cap.
@@ -4071,8 +4109,9 @@
           const inp = frm.querySelector('input'); const body = inp.value.trim(); if (!body) return;
           await busy(frm.querySelector('button'), async () => {
             try { await api(`/api/community/${pid}/comments`, { body }); inp.value = '';
-              await load(true);  // refresh reply counts + thread affordance (also re-collapses the thread)
-            } catch (err) { alert0(err.message); }
+              // refresh reply counts + thread affordance (also re-collapses the thread)
+              if (!(await refreshed(load(true)))) flash(box.querySelector('.form-flash'), 'Reply sent.' + BEHIND, 'good');
+            } catch (err) { flash(box.querySelector('.form-flash'), err.message, 'bad'); }
           });
         };
       }
@@ -5018,7 +5057,13 @@
       const on = sw.checked;
       // One flip, like the dashboard card and the empty-page nudges: paper-only and undone by flipping
       // back. Real money keeps its own typed LIVE AUTOPILOT confirm below.
-      try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; } catch (e) { sw.checked = !on; alert0(e.message); return; }
+      // The switch locks until Tau answers: two quick flips that both failed left it showing on while
+      // autopilot was off. A failure puts it back to the saved state and says why in the panel, next to
+      // it (the page under a phone's full-screen panel can't be seen).
+      sw.disabled = true; apNote(box, '');
+      try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; }
+      catch (e) { sw.checked = !!(S.me && S.me.user && S.me.user.autopilot); apNote(box, e.message); return; }
+      finally { sw.disabled = false; }
       // Right after switching on, show where it may trade, so the focus is a choice and not a default nobody saw.
       if (on) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
       if (S.ap) S.ap = Object.assign({}, S.ap, { autopilot: on, mode: !on ? 'off' : S.ap.mode === 'off' ? 'paper' : S.ap.mode });
@@ -5083,7 +5128,7 @@
           if (S.ap) S.ap.focus = r.focus;
           if (current()) { apFocusOptions(sel, r.focus); apFocusPaint(box, r.focus); apLoadChat(box); }
           paintDashAp();
-        } catch (e) { if (current()) { sel.value = prev; alert0(e.message); } }
+        } catch (e) { if (current()) { sel.value = prev; apNote(box, e.message); } }
         finally { if (current()) sel.disabled = false; }
       };
       apFocusOptions(sel, (S.ap && S.ap.focus) || []);
@@ -5100,7 +5145,7 @@
         if (!current() || sel.disabled) return;
         sel.disabled = true;
         try { const r = await api('/api/autopilot/model', { model: sel.value }); if (current() && S.ap) S.ap.model = r.model; }
-        catch (e) { if (current()) { sel.value = (S.ap && S.ap.model) || cur; alert0(e.message); } }
+        catch (e) { if (current()) { sel.value = (S.ap && S.ap.model) || cur; apNote(box, e.message); } }
         finally { if (current()) sel.disabled = false; }
       };
     })();
@@ -5211,6 +5256,14 @@
     return '';
   }
   function apFlash(box, msg, kind) { const f = box.querySelector('#apf-flash'); if (f) f.innerHTML = `<p class="${kind === 'bad' ? 'error-text' : 'hint'}">${esc(msg)}</p>`; }
+  // A setting in the panel (the switch, model, markets) that didn't save says why in the panel, read out
+  // at once; '' clears it before the next try.
+  function apNote(box, msg) {
+    const f = box.querySelector('#apf-flash');
+    if (!f) { if (msg) alert0(msg); return; }
+    f.innerHTML = msg ? `<p class="error-text">${esc(msg)}</p>` : '';
+    if (msg) announce(msg, true);
+  }
   async function apAction(box, action, e) {
     if (action === 'toggle') {
       const opening = !apExpanded();
@@ -5391,29 +5444,41 @@
           try {
             const r = await api('/api/billing/topup', { amount: credits });
             if (gen !== S.gen) return;
-            await load();  // refresh balance + ledger, then confirm into the fresh panel
-            if (gen === S.gen) flash('#topup-flash', `Added ${usd(credits)} in credits. You paid ${usd(credits * (1 + fee))} — ${usd(credits)} plus the ${d.topup_fee_pct}% fee. New balance is ${usd(r.balance)}.`, 'good');
+            const fresh = await refreshed(load());  // refresh balance + ledger, then confirm into the fresh panel
+            if (gen === S.gen) flash('#topup-flash', `Added ${usd(credits)} in credits. You paid ${usd(credits * (1 + fee))} — ${usd(credits)} plus the ${d.topup_fee_pct}% fee. New balance is ${usd(r.balance)}.` + (fresh ? '' : BEHIND), 'good');
           } catch (err) { if (gen === S.gen) flash('#topup-flash', err.message, 'bad'); }
         });
       };
       const arBox = root.querySelector('#autoreload'), arAmt = root.querySelector('#reload-amt'), arThr = root.querySelector('#reload-thr');
       const arEdit = root.querySelector('#autorel-edit'), arCfg = root.querySelector('#autorel-config'), arSum = root.querySelector('#autorel-sum');
       arEdit.onclick = () => { const open = arCfg.hidden; arCfg.hidden = !open; arEdit.setAttribute('aria-expanded', String(open)); };
+      // What Tau last saved. A save that fails puts the switch, both amounts and the summary back to it:
+      // the summary kept saying On after a switch-on failed, and a failed amount change flipped the
+      // switch off on screen while auto-reload stayed on. The controls lock until Tau answers, so two
+      // quick flips can't land out of order.
+      let arSaved = { on: !!d.auto_reload, amount: d.autoreload_amount, threshold: d.autoreload_threshold };
+      const arPaint = (on, amount, threshold) => {
+        arBox.checked = on; arAmt.value = amount; arThr.value = threshold;
+        arSum.textContent = `Reload $${amount} at $${threshold}`;
+        root.querySelector('#autorel-when').innerHTML = reloadWhen(on, amount, threshold);
+      };
       const saveAutoReload = async () => {
+        const on = arBox.checked;
         const amount = Math.max(d.min_reload_amount, +arAmt.value || d.min_reload_amount);
         const threshold = Math.max(d.min_reload_threshold, +arThr.value || d.min_reload_threshold);
-        arAmt.value = amount; arThr.value = threshold;
-        arSum.textContent = `Reload $${amount} at $${threshold}`;
-        root.querySelector('#autorel-when').innerHTML = reloadWhen(arBox.checked, amount, threshold);
+        arPaint(on, amount, threshold);
+        [arBox, arAmt, arThr].forEach((x) => { x.disabled = true; });
         try {
-          await api('/api/billing/auto-reload', { on: arBox.checked, amount, threshold });
-          if (gen === S.gen) flash('#autorel-flash', arBox.checked ? `On ·\u00a0reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
-        } catch (err) { arBox.checked = !arBox.checked; if (gen === S.gen) flash('#autorel-flash', err.message, 'bad'); }
+          await api('/api/billing/auto-reload', { on, amount, threshold });
+          arSaved = { on, amount, threshold };
+          if (gen === S.gen) flash('#autorel-flash', on ? `On ·\u00a0reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
+        } catch (err) { arPaint(arSaved.on, arSaved.amount, arSaved.threshold); if (gen === S.gen) flash('#autorel-flash', err.message, 'bad'); }
+        finally { [arBox, arAmt, arThr].forEach((x) => { x.disabled = false; }); }
       };
       arBox.onchange = saveAutoReload;
       arAmt.onchange = arThr.onchange = () => { if (arBox.checked) saveAutoReload(); };
       root.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = () => armed(b, 'Confirm remove', () => busy(b, async () => {
-        try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); if (gen === S.gen) await load(); } catch (err) { if (gen === S.gen) alert0(err.message); }
+        try { await api('/api/billing/remove-card', { payment_method_id: b.dataset.remove }); if (gen === S.gen && !(await refreshed(load())) && gen === S.gen) flash('#flash', 'Card removed.' + BEHIND, 'good'); } catch (err) { if (gen === S.gen) alert0(err.message); }
       }))));
       // Stripe Payment Element (card + Apple Pay / Google Pay, Link off) — same
       // flow as the sign-in modal, so saving actually works with the config SI.
@@ -5438,7 +5503,7 @@
           if (gen !== S.gen) return;
           flash('#card-flash', 'Card saved.', 'good'); await load();
         });
-      } catch (err) { if (gen === S.gen) flash('#card-flash', err.message, 'bad'); }
+      } catch (err) { if (gen === S.gen) flash('#card-flash', cardFormFail(err).replace('then try again', 'then reload the page'), 'bad'); }
     };
     try { await load(); } catch (err) { if (gen === S.gen) throw err; }
   }

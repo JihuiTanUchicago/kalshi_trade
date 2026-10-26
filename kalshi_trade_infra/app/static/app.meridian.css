@@ -1473,6 +1473,8 @@ body.landing-body { background: #FBFBFA; }
 .theme-mark circle { display: none; }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-err { display: grid; justify-items: start; gap: 8px; }
+/* A reply or an edit that didn't send says so under its own box. */
+.form-flash:not(:empty) { margin-top: 8px; }
 .cmt-form .input { min-height: 38px; }
 @media (max-width: 680px) { .post-tools .btn { margin-left: 0; } }
 
