@@ -511,6 +511,23 @@ def _last_action(cur, uid: int, chat: Optional[Tuple[int, int]]) -> Optional[Dic
     return dict(hit[1]) if hit[1] is not None else None
 
 
+def _last_move(la: Optional[Dict], deps: List[Dict]) -> Optional[Dict]:
+    """The last move as the panel shows it: the engine's "Paused deployment #N automatically" line said
+    with the strategy's name (customer_text.auto_pause_line), and, as "titles", the names of the
+    user's strategies in the line that hold " — " ("Fade tails — v2"). The panel cuts a line at " — " to
+    its first clause, and cut inside a name it read "I left Fade tails."."""
+    if la is None:
+        return None
+    out = {"text": la["text"], "at": la["at"]}
+    if "deployment" in la:
+        out["text"] = customer_text.auto_pause_line(la["text"], la["deployment"])
+    names = {(la.get("deployment") or {}).get("title") or ""} | {d.get("title") or "" for d in deps}
+    titles = sorted((t for t in names if " — " in t and t in out["text"]), key=len, reverse=True)
+    if titles:
+        out["titles"] = titles
+    return out
+
+
 class _PanelReads(billing.Reads):
     """billing.Reads whose balance came with the panel's credit read (repo.credit_week, the same SUM)."""
 
@@ -723,7 +740,7 @@ def autopilot_status(ctx: Ctx):
         "today_paper_pnl": round(today["paper"], 2),
         "daily_loss_limit": limit,
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
-        "last_action": _last_action(cur, ctx.uid, pulse["chat"]),
+        "last_action": _last_move(_last_action(cur, ctx.uid, pulse["chat"]), deps),
         "last_review_at": pulse["last_review_at"],  # liveness: a quiet review posts nothing, this still shows it ran
         # A review queued or running now. Switching on queues the first one at once, and the panel said
         # "between research runs, checks in every 10 minutes" over a "Working" pulse while it waited.

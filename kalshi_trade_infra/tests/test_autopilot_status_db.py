@@ -236,7 +236,11 @@ def _single_reads(cur, uid):
     since = NOW - timedelta(days=7)
     from app import server
 
-    act = json.loads(json.dumps(repo.last_autopilot_action(cur, uid), default=server._json_default))
+    from app.web.routes import chat
+
+    # The single read, said as the panel says it (the engine's pause by name; chat._last_move).
+    act = chat._last_move(repo.last_autopilot_action(cur, uid), repo.list_deployments_brief(cur, uid))
+    act = json.loads(json.dumps(act, default=server._json_default))
     return {
         "today_live_pnl": round(repo.realized_pnl(cur, uid, "live", DAY), 2),
         "today_paper_pnl": round(repo.realized_pnl(cur, uid, "paper", DAY), 2),
@@ -311,6 +315,12 @@ def test_every_figure_the_panel_shows_moves_on_the_next_poll_and_a_kept_answer_i
          moved("last_action.text", to="Autopilot paused Rain: it hit its loss guard.")),
         ("a chat line that is not a move", lambda: repo.add_chat(cur, uid, "user", "Thanks"),
          moved("last_action.text", to="Autopilot paused Rain: it hit its loss guard.")),
+        # The engine's own pause is the newest move, said by the strategy's name, not "#<id>".
+        ("the engine pauses a deployment", lambda: repo.add_chat(
+            cur, uid, "system", "Paused deployment #%d automatically. Lost $6.00, more than the $5.00 guard (2x its worst "
+                                "backtest drawdown)." % deps["paper2"]),
+         moved("last_action.text", to="Paused your paper strategy Panel moves 1 automatically: it lost $6.00, more than "
+                                      "its $5.00 loss guard.")),
         ("a review is queued", lambda: repo.create_run(cur, uid, "review"), moved("reviewing", to=True)),
         ("a research session is queued", lambda: repo.create_run(cur, uid, "research", market="eth15m", brief=True),
          lambda b, a: MARKETS["eth15m"].label in a["research"]["active"] and len(a["research"]["active"]) == len(b["research"]["active"]) + 1),

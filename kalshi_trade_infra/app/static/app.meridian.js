@@ -5165,7 +5165,13 @@
     const raw = String((la && la.text) || '').replace(/[*_`]+/g, '').replace(/\s+/g, ' ').trim();
     const flip = /^(LIVE )?autopilot is (ON|OFF)\b/i.exec(raw);
     if (flip) return `${flip[1] ? 'Live autopilot' : 'Autopilot'} switched ${/on/i.test(flip[2]) ? 'on' : 'off'}`;
-    let t = raw.replace(/^Autopilot:?\s+(?=[a-z])/, '').split(/(?<=[.!?])\s| — /)[0].replace(/[.!?]$/, '');
+    // A strategy's name can hold " — " ("Fade tails — v2"), where the line is cut to its first clause:
+    // "I left Fade tails — v2 running: ..." read "I left Fade tails." The server lists the names in the
+    // line that hold one (la.titles); each is held whole, as a placeholder, through the cuts.
+    const names = (la && Array.isArray(la.titles) ? la.titles : []).map(String).filter((n) => n && raw.includes(n));
+    const whole = (s) => s.replace(/\uE000(\d+)\uE001/g, (all, i) => names[i]);
+    let t = names.reduce((s, n, i) => s.split(n).join('\uE000' + i + '\uE001'), raw);
+    t = t.replace(/^Autopilot:?\s+(?=[a-z])/, '').split(/(?<=[.!?])\s| — /)[0].replace(/[.!?]$/, '');
     // The forward gate's verdict line leads with a label and carries its stats in brackets; cut to the
     // label alone it read "Last move: Paper forward gate". Say the verdict instead.
     // The live-ready and paper-standout lines start with their once-only marker ("[live-ready #12]").
@@ -5175,7 +5181,8 @@
     // agent.act names a research session's market by its key ("on btc15m"); say it the way the app does.
     const keys = new Set(((S.me && S.me.markets) || []).map((m) => m.key));
     t = t.replace(/\bon ([a-z0-9_]+)$/, (all, k) => keys.has(k) || MKT_SHORT[k] ? 'on ' + marketShort(k) : all);
-    if (t.length > 90 && t.indexOf(': ') > 10) t = t.slice(0, t.indexOf(': '));
+    if (whole(t).length > 90 && t.indexOf(': ') > 10) t = t.slice(0, t.indexOf(': '));
+    t = whole(t);
     if (t.length > 90) t = t.slice(0, 90).replace(/\s+\S*$/, '') + '\u2026';
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
   }
@@ -5520,8 +5527,15 @@
     // Your own decision and a failed answer are not reviews: both read "Reviewed" here.
     const said = /^You (approved|declined) the proposal/.test(m.content || '') ? 'Your decision'
       : /^The agent hit an error/.test(m.content || '') ? 'No answer' : '';
+    // Asked in chat to pause a strategy on paper under a day (or a tournament entrant), the agent's reply
+    // can suggest pausing it, and then this line says "I left it running": under "Reviewed" it read as
+    // the same voice taking it back. It is the autopilot's own rule (agent.act), so it is headed as
+    // that, and says that your own Pause on Deploy still stops it.
+    const rule = !m.proposal_kind && /^I left .+ running: it (?:has been on paper for only|is a paper tournament entrant)/.test(m.content || '');
     const kind = (st === 'pending' && AP_ASK[m.proposal_kind]) || AP_ACT[m.proposal_kind]
-      || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off') : said || 'Reviewed');
+      || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off')
+        : said || (rule ? 'Autopilot’s rule: kept running' : 'Reviewed'));
+    const own = rule ? '<p class="apf-ask apf-rule">To stop it anyway, pause it yourself on <a href="/deploy">Deploy</a>.</p>' : '';
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
     const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`
       : st === 'declined' || st === 'rejected' ? '<span class="hx-stamp rej">Declined</span>' : '';
@@ -5534,7 +5548,7 @@
     li.className = 'ln lane-' + lane + ' apf-act';
     li.innerHTML = `${t}<div class="say">
       <div class="hx-head"><span class="say-kind">${esc(kind)}</span>${title}${stage}${stamp}</div>
-      <div class="apf-md">${feedMd(m.content)}</div>${detail}${ctl}</div>`;
+      <div class="apf-md">${feedMd(m.content)}</div>${own}${detail}${ctl}</div>`;
     return li;
   }
   // Resolves false when the read failed (the chat poll backs off on it; other callers ignore it).

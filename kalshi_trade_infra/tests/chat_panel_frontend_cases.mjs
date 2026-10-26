@@ -6,6 +6,11 @@
 //   credits and what the last one cost (the chat read's turn_cost).
 // - Out of credits, the failed send links to Billing and keeps the message.
 // - A pause proposal says, before Approve, that pausing sells what the strategy holds.
+// - "Last move" keeps a strategy name that holds " — " whole (it read "I left Fade the late spike."),
+//   using the names the server lists in la.titles, and shows the engine's own pause by name.
+// - Asked to pause a strategy on paper under a day, the agent's reply can suggest pausing it and the
+//   next line says "I left it running". That line is headed as the autopilot's own rule, not
+//   "Reviewed", and says your own Pause on Deploy still stops it.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -97,5 +102,48 @@ export function chatPanelCases({name, frontend, storageFor}) {
       'Approve pauses this strategy, which runs LIVE, with real money in your Kalshi account, and sells anything it holds.',
       'Approve restarts this strategy, which runs on paper, with practice money.',
     ]);
+  });
+
+  const SPIKE = 'Fade the late spike — Bitcoin 15m', TAILS = 'Fade tails — v2';
+  const KEPT = (title) => `I left ${title} running: it has been on paper for only 3.2 hours, and paper costs nothing `
+    + 'while it builds the record the live gate needs (at least 24 hours before I pause it).';
+
+  test(`${name}: the last move keeps a strategy name with a dash whole, and says the engine's pause by name`, async () => {
+    const p = await panel({autopilot: true});
+    const move = (text, titles) => p.f.apMoveText({text, at: AT, titles});
+    // Before: "I left Fade the late spike" (cut at the name's dash).
+    assert.equal(move(KEPT(SPIKE), [SPIKE]), `I left ${SPIKE} running`);
+    assert.equal(move(KEPT(TAILS), [TAILS]), `I left ${TAILS} running`);  // a lowercase word after the dash too
+    // The engine's pause, as the server says it (customer_text.auto_pause_line): the name, never "#12".
+    assert.equal(move(`Paused your paper strategy ${TAILS} automatically: it lost $12.00, more than its $10.00 loss guard.`, [TAILS]),
+      `Paused your paper strategy ${TAILS} automatically`);
+    assert.equal(move('Paused your paper strategy Rain automatically: it lost $3.00, more than its $2.50 loss guard.'),
+      'Paused your paper strategy Rain automatically');  // the reason, past 90 characters, is left to the feed
+    // A clause after a dash outside any name is still cut, and a name the line doesn't hold changes nothing.
+    assert.equal(move('Started a fresh research session on a market — same gates as any run.', [TAILS]),
+      'Started a fresh research session on a market');
+    assert.equal(move(`Autopilot paused ${TAILS}. It lost 22% of its money.`, [TAILS]), `Paused ${TAILS}`);
+    // The line under the panel's pulse, as painted.
+    p.f.apUpdate(p.box, {autopilot: true, mode: 'paper', research: {active: []}, last_action: {text: KEPT(SPIKE), at: AT, titles: [SPIKE]}});
+    assert.match(p.box.querySelector('#apf-last').textContent, new RegExp(`: I left ${SPIKE} running\\.$`));
+  });
+
+  test(`${name}: autopilot keeping a young paper strategy reads as its own rule after the agent's suggestion`, async () => {
+    const p = await panel({autopilot: true, chat: () => [
+      {id: 1, role: 'user', content: `Pause ${TAILS}.`, created_at: AT},
+      {id: 2, role: 'agent', content: `It has made no trades yet, so I suggest pausing it.`, created_at: AT},
+      {id: 3, role: 'system', content: KEPT(TAILS), created_at: AT},
+      {id: 4, role: 'system', content: 'Market focus set to btc.', created_at: AT},
+    ]});
+    const kinds = p.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent);
+    assert.deepEqual(kinds, ['You', 'Agent', 'Autopilot’s rule: kept running', 'Reviewed']);
+    const own = p.box.querySelectorAll('.apf-rule');
+    assert.equal(own.length, 1);
+    assert.equal(own[0].textContent, 'To stop it anyway, pause it yourself on Deploy.');
+    assert.match(own[0].innerHTML, /<a href="\/deploy">Deploy<\/a>/);
+    // A tournament entrant the autopilot keeps is the same rule.
+    const q = await panel({autopilot: true, chat: () => [{id: 5, role: 'system', created_at: AT, content:
+      `I left ${TAILS} running: it is a paper tournament entrant with 3 of 20 independent events (net $1.20), and the tournament retires it on its own once the data can judge it.`}]});
+    assert.deepEqual(q.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent), ['Autopilot’s rule: kept running']);
   });
 }

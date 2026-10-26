@@ -1,12 +1,16 @@
 """Co-pilot chat history, autopilot action log reads, and agent proposals awaiting a decision."""
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Optional
 
 from app.adapters.db.sql import _json, _loads, now_utc
 
 
 LAST_ACTION_WINDOW = 1000  # chat rows back that last_autopilot_action looks
+# The engine's own pause line (trading/engine.py: the loss guard and the drawdown force-close). Its text
+# is the engine's and stays as written; the panel says it in words on the way out.
+AUTO_PAUSED = re.compile(r"Paused deployment #(\d+) automatically\b")
 
 
 def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
@@ -19,19 +23,34 @@ def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
     panel's idle line says reviews run on a schedule.
     A research session the autopilot starts is a move too (agent.act's "Started a fresh research
     session on ..." line, which never names the autopilot): without it a busy autopilot's card read
-    "Last move: Autopilot switched on" from days back while it started a session every hour."""
+    "Last move: Autopilot switched on" from days back while it started a session every hour.
+    The engine's loss-guard and drawdown pauses are moves too ("Paused deployment #12 automatically.
+    ...", which names neither the autopilot nor the strategy): without them the card's last move was an
+    older deploy while the newest thing that happened was a pause. That line comes with the paused
+    deployment as "deployment" ({"id", "title", "mode"}; title and mode None once it is gone), so the
+    panel can say it by the strategy's name (customer_text.auto_pause_line)."""
     cur.execute(
         """SELECT c.content, c.created_at FROM
              (SELECT id FROM app_chat_messages WHERE user_id=%s ORDER BY id DESC LIMIT %s) recent
            JOIN app_chat_messages c ON c.id=recent.id
            WHERE c.role='system'
                  AND (c.content LIKE '%%utopilot%%' OR c.content LIKE '%%LIVE%%' OR c.content LIKE '%%Kill%%'
-                      OR c.content LIKE 'Started a fresh research session%%')
+                      OR c.content LIKE 'Started a fresh research session%%'
+                      OR c.content LIKE 'Paused deployment #%% automatically%%')
            ORDER BY c.id DESC LIMIT 1""",
         (user_id, LAST_ACTION_WINDOW),
     )
     r = cur.fetchone()
-    return {"text": r["content"], "at": r["created_at"]} if r else None
+    if not r:
+        return None
+    out = {"text": r["content"], "at": r["created_at"]}
+    m = AUTO_PAUSED.match(r["content"] or "")
+    if m:
+        cur.execute("SELECT s.title, d.mode FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id "
+                    "WHERE d.id=%s AND d.user_id=%s", (int(m.group(1)), user_id))
+        d = cur.fetchone() or {}
+        out["deployment"] = {"id": int(m.group(1)), "title": d.get("title"), "mode": d.get("mode")}
+    return out
 
 
 def last_chat_turn_cost(cur, user_id: int) -> Optional[float]:

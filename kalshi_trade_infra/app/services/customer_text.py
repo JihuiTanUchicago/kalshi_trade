@@ -174,3 +174,57 @@ def plain_controls(text: Optional[str]) -> Optional[str]:
     if not text or "=" not in text:
         return text
     return _CONTROL_SETTING.sub(lambda m: CONTROL_WORDS[m.group(1)](float(m.group(2))), str(text))
+
+
+# -- the engine's automatic pause, in words ---------------------------------------------------------
+# The engine posts "Paused deployment #12 automatically. <why>" when its loss guard or the drawdown
+# limit stops a strategy (trading/engine.py; that text stays as written). It names a row number nobody
+# sees, so the autopilot card's "Last move" says it by the strategy's name instead.
+
+_AUTO_PAUSE = re.compile(r"^Paused deployment #\d+ automatically\.?\s*(.*)$", re.S)
+_NUM = r"(\d+(?:\.\d+)?)"
+_MONEY = r"\$([\d,]+(?:\.\d+)?)"
+_PAUSE_WHY = (
+    (re.compile(r"^Lost %s, more than the %s guard\b" % (_MONEY, _MONEY)),
+     lambda m: "it lost $%s, more than its $%s loss guard" % (m.group(1), m.group(2))),
+    (re.compile(r"^Live is down %s over its first (\d+) closed trades\b" % _MONEY),
+     lambda m: "it is down $%s over its first %s real-money trades" % (m.group(1), m.group(2))),
+)
+_FORCE_WHY = (
+    (re.compile(r"^drawdown %s%% >= limit %s%%$" % (_NUM, _NUM)),
+     lambda m: "it was down %s%% of its capital, past your %s%% limit" % (m.group(1), m.group(2))),
+    (re.compile(r"^position down %s%% >= stop %s%% of cost$" % (_NUM, _NUM)),
+     lambda m: "a position fell %s%% below its cost, past your %s%% stop" % (m.group(1), m.group(2))),
+)
+_PAUSE_BOOK = {"paper": "paper", "demo": "demo", "live": "live"}
+
+
+def _pause_reason(why: str) -> str:
+    why = why.strip()
+    for rx, say in _PAUSE_WHY:
+        m = rx.match(why)
+        if m:
+            return say(m)
+    if why.startswith("force-closed:"):
+        parts = []
+        for part in why[len("force-closed:"):].split(";"):
+            for rx, say in _FORCE_WHY:
+                m = rx.match(part.strip())
+                if m:
+                    parts.append(say(m))
+        return " and ".join(parts)
+    return ""  # a reason not listed above: the name and the book alone, never the engine's raw words
+
+
+def auto_pause_line(text: Optional[str], deployment: Optional[Dict]) -> Optional[str]:
+    """The engine's "Paused deployment #N automatically. <why>" as a customer reads it: the strategy by
+    its name (``deployment``'s title, "one of your strategies" once it is gone), its book, and the guard
+    that fired in words. Any other line comes back as given."""
+    m = _AUTO_PAUSE.match(str(text or ""))
+    if not m:
+        return text
+    d = deployment or {}
+    title, book = (d.get("title") or "").strip(), _PAUSE_BOOK.get(d.get("mode") or "")
+    name = ("your %s strategy %s" % (book, title) if book else title) if title else "one of your strategies"
+    why = _pause_reason(m.group(1))
+    return "Paused %s automatically%s." % (name, (": " + why) if why else "")
