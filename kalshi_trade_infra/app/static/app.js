@@ -2667,11 +2667,13 @@
     // Overfit/luck tells on a raw backtest column: a tiny sample, a perfect win rate, no losing
     // trades (profit factor runs away), or an implausibly high daily Sharpe are the classic
     // signatures of a number too good to be real. Flag them inline so a raw backtest is never
-    // read as a tradable edge.
+    // read as a tradable edge. The sample bar comes from the server (the app's one "too few to tell
+    // skill from luck" level), a caution stricter than the gate's own trade floor, so the line names both.
+    const caution = s.sample_caution || {};
     const luckFlag = (m) => {
       if (!m) return '';
       const r = [];
-      if (m.trades != null && m.trades < 30) r.push(`n=${m.trades} — too few trades to tell skill from luck`);
+      if (m.trades != null && caution.min_trades != null && m.trades < caution.min_trades) r.push(`n=${m.trades} — under ${caution.min_trades} trades, too few to tell skill from luck${caution.gate_min_oos_trades != null ? ` (a caution, stricter than the gate’s floor of ${caution.gate_min_oos_trades})` : ''}`);
       if (m.win_rate === 1) r.push('100% win rate — an overfit signature, not an edge');
       if (typeof m.profit_factor === 'number' && m.profit_factor >= 99) r.push('no losing trades in sample — profit factor is meaningless');
       if (typeof m.sharpe === 'number' && m.sharpe >= 3) r.push(`Sharpe ${m.sharpe} is implausibly high for a real net edge`);

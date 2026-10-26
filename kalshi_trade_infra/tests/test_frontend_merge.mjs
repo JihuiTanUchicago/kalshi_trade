@@ -2382,3 +2382,15 @@ test('Tau: the dashboard points a quiet stretch with sessions at what each idea 
   assert.doesNotMatch(await at({...base, passed: {n: 1, items: [{id: 9, title: 'Rain'}]}, runs: {succeeded: 2}}), /see what each idea missed/);
   assert.doesNotMatch(await at({...base, passed: {n: 0, items: []}, runs: {}}), /see what each idea missed/);
 });
+
+test('the backtest luck line reads its trade bar from the server and names it as stricter than the gate', async () => {
+  const flags = async overrides => {
+    const f = strategyFrontend(detailStrategy(overrides)); await f.viewStrategy(42); await flush();
+    return f.root.querySelectorAll('.luck-flag').map(p => p.textContent);
+  };
+  const lines = await flags({sample_caution: {min_trades: 30, gate_min_oos_trades: 10}});
+  assert.equal(lines.length, 2);  // in-sample and out-of-sample, 6 trades each
+  for (const line of lines) assert.match(line, /n=6 — under 30 trades, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
+  assert.deepEqual(await flags({sample_caution: {min_trades: 5, gate_min_oos_trades: 10}}), []);
+  assert.deepEqual(await flags({}), []);  // no bar from the server, no line: never a guessed constant
+});

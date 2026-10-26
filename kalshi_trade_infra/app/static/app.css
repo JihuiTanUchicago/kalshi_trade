@@ -361,6 +361,9 @@ tr.live-row td.name a { color: var(--signal); }
 .btn.primary { background: var(--ink); color: #F1F3ED; }
 .btn.primary:hover { background: #000; }
 .btn[disabled], .btn[aria-disabled="true"] { border-color: var(--rule-2); color: var(--ink-3); cursor: not-allowed; background: transparent; }
+/* An outlined (ghost) button is all border, so a disabled one keeps a 3:1 outline (WCAG non-text
+   contrast) in its label colour; --rule-2 drew it at under 2:1. */
+.btn.ghost[disabled], .btn.ghost[aria-disabled="true"] { border-color: var(--ink-3); }
 .btn.danger { border-color: var(--signal); color: var(--signal); }
 .btn.danger:hover, .btn.armed { background: var(--signal); color: #FDF2F3; border-color: var(--signal); }
 .btn.sm { font-size: 11px; padding: 5px 10px 4px; }

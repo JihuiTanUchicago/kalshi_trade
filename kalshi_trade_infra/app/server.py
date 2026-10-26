@@ -1227,6 +1227,9 @@ def get_strategy(ctx: Ctx):
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
+        # The backtest columns' "too few trades to tell skill from luck" caution (display only): the app's
+        # one noise level for a trade count, deliberately stricter than the gate's floor, which it names.
+        sample_caution={"min_trades": track_record.MIN_TRADES, "gate_min_oos_trades": backtest.GATES["min_oos_trades"]},
         experiment=exp,
         # One plain line per gate it missed: measured, needed, and what to try next (display only).
         why_failed=_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),

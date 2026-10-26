@@ -18,6 +18,7 @@
 .alpaca-paper-ticket input:disabled, .alpaca-paper-ticket select:disabled { color: var(--ink-3); opacity: .7; }
 .alpaca-paper-ticket .btn { min-height: 34px; justify-content: center; }
 .alpaca-paper .btn:disabled, .alpaca-paper fieldset:disabled .btn { border-color: var(--rule-2); color: var(--ink-3); cursor: not-allowed; background: transparent; }
+.alpaca-paper .btn.ghost:disabled, .alpaca-paper fieldset:disabled .btn.ghost { border-color: var(--ink-3); }  /* 3:1 outline, as app.css */
 .alpaca-paper-orders { margin-top: 14px; }
 .alpaca-paper-order { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); }
 .alpaca-paper-order-main { min-width: 0; }
