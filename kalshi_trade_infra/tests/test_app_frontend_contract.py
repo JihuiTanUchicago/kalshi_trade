@@ -584,3 +584,25 @@ def test_the_story_says_when_the_daily_live_loss_limit_stopped_live():
     assert ("Live trading stopped for today: today's live loss of $60.50 reached your $50.00 daily limit, so live "
             "autopilot switched itself off and live strategies were paused. Paper keeps running.") in lines
     assert not any(line.startswith('Nothing trades real money until') for line in lines)
+
+
+@pytest.mark.parametrize('customer,charge', [
+    # The card wall reads this before a card is saved: auto-reload is on by default, at the default amount.
+    (None, None),
+    ({'stripe_customer_id': 'cus_fixture', 'default_pm_id': None, 'auto_reload': 1, 'reload_amount': 40, 'reload_threshold': 10}, 42.20),
+])
+def test_billing_states_what_one_auto_reload_charges_the_card(monkeypatch, customer, charge):
+    from decimal import Decimal
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.billing, 'TOPUP_FEE', Decimal('0.055'))
+    monkeypatch.setattr(server.billing, 'list_cards', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: customer)
+    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 20.0)
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a, **k: 0.0)
+    monkeypatch.setattr(server.repo, 'credit_rows', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE))
+    data = server.billing_state(context())
+    # Credits plus the top-up fee, the same sum billing.auto_reload charges; never the bare credit amount.
+    expected = charge if charge is not None else float(server.billing.AUTORELOAD_AMOUNT * Decimal('1.055'))
+    assert data['autoreload_charge'] == pytest.approx(expected, abs=0.005)
+    assert data['autoreload_charge'] > data['autoreload_amount']

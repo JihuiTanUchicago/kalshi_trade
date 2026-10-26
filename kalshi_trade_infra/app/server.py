@@ -2713,6 +2713,9 @@ def billing_state(ctx: Ctx):
         "topup_fee_pct": float(billing.TOPUP_FEE) * 100,
         "autoreload_threshold": reload_threshold,
         "autoreload_amount": reload_amount,
+        # What one auto-reload charges the card (credits plus the top-up fee), so the card wall can
+        # say it before the card is saved: auto-reload is on by default.
+        "autoreload_charge": billing.topup_charge_cents(Decimal(str(reload_amount))) / 100,
         "min_reload_amount": float(billing.AUTORELOAD_AMOUNT),
         "min_reload_threshold": float(billing.AUTORELOAD_THRESHOLD),
         "min_topup": float(billing.MIN_TOPUP), "max_topup": float(billing.MAX_TOPUP),

@@ -151,7 +151,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord, apUpdate};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord, apUpdate, paymentGate};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -548,7 +548,7 @@ test('Overview empty paper track record follows the autopilot switch when a stat
   for (const tick of [...f.intervals.values()]) tick();
   await flush(); await flush();
   assert.equal(f.S.me.user.autopilot, true);
-  assert.match(panel(), /Autopilot runs the strategies that pass every gate on paper/); assert.doesNotMatch(panel(), /Go to Deploy/);
+  assert.match(panel(), /Autopilot runs the strategies that pass every research test on paper, with pretend money/); assert.doesNotMatch(panel(), /Go to Deploy/);
 });
 
 test('Overview empty Deployed box never says autopilot is researching while the card says it is quiet or paused', async () => {
@@ -2843,7 +2843,7 @@ test('Meridian empty paper track record points at autopilot when it is on', () =
   const f = frontend(), th = {min_sharpe_days: 30};
   f.S.me = {user: {autopilot: true}};
   const paper = f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
-  assert.match(paper, /Autopilot runs the strategies that pass every gate on paper/);
+  assert.match(paper, /Autopilot runs the strategies that pass every research test on paper, with pretend money/);
   assert.match(paper, /See its research/); assert.doesNotMatch(paper, /Go to Deploy/);
   assert.match(f.trackRecordPanel({trades: 0, label: 'Demo'}, 'demo', th), /Go to Deploy/);
 });
@@ -4610,4 +4610,45 @@ test('track record (Meridian): stopped and removed strategies stay in the table 
   // Every trade's P&L is net of fees, so the ratio isn't "gross" beside the gross-before-fees line.
   assert.match(html, /winning trades ÷ losing trades, after fees/); assert.doesNotMatch(html, /gross wins/);
   assert.match(html, /−1\.25/); assert.match(html, /Sortino −2\.50/); assert.doesNotMatch(html, />-1\.25</);
+});
+
+// A newcomer's first hour: what the card wall charges, what the dashboard says right after the switch, and
+// that the paper portfolio's $1,000 is practice money.
+test('Meridian card wall says saving the card charges nothing and what auto-reload will charge it, before it is saved', async () => {
+  for (const [auto_reload, said] of [[true, 'Saving the card charges nothing. Auto-reload is on: when your credits fall to $5.00, we charge the card $21.10 for $20.00 more. You can turn it off on Billing.'],
+    [false, 'Saving the card charges nothing.']]) {
+    const stripe = stripeFixture();
+    const f = frontend({stripeLoader: async () => stripe.Stripe, fetchImpl: path => {
+      if (path === '/api/billing') return response(billingData({configured: true, auto_reload, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1}));
+      assert.equal(path, '/api/billing/setup-intent'); return response({client_secret: 'synthetic-secret'});
+    }});
+    f.location.pathname = '/'; Object.assign(f.S.me, {needs_card: true, free_bonus: 20});
+    await f.paymentGate(); await flush();
+    const dlg = f.document.body.querySelector('.pay-modal');
+    assert.match(dlg.querySelector('.wl-sub').innerHTML, /Save a card and we'll add \$20 in free credits\./);
+    assert.doesNotMatch(dlg.innerHTML, /by the token|list price/i);
+    const terms = dlg.querySelector('#pay-terms');
+    assert.equal(terms.hidden, false); assert.equal(terms.textContent, said);
+  }
+});
+
+test('Meridian: turning autopilot on updates the last-24-hours row at once, not only after a reload', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path.startsWith('/api/dashboard')) return response(dashboardData({since: {at: '2026-10-25T08:00:00+00:00', first: true,
+      books: {}, passed: {n: 0, items: []}, autopilot: {}, runs: {}, own_sessions: false}}));
+    if (path === '/api/settings') return response({ok: true});
+    if (path === '/api/autopilot/status') return response(apStatus);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const row = () => f.root.querySelector('#dash-since [data-since-ap]').textContent;
+  assert.equal(row(), 'Off.');
+  await f.root.querySelector('#dash-ap [data-apcard="on"]').onclick(); await flush(); await flush();
+  assert.equal(row(), 'On. It made no changes.');
+});
+
+test('Meridian Overview says the paper portfolio is practice money', async () => {
+  const f = apDashboard(dashboardData(), apStatus);
+  await f.viewDashboard(); await flush();
+  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · All-time P&amp;L \+\$111\.25/);
 });
