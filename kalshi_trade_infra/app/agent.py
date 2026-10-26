@@ -4188,9 +4188,10 @@ def _copilot_context(cur, user: Dict) -> str:
     for d in deps:
         oos = ((d.get("result") or {}).get("out_of_sample") or {})
         lines.append(
-            "- deployment_id=%s \"%s\" market=%s mode=%s status=%s live: %s closed trades, %s wins, realized $%.2f, %s open; "
+            # "<mode> record:", not "live:": reviews read the old wording and called paper legs Live.
+            "- deployment_id=%s \"%s\" market=%s mode=%s status=%s %s record: %s closed trades, %s wins, realized $%.2f, %s open; "
             "backtest unseen-data: pnl $%s over %s trades, max drawdown $%s; %sspec=%s"
-            % (d["id"], d["title"], d["market"], d["mode"], d["status"], d["closed_trades"], d["wins"],
+            % (d["id"], d["title"], d["market"], d["mode"], d["status"], d["mode"], d["closed_trades"], d["wins"],
                float(d["realized_pnl"]), d["open_positions"], oos.get("pnl"), oos.get("trades"), oos.get("max_drawdown"),
                _deployment_age_text(d), json.dumps(d["spec"], separators=(",", ":")))
         )
