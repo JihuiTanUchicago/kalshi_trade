@@ -16,7 +16,7 @@ from app.adapters.db.sql import _json, _loads, now_utc, transaction  # noqa: F40
 from app.adapters.db.billing_repository import (  # noqa: F401
     add_credit, credit_balance, credit_rows, credit_spent_total, credit_statement, credit_totals, get_stripe_customer,
     finished_session_costs, forever_session_rates, recent_session_costs, research_spent_since, runs_spent,
-    usage_by_source, save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
+    last_credit_at, usage_by_source, save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
 )
 from app.adapters.db.kalshi_keys_repository import (  # noqa: F401
     delete_kalshi_key, get_kalshi_key, save_kalshi_key,
@@ -390,6 +390,22 @@ def list_notifications(cur, user_id: int, limit: int = 20) -> List[Dict]:
         (user_id, limit),
     )
     return cur.fetchall()
+
+
+def latest_notification(cur, user_id: int, kind: str) -> Optional[Dict]:
+    """The user's newest notice of one kind (body, created_at, read_at), or None."""
+    cur.execute(
+        "SELECT id, body, created_at, read_at FROM app_notifications WHERE user_id=%s AND kind=%s ORDER BY id DESC LIMIT 1",
+        (user_id, kind),
+    )
+    return cur.fetchone()
+
+
+def delete_notifications(cur, user_id: int, kind: str) -> int:
+    """Drop the user's notices of one kind: what they said is no longer so (a failed auto-reload
+    once a new card is saved)."""
+    cur.execute("DELETE FROM app_notifications WHERE user_id=%s AND kind=%s", (user_id, kind))
+    return cur.rowcount
 
 
 def count_unread_notifications(cur, user_id: int) -> int:

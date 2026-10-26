@@ -173,6 +173,8 @@ class _Counting:
         self.sql.append((" ".join(sql.split()), tuple(params or ())))
 
     def fetchone(self):
+        if "FROM app_notifications" in self.sql[-1][0]:
+            return None  # no failed auto-reload to tell
         return {"s": 0, "b": 0, "stripe_customer_id": "cus_synthetic", "default_pm_id": None, "auto_reload": 0,
                 "reload_amount": None, "reload_threshold": None}
 
@@ -180,15 +182,17 @@ class _Counting:
         return []
 
 
-def test_the_billing_page_reads_six_statements(monkeypatch):
+def test_the_billing_page_reads_seven_statements(monkeypatch):
     # The card, the ledger's totals (balance, all-time spend, the sum), the 7-day and 24-hour spend, the
     # week by source, and the statement: one fewer than when the balance and all-time spend were read alone.
+    # With a card on file, one more: the last failed auto-reload (the ledger's last auto-reload is read
+    # only when there is one).
     cur = _Counting()
     monkeypatch.setattr(server.billing, "configured", lambda: True)
     monkeypatch.setattr(server.billing, "list_cards", lambda *a: [])
     ctx = server.Ctx(SimpleNamespace(cursor=lambda: cur), _ctx().user, (), {}, {}, SimpleNamespace())
     data = server.billing_state(ctx)
-    assert len(cur.sql) == 6 and len(set(cur.sql)) == 6, cur.sql
+    assert len(cur.sql) == 7 and len(set(cur.sql)) == 7, cur.sql
     assert data["balance"] == 0 and data["ledger"] == [] and data["math"]["end"] == 0
 
 

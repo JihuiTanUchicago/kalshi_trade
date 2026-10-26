@@ -307,6 +307,22 @@ test('billing continues to render the server-provided welcome credit instead of 
   }
 });
 
+test('billing shows a failed auto-reload by the switch, with its reason and Update card', async () => {
+  const failed = {at: '2026-10-26T13:05:00Z', text: 'It couldn\'t add $20.00 in credits. That card has expired. Add a current card and try again.'};
+  const f = frontend(path => { assert.match(path, /^\/api\/billing(\?|$)/); return response({configured: true, publishable_key: 'synthetic-only',
+    cards: [{id: 'pm_1', brand: 'visa', last4: '4242', exp_month: 1, exp_year: 2026}], default_pm: 'pm_1', auto_reload: true, ledger: [],
+    balance: 3, free_bonus: 20, spent: 17, spent_7d: 4, topup_fee_pct: 5.5, autoreload_amount: 20, autoreload_threshold: 5,
+    min_reload_amount: 20, min_reload_threshold: 5, min_topup: 5, max_topup: 1000, min_run_balance: 1, reload_failed: failed}); });
+  await f.viewBilling(); await flush();
+  const note = f.root.querySelector('#autorel-fail');
+  assert.ok(note);
+  assert.match(note.innerHTML, /<b>Auto-reload failed<\/b>/);
+  assert.match(note.innerHTML, /That card has expired\. Add a current card and try again\./);
+  assert.equal(f.root.querySelector('#autorel-fix').textContent, 'Update card');
+  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /list price|pi_|cus_|Stripe error/);
+  assert.equal(posts(f).length, 0);
+});
+
 test('current paper proposal approval semantics and broker callback route survive reconciliation', () => {
   const f = frontend();
   assert.equal(f.routes.find(([pattern]) => pattern.test('/settings/account'))[1], f.viewFunds);

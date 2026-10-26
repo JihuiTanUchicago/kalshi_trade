@@ -2770,6 +2770,48 @@ test('Billing statement: a heading per day, one line per session a day that link
   assert.doesNotMatch(main, /list price|markup|us\.anthropic/i);
 });
 
+test('a failed auto-reload says why by the auto-reload switch, with Update card going to the card form', async () => {
+  const failed = {at: '2026-10-26T13:05:00Z', text: 'It couldn\'t add $25.00 in credits. Your card was declined for <insufficient> funds.'};
+  const posts = [], f = billingPage(cardedBilling({reload_failed: failed}), posts);
+  await f.viewBilling(); await flush();
+  const note = f.root.querySelector('#autorel-fail');
+  assert.ok(note, 'the banner is on the page');
+  assert.ok(f.root.querySelector('section.panel #autorel-fail'), 'it sits in the payment-method panel, by the switch');
+  assert.match(note.innerHTML, /<b>Auto-reload failed<\/b> <time datetime="2026-10-26T13:05:00Z">/);
+  assert.match(note.innerHTML, /It couldn&#39;t add \$25\.00 in credits\. Your card was declined for &lt;insufficient&gt; funds\./);
+  assert.equal('hidden' in note.attributes, false);
+  const fix = f.root.querySelector('#autorel-fix');
+  assert.equal(fix.textContent, 'Update card');
+  const sent = f.requests.length;
+  fix.onclick();  // goes to the card form: no request, no charge
+  assert.equal(f.requests.length, sent);
+  // Switched off, the banner goes with it (it is about auto-reload); back on, it is back.
+  const sw = f.root.querySelector('#autoreload'); sw.checked = false; await sw.onchange(); await flush();
+  assert.equal(note.hidden, true);
+  sw.checked = true; await sw.onchange(); await flush();
+  assert.equal(note.hidden, false);
+  assert.deepEqual(posts.map((p) => p.on), [false, true]);
+  // Nothing failed: no banner. Off at load: there, but hidden.
+  const ok = billingPage(cardedBilling({reload_failed: null}));
+  await ok.viewBilling(); await flush();
+  assert.equal(ok.root.querySelector('#autorel-fail'), null);
+  const off = billingPage(cardedBilling({auto_reload: false, reload_failed: failed}));
+  await off.viewBilling(); await flush();
+  assert.equal('hidden' in off.root.querySelector('#autorel-fail').attributes, true);
+});
+
+test('the failed auto-reload banner is one helper, byte-identical in both bundles, styled in both stylesheets', () => {
+  const meridian = readFileSync(new URL('../app/static/app.meridian.js', import.meta.url), 'utf8');
+  const helper = (src) => (src.match(/ {2}function reloadFailNote\(d\) \{[\s\S]*?\n {2}\}\n/) || [])[0];
+  assert.ok(helper(source));
+  assert.equal(helper(meridian), helper(source));
+  for (const sheet of ['app.css', 'app.meridian.css']) {
+    const css = readFileSync(new URL('../app/static/' + sheet, import.meta.url), 'utf8');
+    assert.match(css, /\.autorel-fail\[hidden\] \{ display: none; \}/);
+    assert.match(css, /\.autorel-fail \.btn \{/);
+  }
+});
+
 test('Billing puts Add credits right under the balance in one column, and says where a session\'s cost is shown', async () => {
   const f = billingPage(cardedBilling());
   await f.viewBilling(); await flush();

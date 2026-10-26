@@ -1521,6 +1521,10 @@ body.landing-body { background: #FBFBFA; }
 .autorel-edit .chev svg { width: 15px; height: 15px; transition: transform .15s; }
 .autorel-edit[aria-expanded="true"] .chev svg { transform: rotate(180deg); }
 .autorel-config { margin-top: 10px; }
+/* A failed auto-reload, above the switch: the reason, then the way to the card form. */
+.autorel-fail { margin: 16px 0 0; }
+.autorel-fail[hidden] { display: none; }
+.autorel-fail .btn { display: flex; width: fit-content; margin-top: 8px; }
 #topup-note { line-height: 1.5; }
 
 .post-img { display: block; grid-column: 1; grid-row: 3; margin-top: 8px; max-width: 100%; }
