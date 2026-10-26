@@ -142,6 +142,9 @@ def test_the_curves_and_the_pages_that_draw_them_say_what_they_said(conn, monkey
 
     # The two pages: byte for byte the same JSON with the old read in place of the new one.
     ctx = server.Ctx(conn, dict(user, autopilot=0), (), {}, {}, None)
+    # "Since your last visit" starts from now(); pin it so two reads a second apart compare equal.
+    visit = server._visit_since(None)
+    monkeypatch.setattr(server, "_visit_since", lambda raw: visit)
     server._BACKTEST_CHECKS.clear()
     new_pages = [_payload(server.list_deployments(ctx)), _payload(server.dashboard(ctx))]
     monkeypatch.setattr(server.repo, "deployment_curves",
