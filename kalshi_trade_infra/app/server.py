@@ -3000,14 +3000,35 @@ def admin_system(ctx: Ctx):
     # Recent activity feed: fleet-wide for the operator, but a normal user only ever
     # sees their OWN agent events — never another user's private strategy names.
     if is_admin:
-        cur.execute("""SELECT e.kind, e.message, e.created_at FROM app_agent_events e
+        cur.execute("""SELECT e.kind, e.message, e.data_json, e.created_at FROM app_agent_events e
                        ORDER BY e.id DESC LIMIT 14""")
     else:
-        cur.execute("""SELECT e.kind, e.message, e.created_at
+        cur.execute("""SELECT e.kind, e.message, e.data_json, e.created_at
                        FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id
                        WHERE r.user_id=%s ORDER BY e.id DESC LIMIT 14""", (ctx.uid,))
-    events = [{"kind": r["kind"], "message": (r["message"] or "")[:120], "created_at": r["created_at"]} for r in cur.fetchall()]
+    events = [_system_event(r) for r in cur.fetchall()]
     return {"now": now.isoformat() + "Z", "nodes": nodes, "events": events}
+
+
+def _system_event(r: Dict) -> Dict:
+    """One row of the system page's activity feed. A verdict gains `data` {note, title} when the
+    run page would show a plain note in place of its ledger message (_with_gate_lines, judged on
+    the whole message before it is cut to 120 characters); nothing else of the event's data is sent."""
+    msg = r.get("message") or ""
+    ev = {"kind": r.get("kind"), "message": msg[:120], "created_at": r.get("created_at")}
+    if ev["kind"] != "verdict":
+        return ev
+    raw = r.get("data_json")
+    try:
+        data = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        return ev
+    data = _with_gate_lines([{"kind": "verdict", "message": msg, "data": data}])[0]["data"]
+    if data.get("note"):
+        ev["data"] = {"note": data["note"], "title": data.get("title") or None}
+    return ev
 
 
 def system_code(ctx: Ctx):

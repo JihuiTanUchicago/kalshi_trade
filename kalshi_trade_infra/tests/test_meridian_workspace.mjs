@@ -2398,6 +2398,32 @@ test('System reports a current read failure and clears the notice after a succes
   assert.match(f.root.querySelector('#sys-feed').innerHTML, /Quiet right now/);
 });
 
+// The live activity feed shows a verdict as the run page's plain note (server gate_explain.event_note)
+// after its title, else its own message minus the status word; everything escaped.
+const SYS_EVENTS = [
+  {kind: 'verdict', message: 'FAILED - Fade <b>: validation verdict is gatekeeper-held (classification=inconclusive, 9 trades)',
+    created_at: '2026-10-20T15:59:00Z', data: {note: 'Did not pass on data it never saw (9 trades).', title: 'Fade <b>'}},
+  {kind: 'verdict', message: 'Model tiering: X proposed and screened.', created_at: '2026-10-20T15:58:00Z',
+    data: {note: 'A quicker model screened the ideas first: 1 set aside, 2 passed on to be developed.', title: null}},
+  {kind: 'verdict', message: 'PASSED - Lean in: cleared every gate', created_at: '2026-10-20T15:57:00Z'},
+  {kind: 'step', message: 'Froze 2 finalists', created_at: '2026-10-20T15:56:00Z'},
+];
+const sysFeedText = html => [...String(html).matchAll(/<\/time><span>([^<]*)<\/span>/g)].map(m => m[1]);
+
+test('System: the live activity feed reads a verdict as its plain note, else its message', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/admin/system'); return response({...systemData(), events: SYS_EVENTS}); }});
+  await f.viewSystem(); await flush();
+  const html = f.root.querySelector('#sys-feed').innerHTML;
+  assert.deepEqual(sysFeedText(html), [
+    'Fade &lt;b&gt;: Did not pass on data it never saw (9 trades).',
+    'A quicker model screened the ideas first: 1 set aside, 2 passed on to be developed.',
+    'Lean in: cleared every gate',
+    'Froze 2 finalists',
+  ]);
+  assert.doesNotMatch(html, /gatekeeper-held|classification=|Model tiering|<b>/);
+  f.clearTimers();
+});
+
 test('System ignores an in-flight poll after navigation without replacing live state', async () => {
   const pending = deferred(), initial = systemData(); let reads = 0;
   const f = frontend({fetchImpl: path => {
@@ -3647,15 +3673,16 @@ test('Deploy prices a deployment\'s open positions in its row, as the dashboard 
 });
 
 // Why an idea did not pass (server services.gate_explain): every place that shows the verdict lists
-// each missed gate with what was measured, what was needed and one thing to try next, escaped.
+// each missed gate with what was measured, what was needed and one thing to try next, escaped. A
+// label says what fell short ("Too few trades…"), never the check's goal, so it reads right under VOID.
 const MISSED = [
-  {gate: 'sample_size', label: 'Enough trades to judge', measured: '18 trades on the unseen test window',
+  {gate: 'sample_size', check: 'Enough trades to judge', label: 'Too few trades to judge (18 of 30)', measured: '18 trades on the unseen test window',
     needed: 'at least 30 trades (fixed before the test)', next: 'Needs about 12 more trades: widen the market set or lengthen the test window, or loosen the entry rule so it fires more often.'},
-  {gate: 'other', label: 'Min <b>sharpe</b> ratio', measured: '0.4', needed: 'at least 0.5', next: 'Change one thing about the rule and test again, so you can see what moves this check.'},
+  {gate: 'other', check: 'Min <b>sharpe</b> ratio', label: 'Didn\'t pass: Min <b>sharpe</b> ratio', measured: '0.4', needed: 'at least 0.5', next: 'Change one thing about the rule and test again, so you can see what moves this check.'},
 ];
 const MISSED_ROWS = [
-  ['Enough trades to judge', 'Measured 18 trades on the unseen test window; needed at least 30 trades (fixed before the test).', MISSED[0].next],
-  ['Min &lt;b&gt;sharpe&lt;/b&gt; ratio', 'Measured 0.4; needed at least 0.5.', MISSED[1].next],
+  ['Too few trades to judge (18 of 30)', 'Measured 18 trades on the unseen test window; needed at least 30 trades (fixed before the test).', MISSED[0].next],
+  ['Didn&#39;t pass: Min &lt;b&gt;sharpe&lt;/b&gt; ratio', 'Measured 0.4; needed at least 0.5.', MISSED[1].next],
 ];
 const missedRows = html => [...String(html).matchAll(/<li><b class="wf-label">([^<]*)<\/b><span class="wf-fig">([^<]*)<\/span><span class="wf-next"><b>Try next:<\/b> ([^<]*)<\/span><\/li>/g)].map(m => m.slice(1));
 
@@ -3751,10 +3778,10 @@ test('Meridian: the strategy page lists what it missed under Verdict and names t
   const at = html.indexOf('What it missed, and what to try next');
   assert.ok(at > html.indexOf('Verdict'), 'listed in the Verdict section');
   assert.deepEqual(missedRows(html.slice(at)).slice(0, 2), MISSED_ROWS);
-  assert.match(html, /Void: it missed “Enough trades to judge” and 1 more check \(see Verdict\)\. It wasn’t validated/);
+  assert.match(html, /Void: too few trades to judge \(18 of 30\), and 1 more check missed \(see Verdict\)\. It wasn’t validated/);
   assert.doesNotMatch(html, /failed the unseen-data gate|<b>sharpe/);
   const r = strategyFrontend(detailStrategy({status: 'rejected', why_failed: [MISSED[0]]})); await r.viewStrategy(42); await flush();
-  assert.match(r.root.querySelector('main').innerHTML, /Rejected: it missed “Enough trades to judge” \(see Verdict\)\./);
+  assert.match(r.root.querySelector('main').innerHTML, /Rejected: too few trades to judge \(18 of 30\) \(see Verdict\)\./);
   // Passed, or an older server without the field: nothing extra, and the old notice stands.
   for (const extra of [{why_failed: []}, {}]) {
     const p = strategyFrontend(detailStrategy(extra)); await p.viewStrategy(42); await flush();

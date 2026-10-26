@@ -1,6 +1,8 @@
 """services.gate_explain: one plain line per failed research gate (measured, needed, what to try).
 
-Every known gate has a case; an unknown gate reads as its humanised name with its numbers. The
+Every known gate has a case; an unknown gate reads as its humanised name with its numbers. Each
+line's label says what fell short (it sits under a REJECTED/VOID stamp), never the check's goal,
+which `check` keeps. The
 lines must agree with the gatekeeper's own decision rule, so a property test drives
 gatekeeper._classify over many combinations and checks that a non-passing verdict always names at
 least one gate it really failed, and a passing one names none.
@@ -14,17 +16,25 @@ import pytest
 from app import backtest, gatekeeper, server
 from app.services import gate_explain as ge
 
-KEYS = {"gate", "label", "measured", "needed", "next"}
+KEYS = {"gate", "check", "label", "measured", "needed", "next"}
+
+# A label names the miss. These are the openings a failed check's label may use; a goal-shaped label
+# ("Passed the skeptic's review", "Enough trades to judge") would read as praise under a failure.
+MISS = ("Too few ", "Too similar ", "Didn't ", "Doesn't ", "Not ", "No real edge", "Lost ", "Loses ", "Unlikely ",
+        "The edge could be luck", "The skeptic's review didn't", "Wins no ", "Wins don't ", "Made money on too few",
+        "Nearly all the gains", "Profit after fees is too uncertain", "Drawdown on unseen data was too deep")
 NB = " "
 
 
 def _plain(lines):
-    """Every line has all five fields, filled, with no raw code (no underscores, no '=') in the words."""
+    """Every line has all its fields, filled, with no raw code (no underscores, no '=') in the words,
+    and a label that says what fell short rather than restating the check."""
     for ln in lines:
         assert set(ln) == KEYS
-        for k in ("label", "measured", "needed", "next"):
+        for k in ("check", "label", "measured", "needed", "next"):
             assert ln[k] and isinstance(ln[k], str), (k, ln)
-        for k in ("label", "needed", "next"):
+        assert ln["label"] != ln["check"] and ln["label"].startswith(MISS), ln["label"]
+        for k in ("check", "label", "needed", "next"):
             assert "_" not in ln[k] and "=" not in ln[k], (k, ln[k])
         assert ln["next"][0].isupper() and ln["next"].endswith("."), ln["next"]
     return lines
@@ -39,13 +49,15 @@ def _one(lines):
 
 def test_too_few_trades_says_how_many_more_and_where_to_get_them():
     ln = _one(ge.stat_checks({"n_trades": 18, "p_value": None}, min_sample=30, classification="inconclusive"))
-    assert ln["gate"] == "sample_size" and ln["label"] == "Enough trades to judge"
+    assert ln["gate"] == "sample_size" and ln["label"] == "Too few trades to judge (18 of 30)"
+    assert ln["check"] == "Enough trades to judge"
     assert ln["measured"] == "18%strades on the unseen test window" % NB
     assert ln["needed"] == "at least 30%strades (fixed before the test)" % NB
     assert ln["next"].startswith("Needs about 12 more trades: widen the market set or lengthen the test window")
     # One more trade short reads in the singular; an older record without its minimum still explains itself.
     assert _one(ge.stat_checks({"n_trades": 29}, min_sample=30))["next"].startswith("Needs about 1 more trade:")
-    assert _one(ge.stat_checks({"n_trades": 4}))["needed"] == "the minimum fixed before the test"
+    old = _one(ge.stat_checks({"n_trades": 4}))
+    assert old["needed"] == "the minimum fixed before the test" and old["label"] == "Too few trades to judge"  # no invented minimum
     assert ge.stat_checks({"n_trades": 40, "p_value": None}, min_sample=30) == []  # nothing failed that it can name
 
 
@@ -58,7 +70,11 @@ def test_each_failed_statistical_gate_gets_its_own_line_with_its_numbers():
     folds = [{"net_return": 0.1}, {"net_return": -0.1}, {"net_return": -0.1}, {"net_return": -0.2}]
     lines = {ln["gate"]: ln for ln in _plain(ge.stat_checks(FAILING, classification="inconclusive", folds=folds))}
     assert list(lines) == ["significance", "net_edge", "deflated_sharpe", "placebo", "cross_day"]
-    assert lines["significance"]["label"] == "Edge is not luck"
+    assert lines["significance"]["label"] == "The edge could be luck" and lines["significance"]["check"] == "Edge is not luck"
+    assert lines["net_edge"]["label"] == "Loses money after fees"
+    assert lines["deflated_sharpe"]["label"] == "Doesn't beat the luck of trying many ideas"
+    assert lines["placebo"]["label"] == "Wins no more often than its prices imply"
+    assert lines["cross_day"]["label"] == "Made money on too few stretches of days (1 of 4)"
     assert lines["significance"]["measured"].startswith("p-value 0.18: a rule with no edge would do this well about 18% of the time")
     assert lines["significance"]["needed"] == "0.05 or lower"
     assert lines["net_edge"]["measured"] == "−0.40%%%sof the stake per trade after fees (90%% range −1.20%% to +0.30%%)" % NB
@@ -76,6 +92,7 @@ def test_a_positive_but_noisy_edge_is_told_to_get_more_trades():
              cross_day_ok=True, cost_stress_ok=True)
     ln = _one(ge.stat_checks(v, classification="inconclusive"))
     assert ln["gate"] == "net_edge" and "positive but too noisy" in ln["next"]
+    assert ln["label"] == "Profit after fees is too uncertain"
 
 
 def test_ideas_judged_together_cross_day_concentration_and_cost_stress():
@@ -89,12 +106,15 @@ def test_ideas_judged_together_cross_day_concentration_and_cost_stress():
     assert "10% false-discovery rate" in lines["multiple_testing"]["needed"]
     assert lines["cross_day"]["measured"] == "one day carrying 96% of the gains"
     assert "no single day over 90% of the gains" in lines["cross_day"]["needed"]
-    assert lines["cost_stress"]["label"] == "Survives 1¢ worse fills"
+    assert lines["multiple_testing"]["label"] == "Didn't stand out among the ideas tested with it"
+    assert lines["cross_day"]["label"] == "Nearly all the gains came from one day"
+    assert lines["cost_stress"]["label"] == "Loses its edge with 1¢ worse fills"
     assert lines["cost_stress"]["measured"] == "−0.20%%%sof the stake per trade with 1¢ worse fills" % NB
     assert lines["cost_stress"]["needed"] == "above 0%"
     too_few = _one(ge.stat_checks(dict(v, bh_reject=True, folds_n=2, folds_positive=2, cost_stress_ok=True),
                                   classification="inconclusive"))
     assert too_few["measured"] == "too few trades for 3 time slices"
+    assert too_few["label"] == "Too few trades to check several stretches of days"
     no_trades_left = _one(ge.stat_checks(dict(v, bh_reject=True, cross_day_ok=True, cost_stress_mean=None),
                                          classification="inconclusive"))
     assert no_trades_left["measured"] == "no trades left with 1¢ worse fills"
@@ -107,6 +127,7 @@ def test_a_check_the_ledger_does_not_keep_is_named_without_guessing():
           "mean_net_return": 0.01, "placebo_p": 0.01}
     both = _one(ge.stat_checks(ok, classification="inconclusive"))
     assert both["gate"] == "cross_day_or_cost" and both["measured"] == "not recorded, but every other check passed, so one of these two failed"
+    assert both["label"] == "Didn't hold up on several stretches of days, or with 1¢ worse fills"
     assert _one(ge.stat_checks(dict(ok, cross_day_ok=True), classification="inconclusive"))["gate"] == "cost_stress"
     assert _one(ge.stat_checks(dict(ok, cost_stress_ok=True), classification="inconclusive"))["gate"] == "cross_day"
     assert ge.stat_checks(ok, classification="statistically_supported") == []
@@ -117,7 +138,8 @@ def test_the_locked_holdout_uses_its_own_level_and_wording():
     v = {"n_trades": 40, "p_value": 0.3, "ci_lo": -0.01, "ci_hi": 0.02, "mean_net_return": 0.004, "dsr": 0.01, "placebo_p": 0.9}
     lines = _plain(ge.stat_checks(v, "holdout", min_sample=30, classification="rejected"))
     assert [ln["gate"] for ln in lines] == ["significance", "net_edge"]  # DSR and the placebo don't gate a holdout
-    assert lines[0]["label"] == "Edge is not luck on the locked holdout" and lines[0]["needed"] == "0.10 or lower"
+    assert lines[0]["label"] == "The edge could be luck on the locked holdout" and lines[0]["needed"] == "0.10 or lower"
+    assert lines[1]["label"] == "Profit after fees is too uncertain on the locked holdout"
     assert "did not repeat on fresh data" in lines[0]["next"]
     # Only a perpetual holdout is judged on its sample (it reads INCONCLUSIVE then).
     short = ge.stat_checks(dict(v, n_trades=12, p_value=0.01, ci_lo=0.001, cost_stress_ok=True), "holdout", 30, "inconclusive")
@@ -167,37 +189,46 @@ def test_every_pre_screen_reason_reads_as_measured_and_needed():
     # The reasons exactly as gatekeeper.validation_power writes them.
     cases = {
         "only %d research-fold trades (need %d) to project validation power" % (8, gatekeeper.POWER_MIN_RESEARCH_TRADES):
-            ("research_trades", "8%strades on the research data" % NB, "at least 10%strades" % NB),
+            ("research_trades", "8%strades on the research data" % NB, "at least 10%strades" % NB,
+             "Too few research trades to plan the test (8 of 10)"),
         "research-fold mean net return %.4f is not positive" % -0.0012:
-            ("research_edge", "−0.12%" + NB + "of the stake per trade", "above 0%"),
+            ("research_edge", "−0.12%" + NB + "of the stake per trade", "above 0%",
+             "Doesn't make money after fees and 1¢ worse fills on the research data"),
         "validation window is expected to hold ~%.0f trades, below the pre-registered min_sample %d" % (14.2, 30):
-            ("expected_trades", "about 14%strades expected" % NB, "at least 30%strades (fixed before the test)" % NB),
+            ("expected_trades", "about 14%strades expected" % NB, "at least 30%strades (fixed before the test)" % NB,
+             "Too few trades expected in the unseen test window (about 14 of 30)"),
         ("projected validation power %.0f%% < %.0f%%: a research-fold edge of %.2f%%/trade over ~%.0f validation trades "
          "is unlikely to clear the next alpha %.1e" % (12.0, 100 * gatekeeper.POWER_MIN, 0.4, 35.0, 0.05)):
             ("test_power", "about a 12% chance to pass (an edge of +0.40%~of the stake per trade over about 35~trades)".replace("~", NB),
-             "at least a 20% chance"),
+             "at least a 20% chance", "Unlikely to prove itself on unseen data (about a 12% chance)"),
     }
-    for reason, (gate, measured, needed) in cases.items():
+    for reason, (gate, measured, needed, label) in cases.items():
         ln = _one(ge.prescreen(reason))
-        assert (ln["gate"], ln["measured"], ln["needed"]) == (gate, measured, needed), reason
+        assert (ln["gate"], ln["measured"], ln["needed"], ln["label"]) == (gate, measured, needed, label), reason
     assert _one(ge.prescreen(cases and list(cases)[0]))["next"].startswith("Needs about 2 more trades: loosen the entry rule")
     assert ge.prescreen("no validation window to project onto") == [] and ge.prescreen(None) == []
     other = _one(ge.prescreen("a reason a later version adds"))
-    assert other["label"] == "Worth spending a test on" and other["measured"] == "a reason a later version adds"
+    assert other["label"] == "Not yet worth spending a test on" and other["measured"] == "a reason a later version adds"
 
 
 def test_challenger_finalist_and_diversification():
     ln = _one(ge.challenger("No one is on the other side; this is a public feed."))
+    # Under a REJECTED stamp the line says the review turned it down, not "Passed the skeptic's review".
+    assert ln["label"] == "The skeptic's review didn't pass it" and ln["check"] == "Passed the skeptic's review"
     assert ln["measured"] == "an objection before testing: No one is on the other side; this is a public feed"
     assert _one(ge.challenger(None))["measured"] == "an objection before testing: no credible reason the edge exists"
     few = _one(ge.not_finalist({"pnl": 1.5, "trades": 3}))
     assert few["gate"] == "research_trades" and few["needed"] == "at least 5%strades" % NB
+    assert few["label"] == "Too few research trades to be a finalist (3 of 5)"
     lost = _one(ge.not_finalist({"pnl": -1.5, "trades": 30}))
     assert lost["gate"] == "research_pnl" and lost["measured"] == "−$1.50 over 30%strades" % NB and lost["needed"] == "above $0"
+    assert lost["label"] == "Lost money on the research data"
     ranked = _one(ge.not_finalist({"pnl": 2.5, "trades": 30}))
     assert ranked["gate"] == "finalist" and ranked["measured"] == "$2.50 over 30%strades on the research data" % NB
+    assert ranked["label"] == "Not among the round's strongest ideas"
     div = _one(ge.diversification("max |corr| %.2f to deployed experiment %s exceeds %.2f" % (0.91, 12, gatekeeper.CORR_MAX)))
     assert div["measured"] == "a 0.91 correlation of daily results with a strategy you already run" and div["needed"] == "0.80 or less"
+    assert div["label"] == "Too similar to a strategy you already run"
 
 
 # -- the backtest's own gates, and an unknown gate -------------------------------------------------------
@@ -221,12 +252,21 @@ def test_every_backtest_gate_and_an_unknown_one():
         ("real_edge", "coin flip", "an actual signal"),
         ("other", "0.4", "at least 0.5"),
     ]
+    assert [ln["label"] for ln in lines] == [
+        "Didn't make money on the data it was built on",
+        "Didn't make money on unseen data",
+        "Too few trades on unseen data (4 of 10)",
+        "Wins don't outweigh losses by enough on unseen data",
+        "Drawdown on unseen data was too deep",
+        "No real edge: it looks like a coin flip",
+        "Didn't pass: Min sharpe ratio",  # never the raw code
+    ]
     assert lines[2]["next"].startswith("Needs about 6 more trades")
-    assert lines[-1]["label"] == "Min sharpe ratio"  # never the raw code
+    assert lines[2]["check"] == "Enough unseen trades to judge" and lines[-1]["check"] == "Min sharpe ratio"
     assert _one(ge.backtest_gates([{"name": "Wins outweigh losses on unseen data", "value": None, "threshold": "≥ 1.1", "ok": False}]))["measured"] == "no winning trades"
     assert ge.humanise("max_book__fraction") == "Max book fraction" and ge.humanise(None) == "Unnamed check"
     odd = ge.unknown("some-new_gate", True)
-    assert odd["label"] == "Some new gate" and odd["measured"] == "yes" and odd["needed"] == "the gate's threshold"
+    assert odd["label"] == "Didn't pass: Some new gate" and odd["measured"] == "yes" and odd["needed"] == "the gate's threshold"
 
 
 # -- a strategy page and a run's verdict events ------------------------------------------------------------
@@ -268,7 +308,7 @@ def test_each_kind_of_verdict_event_is_explained_from_its_data_or_its_old_messag
     hold = v("Fade: one-time holdout verdict is gatekeeper-held (classification=rejected, 40 trades)", phase="holdout",
              classification="rejected", stats={"n_trades": 40, "p_value": 0.05, "ci": {"lo": 0.001, "hi": 0.01},
                                                 "mean_net_return": 0.004, "cost_stress_ok": False, "cost_stress_mean": -0.001})
-    assert [ln["gate"] for ln in hold] == ["cost_stress"] and hold[0]["label"] == "Survives 1¢ worse fills on the locked holdout"
+    assert [ln["gate"] for ln in hold] == ["cost_stress"] and hold[0]["label"] == "Loses its edge with 1¢ worse fills on the locked holdout"
     assert v("Fade: the one-time holdout was not evaluated (consumed).", phase="holdout", skipped=True) == []
     div = v("Fade: diversification gate blocked (stays forward-validated, not deployable) — max |corr| 0.93 to deployed "
             "experiment 4 exceeds 0.80.", phase="forward", marginal_ok=False, classification="forward_validated")
@@ -438,3 +478,26 @@ def test_the_strategy_page_lists_what_it_missed_and_a_bad_record_never_fails_it(
     assert bad["why_failed"] == [] and bad["experiment"]["gate_tints"] == {}  # every figure neutral
     monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
     assert server.get_strategy(_ctx(("4",)))["experiment"] is None
+
+
+def test_the_system_feed_reads_a_verdict_as_the_run_pages_note():
+    # The system page's activity feed shows the same plain note as the run page, judged on the whole
+    # message, and carries nothing else of the event's data (no stats, no model id).
+    held = "FAILED - Fade: validation verdict is gatekeeper-held (classification=inconclusive, 9 trades)" + " " * 200
+    row = {"kind": "verdict", "message": held, "created_at": None,
+           "data_json": '{"title": "Fade", "status": "failed", "classification": "inconclusive", '
+                        '"stats": {"n_trades": 9, "p_value": null, "min_sample": 30}}'}
+    ev = server._system_event(row)
+    assert len(ev["message"]) == 120
+    assert ev["data"] == {"note": "Did not pass on data it never saw (9" + NB + "trades).", "title": "Fade"}
+    tier = server._system_event({"kind": "verdict", "message": "Model tiering: Haiku proposed and screened.", "created_at": None,
+                                 "data_json": {"phase": "screen", "arm": "screen", "screen_model_id": "us.anthropic.claude-haiku",
+                                               "screened_out": 1, "handed_over": 2}})
+    assert tier["data"] == {"note": "A quicker model screened the ideas first: 1 set aside, 2 passed on to be developed.", "title": None}
+    # No note (its own message already reads plainly), no data, unreadable data, or not a verdict: the message as written.
+    for r in ({"kind": "verdict", "message": "REJECTED (challenger) - T: no mechanism", "data_json": '{"title": "T", "status": "rejected"}'},
+              {"kind": "verdict", "message": "PASSED - Old", "data_json": None},
+              {"kind": "verdict", "message": "PASSED - Old", "data_json": "{not json"},
+              {"kind": "step", "message": "Froze 2 finalists", "data_json": '{"note": "x"}'}):
+        out = server._system_event(dict(r, created_at=None))
+        assert "data" not in out and out["message"] == r["message"]

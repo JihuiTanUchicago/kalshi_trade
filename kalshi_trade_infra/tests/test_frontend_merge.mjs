@@ -125,7 +125,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, render};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -2371,15 +2371,16 @@ test('Deploy prices a deployment\'s open positions in its row, as the dashboard 
 });
 
 // Why an idea did not pass (server services.gate_explain): every place that shows the verdict lists
-// each missed gate with what was measured, what was needed and one thing to try next, escaped.
+// each missed gate with what was measured, what was needed and one thing to try next, escaped. A
+// label says what fell short ("Too few trades…"), never the check's goal, so it reads right under VOID.
 const MISSED = [
-  {gate: 'sample_size', label: 'Enough trades to judge', measured: '18 trades on the unseen test window',
+  {gate: 'sample_size', check: 'Enough trades to judge', label: 'Too few trades to judge (18 of 30)', measured: '18 trades on the unseen test window',
     needed: 'at least 30 trades (fixed before the test)', next: 'Needs about 12 more trades: widen the market set or lengthen the test window, or loosen the entry rule so it fires more often.'},
-  {gate: 'other', label: 'Min <b>sharpe</b> ratio', measured: '0.4', needed: 'at least 0.5', next: 'Change one thing about the rule and test again, so you can see what moves this check.'},
+  {gate: 'other', check: 'Min <b>sharpe</b> ratio', label: 'Didn\'t pass: Min <b>sharpe</b> ratio', measured: '0.4', needed: 'at least 0.5', next: 'Change one thing about the rule and test again, so you can see what moves this check.'},
 ];
 const MISSED_ROWS = [
-  ['Enough trades to judge', 'Measured 18 trades on the unseen test window; needed at least 30 trades (fixed before the test).', MISSED[0].next],
-  ['Min &lt;b&gt;sharpe&lt;/b&gt; ratio', 'Measured 0.4; needed at least 0.5.', MISSED[1].next],
+  ['Too few trades to judge (18 of 30)', 'Measured 18 trades on the unseen test window; needed at least 30 trades (fixed before the test).', MISSED[0].next],
+  ['Didn&#39;t pass: Min &lt;b&gt;sharpe&lt;/b&gt; ratio', 'Measured 0.4; needed at least 0.5.', MISSED[1].next],
 ];
 const missedRows = html => [...String(html).matchAll(/<li><b class="wf-label">([^<]*)<\/b><span class="wf-fig">([^<]*)<\/span><span class="wf-next"><b>Try next:<\/b> ([^<]*)<\/span><\/li>/g)].map(m => m.slice(1));
 
@@ -2443,6 +2444,30 @@ test('Tau: a run says its ledger lines in plain words, with the zone of its time
   f.clearTimers();
 });
 
+// The System page's live activity feed shows a verdict as the run page's plain note (server
+// gate_explain.event_note) after its title, else its own message minus the status word; escaped.
+test('Tau: the System feed reads a verdict as its plain note, else its message', async () => {
+  const events = [
+    {kind: 'verdict', message: 'FAILED - Fade <b>: validation verdict is gatekeeper-held (classification=inconclusive, 9 trades)',
+      created_at: '2026-10-20T15:59:00Z', data: {note: 'Did not pass on data it never saw (9 trades).', title: 'Fade <b>'}},
+    {kind: 'verdict', message: 'Model tiering: X proposed and screened.', created_at: '2026-10-20T15:58:00Z',
+      data: {note: 'A quicker model screened the ideas first: 1 set aside, 2 passed on to be developed.', title: null}},
+    {kind: 'verdict', message: 'PASSED - Lean in: cleared every gate', created_at: '2026-10-20T15:57:00Z'},
+    {kind: 'step', message: 'Froze 2 finalists', created_at: '2026-10-20T15:56:00Z'},
+  ];
+  const f = frontend({fetchImpl: path => path === '/api/admin/system' ? response({nodes: {}, events, now: '2026-10-20T16:00:00Z'}) : response({})});
+  await f.viewSystem(); await flush();
+  const html = f.root.querySelector('#sys-feed').innerHTML;
+  assert.deepEqual([...html.matchAll(/<\/time><span>([^<]*)<\/span>/g)].map(m => m[1]), [
+    'Fade &lt;b&gt;: Did not pass on data it never saw (9 trades).',
+    'A quicker model screened the ideas first: 1 set aside, 2 passed on to be developed.',
+    'Lean in: cleared every gate',
+    'Froze 2 finalists',
+  ]);
+  assert.doesNotMatch(html, /gatekeeper-held|classification=|Model tiering|<b>/);
+  f.clearTimers();
+});
+
 test('Tau: a run lists each idea it tested with its outcome and first missed check, passed first, each jumping to its card', async () => {
   const run = {id: 9, status: 'succeeded', prompt: 'Session 9', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 2, strategies_passed: 1};
   const at = '2026-10-17T10:01:00Z';
@@ -2459,7 +2484,7 @@ test('Tau: a run lists each idea it tested with its outcome and first missed che
   assert.match(ideas, /<h2>Ideas tested<\/h2>/);
   assert.ok(ideas.indexOf('Lean in') < ideas.indexOf('Fade'), 'passed first');
   assert.match(ideas, /<span class="hx-stamp pass">Passed<\/span><button type="button" class="ri-title" data-goto="42">Lean in<\/button><span class="ri-why"><a href="\/strategies\/42">/);
-  assert.match(ideas, new RegExp(`<span class="hx-stamp void">Void</span><button type="button" class="ri-title" data-goto="41">Fade &lt;b&gt;</button><span class="ri-why">Missed: ${MISSED[0].label} · 1 more check</span>`));
+  assert.match(ideas, new RegExp(`<span class="hx-stamp void">Void</span><button type="button" class="ri-title" data-goto="41">Fade &lt;b&gt;</button><span class="ri-why">Too few trades to judge \\(18 of 30\\) · 1 more check</span>`));
   assert.ok(f.root.querySelector('#log').children.some((li) => li.dataset && String(li.dataset.sid) === '41'), 'the card is the jump target');
   f.clearTimers();
 });
@@ -2470,10 +2495,10 @@ test('Tau: the strategy page lists what it missed under Verdict and names the fi
   const at = html.indexOf('What it missed, and what to try next');
   assert.ok(at > html.indexOf('Verdict'), 'listed in the Verdict section');
   assert.deepEqual(missedRows(html.slice(at)).slice(0, 2), MISSED_ROWS);
-  assert.match(html, /Void: it missed “Enough trades to judge” and 1 more check \(see Verdict\)\. It wasn’t validated/);
+  assert.match(html, /Void: too few trades to judge \(18 of 30\), and 1 more check missed \(see Verdict\)\. It wasn’t validated/);
   assert.doesNotMatch(html, /failed the unseen-data gate|<b>sharpe/);
   const r = strategyFrontend(detailStrategy({status: 'rejected', why_failed: [MISSED[0]]})); await r.viewStrategy(42); await flush();
-  assert.match(r.root.querySelector('main').innerHTML, /Rejected: it missed “Enough trades to judge” \(see Verdict\)\./);
+  assert.match(r.root.querySelector('main').innerHTML, /Rejected: too few trades to judge \(18 of 30\) \(see Verdict\)\./);
   // Passed, or an older server without the field: nothing extra, and the old notice stands.
   for (const extra of [{why_failed: []}, {}]) {
     const p = strategyFrontend(detailStrategy(extra)); await p.viewStrategy(42); await flush();

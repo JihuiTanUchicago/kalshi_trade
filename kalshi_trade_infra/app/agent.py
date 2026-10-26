@@ -3860,7 +3860,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             # read as praise. Name them as the checks it did not pass, each with what it measured
             # and needed, and the first one's next step (services.gate_explain).
             lines = gate_explain.backtest_gates(result["gates"])
-            failed = "; ".join('"%s" (measured %s, needed %s)' % (ln["label"].lower(), ln["measured"], ln["needed"])
+            failed = "; ".join('"%s" (measured %s, needed %s)' % (ln["check"].lower(), ln["measured"], ln["needed"])
                                for ln in lines)
             return ("I backtested a change to %s, but it didn't pass these checks: %s. I left it alone.%s"
                     % (dep["title"], failed, (" To try next: " + lines[0]["next"]) if lines else "")), None
