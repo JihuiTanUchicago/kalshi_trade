@@ -189,15 +189,19 @@ test('the panel warns before credits run out, and says why when autopilot is pau
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   const gates = f.box.querySelector('#apf-gates');
   f.apUpdate(f.box, status({credits_low_days: 1.6}));
-  assert.match(gates.innerHTML, /Credits run out in about 2 days/); assert.match(gates.innerHTML, /href="\/billing"/);
+  assert.match(gates.innerHTML, /Research pauses in about 2 days at this week’s pace, when credits fall under/); assert.match(gates.innerHTML, /href="\/billing"/);
   assert.equal(gates.classes.has('warn'), true);
   f.apUpdate(f.box, status({credits_low_days: 0.3}));
   assert.match(gates.innerHTML, /within a day/);
   f.apUpdate(f.box, status({billing_blocked: true, billing_reason: 'credits'}));
   assert.match(gates.innerHTML, /paused/); assert.match(gates.innerHTML, /Add credits|add credits/);
+  // Paused while the auto-reload card is declined: the card is the step, then credits.
+  f.apUpdate(f.box, status({billing_blocked: true, billing_reason: 'credits', reload_failed: 'It couldn’t add $25.00 in credits.'}));
+  assert.match(gates.innerHTML, /Autopilot is paused: auto-reload couldn’t charge your card\. <a href="\/billing">Update your card and add credits on Billing<\/a>/);
+  assert.equal(gates.classes.has('warn'), true);
   f.apUpdate(f.box, status({}));
   // Back to the live-readiness line (set as text) once billing is fine.
-  assert.doesNotMatch(gates.textContent, /Credits run out|paused/); assert.equal(gates.classes.has('warn'), false);
+  assert.doesNotMatch(gates.textContent, /Research pauses|paused/); assert.equal(gates.classes.has('warn'), false);
 });
 
 test('the Research row only shows when there is no story to say it', async () => {

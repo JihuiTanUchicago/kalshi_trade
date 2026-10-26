@@ -79,12 +79,13 @@ def test_the_low_credit_warning_comes_no_later_on_a_first_day(monkeypatch):
 def test_autopilot_week_runway_matches_billing_for_a_young_account(monkeypatch):
     monkeypatch.setattr(chat_routes.billing, 'configured', lambda: True)
     monkeypatch.setattr(chat_routes.repo, 'autopilot_paper_week', lambda *a: {'started': 0, 'pnl': 0.0, 'trades': 0})
-    reads = SimpleNamespace(balance=lambda: 19.56)
+    reads = SimpleNamespace(customer=lambda: None, balance=lambda: 19.56)
     credits = {'by_source': dict(_NO_USAGE, autopilot_research=0.42, autopilot_review=0.02)}
     research = {'cost_7d': 0.42, 'tested_7d': 1, 'passed_7d': 0}
     week = chat_routes._autopilot_week(object(), 7, research, reads, credits, NOW - timedelta(minutes=12))
     assert week['runway_days'] is None and week['pace_days'] == 0.01 and week['credits_left'] == 19.56
     week = chat_routes._autopilot_week(object(), 7, research, reads, credits, NOW - timedelta(days=2))
-    assert week['runway_days'] == round(19.56 / (0.44 / 2), 1) and week['pace_days'] == 2.0
+    # Until research pauses: the balance above the $1.00 floor, at the pace per day so far.
+    assert week['runway_days'] == round((19.56 - 1.0) / (0.44 / 2), 1) and week['pace_days'] == 2.0
     # Credits and paper stay apart: nothing here adds a credit figure to a P&L.
     assert week['paper_pnl'] == 0.0 and week['research_credits'] == 0.42

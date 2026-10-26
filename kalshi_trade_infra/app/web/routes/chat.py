@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
 from app import repository as repo
@@ -19,7 +20,15 @@ from app.trading import engine
 from app.trading.markets import MARKETS
 from app.web.caches import _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param
-from app.web.routes.billing import _credits_running_low, pace_days, runway_days
+from app.web.routes.billing import (
+    _credits_running_low,
+    _reload_failed,
+    pace_days,
+    pause_at,
+    reload_days,
+    reload_trigger,
+    runway_days,
+)
 from app.web.routes.brokers import _paper_call, _perps_live_call
 from app.web.settings import MAX_CHAT_PER_HOUR
 from app.web.views import (
@@ -625,6 +634,10 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
         return None
     card = d.get("billing_reason") == "card"
     if d.get("billing_blocked"):
+        if not card and d.get("reload_failed"):  # auto-reload is on and the card it charges was refused
+            return _idle("billing", "Nothing is on paper, and it can't research new strategies: auto-reload couldn't "
+                                    "charge your card. Update it on Billing, then add credits.",
+                         {"label": "Update card", "href": "/billing"})
         return _idle("billing", "Nothing is on paper, and it can't research new strategies until you %s." % (
             "add a payment method" if card else "add credits"),
             {"label": "Add a payment method" if card else "Add credits", "href": "/billing"})
@@ -755,6 +768,9 @@ def autopilot_status(ctx: Ctx):
         # Warn before the pause, not after: days of credit left when that's under three.
         "credits_low_days": (_credits_running_low(cur, ctx.uid, reads, spent_7d=credits["spent"], created_at=u.get("created_at"))
                              if on and payments and not billing_blocked else None),
+        # The last auto-reload failed (Billing's banner text: what it tried to add and why), read only
+        # when it can be why credits are short: auto-reload on with a card, the balance at its trigger.
+        "reload_failed": _reload_failed_now(cur, ctx.uid, reads) if on and payments else None,
         "paper_progress": paper_progress,
         # Read by the story and the idle line, both of which say nothing of paper while autopilot is off.
         "paper_open": book_memo.open_count(memo, "paper") if paper_run and on else 0,
@@ -783,6 +799,17 @@ def autopilot_status(ctx: Ctx):
     return out
 
 
+def _reload_failed_now(cur, uid: int, reads: billing.Reads) -> Optional[str]:
+    """The failed auto-reload's text when it can be why credits are short, else None. This endpoint
+    polls, so the notice is read only while auto-reload is on with a card and the balance is at or under
+    its trigger (a reload above the trigger never fires, so it can't be failing)."""
+    trigger = reload_trigger(reads.customer())
+    if trigger is None or Decimal(str(reads.balance())) > trigger:
+        return None
+    failed = _reload_failed(cur, uid)
+    return failed["text"] if failed else None
+
+
 def _pulse(cur, uid: int, since, review: bool, engine: bool) -> Dict:
     """repo.autopilot_pulse; when the engine's beat can't be read (its table isn't there before the
     first schema run), everything else is read without it and the beat is unknown."""
@@ -807,17 +834,20 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
     out = {"research_credits": research.get("cost_7d", 0.0), "tested": research.get("tested_7d", 0),
            "passed": research.get("passed_7d", 0), "paper_started": paper["started"],
            "paper_pnl": round(paper["pnl"], 2), "paper_trades": paper["trades"],
-           "checkin_credits": None, "credits_left": None, "runway_days": None, "pace_days": None}
+           "checkin_credits": None, "credits_left": None, "runway_days": None, "reload_days": None, "pace_days": None}
     if billing.configured():
         # What else the week cost and how long the balance lasts at that pace, read-only: the
         # autopilot's check-ins bill too, and the runway is the Billing page's (every usage debit of
         # the week). With payments off nothing pauses it, so there is no limit to show.
         used = credits["by_source"] if credits is not None else repo.usage_by_source(cur, uid, since)
         spent_7d = sum(used.values())
-        balance = (reads or billing.Reads(cur, uid)).balance()
+        reads = reads or billing.Reads(cur, uid)
+        balance = reads.balance()
         days = pace_days(created_at)
+        # Billing's two countdowns: until research pauses, and until auto-reload next charges the card.
         out.update(checkin_credits=credit_usd(used["autopilot_review"]), credits_left=credit_usd(balance),
-                   runway_days=runway_days(balance, spent_7d, days), pace_days=days)
+                   runway_days=runway_days(balance, spent_7d, days, stop_at=pause_at()),
+                   reload_days=reload_days(reads.customer(), balance, spent_7d, days), pace_days=days)
     return out
 
 

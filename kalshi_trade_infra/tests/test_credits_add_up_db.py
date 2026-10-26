@@ -103,6 +103,7 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     top =server.billing_topup(ctx(body={"amount": 10}))
     assert charges[-1]["cents"] == billing.topup_charge_cents(Decimal("10")) == 1055 and charges[-1]["off_session"] is False
     assert top["balance"] == pytest.approx(30.0)
+    assert top["charged"] == 10.55  # the confirmation states the card's charge, as charged
     server.billing_autoreload(ctx(body={"on": True, "amount": 25, "threshold": 8}))
 
     # -- two research sessions and one chat turn, billed per model call --------------------------
@@ -238,12 +239,20 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert abs(math.pop("start")) <= 0.01
     assert math == {"days": 30, "bought": 35.0, "purchases": 2, "other": 20.0,
                     "usage": float(_cents(spent_total)), "end": float(_cents(balance))}
-    # A minutes-old account has no pace yet; a week-old one's runway is the balance over a week's spend.
-    assert state["pace_days"] < 1 and state["runway_days"] is None
+    # A minutes-old account has no pace yet; a week-old one's runway is the balance above the research
+    # floor over a week's spend (research pauses there, not at $0), and auto-reload, on with a card,
+    # next charges it when the balance falls to its $8 trigger.
+    assert state["pace_days"] < 1 and state["runway_days"] is None and state["reload_days"] is None
     cur.execute("UPDATE app_users SET created_at = created_at - INTERVAL 8 DAY WHERE id=%s", (uid,))
     aged = server.billing_state(ctx())
     assert aged["pace_days"] == 7.0 and aged["balance"] == state["balance"]
-    assert aged["runway_days"] == round(float(balance) / (float(spent_total) / 7), 1)
+    per_day = float(spent_total) / 7
+    assert aged["runway_days"] == round((float(balance) - float(billing.MIN_RUN_BALANCE)) / per_day, 1)
+    assert balance > 8 and aged["reload_days"] == round((float(balance) - 8) / per_day, 1)
+    assert aged["autoreload_charge"] == 26.38
+    # The autopilot card counts to the same two points from the same ledger.
+    aged_week = server._autopilot_week(cur, uid, status["research"], created_at=repo.get_user(cur, uid)["created_at"])
+    assert (aged_week["runway_days"], aged_week["reload_days"]) == (aged["runway_days"], aged["reload_days"])
     # The week split by what spent it adds up to the week, and the chat turn is its own part.
     by = state["spent_7d_by"]
     assert _cents(sum(Decimal(str(v)) for v in by.values())) == _cents(state["spent_7d"])

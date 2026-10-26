@@ -5082,9 +5082,10 @@
     // Before the pause, not after: with auto-reload off, the week's pace runs the balance out within
     // CREDITS_WARN_DAYS (the server's CREDIT_RUNWAY_WARN_DAYS, which the autopilot panel warns on).
     const spent = me.billing_enabled ? s.spent : null, wk = spent ? +spent.week || 0 : 0;
-    const runway = wk > 0 && me.credit_balance > 0 ? me.credit_balance / (wk / 7) : null;
+    const left = (+me.credit_balance || 0) - (+me.min_run_balance || 0);  // research pauses under the floor, not at $0
+    const runway = wk > 0 && left > 0 ? left / (wk / 7) : null;
     if (spent && !low && !me.needs_card && !me.auto_reload && runway != null && runway < CREDITS_WARN_DAYS)
-      needs.push(`Credits run out ${runway < 1 ? 'within a day' : `in about ${plural(Math.round(runway), 'day', 'days')}`} at this week’s pace, then research pauses. <a href="/billing">Add credits or turn on auto-reload</a>`);
+      needs.push(`${pausesIn(runway)} <a href="/billing">Add credits or turn on auto-reload</a>`);
     // What the time away cost, in credits: real money, so its own row, never added to a book above.
     const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}<span class="since-sub"> \u00b7\u00a0real money \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
@@ -5144,6 +5145,7 @@
     ].filter(Boolean);
     const now = d.billing_blocked
       ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.' + apStillTrading(d)
+        : apReloadFailed(d) ? `Paused: ${AP_CARD_FIX}${apStillTrading(d)}`
         : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`)
       : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') + apMeanwhile(d) : esc(apStory(d)[0] || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
@@ -5288,6 +5290,12 @@
     </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
+  // Paused for credits while auto-reload is on and its last charge failed (the status's reload_failed,
+  // Billing's banner text): the card is the next step, since "add credits" goes on the same card.
+  const apReloadFailed = (d) => !!(d && d.billing_blocked && d.billing_reason !== 'card' && d.reload_failed);
+  // Auto-reload fires only on a charge, and nothing is charged while research is paused: a new card
+  // alone does not restart it, so the step is the card and then credits.
+  const AP_CARD_FIX = 'auto-reload couldn’t charge your card. <a href="/billing">Update your card and add credits on Billing</a>, and research picks up on its own.';
   const apFloorText = () => (S.me && S.me.min_run_balance != null ? `starting research needs ${usd(S.me.min_run_balance)} in credits.` : 'it’s out of credits.');
   // A billing pause stops the autopilot's research and check-ins; the engine keeps trading what is
   // already deployed (credits never gate a trade). "Paused" alone read as if every strategy had stopped.
@@ -5303,6 +5311,8 @@
   function apCreditsLeft(w, d) {
     const me = S.me;
     if (!w || w.credits_left == null || !me || !me.billing_enabled) return '';
+    if (apReloadFailed(d))
+      return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>. Research is paused: auto-reload failed. ${esc(d.reload_failed)} <a href="/billing">Update your card and add credits on Billing</a>.</p>`;
     if (d && d.billing_blocked) {
       const why = d.billing_reason === 'card' ? 'until you add a payment method'
         : me.min_run_balance != null ? `until you add credits: a session needs ${usd(me.min_run_balance)} to start` : 'until you add credits';
@@ -5310,10 +5320,14 @@
     }
     // A first-day account has no pace yet, and one under a week old reads its pace per day so far
     // (the server's pace_days): its first minutes' spend over 7 days read "over 3 months".
-    const pace = w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at ${w.pace_days != null && w.pace_days < 7 ? 'its pace so far' : 'this week’s pace'}`
+    // With auto-reload on, the next thing at this pace is a card charge, not a pause (the server's reload_days).
+    const at = w.pace_days != null && w.pace_days < 7 ? 'its pace so far' : 'this week’s pace';
+    const reloadIn = !!me.auto_reload && w.reload_days != null && !(d && d.reload_failed);
+    const pace = reloadIn ? `; at ${at} auto-reload adds ${usd(me.auto_reload.amount)} ${inDays(w.reload_days)} (card charged ${usd(me.auto_reload.charge)})`
+      : w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at ${at}`
       : paceTooSoon(w.pace_days, (+w.research_credits || 0) + (+w.checkin_credits || 0)) ? ', too soon to say how long they last: its first day sets the pace' : '';
     const floor = me.min_run_balance != null ? ` until your balance is under ${usd(me.min_run_balance)}, then pauses` : '';
-    return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}. It has no daily spending cap: it uses credits${floor}${me.auto_reload ? ` (auto-reload adds ${usd(me.auto_reload.amount)} at ${usd(me.auto_reload.threshold)})` : ''}. <a href="/billing">Billing</a> lists every charge.</p>`;
+    return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}. It has no daily spending cap: it uses credits${floor}${me.auto_reload && !reloadIn ? ` (auto-reload adds ${usd(me.auto_reload.amount)} at ${usd(me.auto_reload.threshold)})` : ''}.${d && d.reload_failed ? ` <b>Auto-reload failed.</b> ${esc(d.reload_failed)} <a href="/billing">Update your card</a>.` : ''} <a href="/billing">Billing</a> lists every charge.</p>`;
   }
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
   // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
@@ -5899,10 +5913,11 @@
       // Say why autopilot is quiet (or soon will be) here too, not only on the dashboard card.
       if (d.billing_blocked) {
         gates.innerHTML = d.billing_reason === 'card' ? 'Autopilot is paused. <a href="/billing">Add a payment method</a> to let it keep researching.' + apStillTrading(d)
+          : apReloadFailed(d) ? `Autopilot is paused: ${AP_CARD_FIX}${apStillTrading(d)}`
           : `Autopilot is paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`;
         gates.classList.add('warn');
       } else if (d.credits_low_days != null) {
-        gates.innerHTML = `Credits run out ${d.credits_low_days < 1 ? 'within a day' : 'in about ' + Math.round(d.credits_low_days) + ' day' + (Math.round(d.credits_low_days) === 1 ? '' : 's')} at this week's pace, then research pauses. <a href="/billing">Add credits or turn on auto-reload</a>.`;
+        gates.innerHTML = `${pausesIn(d.credits_low_days)} <a href="/billing">Add credits or turn on auto-reload</a>.`;
         gates.classList.add('warn');
       } else {
         gates.textContent = apLiveBlock(d) || apLiveArmed(d);
@@ -6060,8 +6075,10 @@
     // what is already here: no status read needed.
     else if (reloadWas !== JSON.stringify(me.auto_reload) && box && S.ap) { renderAutopilot(box, S.ap); paintDashAp(); }
   }
-  // How long the balance lasts at last week's spend. Research pauses at $0, so autopilot users
-  // need this more than the one-time welcome credit.
+  // How long the balance lasts at last week's spend, counted to where research pauses (under
+  // min_run_balance), which autopilot users need more than the one-time welcome credit.
+  // The low-credit warning (the dashboard's Needs you, the autopilot panel): days until research pauses.
+  const pausesIn = (days) => `Research pauses ${days < 1 ? 'within a day' : inDays(days)} at this week’s pace, when credits fall under ${usd(S.me && S.me.min_run_balance != null ? S.me.min_run_balance : 0)}.`;
   const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
   // The spend a runway is read at. The server's pace_days is how many days the week's spend covers: the
   // account's age, at most 7. Under a day there is no pace yet (a first session's minutes, divided by
@@ -6069,6 +6086,15 @@
   const paceTooSoon = (days, spent) => days != null && days < 1 && +spent > 0;
   const paceDay = (spent, days) => +spent > 0 && !(days != null && days < 1) ? +spent / (days != null ? Math.min(7, days) : 7) : null;
   const paceWords = (spent, days) => days != null && days < 7 ? `${usd(paceDay(spent, days))} a day so far` : `${usd(spent)} a week`;
+  // What the card pays for `credits` plus the purchase fee, to the cent as the server charges it
+  // (billing.topup_charge_cents: exact decimal, half up), worked in whole cents: $19 x 1.055 as a float
+  // read $20.04 before the press while the card paid $20.05.
+  const topupCharge = (credits, feePct) => {
+    const c = Math.round(+credits * 100), bp = Math.round(+feePct * 100);  // cents; the fee in hundredths of a percent
+    return Math.floor((c * (10000 + bp) + 5000) / 10000) / 100;
+  };
+  // A days figure as when something happens: "in about 2 days", "in under a day".
+  const inDays = (days) => 'in ' + runwayLabel(days).toLowerCase();
   async function viewBilling() {
     const gen = S.gen;
     shell('/billing', boardTitle('Billing') + '<details class="billing-pricing"><summary>Credit pricing</summary><p>Credits pay for research and chat, billed per token for the model you pick. Paper and live trading are free. The <a href="/research">research form</a> shows what a session usually costs before you start.</p></details>' +
@@ -6083,8 +6109,15 @@
       root.querySelector('#bfigs').innerHTML =
         fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0 }) +
         fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(' \u00b7\u00a0') }) +
-        (d.runway_days != null
-          ? fig('Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}` })
+        // How long it lasts means until research pauses (under min_run_balance; with payments off nothing
+        // pauses, so until $0), and with auto-reload on, when the card is next charged and for how much:
+        // "Credits last about 2 days" in red beside auto-reload read as a stop that auto-reload prevents,
+        // and at $2.40 it was a day late.
+        (low ? fig('Research', 'Paused', { v: -1, small: `a session needs ${usd(d.min_run_balance)} to start` })
+          : d.reload_days != null && d.auto_reload && !d.reload_failed
+          ? fig('Next auto-reload in', runwayLabel(d.reload_days), { small: `adds ${usd(Math.max(d.min_reload_amount, d.autoreload_amount))}, card charged ${usd(d.autoreload_charge)}, at ${paceWords(d.spent_7d, d.pace_days)}` })
+          : d.runway_days != null
+          ? fig(d.configured ? 'Research pauses in' : 'Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}${d.configured && d.min_run_balance != null ? `, when credits fall under ${usd(d.min_run_balance)}` : ''}` })
           : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? fig('Credits last', 'Too soon to tell', { small: 'your first day of research sets the pace' })
           : fig('Welcome credit', usd(d.free_bonus)));
       const split = spendSplit(d.spent_7d_by);
@@ -6100,7 +6133,7 @@
       // Out of credits (under the floor a research session needs): say what stopped and the next step.
       const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
       const lowNote = !low ? '' : `<div class="notice" role="status">${ICON.warn}<span>${d.balance <= 0 ? 'You’re out of credits' : `You have ${usd(d.balance)} in credits`}. New research needs at least ${usd(d.min_run_balance)} to start, so none is starting${apOn ? ' and autopilot is paused' : ''}. ${
-        !d.cards.length ? 'Add a card, then add credits.' : d.auto_reload ? 'Auto-reload is on but hasn’t topped you up: add credits here, or check your card.' : 'Add credits here, or turn on auto-reload so it doesn’t stop again.'}${apOn ? ' Autopilot picks up again on its own.' : ''}</span></div>`;
+        !d.cards.length ? 'Add a card, then add credits.' : d.auto_reload && d.reload_failed ? 'Auto-reload couldn’t charge your card (see below). Update the card first, then add credits here: they go on the same card.' : d.auto_reload ? 'Auto-reload is on but hasn’t topped you up: add credits here, or check your card.' : 'Add credits here, or turn on auto-reload so it doesn’t stop again.'}${apOn ? ' Autopilot picks up again on its own.' : ''}</span></div>`;
       const cardLines = d.cards.length
         ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
             <td class="name" data-lab="Card">${esc((c.brand || 'card').toUpperCase())} •••• ${esc(c.last4 || '')}</td>
@@ -6146,11 +6179,13 @@
       if (!d.configured) return;
       // top-up fee preview
       const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');
-      const fee = d.topup_fee_pct / 100;
       // At the user's own pace, how long the amount being bought would last: picks the amount for them.
       const perDay = paceDay(d.spent_7d, d.pace_days);
       const lasts = (v) => (perDay && v > 0) ? ` At your pace (${paceWords(d.spent_7d, d.pace_days)}) that's ${runwayLabel(v / perDay).toLowerCase()} of research.` : '';
-      const upd = () => { const v = +amt.value || 0; note.textContent = `You'll pay ${usd(v * (1 + fee))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).${lasts(v)}`; };
+      // Out of range, it says the range before the press (the server refuses it in the same words).
+      const upd = () => { const v = +amt.value || 0; note.textContent = v < d.min_topup || v > d.max_topup
+        ? `Add between ${usd(d.min_topup)} and ${usd(d.max_topup)} in credits.`
+        : `You'll pay ${usd(topupCharge(v, d.topup_fee_pct))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).${lasts(v)}`; };
       amt.oninput = upd; upd();
       root.querySelector('#topup-btn').onclick = (e) => {
         if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', 'Add a card first.', 'bad'); return; }
@@ -6160,7 +6195,7 @@
             const r = await api('/api/billing/topup', { amount: credits });
             if (gen !== S.gen) return;
             const fresh = await refreshed(load());  // refresh balance + ledger, then confirm into the fresh panel
-            if (gen === S.gen) flash('#topup-flash', `Added ${usd(credits)} in credits. You paid ${usd(credits * (1 + fee))} — ${usd(credits)} plus the ${d.topup_fee_pct}% fee. New balance is ${usd(r.balance)}.` + (fresh ? '' : BEHIND), 'good');
+            if (gen === S.gen) flash('#topup-flash', `Added ${usd(credits)} in credits. You paid ${usd(r.charged != null ? r.charged : topupCharge(credits, d.topup_fee_pct))} — ${usd(credits)} plus the ${d.topup_fee_pct}% fee. New balance is ${usd(r.balance)}.` + (fresh ? '' : BEHIND), 'good');
           } catch (err) { if (gen === S.gen) flash('#topup-flash', err.message, 'bad'); }
         });
       };

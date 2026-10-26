@@ -44,10 +44,15 @@ def pace_days(created_at) -> float:
     return round(max(0.0, min(7.0, (repo.now_utc() - created_at).total_seconds() / 86400)), 2)
 
 
-def runway_days(balance: float, spent_7d: float, days: float, floor: bool = False) -> Optional[float]:
-    """Days the balance lasts at the spend of the last `days` days (pace_days). None with no spend
-    or no balance, and for an account under RUNWAY_MIN_DAYS old, whose pace is not known yet;
-    `floor` reads that account's spend as one day's instead (the low-credit warning: never later)."""
+def runway_days(balance: float, spent_7d: float, days: float, floor: bool = False,
+                stop_at: float = 0.0) -> Optional[float]:
+    """Days until the balance falls to `stop_at` at the spend of the last `days` days (pace_days).
+    The pages pass the research floor (pause_at), where research pauses, or the auto-reload trigger,
+    where the card is next charged (reload_days): at $2.40 and $1.50 a day research pauses within a
+    day, and "about 2 days, then research pauses" was a day late. None with no spend or nothing above
+    `stop_at`, and for an account under RUNWAY_MIN_DAYS old, whose pace is not known yet; `floor`
+    reads that account's spend as one day's instead (the low-credit warning: never later)."""
+    balance = balance - stop_at
     if spent_7d <= 0 or balance <= 0:
         return None
     if days < RUNWAY_MIN_DAYS:
@@ -57,17 +62,39 @@ def runway_days(balance: float, spent_7d: float, days: float, floor: bool = Fals
     return round(balance / (spent_7d / days), 1)
 
 
+def pause_at() -> float:
+    """The balance research pauses under (billing.MIN_RUN_BALANCE), which every runway counts down to.
+    With payments off nothing gates research (billing.is_ready), so the runway is to $0 as before."""
+    return float(billing.MIN_RUN_BALANCE) if billing.configured() else 0.0
+
+
+def reload_trigger(cust: Optional[Dict]) -> Optional[Decimal]:
+    """The balance auto-reload charges the card at, as billing.auto_reload reads it (the saved trigger,
+    never under the minimum); None when auto-reload is off or there is no card to charge."""
+    if not (cust and cust.get("auto_reload") and cust.get("default_pm_id")):
+        return None
+    return max(billing.AUTORELOAD_THRESHOLD, Decimal(str(cust.get("reload_threshold") or billing.AUTORELOAD_THRESHOLD)))
+
+
+def reload_days(cust: Optional[Dict], balance: float, spent_7d: float, days: float) -> Optional[float]:
+    """Days until auto-reload next charges the card, at the runway's pace: until the balance falls to
+    its trigger. None when auto-reload is off or has no card, or the balance is at the trigger already
+    (a reload is due, or failing, and the failure notice says which)."""
+    trigger = reload_trigger(cust)
+    return None if trigger is None else runway_days(balance, spent_7d, days, stop_at=float(trigger))
+
+
 def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None, balance: Optional[float] = None,
                    spent_7d: Optional[float] = None, created_at=None, floor: bool = False):
-    """(balance, last-7-day usage spend, days the balance lasts at that pace). Research pauses at
-    zero, so this is how long autopilot keeps working; None when there is no recent usage. A caller
+    """(balance, last-7-day usage spend, days until research pauses at that pace: the balance falls
+    under pause_at()), so this is how long autopilot keeps working; None when there is no recent usage. A caller
     that already summed the ledger passes its `balance` and its week's usage (`spent_7d`). The
     pace is per day of the account's age (`created_at`) for an account under a week old."""
     if balance is None:
         balance = (reads or billing.Reads(cur, uid)).balance()
     if spent_7d is None:
         spent_7d = repo.credit_spent_total(cur, uid, repo.now_utc() - timedelta(days=7))
-    return balance, spent_7d, runway_days(balance, spent_7d, pace_days(created_at), floor)
+    return balance, spent_7d, runway_days(balance, spent_7d, pace_days(created_at), floor, pause_at())
 
 
 CREDIT_RUNWAY_WARN_DAYS = 3
@@ -129,13 +156,19 @@ def billing_state(ctx: Ctx):
     balance = float(sum((Decimal(str(t["all"])) for t in totals.values()), Decimal(0)))
     created_at = ctx.user.get("created_at")
     balance, spent_7d, runway = _credit_runway(cur, ctx.uid, balance=balance, created_at=created_at)
+    # When auto-reload next charges the card at that pace; none while its last attempt stands failed.
+    reload_in = None if reload_failed or not billing.configured() else reload_days(cust, balance, spent_7d,
+                                                                                  pace_days(created_at))
     return {
         "configured": billing.configured(),
         "publishable_key": billing.STRIPE_PUBLISHABLE_KEY,
         "balance": credit_exact(balance),
         "spent": credit_usd(-(totals.get("usage") or {}).get("all", 0.0)),
         "spent_7d": credit_usd(spent_7d),
+        # Days until research pauses (the balance under min_run_balance) at the week's pace, and until
+        # auto-reload next charges the card (None while it is off, failing or due).
         "runway_days": runway,
+        "reload_days": reload_in,
         # The days the week's spend covers (the account's age, at most 7): under 1 the page says it is
         # too soon to project, under 7 it states the pace per day so far instead of a week's.
         "pace_days": pace_days(created_at),
@@ -394,10 +427,20 @@ def billing_card_added(ctx: Ctx):
     return {"ok": True}
 
 
+def _amount(ctx: Ctx, key: str, lo, hi, said: str) -> float:
+    """A dollar amount from the body between lo and hi, else a 400 that says the range in the user's
+    words ("Add between $5.00 and $1,000.00 in credits.", as the page writes dollars), never the
+    field's name ("amount must be between 5 and 1000"). The bounds and the check are _num's."""
+    try:
+        return _num(ctx.body, key, float(lo), float(hi))
+    except ApiError:
+        raise ApiError(400, said % ("${:,.2f}".format(Decimal(str(lo))), "${:,.2f}".format(Decimal(str(hi))))) from None
+
+
 def billing_topup(ctx: Ctx):
     if not billing.configured():
         raise ApiError(503, "Payments aren't enabled yet.")
-    amount = _num(ctx.body, "amount", float(billing.MIN_TOPUP), float(billing.MAX_TOPUP))
+    amount = _amount(ctx, "amount", billing.MIN_TOPUP, billing.MAX_TOPUP, "Add between %s and %s in credits.")
     cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
     if not cust or not cust.get("default_pm_id"):
         raise ApiError(409, "Add a card first.")
@@ -418,7 +461,9 @@ def billing_topup(ctx: Ctx):
                             "balance before you try another card.")
     with repo.transaction(ctx.conn) as tx:
         repo.add_credit(tx, ctx.uid, "topup", credits, "Added $%s credits" % credits, stripe_ref=pi["id"])
-    return {"ok": True, "balance": credit_exact(repo.credit_balance(ctx.cur, ctx.uid))}
+    # What the card was charged, as charged: the confirmation says this, not a float sum of its own.
+    return {"ok": True, "balance": credit_exact(repo.credit_balance(ctx.cur, ctx.uid)),
+            "charged": billing.topup_charge_cents(credits) / 100}
 
 
 def billing_autoreload(ctx: Ctx):
@@ -428,9 +473,11 @@ def billing_autoreload(ctx: Ctx):
     from decimal import Decimal as _D
     amount = threshold = None
     if ctx.body.get("amount") is not None:
-        amount = _D(str(_num(ctx.body, "amount", float(billing.AUTORELOAD_AMOUNT), float(billing.MAX_TOPUP))))
+        amount = _D(str(_amount(ctx, "amount", billing.AUTORELOAD_AMOUNT, billing.MAX_TOPUP,
+                                "Auto-reload adds between %s and %s at a time.")))
     if ctx.body.get("threshold") is not None:
-        threshold = _D(str(_num(ctx.body, "threshold", float(billing.AUTORELOAD_THRESHOLD), float(billing.MAX_TOPUP))))
+        threshold = _D(str(_amount(ctx, "threshold", billing.AUTORELOAD_THRESHOLD, billing.MAX_TOPUP,
+                                   "Auto-reload can start at a balance between %s and %s.")))
     repo.set_auto_reload(ctx.cur, ctx.uid, on, amount=amount, threshold=threshold)
     # What one reload of the saved amount charges the card, so the page's other copy of it (the
     # autopilot card) says the new figure without reading Billing again.
