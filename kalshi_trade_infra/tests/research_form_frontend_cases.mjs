@@ -104,6 +104,28 @@ export function researchFormCases({name, frontend}) {
     assert.doesNotMatch(f.root.querySelector('#dispatch').innerHTML, /KXFOO/);
     f.clearTimers();
   });
+
+  test(`${name}: models you can't pick yet come last as "coming soon", and the demo link never reads as a fragment`, async () => {
+    const run = (over) => ({id: 1, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Idea',
+      hypotheses_tried: 9, strategies_passed: 1, spent_usd: 4.2, error: null, created_at: '2026-10-25T08:00:00Z', stop_reason: 'limit', ...over});
+    const models = {models: [{key: 'next', label: 'Claude Opus 5.5', available: false}, ...MODELS.models], default: 'opus'};
+    let f = await form({me: {models}});
+    const labels = f.root.querySelector('#rmodel').options.map((o) => o.textContent);
+    // Before: "Claude Opus 5.5 (access pending)" led the list, above the default.
+    assert.deepEqual(labels, ['Claude Opus 4.6', 'Amazon Nova Micro', 'Claude Opus 5.5 (coming soon)']);
+    assert.ok('disabled' in f.root.querySelector('#rmodel').options[2].attributes);
+    assert.doesNotMatch(f.root.querySelector('#dispatch').innerHTML, /access pending/);
+    // No example session to open: the demo link is hidden, and its partner said "or run it yourself" alone.
+    const ex = () => f.root.querySelector('button[data-ex]').textContent;
+    assert.equal(f.root.querySelector('[data-ex-open]').hidden, true);
+    assert.equal(ex(), 'Run the demo idea yourself');
+    f.clearTimers();
+    // With the demo link showing (an example and sessions of your own), the pair reads as one line.
+    f = await form({me: {models}, runs: [run({id: 4, seq: 1}), run({id: 3, example: true, direction: 'random_walk'})]});
+    assert.equal(f.root.querySelector('[data-ex-open]').hidden, false);
+    assert.equal(ex(), 'or run it yourself');
+    f.clearTimers();
+  });
 }
 
 // What the browser's FormData reads off the form, for the offline harness: the checked radio and

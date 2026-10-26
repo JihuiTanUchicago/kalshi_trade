@@ -2680,6 +2680,10 @@ body.landing-body .apf { display: none; }
 .dispatch-opts-sum { font-size: 13px; color: var(--ink-3); }
 .dispatch-opts[open] .dispatch-opts-sum { display: none; }
 .dispatch-opts-body { display: grid; gap: 16px; margin-top: 8px; }
+/* One column inside Options: `.research-compose .dispatch-tune` puts the model and depth in the form's
+   second column, and inside Options that made a second column too, so the market picker was ~90px
+   wide and the model read "Claude". */
+.research-compose .dispatch-opts-body > .dispatch-tune { grid-column: 1; grid-row: auto; }
 /* Strategy page: the primary action up top where the Deploy panel is far below (one column). */
 .strat-quick { display: none; }
 @media (max-width: 1080px) {
