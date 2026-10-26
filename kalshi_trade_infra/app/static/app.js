@@ -2425,13 +2425,23 @@
     if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each idea in the log below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
+  // The foot of a finished session, under the log's last line. The way on sat only above the log, a
+  // phone's length of scrolling back up: the example's last line said to describe a real idea, and a
+  // session where nothing passed ended on its last missed idea. Plain buttons: the line above keeps
+  // the page's one primary action.
+  function runEnd(r, strategies) {
+    if (r.example) return `<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>`;
+    if (r.status !== 'succeeded' && r.status !== 'stopped') return '';
+    if ((strategies || []).some((s) => s.status === 'passed')) return '';
+    return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
+  }
   async function viewRun(id) {
     shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
       <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.</p>
-        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div></section>`);
+        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div><div id="runend"></div></section>`);
     let after = 0, tried = 0;
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
@@ -2458,6 +2468,10 @@
             { small: d.rsi && d.rsi.evolved ? `it found a better way to pick ideas (score ${d.rsi.score})` : 'it gets better at picking ideas after each session' });
       const next = root.querySelector('#runnext');
       if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
+      // Painted only when it changes: a finished run still polls, and a repaint would undo the
+      // autopilot line's "on" note or a press in flight.
+      const endEl = root.querySelector('#runend'), endHtml = active ? '' : runEnd(r, d.strategies);
+      if (endEl && endEl.dataset.h !== endHtml) { endEl.dataset.h = endHtml; endEl.innerHTML = endHtml; }
       const rsibox = root.querySelector('#rsibox');
       if (rsibox && d.rsi) {
         const delta = (d.rsi.base_score != null && d.rsi.score != null)
@@ -2465,14 +2479,20 @@
         // The adopted policy is arbitrary agent-evolved Python with no structured decision record
         // behind it, so a raw-source dump isn't inspection — the human "What it changed" summary
         // and the generalization-score delta below are the faithful, readable account.
-        rsibox.innerHTML = `<div class="rsi-card"><div class="rsi-head"><b class="rsi-badge">RSI</b> Self-improving research ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}</div>
+        // The explainer folds behind its title on a phone, where it pushed the log a screen down; it
+        // opens on wider screens. A reader's open or close holds across the 2s repaint.
+        const prev = rsibox.querySelector('details.rsidisc'), expanded = prev ? prev.open : !phone();
+        const focused = !!rsibox.querySelector('details.rsidisc > summary:focus');
+        const rsiHtml = `<details class="rsidisc rsi-run"${expanded ? ' open' : ''}><summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research</span>${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
                <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' ·\u00a0adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
             : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can't overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' ·\u00a0' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
-          </div>`;
+          </div></details>`;
+        if (rsibox.dataset.h !== rsiHtml) { rsibox.dataset.h = rsiHtml; rsibox.innerHTML = rsiHtml; }
+        if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
       d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });
@@ -3060,10 +3080,12 @@
       // With nothing deployed (the dashboard's board says so), Deploy is an empty board too and sent a
       // new user Deploy → Strategies → Research; the button goes straight to the step that comes first.
       const first = key === 'paper' && !apOn && S.dashDeps === 0;
+      // Nothing deployed yet: the dashboard's autopilot card above already offers the switch, so the
+      // record doesn't offer it a second time.
       const go = apOn ? '<a class="btn" href="/research">See its research</a>'
         : first ? (S.dashNoSessions ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>')
         : '<a class="btn" href="/deploy">Go to Deploy</a>';
-      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}${go}</div>${cav}`;
+      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' && !first ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}${go}</div>${cav}`;
     }
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
@@ -3982,8 +4004,8 @@
   // autopilot is on: the card above says what it is doing, and "is researching" contradicted a card
   // reporting a stale check-in or a billing pause.
   // A brand-new user (no research session of their own) gets the finished example first: one tap,
-  // free. /example looks up the seeded example session (/api/runs/example) and opens it in place.
-  const EXAMPLE_CTA = `<a class="btn primary ex-cta" href="/example" data-example>See an example session first</a>`;
+  // free, from the strip up top (sinceStrip). /example looks up the seeded example session
+  // (/api/runs/example) and opens it in place.
   // On Research it is a plain button, so Start session stays the page's one primary action, and it is
   // left out when they came to start one (?new=1: "Describe your own idea" on the example itself, or
   // "Try another idea"): they have just seen it.
@@ -4024,11 +4046,12 @@
   // On a phone, a secondary section (method, raw lists, what-if, share, remove) folds behind its
   // title, closed; wider screens render it as before. Money figures and verdicts never fold.
   const fold = (title, html) => html ? `<details class="fold"${phone() ? '' : ' open'}><summary class="fold-h">${title}</summary>${html}</details>` : '';
+  // For that new user the box adds no button of its own: it repeated the strip's example link as a
+  // second primary button, next to the autopilot card's Turn on autopilot and "or research by hand".
   function depsEmpty(on) {
-    const ex = S.dashNoSessions ? `<p class="hint">New here? See what a finished session looks like first. It’s free.</p>${EXAMPLE_CTA}` : '';
-    return ex ? (on
-      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p>${ex}</div>`
-      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or research an idea yourself.</p>${ex}</div>`) : on
+    return S.dashNoSessions ? (on
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p></div>`
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or research an idea yourself.</p></div>`) : on
       ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
       : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research">Research an idea</a></div>`;
   }
@@ -4183,13 +4206,15 @@
   // action: on Research it sat on the Start session row (desktop) and covered the button (phone).
   // While it would cover a primary or submit button, or a figure (a balance, a P&L, a stacked card's
   // number), on screen it fades and lets clicks through, and comes back once that scrolls away.
+  // The run page's Agent log header counts too: its Pause and Cancel sit at the right edge, under the
+  // pill once that header scrolls to the foot of the screen.
   // The open panel is left alone: the user opened it.
   function apYield() {
     const box = document.getElementById('autopilot-float'), pill = box && box.querySelector('.apf-pill');
     if (!pill || !pill.getBoundingClientRect) { if (box) box.classList.remove('yield'); return; }
     const p = pill.getBoundingClientRect(), pad = 8;
     const q = (sel) => [...document.body.querySelectorAll(sel)];
-    const under = ['main button[type="submit"]', 'main .btn.primary', '.figures .m', '.fig', '.stack tbody td.num'];
+    const under = ['main button[type="submit"]', 'main .btn.primary', 'main #runact .btn', '.figures .m', '.fig', '.stack tbody td.num'];
     const covers = under.flatMap(q).some((el) => {
       const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
       return !!(r && r.width && r.right > p.left - pad && r.left < p.right + pad && r.bottom > p.top - pad && r.top < p.bottom + pad);

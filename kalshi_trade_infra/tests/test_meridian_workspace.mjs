@@ -3039,6 +3039,32 @@ test('Meridian: a finished session says what to do next: your own idea after the
   assert.equal(await at({status: 'running'}, []), '');  // still going: nothing to do yet
 });
 
+test('Meridian: a finished session ends with the way on: another idea or autopilot after the last failed card, your own idea under the example\'s log', async () => {
+  const at = async (run, strategies, autopilot = false) => {
+    const f = frontend({fetchImpl: () => response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: '2026-10-25T10:00:00Z', ...run}, events: [], strategies})});
+    f.S.me.user.autopilot = autopilot;
+    await f.viewRun(9); f.clearTimers();
+    return f;
+  };
+  let f = await at({status: 'succeeded'}, [{id: 43, title: 'Fade', status: 'failed'}, {id: 44, title: 'Lean', status: 'rejected'}]);
+  const main = f.root.querySelector('main').innerHTML;
+  assert.ok(main.indexOf('id="run-artifacts"') < main.indexOf('id="runend"') && main.indexOf('id="runend"') < main.indexOf('id="rsibox"'));
+  const end = f.root.querySelector('#runend').innerHTML;
+  assert.match(end, /<a class="btn" href="\/research\?new=1">Try another idea<\/a><p class="research-ap">Rather not write ideas yourself\? <button type="button" data-research-ap>Turn on autopilot<\/button>/);
+  assert.doesNotMatch(end, /btn primary/);
+  assert.equal(f.root.querySelector('#runend-log').innerHTML, '');
+  assert.doesNotMatch((await at({status: 'succeeded'}, [], true)).root.querySelector('#runend').innerHTML, /Turn on autopilot/);  // already on
+  // The example: under its log's last line, inside the Agent log; a plain button beside the primary above.
+  f = await at({status: 'succeeded', example: true}, []);
+  const hist = f.root.querySelector('#run-history').innerHTML;
+  assert.ok(hist.indexOf('id="runfeed"') < hist.indexOf('id="runend-log"'));
+  assert.equal(f.root.querySelector('#runend-log').innerHTML, '<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>');
+  assert.equal(f.root.querySelector('#runend').innerHTML, '');
+  // Something passed, or still going: nothing at the foot.
+  assert.equal((await at({status: 'succeeded'}, [{id: 42, title: 'Late', status: 'passed'}])).root.querySelector('#runend').innerHTML, '');
+  assert.equal((await at({status: 'running'}, [])).root.querySelector('#runend').innerHTML, '');
+});
+
 test('Meridian: after a deploy the Deploy page offers autopilot in words, and the panel says what its switch does', async () => {
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dashboardDeployment('paper')], open_positions: []}) : response({})});
   f.S.me.user.autopilot = false;
@@ -3219,10 +3245,13 @@ test('a brand-new user sees "See an example session first" on the dashboard and 
       throw new Error('Unexpected offline request: ' + path);
     }});
     await f.viewDashboard(); await flush();
-    const empty = f.root.querySelector('#deps-empty').innerHTML;
-    assert.equal(/<a class="btn primary ex-cta" href="\/example" data-example>See an example session first<\/a>/.test(empty), shown, String(own));
-    // and up top, in the strip, where a phone sees it without scrolling
+    // Up top, in the strip, where a phone sees it without scrolling: the page's one way to the example.
     assert.equal(/No sessions of your own yet\. <a href="\/example" data-example>See an example session first<\/a>/.test(f.root.querySelector('#dash-since').innerHTML), shown);
+    // The empty Deployed box no longer repeats it as a second primary button beside the autopilot card's.
+    assert.doesNotMatch(f.root.querySelector('#deps-empty').innerHTML, shown ? /class="btn/ : /href="\/example"/, String(own));
+    const page = ['#boardbody', 'main', '#dash-ap'].map((sel) => f.root.querySelector(sel).innerHTML).join('');
+    assert.equal((page.match(/href="\/example"/g) || []).length, shown ? 1 : 0, String(own));
+    assert.deepEqual(page.match(/class="btn primary[^>]*>[^<]*/g), ['class="btn primary" data-apcard="on">Turn on autopilot'], String(own));
   }
   // Research: only the seeded example so far, so it leads with it (one tap, straight to the session).
   let f = exResearch([exRun]);
@@ -3734,9 +3763,11 @@ test('Meridian first-run funnel: an empty paper track record never sends a user 
   const paper = () => f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
   f.S.dashDeps = 0; f.S.dashNoSessions = true;
   assert.match(paper(), /<a class="btn" href="\/research\?new=1">New session<\/a>/); assert.doesNotMatch(paper(), /Go to Deploy/);
+  // The dashboard's autopilot card above already offers the switch: the record doesn't repeat it.
+  assert.doesNotMatch(paper(), /Turn on autopilot/);
   f.S.dashNoSessions = false;
   assert.match(paper(), /<a class="btn" href="\/strategies\?status=passed">See passed strategies<\/a>/);
-  f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/);
+  f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/); assert.match(paper(), /Turn on autopilot/);
   f.S.dashDeps = undefined; assert.match(paper(), /Go to Deploy/);
   f.S.dashDeps = 0; assert.match(f.trackRecordPanel({trades: 0, label: 'Demo'}, 'demo', th), /Go to Deploy/);
 });
