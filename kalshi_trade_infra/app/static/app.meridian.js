@@ -1624,6 +1624,9 @@
   // the autopilot at work.
   const AP_RUN_NOTE = 'The autopilot started this session.';
   const AP_RUN_TAG = `<span class="mk quiet ap-run-tag" title="${AP_RUN_NOTE}">Autopilot</span>`;
+  // A strategy the autopilot found (the server's by_autopilot: from a session it started), so a user who
+  // runs both can tell its finds from their own on the list.
+  const AP_STRAT_TAG = `<span class="mk quiet ap-run-tag" title="Found in a research session the autopilot started.">Autopilot</span>`;
   const runTag = (r) => r.example ? ' ' + EXAMPLE_TAG : +r.by_autopilot ? ' ' + AP_RUN_TAG : '';
   // The run page's kind of session: its direction, and who started it when the autopilot did.
   const runKind = (r) => +r.by_autopilot && !r.example ? (r.direction ? dirLabel(r.direction) + ' \u00b7\u00a0' : '') + 'Started by autopilot' : dirLabel(r.direction);
@@ -1656,7 +1659,7 @@
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
-      <td class="name" data-lab=""><span class="strategy-ref">${esc(String(s.id).padStart(4, '0'))}</span>${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : ''}${missed}</td>
+      <td class="name" data-lab=""><span class="strategy-ref">${esc(String(s.id).padStart(4, '0'))}</span>${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}${missed}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7\u00a0${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub ? `<div class="sub-fig">${pnlSub}</div>` : ''}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>

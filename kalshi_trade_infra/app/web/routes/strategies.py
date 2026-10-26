@@ -44,6 +44,8 @@ def _strategy_card(s: Dict) -> Dict:
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
         "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
         "example": s.get("direction") == repo.DEMO_DIRECTION,  # from the seeded example session
+        # Found in a session the autopilot started (its run's brief flag, as the research list reads it).
+        **({"by_autopilot": True} if s.get("by_autopilot") else {}),
     }
 
 

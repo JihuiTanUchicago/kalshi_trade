@@ -20,6 +20,16 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.equal(badge(row(f, {deployed: false})), undefined);
   });
 
+  test(`${name}: a strategy the autopilot found is tagged on its row; the user's own are not`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const tag = /<span class="mk quiet ap-run-tag" title="Found in a research session the autopilot started\.">Autopilot<\/span>/;
+    assert.match(row(f, {by_autopilot: true}), tag);
+    assert.doesNotMatch(row(f, {}), /ap-run-tag/);
+    // The seeded example keeps its own tag only.
+    const ex = row(f, {by_autopilot: true, example: true});
+    assert.match(ex, /example-tag/); assert.doesNotMatch(ex, /ap-run-tag/);
+  });
+
   test(`${name}: a row says what its removed deployments made, each book on its own line`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const html = row(f, {deployed: false, past: {paper: {pnl: -13.56, trades: 9, deployments: 1}, demo: {pnl: 0, trades: 0, deployments: 1}}});

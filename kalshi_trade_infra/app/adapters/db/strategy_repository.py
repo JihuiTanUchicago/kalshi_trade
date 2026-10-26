@@ -104,6 +104,7 @@ def list_strategies(
     where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
                     s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
+                    r.brief AS by_autopilot,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped') AS active_deps,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped' AND d.mode='live') AS live_deps,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status='stopped') AS removed_deps
