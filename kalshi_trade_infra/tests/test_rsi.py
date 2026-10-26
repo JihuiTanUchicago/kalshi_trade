@@ -180,6 +180,20 @@ def test_paper_outcomes_skip_the_bootstrap_until_there_are_enough_trips(monkeypa
     assert out["total"]["live_ready"] == 0 and out["by_playbook"] == {}
 
 
+def test_paper_outcomes_skip_the_live_check_for_a_strategy_down_on_paper(monkeypatch):
+    """The scoreboard's live-ready count: a strategy down on its realistic trips fails paper_evidence's
+    net check whatever else it reads, so its five reads and its bootstrap are skipped (20 paper
+    strategies were 100 of the board's 118 statements and 11s of its cold read, measured 2026-10-26).
+    Flat (exactly $0) and up still run the check: only a strict loss is certain to fail it."""
+    from app import agent
+    deps = [_dep(1, "high_ny"), _dep(2, "high_ny"), _dep(3, "high_ny")]
+    cur = _paper_setup(monkeypatch, deps, {1: (40, -0.0001), 2: (40, 0.0), 3: (40, 6.0)}, {}, ready_ids={3})
+    asked = []
+    monkeypatch.setattr(agent, "paper_evidence", lambda c, uid, sid: asked.append(sid) or {"ready": sid == 3})
+    out = rsi.paper_outcomes(cur, 2)
+    assert asked == [2, 3] and out["total"]["live_ready"] == 1
+
+
 def test_paper_pace_flags_a_running_strategy_far_below_its_research_rate(monkeypatch):
     from datetime import datetime, timedelta
     now = datetime(2026, 10, 25, 18, 0)

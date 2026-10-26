@@ -708,6 +708,14 @@ def test_the_autopilot_panels_reads_answer_as_the_position_scans_they_replace(co
                    GROUP BY d.strategy_id""", (uid, "sim:%", *sids))
     events = {int(r["strategy_id"]): int(r["events"]) for r in cur.fetchall()}
     assert repo.paper_event_counts(cur, uid, sids) == events == {a["strategy_id"]: 3, b["strategy_id"]: 1}
+    # The scoreboard reads every paper strategy's trips at once (its tournament) and skips the live-ready
+    # check for a strategy whose paper_progress net is below zero: both answer as the per-strategy read.
+    one = {s: repo.paper_round_trips(cur, uid, s) for s in sids}
+    key = lambda t: (t["opened_at"], t["pnl"], t["ticker"])  # noqa: E731 - ties in opened_at have no set order
+    batched = repo.paper_round_trips_by_strategy(cur, uid, sids)
+    assert {s: sorted(t, key=key) for s, t in batched.items()} == {s: sorted(t, key=key) for s, t in one.items() if t}
+    for s, (n, net) in before.items():
+        assert n == len(one[s]) and (net < 0) == (sum(t["pnl"] for t in one[s]) < 0)
     cur.execute("EXPLAIN SELECT d.strategy_id FROM " + repo._PAPER_SOURCE + " WHERE p.user_id=%s AND d.strategy_id IN ("
                 + marks + ")", (uid, *sids))
     plan = cur.fetchall()

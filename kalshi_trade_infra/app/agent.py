@@ -3266,6 +3266,31 @@ def _trip_events(trips: List[Dict]) -> List[float]:
     return list(sums.values())
 
 
+# The paper edge test's stationary bootstrap loops 2,000 resamples x events in Python: ~1.3s for a
+# strategy with ~430 events (measured 2026-10-26; ~0.25s since stats read its draws in bulk), holding
+# the GIL, so the Deploy board (5 paper strategies: 6.3s) and the research scoreboard (20: 11s)
+# stalled every other request on the box each time their 30-60s caches lapsed. The test is seeded,
+# so its p-value is a pure function of the per-event P&L: it is memoized on exactly those floats (a
+# SHA-256 of their bytes) and recomputed only when a trade closes and changes them. Same answer, bit
+# for bit; nothing about the gate changes.
+_EDGE_P: Dict[bytes, float] = {}
+_EDGE_P_MAX = 2048
+
+
+def _paper_edge_p_value(events: List[float]) -> float:
+    import hashlib
+    import struct
+
+    key = hashlib.sha256(struct.pack("<%dd" % len(events), *events)).digest()
+    hit = _EDGE_P.get(key)
+    if hit is None:
+        hit = float(stats.stationary_bootstrap_ci(events, stat="mean", alpha=0.10)["p_value"])
+        if len(_EDGE_P) >= _EDGE_P_MAX:
+            _EDGE_P.clear()
+        _EDGE_P[key] = hit
+    return hit
+
+
 def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
     """The paper -> live evidence for one strategy, check by check, in gate order. `ready` is True
     only when every check passes; `why` names the FIRST failing check (the gate's refusal text).
@@ -3297,8 +3322,7 @@ def paper_evidence(cur, user_id: int, strategy_id: int) -> Dict:
     demo = demo_record.demo_evidence(cur, user_id, strategy_id)
     p_value = None
     if len(pnls) >= MIN_REALISTIC_PAPER_TRADES and len(events) >= MIN_PAPER_EVENTS:
-        from app import stats  # local: numpy-backed, only needed once there is enough evidence
-        p_value = float(stats.stationary_bootstrap_ci(events, stat="mean", alpha=0.10)["p_value"])
+        p_value = _paper_edge_p_value(events)
     checks = [
         ("legacy_trades", legacy_trades >= MIN_PAPER_TRADES_FOR_LIVE,
          "it needs %d+ closed paper trades first (has %d)" % (MIN_PAPER_TRADES_FOR_LIVE, legacy_trades)),
