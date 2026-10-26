@@ -2033,7 +2033,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
                       policy: exploration.ExplorationPolicy, conn=None, knowledge=None, news=None,
                       resume_chunk=None, resume_round=0, save_progress=None, mark_gated=None,
                       dropped: Optional[List[Dict]] = None, screen=None,
-                      resume_pending=None) -> Tuple[int, int]:
+                      resume_pending=None, resume_counts=None) -> Tuple[int, int]:
     """Explore NEW hypotheses on the Research partition (small refining rounds the policy
     sizes), then hand the finalists to the challenger + gatekeeper. Appends to the shared
     `tried` so progress survives a cancel/error.
@@ -2072,11 +2072,20 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             screener = news.wrap(screener, screen.usage)
         if knowledge is not None:
             screener = knowledge.wrap(screener, screen.usage)
-    attempts = 0  # theses DEVELOPED this chunk (survivors + abandoned), the real cost
-    streak = 0  # consecutive drops, reset by any survivor
+    # Both caps below count across restarts: a resume seeds them from the checkpoint (runs
+    # 3282/3286/3293 were restarted twice by deploys and explored 49-57 ideas each, because every
+    # restart handed them a fresh attempts budget and drop streak).
+    counts = resume_counts or {}
+    attempts = int(counts.get("attempts") or 0)  # theses DEVELOPED this chunk (survivors + abandoned), the real cost
+    streak = int(counts.get("streak") or 0)  # consecutive drops, reset by any survivor
     bad_rounds = 0  # proposing rounds whose every spec failed validation
     spent: set = set()  # rationed mechanisms this chunk already developed one idea of
     aside_rounds = 0  # proposing rounds whose every idea was a rationed repeat
+
+    def _save(rest) -> None:
+        if save_progress is not None:
+            save_progress(chunk, round_no, rest, {"attempts": attempts, "streak": streak})
+
     while True:
         checkpoint()
         if pending:  # a resumed round: develop what was already proposed before proposing more
@@ -2132,8 +2141,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
         developed = attempts
         for i, h in enumerate(batch):
             checkpoint()
-            if save_progress is not None:
-                save_progress(chunk, round_no, batch[i:])  # this thesis and the rest, until each lands
+            _save(batch[i:])  # this thesis and the rest, until each lands
             mech = _mechanism_of(h) if rationed else None
             if mech in rationed:
                 if mech in spent:
@@ -2152,9 +2160,8 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
                                  usage, log, checkpoint, round_no, cur, run["user_id"], merged_cache,
                                  dropped, screen, screener)
             if t is None:
-                if save_progress is not None:
-                    save_progress(chunk, round_no, batch[i + 1:])  # its drop is logged: never redevelop it
                 streak += 1
+                _save(batch[i + 1:])  # its drop is logged: never redevelop it
                 if EXPLORE_MAX_DROP_STREAK and streak >= EXPLORE_MAX_DROP_STREAK:
                     break  # don't develop the rest of this batch either
                 continue  # abandoned (dead-on-arrival) thesis: no candidate, no trial spent
@@ -2164,10 +2171,8 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             tried.append(t)
             # Durable checkpoint: persist the developed theses + round cursor as they land, so a
             # reclaim re-uses this (expensive) model work instead of re-exploring from scratch.
-            if save_progress is not None:
-                save_progress(chunk, round_no, batch[i + 1:])
-        if save_progress is not None:
-            save_progress(chunk, round_no, [])  # the round is done (or its rest deliberately skipped)
+            _save(batch[i + 1:])
+        _save([])  # the round is done (or its rest deliberately skipped)
         if attempts == developed and batch:
             # Every idea this round was set aside: the proposer is stuck on rationed mechanisms.
             aside_rounds += 1
@@ -2421,19 +2426,23 @@ def run_research(
         "market": (_ck or {}).get("market"), "lookback": (_ck or {}).get("lookback"),
         "dropped_n": int((_ck or {}).get("dropped_n") or 0),
         "pending": list((_ck or {}).get("pending") or []),
+        "explore": dict((_ck or {}).get("explore") or {}),  # the chunk's attempts/streak caps so far
     }
     resume_pending = list(ckpt["pending"])
+    resume_counts = dict(ckpt["explore"])
 
     def explored() -> int:
         """Every thesis the run worked on: developed ones (`tried`) plus those dropped on the research
         fold. The run's hypotheses_tried shows this, so an all-drop run reads "0 of 8", not "0 of 0"."""
         return len(tried) + ckpt["dropped_n"]
 
-    def save_progress(chunk: List[Dict], round_no: int, pending: List[Dict] = ()) -> None:
+    def save_progress(chunk: List[Dict], round_no: int, pending: List[Dict] = (), counts=None) -> None:
         """Persist the in-progress (not-yet-gated) chunk as each thesis develops, so a reclaim
         re-uses that model work. An autocommit write OUTSIDE the gate transaction — ckpt["chunk"] is
         the 'un-gated work' marker that mark_gated clears atomically once the chunk is judged."""
         ckpt["chunk"], ckpt["round_no"], ckpt["tried"], ckpt["pending"] = chunk, round_no, tried, list(pending)
+        if counts is not None:
+            ckpt["explore"] = dict(counts)
         repo.save_checkpoint(cur, run_id, ckpt)
 
     def mark_gated(gate_cur, passed: int) -> None:
@@ -2444,6 +2453,7 @@ def run_research(
         ckpt["chunks_done"] += 1
         ckpt["total_passed"] += passed
         ckpt["chunk"], ckpt["round_no"], ckpt["tried"], ckpt["pending"] = [], 0, tried, []
+        ckpt["explore"] = {}  # the next chunk starts its own caps
         repo.save_checkpoint(gate_cur, run_id, ckpt)
 
     paused_at = [0.0]  # when the current pause began (0 = not paused); list so the closure can mutate it
@@ -2639,8 +2649,9 @@ def run_research(
                                           budget, tried, policy, conn, knowledge, news,
                                           resume_chunk=resume_chunk, resume_round=resume_round,
                                           save_progress=save_progress, mark_gated=mark_gated,
-                                          dropped=dropped, screen=screen, resume_pending=resume_pending)
-            resume_chunk, resume_round, resume_pending = [], 0, []  # only the first iteration resumes
+                                          dropped=dropped, screen=screen, resume_pending=resume_pending,
+                                          resume_counts=resume_counts)
+            resume_chunk, resume_round, resume_pending, resume_counts = [], 0, [], {}  # only the first iteration resumes
             # mark_gated advanced these atomically with the chunk's judging; read them back.
             total_passed, chunks = ckpt["total_passed"], ckpt["chunks_done"]
             # Tau-RSI: dream periodically DURING a long session (not only at the end), so the
