@@ -297,7 +297,7 @@ test('the autopilot feed labels switch notes as switches, not reviews', () => {
 
 test('billing continues to render the server-provided welcome credit instead of a UI constant', async () => {
   for (const free_bonus of [20, 37]) {
-    const f = frontend(path => { assert.equal(path, '/api/billing'); return response({configured: false, cards: [], ledger: [], balance: free_bonus,
+    const f = frontend(path => { assert.match(path, /^\/api\/billing(\?|$)/); return response({configured: false, cards: [], ledger: [], balance: free_bonus,
       free_bonus, spent: 0, topup_fee_pct: 3, default_pm: null}); });
     await f.viewBilling();
     const figures = f.root.querySelector('#bfigs').innerHTML;

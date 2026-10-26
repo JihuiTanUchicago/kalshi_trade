@@ -60,6 +60,7 @@ def _cents(v):
 
 def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     from app import server
+    from app.web.routes import billing as billing_routes
     from app.adapters.stripe import billing
     from app.research import agent
     from app.adapters.llm import models_catalog as catalog
@@ -202,9 +203,30 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert state["configured"] is True and state["default_pm"] == "pm_credits" and state["auto_reload"] is True
     assert state["balance"] == float(balance.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
     assert state["spent"] == state["spent_7d"] == float(spent_total.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
-    assert len(state["ledger"]) == len(ledger)  # under the page's 50-row window, so every row is listed
-    assert sorted(round(r["amount"], 6) for r in state["ledger"]) == sorted(round(float(r["amount_usd"]), 6) for r in ledger)
-    assert _cents(sum(Decimal(str(r["amount"])) for r in state["ledger"])) == _cents(balance)
+    # The statement: every row is inside its 30 days. A run's calls on one day with one model are one
+    # line whose calls and amount are those rows'; every other row is its own line.
+    lines = state["ledger"]
+    assert state["ledger_cut"] is False
+    assert sorted((r["kind"], round(r["amount"], 6)) for r in lines if r["kind"] != "usage") == \
+        sorted((r["kind"], round(float(r["amount_usd"]), 6)) for r in ledger if r["kind"] != "usage")
+    assert sum(r["calls"] for r in lines if r["kind"] == "usage") == len(usage)
+    assert _cents(sum(Decimal(str(r["amount"])) for r in lines)) == _cents(balance)
+    for run_id in (first, second):
+        [line] = [r for r in lines if (r.get("session") or {}).get("id") == run_id]  # one model a session, one day
+        assert Decimal(str(line["amount"])).quantize(SIX) == -per_run[run_id] and line["item"] == "Research session"
+    assert not [r for r in lines if r.get("item") == "Chat" and r.get("session")]  # chat has no session page
+    # Each card purchase: what the card paid (credits plus the fee, as charged) and the payment's id.
+    for kind, cents in (("topup", 1055), ("autoreload", 2638)):
+        [line] = [r for r in lines if r["kind"] == kind]
+        row = next(r for r in ledger if r["kind"] == kind)
+        assert round(line["card_charge"] * 100) == cents == next(c["cents"] for c in charges if c["metadata"]["purpose"] == kind)
+        assert line["stripe_ref"] == row["stripe_ref"]
+    # The sum on the page: nothing before the window, + $35 bought + the $20 welcome - usage = the balance.
+    # The start takes the cents' rounding, so it reads $0.00 give or take a cent.
+    math = dict(state["math"])
+    assert abs(math.pop("start")) <= 0.01
+    assert math == {"days": 30, "bought": 35.0, "purchases": 2, "other": 20.0,
+                    "usage": float(_cents(spent_total)), "end": float(_cents(balance))}
     assert state["runway_days"] == round(state["balance"] / (state["spent_7d"] / 7), 1)
     # The week split by what spent it adds up to the week, and the chat turn is its own part.
     by = state["spent_7d_by"]
@@ -226,8 +248,12 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert head["Account"] == "credits@example.com"
     assert head["Current balance (USD)"] == _four(balance)
     assert head["Total spent (USD)"] == _four(spent_total)
-    table = rows[rows.index(["Date (UTC)", "Type", "Amount (USD)", "Memo"]) + 1:]
+    table = rows[rows.index(billing_routes.RECEIPT_HEADER) + 1:]
     assert len(table) == len(ledger)
+    # Each card purchase names what the card paid and the payment; each debit names the run it billed.
+    assert sorted((r[1], r[5], r[6]) for r in table if r[1] in ("topup", "autoreload")) == sorted(
+        (c["metadata"]["purpose"], "%.2f" % (c["cents"] / 100), "pi_" + c["idem"]) for c in charges)
+    assert sorted(int(r[4]) for r in table if r[1] == "usage") == sorted(r["run_id"] for r in usage)
     assert sorted(r[1] for r in table) == sorted(r["kind"] for r in ledger)
     # Each row is its ledger amount to 4 places, rounded half up from the exact decimal (-4.666650 -> -4.6667).
     assert sorted(r[2] for r in table) == sorted(_four(r["amount_usd"]) for r in ledger)

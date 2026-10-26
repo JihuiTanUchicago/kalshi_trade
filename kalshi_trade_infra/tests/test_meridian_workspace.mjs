@@ -2660,7 +2660,7 @@ for (const [label, path, data] of [['System', '/system', systemData], ['Billing'
     test(`${label} departed initial ${failure ? 'error' : 'success'} cannot replace the current page or register a poll`, async () => {
       const pending = deferred();
       const expected = {System: '/api/admin/system', Billing: '/api/billing', Funds: '/api/funds', Admin: '/api/admin'}[label];
-      const f = frontend({fetchImpl: request => { assert.equal(request, expected); return pending.promise; }});
+      const f = frontend({fetchImpl: request => { assert.equal(request.split('?')[0], expected); return pending.promise; }});
       f.S.me.is_admin = true; f.location.pathname = path;
       const loading = f.render();
       f.location.pathname = '/settings'; await f.render();
@@ -2677,7 +2677,7 @@ for (const [label, path, data] of [['System', '/system', systemData], ['Billing'
 
 test('Billing swaps the welcome credit for a credit runway once there is usage this week', async () => {
   let data = billingData({spent_7d: 3.5, runway_days: 20});
-  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/billing'); return response(data); }});
+  const f = frontend({fetchImpl: path => { assert.match(path, /^\/api\/billing(\?|$)/); return response(data); }});
   await f.viewBilling();
   let figs = f.root.querySelector('#bfigs').innerHTML;
   assert.match(figs, /Credits last/); assert.match(figs, /About 20 days/); assert.match(figs, /at \$3\.50 a week/);
@@ -2763,7 +2763,7 @@ test('Buying credits says how long the amount lasts at the user\'s own pace', as
   const stripe = stripeFixture();
   let data = billingData({configured: true, spent_7d: 7, runway_days: 10});
   const f = frontend({stripeLoader: async () => stripe.Stripe, fetchImpl: path => {
-    if (path === '/api/billing') return response(data);
+    if (/^\/api\/billing(\?|$)/.test(path)) return response(data);
     return response({client_secret: 'synthetic-secret'});
   }});
   await f.viewBilling(); await flush();
@@ -2780,7 +2780,7 @@ test('Buying credits says how long the amount lasts at the user\'s own pace', as
 test('Billing does not create a setup intent when Stripe loading completes after departure', async () => {
   const pending = deferred(), stripe = stripeFixture();
   const f = frontend({stripeLoader: () => pending.promise, fetchImpl: path => {
-    if (path === '/api/billing') return response(billingData({configured: true}));
+    if (/^\/api\/billing(\?|$)/.test(path)) return response(billingData({configured: true}));
     assert.equal(path, '/api/billing/setup-intent'); return response({client_secret: 'synthetic-secret'});
   }});
   const loading = f.viewBilling(); await flush(); const next = leaveView(f);
@@ -2792,7 +2792,7 @@ test('Billing does not create a setup intent when Stripe loading completes after
 test('Billing does not mount Stripe when the setup intent completes after departure', async () => {
   const pending = deferred(), stripe = stripeFixture();
   const f = frontend({stripeLoader: async () => stripe.Stripe, fetchImpl: path => {
-    if (path === '/api/billing') return response(billingData({configured: true}));
+    if (/^\/api\/billing(\?|$)/.test(path)) return response(billingData({configured: true}));
     assert.equal(path, '/api/billing/setup-intent'); return pending.promise;
   }});
   const loading = f.viewBilling(); await flush(); const next = leaveView(f);
@@ -2806,7 +2806,7 @@ for (const stage of ['confirmation', 'card-added']) for (const failure of [false
     const pending = deferred(); let reads = 0;
     const stripe = stripeFixture(stage === 'confirmation' ? () => pending.promise : undefined);
     const f = frontend({stripeLoader: async () => stripe.Stripe, fetchImpl: path => {
-      if (path === '/api/billing') { reads++; return response(billingData({configured: true})); }
+      if (/^\/api\/billing(\?|$)/.test(path)) { reads++; return response(billingData({configured: true})); }
       if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic-secret'});
       assert.equal(path, '/api/billing/card-added'); return stage === 'card-added' ? pending.promise : response({ok: true});
     }});
@@ -2830,7 +2830,7 @@ for (const label of ['Billing topup', 'Funds demo reload', 'Admin credit grant']
     const initialPath = {'Billing topup': '/api/billing', 'Funds demo reload': '/api/funds', 'Admin credit grant': '/api/admin'}[label];
     const actionPath = {'Billing topup': '/api/billing/topup', 'Funds demo reload': '/api/funds/demo', 'Admin credit grant': '/api/admin/grant'}[label];
     const f = frontend({stripeLoader: async () => stripe.Stripe, fetchImpl: path => {
-      if (path === initialPath) { reads++; return response(label === 'Billing topup'
+      if (path.split('?')[0] === initialPath) { reads++; return response(label === 'Billing topup'
         ? billingData({configured: true, cards: [{id: 'synthetic-card'}]}) : label === 'Funds demo reload' ? funds() : {users: [], waitlist: []}); }
       if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic-secret'});
       assert.equal(path, actionPath); return pending.promise;
@@ -3878,7 +3878,7 @@ const cardedBilling = (o = {}) => ({configured: true, publishable_key: 'syntheti
   ], ...o});
 const STRIPE_STUB = () => ({confirmSetup: async () => ({error: {message: 'stub'}}), elements: () => ({create: () => ({mount() {}})})});
 const billingPage = (data, posts = []) => frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: (path, options = {}) => {
-  if (path === '/api/billing') return response(data);
+  if (/^\/api\/billing(\?|$)/.test(path)) return response(data);
   if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
   if (path === '/api/billing/auto-reload') { posts.push(JSON.parse(options.body)); return response({ok: true}); }
   throw new Error('Unexpected offline request: ' + path);
@@ -3886,7 +3886,7 @@ const billingPage = (data, posts = []) => frontend({stripeLoader: async () => ST
 
 test('Billing copies its balance and card onto the page state, and a moved balance re-reads the autopilot status', async () => {
   const f = frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: (path) => {
-    if (path === '/api/billing') return response(cardedBilling({balance: 20.4}));
+    if (/^\/api\/billing(\?|$)/.test(path)) return response(cardedBilling({balance: 20.4}));
     if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
     if (path === '/api/autopilot/status') return response({...apStatus, billing_blocked: false});
     throw new Error('Unexpected offline request: ' + path);
@@ -3908,7 +3908,7 @@ test('Billing copies its balance and card onto the page state, and a moved balan
 test('Meridian: saving auto-reload updates the page state the autopilot card reads, with no extra read', async () => {
   const posts = [];
   const f = frontend({stripeLoader: async () => STRIPE_STUB, storage: new Map([['tau_ap_open', '1']]), fetchImpl: (path, options = {}) => {
-    if (path === '/api/billing') return response(cardedBilling({balance: 23.4}));
+    if (/^\/api\/billing(\?|$)/.test(path)) return response(cardedBilling({balance: 23.4}));
     if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
     if (path === '/api/billing/auto-reload') { posts.push(JSON.parse(options.body)); return response({ok: true, autoreload_charge: 52.75}); }
     throw new Error('Unexpected offline request: ' + path);
@@ -3918,7 +3918,7 @@ test('Meridian: saving auto-reload updates the page state the autopilot card rea
   f.S.ap = {...apStatus, week: {research_credits: 7.26, tested: 10, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0, credits_left: 23.4, runway_days: 6.1}};
   const box = new Element('div', {id: 'autopilot-float'}); f.document.body.appendChild(box);
   await f.viewBilling(); await flush(); await flush();
-  const reads = () => f.requests.filter(({path}) => path === '/api/billing' || path === '/api/autopilot/status').length, before = reads();
+  const reads = () => f.requests.filter(({path}) => /^\/api\/billing(\?|$)/.test(path) || path === '/api/autopilot/status').length, before = reads();
   const amt = f.root.querySelector('#reload-amt'); amt.value = '50'; await amt.onchange(); await flush();
   assert.deepEqual(posts, [{on: true, amount: 50, threshold: 8}]);
   assert.deepEqual({...f.S.me.auto_reload}, {amount: 50, charge: 52.75, threshold: 8});
@@ -3943,19 +3943,55 @@ test('Billing ledger says why each line was charged and where the receipt is; am
   await f.viewBilling(); await flush();
   const main = f.root.querySelector('main').innerHTML;
   assert.match(main, /<a class="btn sm" href="\/api\/billing\/receipt" download>Download receipt \(CSV\)<\/a>/);
-  assert.match(main, /<p class="hint ledger-key">Newest first\. Research and chat bill one line per model call, named by its model\. The receipt has every line, with exact amounts\.<\/p>/);
+  assert.match(main, /<p class="hint ledger-key">Newest first\. The receipt has every line, with exact amounts\.<\/p>/);
   const rows = f.root.querySelectorAll('.t-ledger tbody tr').map((r) => r.innerHTML);
   assert.equal(rows.length, 5);
   assert.match(rows[0], /Agent usage<div class="sub-fig">claude-opus-4-6<\/div>[\s\S]*−\$0\.21/);
   assert.doesNotMatch(rows[0], /Agent usage · /);  // the memo's prefix isn't said twice
-  assert.match(rows[1], /Auto-reload<div class="sub-fig">Card charged for these credits plus the 5\.5% purchase fee<\/div>[\s\S]*\+\$25\.00/);
+  assert.match(rows[1], /Auto-reload<div class="sub-fig">Card charged: \$25\.00 credits plus the 5\.5% purchase fee<\/div>[\s\S]*\+\$25\.00/);
   assert.match(rows[2], /Agent usage<div class="sub-fig">Research run \(seed\)<\/div>[\s\S]*−\$0\.91/);
-  assert.match(rows[3], /Added credits<div class="sub-fig">Card charged for these credits plus the 5\.5% purchase fee<\/div>[\s\S]*\+\$10\.00/);
+  assert.match(rows[3], /Added credits<div class="sub-fig">Card charged: \$10\.00 credits plus the 5\.5% purchase fee<\/div>[\s\S]*\+\$10\.00/);
   assert.match(rows[4], /Welcome credits<\/td>[\s\S]*\+\$20\.00/);  // free credits: no card line
   assert.doesNotMatch(main, /list price/);
   // The figures up top are unchanged: what the server sent, formatted as before.
   assert.match(f.root.querySelector('#bfigs').innerHTML, /\$7\.42/);
   assert.match(f.root.querySelector('#bfigs').innerHTML, /\$47\.58/);
+});
+
+test('Billing statement: a heading per day, one line per session a day that links it, each card charge with its Stripe ref, and a sum that closes', async () => {
+  const f = billingPage(cardedBilling({
+    math: {days: 30, start: 12.5, bought: 35, purchases: 2, other: 0, usage: 40.08, end: 7.42},
+    ledger: [
+      {kind: 'usage', amount: -12.9494, memo: 'Research session · Claude Opus 4.6', item: 'Research session', model: 'Claude Opus 4.6', calls: 57,
+        created_at: '2026-01-15T08:50:00Z', first_at: '2026-01-15T08:01:00Z', day: '2026-01-15',
+        session: {id: 108, prompt: '<b>Fade</b> the open', market: 'btc15m', direction: 'momentum'}},
+      {kind: 'autoreload', amount: 25, memo: 'Auto-reload $25', created_at: '2026-01-15T08:01:00Z', first_at: '2026-01-15T08:01:00Z',
+        day: '2026-01-15', card_charge: 26.38, stripe_ref: 'pi_3Synthetic<x>'},
+      {kind: 'usage', amount: -0.0126, memo: 'Autopilot check-in · Claude Haiku 4.5', item: 'Autopilot check-in', model: 'Claude Haiku 4.5', calls: 3,
+        created_at: '2026-01-14T20:01:00Z', first_at: '2026-01-14T20:00:00Z', day: '2026-01-14'},
+      {kind: 'topup', amount: 10, memo: 'Added $10 credits', created_at: '2026-01-14T14:00:00Z', first_at: '2026-01-14T14:00:00Z',
+        day: '2026-01-14', card_charge: 10.55, stripe_ref: 'pi_3SyntheticTopup'},
+    ], ledger_cut: true}));
+  await f.viewBilling(); await flush();
+  // The days are the viewer's: the read says the browser's offset from UTC.
+  assert.ok(f.requests.some(({path}) => /^\/api\/billing\?tz=-?\d+$/.test(path)));
+  const main = f.root.querySelector('main').innerHTML;
+  // The balance 30 days ago, plus credits bought, minus agent usage, is the balance now: the server's cents.
+  assert.match(main, /<dl class="bill-math">[\s\S]*Balance 30 days ago<\/dt><dd>\$12\.50<\/dd>[\s\S]*Credits bought \(2 card charges\)<\/dt><dd>\+\$35\.00<\/dd>[\s\S]*Agent usage<\/dt><dd>−\$40\.08<\/dd>[\s\S]*class="total"><dt>Balance now<\/dt><dd>\$7\.42<\/dd>/);
+  assert.doesNotMatch(main, /Welcome and other credits/);  // nothing else came in this month
+  assert.match(main, /<p class="hint ledger-key">Last 30 days, newest first\./);
+  const rows = f.root.querySelectorAll('.t-ledger tbody tr').map((r) => r.innerHTML);
+  assert.equal(rows.length, 6);  // two day headings and four lines
+  assert.match(rows[0], /<td colspan="3" data-lab="Day"><b>[A-Z][a-z]{2}, Jan 15<\/b><span class="day-sum">\$12\.95 used ·\u00a0\+\$25\.00 credits<\/span><\/td>/);
+  assert.match(rows[1], /<time datetime="2026-01-15T08:50:00Z">\d\d:\d\d–\d\d:\d\d/);  // the span of the session's calls
+  assert.match(rows[1], /Research session<div class="sub-fig"><a href="\/research\/108">&lt;b&gt;Fade&lt;\/b&gt; the open<\/a> ·\u00a0Claude Opus 4\.6 ·\u00a057 model calls<\/div>[\s\S]*−\$12\.95/);
+  assert.match(rows[2], /Auto-reload<div class="sub-fig">Card charged \$26\.38: \$25\.00 credits plus the 5\.5% purchase fee ·\u00a0Stripe ref <span class="ref">pi_3Synthetic&lt;x&gt;<\/span><\/div>[\s\S]*\+\$25\.00/);
+  assert.match(rows[3], /<b>[A-Z][a-z]{2}, Jan 14<\/b><span class="day-sum">\$0\.01 used ·\u00a0\+\$10\.00 credits<\/span>/);
+  assert.match(rows[4], /Autopilot check-in<div class="sub-fig">Claude Haiku 4\.5 ·\u00a03 model calls<\/div>/);
+  assert.doesNotMatch(rows[4], /href=/);  // a check-in has no session page
+  assert.match(rows[5], /Added credits<div class="sub-fig">Card charged \$10\.55: \$10\.00 credits plus the 5\.5% purchase fee ·\u00a0Stripe ref <span class="ref">pi_3SyntheticTopup<\/span>/);
+  assert.match(main, /Older days are in the receipt\./);  // the line cap left days out, and says where they are
+  assert.doesNotMatch(main, /list price|markup|us\.anthropic/i);
 });
 
 test('Billing puts Add credits right under the balance in one column, and says where a session\'s cost is shown', async () => {
@@ -4912,7 +4948,7 @@ test('Meridian card wall says saving the card charges nothing and what auto-relo
     [false, 'Saving the card charges nothing.']]) {
     const stripe = stripeFixture();
     const f = frontend({stripeLoader: async () => stripe.Stripe, fetchImpl: path => {
-      if (path === '/api/billing') return response(billingData({configured: true, auto_reload, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1}));
+      if (/^\/api\/billing(\?|$)/.test(path)) return response(billingData({configured: true, auto_reload, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1}));
       assert.equal(path, '/api/billing/setup-intent'); return response({client_secret: 'synthetic-secret'});
     }});
     f.location.pathname = '/'; Object.assign(f.S.me, {needs_card: true, free_bonus: 20});
@@ -5155,7 +5191,7 @@ test('Meridian: the autopilot switch in the panel locks while it saves, and a fa
 test('Meridian: an auto-reload change that does not save puts the switch, amounts and summary back', async () => {
   let pending = null; const sent = [];
   const f = frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: (path, options = {}) => {
-    if (path === '/api/billing') return response(cardedBilling());
+    if (/^\/api\/billing(\?|$)/.test(path)) return response(cardedBilling());
     if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
     if (path === '/api/billing/auto-reload') { sent.push(JSON.parse(options.body)); pending = deferred(); return pending.promise; }
     throw new Error('Unexpected offline request: ' + path);
@@ -5177,7 +5213,7 @@ test('Meridian: an auto-reload change that does not save puts the switch, amount
 test('Meridian: a top-up that went through says so even when the page cannot refresh after it', async () => {
   let reads = 0;
   const f = frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: path => {
-    if (path === '/api/billing') return ++reads === 1 ? response(cardedBilling()) : response({error: 'Tau is busy.'}, 500);
+    if (/^\/api\/billing(\?|$)/.test(path)) return ++reads === 1 ? response(cardedBilling()) : response({error: 'Tau is busy.'}, 500);
     if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
     if (path === '/api/billing/topup') return response({ok: true, balance: 27.42});
     throw new Error('Unexpected offline request: ' + path);
@@ -5228,7 +5264,7 @@ test('Meridian Community: Post and Share my P&L send once while either is out, a
 test('Meridian: a card wall whose card form did not load says what to do, and Save becomes Try again', async () => {
   let up = false;
   const f = frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: path => {
-    if (path === '/api/billing') return response({configured: true, publishable_key: 'synthetic-only'});
+    if (/^\/api\/billing(\?|$)/.test(path)) return response({configured: true, publishable_key: 'synthetic-only'});
     if (path === '/api/billing/setup-intent') { if (!up) throw new TypeError('Failed to fetch'); return response({client_secret: 'synthetic'}); }
     throw new Error('Unexpected offline request: ' + path);
   }});

@@ -1073,6 +1073,11 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-ledger.stack tbody td.num { grid-column: 2; grid-row: 1; display: block; text-align: right; white-space: nowrap; }
   .t-ledger.stack tbody td.hint { grid-column: 1; grid-row: 2; font-size: 12.5px; }
   .t-ledger.stack tbody td.num::before, .t-ledger.stack tbody td.hint::before { content: none; }
+  /* A day heading spans the statement: the day, then what it used and added. */
+  .t-ledger.stack tbody tr.ledger-day { display: block; padding: 14px 0 6px; }
+  .t-ledger.stack tbody tr.ledger-day td { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; padding: 0; border: 0; }
+  .t-ledger.stack tbody tr.ledger-day td::before { content: none; }
+  .t-ledger.stack tbody tr.ledger-day .day-sum { margin-left: 0; }
   .t-dep.stack tbody td[data-lab="Market"], .t-dep.stack tbody td[data-lab="Status"], .t-dep.stack tbody td[data-lab="Since"] { order: 1; }  /* money first */
   /* Strategy cards get the same figure grid: three figures across, the deploy box beside the name,
      and an empty "tried" line dropped, so a phone shows three strategies a screen instead of one and a half. */
@@ -2121,6 +2126,17 @@ body.landing-body .apf { display: none; }
 .bill-detail .t-dep { min-width: 0; }
 .bill-split { margin: 10px 0 14px; }
 .ledger-key { margin: 10px 0; }
+/* Billing: how the balance came to be (then + bought + other - usage = now), and the statement's
+   day headings. A Stripe reference wraps anywhere rather than widening a phone's column. */
+.bill-math { display: grid; gap: 3px; max-width: 440px; margin: 4px 0 14px; font-variant-numeric: tabular-nums; }
+.bill-math > div { display: flex; justify-content: space-between; gap: 16px; }
+.bill-math dt { color: var(--ink-3); }
+.bill-math dd { margin: 0; text-align: right; }
+.bill-math .total { border-top: 1px solid var(--rule-2); padding-top: 5px; margin-top: 2px; font-weight: 600; }
+.bill-math .total dt { color: inherit; }
+.t-ledger tr.ledger-day td { padding-top: 16px; border-bottom: 1px solid var(--rule-2); }
+.t-ledger .day-sum { margin-left: 10px; color: var(--ink-3); font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.t-ledger .ref { overflow-wrap: anywhere; }
 
 /* Keyboard focus you can see. `input:focus { outline: none }` (fields show focus with their border)
    also took it from the switches (Options: "Let it run until I stop it") and the What-if sliders,
