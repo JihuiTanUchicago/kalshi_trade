@@ -1,12 +1,16 @@
-"""The web layer's per-user read caches that more than one route module writes or drops: the
-track record and the Deploy board's roads to live, plus the one call that forgets a user's
-cached reads after a change the web app made itself. Moved verbatim from app.server, which
-re-imports every name. Callers mutate these dicts in place and never rebind them."""
+"""The web layer's read caches that more than one route module writes or drops: the track record,
+the Deploy board's roads to live, and the cross-user shared reads (served stale while one thread
+refreshes), plus the one call that forgets a user's cached reads after a change the web app made
+itself. Moved verbatim from app.server, which re-imports every name. Callers mutate these dicts in place and never rebind them."""
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+import threading
+import time
+import traceback
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from app.services import paper_checks
+from data_pipeline.common import get_db_conn
 
 
 # (built at, payload, trades read, the book's shape the dashboard had seen when it was built)
@@ -26,3 +30,44 @@ def _forget_own_change(uid: int, strategy_id: Optional[int] = None) -> None:
 
 
 _ROADS: Dict[Tuple, Tuple[float, Dict]] = {}
+
+
+# Global (not per-user) reads that scan big history tables, shared by every request. Prod 2026-10-24:
+# history_freshness's GROUP BY over hist_markets made /api/dashboard take 12-14s, and /api/me paid
+# for series_with_candles on every page load. Each value is computed once, then served from memory
+# while ONE background thread recomputes it on its own connection after the TTL.
+_SHARED: Dict[str, Dict[str, Any]] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def _shared(key: str, ttl: float, fn: Callable[[Any], Any], cur) -> Any:
+    now = time.time()
+    with _SHARED_LOCK:
+        ent = _SHARED.setdefault(key, {"at": 0.0, "busy": False})
+        cold = "val" not in ent
+        stale = not cold and now - ent["at"] >= ttl and not ent["busy"]
+        if stale:
+            ent["busy"] = True
+    if cold:
+        val = fn(cur)
+        with _SHARED_LOCK:
+            ent.update(val=val, at=time.time())
+        return val
+    if stale:
+        threading.Thread(target=_refresh_shared, args=(ent, fn), daemon=True).start()
+    return ent["val"]
+
+
+def _refresh_shared(ent: Dict[str, Any], fn: Callable[[Any], Any]) -> None:
+    conn = None
+    try:
+        conn = get_db_conn()
+        val = fn(conn.cursor())
+        with _SHARED_LOCK:
+            ent.update(val=val, at=time.time())
+    except Exception:
+        traceback.print_exc()  # keep serving the last good value; the next request retries
+    finally:
+        ent["busy"] = False
+        if conn is not None:
+            conn.close()
