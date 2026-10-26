@@ -17,7 +17,7 @@ from app.web.caches import _ROADS, _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.strategies import _backtest_checks, _with_marks, _with_why
 from app.web.settings import MAX_ACTIVE_DEPLOYMENTS
-from app.web.views import _demo_health, _deployment_out
+from app.web.views import _demo_health, _demo_key_back, _deployment_out
 
 
 def _paper_strategy_ids(deps: List[Dict]) -> set:
@@ -34,12 +34,13 @@ def list_deployments(ctx: Ctx):
     checks = _backtest_checks(ctx.cur, ctx.uid, {d["strategy_id"]: d for d in deps}, memo)
     roads = _deploy_roads(ctx.cur, ctx.uid, deps, memo)
     paper_sids = _paper_strategy_ids(deps)
+    key_back = _demo_key_back(ctx.cur, ctx.uid, deps)
     # The board polls every 10s with its last answer's version (?v=): services.page_poll.
     return page_poll.answer({
         # Each row carries its own book's backtest comparison (same strategy, same mode), and a paper
         # row its strategy's paper record toward the live check (all its paper deployments, as the
         # strategy page counts it).
-        "deployments": [{**_deployment_out(d, curves.get(d["id"], []), paper_sids=paper_sids),
+        "deployments": [{**_deployment_out(d, curves.get(d["id"], []), paper_sids=paper_sids, demo_key_back=key_back),
                          "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None),
                          "road": roads.get(d["strategy_id"]) if d["mode"] == "paper" else None}
                         for d in deps],

@@ -16,6 +16,7 @@ from app.web.routes.deployments import _paper_strategy_ids
 from app.web.routes.strategies import _with_marks, _with_why
 from app.web.views import (
     _demo_health,
+    _demo_key_back,
     _deployment_out,
     _live_balance,
     _open_book,
@@ -92,6 +93,7 @@ def dashboard(ctx: Ctx):
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
     live.update(_live_balance(cur, ctx.uid))
     paper_sids = _paper_strategy_ids(deps)
+    key_back = _demo_key_back(cur, ctx.uid, deps)
     # The page polls every 15s with its last answer's version (?v=): an unchanged answer is sent as
     # "same" with only the marks and data ages, which move every tick (services.page_poll).
     return page_poll.answer({
@@ -103,7 +105,7 @@ def dashboard(ctx: Ctx):
         # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
         # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
         "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
-        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"]), paper_sids) for d in deps],
+        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"]), paper_sids, key_back) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
         "since": _since_visit(cur, ctx.uid, visit, first, recent),
