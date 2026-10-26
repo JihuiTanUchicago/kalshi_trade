@@ -112,6 +112,32 @@ def _newest_closed(cur, user_id: int, limit: int) -> List[Dict]:
     return cur.fetchall()
 
 
+def orphaned_open_positions(cur) -> Dict:
+    """Read-only, fleet-wide: open positions whose deployment's strategy no longer exists. Before
+    delete_strategy refused while positions were open, a strategy could be deleted with a stopped
+    deployment still holding some. The engine settles and flattens positions through their strategy
+    row, so these stay open. Returns {"total", "users", "by_mode": {mode: {"positions", "users",
+    "cost", "oldest_close"}}}. Starts from the deployments whose strategy is gone (deployments are
+    never deleted) and reads their open positions through idx_pos_dep, so it never scans every
+    position. For the admin page."""
+    cur.execute(
+        """SELECT p.mode, COUNT(*) AS n, COUNT(DISTINCT p.user_id) AS users,
+                  COALESCE(SUM(p.qty * p.entry_price), 0) AS cost, MIN(p.market_close_time) AS oldest_close
+           FROM app_deployments d STRAIGHT_JOIN app_positions p FORCE INDEX (idx_pos_dep)
+             ON p.deployment_id=d.id AND p.status='open'
+           WHERE NOT EXISTS (SELECT 1 FROM app_strategies s WHERE s.id=d.strategy_id)
+           GROUP BY p.mode ORDER BY p.mode""")
+    by_mode = {r["mode"]: {"positions": int(r["n"]), "users": int(r["users"]), "cost": round(float(r["cost"]), 2),
+                           "oldest_close": r["oldest_close"]} for r in cur.fetchall()}
+    cur.execute(
+        """SELECT COUNT(DISTINCT p.user_id) AS users
+           FROM app_deployments d STRAIGHT_JOIN app_positions p FORCE INDEX (idx_pos_dep)
+             ON p.deployment_id=d.id AND p.status='open'
+           WHERE NOT EXISTS (SELECT 1 FROM app_strategies s WHERE s.id=d.strategy_id)""")
+    users = int((cur.fetchone() or {}).get("users") or 0)
+    return {"total": sum(m["positions"] for m in by_mode.values()), "users": users, "by_mode": by_mode}
+
+
 def positions_for_strategy(cur, user_id: int, strategy_id: int, status: str = "open") -> List[Dict]:
     """Open positions a strategy is holding right now, across its deployments."""
     cur.execute(

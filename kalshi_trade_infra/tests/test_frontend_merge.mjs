@@ -2080,3 +2080,44 @@ test('Billing puts Add credits right under the balance in one column, and says w
   assert.match(css, /@media \(max-width: 1080px\) \{ \.bill-detail > aside \{ order: -1; \} \}/);
   assert.match(f.root.innerHTML, /The <a href="\/research">research form<\/a> shows what a session usually costs before you start\./);
 });
+
+test('the Remove button stays disabled, with the server\'s reason, while a stopped deployment still holds positions', async () => {
+  const reason = "This strategy still holds 2 open positions (paper: 1, live: 1). They'll close at settlement; delete it after that.";
+  for (const block of [reason, null]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/strategies/42') return response(detailStrategy({delete_block: block, deployments: [{id: 9, mode: 'paper', status: 'stopped', market: 'btc15m'}]}));
+      if (path === '/api/strategies/42/dev-curve') return response({dev_curve: []});
+      return response({deployments: [], open_positions: []});
+    }});
+    await f.viewStrategy(42); await flush();
+    const del = f.root.querySelector('#del-strat'), why = f.root.querySelector('#del-why');
+    if (block) {
+      assert.equal(del.attributes['aria-disabled'], 'true'); assert.equal(del.attributes['aria-describedby'], 'del-why');
+      assert.match(why.innerHTML, /still holds 2 open positions \(paper: 1, live: 1\)\. They.+ll close at settlement; delete it after that\./);
+      await del.onclick(); await flush();
+      assert.match(f.root.querySelector('#delflash').innerHTML, /still holds 2 open positions \(paper: 1, live: 1\)/);
+    } else {
+      assert.equal('aria-disabled' in del.attributes, false);
+      assert.match(why.innerHTML, /This can.t be undone\./);
+    }
+    assert.equal(postRequests(f).length, 0);  // a click arms a confirm or explains; it never deletes
+  }
+});
+
+test('the admin page counts open positions whose strategy was deleted', async () => {
+  for (const [orphaned, text] of [
+    [undefined, 'None: every open position belongs to a strategy that still exists.'],
+    [{total: 0, users: 0, by_mode: {}}, 'None: every open position belongs to a strategy that still exists.'],
+    [{total: 3, users: 2, by_mode: {paper: {positions: 1, users: 1, cost: 4, oldest_close: null}, demo: {positions: 2, users: 1, cost: 3.5, oldest_close: null}}},
+      /^3 open positions \(paper: 1, demo: 2\) across 2 users belong to deleted strategies\. The engine no longer settles or flattens them\. Paper: \$4\.00 at cost, .+ Demo: \$3\.50 at cost, /],
+  ]) {
+    const f = frontend({fetchImpl: path => {
+      assert.equal(path, '/api/admin');
+      return response({users: [], waitlist: [], ...(orphaned ? {orphaned_open: orphaned} : {})});
+    }});
+    f.S.me.is_admin = true; f.location.pathname = '/admin';
+    await f.render(); await flush(); await flush();
+    const line = f.root.querySelector('#o-state').textContent;
+    if (typeof text === 'string') assert.equal(line, text); else assert.match(line, text);
+  }
+});

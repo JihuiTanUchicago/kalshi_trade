@@ -355,7 +355,7 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
 
 
 def test_a_deleted_strategys_open_position_stays_in_the_book(conn, monkeypatch):
-    """A strategy can be deleted once its deployment is stopped, and stopping leaves its positions
+    """A strategy could be deleted once its deployment was stopped, and stopping leaves its positions
     open (the engine flattens them later). The money stays in the book after the delete: paper cash
     paid for the held position. Every page has to keep counting it. The dashboard and the Deploy
     board used to drop it, because they read open positions through the strategy row. Paper equity
@@ -396,7 +396,12 @@ def test_a_deleted_strategys_open_position_stays_in_the_book(conn, monkeypatch):
         return server.Ctx(conn, user, tuple(str(p) for p in params), {}, body or {}, None)
 
     server.deployment_action(ctx(did, "stop"))
-    assert server.delete_strategy(ctx(sid)) == {"ok": True}  # allowed: its deployment is stopped
+    # delete_strategy now refuses while the position is open (test_delete_strategy_guard_db.py). Strategies
+    # deleted before that guard left exactly this behind, so the row is deleted directly here.
+    with pytest.raises(server.ApiError) as kept:
+        server.delete_strategy(ctx(sid))
+    assert kept.value.status == 409
+    assert repo.delete_strategy(cur, uid, sid)
     monkeypatch.setattr(server, "_freshness", lambda c: {})
     server._TRACK_RECORD.pop(uid, None)
     dash = server.dashboard(ctx())

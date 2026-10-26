@@ -611,9 +611,26 @@ def test_delete_strategy_blocks_when_deployed(monkeypatch):
     monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, include_stopped=False: [{"strategy_id": 5}])
     with pytest.raises(server.ApiError):
         server.delete_strategy(ctx({}))
-    # not deployed -> deleted
+    # stopped, but its deployments still hold open positions -> refused, counted by mode
     monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, include_stopped=False: [])
+    held = [{"mode": "live"}, {"mode": "paper"}, {"mode": "paper"}]
+    monkeypatch.setattr(server.repo, "positions_for_strategy", lambda cur, uid, sid, status="open": list(held))
+    with pytest.raises(server.ApiError) as e:
+        server.delete_strategy(ctx({}))
+    assert e.value.status == 409 and e.value.message == (
+        "This strategy still holds 3 open positions (paper: 2, live: 1). They'll close at settlement; delete it after that.")
+    # not deployed, nothing open -> deleted
+    held.clear()
     assert server.delete_strategy(ctx({})) == {"ok": True}
+
+
+def test_the_delete_block_names_each_mode_in_ladder_order():
+    assert server._delete_block([]) is None
+    assert server._delete_block([{"mode": "demo"}]) == (
+        "This strategy still holds 1 open position (demo: 1). They'll close at settlement; delete it after that.")
+    assert server._delete_block([{"mode": m} for m in ("live", "demo", "paper", "demo")]) == (
+        "This strategy still holds 4 open positions (paper: 1, demo: 2, live: 1). They'll close at settlement; "
+        "delete it after that.")
 
 
 def test_dig_deeper_seeds_a_research_run_from_a_passed_strategy(monkeypatch):

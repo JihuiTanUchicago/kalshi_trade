@@ -980,12 +980,32 @@ def _owned_strategy(ctx: Ctx) -> Dict:
     return s
 
 
+DELETE_MODES = ("paper", "demo", "live")
+
+
+def _delete_block(open_positions: List[Dict]) -> Optional[str]:
+    """Why a strategy can't be deleted yet, from its open positions (every deployment, stopped ones
+    included, any mode), or None. Stopping a deployment leaves its positions open, and the engine
+    settles and flattens positions through their strategy row: deleting the strategy first would
+    leave them open for good, with paper cash already paid for them."""
+    if not open_positions:
+        return None
+    n = len(open_positions)
+    by_mode = {m: sum(1 for p in open_positions if p["mode"] == m) for m in DELETE_MODES}
+    parts = ", ".join("%s: %d" % (m, k) for m, k in by_mode.items() if k)
+    return ("This strategy still holds %d open position%s (%s). They'll close at settlement; delete it after that."
+            % (n, "" if n == 1 else "s", parts))
+
+
 def delete_strategy(ctx: Ctx):
-    """Remove a strategy from the user's inventory. Blocked while it's deployed —
-    stop the deployment first."""
+    """Remove a strategy from the user's inventory. Blocked while it's deployed (stop the deployment
+    first) and while any of its deployments, in any mode, still holds an open position."""
     s = _owned_strategy(ctx)
     if any(d["strategy_id"] == s["id"] for d in repo.list_deployments(ctx.cur, ctx.uid, include_stopped=False)):
         raise ApiError(409, "Stop this strategy's deployment before deleting it.")
+    block = _delete_block(repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open"))
+    if block:
+        raise ApiError(409, block)
     repo.delete_strategy(ctx.cur, ctx.uid, s["id"])
     return {"ok": True}
 
@@ -1157,6 +1177,7 @@ def get_strategy(ctx: Ctx):
     out = _strategy_card(s)
     res = s.get("result") or {}
     deps = repo.list_deployments_for_display(ctx.cur, ctx.uid, strategy_id=s["id"])
+    held = repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
@@ -1167,7 +1188,9 @@ def get_strategy(ctx: Ctx):
             "entry_price": float(p["entry_price"]),
             "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p["entry_fee"] or 0), 2),
             "market_close_time": p["market_close_time"], **_mark_fields(p),
-        } for p in repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")],
+        } for p in held],
+        # The Remove button's reason while any deployment of it still holds a position (delete_strategy's guard).
+        delete_block=_delete_block(held),
         # The ladder's demo rung: why its demo book can't trade, or (not on demo yet) what demo needs.
         demo_health=None if specmod.has_perpetual_market(s["spec"], s.get("market")) else
         _demo_health(ctx.cur, ctx.uid, deps, stake=(s["spec"].get("sizing") or {}).get("stake")),
@@ -2677,7 +2700,8 @@ def admin_overview(ctx: Ctx):
                                      WHERE LOWER(TRIM(u.email))=LOWER(TRIM(w.email)))
                    ORDER BY (w.status='approved'), w.id DESC LIMIT 200""")
     waitlist = cur.fetchall()
-    return {"users": users, "waitlist": waitlist}
+    # Open positions whose strategy was deleted: the engine no longer settles or flattens them.
+    return {"users": users, "waitlist": waitlist, "orphaned_open": repo.orphaned_open_positions(cur)}
 
 
 def admin_grant(ctx: Ctx):

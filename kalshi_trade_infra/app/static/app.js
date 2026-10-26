@@ -2675,6 +2675,8 @@
         ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick" data-lab="Contract">${esc(t.ticker)}</td><td data-lab="Side">${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(t.reason)}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table>` : '<p class="hint">No unseen-data trades to show.</p>';
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
+    // Stopped deployments can still hold positions; the server refuses the delete until they close.
+    const delBlock = restricted ? null : (s.delete_block || null);
     const kUrl = marketKalshiUrl(s.market);
     const mktLink = kUrl ? `<a href="${kUrl}" target="_blank" rel="noopener">${esc(marketLabel(s.market))} ↗</a>` : esc(marketLabel(s.market));
     // ---- the strategy dossier, composed as a research paper (abstract → mechanism →
@@ -2807,10 +2809,10 @@
             </form><div id="shareflash"></div>
           </section>`)}
           ${fold('Remove', `<section class="panel"><h3>Remove</h3>
-            <p class="hint" style="margin-bottom:8px">Delete this strategy from your inventory. ${activeDeps.length ? 'Stop its deployment first — you can do it right here.' : 'This can’t be undone.'}</p>
+            <p class="hint" style="margin-bottom:8px" id="del-why">Delete this strategy from your inventory. ${activeDeps.length ? 'Stop its deployment first — you can do it right here.' : delBlock ? esc(delBlock) : 'This can’t be undone.'}</p>
             <div style="display:grid;gap:8px">
               ${activeDeps.length ? `<button class="btn sm danger" id="stop-dep">Stop deployment${activeDeps.length > 1 ? 's' : ''} (${activeDeps.map((d) => '#' + d.id).join(', ')})</button>` : ''}
-              <button class="btn sm danger" id="del-strat" ${activeDeps.length ? 'aria-disabled="true"' : ''}>Delete strategy</button>
+              <button class="btn sm danger" id="del-strat" ${activeDeps.length || delBlock ? 'aria-disabled="true" aria-describedby="del-why"' : ''}>Delete strategy</button>
             </div><div id="delflash"></div>
           </section>`)}
         </aside>
@@ -2882,6 +2884,7 @@
     const delStrat = root.querySelector('#del-strat');
     if (delStrat) delStrat.onclick = () => {
       if (activeDeps.length) { flash('#delflash', 'Stop its deployment first (button above).', 'bad'); return; }
+      if (delBlock) { flash('#delflash', delBlock, 'bad'); return; }
       armed(delStrat, 'Confirm delete', () => busy(delStrat, async () => {
         try { await api(`/api/strategies/${s.id}/delete`, {}); go('/strategies'); } catch (e) { flash('#delflash', e.message, 'bad'); }
       }));
@@ -4544,6 +4547,14 @@
   }
 
   // ---------- admin ----------
+  // The admin readout of open positions whose strategy was deleted (repo.orphaned_open_positions).
+  const orphanLine = (o) => {
+    if (!o || !o.total) return 'None: every open position belongs to a strategy that still exists.';
+    const modes = ['paper', 'demo', 'live'].filter((m) => o.by_mode[m]);
+    return `${o.total} open position${o.total === 1 ? '' : 's'} (${modes.map((m) => `${m}: ${o.by_mode[m].positions}`).join(', ')}) `
+      + `across ${o.users} user${o.users === 1 ? '' : 's'} belong to deleted strategies. The engine no longer settles or flattens them. `
+      + modes.map((m) => `${m[0].toUpperCase() + m.slice(1)}: ${usd(o.by_mode[m].cost)} at cost, oldest settles ${when(o.by_mode[m].oldest_close)}.`).join(' ');
+  };
   async function viewAdmin() {
     if (!adminViewOn()) return go('/', true);
     shell('/admin', boardTitle('Admin', 'Operator tools: grant credits and see who has signed up.'), `
@@ -4566,11 +4577,15 @@
             <div id="k-flash"></div>
             <p class="hint" style="margin-top:8px">Stops every new live and demo buy within about 5 seconds. Exits always run.</p>
           </form>
+          <section class="panel" id="orphans" style="margin-top:14px"><h3>Orphaned positions</h3>
+            <p id="o-state" class="hint">Loading…</p>
+          </section>
         </aside>
       </div>`);
     const load = async () => {
       const d = await api('/api/admin');
       root.querySelector('#ucount').textContent = `${d.users.length} shown`;
+      root.querySelector('#o-state').textContent = orphanLine(d.orphaned_open);
       root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
         <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
