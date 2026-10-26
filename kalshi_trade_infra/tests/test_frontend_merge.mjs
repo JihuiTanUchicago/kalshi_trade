@@ -221,7 +221,8 @@ test('the current strategy page renders an escaped research paper and a separate
 
 test('the sidebar lists each holding with every figure instead of a clipped five-column table', async () => {
   const holdings = [{ticker: 'KXBTC15M-<x>', side: 'no', qty: 4, entry_price: 0.37, cost: 1.5, unrealized: null, mode: 'paper', market_close_time: '2026-10-25T07:30:00Z'},
-    {ticker: 'KXBTC15M-B', side: 'yes', qty: 2, entry_price: 0.6, cost: 1.2, unrealized: -0.3, mode: 'live', market_close_time: '2026-10-25T07:45:00Z'}];
+    {ticker: 'KXBTC15M-B', side: 'yes', qty: 2, entry_price: 0.6, cost: 1.2, unrealized: -0.3, mode: 'live', market_close_time: '2026-10-25T07:45:00Z',
+      why: 'Entered at 60¢: edge ≥ 2¢ after fees · Holds to settlement'}];
   const f = strategyFrontend(detailStrategy({holdings})); await f.viewStrategy(42); await flush();
   const output = f.root.querySelector('main').innerHTML;
   const list = output.slice(output.indexOf('<ul class="holdlist">'), output.indexOf('</ul>', output.indexOf('<ul class="holdlist">')));
@@ -229,6 +230,9 @@ test('the sidebar lists each holding with every figure instead of a clipped five
   assert.match(list, /NO ×4 @ 37¢/); assert.match(list, /Cost \$1\.50/); assert.match(list, /Unreal\. —/); assert.match(list, /Settles /);
   assert.match(list, /−\$0\.30|-\$0\.30/); assert.match(list, /<span class="mk live">Live<\/span>/);
   assert.doesNotMatch(list, /<x>/); assert.doesNotMatch(output, /<th>Contract<\/th><th>Position<\/th>/);
+  // Each holding says why it was bought and how it will exit; one without a reason says nothing.
+  assert.deepEqual([...list.matchAll(/<div class="sub-fig pos-why">([^<]*)<\/div>/g)].map((m) => m[1]),
+    ['Entered at 60¢: edge ≥ 2¢ after fees · Holds to settlement']);
 });
 
 test('the abstract says a strategy cleared the gate only when it passed', async () => {
@@ -567,6 +571,30 @@ test('Deploy open positions label every cell so phone cards read Contract, Side,
   // This Cost carries the entry fee ($1.48 + $0.02); the dashboard's Cost and "Open at cost" don't, so it says so.
   assert.match(html, /<th class="num">Cost \+ fee<\/th>/); assert.match(html, /data-lab="Cost \+ fee">\$1\.50</);
   assert.match(html, /<td class="name" data-lab="Strategy">Rain fade/);
+});
+
+test('every trade on the dashboard and Deploy says why it was entered and why it exited, escaped', async () => {
+  const why = 'Entered at 41¢: the 5-minute return < −0.002, edge ≥ 3¢ after fees · Exited at 62¢: take-profit (+21¢ vs +20¢ target)';
+  const row = (extra) => ({side: 'yes', qty: 1, entry_price: .41, title: 'Fade <b>', ticker: 'T-1', mode: 'paper', opened_at: '2026-10-25T08:00:00Z',
+    closed_at: '2026-10-25T09:00:00Z', pnl: .2, ...extra});
+  const open_positions = [row({why: 'Entered at 41¢: edge ≥ 3¢ after fees · Exits: +20¢ take-profit, else settlement'}), row({ticker: 'T-2', why: null})];
+  const recent_closed = [row({status: 'closed', why}), row({ticker: 'T-3', status: 'closed', why: 'Held to settlement: <img src=x>'})];
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), open_positions, recent_closed});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const html = f.root.querySelector('main').innerHTML;
+  const lines = [...html.matchAll(/<small class="stub-why">([^<]*)<\/small>/g)].map((m) => m[1]);
+  assert.deepEqual(lines, ['Entered at 41¢: edge ≥ 3¢ after fees · Exits: +20¢ take-profit, else settlement',
+    why.replace('<', '&lt;'), 'Held to settlement: &lt;img src=x&gt;']);  // the row with no reason shows none
+  assert.doesNotMatch(html, /<img/);
+  const d = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions}) : response({})});
+  await d.viewDeploy(); await flush(); await flush();
+  const table = d.root.querySelector('#openpos').innerHTML;
+  assert.equal((table.match(/class="sub-fig pos-why"/g) || []).length, 1);
+  assert.match(table, /data-lab="Contract">T-1<div class="sub-fig pos-why">Entered at 41¢: edge ≥ 3¢ after fees/);
 });
 
 test('while autopilot is off, Turn on autopilot is the only primary button on the dashboard', async () => {

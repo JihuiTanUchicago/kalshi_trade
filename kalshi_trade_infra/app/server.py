@@ -33,7 +33,7 @@ from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
 from app import spec as specmod
-from app.services import backtest_check
+from app.services import backtest_check, trade_why
 from app import track_record
 from app import webperf
 from app import worker
@@ -549,8 +549,8 @@ def dashboard(ctx: Ctx):
         "paper": paper,
         "demo": demo,
         "live": live,
-        "open_positions": open_pos,
-        "recent_closed": repo.user_positions(cur, ctx.uid, "closed", 12),
+        "open_positions": _with_why(open_pos, deps),
+        "recent_closed": _with_why(repo.user_positions(cur, ctx.uid, "closed", 12), deps),
         # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
         # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
         "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
@@ -918,6 +918,16 @@ def _with_marks(rows: List[Dict]) -> List[Dict]:
     return rows
 
 
+def _with_why(rows: List[Dict], deps: List[Dict]) -> List[Dict]:
+    """Each position's one-line entry/exit reason (app.services.trade_why), from the strategy specs
+    of the deployments the request already read: no extra statement. A position of a stopped
+    deployment (not in `deps`) gets its exit reason only."""
+    specs = {d["id"]: d.get("spec") for d in deps}
+    for p in rows:
+        p["why"] = trade_why.trade_why(p, specs.get(p.get("deployment_id")))
+    return rows
+
+
 def list_strategies(ctx: Ctx):
     q = ctx.query
     direction, status, market = q.get("direction") or None, q.get("status") or None, q.get("market") or None
@@ -1187,7 +1197,7 @@ def get_strategy(ctx: Ctx):
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
             "entry_price": float(p["entry_price"]),
             "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p["entry_fee"] or 0), 2),
-            "market_close_time": p["market_close_time"], **_mark_fields(p),
+            "market_close_time": p["market_close_time"], **_mark_fields(p), "why": trade_why.trade_why(p, s["spec"]),
         } for p in held],
         # The Remove button's reason while any deployment of it still holds a position (delete_strategy's guard).
         delete_block=_delete_block(held),
@@ -1280,8 +1290,8 @@ def list_deployments(ctx: Ctx):
                          "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None)}
                         for d in deps],
         "demo_health": _demo_health(ctx.cur, ctx.uid, deps),
-        "open_positions": _with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")),
-        "recent_closed": repo.user_positions(ctx.cur, ctx.uid, "closed", 20),
+        "open_positions": _with_why(_with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")), deps),
+        "recent_closed": _with_why(repo.user_positions(ctx.cur, ctx.uid, "closed", 20), deps),
     }
 
 

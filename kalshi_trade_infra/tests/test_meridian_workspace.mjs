@@ -636,6 +636,34 @@ test('Deploy open positions say their cost includes the entry fee', async () => 
   assert.match(html, /<th class="num">Cost \+ fee<\/th>/); assert.match(html, /data-lab="Cost \+ fee">\$1\.50</);
 });
 
+test('every trade says why it was entered and why it exited: Overview rows, Deploy and the strategy sidebar', async () => {
+  const exitWhy = 'Entered at 35¢: the 5-minute return < −0.002, edge ≥ 3¢ after fees · Exited at 62¢: take-profit (+27¢ vs +20¢ target)';
+  const openWhy = 'Entered at 35¢: edge ≥ 3¢ after fees · Exits: +20¢ take-profit, −10¢ stop, else settlement';
+  const open = [dashboardPosition(1, {why: openWhy}), dashboardPosition(2, {why: null})];
+  const closed = [dashboardPosition(3, {why: exitWhy}), dashboardPosition(4, {why: 'Held to settlement: <img src=x>'})];
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({open_positions: open, recent_closed: closed})); }});
+  await f.viewDashboard();
+  const why = key => positionFor(f.root, key).querySelector('.position-why');
+  assert.equal(why('open-1').textContent, openWhy);
+  assert.equal(why('open-2'), null);  // nothing stored to say: no empty line
+  assert.equal(why('closed-3').textContent, exitWhy.replace('<', '&lt;'));
+  assert.equal(why('closed-4').textContent, 'Held to settlement: &lt;img src=x&gt;');
+  assert.ok(f.root.querySelector('#recent-settlements').contains(why('closed-3')));
+  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /<img/);
+  const pos = {title: 'Rain fade', ticker: 'KXRAINNYC-T1', side: 'no', qty: 4, entry_price: .37, entry_fee: .02, unrealized: null,
+    market_close_time: '2026-10-25T17:30:00Z', mode: 'paper', why: openWhy};
+  const d = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments: [], open_positions: [pos, {...pos, ticker: 'KXRAINNYC-T2', why: null}]}); }});
+  await d.viewDeploy(); await flush();
+  const table = d.root.querySelector('#openpos').innerHTML;
+  assert.deepEqual([...table.matchAll(/<div class="sub-fig pos-why">([^<]*)<\/div>/g)].map(m => m[1]), [openWhy]);
+  const holdings = [{ticker: 'KXBTC15M-A', side: 'yes', qty: 2, entry_price: 0.35, cost: 0.7, unrealized: null, mode: 'paper',
+    market_close_time: '2026-10-25T07:45:00Z', why: openWhy}];
+  const s = strategyFrontend(detailStrategy({holdings})); await s.viewStrategy(42); await flush();
+  const list = s.root.querySelector('main').innerHTML;
+  assert.match(list, new RegExp('<ul class="holdlist">[\\s\\S]*<div class="sub-fig pos-why">' + openWhy.replace(/[+.*?()]/g, '\\$&') + '</div></li>'));
+  assert.equal(postRequests(f).length + postRequests(d).length, 0);
+});
+
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
   for (const [deployments, re] of [[[dep(1, 'paper', 2)], /\+\$2\.00[\s\S]*paper money, not real ·\u00a0strategies listed below/],
