@@ -1290,14 +1290,18 @@
   const RP_RUNGS = [['promising', 'Promising'], ['statistically_supported', 'Stat. supported'], ['forward_validated', 'Forward-validated'], ['deployment_candidate', 'Deployment candidate']];
   const RP_RANK = { rejected: -1, inconclusive: 0, promising: 1, statistically_supported: 2, forward_validated: 3, deployment_candidate: 4 };
 
-  function rpLadder(cls) {
-    const rank = RP_RANK[cls] == null ? 0 : RP_RANK[cls];
+  // `reached`: the validation verdict. A strategy that cleared validation and then failed the holdout
+  // has the holdout's verdict as its latest, so the ladder lit no rung, as if it never got past research.
+  function rpLadder(cls, reached, where) {
+    const rank = Math.max(RP_RANK[cls] == null ? 0 : RP_RANK[cls], RP_RANK[reached] || 0);
+    const got = rank > 0 && rank > (RP_RANK[cls] || 0) ? RP_RUNGS[rank - 1][1] : '';
     const rungs = RP_RUNGS.map(([k, label], i) => {
       const r = i + 1, state = r === rank ? 'lit' : r < rank ? 'done' : '';
       return `<div class="rung ${state}"><div class="r-n">Rung ${r}</div><div class="r-t">${esc(label)}</div></div>`;
     }).join('');
     let terminal = '';
-    if (cls === 'rejected') terminal = `<div class="rp-terminal"><span><b>Rejected</b> — this hypothesis did not advance the ladder.</span></div>`;
+    if (got && (cls === 'rejected' || cls === 'inconclusive')) terminal = `<div class="rp-terminal${cls === 'inconclusive' ? ' quiet' : ''}"><span><b>${cls === 'rejected' ? 'Rejected' : 'Inconclusive'}</b> ${esc(where || 'at its last check')} — it reached ${esc(got)} in validation, then its edge did not hold up.</span></div>`;
+    else if (cls === 'rejected') terminal = `<div class="rp-terminal"><span><b>Rejected</b> — this hypothesis did not advance the ladder.</span></div>`;
     else if (cls === 'inconclusive') terminal = `<div class="rp-terminal quiet"><span><b>Inconclusive</b> — tested, but the evidence was too weak to move it up.</span></div>`;
     return `<div class="ladder">${rungs}</div>${terminal}`;
   }
@@ -1516,7 +1520,7 @@
       parts.results += sub('Validation-window evidence', `<p class="rp-sub" style="margin-top:0">The agent searched and tuned on earlier data (in-sample). These numbers come from the validation window after it: data the agent never saw while searching.</p><div class="rp-stats">${stats}</div>${figs}`);
     }
     // Verdict — the ladder, the one-time locked holdout, and the gatekeeper's conclusion.
-    parts.verdict += `<div class="paper-sub"><h4 class="paper-h">Where it reached on the ladder</h4>${rpLadder(exp.classification)}</div>`;
+    parts.verdict += `<div class="paper-sub"><h4 class="paper-h">Where it reached on the ladder</h4>${rpLadder(exp.classification, exp.validation && exp.validation.classification, exp.holdout ? 'on the locked holdout' : '')}</div>`;
     const h = exp.holdout;
     const holdBody = h ? `<div class="rp-stats">
       <div class="rp-stat"><div class="k">Net return per trade</div><div class="val${tint('holdout', 'mean_net_return') ? ' sig' : ''}">${rpRet(h.mean_net_return)}</div><div class="sub">average, as % of its stake${h.ci_lo != null && h.ci_hi != null ? ' ·\u00a090% CI ' + rpRet(h.ci_lo) + ' to ' + rpRet(h.ci_hi) : ''}</div></div>

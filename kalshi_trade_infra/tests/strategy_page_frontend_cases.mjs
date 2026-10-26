@@ -112,4 +112,15 @@ export function strategyPageCases({name, detailStrategy, strategyFrontend, postR
     const bh = await open({status: 'passed', experiment: {classification: 'statistically_supported', correction_method: 'BH', planned_n_tests: 4}});
     assert.match(main(bh), /4 planned tests · Benjamini–Hochberg/);
   });
+
+  test(`${name}: the ladder keeps the rung validation reached when the holdout then failed`, async () => {
+    const f = await open({status: 'failed', experiment: {classification: 'inconclusive',
+      validation: {classification: 'statistically_supported', n_trades: 58}, holdout: {classification: 'inconclusive', n_trades: 31, consumed: true}}});
+    const ladder = main(f).slice(main(f).indexOf('Where it reached on the ladder'));
+    assert.match(ladder, /<div class="rung lit"><div class="r-n">Rung 2<\/div><div class="r-t">Stat\. supported/);
+    assert.match(ladder, /<b>Inconclusive<\/b> on the locked holdout — it reached Stat\. supported in validation, then its edge did not hold up\./);
+    // A strategy rejected in validation still reads as never advancing.
+    const r = await open({status: 'failed', experiment: {classification: 'rejected', validation: {classification: 'rejected', n_trades: 20}}});
+    assert.match(main(r), /this hypothesis did not advance the ladder/); assert.doesNotMatch(main(r), /rung lit/);
+  });
 }
