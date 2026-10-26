@@ -43,6 +43,9 @@ from app.adapters.db.strategy_repository import (  # noqa: F401
     insert_strategy, list_strategies, passed_since, set_strategy_outcome, share_strategy, strategies_passed_since,
     _strategy_filter_sql, strategy_records, _strategy_row,
 )
+from app.adapters.db.client_error_repository import (  # noqa: F401
+    client_error_groups, insert_client_error,
+)
 from app.adapters.db.order_latency_repository import (  # noqa: F401
     _pct, insert_order_latency, order_latency_stats,
 )

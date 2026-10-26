@@ -582,6 +582,25 @@ DDL = [
       INDEX idx_ol_created (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    # Page error reports from browsers (POST /api/client-errors, read grouped on /admin). Only what
+    # locates a bug, cleaned by app/client_errors.py: no user id, address, query string or body.
+    # Bounded: each insert prunes rows older than 7 days and all but the newest 5000 (by id).
+    """
+    CREATE TABLE IF NOT EXISTS app_client_errors (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      created_at DATETIME NOT NULL,
+      kind VARCHAR(12) NOT NULL,           -- error|rejection|api|view
+      message VARCHAR(300) NOT NULL,
+      src VARCHAR(80) NOT NULL DEFAULT '', -- script file name, no path or query
+      line INT NULL,
+      col INT NULL,
+      path VARCHAR(120) NOT NULL,          -- page route, ids as :id, no query
+      theme VARCHAR(10) NOT NULL DEFAULT '',
+      ver VARCHAR(16) NOT NULL DEFAULT '', -- the bundle's build hash
+      signed_in TINYINT(1) NOT NULL DEFAULT 0,
+      INDEX idx_ce_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
     # Issued NWS station forecasts of the daily max/min (app/weather_fcst_collect.py), one row per
     # (model run, settlement day). known_at_utc = runtime + the model's publication lag: research
     # and the live engine both read only rows with known_at_utc <= the frame (app/weather_fcst).

@@ -161,6 +161,7 @@ def test_an_access_line_is_one_write_so_threads_cannot_glue_lines(monkeypatch):
 
 
 def test_perf_endpoint_reports_routes_and_is_loopback_only(web):
+    webperf._ROWS.clear()  # the window is process-wide: routes earlier test files hit could push these out of the top 25
     conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
     for path in ("/api/runs/12", "/api/runs/13", "/wp-login.php"):
         conn.request("GET", path)

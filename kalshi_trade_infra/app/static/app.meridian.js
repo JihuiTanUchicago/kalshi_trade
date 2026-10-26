@@ -394,6 +394,11 @@
     : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
     : status >= 500 ? `Tau is having trouble right now (${status}). Try again in a moment.`
     : `Request failed (${status}).`;
+  // A failure the page shows as an error goes to the operator's readout on /admin (boot.js sends it).
+  // An API call that broke: no reply (not our own timeout), the server's 5xx, or a reply that isn't
+  // JSON. A 4xx is Tau answering, not a broken page. The path goes without its query, ids as :id.
+  const reportBroken = (kind, err) => { try { if (typeof window.__tauReport === 'function') window.__tauReport(kind, err); } catch (e) { /* best-effort */ } };
+  const apiBroke = (path, write, what) => reportBroken('api', `${write ? 'POST' : 'GET'} ${String(path).split('?')[0].replace(/\/\d+(?=\/|$)/g, '/:id')} ${what}`);
   async function api(path, body, cfg) {
     const gen = S.gen, scoped = body === undefined && !(cfg && cfg.keep);
     const opts = { credentials: 'same-origin', headers: {} };
@@ -417,6 +422,7 @@
         if (scoped && gen !== S.gen) { if (tid) clearTimeout(tid); return STALE(); }
         if (body === undefined && attempt < 2 && !(ctl && ctl.signal.aborted)) { await sleep(RETRY_MS[attempt]); continue; }
         if (tid) clearTimeout(tid);
+        if (!(ctl && ctl.signal.aborted)) apiBroke(path, body !== undefined, 'got no reply');
         throw new ApiError(0, body !== undefined ? failText(0, true) : ctl && ctl.signal.aborted ? "Tau is taking too long to respond." : failText(0));
       }
       if (body === undefined && attempt < 2 && TRANSIENT.has(res.status)) {
@@ -434,10 +440,16 @@
     // Several reads can come back 401 at once: the first one goes to sign-in and keeps the page as next.
     if (res.status === 401 && path !== '/api/me') { S.me = null; if (location.pathname !== '/signin') go(signinPath(), true); throw new ApiError(401, 'Please sign in.'); }
     const said = data && typeof data === 'object' && typeof data.error === 'string' && data.error;
-    if (!res.ok) throw new ApiError(res.status, said || failText(res.status, body !== undefined));
+    if (!res.ok) {
+      if (res.status >= 500) apiBroke(path, body !== undefined, `failed (${res.status})`);
+      throw new ApiError(res.status, said || failText(res.status, body !== undefined));
+    }
     // A 200 whose body isn't JSON (cut off, or a proxy's page) is a failure, not an empty answer: pages
     // built on {} showed the browser's own TypeError text.
-    if (!data || typeof data !== 'object') throw new ApiError(res.status, body !== undefined ? failText(0, true) : "Tau's reply didn't come through whole. Try again.");
+    if (!data || typeof data !== 'object') {
+      apiBroke(path, body !== undefined, 'replied with no JSON');
+      throw new ApiError(res.status, body !== undefined ? failText(0, true) : "Tau's reply didn't come through whole. Try again.");
+    }
     return data;
   }
 
@@ -927,7 +939,8 @@
   // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
   const loadFail = (msg) => `<div class="load-fail">${notice(msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
   // A page's own bug (a TypeError on a reply it didn't expect) is not something to print to the user.
-  const errText = (e) => (e instanceof ApiError ? e.message : 'Something went wrong on this page. Try again.');
+  // It is reported (reportBroken), so a page that breaks this way shows up on /admin.
+  const errText = (e) => (e instanceof ApiError ? e.message : (reportBroken('view', e), 'Something went wrong on this page. Try again.'));
   const loading = (h = 160) => `<div class="skeleton" style="height:${h}px" aria-label="Loading"></div>`;
   // Boot screens: shown only while /api/me is in flight (splash) or after it timed out or failed for a
   // reason other than being signed out (fail).
@@ -5415,12 +5428,24 @@
       + `across ${o.users} user${o.users === 1 ? '' : 's'} belong to deleted strategies. The engine no longer settles or flattens them. `
       + modes.map((m) => `${m[0].toUpperCase() + m.slice(1)}: ${usd(o.by_mode[m].cost)} at cost, oldest settles ${when(o.by_mode[m].oldest_close)}.`).join(' ');
   };
+  // Broken pages: browser error reports from the last 24h (repo.client_error_groups), grouped by message
+  // and page. Every field came from a browser, a signed-out one too, so all of it goes through esc().
+  const CE_KIND = { error: 'Uncaught error', rejection: 'Unhandled rejection', api: 'API call failed', view: 'Page bug' };
+  // The newest build it came from, and how many older ones (a fix that shipped shows as the old builds only).
+  const ceBuild = (v) => (v && v.length ? `build ${esc(v[0])}${v.length > 1 ? ` +${v.length - 1}\u00a0older` : ''}` : 'build unknown');
+  const clientErrorTable = (rows) => (!rows || !rows.length ? '<p class="hint">No page errors reported in the last 24 hours.</p>'
+    : `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Error</th><th>Page, theme, build</th><th class="num">Count</th><th>Last seen</th></tr></thead><tbody>${rows.map((r) => `<tr>
+      <td class="name" data-lab="Error">${esc(r.message)}<div class="sub-fig">${esc(CE_KIND[r.kind] || r.kind)}${r.at ? ` \u00b7\u00a0${esc(r.at)}` : ''}</div></td>
+      <td data-lab="Page, theme, build">${esc(r.path)}<div class="sub-fig">${esc((r.themes || []).join(', ') || '\u2014')} \u00b7\u00a0${ceBuild(r.versions)}</div></td>
+      <td class="num" data-lab="Count">${+r.n || 0}${+r.signed_out ? `<div class="sub-fig">${+r.signed_out} signed out</div>` : ''}</td>
+      <td class="hint" data-lab="Last seen">${when(r.last_seen)}<div class="sub-fig">first ${when(r.first_seen)}</div></td></tr>`).join('')}</tbody></table></div>`);
   async function viewAdmin() {
     if (!adminViewOn()) return go('/', true);
     const gen = S.gen;
     shell('/admin', boardTitle('Admin'), `
       <div class="detail">
         <div>
+          <section class="sect"><div class="sect-head"><h2>Page errors</h2><span id="ce-count" class="sect-note"></span></div><div id="client-errors">${loading(80)}</div></section>
           <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>
           <section class="sect"><div class="sect-head"><h2>Waitlist</h2></div><div id="waitlist"></div></section>
         </div>
@@ -5449,6 +5474,9 @@
       if (gen !== S.gen) return;
       root.querySelector('#ucount').textContent = `${d.users.length} shown`;
       root.querySelector('#o-state').textContent = orphanLine(d.orphaned_open);
+      const ce = d.client_errors || [];
+      root.querySelector('#ce-count').textContent = ce.length ? `last 24h \u00b7\u00a0${ce.reduce((a, r) => a + (+r.n || 0), 0)} reports` : 'last 24h';
+      root.querySelector('#client-errors').innerHTML = clientErrorTable(ce);
       root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
         <td class="hint" data-lab="Joined">${when(u.created_at)}</td><td class="num" data-lab="Balance">${usd(u.balance)}</td></tr>`).join('')}</tbody></table></div>`;
