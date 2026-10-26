@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
+import {researchPollCases} from './research_poll_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -127,6 +128,16 @@ class Element {
   removeAttribute(key) { delete this.attributes[key]; }
   focus(options) { this.focusOptions = options; if (this.ownerDocument) this.ownerDocument.activeElement = this; }
   remove() { this.removed = true; }
+  // Puts the markup's one element in this one's place in its parent, as the DOM does; either one reads
+  // back the markup it was given.
+  get outerHTML() { return this.outer; }
+  set outerHTML(value) {
+    this.outer = value;
+    const holder = new Element('div'); holder.innerHTML = value;
+    const fresh = holder.children[0], parent = this.parent;
+    if (!fresh || !parent) return;
+    fresh.outer = value; fresh.parent = parent; parent.children[parent.children.indexOf(this)] = fresh; this.removed = true;
+  }
 }
 
 function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), session, theme = 'meridian', build, notifications, win = {}, globals = {}} = {}) {
@@ -199,6 +210,7 @@ const postRequests = f => f.requests.filter(({options}) => options.method === 'P
 perpsFrontendCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests, source});
 stopReasonCases({name: 'Meridian', frontend});
+researchPollCases({name: 'Meridian', frontend});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},

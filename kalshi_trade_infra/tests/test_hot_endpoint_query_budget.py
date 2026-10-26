@@ -249,10 +249,16 @@ def test_the_autopilot_panel_reads_position_totals_only_for_a_paper_deployment_p
     assert len(runs["today"][1]) == len(log) + 1
 
 
-# The Research list polls /api/runs every 5s. Cold: the policy, the runs, their spend, the active counts,
-# and the all-time totals (two reads, cached 30s), so 4 on most polls. Why each finished session
-# stopped (stop_reason: out of credits, by you, an error, finished) rides the runs read, not a read per run.
-RUNS_BUDGET = (6, 4)
+# The Research list polls /api/runs every 5s. A full answer, cold: the active counts, the all-time totals
+# (two reads, cached 30s), the list's version, the policy, the runs and their spend, so 5 on most polls.
+# Why each finished session stopped (stop_reason: out of credits, by you, an error, finished) rides the
+# runs read, not a read per run. A poll that sends back the version of its last answer while nothing
+# moved reads only the counts and the version (services.research_list).
+# Measured 2026-10-26 on a seeded account of 300 sessions (5 live, 59k events, 7.5k debits) beside five
+# lighter ones: a poll was 4 statements, ~7.5ms of SQL and 21KB of JSON (2.2KB brotli); an unchanged one
+# is 2 statements, ~2.2ms and 36 bytes, and a changed one 5 statements, ~8.5ms.
+RUNS_BUDGET = (7, 5)
+RUNS_SAME_BUDGET = 2
 
 
 def test_the_research_list_says_why_each_session_stopped_inside_its_budget(production):
@@ -276,6 +282,41 @@ def test_the_research_list_says_why_each_session_stopped_inside_its_budget(produ
     assert {r["id"]: r["stop_reason"] for r in out["runs"]} == {
         9: "credits", 8: "complete", 7: "limit", 6: "user", 5: "error", 4: None}
     assert not any("out_of_credits" in r for r in out["runs"])
+
+
+def test_an_unchanged_research_list_poll_reads_only_the_counts_and_the_version(production):
+    base = {"market": "btc15m", "direction": None, "prompt": "p", "hypotheses_tried": 4, "strategies_passed": 0,
+            "error": None, "created_at": None, "started_at": None, "finished_at": None, "heartbeat_at": None,
+            "run_forever": 1, "out_of_credits": 0, "ledger_top": 51, "policy": None}
+    rows = [dict(base, id=9, status="running"), dict(base, id=8, status="succeeded")]
+
+    def runs(rs):
+        return {"FROM app_agent_runs r WHERE r.user_id=%s": [dict(r) for r in rs]}
+
+    log = []
+    first = server.list_runs(_ctx(log, 10.0, extra=runs(rows)))
+    assert first["v"] and len(first["runs"]) == 2
+    log = []
+    same = server.list_runs(_ctx(log, 10.0, query={"since": first["v"]}, extra=runs(rows)))
+    assert same == {"v": first["v"], "same": True}
+    assert len(log) <= RUNS_SAME_BUDGET, log
+    assert not any("app_agent_events" in s or "SUM(amount_usd)" in s or "FROM app_policies WHERE" in s for s, _ in log)
+    # A heartbeat is not something the list shows; progress, a debit, the policy, a new session, an error are.
+    beat = [dict(rows[0], heartbeat_at=datetime(2026, 10, 25)), rows[1]]
+    assert server.list_runs(_ctx([], 10.0, query={"since": first["v"]}, extra=runs(beat))).get("same")
+    for moved in ([dict(rows[0], hypotheses_tried=5), rows[1]],
+                  [dict(r, ledger_top=52) for r in rows],
+                  [dict(r, policy="2026-10-25 00:00:00|0.61|0.52|7") for r in rows],
+                  [dict(base, id=10, status="queued")] + rows,
+                  [rows[0], dict(rows[1], status="failed", error="The session hit an unexpected error and stopped.")]):
+        log = []
+        out = server.list_runs(_ctx(log, 10.0, query={"since": first["v"]}, extra=runs(moved)))
+        assert not out.get("same") and out["v"] != first["v"] and len(out["runs"]) == len(moved), moved
+        assert len(log) <= RUNS_BUDGET[1]
+    # The live counts move it too (a session went quiet, or one is waiting).
+    out = server.list_runs(_ctx([], 10.0, query={"since": first["v"]}, extra={
+        **runs(rows), "SELECT kind, status, COUNT(*)": [{"kind": "research", "status": "queued", "n": 1}]}))
+    assert not out.get("same") and out["counts"]["research_queued"] == 1
 
 
 def test_the_run_page_reads_the_dream_line_once_a_minute_not_every_poll(production, monkeypatch):

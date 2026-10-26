@@ -1081,6 +1081,21 @@
     painted.set(el, html);
     el.innerHTML = html;
   }
+  // A list repaints row by row: while its rows are the same ones in the same order, only a row whose
+  // markup changed is rewritten (a running session's spend moved, and the other 49 sessions stay as they
+  // are). `rows` is [[key, markup]], each markup one element. Any other change rewrites the whole list.
+  const paintedRows = new WeakMap();
+  function paintRows(el, rows, empty) {
+    if (!el) return;
+    const keys = rows.map(([k]) => k).join(' '), was = paintedRows.get(el);
+    if (!rows.length || !was || was.keys !== keys || el.children.length !== rows.length) {
+      paintedRows.set(el, rows.length ? { keys, html: rows.map(([, h]) => h) } : null);
+      paint(el, rows.length ? rows.map(([, h]) => h).join('') : empty);
+      return;
+    }
+    rows.forEach(([, h], i) => { if (was.html[i] !== h) { was.html[i] = h; el.children[i].outerHTML = h; } });
+    painted.set(el, was.html.join(''));
+  }
   function flash(where, msg, kind) {
     const el = typeof where === 'string' ? root.querySelector(where) : where;
     if (el) { el.innerHTML = notice(msg, kind, true); announce(msg, kind === 'bad'); }
@@ -2016,7 +2031,7 @@
   // page. Hidden on a brand-new account (no history to evolve from yet).
   function renderRsiMomentum(host, pol, tried) {
     if (!host) return;
-    if (!pol || (!pol.evolved && !tried)) { host.innerHTML = ''; return; }
+    if (!pol || (!pol.evolved && !tried)) { paint(host, ''); return; }
     const delta = (pol.base_score != null && pol.score != null)
       ? `<span class="rsi-score">${pol.base_score} <span class="rsi-arrow">→</span> ${pol.score}</span>` : '';
     const tag = pol.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>';
@@ -2026,10 +2041,10 @@
          <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' ·\u00a0adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
       : `<p>After each cycle the engine <b>tries new ways of choosing which ideas to test</b> and keeps one only if it would have found more real winners in your own history — scored over shuffled orderings, so it can't overfit. It gets better the more you run it.</p>`;
     // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
-    host.innerHTML = `<details class="rsidisc">
+    paint(host, `<details class="rsidisc">
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research engine</span>${tag}${pol.evolved && delta ? `<span class="rsidisc-delta">${delta}</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="rsidisc-body">${body}</div>
-    </details>`;
+    </details>`);
   }
   // The research loop's own report card (GET /api/research/scoreboard, app/research/rsi.py): is research
   // getting better, what it has learned per market family (playbooks under A/B test), where the
@@ -2094,11 +2109,12 @@
     const open = !!host.querySelector('details.rsidisc[open]');
     const focused = !!host.querySelector('details.rsidisc > summary:focus');
     const inner = [...host.querySelectorAll('details.loop-pb')].map((d) => d.open);
-    host.innerHTML = `<details class="rsidisc loop"${open ? ' open' : ''}>
+    // The 5s poll re-renders from the kept board: the card is rebuilt only when its markup changed.
+    paint(host, `<details class="rsidisc loop"${open ? ' open' : ''}>
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Is research getting better?</span>${tag}${delta ? `<span class="rsidisc-delta">${delta} reach the gate</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="rsidisc-body">${body}</div>
-    </details>`;
-    host.querySelectorAll('details.loop-pb').forEach((d, i) => { if (inner[i]) d.open = true; });
+    </details>`);
+    host.querySelectorAll('details.loop-pb').forEach((d, i) => { if (inner[i] && !d.open) d.open = true; });
     if (focused) host.querySelector('details.rsidisc > summary').focus({ preventScroll: true });
   }
   // Figure 1 -- the real Tau research pipeline, drawn as a styled node-and-connector flow (no
@@ -2316,8 +2332,13 @@
       } catch (e) { /* no feed yet -> the picker still works blind */ }
       markQuietRows(form);
     })();
+    // The poll sends back the version of its last full answer; while nothing the list shows has moved the
+    // server answers {same: true} from two reads, and the page repaints from the answer it kept (its
+    // relative times still move). Each region is rewritten only when its markup changed.
+    let kept = null;
     const load = async () => {
-      const d = await api('/api/runs');
+      const got = await api('/api/runs' + (kept && kept.v ? '?since=' + encodeURIComponent(kept.v) : ''));
+      const d = got.same && kept ? kept : (kept = got);
       // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
       const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
       const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
@@ -2328,22 +2349,22 @@
         : tried
           ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
           : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
-      root.querySelector('#rstatus .said').innerHTML = said;
-      root.querySelector('#rfigs').innerHTML = fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
-        fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
+      paint(root.querySelector('#rstatus .said'), said);
+      paint(root.querySelector('#rfigs'), fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
+        fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' }));
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
       const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
       const rex = root.querySelector('#rexample'), exHtml = exampleLine(d.runs);
       if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
       const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
-      if (exOpen) { exOpen.hidden = !exRun || !!exHtml; if (exRun) exOpen.setAttribute('href', '/research/' + exRun.id); }
+      if (exOpen) { const hide = !exRun || !!exHtml; if (exOpen.hidden !== hide) exOpen.hidden = hide; if (exRun && exOpen.getAttribute('href') !== '/research/' + exRun.id) exOpen.setAttribute('href', '/research/' + exRun.id); }
       // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
       const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
-      root.querySelector('#rcount').textContent = [own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0');
+      paint(root.querySelector('#rcount'), esc([own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0')));
       const newest = d.runs.find((r) => !r.example);
-      root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map((r) => runRow(r, r === newest)).join('')
-        : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
+      paintRows(root.querySelector('#runs'), d.runs.map((r) => [r.id, runRow(r, r === newest)]),
+        `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`);
     };
     await load();
     poll(load, 5000, 'runs-stale');

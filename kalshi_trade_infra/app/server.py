@@ -39,7 +39,7 @@ from app.adapters.llm import models_catalog as catalog
 from app import repository as repo
 from app.research import research_repository as research_repo
 from app.trading import spec as specmod
-from app.services import backtest_check, book_memo, customer_text, gate_explain, paper_checks, run_stop, trade_why
+from app.services import backtest_check, book_memo, customer_text, gate_explain, paper_checks, research_list, run_stop, trade_why
 from app.trading import track_record
 from app.web import client_errors, webperf
 from app import worker
@@ -573,6 +573,13 @@ def models(ctx: Ctx):
 
 
 def list_runs(ctx: Ctx):
+    # The page polls every 5s and sends back its last answer's version as `since`: while nothing it
+    # shows has moved, two statements answer "same" (services.research_list).
+    counts = repo.active_run_counts(ctx.cur, ctx.uid, silent_before=_silent_before())
+    totals = _research_totals(ctx.cur, ctx.uid)
+    v = research_list.version(repo.list_runs_version(ctx.cur, ctx.uid), counts, totals)
+    if v is not None and ctx.query.get("since") == v:
+        return {"v": v, "same": True}
     # The self-evolving exploration policy (Tau-RSI), summarized read-only for the research
     # index so the cockpit can show the engine getting smarter — same shape as get_run's rsi
     # block (minus the per-run dream line), so the client renders both the same way.
@@ -589,8 +596,7 @@ def list_runs(ctx: Ctx):
         r["stop_reason"] = run_stop.stop_reason(r)
         r.pop("out_of_credits", None)
     customer_text.run_rows(runs)
-    return {"runs": runs, "counts": repo.active_run_counts(ctx.cur, ctx.uid, silent_before=_silent_before()),
-            "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
+    return {"runs": runs, "counts": counts, "policy": policy, "totals": totals, "v": v}
 
 
 def example_run(ctx: Ctx):

@@ -275,6 +275,24 @@ def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
     return cur.fetchall()
 
 
+def list_runs_version(cur, user_id: int, limit: int = 50) -> List[Dict]:
+    """Every field of the newest sessions that the research list derives what it shows from, except
+    the prompt and direction (never rewritten), and with the error as its CRC32; each row also carries
+    the user's newest credit-ledger id (a debit moves a session's spend) and their policy's fields. One
+    statement through idx_runs_user, idx_credit_user and the policy key: no log probe, no ledger sum.
+    services.research_list hashes it into the version the list's 5s poll sends back."""
+    cur.execute(
+        """SELECT r.id, r.status, r.market, r.hypotheses_tried, r.strategies_passed, r.run_forever,
+                  r.started_at, r.finished_at, CRC32(r.error) AS err,
+                  (SELECT MAX(l.id) FROM app_credit_ledger l WHERE l.user_id=%s) AS ledger_top,
+                  (SELECT CONCAT_WS('|', p.updated_at, p.score, p.base_score, CRC32(p.summary))
+                     FROM app_policies p WHERE p.user_id=%s) AS policy
+           FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research' ORDER BY r.id DESC LIMIT %s""",
+        (user_id, user_id, user_id, limit),
+    )
+    return cur.fetchall()
+
+
 def example_run_id(cur, user_id: int) -> Optional[int]:
     """The id of the user's seeded example session (repository.seed_demo_session; the newest if there
     are several), or None. What /example opens: it looked for the example in list_runs, which holds only
