@@ -2135,6 +2135,10 @@ body.landing-body .apf { display: none; }
 
 /* Community journal: complete conversation beside compact source evidence. */
 .feedwrap { --journal-measure: 1152px; position: relative; min-width: 0; width: 100%; max-width: 1152px; margin-inline: auto; padding-top: 16px; container: community-feed / inline-size; }
+/* A bell link to one post: the feed says where it starts, or that the post is gone, and marks the post. */
+.feedwrap .feed-from { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
+.feedwrap .feed-from .notice { flex: 1 1 240px; margin: 0; }
+.feedwrap .post.post-target { background: var(--signal-wash); box-shadow: 0 0 0 8px var(--signal-wash); }  /* posts sit flush; the wash reaches past the text */
 .community-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; min-height: 44px; padding: 0 128px 12px 0; border-bottom: 1px solid var(--rule-2); }
 .feed-filter { display: flex; gap: 20px; }
 .feed-filter .chip { min-height: 32px; padding: 6px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-transform: none; letter-spacing: 0; }

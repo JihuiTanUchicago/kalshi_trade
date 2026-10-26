@@ -4265,6 +4265,7 @@
     shell('/community', boardTitle('Community', 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.'), `
       <div class="feedwrap">
         <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
+        <div id="feed-note"></div>
         <div id="feed">${loading(120)}${loading(120)}</div>
         <form class="panel composer-post" id="composer-post">
           <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
@@ -4420,13 +4421,14 @@
         };
       }
     });
-    let lastFeed = '', mineOnly = false;
+    // from: the feed starts at a post older than the newest page, when a bell link opened that post.
+    let lastFeed = '', mineOnly = false, from = 0;
     const bodies = new Map();  // post id -> body as written (the source the edit box starts from)
     const load = async (force) => {
       // Never wipe a reply the user is writing: skip the refresh while a reply box is open
       // or anything in the feed is focused (unless this is the first/explicit render).
       if (!force && (feed.querySelector('.cmt-form') || feed.contains(document.activeElement))) return;
-      const d = await api('/api/community' + (mineOnly ? '?mine=1' : ''));
+      const d = await api('/api/community' + (mineOnly ? '?mine=1' : from ? `?before=${from}` : ''));
       d.posts.forEach((p) => bodies.set(String(p.id), p.body));
       const html = d.posts.length ? d.posts.map((p, i) => {
         const prev = d.posts[i - 1];  // the post just above (newer) — a run by one author groups under it
@@ -4442,12 +4444,43 @@
     root.querySelectorAll('.feed-filter .chip').forEach((c) => (c.onclick = () => {
       const want = c.dataset.feed === 'mine';
       if (want === mineOnly) return;
-      mineOnly = want;
+      mineOnly = want; from = 0; root.querySelector('#feed-note').innerHTML = '';
       root.querySelectorAll('.feed-filter .chip').forEach((x) => x.setAttribute('aria-pressed', String((x.dataset.feed === 'mine') === mineOnly)));
       lastFeed = ''; load(true);
     }));
     await load(true);
+    await openLinkedPost();
     poll(load, 20000);
+    // A bell notice about a post opens /community#post-<id>: the feed scrolls to that post with its
+    // replies open. One older than the newest page shows the feed from it, with a way back to the
+    // latest; one that is gone says so, instead of a feed with no sign of what the notice meant.
+    async function openLinkedPost() {
+      const m = /^#post-(\d+)$/.exec(location.hash), gen = S.gen;
+      if (!m) return;
+      const pid = m[1], find = () => feed.querySelector(`.post[data-id="${pid}"]`);
+      if (!find()) {
+        let older = null;
+        try { older = await api(`/api/community?before=${+pid + 1}`); } catch (e) { return; }  // the feed above still stands
+        if (gen !== S.gen) return;
+        if (older.posts.length && String(older.posts[0].id) === pid) {
+          from = +pid + 1; lastFeed = ''; await load(true);
+          const note = root.querySelector('#feed-note');
+          note.innerHTML = `<div class="feed-from">${notice('Showing posts from the one you opened.', '', true)}<button type="button" class="btn sm" data-latest>Latest posts</button></div>`;
+          note.querySelector('[data-latest]').onclick = () => {
+            from = 0; note.innerHTML = ''; history.replaceState(null, '', '/community'); lastFeed = ''; load(true);
+          };
+        }
+      }
+      const art = find();
+      if (!art) {
+        root.querySelector('#feed-note').innerHTML = `<div class="feed-from">${notice('That post isn’t here any more. Its author may have removed it.', '', true)}</div>`;
+        return;
+      }
+      art.classList.add('post-target'); art.setAttribute('tabindex', '-1');
+      art.scrollIntoView({ block: 'start' }); art.focus({ preventScroll: true });
+      // A reply or a mention is what the notice was about: open the thread it is in.
+      if ((art.querySelector('.comments') || {}).hidden) art.querySelector('[data-act="comments"]').click();
+    }
   }
   const STATUS_WORD = { passed: 'passed', failed: 'void', rejected: 'rejected' };
 

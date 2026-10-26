@@ -1,7 +1,9 @@
 // Shared cases, run against each bundle's offline DOM/transport harness (Tau and Meridian):
 // - the bell lists a grouped notice with how many more it stands for, a notice with no page as plain
 //   text, and moves focus into the list when it opens;
-// - the autopilot status read brings new notices to the bell within a minute, without a reload.
+// - the autopilot status read brings new notices to the bell within a minute, without a reload;
+// - a bell link to a post opens the feed at that post with its replies, shows the feed from that post
+//   when it is older than the newest page, and says so when the post is gone.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -10,6 +12,8 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 const ago = ms => new Date(Date.now() - ms).toISOString();
 const notesRead = f => f.requests.filter(({path}) => path === '/api/notifications').length;
+const post = (id, over = {}) => ({id, body: 'Post ' + id, author: 'Bob', username: 'bob', created_at: '2026-10-17T10:00:00Z',
+  mine: true, comments: 1, reactions: [], ...over});
 
 export function bellCases({name, frontend}) {
   const dashboard = (notifications, extra = () => undefined) => frontend({notifications, fetchImpl: (path) => {
@@ -70,5 +74,51 @@ export function bellCases({name, frontend}) {
     assert.equal(dot.hidden, false);
     assert.equal(f.root.querySelector('.bell-trig').getAttribute('aria-label'), 'Notifications, 1 unread');
     assert.match(f.root.querySelector('a.notif.unread').textContent, /was paused automatically/);
+  });
+
+  const community = (posts, older) => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path === '/api/community') return response({posts});
+      if (path.startsWith('/api/community?before=')) return response({posts: older(+path.split('=')[1])});
+      return response({});
+    }});
+    const proto = Object.getPrototypeOf(f.root);
+    if (!('scrollIntoView' in proto)) proto.scrollIntoView = function (o) { this.scrolledTo = o; };
+    if (!('click' in proto)) proto.click = function () { this.clicked = true; };
+    return f;
+  };
+
+  test(`${name}: a bell link to a post opens the feed at it with its replies, from further back, or says it is gone`, async () => {
+    // In the newest page: that post is marked, focused and its replies are opened.
+    let f = community([post(12), post(11)], () => []);
+    f.location.hash = '#post-11';
+    await f.viewCommunity(); await settle();
+    let art = f.root.querySelector('.post[data-id="11"]');
+    assert.ok(art.classList.contains('post-target')); assert.equal(art.focusOptions && art.focusOptions.preventScroll, true);
+    assert.equal(art.querySelector('[data-act="comments"]').clicked, true);
+    assert.equal(f.root.querySelector('#feed-note').innerHTML, '');
+    assert.equal(f.requests.filter(({path}) => path.startsWith('/api/community?before=')).length, 0);
+
+    // Older than the newest page: the feed starts at it and offers the latest posts again.
+    f = community([post(40), post(39)], (before) => [post(before - 1), post(before - 2)]);
+    f.location.hash = '#post-5';
+    await f.viewCommunity(); await settle();
+    art = f.root.querySelector('.post[data-id="5"]');
+    assert.ok(art && art.classList.contains('post-target'));
+    const note = f.root.querySelector('#feed-note');
+    assert.match(note.textContent, /Showing posts from the one you opened/);
+    const latest = note.querySelector('[data-latest]');
+    latest.onclick(); await settle();
+    assert.equal(note.innerHTML, '');
+    assert.ok(f.root.querySelector('.post[data-id="40"]'));
+    assert.equal(f.requests.at(-1).path, '/api/community');
+
+    // Gone: the feed stays, and says the post isn't there any more.
+    f = community([post(40)], () => [post(3)]);
+    f.location.hash = '#post-7';
+    await f.viewCommunity(); await settle();
+    assert.match(f.root.querySelector('#feed-note').textContent, /That post isn’t here any more/);
+    assert.ok(f.root.querySelector('.post[data-id="40"]'));
   });
 }

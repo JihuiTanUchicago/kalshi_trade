@@ -86,13 +86,19 @@ def _decode_image(data_url: str):
     return ctype, raw
 
 
-def _notify_mentions(cur, author_uid: int, author_name: str, body: str, link: str) -> None:
-    """Notify every @-mentioned user (in-app + email), skipping the author. Best-effort."""
+def post_link(pid: int) -> str:
+    """Where a notice about a post opens: the feed, scrolled to that post (or saying it's gone)."""
+    return "/community#post-%d" % pid
+
+
+def _notify_mentions(cur, author_uid: int, author_name: str, body: str, link: str, told: int = 0) -> None:
+    """Notify every @-mentioned user (in-app + email), skipping the author, and `told`: the post's
+    author, whom a reply already notifies (one reply, one line in their bell). Best-effort."""
     handles = {h.lower() for h in repo.MENTION_RE.findall(body or "")}
     if not handles:
         return
     for u in repo.users_by_usernames(cur, list(handles)):
-        if u["id"] == author_uid:
+        if u["id"] in (author_uid, told):
             continue
         try:
             repo.add_notification(cur, u["id"], "mention", "%s mentioned you." % author_name, link)
@@ -131,7 +137,7 @@ def create_community_post(ctx: Ctx):
     snapshot = _post_snapshot(cur, ctx.uid, kind, int(ctx.body.get("ref_id") or 0)) if kind != "note" else None
     pid = repo.create_post(cur, ctx.uid, body or _default_share_text(kind, snapshot), kind, snapshot, image_id)
     author = customer_text.display_name((repo.get_user(cur, ctx.uid) or {}).get("name"), "A trader")
-    _notify_mentions(cur, ctx.uid, author, body, "/community")
+    _notify_mentions(cur, ctx.uid, author, body, post_link(pid))
     _email_community_post_async(ctx.uid, author, body or _default_share_text(kind, snapshot))
     return {"id": pid}
 
@@ -220,11 +226,11 @@ def create_comment(ctx: Ctx):
         raise ApiError(404, "No such post.")
     repo.add_comment(ctx.cur, pid, ctx.uid, body)
     commenter = customer_text.display_name((repo.get_user(ctx.cur, ctx.uid) or {}).get("name"), "Someone")
-    _notify_mentions(ctx.cur, ctx.uid, commenter, body, "/community")
+    _notify_mentions(ctx.cur, ctx.uid, commenter, body, post_link(pid), told=author["user_id"])
     if author["user_id"] != ctx.uid:  # don't notify yourself
         try:
             repo.add_notification(ctx.cur, author["user_id"], "comment",
-                                  "%s commented on your post." % commenter, "/community")
+                                  "%s commented on your post." % commenter, post_link(pid))
         except Exception as e:
             print("[community] in-app notice failed for post %s: %r" % (pid, e), flush=True)
     # Don't email yourself, or anyone who turned optional email off in Settings.
