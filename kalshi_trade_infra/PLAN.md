@@ -1,5 +1,9 @@
 # PLAN
 
+- Code paper replay runs on Python 3.13 (2026-10-26): tau-code-paper.service (#378) called
+  /opt/kalshi/.venv, which is Python 3.9, so every hourly replay died importing app.markets
+  (dataclass slots=True) and no code strategy reached paper. The unit now uses .venv313, and
+  tests/test_web_units_python.py checks every unit deploy_web.sh installs.
 - The daily check-in reads cash from Kalshi (2026-10-26): Todd saw "Cash: $56.58 (kalshi_api)" on
   2026-10-26. That was the last live_portfolio_20s row, frozen since the legacy live engine stopped.
   `live_alerter._cash` now asks Kalshi for the balance each run (one call per 5 min). If that fails,
