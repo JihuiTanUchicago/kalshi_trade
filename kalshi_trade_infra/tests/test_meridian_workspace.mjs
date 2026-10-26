@@ -13,6 +13,7 @@ import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
+import {explorePageCases} from './explore_page_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -221,6 +222,7 @@ researchPollCases({name: 'Meridian', frontend});
 runPageCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend});
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
+explorePageCases({name: 'Meridian', frontend});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -2510,7 +2512,7 @@ test('Explore header sorting keeps the original criteria and search, resets pagi
     return response({total: 100, shown: 90, matched: 81, per: 40, page: Number(params.page), at: new Date().toISOString(), markets: orders[params.sort]});
   }});
   await f.viewExplore();
-  assert.equal(f.root.querySelector('[data-sort="last"]').getAttribute('aria-label'), 'Sort by last trade price');
+  assert.equal(f.root.querySelector('[data-sort="last"]').getAttribute('aria-label'), 'Sort by price');
   for (const criterion of ['last', 'v24', 'oi']) {
     const button = f.root.querySelector(`[data-sort="${criterion}"]`); button.focus(); button.onclick(); await flush();
     const replacement = f.root.querySelector(`[data-sort="${criterion}"]`);
@@ -5126,7 +5128,7 @@ test('a settled market shows its result in place of a live price', async () => {
   const f = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'no'});
   await f.ready;
   assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><div class="sub-fig">each No contract paid \$1/);
-  assert.match(f.root.innerHTML, /· Settled ·/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
+  assert.match(f.root.innerHTML, /Settled ·\u00a0KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });
 
 // Broken pages on /admin: browser error reports grouped by message and page (server client_error_groups).

@@ -312,8 +312,9 @@
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
   // "Bitcoin daily close, 5pm EDT"), so an open position never shows only the raw ticker. Unknown: ''.
+  const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-'));
   const contractMarket = (ticker) => {
-    const m = ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-'));
+    const m = contractMkt(ticker);
     return m ? (m.label || marketShort(m.key)) : '';
   };
   // A contract ticker that opens its market page (price, settlement rules, your positions in it).
@@ -2396,6 +2397,13 @@
         <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section></div>`);
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
+    const wantMkt = new URLSearchParams(location.search).get('market');
+    const pickMkt = wantMkt && [...form.querySelectorAll('input[name=market]')].find((r) => r.value === wantMkt);
+    if (pickMkt) {
+      pickMkt.checked = true;
+      const grp = pickMkt.closest('details'); if (grp) grp.open = true;
+      const opts = form.querySelector('#ropts'); if (opts) opts.open = true;
+    }
     // Model, depth and market fold behind "Options" on a phone (closed while at their defaults), so
     // Start session sits right under the idea. The summary line says what will run.
     const optsSum = form.querySelector('#ropts-sum');
@@ -4681,6 +4689,14 @@
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
   }
+  // What to do next from a market page: research it (the market picked in the form) or open your
+  // strategies on it, when it's one Tau researches; otherwise say so, rather than leave a dead end.
+  function marketNext(ticker) {
+    const m = contractMkt(ticker);
+    if (!m) return '<p class="hint mk-next">Tau doesn’t research this market, so your strategies can’t trade it. <a href="/research?new=1">See the markets it researches</a></p>';
+    const k = encodeURIComponent(m.key);
+    return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a><a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a></p>`;
+  }
   async function viewMarketDetail(ticker) {
     shell('/explore', boardTitle('Market'), loading(300));
     let d;
@@ -4701,11 +4717,11 @@
       d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as of ${settleAt(d.as_of)}`) : ''].filter(Boolean).join(' ·\u00a0');
     const settled = d.result === 'yes' || d.result === 'no';
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
-    shell('/explore', boardTitle(label, esc(`${contractMarket(d.ticker) || d.series} ·\u00a0${MKT_STATUS[d.status] || d.status || 'market'} ·\u00a0${d.ticker}`)) +
+    shell('/explore', boardTitle(label, esc([contractMarket(d.ticker), MKT_STATUS[d.status] || d.status || 'Market', d.ticker].filter(Boolean).join(' ·\u00a0'))) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>', `
+        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker), `
       <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
       <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(d.rules)}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(d.rules_more)}</p>` : ''}`
@@ -4722,7 +4738,7 @@
     const retry = root.querySelector('#mk-retry');
     if (retry) retry.onclick = () => viewMarketDetail(ticker);
     const pts = d.points.slice().reverse();  // newest first
-    const PER = 100; let pg = 0;
+    const PER = 25; let pg = 0;
     const rawEl = root.querySelector('#rawsect');
     const renderRaw = () => {
       if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'Waiting on Kalshi for the candles.' : 'No candles recorded for this market yet.'}</p></div>`; return; }
@@ -4798,7 +4814,7 @@
       const pages = Math.max(1, Math.ceil(d.matched / d.per));
       const sortHead = (key, label, criterion = label, rowspan = 1) => `<th scope="col"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} class="num${key === 'last' ? ' quote-head' : ''}" aria-sort="${f.sort === key ? 'descending' : 'none'}"><button type="button" data-sort="${key}" title="Sort by ${criterion.toLowerCase()}" aria-label="Sort by ${criterion.toLowerCase()}">${label}${f.sort === key ? ' <span aria-hidden="true">↓</span>' : ''}</button></th>`;
       const sortFocused = body.querySelector('[data-sort]:focus')?.dataset.sort;
-      body.innerHTML = `<div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num" aria-label="Link"></th></tr><tr>${sortHead('last', 'Price', 'last trade price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody>${rows}</tbody></table></div>
+      body.innerHTML = `<div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num" aria-label="Link"></th></tr><tr>${sortHead('last', 'Price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody>${rows}</tbody></table></div>
         ${pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : ''}`;
       body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: smooth() }); load(); });
       body.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; sync(); load(); });

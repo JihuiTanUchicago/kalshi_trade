@@ -12,6 +12,7 @@ import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
+import {explorePageCases} from './explore_page_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -196,6 +197,7 @@ researchPollCases({name: 'Tau', frontend});
 runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
+explorePageCases({name: 'Tau', frontend});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -1292,7 +1294,7 @@ test('a settled market shows its result in place of a live price', async () => {
   const f = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'no'});
   await f.ready;
   assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><div class="sub-fig">each No contract paid \$1/);
-  assert.match(f.root.innerHTML, /· Settled ·/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
+  assert.match(f.root.innerHTML, /Settled ·\u00a0KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });
 
 // Every page the server serves the app shell for (app/server.py SPA_ROUTES). A path with no route
@@ -1387,6 +1389,21 @@ test('Community replies that fail to load say so with Try again, never an empty 
   failing = false;
   await click(box.querySelector('[data-replies-retry]')); await flush();
   assert.match(box.querySelector('.cmt-list').textContent, /First/);
+});
+
+test('Explore figures say what the list holds, show Matching only for a search, and flag prices that are behind', async () => {
+  let at = new Date().toISOString();
+  const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?')
+    ? response({at, total: 41233, shown: 3000, matched: path.includes('q=btc') ? 12 : 3000, per: 40, page: 0, markets: []}) : response({}))});
+  await f.viewExplore(); await flush();
+  const figs = () => f.root.querySelector('#xfigs').innerHTML;
+  assert.match(figs(), /Markets tracked.*41,233/); assert.match(figs(), /In this list.*3,000.*the most traded/);
+  assert.doesNotMatch(figs(), /Live now|Matching|Behind/); assert.match(figs(), /Prices updated.*just now/);
+  // A search adds how many matched; a list ten minutes old says it is behind.
+  at = new Date(Date.now() - 600000).toISOString();
+  f.root.querySelector('#xq').listeners.get('input')({target: {value: 'btc'}});
+  f.elapse(300); await flush(); await flush();
+  assert.match(figs(), /Matching.*12/); assert.match(figs(), /fig-behind/); assert.match(figs(), /Behind: prices normally refresh each minute/);
 });
 
 test('Explore with no search and no markets says the list has not arrived, and a failed read offers Try again', async () => {

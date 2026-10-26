@@ -88,7 +88,10 @@ def explore_list(ctx: Ctx):
     if q:
         markets = [m for m in markets
                    if q in ((m.get("ti") or "") + " " + (m.get("t") or "") + " " + (m.get("s") or "")).lower()]
-    markets = sorted(markets, key=lambda m: _efloat(m.get(sort)), reverse=True)
+    # "Price" orders by the price the list shows (the bid/ask midpoint, else the last trade), so the
+    # column reads top to bottom; sorting on the last trade alone put quoted markets that never traded last.
+    rank = (lambda m: _feed_mid(m) or 0.0) if sort == "last" else (lambda m: _efloat(m.get(sort)))
+    markets = sorted(markets, key=rank, reverse=True)
     matched = len(markets)
     return {"at": data.get("at"), "total": data.get("total"), "shown": data.get("shown"),
             "matched": matched, "page": page, "per": per, "sort": sort,
