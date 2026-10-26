@@ -136,7 +136,7 @@ def test_the_admin_page_counts_open_positions_whose_strategy_is_gone(conn, monke
     uid, user = _user(cur, repo, "orphans")
     ctx = _ctx(conn, user)
     tag = uuid.uuid4().hex[:8].upper()
-    soon = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
+    soon = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0) + timedelta(minutes=10)
     later = soon + timedelta(hours=2)
 
     gone = _strategy(cur, repo, uid, "Deleted before the guard")
