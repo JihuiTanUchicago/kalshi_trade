@@ -3587,6 +3587,13 @@ def _cooldown_line(cur, user_id: int) -> str:
     scope = scope + "\n" if scope else ""
     if not blocked:
         return scope + "Research cooldown: none, every market is open for a fresh research line."
+    allowed = [k for k in focus_keys(cur, user_id, _researchable_keys(cur)) if autopilot_scope_ok(k)]
+    if allowed and all(k in blocked for k in allowed):
+        # Prod 2026-10-26 15:27-16:27Z: Bitcoin-only left 2-3 markets, all on cooldown, and reviews
+        # read "do NOT propose these" as "no research": nothing started for an hour.
+        return scope + ("Research cooldown: every market you may research is on cooldown (%s). That does "
+                        "NOT mean stop: start research WITHOUT a market and the specialist takes the one "
+                        "researched longest ago." % ", ".join(sorted(allowed)))
     return scope + ("Research cooldown, do NOT propose these markets now (pick others, or omit market to let the "
             "specialist choose): %s." % ", ".join(sorted(blocked)))
 
