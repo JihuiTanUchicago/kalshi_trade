@@ -147,3 +147,20 @@ def live_ready_notice(to_email: str, name: Optional[str], title: str, evidence: 
         "— Tau"
     ) % (name or "there", title, evidence, (note + "\n\n") if note else "", strategy_url)
     return _send(to_email, "“%s” is ready for live trading" % title[:80], body)
+
+
+def reload_failed_email(to_email: str, name: Optional[str], amount, reason: str) -> bool:
+    """Tell a user an auto-reload of their credits failed (app/adapters/stripe/billing.py sends it once
+    per bell notice, so it keeps that notice's throttle). An account email: it is sent whatever the
+    optional-email switch in Settings says, because research stops when the credits run out. `reason`
+    is the customer-safe reason (StripeError.customer_message), never Stripe's own text."""
+    body = (
+        "Hi %s,\n\n"
+        "Auto-reload couldn't add $%s in credits. %s\n\n"
+        "Research pauses when your credits run out. To keep it going, update your card on Billing:\n\n"
+        "  %s/billing\n\n"
+        "— Tau\n\n"
+        "(An account email about your credits, so Tau sends it even with updates and community email "
+        "off in Settings.)"
+    ) % (name or "there", amount, (reason or "").strip(), PUBLIC_URL)
+    return _send(to_email, "Tau auto-reload couldn't add credits", body)

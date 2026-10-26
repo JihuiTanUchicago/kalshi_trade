@@ -3893,6 +3893,7 @@ test('Settings email switch shows the stored state and says what it stops and wh
     const section = f.root.querySelector('.email-settings').innerHTML;
     assert.match(section, /Sent to owner@example\.invalid/);
     assert.match(section, /<b>Always sent:<\/b> safety alerts about a Bitcoin perps account you trade through Tau: a position that doesn’t match Tau’s orders, a position near liquidation, or heavy margin use\. They protect real money, so this switch doesn’t stop them\./);
+    assert.match(section, /this switch doesn’t stop them\. Also an email when an auto-reload of your credits fails, since research pauses when they run out\.<\/p>/);
     assert.equal(postRequests(f).length, 0);
   }
 });
