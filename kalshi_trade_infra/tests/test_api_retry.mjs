@@ -13,6 +13,7 @@ function loadApi(file) {
     pick(/const STALE = [^\n]*/),
     pick(/const TRANSIENT = [^\n]*/),
     pick(/const sleep = [^\n]*/),
+    pick(/const failText = [\s\S]*?;\n/),
     pick(/async function api\(path, body, cfg\) \{[\s\S]*?\n  \}\n/),
     'globalThis.api = api;',
   ].join('\n');
@@ -61,5 +62,43 @@ for (const file of ['app.js', 'app.meridian.js']) {
     t.replies.push(new TypeError('Failed to fetch'));
     await assert.rejects(t.api('/api/settings', {a: 1}), (e) => e.status === 0);
     assert.deepEqual(t.calls, ['GET', 'POST', 'POST']);
+  });
+}
+
+// A failure never shows the browser's or the edge's own text, and a write Tau may have taken says to
+// check before trying again (deploys and orders are never retried for the user).
+for (const file of ['app.js', 'app.meridian.js']) {
+  test(file + ': a 200 whose body is not JSON is a plain failure, not an empty answer', async () => {
+    const t = loadApi(file);
+    t.replies.push({ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); }});
+    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 200 && e.message === "Tau's reply didn't come through whole. Try again.");
+    t.replies.push(reply(200, null));
+    await assert.rejects(t.api('/api/dashboard'), (e) => !/JSON|null|undefined/.test(e.message));
+    assert.equal(t.calls.length, 2);
+  });
+
+  test(file + ': an HTML error page or a 429 reads as plain words', async () => {
+    const t = loadApi(file);
+    t.replies.push(edge(500));
+    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 500 && e.message === 'Tau is having trouble right now (500). Try again in a moment.');
+    t.replies.push({ok: false, status: 429, json: async () => { throw new SyntaxError('Unexpected token <'); }});
+    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 429 && /Try again in a minute/.test(e.message));
+    t.replies.push(reply(429, {error: 'You can run up to 5 deployments at once.'}));
+    await assert.rejects(t.api('/api/deployments', {strategy_id: 1}), (e) => e.message === 'You can run up to 5 deployments at once.');
+  });
+
+  test(file + ': a write with no answer says it may have gone through, once, with no retry', async () => {
+    const t = loadApi(file);
+    const unsure = (e) => /may or may not have gone through/.test(e.message) && /check before you try again/.test(e.message);
+    t.replies.push(new TypeError('Failed to fetch'));
+    await assert.rejects(t.api('/api/deployments', {strategy_id: 1, mode: 'paper'}), (e) => e.status === 0 && unsure(e));
+    t.replies.push(edge(504));
+    await assert.rejects(t.api('/api/deployments', {strategy_id: 1, mode: 'paper'}), (e) => e.status === 504 && unsure(e));
+    t.replies.push({ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); }});
+    await assert.rejects(t.api('/api/chat', {content: 'hi'}), unsure);
+    // Tau's own JSON error is an answer: it says what happened, not "check".
+    t.replies.push(reply(500, {error: "Something went wrong on our side. It's been logged."}));
+    await assert.rejects(t.api('/api/chat', {content: 'hi'}), (e) => !unsure(e));
+    assert.deepEqual(t.calls, ['POST', 'POST', 'POST', 'POST']);
   });
 }

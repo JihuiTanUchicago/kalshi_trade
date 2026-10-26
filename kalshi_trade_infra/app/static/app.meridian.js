@@ -350,6 +350,15 @@
   const STALE = () => new Promise(() => {});
   const TRANSIENT = new Set([502, 503, 504]), RETRY_MS = [700, 1800];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // What a failed request says when Tau sent no words of its own (the edge's HTML error page, a cut-off
+  // reply, no network): plain words, never the page itself. A write that Tau may have taken anyway (no
+  // reply, or the edge's 5xx) says so, so nobody deploys or sends twice by trying again blind.
+  const failText = (status, write) => write && (!status || status >= 500)
+    ? "Tau didn't confirm this, so it may or may not have gone through. Reload the page to check before you try again."
+    : !status ? "Can't reach Tau. Check your connection."
+    : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
+    : status >= 500 ? `Tau is having trouble right now (${status}). Try again in a moment.`
+    : `Request failed (${status}).`;
   async function api(path, body, cfg) {
     const gen = S.gen, scoped = body === undefined && !(cfg && cfg.keep);
     const opts = { credentials: 'same-origin', headers: {} };
@@ -373,7 +382,7 @@
         if (scoped && gen !== S.gen) { if (tid) clearTimeout(tid); return STALE(); }
         if (body === undefined && attempt < 2 && !(ctl && ctl.signal.aborted)) { await sleep(RETRY_MS[attempt]); continue; }
         if (tid) clearTimeout(tid);
-        throw new ApiError(0, ctl && ctl.signal.aborted ? "Tau is taking too long to respond." : "Can't reach Tau. Check your connection.");
+        throw new ApiError(0, body !== undefined ? failText(0, true) : ctl && ctl.signal.aborted ? "Tau is taking too long to respond." : failText(0));
       }
       if (body === undefined && attempt < 2 && TRANSIENT.has(res.status)) {
         let parsed = null;
@@ -384,11 +393,16 @@
       break;
     }
     if (tid) clearTimeout(tid);
-    let data = {};
-    try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* non-JSON: the edge's error page, or a reply cut off */ }
     if (scoped && gen !== S.gen) return STALE();
-    if (res.status === 401 && path !== '/api/me') { S.me = null; go(signinPath(), true); throw new ApiError(401, 'Please sign in.'); }
-    if (!res.ok) throw new ApiError(res.status, data.error || 'Request failed (' + res.status + ').');
+    // Several reads can come back 401 at once: the first one goes to sign-in and keeps the page as next.
+    if (res.status === 401 && path !== '/api/me') { S.me = null; if (location.pathname !== '/signin') go(signinPath(), true); throw new ApiError(401, 'Please sign in.'); }
+    const said = data && typeof data === 'object' && typeof data.error === 'string' && data.error;
+    if (!res.ok) throw new ApiError(res.status, said || failText(res.status, body !== undefined));
+    // A 200 whose body isn't JSON (cut off, or a proxy's page) is a failure, not an empty answer: pages
+    // built on {} showed the browser's own TypeError text.
+    if (!data || typeof data !== 'object') throw new ApiError(res.status, body !== undefined ? failText(0, true) : "Tau's reply didn't come through whole. Try again.");
     return data;
   }
 
@@ -468,7 +482,9 @@
   function paced(read, ms, note) {
     let busy = false, fails = 0, wait = 0, okAt = Date.now();
     const mark = () => { if (note) note((busy || fails) && Date.now() - okAt > staleAfter(ms) ? okAt : null); };
-    return () => {
+    // wake (the browser came back online) skips what is left of the back-off.
+    return (wake) => {
+      if (wake === true && !busy) wait = 0;
       if (busy || wait > 0) { if (!busy) wait--; mark(); return null; }
       busy = true;
       // The read starts now, not a microtask later: a page left in between must not start it.
@@ -485,7 +501,17 @@
     const tick = paced(fn, ms, noteId && ((at) => { const el = document.getElementById(noteId); if (el) el.textContent = at ? staleText(at) : ''; }));
     const id = setInterval(() => { if (!document.hidden && gen === S.gen) tick(); }, ms);
     S.timers.push(id);
+    wakers.add(() => { if (gen !== S.gen) return false; if (!document.hidden) tick(true); });
   }
+  // Back online: polls read now instead of sitting out their back-off (up to two minutes of old
+  // figures), and a page or panel that failed to load tries again. A waker returns false once its
+  // page is gone.
+  const wakers = new Set();
+  window.addEventListener('online', () => {
+    wakers.forEach((w) => { if (w() === false) wakers.delete(w); });
+    if (document.getElementById('bootretry')) { render(); return; }
+    root.querySelectorAll('.load-fail [data-retry]').forEach((b) => b.click());
+  });
   async function render() {
     clearTimers();
     const gen = ++S.gen;
@@ -496,7 +522,17 @@
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
     if (!S.me && path !== '/signin') {
-      try { S.me = await api('/api/me'); } catch (e) { if (e.status === 401) S.signedOutAt = Date.now(); return go(signinPath(), true); }
+      // Boot: a 401 means signed out (-> signin). Any other failure (slow, overloaded, offline) is
+      // passing, so say so with a retry instead of sending a signed-in user to sign in. A splash shows
+      // after 250ms, so a fast boot never flashes it, and the read gives up after 12s.
+      let splashTid = root.firstChild ? null : setTimeout(() => { if (!S.me) root.innerHTML = bootSplash(); }, 250);
+      try { S.me = await api('/api/me', undefined, { timeoutMs: 12000 }); }
+      catch (e) {
+        if (splashTid) clearTimeout(splashTid);
+        if (e.status === 401) { S.signedOutAt = Date.now(); return go(signinPath(), true); }
+        return bootFail();
+      }
+      if (splashTid) clearTimeout(splashTid);
       // Adopt the account's saved theme on a fresh device (server wins), reloading once into it.
       const server = (S.me.user && S.me.user.ui_theme) || 'tau';
       let local = 'tau'; try { local = localStorage.getItem('tau_ui') || 'tau'; } catch (e) {}
@@ -513,7 +549,7 @@
         const up = path.replace(/\/\d+$/, ''), label = { '/strategies': 'All strategies', '/research': 'All research sessions' }[up];
         shell('', boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
       } else if (gen === S.gen && e.status !== 401) {
-        shell('', boardTitle('Something went wrong'), loadFail(e.message));
+        shell('', boardTitle('Something went wrong'), loadFail(errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
       }
     }
@@ -773,7 +809,19 @@
   const notice = (msg, kind = '') => `<div class="notice ${kind}" role="${kind === 'bad' ? 'alert' : 'status'}">${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
   // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
   const loadFail = (msg) => `<div class="load-fail">${notice(msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
+  // A page's own bug (a TypeError on a reply it didn't expect) is not something to print to the user.
+  const errText = (e) => (e instanceof ApiError ? e.message : 'Something went wrong on this page. Try again.');
   const loading = (h = 160) => `<div class="skeleton" style="height:${h}px" aria-label="Loading"></div>`;
+  // Boot screens: shown only while /api/me is in flight (splash) or after it timed out or failed for a
+  // reason other than being signed out (fail).
+  const bootSplash = () => `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div><div class="lspin" aria-label="Loading Tau"></div></div>`;
+  function bootFail() {
+    root.innerHTML = `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div>
+      <p class="boot-msg">Tau is taking longer than usual to load. It may be briefly busy.</p>
+      <button class="btn" id="bootretry">Try again</button></div>`;
+    const b = document.getElementById('bootretry');
+    if (b) b.onclick = () => { b.disabled = true; render(); };
+  }
 
   // arm-to-confirm: first click arms for 5s, second click fires
   function armed(btn, label, fire) {
@@ -1279,6 +1327,7 @@
   }
   function alert0(msg) {
     const host = root.querySelector('#flash') || root.querySelector('main');
+    if (!host) return;
     const el = document.createElement('div');
     el.innerHTML = notice(msg, 'bad');
     host.prepend(el.firstChild);
@@ -1870,7 +1919,7 @@
         <p class="hint go-cost" id="rcost" hidden></p>
         <div id="dflash"></div>
         <p class="hint" id="rf-hint">A session takes a few minutes and keeps running if you leave this page.</p>
-      </form>${pipelineFigure()}</div></details><section class="research-history sect"><div class="sect-head research-archive-heading"><h2>Recent sessions <span id="rcount"></span></h2><div class="rengine" id="rengine"><section class="research-total" aria-label="All sessions, including active"><h3>All sessions</h3><dl class="figures measure" id="rfigs"></dl><dl class="figures measure research-status" id="research-status"></dl></section></div></div>
+      </form>${pipelineFigure()}</div></details><section class="research-history sect"><div class="sect-head research-archive-heading"><h2>Recent sessions <span id="rcount"></span></h2><div class="rengine" id="rengine"><section class="research-total" aria-label="All sessions, including active"><h3>All sessions</h3><dl class="figures measure" id="rfigs"></dl><dl class="figures measure research-status" id="research-status"></dl><p class="stale-note" id="runs-stale" role="status"></p></section></div></div>
         <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section></div>`);
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
@@ -1974,7 +2023,7 @@
         : `<div class="empty"><h3>${active ? 'No earlier sessions' : 'No sessions yet'}</h3></div>`;
     };
     await load();
-    poll(load, 5000);
+    poll(load, 5000, 'runs-stale');
   }
   // What a run has taken from credits (the ledger rows billed to it, `spent_usd` from the server).
   // A run still going says "so far"; a finished one states its cost.
@@ -2598,7 +2647,7 @@
       let d;
       try { d = await api('/api/strategies?' + p.toString()); } catch (e) {
         if (e.status === 401) throw e;
-        slipsEl.innerHTML = loadFail(e.message);
+        slipsEl.innerHTML = loadFail(errText(e));
         slipsEl.querySelector('[data-retry]').onclick = () => load();
         return;
       }
@@ -3038,7 +3087,7 @@
     // Autopilot + the agent chat now live in the floating window (reachable from every view),
     // so Deploy is just the board: what's trading and the open positions.
     shell('/deploy', boardTitle('Deploy') +
-      '<dl class="figures measure" id="dfigs" style="margin-top:14px"></dl>', `
+      '<dl class="figures measure" id="dfigs" style="margin-top:14px"></dl><p class="stale-note" id="dep-stale" role="status"></p>', `
       <div class="deploy-board"><div id="flash"></div><div id="demo-health"></div><div id="dep-ap"></div><div id="deps">${loading(260)}</div>
         <section class="section"><div class="section-head"><h2>Open positions</h2></div><div id="openpos"></div></section>
       </div>`);
@@ -3092,7 +3141,7 @@
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
-    poll(loadBoard, 10000);
+    poll(loadBoard, 10000, 'dep-stale');
   }
 
   // ---------- track record ----------
@@ -3227,7 +3276,7 @@
       const read = pending; pending = null;  // the view's own read once; a retry asks again
       try { await mountTrackRecord(host, last, read); } catch (e) {
         if (gen !== S.gen) return;
-        host.innerHTML = loadFail(e.message);
+        host.innerHTML = loadFail(errText(e));
         host.querySelector('[data-retry]').onclick = () => { host.innerHTML = loading(260); return first(); };
         return;
       }
@@ -3847,6 +3896,7 @@
       apLoop = true;
       const tick = paced((cfg) => refreshAutopilot(document.getElementById('autopilot-float'), false, cfg).then((ok) => { if (!ok) throw new Error('Autopilot status read failed'); }), 20000, apPaintStale);
       setInterval(() => { if (document.getElementById('autopilot-float') && !document.hidden) tick(); }, 20000);
+      wakers.add(() => { if (document.getElementById('autopilot-float') && !document.hidden) tick(true); });
       document.addEventListener('visibilitychange', () => {
         const b = document.getElementById('autopilot-float');
         if (b && !document.hidden && (!S.apAt || Date.now() - S.apAt > 18000)) refreshAutopilot(b, true);
@@ -4214,7 +4264,9 @@
     li.textContent = label + (tzShort() ? ' ·\u00a0times in ' + tzShort() : '');
     return li;
   }
-  function apStopChat() { if (apChatTimer) { clearInterval(apChatTimer); apChatTimer = null; } }
+  function apStopChat() { if (apChatTimer) { clearInterval(apChatTimer); apChatTimer = null; } apChatWake = null; }
+  let apChatWake = null;
+  wakers.add(() => { if (apChatWake && !document.hidden) apChatWake(); });
   // The autopilot's autonomous moves, keyed by the proposal kind on a system line — the clear,
   // plain verb a reader scans ("Promoted", "Tuned"), plus the timeline lane that tints the node.
   // No proposal on a system line = a review/holding/blocked note (nothing was changed).
@@ -4262,14 +4314,22 @@
       <div class="apf-md">${feedMd(m.content)}</div>${detail}${ctl}</div>`;
     return li;
   }
-  async function apLoadChat(box, full) {
+  // Resolves false when the read failed (the chat poll backs off on it; other callers ignore it).
+  async function apLoadChat(box, full, cfg) {
     const msgs = box.querySelector('#apf-messages'); if (!msgs) return;
-    let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId), undefined, { keep: true }); } catch (e) { return; }
+    let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId), undefined, { keep: true, ...cfg }); }
+    catch (e) {
+      // Nothing painted yet: say the feed didn't load rather than leave it blank. The poll retries.
+      if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty ap-fail">Couldn\u2019t load the autopilot\u2019s activity. Retrying.</li>';
+      return false;
+    }
+    msgs.querySelectorAll('.ap-fail').forEach((n) => n.remove());
     const stick = full || msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 70;
     if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; apFeedDay = ''; }
     const empty = msgs.querySelector('.ap-empty'); if (empty && d.messages.length) empty.remove();
     msgs.querySelectorAll('.apf-typing').forEach((n) => n.remove());
     d.messages.forEach((m) => {
+      if (m.id <= apChatLastId) return;  // a slow read that lands after a newer one already painted it
       apChatLastId = Math.max(apChatLastId, m.id);
       const day = new Date(m.created_at).toDateString();
       if (day !== apFeedDay) { apFeedDay = day; msgs.appendChild(apDayLi(m.created_at)); }
@@ -4293,6 +4353,7 @@
         : `<span data-ap-idle>${esc(apIdleLine(box))}</span>`;
     }
     if (stick) msgs.scrollTop = msgs.scrollHeight;
+    return true;
   }
   // Idle pulse copy: lead with the autopilot's most recent move (from the status poll, always
   // available even if chat is slow), else a plain "on a schedule" line.
@@ -4399,7 +4460,14 @@
     };
     apLoadChat(box, true);
     apStopChat();
-    apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) { if (!document.hidden) apLoadChat(b); } else apStopChat(); }, 3000);
+    // One read at a time, backing off while they fail: a hung or down server used to get three reads
+    // every 3s (each tick plus its retries), stacking while they hung.
+    const chatTick = paced((cfg) => {
+      const b = document.getElementById('autopilot-float');
+      return b && apLoadChat(b, false, cfg).then((ok) => { if (ok === false) throw new Error('Chat read failed'); });
+    }, 3000);
+    apChatWake = () => chatTick(true);
+    apChatTimer = setInterval(() => { const b = document.getElementById('autopilot-float'); if (b && apExpanded()) { if (!document.hidden) chatTick(); } else apStopChat(); }, 3000);
     // Market focus: binding on research, deploys and the paper funnel (server enforces it).
     (() => {
       const sel = box.querySelector('#apf-focus'); if (!sel) return;
@@ -4586,7 +4654,7 @@
     rail.classList.toggle('is-stale', !!d && (snapshotAge == null || snapshotAge > 180));
     const freshness = d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? ' ·\u00a0More than 3 minutes old' : ''}">${snapshotAge == null ? 'Snapshot time unavailable' : `${snapshotAge > 180 ? 'Stale' : 'Snapshot'} ·\u00a0${esc(sinceMin(d.at))}`}</span>` : '';
     const rows = d && d.markets && d.markets.length ? d.markets.map(hotRowHtml).join('')
-      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : loading(120)}</div>`;
+      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying in a minute.' : loading(120)}</div>`;
     const control = root.querySelector('.market-control');
     const toggle = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-controls="hotrail" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}" title="Hot markets"><span class="hot-tab-label">Hot markets</span><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M7.5 4v12"/></svg></button>`;
     if (control) {
@@ -4609,8 +4677,10 @@
     });
     rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
   }
+  // Resolves false when the read failed. The rail is repainted anyway, so its age line counts on from
+  // the last snapshot's own time instead of saying "just now" for as long as reads fail.
   async function refreshHot() {
-    try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); renderHotRail(); } catch (e) {}
+    try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
   }
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
@@ -4618,8 +4688,9 @@
     if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; document.body.appendChild(a); }
     renderHotRail();
     const stale = !S.hot || !S.hotAt || Date.now() - S.hotAt > 55000;
-    if (stale) refreshHot().then(() => { S.hotAt = Date.now(); });
-    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail')) refreshHot().then(() => { S.hotAt = Date.now(); }); }, 60000); }
+    if (stale) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); });
+    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail')) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
+      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && S.hotFail) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }); }
   }
 
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
