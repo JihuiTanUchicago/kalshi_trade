@@ -2166,7 +2166,7 @@ def autopilot_status(ctx: Ctx):
         "tournament": _tournament_summary(cur, ctx.uid, deps),
     }
     if u.get("autopilot"):
-        out["week"] = _autopilot_week(cur, ctx.uid, out["research"])
+        out["week"] = _autopilot_week(cur, ctx.uid, out["research"], reads)
         # Why nothing is trading right now (None while something is). Each read is skipped unless
         # its state can be the answer, since this endpoint polls.
         running = len(paper_run) + len(demo_run) + len(live_run)
@@ -2186,15 +2186,27 @@ def autopilot_status(ctx: Ctx):
     return out
 
 
-def _autopilot_week(cur, uid: int, research: Dict) -> Dict:
+def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads] = None) -> Dict:
     """The autopilot's last 7 days, for its scorecard. Research reuses the panel's week (every
     research session, the user's and the autopilot's; credits are what the ledger debited). Paper
     covers only the strategies the autopilot put on paper itself. Credits are real money and paper
     P&L is not, so they are separate fields the page shows apart and never adds up."""
-    paper = repo.autopilot_paper_week(cur, uid, repo.now_utc() - timedelta(days=7))
-    return {"research_credits": research.get("cost_7d", 0.0), "tested": research.get("tested_7d", 0),
-            "passed": research.get("passed_7d", 0), "paper_started": paper["started"],
-            "paper_pnl": round(paper["pnl"], 2), "paper_trades": paper["trades"]}
+    since = repo.now_utc() - timedelta(days=7)
+    paper = repo.autopilot_paper_week(cur, uid, since)
+    out = {"research_credits": research.get("cost_7d", 0.0), "tested": research.get("tested_7d", 0),
+           "passed": research.get("passed_7d", 0), "paper_started": paper["started"],
+           "paper_pnl": round(paper["pnl"], 2), "paper_trades": paper["trades"],
+           "checkin_credits": None, "credits_left": None, "runway_days": None}
+    if billing.configured():
+        # What else the week cost and how long the balance lasts at that pace, read-only: the
+        # autopilot's check-ins bill too, and the runway is the Billing page's (every usage debit of
+        # the week). With payments off nothing pauses it, so there is no limit to show.
+        used = repo.usage_by_source(cur, uid, since)
+        spent_7d = sum(used.values())
+        balance = (reads or billing.Reads(cur, uid)).balance()
+        out.update(checkin_credits=round(used["autopilot_review"], 2), credits_left=round(balance, 2),
+                   runway_days=round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None)
+    return out
 
 
 def autopilot_focus(ctx: Ctx):
@@ -2659,9 +2671,39 @@ def billing_state(ctx: Ctx):
         "min_reload_threshold": float(billing.AUTORELOAD_THRESHOLD),
         "min_topup": float(billing.MIN_TOPUP), "max_topup": float(billing.MAX_TOPUP),
         "cards": cards, "default_pm": default_pm, "auto_reload": auto_reload,
-        "ledger": [{"kind": r["kind"], "amount": float(r["amount_usd"]), "memo": r["memo"], "created_at": r["created_at"]}
-                   for r in repo.credit_rows(cur, ctx.uid)],
+        # Read-only spend pace: the last day, and the week split by what spent it (the parts add up
+        # to spent_7d). The research floor tells the page when new research can't start.
+        "spent_24h": round(repo.credit_spent_total(cur, ctx.uid, repo.now_utc() - timedelta(days=1)), 4),
+        "spent_7d_by": {k: round(v, 4) for k, v in
+                        repo.usage_by_source(cur, ctx.uid, repo.now_utc() - timedelta(days=7)).items()},
+        "min_run_balance": float(billing.MIN_RUN_BALANCE),
+        "ledger": [dict({"kind": r["kind"], "amount": float(r["amount_usd"]), "memo": _ledger_memo(r), "created_at": r["created_at"]},
+                        **_usage_item(r)) for r in repo.credit_rows(cur, ctx.uid)],
     }
+
+
+_USAGE_MEMO = "Agent usage · "  # billing.charge_usage's memo: this, then the invokable modelId
+_RUN_ITEM = {("research", 0): "Research session", ("research", 1): "Autopilot research",
+             ("review", 0): "Autopilot check-in", ("review", 1): "Autopilot check-in", ("chat", 0): "Chat"}
+
+
+def _usage_item(r: Dict) -> Dict[str, str]:
+    """What a usage line was for, in customer words: {"item": "Autopilot research", "model":
+    "Claude Opus 4.6"}. The memo names the invokable modelId, which is ours, not the customer's, so
+    it never reaches the page or the receipt as is. {} for a row that is not usage."""
+    if r.get("kind") != "usage":
+        return {}
+    memo = r.get("memo") or ""
+    model = memo[len(_USAGE_MEMO):] if memo.startswith(_USAGE_MEMO) else ""
+    item = _RUN_ITEM.get((r.get("run_kind"), int(r.get("run_brief") or 0)), "Agent usage")
+    return {"item": item, "model": catalog.label_for_model_id(model) if model else ""}
+
+
+def _ledger_memo(r: Dict) -> str:
+    """A ledger row's memo as the customer reads it (Billing and the receipt): a usage line says what
+    it was for and names the model, never its id; any other memo is as written."""
+    use = _usage_item(r)
+    return "%s · %s" % (use["item"], use["model"]) if use.get("model") else (r.get("memo") or "")
 
 
 _PLAIN_NUMBER = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)$")
@@ -2709,7 +2751,7 @@ def billing_receipt(ctx: Ctx):
     row([])
     row(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
     for r in repo.credit_rows(cur, ctx.uid, 100000):  # full history, newest first
-        row([r["created_at"], r["kind"], _usd4(r["amount_usd"]), r["memo"] or ""])
+        row([r["created_at"], r["kind"], _usd4(r["amount_usd"]), _ledger_memo(r)])
     fname = "tau-credits-%s.csv" % repo.now_utc().strftime("%Y%m%d")
     return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
 
@@ -3214,7 +3256,32 @@ def research_estimate(ctx: Ctx):
     each model. Read-only; what a run is charged does not change."""
     own = repo.finished_session_costs(ctx.cur, ctx.uid, 10)
     return {"yours": round(_median(own), 2) if len(own) >= SESSION_COST_MIN_OWN else None,
-            "sessions": len(own), "typical": _typical_session_costs(ctx.cur)}
+            "sessions": len(own), "typical": _typical_session_costs(ctx.cur),
+            "per_hour": _forever_hourly(ctx.cur, ctx.uid)}
+
+
+FOREVER_RATE_MIN_HOURS = 1.0  # hours of your own run-until-stopped research before your rate is used
+_TYPICAL_FOREVER_RATE: List[Any] = [0.0, {}]
+
+
+def _forever_hourly(cur, uid: int) -> Dict:
+    """What a run-until-stopped session costs an hour at recent rates, for the line beside Start:
+    {"yours": your own such sessions of the last 14 days, pooled (dollars over hours billed), once
+    they add up to FOREVER_RATE_MIN_HOURS; "typical": {model key: the median session's hourly rate
+    over every user's, for a model with SESSION_COST_MIN_TYPICAL sessions}}. Read-only, from what the
+    ledger debited; cached server-wide like the typical session cost."""
+    since = repo.now_utc() - timedelta(days=14)
+    mine = repo.forever_session_rates(cur, since, uid, 50)
+    hours = sum(h for _m, _s, h in mine)
+    yours = round(sum(s for _m, s, _h in mine) / hours, 2) if hours >= FOREVER_RATE_MIN_HOURS else None
+    at, typical = _TYPICAL_FOREVER_RATE
+    if time.time() - at >= SESSION_COST_TTL:
+        by_model: Dict[str, List[float]] = {}
+        for model, spent, h in repo.forever_session_rates(cur, since):
+            by_model.setdefault(catalog.resolve(model).key, []).append(spent / h)
+        typical = {k: round(_median(v), 2) for k, v in by_model.items() if len(v) >= SESSION_COST_MIN_TYPICAL}
+        _TYPICAL_FOREVER_RATE[:] = [time.time(), typical]
+    return {"yours": yours, "typical": typical}
 
 
 def research_context(ctx: Ctx):

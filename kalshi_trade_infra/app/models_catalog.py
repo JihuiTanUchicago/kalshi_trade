@@ -107,6 +107,26 @@ _PRICE_BY_MODEL_ID: Dict[str, Tuple[Decimal, Decimal]] = {
 }
 
 
+# modelId -> the name a customer sees, for a usage line on Billing and the receipt: a ledger memo
+# carries the invokable modelId ("us.anthropic.claude-opus-4-6-v1"), which is ours, not theirs.
+_LABEL_BY_MODEL_ID: Dict[str, str] = {
+    mid: m.label for m in list(MODELS.values()) + PENDING
+    for mid in (m.model_id, global_twin(m.model_id)) if mid
+}
+_FAMILY_LABELS = (("opus", "Claude Opus"), ("sonnet", "Claude Sonnet"), ("haiku", "Claude Haiku"),
+                  ("fable", "Claude Fable"), ("nova", "Amazon Nova"), ("llama", "Llama"))
+
+
+def label_for_model_id(model_id: Optional[str]) -> str:
+    """The customer-facing name of an invokable modelId: its catalog label, else its model family
+    for a retired or legacy id, else a plain "AI model". Never the raw id."""
+    mid = (model_id or "").strip()
+    if mid in _LABEL_BY_MODEL_ID:
+        return _LABEL_BY_MODEL_ID[mid]
+    low = mid.lower()
+    return next((label for key, label in _FAMILY_LABELS if key in low), "AI model")
+
+
 def default() -> ModelChoice:
     return MODELS[DEFAULT_KEY]
 
