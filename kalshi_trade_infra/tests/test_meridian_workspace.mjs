@@ -4285,3 +4285,47 @@ test('Funds says when the demo key\'s balance was read, as it does for Kalshi ca
     assert.match(f.root.querySelector('main').innerHTML, said);
   }
 });
+
+// Settings' email switch: it shows the stored state from /api/me, names what it stops and what always
+// comes (perps safety alerts), and saves through /api/email-preferences only.
+test('Settings email switch shows the stored state and says what it stops and what still comes', async () => {
+  for (const [stored, checked, said] of [[undefined, true, /^On\. Tau emails you about replies to your posts, mentions of your @name, new community posts \(at most one email every 4 hours\), and a paper strategy that’s ready for live trading\.$/],
+    [false, true, /^On\./], [true, false, /^Off\. Tau doesn’t email you about replies to your posts, mentions of your @name, new community posts, or a paper strategy that’s ready for live trading\. The bell in Tau still shows/]]) {
+    const f = frontend({fetchImpl: path => { throw new Error('Settings reads nothing on open: ' + path); }});
+    f.S.me.user = {...f.S.me.user, email: 'owner@example.invalid', email_opt_out: stored};
+    await f.viewSettings();
+    const sw = f.root.querySelector('#email-optional');
+    assert.equal(sw.checked, checked); assert.equal(sw.getAttribute('role'), 'switch');
+    assert.match(f.root.querySelector('#email-state').textContent, said);
+    const section = f.root.querySelector('.email-settings').innerHTML;
+    assert.match(section, /Sent to owner@example\.invalid/);
+    assert.match(section, /<b>Always sent:<\/b> safety alerts about a Bitcoin perps account you trade through Tau: a position that doesn’t match Tau’s orders, a position near liquidation, or heavy margin use\. They protect real money, so this switch doesn’t stop them\./);
+    assert.equal(postRequests(f).length, 0);
+  }
+});
+
+test('Settings email switch saves off and on, and a failed save puts the switch back', async () => {
+  let fail = false;
+  const f = frontend({fetchImpl: (path, options) => {
+    assert.equal(path, '/api/email-preferences');
+    if (fail) return response({error: 'Synthetic preference outage'}, 503);
+    return response({ok: true, email_opt_out: JSON.parse(options.body).email_opt_out});
+  }});
+  await f.viewSettings();
+  let sw = f.root.querySelector('#email-optional');
+  assert.equal(sw.checked, true);
+  sw.checked = false; await sw.onchange(); await flush();
+  assert.deepEqual(postRequests(f).map(r => [r.path, JSON.parse(r.options.body), r.options.headers['X-Recursive']]),
+    [['/api/email-preferences', {email_opt_out: true}, '1']]);
+  assert.equal(f.S.me.user.email_opt_out, true); assert.equal(sw.checked, false); assert.equal(sw.disabled, false);
+  assert.match(f.root.querySelector('#email-state').textContent, /^Off\./);
+  assert.match(f.root.querySelector('#email-flash').innerHTML, /Optional email is off\. Safety alerts still come\./);
+  sw.checked = true; await sw.onchange(); await flush();
+  assert.deepEqual(JSON.parse(postRequests(f)[1].options.body), {email_opt_out: false});
+  assert.equal(f.S.me.user.email_opt_out, false); assert.match(f.root.querySelector('#email-state').textContent, /^On\./);
+  fail = true;
+  sw.checked = false; await sw.onchange(); await flush();
+  assert.equal(f.S.me.user.email_opt_out, false); assert.equal(sw.checked, true);  // nothing changed on the server
+  assert.match(f.root.querySelector('#email-state').textContent, /^On\./);
+  assert.match(f.root.querySelector('#email-flash').innerHTML, /Synthetic preference outage/);
+});
