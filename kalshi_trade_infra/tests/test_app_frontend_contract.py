@@ -140,6 +140,42 @@ def test_public_system_activity_is_scoped_to_the_signed_in_user():
     assert activity[0][1] == (7,)
 
 
+def test_system_engine_boxes_count_running_deployments_per_mode_and_read_the_engine_heartbeat():
+    # "N live" used to count every running deployment, paper and demo included, and both engine boxes
+    # read the retired engines' heartbeats (so they showed stale while the real engine ran).
+    from datetime import timedelta
+
+    now = server.repo.now_utc().replace(tzinfo=None)
+
+    class ReadCursor:
+        def __init__(self):
+            self.rows = []
+
+        def execute(self, sql, params=()):
+            if 'FROM collector_state' in sql:
+                self.rows = [{'state_key': 'recursive_engine_last_tick', 'updated_at_utc': now - timedelta(seconds=20)},
+                             {'state_key': 'live_trading_last_snapshot', 'updated_at_utc': now - timedelta(days=30)}]
+            elif 'FROM app_deployments' in sql and 'GROUP BY mode' in sql:
+                assert "status='running'" in sql
+                self.rows = [{'mode': 'paper', 'c': 5}, {'mode': 'demo', 'c': 2}, {'mode': 'live', 'c': 1}]
+            else:
+                self.rows = []
+
+        def fetchone(self):
+            return {'n': 0}
+
+        def fetchall(self):
+            return self.rows
+
+    ctx = context()
+    ctx.conn.cursor = lambda: ReadCursor()
+    nodes = server.admin_system(ctx)['nodes']
+    assert nodes['live_engine']['live'] == 1 and nodes['live_engine']['demo'] == 2
+    assert nodes['sim_engine']['paper'] == 5
+    assert 20 <= nodes['live_engine']['age'] < 30 and nodes['sim_engine']['age'] == nodes['live_engine']['age']
+    assert 'deployments' not in nodes['live_engine']  # no one figure that sums the modes
+
+
 def _ap_ctx(monkeypatch, autopilot=1):
     # Minimal Ctx + repo stubs for the autopilot_status handler (deployments/pnl/actions mocked out).
     ctx = server.Ctx(

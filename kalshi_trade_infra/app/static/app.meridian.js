@@ -3430,10 +3430,11 @@
   // time (live, demo and paper never mix), every figure next to the sample it rests on. All math is
   // server-side (app/track_record.py); this only lays it out.
   const TR_MODES = [['live', 'Live'], ['demo', 'Demo'], ['paper', 'Paper']];
-  const trFix = (v, dp = 2) => (v == null ? '—' : (+v).toFixed(dp));
+  const trFix = (v, dp = 2) => (v == null ? '—' : (+v).toFixed(dp).replace('-', '\u2212'));  // a true minus, as usd() prints
   const trDay = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
   const trMonth = (k) => { const [y, m] = k.split('-'); return new Date(Date.UTC(+y, +m - 1, 15)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', timeZone: 'UTC' }); };
   const trCi = (ci, f) => (ci ? `95%: ${f(ci[0])} to ${f(ci[1])}` : 'needs 2+ trades for a range');
+  const TR_STATUS = { paused: 'Paused', stopped: 'Stopped' };
   const TR_EDGE = { positive: ['Edge', 'on'], negative: ['Losing', 'live'], unclear: ['Unproven', ''], thin: ['Too few', 'quiet'] };
   // A first batch of trades often settles in the same second (one 15-minute close), which drew the
   // whole record as a vertical line. When every close falls within a minute, space the points one
@@ -3483,7 +3484,7 @@
       ${fig('Win rate', pct(m.win_rate, false), { small: trCi(m.win_rate_ci, (v) => pct(v, false)) })}
       ${fig('Trades', num(m.trades), { small: `${num(m.wins)} won ·\u00a0${num(m.losses)} lost` })}
       ${fig('Avg trade', usd(m.avg_trade, true), { v: m.avg_trade, small: trCi(m.avg_trade_ci, (v) => usd(v, true)) })}
-      ${fig('Profit factor', trFix(m.profit_factor), { small: 'gross wins ÷ gross losses' })}
+      ${fig('Profit factor', trFix(m.profit_factor), { small: 'winning trades ÷ losing trades, after fees' })}
     </dl>`;
     const risk = `<dl class="kv tr-kv">
       <dt>Average win</dt><dd>${usd(m.avg_win, true)}</dd><dt>Average loss</dt><dd>${usd(m.avg_loss, true)}</dd>
@@ -3498,7 +3499,10 @@
       <td class="num" data-lab="Win rate">${pct(r.win_rate, false)}</td></tr>`).join('');
     const strats = m.strategies.map((r) => {
       const [tag, cls] = TR_EDGE[r.edge] || TR_EDGE.unclear;
-      return `<tr><td class="name" data-lab="Strategy"><a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a></td>
+      // A stopped or removed strategy stays in the table (and every figure); it says so instead of
+      // reading like one still trading. A removed one has no page left to link to.
+      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}stopped, then removed` : TR_STATUS[r.status];
+      return `<tr><td class="name" data-lab="Strategy">${r.removed ? esc(r.title) : `<a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a>`}${st ? `<div class="sub-fig">${st}</div>` : ''}</td>
         <td data-lab="Read"><span class="mk ${cls}">${tag}</span></td>
         <td class="num" data-lab="Trades">${num(r.trades)}${r.open_trades ? ` <span class="sub-fig">+${num(r.open_trades)} open</span>` : ''}</td>
         <td class="num" data-lab="Net P&amp;L">${money(r.net_pnl)}</td>
@@ -3515,7 +3519,7 @@
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
-      <section class="section"><div class="section-head"><h2>By strategy</h2><p>“Too few” means under ${th.min_trades} trades</p></div>
+      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Stopped ones included ·\u00a0“Too few” means under ${th.min_trades} trades</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Read</th><th class="num">Trades</th><th class="num">Net P&amp;L</th><th class="num">Win rate</th><th class="num">Avg trade</th><th class="num">Max drawdown</th><th class="num">Last trade</th></tr></thead><tbody>${strats}</tbody></table></div></section>`;
   }
   // Lives on the dashboard (Todd, 2026-10-25): its own request below the live board, so the 15s
@@ -5435,8 +5439,8 @@
     db: 'Amazon RDS MySQL. Every collector writes here and every engine + the app reads here. One source of truth.',
     agents: 'app/worker.py (agents) — claims research/chat runs and drives Claude through the research loop, writing strategies + a live event log.',
     backtest: 'app/backtest.py — runs each hypothesis on data it never saw and applies the deployment gates. Same spec the engines run.',
-    sim_engine: 'app/worker.py (engine) on paper money — prices from the live book, books fills, tracks P&L without real orders.',
-    live_engine: 'live_trading_engine.py — places real orders in a user’s own Kalshi account. Gated off until explicitly authorised.',
+    sim_engine: 'app/engine.py on paper money — prices from the live book, fills against the shown size, tracks P&L without real orders.',
+    live_engine: 'app/engine.py (the same engine) — places real orders: live money in a user’s own Kalshi account, demo on Kalshi’s sandbox. Live money also needs Tau’s live switch on, the user’s own opt-in and enough paper evidence.',
   };
   const sysNode = (id) => SYS_NODES.find((n) => n.id === id);
   function sysEdgePath(a, b) {
@@ -5550,8 +5554,9 @@
       const a = L.age == null ? '—' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
       if (id === 'forward') return `${num(L.rows)} ${L.unit} ·\u00a0${a}`;
       if (id === 'cb_coll' || id === 'features') return `${num(L.rows)} ${L.unit} ·\u00a0${a}`;
-      if (id === 'sim_engine') return `${num(L.trades)} fills ·\u00a0${a}`;
-      if (id === 'live_engine') return `${L.deployments} live ·\u00a0${a}`;
+      // Running deployments per mode (every user's): live money and demo are named apart, never summed.
+      if (id === 'sim_engine') return `${num(L.paper)} paper running ·\u00a0${a}`;
+      if (id === 'live_engine') return `${num(L.live)} live ·\u00a0${num(L.demo)} demo ·\u00a0${a}`;
       return a;
     }
     // A verdict reads as the run page's plain note (server gate_explain.event_note) when it has one,

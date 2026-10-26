@@ -3058,6 +3058,8 @@ def admin_system(ctx: Ctx):
 
     cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs GROUP BY status")
     runs = {r["status"]: r["c"] for r in cur.fetchall()}
+    cur.execute("SELECT mode, COUNT(*) c FROM app_deployments WHERE status='running' GROUP BY mode")
+    running = {r["mode"]: int(r["c"]) for r in cur.fetchall()}
 
     def safe_scalar(q, *a):
         try:
@@ -3080,8 +3082,11 @@ def admin_system(ctx: Ctx):
         "web":       {"up": True, **({"users": scalar("SELECT COUNT(*) c FROM app_users")} if is_admin else {})},
         "agents":    {"running": runs.get("running", 0), "queued": runs.get("queued", 0), "done": runs.get("succeeded", 0) + runs.get("failed", 0)},
         "backtest":  {"strategies": scalar("SELECT COUNT(*) c FROM app_strategies")},
-        "sim_engine":  {"age": age.get("sim_trading_last_snapshot"), "trades": safe_scalar("SELECT COUNT(*) c FROM sim_trades")},
-        "live_engine": {"age": age.get("live_trading_last_snapshot"), "deployments": scalar("SELECT COUNT(*) c FROM app_deployments WHERE status='running'")},
+        # One process (app/engine.py) runs every mode, so its heartbeat is both boxes' age. Running
+        # deployments are counted per mode: "N live" once counted paper and demo ones too.
+        "sim_engine":  {"age": age.get("recursive_engine_last_tick"), "paper": running.get("paper", 0)},
+        "live_engine": {"age": age.get("recursive_engine_last_tick"), "live": running.get("live", 0),
+                        "demo": running.get("demo", 0)},
     }
     # Recent activity feed: fleet-wide for the operator, but a normal user only ever
     # sees their OWN agent events — never another user's private strategy names.

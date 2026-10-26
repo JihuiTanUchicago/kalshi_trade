@@ -25,7 +25,8 @@ NOW = datetime(2026, 10, 26, 12, 30, tzinfo=timezone.utc)
 # MariaDB returned its groups in key order, MySQL in no promised order, so the reference pins the key
 # order the new read states.
 OLD_TRACK_RECORD_SQL = """
-    SELECT p.mode, MAX(d.strategy_id) AS strategy_id, MAX(s.title) AS title, MAX(s.market) AS market,
+    SELECT p.mode, MAX(d.strategy_id) AS strategy_id, MAX(s.title) AS title,
+           MAX(COALESCE(s.market, d.market)) AS market, MAX(d.status) AS dep_status,
            MAX(p.order_ref) AS order_ref,
            SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END) AS open_slices,
            COALESCE(SUM(p.pnl),0) AS pnl,

@@ -272,3 +272,36 @@ def test_track_record_route_and_spa_path_are_registered():
     assert server.SPA_ROUTES.match("/track-record")
     assert any(m == "GET" and rx.match("/api/track-record") and fn is server.get_track_record
                for m, rx, fn, _ in server.ROUTES)
+
+
+def test_a_thin_sample_makes_no_confidence_claim_about_the_average_trade():
+    # Five wins in a row: a normal range on 5 trades excludes zero, and the page used to say
+    # "above zero at 95% confidence" under "Too early to judge".
+    p = tr.build([row("live", 1.5 + i * 0.1, ref="k%d" % i) for i in range(5)], NOW)["modes"]["live"]
+    assert p["avg_trade_ci"][0] > 0
+    assert p["sample"]["level"] == "thin" and p["sample"]["edge"] == "thin"
+    assert "confidence" not in p["sample"]["text"] and "Too early to judge" in p["sample"]["text"]
+    # From MIN_TRADES on, the read is made (a span under 14 days is still thin).
+    rows = [row("paper", 1.0 + (i % 3) * 0.1, ref="sim:%d" % i, closed=NOW - timedelta(hours=i)) for i in range(tr.MIN_TRADES)]
+    p = tr.build(rows, NOW)["modes"]["paper"]
+    assert p["sample"]["level"] == "thin" and p["sample"]["edge"] == "positive"
+    assert "above zero at 95% confidence" in p["sample"]["text"]
+
+
+def test_stopped_and_removed_strategies_stay_in_and_say_so():
+    rows = [dict(row("paper", 2, sid=1, title="Running one", ref="sim:a"), dep_status="running"),
+            dict(row("paper", -5, sid=2, title="Stopped one", ref="sim:b"), dep_status="stopped"),
+            # A strategy deleted after its deployment stopped: the strategy row is gone, its trades are not.
+            dict(row("paper", -3, sid=3, title=None, ref="sim:c"), dep_status="stopped"),
+            # Redeployed: one stopped deployment and one paused one read as paused.
+            dict(row("paper", 1, sid=4, title="Twice", ref="sim:d"), dep_status="stopped"),
+            dict(row("paper", 1, sid=4, title="Twice", ref="sim:e"), dep_status="paused")]
+    p = tr.build(rows, NOW)["modes"]["paper"]
+    assert p["trades"] == 5 and p["net_pnl"] == -4  # nothing dropped from the totals
+    by = {s["strategy_id"]: s for s in p["strategies"]}
+    assert (by[1]["status"], by[1]["removed"]) == ("running", False)
+    assert by[2]["status"] == "stopped" and by[2]["net_pnl"] == -5
+    assert by[3]["removed"] is True and by[3]["title"] == "Removed strategy" and by[3]["trades"] == 1
+    assert by[4]["status"] == "paused" and by[4]["trades"] == 2
+    assert tr.build([row("paper", 1)], NOW)["modes"]["paper"]["strategies"][0]["status"] is None  # unknown stays unknown
+    assert any("Stopped strategies" in line for line in tr.METHOD)

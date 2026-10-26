@@ -170,7 +170,8 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
     Two reads: the user's positions grouped alone through idx_pos_user (joined to every deployment, the
     planner walked all users' deployments and their positions), then the strategy of each deployment
     in it, once. Rows come in the order of the group key, as the single join returned them. A trade
-    whose deployment row is gone stays out, as the inner join left it out."""
+    whose deployment row is gone stays out, as the inner join left it out. `dep_status` is the
+    deployment's status now, so the page can say which strategies are stopped (they stay in)."""
     # pymysql parses each DATETIME in Python and a busy book has two per trade (~60ms of a 9,000-trade
     # read): the times come back as whole seconds and are rebuilt here (the columns hold no fraction).
     cur.execute(
@@ -193,7 +194,7 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
     if not dep_ids:
         return []
     cur.execute(
-        "SELECT d.id, d.strategy_id, s.title, s.market FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id "
+        "SELECT d.id, d.strategy_id, d.status, s.title, COALESCE(s.market, d.market) AS market FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id "
         "WHERE d.id IN (" + ",".join(["%s"] * len(dep_ids)) + ")",
         tuple(dep_ids),
     )
@@ -208,6 +209,7 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
         if d is None:
             continue
         out.append({"mode": t["mode"], "strategy_id": d["strategy_id"], "title": d["title"], "market": d["market"],
+                    "dep_status": d["status"],
                     "order_ref": t["order_ref"], "open_slices": t["open_slices"], "pnl": t["pnl"], "fees": t["fees"],
                     "cost": t["cost"], "open_cost": t["open_cost"], "opened_at": at(t["opened_s"]),
                     "closed_at": at(t["closed_s"])})
