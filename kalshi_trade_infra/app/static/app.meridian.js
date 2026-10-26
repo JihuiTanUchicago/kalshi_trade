@@ -1533,20 +1533,41 @@
       if (d.dataset[key] === focused) d.querySelector('summary').focus({ preventScroll: true });
     }));
   }
+  // One action per deployment at a time: a second press, or a poll's repainted copy of the button,
+  // waits for the first to come back instead of sending again. The board re-reading after an action
+  // that landed is not the action: when only the re-read fails, the action is confirmed with a word to
+  // reload (it read as an error and invited a second press), and the button, still offering what was
+  // just done, stays locked until the board repaints.
+  const depSending = new Set();
   function bindDeploymentActions(scope, after) {
     scope.querySelectorAll('[data-dep]').forEach((btn) => {
       btn.onclick = () => {
-        const run = () => busy(btn, async () => {
-          try { await api(`/api/deployments/${btn.dataset.dep}/${btn.dataset.act}`, {}); await after(); depActed(btn.dataset.dep, btn.dataset.act); } catch (e) { alert0(e.message); }
-        });
-        if (btn.dataset.act === 'stop') armed(btn, 'Confirm stop', run); else run();
+        const id = btn.dataset.dep, act = btn.dataset.act;
+        if (depSending.has(id) || btn.disabled) return;
+        const run = async () => {
+          if (depSending.has(id)) return;
+          depSending.add(id);
+          let fresh = null;
+          try {
+            await busy(btn, async () => {
+              try { await api(`/api/deployments/${id}/${act}`, {}); } catch (e) { alert0(e.message); return; }
+              fresh = await refreshed(after());
+            });
+          } finally { depSending.delete(id); }
+          if (fresh === null) return;
+          if (!fresh) btn.disabled = true;
+          depActed(id, act, fresh);
+        };
+        if (act === 'stop') armed(btn, 'Confirm stop', run); else run();
       };
     });
   }
+  const DEP_DONE = { pause: 'Deployment paused.', resume: 'Deployment resumed.', stop: 'Deployment stopped.' };
   // After Pause, Resume or Remove the board is repainted without the pressed button: say what happened,
   // and put focus on that deployment's next control, or at the top of the page once its row is gone.
-  function depActed(id, act) {
-    announce({ pause: 'Deployment paused.', resume: 'Deployment resumed.', stop: 'Deployment stopped.' }[act]);
+  // A board that didn't repaint (fresh false) shows it done, with a word to reload.
+  function depActed(id, act, fresh = true) {
+    if (fresh) announce(DEP_DONE[act]); else alert0(DEP_DONE[act] + BEHIND, 'good');
     const a = document.activeElement;
     if (a && a !== document.body && a.isConnected !== false) return;
     const next = root.querySelector(`[data-dep="${id}"]`) || document.getElementById('main');
@@ -1554,19 +1575,19 @@
   }
   // An action's error notice replaces the last one: a run page's Pause failing on each press stacked
   // a new notice per press. #flash holds one notice; on a page without it, the last one is removed.
-  function alert0(msg) {
+  function alert0(msg, kind = 'bad') {
     const host = root.querySelector('#flash') || root.querySelector('main');
     if (!host) return;
-    if (host.id === 'flash') host.innerHTML = notice(msg, 'bad', true);
+    if (host.id === 'flash') host.innerHTML = notice(msg, kind, true);
     else {
       const prev = host.querySelector('[data-alert0]');
       if (prev) prev.remove();
       const el = document.createElement('div');
-      el.innerHTML = notice(msg, 'bad', true);
+      el.innerHTML = notice(msg, kind, true);
       el.firstChild.setAttribute('data-alert0', '');
       host.prepend(el.firstChild);
     }
-    announce(msg, true);
+    announce(msg, kind === 'bad');
   }
 
   // ---------- landing (pre-login) ----------
@@ -2151,6 +2172,25 @@
     const ar = me.auto_reload;
     return (s + (ar ? ` Auto-reload adds ${usd(ar.amount)} when your balance falls to ${usd(ar.threshold)}.` : ' It stops by itself if your credits run out.')).trim();
   }
+  // A research idea typed before the session ran out is kept for this tab (sessionStorage) and put back
+  // when the same account signs in and lands on the same page; a 401 sends the reader to sign in and
+  // the box used to come back empty. It is dropped once the session starts or the box is cleared.
+  const DRAFT_KEY = 'tau_research_draft';
+  function keepDraft(ta) {
+    const uid = S.me && S.me.user ? S.me.user.id : null, path = location.pathname;
+    try {
+      const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
+      if (d && d.uid === uid && d.path === path && typeof d.text === 'string' && !ta.value) ta.value = d.text.slice(0, 1000);
+    } catch (e) { /* storage off or unreadable: no draft */ }
+    const save = () => {
+      try {
+        if (ta.value.trim()) sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ uid, path, text: ta.value }));
+        else sessionStorage.removeItem(DRAFT_KEY);
+      } catch (e) { /* private mode or full: the box still works */ }
+    };
+    ta.addEventListener('input', save);
+    return { save, drop: () => { try { sessionStorage.removeItem(DRAFT_KEY); } catch (e) { /* nothing kept */ } } };
+  }
   async function viewResearch() {
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
@@ -2159,7 +2199,7 @@
     const mdl = (me && me.models) || await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (access pending)' : ''}</option>`).join('');
     shell('/research', '', `
-      <div class="research-page"><h1 class="page">Research</h1>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
+      <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
 
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? `<div class="notice" role="status">${ICON.warn}<span>You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start. <a href="/billing">Add credits →</a></span></div>` : ''}
@@ -2204,10 +2244,11 @@
     };
     form.addEventListener('change', syncOpts); syncOpts();
     const ta = form.querySelector('textarea[name=prompt]');
+    const draft = keepDraft(ta);
     // "Run it yourself" fills the box with the example's idea and says plainly that it's a new, paid
     // session (with the usual cost beside Start when there's one); the demo link opens the finished one.
     root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => {
-      ta.value = b.dataset.ex; ta.focus();
+      ta.value = b.dataset.ex; ta.focus(); draft.save();
       const note = form.querySelector('#ex-cost'), rc = form.querySelector('#rcost');
       if (!note) return;
       note.hidden = false;
@@ -2247,6 +2288,7 @@
       if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
       const fd = new FormData(form);
       const btn = form.querySelector('button[type=submit]');
+      draft.save();
       await busy(btn, async () => {
         try {
           const r = await api('/api/runs', {
@@ -2255,6 +2297,7 @@
             run_forever: fd.get('run_forever') === 'on',
             model: fd.get('model') || undefined,
           });
+          draft.drop();
           go('/research/' + r.id);
         } catch (err) { flash('#dflash', err.message, 'bad'); }
       });
@@ -2984,7 +3027,7 @@
         // With autopilot on, the empty list says it is on instead of asking for a session (not "researching":
         // the autopilot panel may be reporting a stale check-in or a billing pause).
         const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
-        slipsEl.innerHTML = `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : total ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : !total && apOn ? '<p>Autopilot is on. The strategies it finds will land here.</p>' : ''}${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
+        slipsEl.innerHTML = `<div class="empty"><h3>${noneKept ? 'No strategy has passed yet' : total ? 'No matching strategies' : 'No strategies yet'}</h3>${noneKept ? `<p>Most ideas fail their tests; the ones that pass land here.${apOn ? ' Autopilot keeps researching on its own.' : ''}</p>` : total ? '<p>Try another filter.</p>' : apOn ? '<p>Autopilot is on. The strategies it finds will land here.</p>' : '<p>Every strategy a research session writes lands here, with its test on data it never saw. Start a session to find your first.</p>'}${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}${apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/research?new=1">New session</a>'}`}</div>`;
         return;
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
@@ -3007,7 +3050,7 @@
         try { await api('/api/deployments', { strategy_id: id, mode: 'paper' }); ok++; } catch (e) { errs.push(e.message); }
       }
       if (ok && !errs.length) { go('/deploy'); return; }
-      flash('#bulkflash', `${ok} deployed${errs.length ? ` ·\u00a0${errs.length} failed: ${esc(errs[0])}` : ''}`, errs.length ? 'bad' : 'good');
+      flash('#bulkflash', `${ok} deployed${errs.length ? ` ·\u00a0${errs.length} failed: ${errs[0]}` : ''}`, errs.length ? 'bad' : 'good');
       if (ok) load();
     };
     const syncBar = () => {
@@ -3401,7 +3444,14 @@
     }); };
     const stopDep = root.querySelector('#stop-dep');
     if (stopDep) stopDep.onclick = () => armed(stopDep, 'Confirm stop', () => busy(stopDep, async () => {
-      try { for (const d of activeDeps) await api(`/api/deployments/${d.id}/stop`, {}); viewStrategy(s.id).then(() => depActed(null, 'stop')); } catch (e) { flash('#delflash', e.message, 'bad'); }
+      try { for (const d of activeDeps) await api(`/api/deployments/${d.id}/stop`, {}); } catch (e) { flash('#delflash', e.message, 'bad'); return; }
+      // Stopped. The page re-reads to show it; a re-read that fails says the stop landed, not the error.
+      const gen = S.gen;
+      if (await refreshed(viewStrategy(s.id))) { depActed(null, 'stop'); return; }
+      if (gen !== S.gen) return;
+      shell('/strategies', boardTitle('Strategy'), `<div class="load-fail">${notice(DEP_DONE.stop + BEHIND, 'good')}<button type="button" class="btn sm" data-retry>Reload</button></div>`);
+      root.querySelector('[data-retry]').onclick = () => render();
+      announce(DEP_DONE.stop + BEHIND);
     }));
     const delStrat = root.querySelector('#del-strat');
     if (delStrat) delStrat.onclick = () => {
@@ -3507,13 +3557,13 @@
       paint(root.querySelector('#dfigs'), fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
         (liveDeps.length
           ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: paperDeps.length ? `real money, strategies listed below ·\u00a0${usd(paperRealized, true)} on paper, counted apart` : 'real money, strategies listed below' })
-          : paperDeps.length || !demoDeps.length ? fig('Realized', usd(paperRealized, true), { v: paperRealized, small: 'paper money, not real ·\u00a0strategies listed below' }) : '') +
+          : paperDeps.length || !demoDeps.length ? fig('Realized', usd(paperRealized, true), { v: paperRealized, small: paperDeps.length ? 'paper money, not real ·\u00a0strategies listed below' : 'paper money, not real' }) : '') +
         (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} ·\u00a0strategies listed below` }) : '') +
         fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
       replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, true, regs)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3>${passedN === 0 ? '<p>Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.</p>' : ''}${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">New session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>'}</div>`);
+        : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.' : 'Open a passed strategy and deploy it here. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">New session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>'}</div>`);
       paint(root.querySelector('#demo-health'), d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '');
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
@@ -4046,14 +4096,7 @@
       if (chip) { const art = chip.closest('.post'); react(art.dataset.id, art, chip.dataset.emoji); return; }
       const act = e.target.closest('[data-act]'); if (!act) return;
       const art = act.closest('.post'); const pid = art.dataset.id;
-      if (act.dataset.act === 'like') {
-        try {
-          const r = await api(`/api/community/${pid}/like`, {});
-          act.classList.toggle('on', r.liked); act.setAttribute('aria-pressed', r.liked);
-          const c = act.querySelector('.c'); const n = (parseInt(c.textContent || '0', 10) || 0) + (r.liked ? 1 : -1);
-          c.textContent = n > 0 ? n : '';
-        } catch (err) { alert0(err.message); }
-      } else if (act.dataset.act === 'edit') {
+      if (act.dataset.act === 'edit') {
         const main = art.querySelector('.post-main'); const bodyEl = main.querySelector('.post-body');
         if (main.querySelector('.edit-form')) return;
         // Edit the text as written: the rendered body has lost its **bold**, `code` and [link](url) marks.

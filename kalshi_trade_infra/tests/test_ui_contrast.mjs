@@ -106,7 +106,9 @@ test('Meridian: the example nudge on Research takes its own full-width row, not 
   const css = read('app.meridian.css'), js = read('app.meridian.js');
   assert.match(css, /\.research-page \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/);
   assert.match(css, /\.research-page > #rexample \{ grid-column: 1 \/ -1; \}/);
-  assert.match(js, /<div class="research-page"><h1 class="page">Research<\/h1>\$\{[^`]*`[^`]*`[^}]*\}<div id="rexample"><\/div>/);
+  assert.match(js, /<div class="research-page"><h1 class="page">Research<\/h1><p class="lede research-lede">[^<]+<\/p>\$\{[^`]*`[^`]*`[^}]*\}<div id="rexample"><\/div>/);
+  // What Research is, said under its name, spans the row too (not squeezed beside New session).
+  assert.match(css, /\.research-page > \.research-lede \{ grid-column: 1 \/ -1;/);
 });
 
 test('the Alpaca paper and perps panels keep a disabled ghost button\'s 3:1 border over their own disabled rule', () => {
