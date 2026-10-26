@@ -155,7 +155,9 @@ def evolve_policy(conn, user_id: int, market: str, model: Callable, usage: Usage
     try:
         candidates = ask_json(model, DREAM_SYSTEM, [{"role": "user", "content": prompt}], _check, usage)
     except Exception as e:
-        log("step", "Dreaming skipped: %s" % e, {"phase": "dreaming", "skipped": True})
+        # The run feed is the user's: the model's or provider's own error text goes to the worker log.
+        print("[dreaming] skipped for user %s: %r" % (user_id, e), flush=True)
+        log("step", "Dreaming skipped this time.", {"phase": "dreaming", "skipped": True})
         return False
 
     best_change = ""

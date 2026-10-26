@@ -63,7 +63,27 @@ def _retry_sleep(attempt: int) -> None:
 
 
 class LLMError(RuntimeError):
-    pass
+    """A model call that failed. str() is the detail for logs and for the code that reads it (the
+    daily-quota and repair checks). ``public`` is what a user may read when that detail is the
+    provider's own (a Bedrock or API error that names models, regions, ARNs or request ids); None
+    when the message was written for users. Read it through public_message()."""
+
+    def __init__(self, *args, public: Optional[str] = None):
+        super().__init__(*args)
+        self.public = public
+
+
+# What a research session's failure reads as when the cause is the model provider. Model ids, regions
+# and the provider's error text stay in the worker log.
+UNREACHABLE_COPY = "The research model couldn't be reached just now, so the session stopped. Start it again in a few minutes."
+CAPACITY_COPY = "The research models are at capacity right now, so the session stopped. Start it again in a little while."
+STALLED_COPY = "The research model stopped responding, so the session stopped. Start it again."
+UNUSABLE_COPY = "The research agent's replies couldn't be used, so the session stopped. Start it again."
+
+
+def public_message(e: LLMError) -> str:
+    """The words a user reads for this failure: never the provider's raw error."""
+    return e.public or str(e)
 
 
 class LLMThrottled(LLMError):
@@ -182,7 +202,7 @@ def _bedrock_stream(client, kwargs: Dict[str, Any], on_delta: "Callable[[str], N
         except queue.Empty:
             _safe_close_stream(resp)
             raise LLMStalled("the model stalled mid-stream: no token for %ds. Aborting the call so the "
-                             "run can recover instead of hanging." % int(stall_seconds))
+                             "run can recover instead of hanging." % int(stall_seconds), public=STALLED_COPY)
         if kind == "done":
             break
         if kind == "err":
@@ -233,7 +253,7 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
                 print("[llm] %s %s (%s); falling back to %s" % (mid, why, e, chain[i + 1]), flush=True)
                 continue
             raise
-    raise last if last else LLMError("no model to call")  # unreachable: chain is never empty
+    raise last if last else LLMError("no model to call", public=UNREACHABLE_COPY)  # unreachable: chain is never empty
 
 
 def _bedrock_once(system: str, messages: List[Dict[str, str]], model: "Optional[str]" = None,
@@ -246,7 +266,7 @@ def _bedrock_once(system: str, messages: List[Dict[str, str]], model: "Optional[
         from botocore.config import Config
         from botocore.exceptions import ClientError, ConnectTimeoutError, ReadTimeoutError
     except ImportError:
-        raise LLMError("boto3 is required for Bedrock but is not installed.")
+        raise LLMError("boto3 is required for Bedrock but is not installed.", public=UNREACHABLE_COPY)
     model_id = model or BEDROCK_MODEL
     conv = [{"role": m["role"], "content": [{"text": m["content"]}]} for m in messages]
     kwargs: Dict[str, Any] = {"modelId": model_id, "messages": conv, "inferenceConfig": {"maxTokens": MAX_TOKENS}}
@@ -315,16 +335,16 @@ def _bedrock_once(system: str, messages: List[Dict[str, str]], model: "Optional[
                 if not _is_daily_quota(e) and attempt < _BEDROCK_RETRIES:
                     _retry_sleep(attempt)
                     continue
-                raise LLMThrottled("%s on '%s': %s" % (code, model_id, e))
+                raise LLMThrottled("%s on '%s': %s" % (code, model_id, e), public=CAPACITY_COPY)
             raise LLMError("Bedrock call failed (%s). Model '%s' may need access enabled in the Bedrock console for %s."
-                           % (code or e, model_id, AWS_REGION))
+                           % (code or e, model_id, AWS_REGION), public=UNREACHABLE_COPY)
         except (ReadTimeoutError, ConnectTimeoutError) as e:
             if attempt < _BEDROCK_RETRIES:
                 _retry_sleep(attempt)
                 continue
-            raise LLMError("Bedrock call timed out after retries: %s" % e)
+            raise LLMError("Bedrock call timed out after retries: %s" % e, public=UNREACHABLE_COPY)
         except Exception as e:
-            raise LLMError("Bedrock call failed: %s" % e)
+            raise LLMError("Bedrock call failed: %s" % e, public=UNREACHABLE_COPY)
         msg = (resp.get("output") or {}).get("message") or {}
         content = msg.get("content") or []
         text = "".join(b.get("text", "") for b in content if "text" in b)
@@ -335,13 +355,13 @@ def _bedrock_once(system: str, messages: List[Dict[str, str]], model: "Optional[
                            for b in content if "reasoningContent" in b)
         u = resp.get("usage") or {}
         return text, {"input_tokens": u.get("inputTokens") or 0, "output_tokens": u.get("outputTokens") or 0}
-    raise LLMError("Bedrock call failed after retries.")
+    raise LLMError("Bedrock call failed after retries.", public=UNREACHABLE_COPY)
 
 
 def _anthropic_direct(system: str, messages: List[Dict[str, str]]) -> "tuple[str, Dict]":
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
-        raise LLMError("ANTHROPIC_API_KEY is not set on the worker.")
+        raise LLMError("ANTHROPIC_API_KEY is not set on the worker.", public=UNREACHABLE_COPY)
     body = {"model": MODEL, "max_tokens": MAX_TOKENS, "system": system, "messages": messages}
     headers = {"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"}
     for attempt in range(4):
@@ -349,18 +369,18 @@ def _anthropic_direct(system: str, messages: List[Dict[str, str]]) -> "tuple[str
             resp = requests.post(ANTHROPIC_URL, json=body, headers=headers, timeout=TIMEOUT_SECONDS)
         except requests.RequestException as e:
             if attempt == 3:
-                raise LLMError("Could not reach the model: %s" % e)
+                raise LLMError("Could not reach the model: %s" % e, public=UNREACHABLE_COPY)
             time.sleep(2 ** attempt)
             continue
         if resp.status_code in (429, 500, 502, 503, 529) and attempt < 3:
             time.sleep(float(resp.headers.get("retry-after") or 2 ** (attempt + 1)))
             continue
         if resp.status_code >= 400:
-            raise LLMError("Model call failed (%s): %s" % (resp.status_code, resp.text[:300]))
+            raise LLMError("Model call failed (%s): %s" % (resp.status_code, resp.text[:300]), public=UNREACHABLE_COPY)
         data = resp.json()
         text = "".join(b.get("text", "") for b in data.get("content") or [] if b.get("type") == "text")
         return text, data.get("usage") or {}
-    raise LLMError("Model call failed after retries.")
+    raise LLMError("Model call failed after retries.", public=UNREACHABLE_COPY)
 
 
 _FENCE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.S)
@@ -437,4 +457,4 @@ def ask_json(
                                "fits — fewer items is fine." % last_error,
                 },
             ]
-    raise LLMError("The agent's reply could not be used: %s" % last_error)
+    raise LLMError("The agent's reply could not be used: %s" % last_error, public=UNUSABLE_COPY)

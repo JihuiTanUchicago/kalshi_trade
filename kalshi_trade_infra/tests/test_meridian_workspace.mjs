@@ -127,6 +127,9 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
     createElement: tag => { const element = new Element(tag); element.ownerDocument = document; return element; }};
   body.ownerDocument = document; body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), windowListeners = new Map(), requests = [], navigations = [], reloads = [];
+  const delays = new Map();
+  // Runs the pending timers set for at most `ms` (an armed confirm's hold, say) and leaves the longer ones.
+  const elapse = ms => { for (const [id, run] of [...timeouts]) if ((delays.get(id) || 0) <= ms) { timeouts.delete(id); run(); } };
   let nextId = 0;
   const location = {pathname: '/strategies/42', search, origin: 'http://offline.invalid', reload: () => reloads.push(true)};
   const navigate = (_state, _title, path) => { navigations.push(path); location.pathname = path; };
@@ -142,7 +145,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
     ...(session ? {sessionStorage: session} : {}),
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
     clearInterval: id => intervals.delete(id),
-    setTimeout: callback => { timeouts.set(++nextId, callback); return nextId; },
+    setTimeout: (callback, ms = 0) => { timeouts.set(++nextId, callback); delays.set(nextId, ms); return nextId; },
     clearTimeout: id => timeouts.delete(id),
     fetch: async (path, options) => {
       requests.push({path, options});
@@ -153,7 +156,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord, apUpdate, paymentGate};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, armed, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord, apUpdate, paymentGate};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -162,7 +165,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, win: context.window, root, document, window: context.window, location, intervals, timeouts, windowListeners, requests, navigations, reloads, storage, shiftClock};
+  return {...api, win: context.window, root, document, window: context.window, location, intervals, timeouts, elapse, windowListeners, requests, navigations, reloads, storage, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -897,9 +900,74 @@ test('Overview monitor actions use the correct deployment and retain two-click r
   assert.equal(evidence.contains(f.root.querySelector('[data-dep="11"][data-act="stop"]')), true);
   const remove = f.root.querySelector('[data-dep="11"][data-act="stop"]'); remove.onclick(); await flush();
   assert.equal(remove.textContent, 'Confirm stop'); assert.equal(postRequests(f).length, 2);
-  remove.onclick(); await flush();
+  remove.onclick(); await flush(); assert.equal(postRequests(f).length, 2);  // a double-click's second click does not confirm
+  f.elapse(500); remove.onclick(); await flush();
   assert.equal(postRequests(f)[2].path, '/api/deployments/11/stop'); assert.equal(reads, 4);
   assert.deepEqual(f.navigations, []);
+});
+
+test('Meridian: a confirm press right after arming does nothing, so a fast double-click cannot skip "Confirm"', () => {
+  const f = frontend(), btn = new Element('button'); btn.innerHTML = 'Remove';
+  let fired = 0; const fire = () => { fired++; };
+  f.armed(btn, 'Confirm stop', fire); f.armed(btn, 'Confirm stop', fire);
+  assert.equal(fired, 0); assert.equal(btn.textContent, 'Confirm stop'); assert.equal(btn.dataset.armed, 'wait');
+  f.elapse(500); f.armed(btn, 'Confirm stop', fire);
+  assert.equal(fired, 1); assert.equal(btn.dataset.armed, '');
+});
+
+test('Meridian: the autopilot Kill and Reset to amount take a deliberate second press', async () => {
+  const posts = [];
+  const f = frontend({fetchImpl: (path, options = {}) => {
+    if (path === '/api/funds') return response(funds());
+    if (path === '/api/autopilot/status') return response({mode: 'paper', autopilot: true});
+    if (path === '/api/autopilot/kill' || path === '/api/funds/paper') { posts.push(path); return response({ok: true, paused: 1}); }
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  const box = new Element('div'); box.innerHTML = '<div id="apf-controls"></div><div id="apf-flash"></div>';
+  f.apUpdate(box, {mode: 'paper', live_enabled: true, kalshi_connected: true, autopilot: true, autopilot_live: true});
+  const kill = box.querySelector('[data-ap="kill"]');
+  kill.onclick({currentTarget: kill, target: kill}); kill.onclick({currentTarget: kill, target: kill}); await flush();
+  assert.deepEqual(posts, []); assert.equal(kill.textContent, 'Confirm kill');
+  f.elapse(500); await kill.onclick({currentTarget: kill, target: kill}); await flush();
+  assert.deepEqual(posts, ['/api/autopilot/kill']);
+  await f.viewFunds();
+  const submit = async () => {
+    const form = f.root.querySelector('#paper'); form.amount = {value: '250'};
+    form.querySelector('[data-kind="reset"]').onclick();
+    await form.onsubmit({preventDefault() {}}); await flush(); await flush();
+  };
+  await submit(); await submit();
+  assert.deepEqual(posts, ['/api/autopilot/kill']);
+  f.elapse(500); await submit();
+  assert.deepEqual(posts, ['/api/autopilot/kill', '/api/funds/paper']);
+  assert.deepEqual(JSON.parse(postRequests(f).at(-1).options.body), {kind: 'reset', amount: 250});
+});
+
+test('Meridian admin: Halt new buys goes at once, Resume buys and waitlist Remove ask first', async () => {
+  let kill = {on: false, reason: '', by: '', env_on: false};
+  const f = frontend({fetchImpl: (path, options = {}) => {
+    if (path === '/api/admin') return response({users: [], waitlist: [{email: 'synthetic@example.invalid', note: '', created_at: '2026-10-25T10:00:00Z', status: 'requested'}]});
+    if (path === '/api/admin/kill-switch' && options.method === 'POST') { kill = {...kill, on: JSON.parse(options.body).on}; return response(kill); }
+    if (path === '/api/admin/kill-switch') return response(kill);
+    if (path === '/api/admin/waitlist') return response({ok: true});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.is_admin = true;
+  await f.viewAdmin(); await flush();
+  const form = f.root.querySelector('#kill'), btn = f.root.querySelector('#k-btn');
+  const sent = (path) => postRequests(f).filter(row => row.path === path).map(row => JSON.parse(row.options.body));
+  await form.onsubmit({preventDefault() {}}); await flush();
+  assert.deepEqual(sent('/api/admin/kill-switch').map(b => b.on), [true]);  // halting is one press
+  assert.equal(btn.textContent, 'Resume buys');
+  form.onsubmit({preventDefault() {}}); form.onsubmit({preventDefault() {}}); await flush();
+  assert.equal(sent('/api/admin/kill-switch').length, 1); assert.equal(btn.textContent, 'Confirm resume');
+  f.elapse(500); await form.onsubmit({preventDefault() {}}); await flush();
+  assert.deepEqual(sent('/api/admin/kill-switch').map(b => b.on), [true, false]);
+  const remove = f.root.querySelector('#waitlist [data-wl="remove"]');
+  remove.onclick(); remove.onclick(); await flush();
+  assert.deepEqual(sent('/api/admin/waitlist'), []); assert.equal(remove.textContent, 'Confirm remove');
+  f.elapse(500); await remove.onclick(); await flush();
+  assert.deepEqual(sent('/api/admin/waitlist'), [{email: 'synthetic@example.invalid', action: 'remove'}]);
 });
 
 test('Overview charts cumulative closed paper results separately from all-time P&L and omits short histories', async () => {
@@ -1512,7 +1580,8 @@ test('current research controls pause and resume and cancellation needs two curr
   // second press cancels instead of arming a fresh button.
   f.runControls(host, 9, 'paused', reload);
   const cancel = host.querySelector('#cancel'); assert.equal(cancel.textContent, 'Confirm cancel');
-  await cancel.onclick(); assert.equal(postRequests(f)[2].path, '/api/runs/9/cancel'); assert.equal(reloads, 3);
+  cancel.onclick(); assert.equal(postRequests(f).length, 2);  // a press right after arming (a double-click) does nothing
+  f.elapse(500); await cancel.onclick(); assert.equal(postRequests(f)[2].path, '/api/runs/9/cancel'); assert.equal(reloads, 3);
   assert.match(cancel.getAttribute('title'), /^Ends the session for good\. What it has spent stays charged/);
 });
 
@@ -3770,11 +3839,11 @@ test('a $0 Kalshi demo account is explained, and keys are changed or removed wit
   // Removing takes a second tap, then says the key still works at Kalshi until deleted there.
   const dc = f.root.querySelector('#disconnect');
   dc.onclick(); assert.equal(postRequests(f).length, 0);
-  await dc.onclick(); await flush();
+  f.elapse(500); await dc.onclick(); await flush();
   assert.deepEqual(postRequests(f).map(({path}) => path), ['/api/kalshi-key/delete']);
   assert.match(f.root.querySelector('#kflash').innerHTML, /Disconnected\. Tau deleted its copy of the key; the key itself stays valid until you delete it on kalshi\.com\./);
   const dvc = f.root.querySelector('#dev-disconnect');
-  dvc.onclick(); await dvc.onclick(); await flush();
+  dvc.onclick(); f.elapse(500); await dvc.onclick(); await flush();
   assert.match(f.root.querySelector('#kdflash').innerHTML, /Demo key removed\. Tau deleted its copy; delete the key on demo\.kalshi\.co too/);
   // Both key forms are back, with no autofill and no phone auto-capitalising of the Key ID or the key.
   const fresh = f.root.querySelector('main').innerHTML;
@@ -3823,6 +3892,27 @@ test('Billing copies its balance and card onto the page state, and a moved balan
   assert.doesNotMatch(f.sinceStrip(since, '#dash-paused'), /Credits are at/);
   await f.viewBilling(); await flush(); await flush();
   assert.equal(f.requests.filter(({path}) => path === '/api/autopilot/status').length, 1);  // nothing moved: no extra read
+});
+
+test('Meridian: saving auto-reload updates the page state the autopilot card reads, with no extra read', async () => {
+  const posts = [];
+  const f = frontend({stripeLoader: async () => STRIPE_STUB, storage: new Map([['tau_ap_open', '1']]), fetchImpl: (path, options = {}) => {
+    if (path === '/api/billing') return response(cardedBilling({balance: 23.4}));
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    if (path === '/api/billing/auto-reload') { posts.push(JSON.parse(options.body)); return response({ok: true, autoreload_charge: 52.75}); }
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, credit_balance: 23.4, min_run_balance: 1, auto_reload: null};
+  f.S.me.user.autopilot = true;
+  f.S.ap = {...apStatus, week: {research_credits: 7.26, tested: 10, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0, credits_left: 23.4, runway_days: 6.1}};
+  const box = new Element('div', {id: 'autopilot-float'}); f.document.body.appendChild(box);
+  await f.viewBilling(); await flush(); await flush();
+  const reads = () => f.requests.filter(({path}) => path === '/api/billing' || path === '/api/autopilot/status').length, before = reads();
+  const amt = f.root.querySelector('#reload-amt'); amt.value = '50'; await amt.onchange(); await flush();
+  assert.deepEqual(posts, [{on: true, amount: 50, threshold: 8}]);
+  assert.deepEqual({...f.S.me.auto_reload}, {amount: 50, charge: 52.75, threshold: 8});
+  assert.match(box.querySelector('#apf-week').innerHTML, /auto-reload adds \$50\.00 at \$8\.00/);
+  assert.equal(reads(), before);
 });
 
 test('Billing says what auto-reload does and when it fires, in the server\'s own figures', async () => {

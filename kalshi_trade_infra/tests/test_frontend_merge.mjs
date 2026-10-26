@@ -103,6 +103,9 @@ class Element {
 function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia = () => ({matches: false}), notifications, win = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
+  const delays = new Map();
+  // Runs the pending timers set for at most `ms` (an armed confirm's hold, say) and leaves the longer ones.
+  const elapse = ms => { for (const [id, run] of [...timeouts]) if ((delays.get(id) || 0) <= ms) { timeouts.delete(id); run(); } };
   let nextId = 0;
   const location = {pathname: '/strategies/42', search: '', origin: 'http://offline.invalid'};
   const navigate = (_state, _title, path) => { navigations.push(path); const [p, q] = String(path).split('?'); location.pathname = p; location.search = q ? '?' + q : ''; };
@@ -116,7 +119,7 @@ function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia 
     ...(session ? {sessionStorage: session} : {}),
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
     clearInterval: id => intervals.delete(id),
-    setTimeout: callback => { timeouts.set(++nextId, callback); return nextId; },
+    setTimeout: (callback, ms = 0) => { timeouts.set(++nextId, callback); delays.set(nextId, ms); return nextId; },
     clearTimeout: id => timeouts.delete(id),
     fetch: async (path, options) => {
       requests.push({path, options});
@@ -127,7 +130,7 @@ function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia 
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewCommunity, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render, paymentGate, hotRowHtml, rpUnderwater};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, armed, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewCommunity, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render, paymentGate, hotRowHtml, rpUnderwater};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -136,7 +139,7 @@ function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia 
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, win: context.window, root, location, document: context.document, window: context.window, intervals, timeouts, requests, navigations, shiftClock};
+  return {...api, win: context.window, root, location, document: context.document, window: context.window, intervals, timeouts, elapse, requests, navigations, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -961,6 +964,31 @@ test('a failed autopilot switch-on leaves the dashboard card off and says why', 
   assert.match(f.root.querySelector('#dash-ap .apcard-err').innerHTML, /Add a payment method first\./);
 });
 
+test('saving auto-reload on Billing updates the autopilot card\'s auto-reload line at once, with no extra read', async () => {
+  const posts = [], storage = {getItem: key => (key === 'tau_ap_open' ? '1' : null), setItem() {}};  // the panel is open
+  const f = frontend({stripe: STRIPE_STUB, storage, fetchImpl: (path, options = {}) => {
+    if (path === '/api/billing') return response(cardedBilling({balance: 23.4}));
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    if (path === '/api/billing/auto-reload') { posts.push(JSON.parse(options.body)); return response({ok: true, autoreload_charge: 52.75}); }
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, credit_balance: 23.4, min_run_balance: 1, auto_reload: null};
+  f.S.me.user.autopilot = true;
+  f.S.ap = {...apOn, week: {research_credits: 7.26, tested: 10, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0, credits_left: 23.4, runway_days: 6.1}};
+  const box = new Element('div', {id: 'autopilot-float'}); f.document.body.appendChild(box);
+  await f.viewBilling(); await flush(); await flush();
+  assert.deepEqual({...f.S.me.auto_reload}, {amount: 25, charge: cardedBilling().autoreload_charge, threshold: 8});
+  const reads = () => f.requests.filter(({path}) => path === '/api/billing' || path === '/api/autopilot/status').length, before = reads();
+  const amt = f.root.querySelector('#reload-amt'); amt.value = '50'; await amt.onchange(); await flush();
+  assert.deepEqual(posts, [{on: true, amount: 50, threshold: 8}]);
+  assert.deepEqual({...f.S.me.auto_reload}, {amount: 50, charge: 52.75, threshold: 8});
+  assert.match(box.querySelector('#apf-week').innerHTML, /auto-reload adds \$50\.00 at \$8\.00/);
+  assert.equal(reads(), before);
+  const sw = f.root.querySelector('#autoreload'); sw.checked = false; await sw.onchange(); await flush();
+  assert.equal(f.S.me.auto_reload, null);
+  assert.doesNotMatch(box.querySelector('#apf-week').innerHTML, /auto-reload adds/);
+});
+
 test('the autopilot card says what switching it on costs before the click', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/dashboard') return response(emptyDashboard());
@@ -1348,7 +1376,8 @@ test('current research controls pause and resume and cancellation needs two curr
   // second press cancels instead of arming a fresh button.
   f.runControls(host, 9, 'paused', reload);
   const cancel = host.querySelector('#cancel'); assert.equal(cancel.textContent, 'Confirm cancel');
-  await cancel.onclick(); assert.equal(postRequests(f)[2].path, '/api/runs/9/cancel'); assert.equal(reloads, 3);
+  cancel.onclick(); assert.equal(postRequests(f).length, 2);  // a press right after arming (a double-click) does nothing
+  f.elapse(500); await cancel.onclick(); assert.equal(postRequests(f)[2].path, '/api/runs/9/cancel'); assert.equal(reloads, 3);
   assert.match(cancel.getAttribute('title'), /^Ends the session for good\. What it has spent stays charged/);
 });
 
@@ -2567,11 +2596,11 @@ test('a $0 Kalshi demo account is explained, and keys are changed or removed wit
   // Removing takes a second tap, then says the key still works at Kalshi until deleted there.
   const dc = f.root.querySelector('#disconnect');
   dc.onclick(); assert.equal(postRequests(f).length, 0);
-  await dc.onclick(); await flush();
+  f.elapse(500); await dc.onclick(); await flush();
   assert.deepEqual(postRequests(f).map(({path}) => path), ['/api/kalshi-key/delete']);
   assert.match(f.root.querySelector('#kflash').innerHTML, /Disconnected\. Tau deleted its copy of the key; the key itself stays valid until you delete it on kalshi\.com\./);
   const dvc = f.root.querySelector('#dev-disconnect');
-  dvc.onclick(); await dvc.onclick(); await flush();
+  dvc.onclick(); f.elapse(500); await dvc.onclick(); await flush();
   assert.match(f.root.querySelector('#kdflash').innerHTML, /Demo key removed\. Tau deleted its copy; delete the key on demo\.kalshi\.co too/);
   // Both key forms are back, with no autofill and no phone auto-capitalising of the Key ID or the key.
   const fresh = f.root.querySelector('main').innerHTML;
@@ -3316,6 +3345,97 @@ test('Tau: a page change names the tab, and a deployment control names its strat
   assert.equal(said('sr-status'), 'Deployment stopped.');
 });
 
+// -- Two-step confirms: a double-click arms and fires nothing ------------------------------------
+
+test('a confirm press right after arming does nothing: a fast double-click cannot skip "Confirm"', () => {
+  const f = frontend(), btn = new Element('button'); btn.innerHTML = 'Remove<span class="vh"> Dep</span>';
+  let fired = 0; const fire = () => { fired++; };
+  f.armed(btn, 'Confirm stop', fire);
+  assert.equal(btn.textContent, 'Confirm stop'); assert.equal(btn.classes.has('armed'), true); assert.equal(btn.dataset.armed, 'wait');
+  f.armed(btn, 'Confirm stop', fire); f.armed(btn, 'Confirm stop', fire);  // a double (or triple) click's later clicks
+  assert.equal(fired, 0); assert.equal(btn.textContent, 'Confirm stop');
+  f.elapse(500);  // the hold passes: the next press is a deliberate one
+  assert.equal(btn.dataset.armed, '1');
+  f.armed(btn, 'Confirm stop', fire);
+  assert.equal(fired, 1); assert.equal(btn.dataset.armed, ''); assert.equal(btn.classes.has('armed'), false);
+});
+
+test('an armed confirm resets after 5 seconds, and an earlier arming\'s reset never disarms a later one', () => {
+  const f = frontend(), btn = new Element('button'); btn.innerHTML = 'Cancel';
+  let fired = 0; const fire = () => { fired++; };
+  f.armed(btn, 'Confirm cancel', fire); f.elapse(5000);
+  assert.equal(btn.dataset.armed, ''); assert.equal(btn.innerHTML, 'Cancel'); assert.equal(btn.classes.has('armed'), false);
+  f.armed(btn, 'Confirm cancel', fire); f.elapse(500); f.armed(btn, 'Confirm cancel', fire);
+  assert.equal(fired, 1);
+  const stale = [...f.timeouts.values()]; f.timeouts.clear();  // the first arming's 5s reset, still pending
+  f.armed(btn, 'Confirm cancel', fire);
+  stale.forEach(run => run());
+  assert.equal(btn.dataset.armed, 'wait'); assert.equal(btn.textContent, 'Confirm cancel');
+  f.elapse(500); f.armed(btn, 'Confirm cancel', fire); assert.equal(fired, 2);
+});
+
+test('a held Enter key repeats nothing while a confirm is armed, in both bundles', () => {
+  const meridian = readFileSync(new URL('../app/static/app.meridian.js', import.meta.url), 'utf8');
+  for (const src of [source, meridian]) {
+    const body = src.match(/ {2}function guardArmedRepeat\(\) \{[\s\S]*?\n {2}\}\n/);
+    assert.ok(body, 'guardArmedRepeat is defined');
+    assert.match(src, /\n {2}setupAnnouncer\(\);\n {2}guardArmedRepeat\(\);\n/);  // installed at boot
+    const listeners = [], document = {armed: null, addEventListener: (name, fn, capture) => listeners.push({name, fn, capture}), querySelector: () => document.armed};
+    vm.runInNewContext(body[0] + 'guardArmedRepeat();', {document});
+    assert.equal(listeners.length, 1); assert.equal(listeners[0].name, 'keydown'); assert.equal(listeners[0].capture, true);
+    const press = (o) => { let blocked = false; listeners[0].fn({key: 'Enter', repeat: true, target: {tagName: 'BUTTON'}, preventDefault: () => { blocked = true; }, ...o}); return blocked; };
+    assert.equal(press(), false);  // nothing armed: Enter repeats as usual
+    document.armed = {};
+    assert.equal(press(), true);  // the held Enter that armed can't go on to confirm
+    assert.equal(press({repeat: false}), false);  // a fresh press still confirms
+    assert.equal(press({key: ' '}), false);
+    assert.equal(press({target: {tagName: 'TEXTAREA'}}), false);
+  }
+});
+
+test('the autopilot Kill goes through the shared confirm: a double-click does not kill', async () => {
+  let kills = 0;
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/autopilot/kill') { kills++; return response({paused: 2}); }
+    if (path === '/api/autopilot/status') return response({mode: 'paper', autopilot: true, autopilot_live: false});
+    return response({});
+  }});
+  const box = new Element('div'); box.innerHTML = '<div id="apf-controls"></div><div id="apf-flash"></div>';
+  f.apUpdate(box, {mode: 'paper', live_enabled: true, kalshi_connected: true, autopilot: true, autopilot_live: true});
+  const kill = box.querySelector('[data-ap="kill"]');
+  kill.onclick({currentTarget: kill, target: kill}); kill.onclick({currentTarget: kill, target: kill}); await flush();
+  assert.equal(kills, 0); assert.equal(kill.textContent, 'Confirm kill');
+  f.elapse(500);
+  await kill.onclick({currentTarget: kill, target: kill}); await flush();
+  assert.equal(kills, 1);
+  f.elapse(5000); kill.onclick({currentTarget: kill, target: kill}); await flush();
+  assert.equal(kills, 1);  // a later press arms afresh
+});
+
+test('Reset to amount asks first, since it wipes the paper history; Add and Withdraw go at once', async () => {
+  const posts = [];
+  const f = frontend({fetchImpl: (path, options = {}) => {
+    if (path === '/api/funds') return response(funds());
+    if (path === '/api/funds/paper') { posts.push(JSON.parse(options.body)); return response({ok: true}); }
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewFunds();
+  const submit = async (kind) => {
+    const form = f.root.querySelector('#paper'); form.amount = {value: '500'};
+    form.querySelector(`[data-kind="${kind}"]`).onclick();
+    await form.onsubmit({preventDefault() {}}); await flush(); await flush();
+  };
+  await submit('deposit');
+  assert.deepEqual(posts, [{kind: 'deposit', amount: 500}]);
+  await submit('reset'); await submit('reset');  // a double-click on Reset
+  assert.equal(posts.length, 1);
+  assert.equal(f.root.querySelector('#paper [data-kind="reset"]').textContent, 'Confirm reset');
+  f.elapse(500); await submit('reset');
+  assert.deepEqual(posts.at(-1), {kind: 'reset', amount: 500});
+  await submit('withdraw');
+  assert.deepEqual(posts.at(-1), {kind: 'withdraw', amount: 500});
+});
+
 // -- Spend: what each charge was for, how fast credits go, and what happens when they run out ------
 
 test('Billing shows the spend pace, what spent it, and what each line was for, never a model id', async () => {
@@ -4038,6 +4158,26 @@ test('a card wall whose card form did not load says what to do, and Save becomes
   dlg = wall();
   assert.equal(dlg.querySelector('#pay-hint').innerHTML, '');
   assert.equal(dlg.querySelector('#pay-submit').textContent, 'Save payment method');
+});
+
+test('the card wall shows Stripe\'s words only about the card itself, never its other errors', async () => {
+  let reply = {error: {type: 'invalid_request_error', message: "No such setupintent: 'seti_synthetic'"}};
+  const stripe = () => ({confirmSetup: async () => reply, elements: () => ({create: () => ({mount() {}})})});
+  const f = frontend({stripe, fetchImpl: path => {
+    if (path === '/api/billing') return response({configured: true, publishable_key: 'synthetic-only'});
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.location.pathname = '/'; Object.assign(f.S.me, {needs_card: true, free_bonus: 20});
+  await f.paymentGate(); await flush();
+  const dlg = f.document.body.querySelectorAll('.pay-modal').filter(d => d.isConnected).at(-1);
+  const submit = async () => { dlg.querySelector('#payform').onsubmit({preventDefault() {}}); await flush(); await flush(); };
+  await submit();
+  assert.match(dlg.querySelector('#pay-hint').innerHTML, /Your card couldn’t be saved just now\. Reload the page and add it again\./);
+  assert.doesNotMatch(dlg.querySelector('#pay-hint').innerHTML, /seti_|No such/);
+  reply = {error: {type: 'card_error', message: 'Your card was declined.'}};  // written for the cardholder
+  await submit();
+  assert.match(dlg.querySelector('#pay-hint').innerHTML, /Your card was declined\./);
 });
 
 test('a session that ends mid-use says so on the sign-in page, and that a change was not saved', async () => {

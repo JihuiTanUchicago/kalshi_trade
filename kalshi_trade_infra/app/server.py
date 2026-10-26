@@ -2717,6 +2717,14 @@ def create_comment(ctx: Ctx):
 # -- billing ---------------------------------------------------------------------
 
 
+def _stripe_failed(ctx: Ctx, e: "billing.StripeError", status: int, doing: str, fallback: str) -> ApiError:
+    """A failed Stripe call, as the user reads it. Stripe's own text (which can name ids, parameters and
+    hosts) goes to the server log; the user gets a declined card in plain words or ``fallback``."""
+    print("[billing] %s failed for user %s: %s%s" % (doing, ctx.uid, e, " [%s/%s]" % (e.kind, e.code) if e.kind else ""),
+          flush=True)
+    return ApiError(status, billing.customer_message(e, fallback))
+
+
 def _customer_id(ctx: Ctx) -> str:
     cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
     existing = cust["stripe_customer_id"] if cust else None
@@ -2920,7 +2928,8 @@ def billing_setup_intent(ctx: Ctx):
     try:
         return billing.create_setup_intent(_customer_id(ctx))
     except billing.StripeError as e:
-        raise ApiError(502, str(e))
+        raise _stripe_failed(ctx, e, 502, "setup intent", "The card form couldn't start just now. Reload the page "
+                                                          "and try again in a minute.")
 
 
 def billing_card_added(ctx: Ctx):
@@ -2928,11 +2937,12 @@ def billing_card_added(ctx: Ctx):
     if not pm.startswith("pm_"):
         raise ApiError(400, "No card to save.")
     cust = repo.get_stripe_customer(ctx.cur, ctx.uid)
-    cid = cust["stripe_customer_id"] if cust else _customer_id(ctx)
     try:
+        cid = cust["stripe_customer_id"] if cust else _customer_id(ctx)
         billing.set_default_card(cid, pm)
     except billing.StripeError as e:
-        raise ApiError(502, str(e))
+        raise _stripe_failed(ctx, e, 502, "save card", "Your card couldn't be saved just now. Reload the page "
+                                                       "and add it again.")
     repo.set_default_pm(ctx.cur, ctx.uid, pm)
     return {"ok": True}
 
@@ -2952,9 +2962,13 @@ def billing_topup(ctx: Ctx):
                             billing.topup_charge_cents(credits), off_session=False, idem=idem,
                             metadata={"user_id": ctx.uid, "credits": str(credits), "purpose": "topup"})
     except billing.StripeError as e:
-        raise ApiError(402, str(e))
+        # Not "you weren't charged": a dropped connection can fail here after the charge went through.
+        raise _stripe_failed(ctx, e, 402, "top-up", "The top-up didn't complete. Reload this page in a minute "
+                                                    "to check your balance before you try again.")
     if pi["status"] != "succeeded":
-        raise ApiError(402, "The card didn't complete the charge (status: %s)." % pi["status"])
+        print("[billing] top-up for user %s ended %s (%s)" % (ctx.uid, pi["status"], pi.get("id")), flush=True)
+        raise ApiError(402, "The card didn't complete the charge. Reload this page in a minute to check your "
+                            "balance before you try another card.")
     with repo.transaction(ctx.conn) as tx:
         repo.add_credit(tx, ctx.uid, "topup", credits, "Added $%s credits" % credits, stripe_ref=pi["id"])
     return {"ok": True, "balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4)}
@@ -2971,7 +2985,9 @@ def billing_autoreload(ctx: Ctx):
     if ctx.body.get("threshold") is not None:
         threshold = _D(str(_num(ctx.body, "threshold", float(billing.AUTORELOAD_THRESHOLD), float(billing.MAX_TOPUP))))
     repo.set_auto_reload(ctx.cur, ctx.uid, on, amount=amount, threshold=threshold)
-    return {"ok": True}
+    # What one reload of the saved amount charges the card, so the page's other copy of it (the
+    # autopilot card) says the new figure without reading Billing again.
+    return {"ok": True, "autoreload_charge": billing.topup_charge_cents(amount) / 100 if amount is not None else None}
 
 
 def billing_remove_card(ctx: Ctx):
@@ -2982,7 +2998,8 @@ def billing_remove_card(ctx: Ctx):
     try:
         cards = billing.list_cards(cust["stripe_customer_id"])
     except billing.StripeError as e:
-        raise ApiError(502, str(e))
+        raise _stripe_failed(ctx, e, 502, "list cards", "Your cards couldn't be loaded just now, so nothing was "
+                                                        "removed. Try again in a minute.")
     if len(cards) <= 1:
         raise ApiError(409, "You can't remove your only card. Add another first.")
     if not any(c["id"] == pm for c in cards):
@@ -2990,10 +3007,16 @@ def billing_remove_card(ctx: Ctx):
     try:
         billing.detach_card(pm)
     except billing.StripeError as e:
-        raise ApiError(502, str(e))
+        raise _stripe_failed(ctx, e, 502, "remove card", "That card couldn't be removed just now. Try again "
+                                                         "in a minute.")
     if cust.get("default_pm_id") == pm:
         other = next(c["id"] for c in cards if c["id"] != pm)
-        billing.set_default_card(cust["stripe_customer_id"], other)
+        try:
+            billing.set_default_card(cust["stripe_customer_id"], other)
+        except billing.StripeError as e:
+            # The card is gone already; Tau charges the card it has saved as the default, so point
+            # that at the remaining card either way rather than leave it on the removed one.
+            print("[billing] set default after remove failed for user %s: %s" % (ctx.uid, e), flush=True)
         repo.set_default_pm(ctx.cur, ctx.uid, other)
     return {"ok": True}
 

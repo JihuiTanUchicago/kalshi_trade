@@ -45,7 +45,7 @@ from app import repository as repo
 from app import research_repository as rr
 from app import spec as specmod
 from app import stats
-from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model
+from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model, public_message
 from app.markets import MARKETS
 from app.services import markets as market_service
 from app.services import research_memory
@@ -1208,7 +1208,7 @@ def _rsi_learn(conn, cur, run: Dict, ds, explored: int, tokens_in: int, tokens_o
             {"phase": "playbook", "family": fam, "version": version, "changes": new["changes"]})
     except Exception as e:  # noqa: BLE001 - learning is best-effort; the run's results are already saved
         _LOG.exception("rsi learn step failed for run %s", run_id)
-        log("step", "Playbook update skipped (%s)." % str(e)[:200])
+        log("step", "Playbook update skipped this time. The run's results are saved.")
 
 
 _FV_BANDS_H = ((24.0, None, ">24h"), (12.0, 24.0, "12-24h"), (4.0, 12.0, "4-12h"), (0.0, 4.0, "<4h"))
@@ -1726,7 +1726,8 @@ def _challenge(finalists: List[Dict], run: Dict, model: ModelFn, usage: Usage, l
         return ask_json(model, CHALLENGER_SYSTEM, [{"role": "user", "content": msg}],
                         _challenger_check(len(finalists)), usage)
     except LLMError as e:
-        log("step", "Challenger unavailable (%s); approving finalists as-is — the gatekeeper still gates." % e)
+        _LOG.warning("challenger unavailable on run %s: %s", run.get("id"), e)
+        log("step", "Challenger unavailable; approving finalists as-is — the gatekeeper still gates.")
         return [{"decision": "approve", "reason": "", "fixes": None} for _ in finalists]
 
 
@@ -2641,7 +2642,7 @@ def run_research(
                 run = {**run, "_leads": research_leads.block(scan), "_leads_arm": True}
             except Exception as e:  # noqa: BLE001 - the scan is an aid; the run goes on without it
                 _LOG.exception("lead scan failed on run %s", run_id)
-                log("step", "Lead scan skipped (%s)." % e)
+                log("step", "Lead scan skipped this time.")
         log("verdict", ("Lead scan: %d of %d cells survive the false-discovery control."
                         % (len(scan["leads"]), scan["tests"])) if scan else
             "Lead scan: control arm, hypotheses first.", research_leads.summary(bool(scan), scan))
@@ -2680,8 +2681,9 @@ def run_research(
                 try:
                     if dreaming.evolve_policy(conn, user_id, market, model, usage, log):
                         policy = dreaming.current_policy(cur, user_id)  # explore smarter from here on
-                except Exception as e:
-                    log("step", "Dreaming hiccup (kept current policy): %s" % e)
+                except Exception:
+                    _LOG.exception("dreaming failed mid-session on run %s", run_id)
+                    log("step", "Dreaming hiccup (kept current policy).")
             # Meter per chunk: a run_forever session may never "finish", so bill as it goes
             # (and reset the counter) instead of only at the end — otherwise its tokens are free.
             tot_in += usage.input_tokens
@@ -2715,8 +2717,9 @@ def run_research(
                 _bill(conn, user_id, usage, run_id, choice.model_id)
                 usage.input_tokens = usage.output_tokens = 0
                 conn.commit()
-        except Exception as e:  # dreaming is best-effort; the run still succeeds
-            log("step", "Policy-evolution step skipped (%s)." % e)
+        except Exception:  # dreaming is best-effort; the run still succeeds
+            _LOG.exception("policy evolution failed on run %s", run_id)
+            log("step", "Policy-evolution step skipped this time.")
 
         # Research RSI: score this run against the playbook it drew, settle the A/B, and rewrite the
         # playbook from this run's verdicts. Billed like dreaming; a hiccup never fails the run.
@@ -2762,7 +2765,8 @@ def run_research(
         # nothing to research there yet — so it finishes `stopped` (neutral), never a red FAILED. Only a
         # genuine error (API/DB/unexpected) is `failed`, matching the watchdog-reap semantics.
         no_data = isinstance(e, NoData)
-        msg = (str(e) if isinstance(e, LLMError) else "The session hit an unexpected error and stopped.")
+        # A provider failure reads as what happened and what to do; its detail is in the log above.
+        msg = (public_message(e) if isinstance(e, LLMError) else "The session hit an unexpected error and stopped.")
         cur = _reconnect(conn, cur)  # the error may have been the drop itself — heal it so we can record the outcome
         log("step" if no_data else "error", msg)
         repo.finish_run(cur, run_id, "stopped" if no_data else "failed", msg[:2000],
