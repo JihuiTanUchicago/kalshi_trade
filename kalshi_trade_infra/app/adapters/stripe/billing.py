@@ -344,13 +344,84 @@ def auto_reload(conn, user_id: int, trigger: str) -> bool:
     if Decimal(str(repo.credit_balance(cur, user_id))) > threshold:
         return False
     idem = "reload-%s-%s" % (user_id, trigger)
-    pi = charge(cust["stripe_customer_id"], cust["default_pm_id"], topup_charge_cents(amount),
-                off_session=True, idem=idem,
-                metadata={"user_id": user_id, "credits": str(amount), "purpose": "autoreload"})
+    try:
+        pi = charge(cust["stripe_customer_id"], cust["default_pm_id"], topup_charge_cents(amount),
+                    off_session=True, idem=idem,
+                    metadata={"user_id": user_id, "credits": str(amount), "purpose": "autoreload"})
+    except StripeError as e:
+        reload_failed_notice(conn, user_id, amount, error=e)
+        raise  # unchanged: charge_usage logs it, as before
     if pi["status"] != "succeeded":
         print("[billing] auto-reload PI %s status=%s" % (pi["id"], pi["status"]), flush=True)
+        if pi["status"] != "processing":  # processing can still succeed, and the webhook credits it then
+            reload_failed_notice(conn, user_id, amount, status=pi["status"])
         return False
     with repo.transaction(conn) as tx:
         added = repo.add_credit(tx, user_id, "autoreload", amount,
                                 "Auto-reload $%s" % amount, stripe_ref=pi["id"])
     return added
+
+
+# -- telling the user an auto-reload failed -------------------------------------------------------
+# A failed auto-reload used to reach only the server log, and research then paused at the floor with
+# nothing saying why. It rings the bell instead: one line with the customer-safe reason (never
+# Stripe's own text), the credits it tried to add and a link to Billing, which shows the same as a
+# banner until a later auto-reload succeeds or the user saves a card.
+RELOAD_FAILED_KIND = "reload_failed"
+# A failing card fails again on every model call of the run (Stripe replays the same idempotency key)
+# and on every later run: at most one notice per user per RELOAD_FAILED_EVERY_HOURS, and never a
+# second while one is still unread. The window alone would stack a fresh unread line every 6 hours for
+# a user who is away; the unread rule alone would re-ring on the next model call after they open the
+# bell. A successful auto-reload ends the spell, so the next failure is told at once.
+RELOAD_FAILED_EVERY_HOURS = 6
+RELOAD_FAILED_FALLBACK = "The charge couldn't be completed just now."
+_RELOAD_FAILED_TAIL = " Research pauses when your credits run out. Update your card on Billing."
+
+
+def reload_failed_reason(error: Optional[StripeError] = None, status: str = "") -> str:
+    """Why an auto-reload failed, in the user's words: a declined card by Stripe's codes, a charge the
+    bank wants to approve itself, or RELOAD_FAILED_FALLBACK. Never Stripe's own message."""
+    if error is not None:
+        return customer_message(error, RELOAD_FAILED_FALLBACK)
+    if status == "requires_action":
+        return _CARD_DECLINE_COPY["authentication_required"]
+    return CARD_DECLINED if status == "requires_payment_method" else RELOAD_FAILED_FALLBACK
+
+
+def reload_failed_body(amount, reason: str) -> str:
+    return "Auto-reload couldn't add $%s in credits. %s%s" % (
+        Decimal(str(amount)).quantize(CENT, rounding=ROUND_HALF_UP), reason, _RELOAD_FAILED_TAIL)
+
+
+def reload_failed_text(body: str) -> str:
+    """A failure notice as Billing's banner says it, under its "Auto-reload failed" heading: the bell
+    line without its pointer to Billing, starting "It couldn't add $X in credits."."""
+    text = body[:-len(_RELOAD_FAILED_TAIL)] if body.endswith(_RELOAD_FAILED_TAIL) else body
+    return "It " + text[len("Auto-reload "):] if text.startswith("Auto-reload couldn't") else text
+
+
+def reload_failed_notice(conn, user_id: int, amount, error: Optional[StripeError] = None, status: str = "") -> bool:
+    """Ring the bell for a failed auto-reload, throttled (RELOAD_FAILED_EVERY_HOURS). Its own
+    autocommit statements on a fresh cursor, never inside the charge's transaction, and every error is
+    logged and swallowed: telling the user can never change, break or roll back the charge path.
+    True when a notice was added."""
+    try:
+        from datetime import timedelta
+
+        from app import repository as repo
+
+        cur = conn.cursor()
+        last = repo.latest_notification(cur, user_id, RELOAD_FAILED_KIND)
+        # The bell marks every notice read at once, so the newest one stands for all of them. An
+        # auto-reload that succeeded since it ended that spell: a new failure is news again.
+        if last and (last["read_at"] is None
+                     or last["created_at"] >= repo.now_utc() - timedelta(hours=RELOAD_FAILED_EVERY_HOURS)):
+            ok_at = repo.last_credit_at(cur, user_id, "autoreload")
+            if ok_at is None or ok_at < last["created_at"]:
+                return False
+        repo.add_notification(cur, user_id, RELOAD_FAILED_KIND,
+                              reload_failed_body(amount, reload_failed_reason(error, status)), "/billing")
+        return True
+    except Exception as e:  # noqa: BLE001 - the notice must never reach the charge path
+        print("[billing] auto-reload failure notice not written for user %s: %r" % (user_id, e), flush=True)
+        return False

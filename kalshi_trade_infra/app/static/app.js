@@ -5719,6 +5719,7 @@
                   <div id="card-flash"></div>
                   <button class="btn" id="save-card" style="margin-top:10px">Save card</button>
                 </div>
+                ${reloadFailNote(d)}
                 <div class="autorel-row">
                   <label class="switch"><input type="checkbox" id="autoreload" ${d.auto_reload ? 'checked' : ''}><span>Auto-reload</span></label>
                   <button type="button" class="autorel-edit" id="autorel-edit" aria-expanded="false" aria-controls="autorel-config"><span id="autorel-sum">Reload $${d.autoreload_amount} at $${d.autoreload_threshold}</span><span class="chev">${ICON.chev}</span></button>
@@ -5764,6 +5765,11 @@
       const arBox = root.querySelector('#autoreload'), arAmt = root.querySelector('#reload-amt'), arThr = root.querySelector('#reload-thr');
       const arEdit = root.querySelector('#autorel-edit'), arCfg = root.querySelector('#autorel-config'), arSum = root.querySelector('#autorel-sum');
       arEdit.onclick = () => { const open = arCfg.hidden; arCfg.hidden = !open; arEdit.setAttribute('aria-expanded', String(open)); };
+      // "Update card" on a failed auto-reload: the card form above, the same save-card flow; saving
+      // a card clears the failure on the server.
+      let cardPe = null;
+      const arFix = root.querySelector('#autorel-fix');
+      if (arFix) arFix.onclick = () => { const add = root.querySelector('#card-add'); if (add.scrollIntoView) add.scrollIntoView({ block: 'center', behavior: 'smooth' }); if (cardPe && cardPe.focus) cardPe.focus(); };
       // What Tau last saved. A save that fails puts the switch, both amounts and the summary back to it:
       // the summary kept saying On after a switch-on failed, and a failed amount change flipped the
       // switch off on screen while auto-reload stayed on. The controls lock until Tau answers, so two
@@ -5772,6 +5778,7 @@
       const arPaint = (on, amount, threshold) => {
         arBox.checked = on; arAmt.value = amount; arThr.value = threshold;
         arSum.textContent = `Reload $${amount} at $${threshold}`;
+        const fail = root.querySelector('#autorel-fail'); if (fail) fail.hidden = !on;
         root.querySelector('#autorel-when').innerHTML = reloadWhen(on, amount, threshold);
       };
       const saveAutoReload = async () => {
@@ -5806,6 +5813,7 @@
         const elements = sp.elements({ clientSecret: si.client_secret, appearance: { theme: 'flat', variables: { fontFamily: 'Archivo, sans-serif', colorPrimary: '#191B16', borderRadius: '10px' } } });
         const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: { country: 'never' } } } });
         pe.mount('#card-el');
+        cardPe = pe;
         root.querySelector('#save-card').onclick = (e) => busy(e.currentTarget, async () => {
           flash('#card-flash', '', '');
           let r;
@@ -5861,6 +5869,14 @@
       ...(+m.other ? [['Welcome and other credits', usd(m.other, true)]] : []),
       ['Agent usage', usd(-m.usage)], ['Balance now', usd(m.end)]];
     return `<dl class="bill-math">${rows.map(([k, v], i) => `<div${i === rows.length - 1 ? ' class="total"' : ''}><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
+  }
+  // The last auto-reload failed (/api/billing reload_failed): when, what it tried to add and why, in the
+  // user's words, with a way to the card form. Shown by the auto-reload switch while it is on; '' when
+  // the last auto-reload didn't fail. The server clears it when one succeeds or a card is saved.
+  function reloadFailNote(d) {
+    const f = d && d.reload_failed;
+    if (!f || !f.text) return '';
+    return `<div class="notice bad autorel-fail" id="autorel-fail" role="status"${d.auto_reload ? '' : ' hidden'}>${ICON.warn}<span><b>Auto-reload failed</b> <time datetime="${esc(f.at)}">${settleAt(f.at)}</time>. ${esc(f.text)}<button type="button" class="btn sm" id="autorel-fix">Update card</button></span></div>`;
   }
   // The week's usage by what spent it (/api/billing spent_7d_by), biggest first; '' when nothing did.
   const SPEND_SOURCE = { research: 'your research sessions', autopilot_research: 'autopilot research', autopilot_review: 'autopilot check-ins', chat: 'chat', other: 'other agent calls' };

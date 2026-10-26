@@ -55,12 +55,31 @@ def _credits_running_low(cur, uid: int, reads: Optional[billing.Reads] = None):
     return runway if runway is not None and runway < CREDIT_RUNWAY_WARN_DAYS else None
 
 
+def _reload_failed(cur, uid: int) -> Optional[Dict]:
+    """The last auto-reload attempt, when it failed: {"at", "text"} from the bell notice
+    billing.reload_failed_notice wrote (the credits it tried to add and the reason, as the user reads
+    it), unless an auto-reload has succeeded since. A saved card clears the notice. None otherwise;
+    a readout, so a failed read is None, never a broken page."""
+    try:
+        note = repo.latest_notification(cur, uid, billing.RELOAD_FAILED_KIND)
+        if not note:
+            return None
+        ok_at = repo.last_credit_at(cur, uid, "autoreload")
+        if ok_at is not None and ok_at > note["created_at"]:  # a tie keeps the failure: hiding one is worse
+            return None
+        return {"at": note["created_at"], "text": billing.reload_failed_text(note["body"])}
+    except Exception as e:  # noqa: BLE001
+        print("[billing] auto-reload failure read failed for user %s: %r" % (uid, e), flush=True)
+        return None
+
+
 def billing_state(ctx: Ctx):
     cur = ctx.cur
     cust = repo.get_stripe_customer(cur, ctx.uid)
-    cards, default_pm, auto_reload = [], None, True
+    cards, default_pm, auto_reload, reload_failed = [], None, True, None
     reload_amount, reload_threshold = float(billing.AUTORELOAD_AMOUNT), float(billing.AUTORELOAD_THRESHOLD)
     if cust and billing.configured():
+        reload_failed = _reload_failed(cur, ctx.uid)
         try:
             cards = billing.list_cards(cust["stripe_customer_id"])
         except billing.StripeError:
@@ -95,6 +114,9 @@ def billing_state(ctx: Ctx):
         "min_reload_threshold": float(billing.AUTORELOAD_THRESHOLD),
         "min_topup": float(billing.MIN_TOPUP), "max_topup": float(billing.MAX_TOPUP),
         "cards": cards, "default_pm": default_pm, "auto_reload": auto_reload,
+        # The last auto-reload failed (what it tried to add and why, in the user's words): Billing
+        # shows it by the auto-reload switch with a way to update the card. None when it didn't.
+        "reload_failed": reload_failed,
         # Read-only spend pace: the last day, and the week split by what spent it (the parts add up
         # to spent_7d). The research floor tells the page when new research can't start.
         "spent_24h": round(repo.credit_spent_total(cur, ctx.uid, repo.now_utc() - timedelta(days=1)), 4),
@@ -314,6 +336,12 @@ def billing_card_added(ctx: Ctx):
         raise _stripe_failed(ctx, e, 502, "save card", "Your card couldn't be saved just now. Reload the page "
                                                        "and add it again.")
     repo.set_default_pm(ctx.cur, ctx.uid, pm)
+    # A new card answers a failed auto-reload: its notice (the bell line and Billing's banner) is no
+    # longer so. Best-effort; the card is saved either way.
+    try:
+        repo.delete_notifications(ctx.cur, ctx.uid, billing.RELOAD_FAILED_KIND)
+    except Exception as e:  # noqa: BLE001
+        print("[billing] clearing the auto-reload failure notice failed for user %s: %r" % (ctx.uid, e), flush=True)
     return {"ok": True}
 
 

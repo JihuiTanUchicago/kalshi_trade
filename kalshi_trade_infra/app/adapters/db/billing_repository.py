@@ -41,6 +41,13 @@ def credit_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
     return cur.fetchall()
 
 
+def last_credit_at(cur, user_id: int, kind: str):
+    """When the user's newest ledger row of one kind was written, or None (idx_credit_user_kind_time)."""
+    cur.execute("SELECT MAX(created_at) AS t FROM app_credit_ledger WHERE user_id=%s AND kind=%s", (user_id, kind))
+    row = cur.fetchone()
+    return row["t"] if row else None
+
+
 def credit_totals(cur, user_id: int, since) -> Dict[str, Dict[str, float]]:
     """Each ledger kind's all-time total and row count, and its total since `since`:
     {kind: {"all": usd, "n": rows, "since": usd, "n_since": rows}}. The kinds' "all" add up to
