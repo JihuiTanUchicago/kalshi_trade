@@ -255,7 +255,7 @@ def add_event(cur, run_id: int, kind: str, message: str, data: Optional[Dict] = 
 def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
     cur.execute(
         """SELECT id, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
-                  created_at, started_at, finished_at
+                  created_at, started_at, finished_at, heartbeat_at
            FROM app_agent_runs WHERE user_id=%s AND kind='research' ORDER BY id DESC LIMIT %s""",
         (user_id, limit),
     )

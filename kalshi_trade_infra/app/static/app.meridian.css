@@ -2536,6 +2536,12 @@ body.landing-body .apf { display: none; }
 .ap-focus { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
 .ap-focus button { background: none; border: 0; padding: 10px 4px; margin: -10px -4px -10px 0; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .apf-top > .ap-focus { margin: 0 0 6px; }
+/* The autopilot's latest move, what and when, under the card's line and the panel's figures. */
+.ap-last { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-2); overflow-wrap: anywhere; }
+.ap-last time { color: var(--ink); }
+#apf-last .ap-last { margin: 10px 0 8px; }
+/* The activity feed's day line: the rail shows clock times only, so each day says its date and zone. */
+.apf-log .ap-day { display: block; grid-column: 1 / -1; border: 0; list-style: none; padding: 12px 0 2px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
 /* The autopilot's last 7 days: real credits and paper P&L side by side, never summed. */
 .ap-week { margin: 2px 0 0; padding-top: 10px; border-top: 1px solid var(--rule); }
 .ap-week h3 { margin: 0 0 6px; font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }

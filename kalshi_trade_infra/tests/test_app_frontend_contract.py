@@ -366,7 +366,7 @@ def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     assert calls == [(7, [9])]
     calls.clear()
     monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
-    monkeypatch.setattr(server.repo, 'active_run_counts', lambda *a: {})
+    monkeypatch.setattr(server.repo, 'active_run_counts', lambda *a, **kw: {})
     monkeypatch.setattr(server, '_research_totals', lambda *a: {})
     runs = server.list_runs(context())['runs']
     assert [r['spent_usd'] for r in runs] == [1.8373, 0.0, 0.0]  # a run with no debit cost nothing

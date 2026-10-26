@@ -555,7 +555,7 @@ def dashboard(ctx: Ctx):
         # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
         "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
         "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"])) for d in deps],
-        "agents": repo.active_run_counts(cur, ctx.uid),
+        "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
         "since": _since_visit(cur, ctx.uid, visit, first, recent),
     }
@@ -647,7 +647,7 @@ def list_runs(ctx: Ctx):
     runs = repo.list_runs(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, runs)
     _mark_example(runs)
-    return {"runs": runs, "counts": repo.active_run_counts(ctx.cur, ctx.uid),
+    return {"runs": runs, "counts": repo.active_run_counts(ctx.cur, ctx.uid, silent_before=_silent_before()),
             "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
 
 
@@ -1547,7 +1547,11 @@ def _research_activity(cur, uid: int) -> Dict:
     """What research is doing for the autopilot float: the markets being researched now and the
     last 7 days' tested/passed counts, so a quiet panel reads as working, not stuck. One bounded read."""
     since = repo.now_utc() - timedelta(days=7)
-    active = [r for r in repo.list_runs(cur, uid, limit=50) if r.get("status") in ("queued", "running", "paused")]
+    # Researching now means a run queued for a worker or one that is beating. A run the user paused
+    # isn't researching, and a running run silent past the reaper's limit (its worker died) left
+    # "Right now it's researching Bitcoin" on every page for hours after the work stopped.
+    active = [r for r in repo.list_runs(cur, uid, limit=50) if r.get("status") == "queued"
+              or (r.get("status") == "running" and not (_run_wait(r) or {}).get("overdue"))]
     # The week's totals come from one aggregate, not the 50 newest runs: a busy autopilot starts
     # 250+ runs a week, and the capped list told Todd it had tested 73 ideas when it was hundreds.
     # Passed counts strategies that cleared every gate: an old run's counter held 68 backtest-only.
@@ -1809,6 +1813,11 @@ QUIET_AFTER_MINUTES = max(COPILOT_REVIEW_MINUTES, int(os.getenv("APP_IDLE_REVIEW
 # TAU_RUN_ABANDONED_SECONDS): a running run that hasn't beaten for that long is one the reaper stops,
 # and a queued run is never reaped, so without this a backed-up or dead worker showed a spinner forever.
 RUN_OVERDUE_SECONDS = int(worker.ABANDONED_AFTER.total_seconds())
+
+
+def _silent_before() -> datetime:
+    """A running run whose last beat is older than this has gone quiet past the reaper's limit."""
+    return repo.now_utc() - timedelta(seconds=RUN_OVERDUE_SECONDS)
 
 
 def _run_wait(run: Optional[Dict]) -> Optional[Dict]:

@@ -363,6 +363,56 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
     assert story[1] == "This week it tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
 
 
+def test_research_activity_counts_only_runs_that_are_working_now(monkeypatch):
+    """A paused run isn't researching, and a running run silent past the reaper's limit (its worker
+    died) is not either: both left "Right now it's researching ..." on every page after the work stopped."""
+    from datetime import timedelta
+    from app import server
+    now = server.repo.now_utc()
+    stale = now - timedelta(seconds=server.RUN_OVERDUE_SECONDS + 60)
+    runs = [{"market": "nhl_game", "status": "running", "created_at": now, "started_at": now, "heartbeat_at": now},
+            {"market": "btc15m", "status": "running", "created_at": stale, "started_at": stale, "heartbeat_at": stale},
+            {"market": "eth15m", "status": "paused", "created_at": now, "started_at": now, "heartbeat_at": now},
+            {"market": "high_ny", "status": "queued", "created_at": stale, "heartbeat_at": None}]
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
+    monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: [])
+    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 0)
+    monkeypatch.setattr(server.repo, "research_spent_since", lambda cur, uid, since: 0.0)
+    out = server._research_activity(None, 7)
+    # A queued run is waiting for a worker (the reaper never stops one), so it still counts.
+    assert out["active"] == [server.MARKETS["nhl_game"].label, server.MARKETS["high_ny"].label]
+    runs[:] = runs[1:3]
+    assert server._research_activity(None, 7)["active"] == []
+    assert server._autopilot_now({"research": server._research_activity(None, 7)}).startswith("Right now it's between research runs.")
+
+
+def test_active_run_counts_can_leave_out_a_run_whose_worker_went_quiet():
+    """The dashboard's "1 agent researching" counted a running run whose worker died, beside an
+    autopilot card saying it was between research runs. With silent_before it drops those."""
+    from datetime import datetime
+    from app import repository as repo, server
+
+    class Cur:
+        def __init__(self):
+            self.sql = self.params = None
+
+        def execute(self, sql, params):
+            self.sql, self.params = " ".join(sql.split()), params
+
+        def fetchall(self):
+            return [{"kind": "research", "status": "running", "n": 1}]
+
+    cur = Cur()
+    assert repo.active_run_counts(cur, 7)["research_running"] == 1 and cur.params == (7,)
+    assert "heartbeat_at" not in cur.sql
+    cut = datetime(2026, 10, 26, 5, 0)
+    repo.active_run_counts(cur, 7, silent_before=cut)
+    assert cur.params == (7, cut)
+    assert "NOT (status='running' AND COALESCE(heartbeat_at, started_at, created_at) < %s)" in cur.sql
+    age = (server.repo.now_utc() - server._silent_before()).total_seconds()
+    assert abs(age - server.RUN_OVERDUE_SECONDS) < 5
+
+
 def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     from app import server
     d = {"autopilot": True, "paper_running": 3, "live_running": 0,
