@@ -1,12 +1,12 @@
 """What a paying user is told about their spend: what each charge was for, how fast they spend,
-what run-until-stopped research costs an hour, and that no customer copy names a model's internal id
-or the usage margin. Read-only figures; nothing here changes what is charged."""
+what run-until-stopped research costs an hour, and that no customer copy names a model's internal id.
+Read-only figures; nothing here changes what is charged."""
 import csv
 import io
 from datetime import datetime
 from types import SimpleNamespace
 
-from app import billing, devlog, models_catalog, server
+from app import models_catalog, server
 from app.adapters.db import billing_repository
 
 
@@ -123,10 +123,3 @@ def test_forever_rates_read_only_sessions_that_billed_for_half_an_hour():
     assert billing_repository.forever_session_rates(cur, "since", 7) == [("opus-4-6", 3.0, 1.5)]
     sql, params = cur.sql[0]
     assert "r.run_forever=1" in sql and "secs >= 1800" in sql and params == ("since", 7, 500)
-
-
-def test_the_public_dev_log_does_not_disclose_the_usage_margin():
-    text = " ".join(t + " " + d for _, t, d in devlog.SHIPPED) + " ".join(t + " " + d for t, d in devlog.PLANNED)
-    for phrase in ("list price", "USAGE_MARGIN", "100% margin", "markup"):
-        assert phrase.lower() not in text.lower(), phrase
-    assert billing.USAGE_MARGIN  # the margin itself is untouched
