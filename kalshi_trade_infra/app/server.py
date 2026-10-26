@@ -595,12 +595,16 @@ def _visit_since(raw) -> Tuple[datetime, bool]:
 def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict) -> Dict:
     """The dashboard's "since your last visit" strip: each book's realized P&L and closed trades
     since then (from the books' one pass; books are never added together), the strategies that
-    passed, the autopilot's own changes and the research sessions started. Two reads."""
+    passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
+    (real money) ride apart from the books, and only while payments are on: with them off nothing
+    is billed. `milestones` are the paper forward-gate passes and live-ready strategies since then."""
     act = repo.activity_since(cur, uid, visit)
     return {"at": visit, "first": first,
             "books": {m: {"pnl": round(pnl, 2), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": repo.passed_since(cur, uid, visit),
-            "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions"))}
+            "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
+            "spent": act.get("spent") if billing.configured() else None,
+            "milestones": act.get("milestones") or {"passed": [], "live_ready": []}}
 
 
 TRACK_RECORD_TTL = 60.0  # seconds; the record moves only when a trade closes

@@ -4395,6 +4395,7 @@
   // realized P&L (never added together), what passed, what the autopilot changed, and what needs the
   // user, linking to it. `pausedHref` is where this page lists its paused deployments.
   const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'stopped %s'], ['adjust', 'adjusted %s'], ['research', 'started %s']];
+  const CREDITS_WARN_DAYS = 3;  // the strip warns when credits last fewer days than this (server: CREDIT_RUNWAY_WARN_DAYS)
   // A deployment's pause reason, short: no "Autopilot:" prefix, no closing period, cut at a word.
   const shortReason = (r) => {
     const s = String(r).replace(/^Autopilot:\s*/, '').replace(/\.\s*$/, '');
@@ -4434,31 +4435,50 @@
     }).join('<span class="sep">·</span>') : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
+    // A strategy that passed its paper forward test or became ready for live did so days after it was
+    // created, so `passed` never lists it: the server reads those from the bell (`milestones`, strategy
+    // ids), and the page names each from its own deployments.
+    const ms = s.milestones || {}, named = (sid) => {
+      const dep = d.deployments.find((x) => +x.strategy_id === +sid);
+      return `<a href="/strategies/${encodeURIComponent(sid)}">${esc(dep ? dep.title : 'Strategy ' + sid)}</a>`;
+    };
+    const fwd = (ms.passed || []).slice(0, 3).map(named);
+    const fwdText = `${fwd.join(', ')} passed ${fwd.length === 1 ? 'its' : 'their'} paper forward test: ${fwd.length === 1 ? 'a candidate' : 'candidates'} for live`;
     // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
-    const found = s.own_sessions === false && !pass.n ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
+    const found = s.own_sessions === false && !pass.n && !fwd.length ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
       ? `${plural(pass.n, 'strategy', 'strategies')} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length ? `, <a href="/strategies">${num(pass.n - pass.items.length)} more</a>` : ''}`
-      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started, ${sinceRunsState(runs, started, !pass.n)}</span>` : '') + '.');
+      : fwd.length ? fwdText : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started, ${sinceRunsState(runs, started, !pass.n)}</span>` : '') + '.' + (pass.n && fwd.length ? ` ${fwdText}.` : ''));
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', k === 'research' ? plural(ap[k], 'research session', 'research sessions') : num(ap[k])));
     const other = Object.entries(ap).filter(([k]) => !known.has(k)).reduce((a, [, n]) => a + n, 0);
     if (other) did.push('made ' + plural(other, 'other change', 'other changes'));
     const auto = did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`;
-    const needs = d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
-      .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_reason))}</span>` : ''}`);
+    const needs = (ms.live_ready || []).slice(0, 3).map((sid) => `${named(sid)} is ready for live trading. Going live is your call.`);
+    needs.push(...d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
+      .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_reason))}</span>` : ''}`));
     const pausedN = d.deployments.filter((x) => x.status === 'paused').length;
-    if (pausedN > needs.length) needs.push(`<a href="${pausedHref}">${num(pausedN - needs.length)} more paused</a>`);
+    if (pausedN > 3) needs.push(`<a href="${pausedHref}">${num(pausedN - 3)} more paused</a>`);
     if (d.demo && d.demo.health) needs.push(d.demo.health.need ? `Demo can’t trade: it needs ${esc(d.demo.health.need)}.${actionLink(d.demo.health)}` : demoHealthLine(d.demo.health));
     if (d.reconcile && d.reconcile.length) needs.push(`${plural(d.reconcile.length, 'live position disagrees', 'live positions disagree')} with Kalshi. <a href="/funds">Check Funds</a>`);
     if (failed) needs.push(`<a href="/research">${plural(failed, 'research session', 'research sessions')} failed</a>`);
     // Under the floor a research session needs, nothing new researches (autopilot included) until they add credits.
     const me = S.me || {};
-    if (me.billing_enabled && !me.needs_card && me.min_run_balance != null && me.credit_balance < me.min_run_balance)
+    const low = me.billing_enabled && !me.needs_card && me.min_run_balance != null && me.credit_balance < me.min_run_balance;
+    if (low)
       needs.push(`Credits are at ${usd(me.credit_balance)}: new research needs ${usd(me.min_run_balance)} to start. <a href="/billing">Add credits</a>`);
+    // Before the pause, not after: with auto-reload off, the week's pace runs the balance out within
+    // CREDITS_WARN_DAYS (the server's CREDIT_RUNWAY_WARN_DAYS, which the autopilot panel warns on).
+    const spent = me.billing_enabled ? s.spent : null, wk = spent ? +spent.week || 0 : 0;
+    const runway = wk > 0 && me.credit_balance > 0 ? me.credit_balance / (wk / 7) : null;
+    if (spent && !low && !me.needs_card && !me.auto_reload && runway != null && runway < CREDITS_WARN_DAYS)
+      needs.push(`Credits run out ${runway < 1 ? 'within a day' : `in about ${plural(Math.round(runway), 'day', 'days')}`} at this week’s pace, then research pauses. <a href="/billing">Add credits or turn on auto-reload</a>`);
+    // What the time away cost, in credits: real money, so its own row, never added to a book above.
+    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}<span class="since-sub"> \u00b7\u00a0real money \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
       <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>
-      <dl class="since-list">${row('Money', money)}${row('New results', found)}${row('Autopilot', auto)}${row('Needs you', needs.length ? needs.join('<br>') : 'Nothing.', needs.length ? 'needs' : '')}</dl></section>`;
+      <dl class="since-list">${row('Money', money)}${cost ? row('Cost', cost) : ''}${row('New results', found)}${row('Autopilot', auto)}${row('Needs you', needs.length ? needs.join('<br>') : 'Nothing.', needs.length ? 'needs' : '')}</dl></section>`;
   }
   function demoHealthLine(h) { return h ? `<span class="demo-health">${esc(h.line)}${actionLink(h)}</span>` : ''; }
   // The reconciler found live positions Tau's book and Kalshi disagree on. Tau has no portfolio page:
@@ -4508,8 +4528,8 @@
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
     ].filter(Boolean);
     const now = d.billing_blocked
-      ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.'
-        : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.`)
+      ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.' + apStillTrading(d)
+        : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`)
       : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc(apStory(d)[0] || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
@@ -4531,6 +4551,12 @@
     const flip = /^(LIVE )?autopilot is (ON|OFF)\b/i.exec(raw);
     if (flip) return `${flip[1] ? 'Live autopilot' : 'Autopilot'} switched ${/on/i.test(flip[2]) ? 'on' : 'off'}`;
     let t = raw.replace(/^Autopilot:?\s+(?=[a-z])/, '').split(/(?<=[.!?])\s| — /)[0].replace(/[.!?]$/, '');
+    // The forward gate's verdict line leads with a label and carries its stats in brackets; cut to the
+    // label alone it read "Last move: Paper forward gate". Say the verdict instead.
+    // The live-ready and paper-standout lines start with their once-only marker ("[live-ready #12]").
+    t = t.replace(/^\[[a-z-]+ #\d+\]\s*/, '').replace(/^Paper forward gate: (.+?) PASSED\b.*$/, '$1 passed its paper forward test')
+      .replace(/^Paper forward gate: (.+?) passed on paper\b.*$/, '$1 passed on paper, not added to the candidates')
+      .replace(/^Paper forward gate: (.+?) did not pass\b.*$/, '$1 did not pass its paper forward test');
     // agent.act names a research session's market by its key ("on btc15m"); say it the way the app does.
     const keys = new Set(((S.me && S.me.markets) || []).map((m) => m.key));
     t = t.replace(/\bon ([a-z0-9_]+)$/, (all, k) => keys.has(k) || MKT_SHORT[k] ? 'on ' + marketShort(k) : all);
@@ -4629,6 +4655,12 @@
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
   const apFloorText = () => (S.me && S.me.min_run_balance != null ? `starting research needs ${usd(S.me.min_run_balance)} in credits.` : 'it’s out of credits.');
+  // A billing pause stops the autopilot's research and check-ins; the engine keeps trading what is
+  // already deployed (credits never gate a trade). "Paused" alone read as if every strategy had stopped.
+  const apStillTrading = (d) => {
+    const n = (+d.live_running || 0) + (+d.demo_running || 0) + (+d.paper_running || 0);
+    return n ? ` ${n === 1 ? 'The strategy already running keeps' : `The ${n} strategies already running keep`} trading.` : '';
+  };
   // Beside the week's spend: what is left, how long it lasts at that pace (the Billing page's runway),
   // and the only limit there is. Autopilot has no spending budget of its own: it researches until the
   // balance is under what a session needs to start, then pauses.
@@ -5145,8 +5177,8 @@
     if (gates) {
       // Say why autopilot is quiet (or soon will be) here too, not only on the dashboard card.
       if (d.billing_blocked) {
-        gates.innerHTML = d.billing_reason === 'card' ? 'Autopilot is paused. <a href="/billing">Add a payment method</a> to let it keep researching.'
-          : `Autopilot is paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.`;
+        gates.innerHTML = d.billing_reason === 'card' ? 'Autopilot is paused. <a href="/billing">Add a payment method</a> to let it keep researching.' + apStillTrading(d)
+          : `Autopilot is paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`;
         gates.classList.add('warn');
       } else if (d.credits_low_days != null) {
         gates.innerHTML = `Credits run out ${d.credits_low_days < 1 ? 'within a day' : 'in about ' + Math.round(d.credits_low_days) + ' day' + (Math.round(d.credits_low_days) === 1 ? '' : 's')} at this week's pace, then research pauses. <a href="/billing">Add credits or turn on auto-reload</a>.`;

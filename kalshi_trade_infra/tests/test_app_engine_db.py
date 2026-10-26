@@ -803,7 +803,39 @@ def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(c
     assert act["autopilot"] == {"deploy": 1, "pause": 2}
     assert sum(act["runs"].values()) == 1
     assert act["own_sessions"] is True  # it has a research session of its own
-    assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False}
+    assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False,
+                                                   "spent": {"since": 0.0, "week": 0.0},
+                                                   "milestones": {"passed": [], "live_ready": []}}
+
+
+def test_since_your_last_visit_reads_what_it_cost_and_the_paper_milestones(conn, user):
+    """activity_since also sums the usage debits since the visit and over the last 7 days (top-ups and
+    the welcome bonus are not spend), and lists the strategies whose bell said they passed the paper
+    forward gate or became ready for live since the visit, by id, once each, newest first. Passes the
+    strategy's own created_at would hide: the forward gate judges a strategy days after it was made."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    uid = user["id"]
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    since = now - timedelta(hours=24)
+    repo.add_credit(cur, uid, "usage", -1.25, "Agent usage · m")
+    repo.add_credit(cur, uid, "usage", -0.75, "Agent usage · m")
+    repo.add_credit(cur, uid, "topup", 20, "Added $20 credits", stripe_ref="t-" + uuid.uuid4().hex)
+    repo.add_credit(cur, uid, "usage", -3.0, "Agent usage · m")
+    cur.execute("UPDATE app_credit_ledger SET created_at=%s WHERE id=LAST_INSERT_ID()", (now - timedelta(days=3),))
+    repo.add_credit(cur, uid, "usage", -9.0, "Agent usage · m")
+    cur.execute("UPDATE app_credit_ledger SET created_at=%s WHERE id=LAST_INSERT_ID()", (now - timedelta(days=9),))
+    repo.add_notification(cur, uid, "passed", "“A” passed the paper forward gate.", "/strategies/41")
+    repo.add_notification(cur, uid, "live_ready", "“A” is ready for live trading.", "/strategies/41")
+    repo.add_notification(cur, uid, "live_ready", "“B” is ready for live trading.", "/strategies/57")
+    repo.add_notification(cur, uid, "live_ready", "“B” again.", "/strategies/57")
+    repo.add_notification(cur, uid, "deployed", "Autopilot put “C” on paper.", "/strategies/60")  # not a milestone
+    repo.add_notification(cur, uid, "passed", "“D” passed the paper forward gate.", "/strategies/12")
+    cur.execute("UPDATE app_notifications SET created_at=%s WHERE id=LAST_INSERT_ID()", (now - timedelta(days=2),))
+    act = repo.activity_since(cur, uid, since)
+    assert act["spent"] == {"since": 2.0, "week": 5.0}
+    assert act["milestones"] == {"passed": [41], "live_ready": [57, 41]}
 
 
 def test_the_deploy_board_and_strategy_page_reads_answer_as_the_ones_they_replace(conn, user):
