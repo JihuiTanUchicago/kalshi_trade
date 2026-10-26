@@ -1104,6 +1104,21 @@
     rows.forEach(([, h], i) => { if (was.html[i] !== h) { was.html[i] = h; el.children[i].outerHTML = h; } });
     painted.set(el, was.html.join(''));
   }
+  // The dashboard and Deploy board polls send back the version of their last full answer (?v=). While the
+  // answer is unchanged the server says {same: true} with only what moves between writes: each open
+  // position's mark (the engine stamps it every tick), each deployment's unrealized P&L from those marks,
+  // the data ages and the start of the "since your last visit" window (services.page_poll). They go back over the kept answer by id, which makes the
+  // answer a fresh poll would have got; the page draws it as it draws any answer.
+  function pollAnswer(kept, got) {
+    if (!got || !got.same || !kept) return got;
+    const marks = got.marks || {}, unreal = got.unrealized || {};
+    const d = { ...kept,
+      open_positions: (kept.open_positions || []).map((p) => (marks[p.id] ? { ...p, ...marks[p.id] } : p)),
+      deployments: (kept.deployments || []).map((x) => (x.id in unreal ? { ...x, unrealized_pnl: unreal[x.id] } : x)) };
+    if (got.freshness) d.freshness = got.freshness;
+    if (got.since_at !== undefined && kept.since) d.since = { ...kept.since, at: got.since_at };
+    return d;
+  }
   function flash(where, msg, kind) {
     const el = typeof where === 'string' ? root.querySelector(where) : where;
     if (el) { el.innerHTML = notice(msg, kind, true); announce(msg, kind === 'bad'); }
@@ -1960,8 +1975,12 @@
     S.trReread = null;  // set by dashTrackRecord once this view's record is mounted
     let booksSeen = null;  // each book's closed and open trade counts at the last poll
     const visitAt = visitStart();
+    let kept = null;  // the last full answer, whose version the poll sends back (pollAnswer)
     const load = async (cfg) => {
-      const d = await api('/api/dashboard' + (visitAt ? '?since=' + visitAt : ''), undefined, cfg);
+      const q = [visitAt ? 'since=' + visitAt : '', kept && kept.v ? 'v=' + encodeURIComponent(kept.v) : ''].filter(Boolean).join('&');
+      const got = await api('/api/dashboard' + (q ? '?' + q : ''), undefined, cfg);
+      const d = pollAnswer(kept, got);
+      if (!got.same) kept = got;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
       const depsWas = S.dashDeps;
@@ -3733,8 +3752,11 @@
     // passed strategies" opened an empty list too, so the button starts a session instead. Until it
     // knows (or if the read fails) the board keeps that button.
     let passedN = null, askedPassed = false;
+    let kept = null;  // the last full answer, whose version the 10s poll sends back (pollAnswer)
     const loadBoard = async () => {
-      const d = withUnrealized(await api('/api/deployments'));
+      const got = await api('/api/deployments' + (kept && kept.v ? '?v=' + encodeURIComponent(kept.v) : ''));
+      const d = withUnrealized(pollAnswer(kept, got));
+      if (!got.same) kept = got;
       if (!d.deployments.length && !askedPassed) {
         askedPassed = true;
         api('/api/strategies?status=passed').then((r) => {

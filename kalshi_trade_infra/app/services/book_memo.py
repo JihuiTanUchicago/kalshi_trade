@@ -17,6 +17,9 @@ the two leaves the kept answer under the older version, and the next request rea
 Display only: the gates, the engine and the live checks keep reading the database themselves. A user
 with no positions reads straight through (nothing to save). Values are shared between requests and
 must not be mutated by callers.
+
+The dashboard's paper cash is kept the same way against the paper ledger's own version
+(paper_ledger_summary below): the ledger is summed again only after a row is added or it is reset.
 """
 from __future__ import annotations
 
@@ -35,6 +38,7 @@ _LOCK = threading.Lock()
 def clear() -> None:
     with _LOCK:
         _KEPT.clear()
+        _LEDGER.clear()
 
 
 class BookMemo:
@@ -79,6 +83,27 @@ class BookMemo:
         if hit is not None:
             return hit
         return self.keep(name, key, read())
+
+
+_LEDGER: Dict[int, Tuple[Tuple[int, int], Dict]] = {}
+
+
+def paper_ledger_summary(cur, uid: int) -> Dict:
+    """repo.paper_ledger_summary (the paper cash, net deposits and last reset), kept per user against
+    repo.paper_ledger_version (the ledger's rows and highest id, from its index alone): every write to
+    the ledger moves that version, so a kept summary is served only while its rows are the rows there
+    now. The version is read first, so a row added in between is summed on the next request. An empty
+    ledger sums to nothing, so it is not read at all. A copy: the caller may change it."""
+    v = repo.paper_ledger_version(cur, uid)
+    if not v[0]:
+        return {"balance": 0.0, "deposited": 0.0, "reset_at": None}
+    hit = _LEDGER.get(int(uid))
+    if hit is None or hit[0] != v:
+        with _LOCK:
+            if len(_LEDGER) >= MAX_ENTRIES:
+                _LEDGER.clear()
+        hit = _LEDGER[int(uid)] = (v, repo.paper_ledger_summary(cur, uid))
+    return dict(hit[1])
 
 
 def closed_book_totals(memo: BookMemo, day: datetime, visit: Optional[datetime] = None):

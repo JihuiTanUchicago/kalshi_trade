@@ -260,6 +260,7 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
     for name, fn in {
         "user_positions": lambda *a, **k: [], "list_deployments_for_display": lambda *a, **k: [], "deployment_curves": lambda *a, **k: {},
         "paper_ledger_summary": lambda cur, uid: {"balance": 480.0, "deposited": 500.0, "reset_at": at},
+        "paper_ledger_version": lambda cur, uid: (2, 9),  # the ledger's rows and highest id (book_memo keeps the sum)
         "closed_book_totals": lambda cur, uid, since, visit=None: ({m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"demo": 3},
                                                                      {m: (0.0, 0) for m in ("paper", "demo", "live")}),
         "daily_pnl": lambda *a, **k: [],
@@ -271,6 +272,7 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
     }.items():
         monkeypatch.setattr(server.repo, name, fn)
     monkeypatch.setattr(server, "_freshness", lambda cur: {})
+    monkeypatch.setattr(server.book_memo, "_LEDGER", {})
     out = server.dashboard(ctx())
     paper, demo = out["paper"], out["demo"]
     assert paper["reset_at"] == at and paper["total_pnl"] == -20.0 and paper["equity"] == 480.0
