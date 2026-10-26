@@ -848,8 +848,48 @@ test('Funds names the live figure Kalshi cash, open positions not included', asy
     d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, funding_url: 'https://kalshi.com'}; return response(d); }});
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
-  assert.match(figs, /Kalshi cash/); assert.match(figs, /Your real cash at Kalshi, open positions not included/);
+  assert.match(figs, /Kalshi cash/); assert.match(figs, /Your real cash at Kalshi\. Open positions not included/);
   assert.doesNotMatch(figs, /Live money/);
+});
+
+test('Funds says when Kalshi cash was read, what each book has open, and matches the dashboard paper figure', async () => {
+  const read = new Date(Date.now() - 5 * 60000).toISOString();
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
+    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, balance_at: read, open_positions: 2, open_at_cost: 8.09, funding_url: 'https://kalshi.com'};
+    d.demo = {...d.demo, open_positions: 1, open_at_cost: 3.05};
+    d.paper = {...d.paper, cash: 991.91, equity: 1000, open_positions: 3, open_at_cost: 8.09}; return response(d); }});
+  await f.viewFunds();
+  const figs = f.root.querySelector('#ffigs').innerHTML;
+  assert.match(figs, /Your real cash at Kalshi, read 5m ago\. 2 open live positions \(\$8\.09 at cost\) not included/);
+  assert.match(figs, /\$1,000\.00 capital ·\u00a01 open \(\$3\.05 at cost\) ·\u00a0real fills/);
+  // Paper is the dashboard's figure (cash + open at cost), never cash alone under another name.
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.09 at cost\)/); assert.doesNotMatch(figs, /Paper cash/);
+  // Each book stays its own figure: no sum of live, demo and paper anywhere.
+  assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);
+  // Nothing open says so; Kalshi not answering says what to do instead of a bare "Unavailable".
+  const g = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: 50, open_positions: 0, open_at_cost: 0}; return response(d); }});
+  await g.viewFunds();
+  assert.match(g.root.querySelector('#ffigs').innerHTML, /Your real cash at Kalshi\. No open live positions/);
+  const h = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: null, open_positions: 2, open_at_cost: 8}; return response(d); }});
+  await h.viewFunds();
+  assert.match(h.root.querySelector('#ffigs').innerHTML, /Unavailable[\s\S]*Kalshi didn’t answer just now\. Reload in a minute to try again\./);
+});
+
+test('dashboard: Kalshi cash says when it was read, keeps Tau\'s own trades when Kalshi is down, and an open position says what it is worth', async () => {
+  const live = {connected: true, balance: 250, balance_at: new Date().toISOString(), open_positions: 2, running: 1, realized_pnl: 17, today_pnl: -2, open_at_cost: 1.2};
+  const pos = {title: 'Drift', ticker: 'KXBTCD-1', side: 'yes', qty: 12, entry_price: .42, entry_fee: .12, mark: .47, value: 5.64, unrealized: .48, mode: 'live', opened_at: '2026-10-25T08:00:00Z'};
+  for (const balance of [250, null]) {
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), live: {...live, balance}, open_positions: [pos]});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    const board = f.root.querySelector('#boardbody').innerHTML;
+    if (balance) assert.match(board, /Read from Kalshi just now ·\u00a0Tau trades: 2 open \(not in cash\)/);
+    else assert.match(board, /Couldn’t read your Kalshi balance just now ·\u00a0Tau trades: 2 open \(not in cash\) ·\u00a0\+\$17\.00 realized all time/);
+    assert.match(f.root.querySelector('main').innerHTML, /<span>worth \$5\.64 \(<span class="gain">\+\$0\.48<\/span>\)<\/span>/);
+  }
 });
 
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {

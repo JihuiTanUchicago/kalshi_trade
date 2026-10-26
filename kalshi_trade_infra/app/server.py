@@ -428,18 +428,24 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
     positions and deployments only — so the three buckets never double-count each other.
     `realized` is (all time, since `day`) when the caller read every book's at once.
     `closed` is the closed-trade counts of repo.closed_book_totals (read once for all three)."""
-    pos = [p for p in open_pos if p["mode"] == mode]
     if realized is None:
         realized = (repo.realized_pnl(cur, uid, mode), repo.realized_pnl(cur, uid, mode, day))
     total, today = realized
     return {
         "closed_trades": int((closed or {}).get(mode, 0)),  # > 0: the dashboard offers /api/trades.csv
-        "open_at_cost": round(sum(float(p["qty"]) * float(p["entry_price"]) for p in pos), 2),
-        "open_positions": len(pos),
+        **_open_book(open_pos, mode),
         "running": sum(1 for d in deps if d["mode"] == mode and d["status"] == "running"),
         "realized_pnl": round(total, 2),
         "today_pnl": round(today, 2),
     }
+
+
+def _open_book(open_pos: List[Dict], mode: str) -> Dict:
+    """One mode's open positions: how many and what they cost (contracts x entry price). The dashboard
+    and Funds both read this, so the two pages show the same open money to the cent."""
+    pos = [p for p in open_pos if p["mode"] == mode]
+    return {"open_at_cost": round(sum(float(p["qty"]) * float(p["entry_price"]) for p in pos), 2),
+            "open_positions": len(pos)}
 
 
 def _live_balance(cur, uid: int) -> Dict:
@@ -453,6 +459,8 @@ def _live_balance(cur, uid: int) -> Dict:
             out["balance"] = kalshi_account.balance_cached(uid, kalshi_account.credentials_from_row(uid, key))
         except Exception:
             out["balance"] = None
+        if out["balance"] is not None:
+            out["balance_at"] = kalshi_account.balance_read_at(uid)  # the figure is up to a minute old
     return out
 
 
@@ -2250,10 +2258,17 @@ def funds(ctx: Ctx):
 
         kalshi_dev_key["balance"] = demo_twins.balance_cached(cur, ctx.uid)
     de = repo.demo_equity(cur, ctx.uid)
+    # Each book's open positions, so every figure says what it leaves out; paper's balance is cash plus
+    # open at cost, the dashboard's paper figure. Books are never added together.
+    open_pos = repo.user_positions(cur, ctx.uid, "open")
+    paper = _open_book(open_pos, "paper")
+    cash = round(repo.paper_balance(cur, ctx.uid), 2)
+    kalshi.update(_open_book(open_pos, "live"))
     return {
-        "paper": {"cash": round(repo.paper_balance(cur, ctx.uid), 2), "ledger": repo.ledger_rows(cur, ctx.uid)},
+        "paper": {"cash": cash, "equity": round(cash + paper["open_at_cost"], 2), **paper,
+                  "ledger": repo.ledger_rows(cur, ctx.uid)},
         "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"],
-                 "before_reload": de["before_reload"]},
+                 "before_reload": de["before_reload"], **_open_book(open_pos, "demo")},
         "kalshi": kalshi,
         "kalshi_dev": kalshi_dev_key,
     }

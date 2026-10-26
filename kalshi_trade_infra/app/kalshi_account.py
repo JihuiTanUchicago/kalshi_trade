@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
 
 from cryptography.hazmat.primitives import serialization
@@ -96,6 +97,16 @@ def balance_cached(user_id: int, creds: KalshiCredentials, ttl: float = _BALANCE
         value = None
     _BALANCE_CACHE[user_id] = (now, value)
     return value
+
+
+def balance_read_at(user_id: int) -> Optional[datetime]:
+    """When the memoized balance was read from Kalshi (naive UTC), so a page can say how old the figure
+    is; None when nothing is memoized. Reads the memo only, never Kalshi."""
+    hit = _BALANCE_CACHE.get(user_id)
+    if not hit:
+        return None
+    age = max(0.0, time.monotonic() - hit[0])
+    return (datetime.now(timezone.utc) - timedelta(seconds=age)).replace(tzinfo=None, microsecond=0)
 
 
 def verify(key_id: str, pem: str) -> float:

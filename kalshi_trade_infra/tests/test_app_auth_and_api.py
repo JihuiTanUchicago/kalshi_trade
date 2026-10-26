@@ -355,6 +355,7 @@ def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balanc
     monkeypatch.setattr(server.repo, "demo_equity", lambda cur, uid: {"capital": 1000, "equity": 1000, "realized": 0, "before_reload": False})
     monkeypatch.setattr(server.repo, "paper_balance", lambda cur, uid: 1000)
     monkeypatch.setattr(server.repo, "ledger_rows", lambda cur, uid: [])
+    monkeypatch.setattr(server.repo, "user_positions", lambda cur, uid, status: [])
     reads = []
     monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: reads.append(uid) or 25000.0)
     demo_twins._BALANCE_CACHE.clear()
