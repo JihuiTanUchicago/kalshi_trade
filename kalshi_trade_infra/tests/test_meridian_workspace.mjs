@@ -160,7 +160,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, root, document, window: context.window, location, intervals, timeouts, windowListeners, requests, navigations, reloads, storage, shiftClock};
+  return {...api, win: context.window, root, document, window: context.window, location, intervals, timeouts, windowListeners, requests, navigations, reloads, storage, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -4767,4 +4767,41 @@ test('a settled market shows its result in place of a live price', async () => {
   await f.ready;
   assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><div class="sub-fig">each No contract paid \$1/);
   assert.match(f.root.innerHTML, /· Settled ·/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
+});
+
+// Broken pages on /admin: browser error reports grouped by message and page (server client_error_groups).
+// Anyone can send a report, signed out too, so every field is escaped.
+test('the admin page lists the last day of page errors, grouped, with every field escaped', async () => {
+  const groups = [{kind: 'error', message: '<img src=x onerror=alert(1)> is not a function', path: '/strategies/:id', n: 3, signed_out: 1,
+    first_seen: '2026-10-26T08:00:00Z', last_seen: '2026-10-26T09:00:00Z', themes: ['meridian', 'tau'], versions: ['<b>v</b>', 'abc123'], at: 'app.js:12:5'}];
+  for (const [rows, expect] of [[undefined, /No page errors reported in the last 24 hours\./], [[], /No page errors reported/], [groups, null]]) {
+    const f = frontend({fetchImpl: path => {
+      assert.equal(path, '/api/admin');
+      return response({users: [], waitlist: [], ...(rows ? {client_errors: rows} : {})});
+    }});
+    f.S.me.is_admin = true; f.location.pathname = '/admin';
+    await f.render(); await flush(); await flush();
+    const html = f.root.querySelector('#client-errors').innerHTML;
+    if (expect) { assert.match(html, expect); f.clearTimers(); continue; }
+    assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt; is not a function/);
+    assert.doesNotMatch(html, /<img|<b>v/);
+    assert.match(html, /Uncaught error \u00b7\u00a0app\.js:12:5/);
+    assert.match(html, /data-lab="Page, theme, build">\/strategies\/:id<div class="sub-fig">meridian, tau \u00b7\u00a0build &lt;b&gt;v&lt;\/b&gt; \+1\u00a0older<\/div>/);
+    assert.match(html, /data-lab="Count">3<div class="sub-fig">1 signed out<\/div>/);
+    assert.match(html, /data-lab="Last seen">.+<div class="sub-fig">first .+<\/div><\/td><\/tr>/);
+    assert.equal(f.root.querySelector('#ce-count').textContent, 'last 24h \u00b7\u00a03 reports');
+    f.clearTimers();
+  }
+});
+
+test('a page that breaks on a reply it did not expect reports the bug, and the user sees plain words', async () => {
+  const reports = [];
+  const f = frontend({fetchImpl: () => response({})});  // no users list: the admin page throws a TypeError
+  f.win.__tauReport = (kind, err) => reports.push([kind, err]);
+  f.S.me.is_admin = true; f.location.pathname = '/admin';
+  await f.render(); await flush(); await flush();
+  assert.match(f.root.innerHTML, /Something went wrong on this page\. Try again\./);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0][0], 'view'); assert.equal(reports[0][1].name, 'TypeError');
+  f.clearTimers();
 });

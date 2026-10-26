@@ -40,3 +40,79 @@
   s.defer = true;
   document.body.appendChild(s);
 })();
+
+/* Page error reports. An uncaught error or unhandled promise rejection, or (through
+   window.__tauReport, from the app bundle) an API call or page bug that the page shows as an error,
+   is sent to POST /api/client-errors, so the operator sees broken pages on /admin instead of finding
+   them by walking every page. At most MAX per page load, each distinct report once. A report holds
+   only what locates the bug: its kind, the message (emails, URL queries, long tokens and long numbers
+   taken out, cut to 300 characters), the script's file name and line, the page path without its
+   query (ids as :id), the theme and the build. Never form values, request bodies, query strings or
+   stacks. A fire-and-forget fetch with keepalive (so a report sent as the page unloads still goes)
+   and the X-Recursive header every write carries: sendBeacon can't send that header, and this route
+   gets no exception to the CSRF rule. It can't throw, and its own failure is never reported. */
+(function () {
+  var MAX = 5, MSG = 300, sent = 0, seen = {}, busy = false;
+  var FRAME = /([A-Za-z0-9_.-]+\.js)(?:\?[^:\s)]*)?:(\d+):(\d+)/;
+  function scrub(s) {
+    return String(s).replace(/[\x00-\x1f\x7f]+/g, ' ')
+      .replace(/\?[^\s'"<>()]*=[^\s'"<>()]*/g, '')
+      .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '<email>')
+      .replace(/[A-Za-z0-9_\-+=]{24,}/g, '<redacted>')
+      .replace(/\d{9,}/g, '<n>')
+      .replace(/\s+/g, ' ').replace(/^ | $/g, '').slice(0, MSG);
+  }
+  function base(f) {
+    f = String(f || '').split(/[?#]/)[0];
+    return f.slice(f.lastIndexOf('/') + 1).slice(0, 80);
+  }
+  // Only the words of an Error or a string: any other rejected value (an object) could hold anything.
+  function words(err) {
+    if (typeof err === 'string') return err;
+    if (err && typeof err.message === 'string' && err.message) {
+      return (typeof err.name === 'string' && err.name && err.name !== 'Error' ? err.name + ': ' : '') + err.message;
+    }
+    return 'A non-Error value (' + (err === null ? 'null' : typeof err) + ')';
+  }
+  function report(kind, err, src, line, col) {
+    if (busy || sent >= MAX) return;
+    busy = true;
+    try {
+      var stack = err && typeof err.stack === 'string' ? err.stack : '';
+      var m = !src && stack ? stack.match(FRAME) : null;
+      var path = '';
+      try { path = String(location.pathname || '').replace(/\/\d+(?=\/|$)/g, '/:id').slice(0, 120); } catch (e) { /* no location */ }
+      var body = {
+        kind: kind, message: scrub(words(err)) || '(no message)', src: base(src || (m && m[1])),
+        line: +line || (m ? +m[2] : 0), col: +col || (m ? +m[3] : 0), path: path,
+        theme: window.__TAU_UI__ === 'meridian' ? 'meridian' : 'tau', ver: String(window.__BUILD__ || '').slice(0, 16)
+      };
+      var key = [kind, body.message, body.src, body.line, body.col, path].join('|');
+      if (seen[key]) return;
+      seen[key] = 1;
+      sent++;
+      if (typeof fetch !== 'function') return;
+      var p = fetch('/api/client-errors', {
+        method: 'POST', keepalive: true, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Recursive': '1' }, body: JSON.stringify(body)
+      });
+      if (p && typeof p.catch === 'function') p.catch(function () { /* nowhere to report it */ });
+    } catch (e) { /* a report must never break the page */ } finally { busy = false; }
+  }
+  // An error from another origin's script (Stripe) or a browser extension says nothing usable.
+  function ours(file) {
+    if (!file) return true;
+    try { return String(file).indexOf(location.origin + '/') === 0; } catch (e) { return false; }
+  }
+  window.__tauReport = function (kind, err) { report(kind === 'api' ? 'api' : 'view', err); };
+  if (typeof window.addEventListener !== 'function') return;
+  window.addEventListener('error', function (ev) {
+    try {
+      if (!ev || (!ev.error && (!ev.message || /^Script error\.?$/.test(ev.message))) || !ours(ev.filename)) return;
+      report('error', ev.error || ev.message, ev.filename, ev.lineno, ev.colno);
+    } catch (e) { /* never */ }
+  });
+  window.addEventListener('unhandledrejection', function (ev) {
+    try { report('rejection', ev ? ev.reason : undefined); } catch (e) { /* never */ }
+  });
+})();

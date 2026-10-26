@@ -14,18 +14,22 @@ function loadApi(file) {
     pick(/const TRANSIENT = [^\n]*/),
     pick(/const sleep = [^\n]*/),
     pick(/const failText = [\s\S]*?;\n/),
+    pick(/const reportBroken = [^\n]*/),
+    pick(/const apiBroke = [^\n]*/),
     pick(/async function api\(path, body, cfg\) \{[\s\S]*?\n  \}\n/),
     'globalThis.api = api;',
   ].join('\n');
   const calls = [];
   const replies = [];
+  const reports = [];
   const ctx = {
+    window: {__tauReport: (kind, err) => reports.push([kind, err])},
     S: {gen: 1, me: {}}, go: () => {}, setTimeout: (fn) => { fn(); return 0; }, clearTimeout: () => {}, AbortController,
     fetch: async (path, opts) => { calls.push(opts.method || 'GET'); const r = replies.shift(); if (r instanceof Error) throw r; return r; },
   };
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
-  return {api: ctx.api, calls, replies};
+  return {api: ctx.api, calls, replies, reports, ctx};
 }
 const reply = (status, data = {}) => ({ok: status < 400, status, json: async () => data});
 // CloudFront's own 5xx page is HTML, so json() throws.
@@ -100,5 +104,47 @@ for (const file of ['app.js', 'app.meridian.js']) {
     t.replies.push(reply(500, {error: "Something went wrong on our side. It's been logged."}));
     await assert.rejects(t.api('/api/chat', {content: 'hi'}), (e) => !unsure(e));
     assert.deepEqual(t.calls, ['POST', 'POST', 'POST', 'POST']);
+  });
+}
+
+// A failure the page shows as an error is reported to the operator's readout (boot.js's
+// window.__tauReport): no reply, a 5xx, or a reply that isn't JSON. Never a 4xx, a 401, our own
+// timeout, or a GET that rode out a restart. The path goes without its query, ids as :id.
+for (const file of ['app.js', 'app.meridian.js']) {
+  test(file + ': an API call that broke is reported once it fails, with the route and no query', async () => {
+    const t = loadApi(file);
+    t.replies.push(new TypeError('Failed to fetch'), edge(502), reply(200, {ok: 1}));
+    await t.api('/api/dashboard');
+    assert.deepEqual(t.reports, []);  // retried through a restart: the page never showed an error
+    t.replies.push(reply(500, {error: 'boom'}));
+    await assert.rejects(t.api('/api/strategies/42/live-readiness?email=a@b.co&token=x'));
+    t.replies.push(new TypeError('Failed to fetch'));
+    await assert.rejects(t.api('/api/deployments/7/stop', {secret: 'form value'}));
+    t.replies.push({ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); }});
+    await assert.rejects(t.api('/api/runs/12', {content: 'hi'}));
+    assert.deepEqual(t.reports, [['api', 'GET /api/strategies/:id/live-readiness failed (500)'],
+      ['api', 'POST /api/deployments/:id/stop got no reply'], ['api', 'POST /api/runs/:id replied with no JSON']]);
+    assert.doesNotMatch(JSON.stringify(t.reports), /email|token|secret|form value|a@b/);
+  });
+
+  test(file + ': an answer (4xx, 401) or our own timeout is not reported', async () => {
+    const t = loadApi(file);
+    t.replies.push(reply(400, {error: 'Pick a market.'}), reply(404, {error: 'No such run.'}), reply(429, {error: 'slow down'}));
+    for (let i = 0; i < 3; i++) await assert.rejects(t.api('/api/runs', {x: 1}));
+    t.replies.push(reply(401, {error: 'Please sign in.'}));
+    await assert.rejects(t.api('/api/me'));
+    t.ctx.fetch = (path, opts) => new Promise((resolve, reject) => opts.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+    t.ctx.setTimeout = (fn) => { Promise.resolve().then(fn); return 0; };
+    await assert.rejects(t.api('/api/me', undefined, {timeoutMs: 5}), (e) => e.status === 0);
+    assert.deepEqual(t.reports, []);
+  });
+
+  test(file + ': a reporter that throws, or none at all, never changes the error the page gets', async () => {
+    for (const w of [{__tauReport: () => { throw new Error('reporter broke'); }}, {}]) {
+      const t = loadApi(file);
+      t.ctx.window = w;
+      t.replies.push(reply(503, {error: 'source unavailable'}));
+      await assert.rejects(t.api('/api/strategies/42'), (e) => e.status === 503 && e.message === 'source unavailable');
+    }
   });
 }

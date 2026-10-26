@@ -35,7 +35,7 @@ from app import research_repository as research_repo
 from app import spec as specmod
 from app.services import backtest_check, gate_explain, trade_why
 from app import track_record
-from app import webperf
+from app import client_errors, webperf
 from app import worker
 from app.markets import MARKETS
 from app.services import markets as market_service
@@ -58,6 +58,8 @@ REDIRECT_HOSTS = {h.strip().lower() for h in os.getenv("APP_REDIRECT_HOSTS", "")
 SECURE_COOKIES = os.getenv("APP_INSECURE_COOKIES") != "1"
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 8 * 1024 * 1024  # allows a base64 image in a community post
+# Routes with a smaller body cap, checked from Content-Length before the body is read.
+BODY_LIMITS = {"/api/client-errors": client_errors.MAX_BODY}
 
 MAX_ACTIVE_RESEARCH = 2
 MAX_RESEARCH_PER_DAY = int(os.getenv("APP_MAX_RESEARCH_PER_DAY", "0"))  # 0 = unlimited (no daily cap)
@@ -2963,7 +2965,30 @@ def admin_overview(ctx: Ctx):
                    ORDER BY (w.status='approved'), w.id DESC LIMIT 200""")
     waitlist = cur.fetchall()
     # Open positions whose strategy was deleted: the engine no longer settles or flattens them.
-    return {"users": users, "waitlist": waitlist, "orphaned_open": repo.orphaned_open_positions(cur)}
+    return {"users": users, "waitlist": waitlist, "orphaned_open": repo.orphaned_open_positions(cur),
+            # Broken pages: browser error reports from the last 24h, grouped by message and page.
+            "client_errors": repo.client_error_groups(cur)}
+
+
+def report_client_error(ctx: Ctx):
+    """POST /api/client-errors: a page hit an uncaught error, an unhandled rejection, or an API call or
+    bug it shows as an error (boot.js sends these, fire-and-forget). Signed in or out: the signed-out
+    pages break too. Rate-limited in memory per address and per session, with one global cap, before
+    anything is written; every field is cleaned and bounded (client_errors.clean). Stores no user id
+    or address, only whether the visitor was signed in. The body cap is BODY_LIMITS."""
+    keys = ["ip:" + client_errors.client_ip(ctx.handler)]
+    read = getattr(ctx.handler, "cookies", None)
+    token = read().get(auth.SESSION_COOKIE) if callable(read) else None
+    if token:
+        keys.append("s:" + auth.hash_token(token)[:16])
+    if not client_errors.LIMITER.allow(keys):
+        raise ApiError(429, "Too many error reports. Try again later.")
+    try:
+        report = client_errors.clean(ctx.body)
+    except ValueError as e:
+        raise ApiError(400, str(e))
+    repo.insert_client_error(ctx.cur, report, signed_in=ctx.user is not None)
+    return {"ok": True}
 
 
 def admin_grant(ctx: Ctx):
@@ -3584,6 +3609,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/billing/remove-card", billing_remove_card, True),
         ("GET", "/api/admin", admin_overview, True),
         ("GET", "/api/admin/system", admin_system, True),
+        ("POST", "/api/client-errors", report_client_error, False),
         ("GET", "/api/exec/latency", exec_latency, True),
         ("GET", "/api/exec/tca", exec_tca, True),
         ("GET", "/api/admin/kill-switch", admin_kill_switch, True),
@@ -3938,7 +3964,7 @@ class Handler(BaseHTTPRequestHandler):
             body: Dict[str, Any] = {}
             if method == "POST":
                 length = int(self.headers.get("Content-Length") or 0)
-                if length > MAX_BODY:
+                if length > BODY_LIMITS.get(path, MAX_BODY):
                     raise ApiError(413, "Request too large.")
                 raw = self.rfile.read(length) if length else b""
                 self._body_read = True
