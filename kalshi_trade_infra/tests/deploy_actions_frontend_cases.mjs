@@ -124,6 +124,101 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     assert.ok(f.root.querySelector('[data-retry]'));
   });
 
+  // Deploy's Realized sums the deployments it lists; the dashboard's all-time figure also counts the
+  // removed ones. The label says what it sums, and a line names the removed deployments' total and the
+  // two together (the server's realized_by_book), per book, never added across books.
+  test(`${name}: Deploy's Realized says it sums the listed deployments and reconciles with the dashboard`, async () => {
+    const board = async (body) => {
+      const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({open_positions: [], ...body}) : response({})});
+      f.location.pathname = '/deploy';
+      await f.viewDeploy(); await settle();
+      f.clearTimers();
+      return f.root.querySelector('#dfigs').innerHTML;
+    };
+    const paper = await board({deployments: [dep({realized_pnl: 146.04})],
+      realized_by_book: {paper: {listed: 146.04, removed: 5.72, removed_deployments: 2, all: 151.76}}});
+    assert.match(paper, /<dt class="lab">Realized, deployments listed below<\/dt>[\s\S]*\+\$146\.04/);
+    assert.match(paper, /paper money, not real ·\u00a0\+\$5\.72 from 2 removed deployments, \+\$151\.76 in all/);
+    // One removed deployment, a loss: singular, signed.
+    const one = await board({deployments: [dep({realized_pnl: 3})],
+      realized_by_book: {paper: {listed: 3, removed: -1.25, removed_deployments: 1, all: 1.75}}});
+    assert.match(one, /−\$1\.25 from 1 removed deployment, \+\$1\.75 in all/);
+    // Nothing removed: no line about it.
+    const none = await board({deployments: [dep({realized_pnl: 3})], realized_by_book: {paper: {listed: 3, removed: 0, removed_deployments: 0, all: 3}}});
+    assert.doesNotMatch(none, /removed|in all/);
+    // Demo has no "in all" (its dashboard figure counts from its last reload); live and paper stay apart.
+    const books = await board({deployments: [dep({id: 1, mode: 'live', realized_pnl: 2}), dep({id: 2, mode: 'paper', realized_pnl: 40}), dep({id: 3, mode: 'demo', realized_pnl: -10})],
+      realized_by_book: {live: {listed: 2, removed: 1, removed_deployments: 1, all: 3}, paper: {listed: 40, removed: 7, removed_deployments: 3, all: 47},
+        demo: {listed: -10, removed: 4, removed_deployments: 1}}});
+    assert.match(books, /Live realized, deployments listed below[\s\S]*real money ·\u00a0\+\$1\.00 from 1 removed deployment, \+\$3\.00 in all ·\u00a0\+\$40\.00 on paper from the deployments listed, counted apart/);
+    assert.match(books, /Demo realized, deployments listed below[\s\S]*not real money ·\u00a0\+\$4\.00 from 1 removed deployment</);
+    assert.doesNotMatch(books, /\$42\.00|\$32\.00|\$50\.00/);
+    // An empty board with removed deployments: no "listed below" over an empty list.
+    const empty = await board({deployments: [], realized_by_book: {paper: {listed: 0, removed: 5.72, removed_deployments: 2, all: 5.72}}});
+    assert.match(empty, /<dt class="lab">Realized<\/dt>[\s\S]*\+\$5\.72 from 2 removed deployments, \+\$5\.72 in all/);
+  });
+
+  // A demo copy the demo-copy sync paused while its paper deployment isn't running would be paused again
+  // by the sync: its Resume is offered disabled with the server's reason, and its row says "paused".
+  test(`${name}: a demo copy waiting on its paper deployment offers Resume disabled and says why`, async () => {
+    const why = 'Waiting on its paper deployment, which is paused. Resume that one and this copy resumes with it';
+    const block = 'Resume its paper deployment first: this demo copy resumes with it.';
+    const sent = [];
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/deployments') return response({open_positions: [], deployments: [
+        dep({id: 1, mode: 'paper', status: 'paused', status_reason: 'By you', status_why: 'You paused it'}),
+        dep({id: 2, mode: 'demo', status: 'paused', demo_copy: true, status_why: why, resume_block: block,
+             status_reason: 'Its paper strategy is no longer running, so the demo copy stopped too.'})]});
+      if (/^\/api\/deployments\/\d+\/resume$/.test(path)) { sent.push(path); return response({ok: true}); }
+      return response({});
+    }});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const deps = f.root.querySelector('#deps');
+    const copy = deps.querySelector('[data-dep="2"][data-act="resume"]');
+    assert.equal(copy.disabled, true);
+    assert.equal(copy.getAttribute('title'), block);
+    assert.match(copy.innerHTML, /Resume<span class="vh"> Dep one: Resume its paper deployment first: this demo copy resumes with it\.<\/span>/);
+    assert.match(deps.innerHTML, /Waiting on its paper deployment, which is paused\. Resume that one and this copy resumes with it/);
+    assert.doesNotMatch(deps.innerHTML, /demo copy stopped too/);
+    copy.onclick(); await settle();
+    assert.deepEqual(sent, []);
+    // The paper deployment's own Resume works as before.
+    const paper = deps.querySelector('[data-dep="1"][data-act="resume"]');
+    assert.equal(paper.disabled, false); assert.equal(paper.getAttribute('title'), null);
+    paper.onclick(); await settle();
+    assert.deepEqual(sent, ['/api/deployments/1/resume']);
+    f.clearTimers();
+    // The dashboard's "since your last visit" names it in the same words, not the stored "stopped too".
+    const strip = f.sinceStrip({since: {books: {}}, deployments: [dep({id: 2, mode: 'demo', status: 'paused', status_why: why,
+      status_reason: 'Its paper strategy is no longer running, so the demo copy stopped too.'})]}, '#dash-deps');
+    assert.match(strip, /is paused<span class="since-sub">: Waiting on its paper deployment, which is paused/);
+    assert.doesNotMatch(strip, /stopped too/);
+  });
+
+  // A strategy whose deployments were all removed still says what they did: book, dates, realized P&L.
+  test(`${name}: a strategy page lists its removed deployments as past deployments`, async () => {
+    const past = [
+      {id: 9, mode: 'paper', created_at: '2026-10-02T08:00:00+00:00', removed_at: '2026-10-20T08:00:00+00:00', realized_pnl: 5.72, closed_trades: 14},
+      {id: 8, mode: 'demo', created_at: '2026-09-28T08:00:00+00:00', removed_at: '2026-10-01T08:00:00+00:00', realized_pnl: -1.5, closed_trades: 1},
+      {id: 7, mode: 'paper', created_at: '2026-09-20T08:00:00+00:00', removed_at: '2026-09-21T08:00:00+00:00', realized_pnl: 0, closed_trades: 0},
+      {id: 6, mode: 'paper', created_at: '2026-09-10T08:00:00+00:00', removed_at: '2026-09-11T08:00:00+00:00', realized_pnl: 1, closed_trades: 1}];
+    const f = strategyFrontend(detailStrategy({status: 'passed', deployments: [], past_deployments: past}), () => response({}));
+    await f.viewStrategy(42); await settle();
+    const rec = f.root.querySelector('.real-record');
+    assert.ok(rec, 'the record section shows with only past deployments');
+    const html = rec.innerHTML;
+    assert.match(html, /<b>Past deployments:<\/b> <span class="mk ?">Paper<\/span>|<b>Past deployments:<\/b> Paper/);
+    assert.match(html, /Paper Oct 2–Oct 20, <span class="gain">\+\$5\.72<\/span> over 14 closed trades/);
+    assert.match(html, /Demo Sep 28–Oct 1, <span class="loss">−\$1\.50<\/span> over 1 closed trade(?!s)/);
+    assert.match(html, /over 0 closed trades ·\u00a01 earlier/);
+    assert.doesNotMatch(html, /Sep 10/);  // three shown, the rest counted
+    // None removed: no line.
+    const g = strategyFrontend(detailStrategy({status: 'passed', deployments: [], past_deployments: []}), () => response({}));
+    await g.viewStrategy(42); await settle();
+    assert.doesNotMatch(g.root.querySelector('main').innerHTML, /Past deployments/);
+  });
+
   test(`${name}: a research idea typed before the session ran out comes back for the same account on the same page`, async () => {
     const session = memorySession();
     const research = async (uid) => {

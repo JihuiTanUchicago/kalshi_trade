@@ -20,6 +20,7 @@ from app.web.views import (
     _deployment_out,
     _live_balance,
     _open_book,
+    _paper_books,
     _silent_before,
     _start_of_day_utc,
     credit_usd,
@@ -105,7 +106,8 @@ def dashboard(ctx: Ctx):
         # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
         # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
         "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
-        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"]), paper_sids, key_back) for d in deps],
+        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"]), paper_sids, key_back,
+                                        _paper_books(deps)) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
         "since": _since_visit(cur, ctx.uid, visit, first, recent),

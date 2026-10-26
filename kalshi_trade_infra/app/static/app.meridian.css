@@ -1897,6 +1897,8 @@ body.landing-body .apf { display: none; }
 .deployment-actions .btn { min-height: 30px; padding: 5px 12px; }
 .deployment-actions .btn:not(.danger) { background: var(--stock-raised); color: var(--ink); border-color: var(--rule-2); }
 .deployment-actions .btn:not(.danger):hover { background: var(--ink); color: var(--stock-raised); border-color: var(--ink); }
+/* A Resume offered disabled (a demo copy waiting on its paper deployment) reads as unavailable. */
+.deployment-actions .btn[disabled], .deployment-actions .btn[disabled]:hover { background: transparent; color: var(--ink-3); border-color: var(--rule-2); }
 .dep-meta { margin-top: 3px; }
 .dep-meta > .sub-fig { display: inline; }
 .t-dep .btn.danger:not(.armed) { border-color: transparent; color: var(--ink-3); }
@@ -2127,6 +2129,7 @@ body.landing-body .apf { display: none; }
 .dep-monitor .deployment-actions .btn:not(.danger) { border-color: transparent; background: transparent; color: var(--ink-2); }
 .dep-monitor .deployment-actions .btn:not(.danger):hover, .dep-monitor .dep-evidence > summary:hover { border-color: var(--rule); background: var(--record); color: var(--ink); }
 .dep-monitor .deployment-actions .btn.armed { background: var(--signal); border-color: var(--signal); color: #FDF2F3; }
+.dep-monitor .deployment-actions .btn[disabled], .dep-monitor .deployment-actions .btn[disabled]:hover { border-color: transparent; background: transparent; color: var(--ink-3); }
 .dep-monitor .btn.danger:not(.armed) { color: var(--ink-3); border-color: transparent; }
 .dep-monitor .btn.danger:not(.armed):hover { color: var(--signal); background: var(--signal-wash); }
 .dep-monitor .dep-evidence { margin: 0; }
@@ -2704,7 +2707,7 @@ body.landing-body .apf { display: none; }
 }
 /* A book's line against its backtest (btCheckLine) and a paper row's road to live (roadLine): each
    wraps under the deployment's name, full width in a phone card, and never splits a signed amount. */
-.t-dep tbody td.name .bt-check.sub-fig, .t-dep tbody td.name .road-line.sub-fig, .real-record .bt-check { white-space: normal; flex: 1 0 100%; }
+.t-dep tbody td.name .bt-check.sub-fig, .t-dep tbody td.name .road-line.sub-fig, .t-dep tbody td.name .demo-row.sub-fig, .real-record .bt-check { white-space: normal; flex: 1 0 100%; }
 .bt-check .amt { white-space: nowrap; }
 
 /* New users: the finished example session, one tap from the dashboard and Research. */

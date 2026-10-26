@@ -73,7 +73,9 @@ BUDGET = {"autopilot_status": 9, "me": 5, "get_run": 6, "dashboard": 14}  # dash
 # counted cold: the per-book backtest comparison is read once a minute, and these requests include it.
 # The board's 7th is each paper strategy's record toward the live check (one read for all of them,
 # cached 30s), so a paper row says how far it is and when the counts could be in.
-BUDGET.update({"list_deployments": 8, "get_strategy": 6})
+# Each also reads the removed deployments (one index read of app_deployments, no position), so the
+# board's Realized can name what it leaves out and the strategy page list its past deployments (+1 each).
+BUDGET.update({"list_deployments": 9, "get_strategy": 7})
 # The track record (cached a minute per user; a returning user pays it cold) and the Strategies page.
 BUDGET.update({"get_track_record": 3, "list_strategies": 4})
 # The trades download (user-clicked, not polled): the mode's closed trades, then their strategies once.
@@ -550,7 +552,8 @@ def _panel_rows(strategy_of_4=8):
 
 # (cold, kept) statements with these rows and a book of positions: cold pays the version read (and, for
 # the reads grouped by strategy, the deployments' strategies once); kept drops every heavy sum.
-KEPT_BUDGET = {"dashboard": (16, 14), "list_deployments": (9, 6), "get_track_record": (3, 2), "autopilot_status": (13, 8)}
+# The board's removed deployments are read every poll (one is removed without a position changing): +1.
+KEPT_BUDGET = {"dashboard": (16, 14), "list_deployments": (10, 7), "get_track_record": (3, 2), "autopilot_status": (13, 8)}
 KEPT_PAGES = [("dashboard", {}, _board_rows), ("list_deployments", {}, _board_rows),
               ("get_track_record", {}, _book_rows),
               ("autopilot_status", {}, _panel_rows)]
@@ -607,7 +610,8 @@ def test_the_autopilot_panel_sums_again_when_a_deployment_moves_to_another_strat
 # lighter ones, local MariaDB: /api/dashboard 14 statements, ~40ms of SQL and 53KB of JSON a poll ->
 # 14 statements, ~24ms and ~0.9KB while unchanged (the ledger's ~22ms sum -> its ~8ms version read);
 # /api/deployments 5 statements, ~11ms and 62KB -> 5, ~10ms and ~0.8KB.
-SAME_BUDGET = {"dashboard": 14, "list_deployments": 5}
+# The board's 6th is its removed deployments (the deployments alone; their totals are kept).
+SAME_BUDGET = {"dashboard": 14, "list_deployments": 6}
 SAME_KEYS = {"v", "same", "marks", "unrealized", "freshness", "since_at"}
 LEDGER = "FROM app_ledger FORCE INDEX (idx_ledger_user_time)"
 LEDGER_SUM = "SELECT COALESCE(SUM(amount),0) AS b"

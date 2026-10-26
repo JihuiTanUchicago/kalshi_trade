@@ -116,6 +116,22 @@ def deployment_rows_for_display(cur, user_id: int, strategy_id: Optional[int] = 
     return cur.fetchall()
 
 
+def removed_deployments(cur, user_id: int, strategy_id: Optional[int] = None) -> List[Dict]:
+    """The user's removed (stopped) deployments, newest first: id, strategy_id, mode, market,
+    created_at, removed_at (the row's updated_at, which a stopped row keeps) and title (None when its
+    strategy row was deleted). The deployments alone, through idx_dep_user; no position is read, so a
+    caller adds their realized P&L with deployment_closed_totals. `strategy_id` keeps one strategy's.
+    Display only: the Deploy board and the strategy page name the money the listed deployments leave out."""
+    one = (int(strategy_id),) if strategy_id is not None else ()
+    cur.execute(
+        """SELECT d.id, d.strategy_id, d.mode, d.market, d.created_at, d.updated_at AS removed_at, s.title
+           FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id
+           WHERE d.user_id=%s AND d.status='stopped'""" + (" AND d.strategy_id=%s" if one else "") + " ORDER BY d.id DESC",
+        (user_id, *one),
+    )
+    return list(cur.fetchall())
+
+
 def deployment_closed_totals(cur, deployment_ids: List[int]) -> Dict[int, Tuple[int, Any]]:
     """{deployment_id: (closed positions, their summed P&L)}, as list_deployments counts closed_trades
     and realized_pnl, for the given deployments in one read over idx_pos_dep (deployment_id, status).

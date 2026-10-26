@@ -15,7 +15,16 @@ from app.trading import backtest, track_record
 from app.trading import spec as specmod
 from app.web.caches import _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param, _num
-from app.web.views import _deployment_out, _demo_health, _demo_key_back, _gate_lines, _gate_tints, _spec_sizing
+from app.web.views import (
+    _deployment_out,
+    _demo_health,
+    _demo_key_back,
+    _gate_lines,
+    _gate_tints,
+    _paper_books,
+    _past_deployment_out,
+    _spec_sizing,
+)
 
 
 def _strategy_card(s: Dict) -> Dict:
@@ -317,7 +326,9 @@ def get_strategy(ctx: Ctx):
         experiment=exp,
         # One plain line per gate it missed: measured, needed, and what to try next (display only).
         why_failed=_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
-        deployments=[_deployment_out(d, [], demo_key_back=key_back) for d in deps],
+        deployments=[_deployment_out(d, [], demo_key_back=key_back, paper_books=_paper_books(deps)) for d in deps],
+        # Its removed deployments, newest first: book, dates and realized P&L (they left the list above).
+        past_deployments=[_past_deployment_out(r) for r in _removed_with_totals(ctx.cur, ctx.uid, s["id"])],
         holdings=[{
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
             "entry_price": float(p["entry_price"]),
@@ -334,6 +345,16 @@ def get_strategy(ctx: Ctx):
         backtest_checks=_backtest_checks(ctx.cur, ctx.uid, {s["id"]: s}).get(s["id"], []) if deps else [],
     )
     return out
+
+
+def _removed_with_totals(cur, uid: int, strategy_id: int) -> List[Dict]:
+    """repo.removed_deployments for one strategy, each with its closed trades and realized P&L (its own
+    closed positions, repo.deployment_closed_totals); no position is read when none was removed."""
+    rows = repo.removed_deployments(cur, uid, strategy_id)
+    totals = repo.deployment_closed_totals(cur, [r["id"] for r in rows]) if rows else {}
+    for r in rows:
+        r["closed_trades"], r["realized_pnl"] = totals.get(int(r["id"]), (0, 0))
+    return rows
 
 
 BACKTEST_CHECK_TTL = 60.0  # seconds; a book's figures move only when one of its trades closes
