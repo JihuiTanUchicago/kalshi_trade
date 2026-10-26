@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from app import server
+from app.web.routes import research as research_routes
 from app.web.routes import explore as explore_routes
 from app.web.routes import strategies as strategy_routes
 from app.web import auth
@@ -714,7 +715,7 @@ def test_dig_deeper_seeds_a_research_run_from_a_passed_strategy(monkeypatch):
     parent = {"id": 55, "status": "passed", "market": "btc15m", "direction": "volatility",
               "title": "Tail fade", "thesis": "Cheap OTM YES is overpriced.", "spec": {"side": "yes", "market": "btc15m"}}
     seen = {}
-    monkeypatch.setattr(server, "_owned_strategy", lambda c: dict(parent))
+    monkeypatch.setattr(research_routes, "_owned_strategy", lambda c: dict(parent))
     monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 0)
     monkeypatch.setattr(server.repo, "create_run",
                         lambda cur, uid, kind, market, direction, prompt, **kw:
@@ -725,7 +726,7 @@ def test_dig_deeper_seeds_a_research_run_from_a_passed_strategy(monkeypatch):
 
 
 def test_dig_deeper_refuses_a_strategy_that_did_not_pass(monkeypatch):
-    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 55, "status": "failed", "market": "btc15m"})
+    monkeypatch.setattr(research_routes, "_owned_strategy", lambda c: {"id": 55, "status": "failed", "market": "btc15m"})
     monkeypatch.setattr(server.repo, "create_run", lambda *a, **k: pytest.fail("must not seed research from an unpassed strategy"))
     with pytest.raises(server.ApiError) as e:
         server.dig_deeper(ctx({}, params=("55",)))
@@ -733,7 +734,7 @@ def test_dig_deeper_refuses_a_strategy_that_did_not_pass(monkeypatch):
 
 
 def test_dig_deeper_is_rate_limited(monkeypatch):
-    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 55, "status": "passed", "market": "btc15m", "direction": None, "title": "T", "thesis": "x", "spec": {}})
+    monkeypatch.setattr(research_routes, "_owned_strategy", lambda c: {"id": 55, "status": "passed", "market": "btc15m", "direction": None, "title": "T", "thesis": "x", "spec": {}})
     monkeypatch.setattr(server.repo, "count_runs", lambda *a, **k: 99)
     with pytest.raises(server.ApiError) as e:
         server.dig_deeper(ctx({}, params=("55",)))
@@ -929,7 +930,7 @@ def test_runs_list_marks_the_seeded_example_session(monkeypatch):
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, **kw: {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: [{"id": 2}, {"id": 1}])
-    monkeypatch.setattr(server, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
+    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
     runs = {r["id"]: r for r in server.list_runs(ctx())["runs"]}
     assert runs[1]["example"] is True and runs[2]["example"] is False
 
@@ -1125,7 +1126,7 @@ def _capacity_ctx():
 
 
 def _active_runs(monkeypatch, n):
-    monkeypatch.setattr(server, "_require_billing_ready", lambda *_a: None)
+    monkeypatch.setattr(research_routes, "_require_billing_ready", lambda *_a: None)
     monkeypatch.setattr(server.billing, "configured", lambda: False)
     monkeypatch.setattr(server.repo, "count_runs", lambda *_a, **kw: n if kw.get("active_only") else 0)
 

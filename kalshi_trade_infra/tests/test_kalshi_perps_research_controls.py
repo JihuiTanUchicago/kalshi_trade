@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
+from app.web.routes import research as research_routes
 from app.trading import backtest, spec
 from app.research import agent, partitions
 from app.adapters.kalshi_perps import kalshi_perps_backtest as simulator
@@ -28,9 +29,9 @@ def test_manual_perpetual_research_rejects_disabled_configuration_before_queue(m
     monkeypatch.delenv("TAU_KALSHI_PERPS_ENABLED", raising=False)
     if flag is not None:
         monkeypatch.setenv("TAU_KALSHI_PERPS_ENABLED", flag)
-    monkeypatch.setattr(server, "_require_research_capacity", forbidden)
+    monkeypatch.setattr(research_routes, "_require_research_capacity", forbidden)
     monkeypatch.setattr(server.repo, "create_run", forbidden)
-    monkeypatch.setattr(server, "_owned_strategy", lambda _ctx: {"market": "btc_perp", "status": "passed"})
+    monkeypatch.setattr(research_routes, "_owned_strategy", lambda _ctx: {"market": "btc_perp", "status": "passed"})
     handler = server.dig_deeper if deeper else server.create_run
     with pytest.raises(server.ApiError) as error:
         handler(context({"market": "btc_perp", "prompt": "Test a causal Bitcoin research idea"}))
@@ -53,7 +54,7 @@ def test_agent_cannot_queue_disabled_perpetual_research(monkeypatch, sid):
 def test_enabled_perpetual_research_uses_the_existing_manual_queue(monkeypatch):
     monkeypatch.setenv("TAU_KALSHI_PERPS_ENABLED", "1")
     monkeypatch.setenv("TAU_KALSHI_PERPS_ENVIRONMENT", "production")
-    monkeypatch.setattr(server, "_require_research_capacity", lambda _ctx: None)
+    monkeypatch.setattr(research_routes, "_require_research_capacity", lambda _ctx: None)
     queued = []
     monkeypatch.setattr(server.repo, "create_run", lambda *a, **kw: queued.append((a, kw)) or 88)
     assert server.create_run(context({"market": "btc_perp", "prompt": "Test a causal Bitcoin research idea"})) == {"id": 88}

@@ -18,6 +18,7 @@ import pytest
 
 from app import repository as repo
 from app import server
+from app.web.routes import research as research_routes
 from app.adapters.ses import notify
 from app.services import customer_text as ct
 from app.services import demo_record
@@ -237,7 +238,7 @@ def test_the_research_list_never_shows_a_raw_error(monkeypatch):
     monkeypatch.setattr(repo, "runs_spent", lambda *a: {})
     monkeypatch.setattr(repo, "active_run_counts", lambda *a, **k: {})
     monkeypatch.setattr(repo, "list_runs_version", lambda *a, **k: [])
-    monkeypatch.setattr(server, "_research_totals", lambda cur, uid: {})
+    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid: {})
     out = server.list_runs(_ctx())
     assert [r["error"] for r in out["runs"]][0] is None
     assert [r["stop_reason"] for r in out["runs"]] == ["error", "interrupted"]

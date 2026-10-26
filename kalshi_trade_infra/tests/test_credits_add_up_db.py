@@ -25,6 +25,8 @@ from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
 
+from app.web.routes import research as research_routes
+
 pytestmark = pytest.mark.skipif(os.getenv("APP_TEST_MYSQL") != "1", reason="needs APP_TEST_MYSQL=1 and a MySQL")
 
 SIX = Decimal("0.000001")
@@ -185,7 +187,7 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     # Three finished research sessions exist, but the seeded random-walk example is left out, and
     # two of your own are fewer than SESSION_COST_MIN_OWN, so "yours" is not shown yet.
     assert est["sessions"] == 2 and est["yours"] is None and server.SESSION_COST_MIN_OWN > 2
-    monkeypatch.setattr(server, "SESSION_COST_MIN_OWN", 2)
+    monkeypatch.setattr(research_routes, "SESSION_COST_MIN_OWN", 2)
     median = (per_run[first] + per_run[second]) / 2
     assert server.research_estimate(ctx())["yours"] == float(_cents(median))
 

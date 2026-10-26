@@ -111,7 +111,8 @@ def test_scoreboard_endpoint_is_scoped_to_the_user_and_clamps_days(monkeypatch):
     from app.research import rsi_playbook
     cur = _Cur()
     monkeypatch.setattr(rsi_playbook, "summary", lambda c, uid: [{"family": "weather-high", "version": 1}])
-    monkeypatch.setattr(server, "_SHARED", {})
+    from app.web import caches
+    monkeypatch.setattr(caches, "_SHARED", {})
     ctx = SimpleNamespace(cur=cur, uid=2, query={"days": "999"})
     board = server.research_scoreboard(ctx)
     assert board["days_back"] == 60 and board["total"]["runs"] == 1

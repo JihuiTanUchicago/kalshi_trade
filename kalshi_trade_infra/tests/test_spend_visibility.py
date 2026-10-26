@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
+from app.web.routes import research as research_routes
 from app.web.routes import billing as billing_routes
 from app.adapters.llm import models_catalog
 from app.adapters.db import billing_repository
@@ -270,7 +271,7 @@ def test_run_until_stopped_costs_an_hour_at_recent_rates(monkeypatch):
             return everyone
         return mine[0]
     monkeypatch.setattr(server.repo, "forever_session_rates", rates)
-    monkeypatch.setattr(server, "_TYPICAL_FOREVER_RATE", [0.0, {}])
+    monkeypatch.setattr(research_routes, "_TYPICAL_FOREVER_RATE", [0.0, {}])
     out = server._forever_hourly(object(), 7)
     assert out == {"yours": None, "typical": {server.catalog.DEFAULT_KEY: 3.0}}  # half an hour of your own is too little
     mine[0] = mine[1]
@@ -312,7 +313,7 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
     monkeypatch.setattr(server.repo, "run_events", lambda *a: [])
     monkeypatch.setattr(server.repo, "active_run_counts", lambda *a, **k: {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: [dict(run)])
-    monkeypatch.setattr(server, "_research_totals", lambda *a: {})
+    monkeypatch.setattr(research_routes, "_research_totals", lambda *a: {})
     monkeypatch.setattr(server.repo, "research_week", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "strategies_passed_since", lambda *a: 0)
     monkeypatch.setattr(server.repo, "research_spent_since", lambda *a: usd)
@@ -320,9 +321,9 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
     monkeypatch.setattr(server.repo, "activity_since", lambda *a: {"autopilot": {}, "runs": {}, "spent": {"since": usd, "week": usd}})
     monkeypatch.setattr(server.repo, "passed_since", lambda *a, **k: {})
     monkeypatch.setattr(server.repo, "finished_session_costs", lambda *a: [usd] * server.SESSION_COST_MIN_OWN)
-    monkeypatch.setattr(server, "_TYPICAL_SESSION_COST", [0.0, {}])
+    monkeypatch.setattr(research_routes, "_TYPICAL_SESSION_COST", [0.0, {}])
     monkeypatch.setattr(server.repo, "recent_session_costs", lambda *a: [("m", usd)] * server.SESSION_COST_MIN_TYPICAL)
-    monkeypatch.setattr(server, "_forever_hourly", lambda *a: {"yours": None, "typical": {}})
+    monkeypatch.setattr(research_routes, "_forever_hourly", lambda *a: {"yours": None, "typical": {}})
     balance = 20 - usd
     reads = SimpleNamespace(balance=lambda: balance, customer=lambda: None)
 

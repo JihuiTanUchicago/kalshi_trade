@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
+from app.web.routes import research as research_routes
 from app.web.routes import chat as chat_routes
 
 
@@ -420,7 +421,7 @@ def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
     monkeypatch.setattr(server.repo, 'active_run_counts', lambda *a, **kw: {})
     monkeypatch.setattr(server.repo, 'list_runs_version', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
-    monkeypatch.setattr(server, '_research_totals', lambda *a: {})
+    monkeypatch.setattr(research_routes, '_research_totals', lambda *a: {})
     runs = server.list_runs(context())['runs']
     assert [r['spent_usd'] for r in runs] == [1.84, 0.0, 0.0]  # a run with no debit cost nothing
     assert calls == [(7, [9, 4, 2])]
@@ -459,9 +460,9 @@ def test_research_estimate_uses_own_median_then_the_typical_one_per_model(monkey
     rows = [(None, 1.0), ('opus-4-6', 3.0), (None, 2.0), (None, 5.0), (None, 4.0),
             ('haiku-4-5', 0.2), ('haiku-4-5', 0.3)]
     monkeypatch.setattr(server.repo, 'recent_session_costs', lambda cur, since: reads.append(since) or rows)
-    monkeypatch.setattr(server, '_TYPICAL_SESSION_COST', [0.0, {}])
+    monkeypatch.setattr(research_routes, '_TYPICAL_SESSION_COST', [0.0, {}])
     monkeypatch.setattr(server.repo, 'forever_session_rates', lambda *a: [])
-    monkeypatch.setattr(server, '_TYPICAL_FOREVER_RATE', [0.0, {}])
+    monkeypatch.setattr(research_routes, '_TYPICAL_FOREVER_RATE', [0.0, {}])
     out = server.research_estimate(context())
     # The default model's NULL runs count as that model; Haiku has too few sessions to show.
     assert out == {'yours': None, 'sessions': 2, 'typical': {server.catalog.DEFAULT_KEY: 3.0},

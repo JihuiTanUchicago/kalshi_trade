@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
+from app.web import caches
 from app.web.routes import explore as explore_routes
 from app.web import webperf
 
@@ -251,14 +252,14 @@ def test_shared_reads_compute_once_then_refresh_in_one_background_thread(monkeyp
     assert server._shared("k", 60, fn, "cur") == 1 and server._shared("k", 60, fn, "cur") == 1
     assert len(started) == 1  # one refresh while stale, not one per request
     conn = SimpleNamespace(cursor=lambda: "bg", close=lambda: None)
-    monkeypatch.setattr(server, "get_db_conn", lambda: conn)
+    monkeypatch.setattr(caches, "get_db_conn", lambda: conn)
     server._refresh_shared(*started[0])
     assert server._shared("k", 60, fn, "cur") == 2 and calls[-1] == "bg"
 
 
 def test_shared_refresh_failure_keeps_the_last_value(monkeypatch):
     server._shared("k", 60, lambda cur: "good", None)
-    monkeypatch.setattr(server, "get_db_conn", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(caches, "get_db_conn", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
     ent = server._SHARED["k"]
     ent["busy"] = True
     server._refresh_shared(ent, lambda cur: "never")
