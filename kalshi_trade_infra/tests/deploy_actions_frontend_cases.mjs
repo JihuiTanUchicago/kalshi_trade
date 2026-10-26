@@ -59,6 +59,38 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     f.clearTimers();
   });
 
+  // The engine sells what a paused or removed deployment holds: with positions open, Pause and Remove
+  // say so on their first press, and only a second press sends the action.
+  test(`${name}: Pause and Remove on a deployment holding positions say they sell them before acting`, async () => {
+    const sent = [];
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/deployments') return response({deployments: [dep({open_positions: 2, unrealized_pnl: 0.4})], open_positions: []});
+      if (/^\/api\/deployments\/1\/(pause|stop)$/.test(path)) { sent.push(path); return response({ok: true}); }
+      return response({});
+    }});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const pause = f.root.querySelector('#deps [data-act="pause"]'), remove = f.root.querySelector('#deps [data-act="stop"]');
+    pause.onclick(); await settle();
+    assert.deepEqual(sent, []);
+    assert.equal(pause.textContent, 'Pause and sell 2 open?');
+    remove.onclick(); await settle();
+    assert.deepEqual(sent, []);
+    assert.equal(remove.textContent, 'Remove and sell 2 open?');
+    f.elapse(500); pause.onclick(); await settle();
+    assert.deepEqual(sent, ['/api/deployments/1/pause']);
+    f.clearTimers();
+    // Nothing open: Pause goes at once, and Remove keeps its plain confirm.
+    const g = board();
+    await g.viewDeploy(); await settle();
+    const stop = g.root.querySelector('#deps [data-act="stop"]');
+    stop.onclick(); await settle();
+    assert.equal(stop.textContent, 'Confirm stop');
+    g.root.querySelector('#deps [data-act="pause"]').onclick(); await settle();
+    assert.equal(postRequests(g).length, 1);
+    g.clearTimers();
+  });
+
   test(`${name}: a Pause the server refuses still says why, as an error`, async () => {
     const f = frontend({fetchImpl: path => path === '/api/deployments/1/pause' ? response({error: 'Only a running deployment can be paused.'}, 409)
       : path === '/api/deployments' ? response({deployments: [dep()], open_positions: []}) : response({})});

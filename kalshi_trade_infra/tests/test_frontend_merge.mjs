@@ -3469,11 +3469,11 @@ test('a Deploy poll that reads the same board repaints nothing, and repaints wha
   const writes = () => regions.map(el => el.writes);
   const first = writes(), stop = f.root.querySelector('#deps [data-act="stop"]');
   stop.onclick();  // armed: a poll used to rewrite the row and drop the confirmation
-  assert.equal(stop.textContent, 'Confirm stop');
+  assert.equal(stop.textContent, 'Remove and sell 1 open?');  // it holds a position, which Remove sells
   const tick = f.intervals.get(f.S.timers.at(-1));
   tick(); await flush(); await flush();
   assert.equal(reads, 2); assert.deepEqual(writes(), first);
-  assert.equal(f.root.querySelector('#deps [data-act="stop"]'), stop); assert.equal(stop.textContent, 'Confirm stop');
+  assert.equal(f.root.querySelector('#deps [data-act="stop"]'), stop); assert.equal(stop.textContent, 'Remove and sell 1 open?');
   board = {deployments: [{...dep, realized_pnl: 2.5, closed_trades: 6}], open_positions: []};  // a trade closed
   tick(); await flush(); await flush();
   assert.equal(reads, 3);

@@ -1688,9 +1688,9 @@
     // A paused row names its book too: "Paused" alone didn't say whether real money had stopped.
     const modeTag = live ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">DEMO</span>' : '<span class="mk">PAPER</span>';
     const actions = controls ? `<td class="act" data-lab="">
-        ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause<span class="vh"> ${esc(d.title)}</span></button>` : ''}
+        ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause" data-open="${+d.open_positions || 0}">Pause<span class="vh"> ${esc(d.title)}</span></button>` : ''}
         ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume<span class="vh"> ${esc(d.title)}</span></button>` : ''}
-        <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
+        <button class="btn sm danger" data-dep="${d.id}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
         <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
@@ -1729,7 +1729,12 @@
           if (!fresh) btn.disabled = true;
           depActed(id, act, fresh);
         };
-        if (act === 'stop') armed(btn, 'Confirm stop', run); else run();
+        // Pause and Remove sell what the deployment holds (the engine flattens a paused or stopped one):
+        // with positions open, the first press says so and the second sends it.
+        const open = +btn.dataset.open || 0;
+        if (act === 'stop') armed(btn, open ? `Remove and sell ${open} open?` : 'Confirm stop', run);
+        else if (act === 'pause' && open) armed(btn, `Pause and sell ${open} open?`, run);
+        else run();
       };
     });
   }
