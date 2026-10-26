@@ -89,6 +89,8 @@ p { margin: 0; }
 * { scrollbar-color: var(--rule-2) var(--stock-sunk); scrollbar-width: thin; }
 .gain { color: var(--ink); }
 .loss { color: var(--ink); }
+/* A signed figure never breaks between its sign and the $ or inside the digits ("−" / "$39,156.25"). */
+span.gain, span.loss, b.gain, b.loss, .amt { white-space: nowrap; }
 .hint { font-size: 12.5px; color: var(--ink-3); }
 /* System map — a live signal-flow graph of the codebase (admin only). */
 .sysmap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; margin-top: 12px; }
@@ -315,6 +317,9 @@ h1.page { font-family: var(--f-ui); font-size: 20px; line-height: 26px; font-wei
 .sub-fig { font-size: 12px; color: var(--ink-3); margin-top: 4px; overflow-wrap: anywhere; }
 /* The track record's by-month row for a month with no closes: muted, and inline (a .sub-fig would drop under its phone label). */
 .tr-none { color: var(--ink-3); }
+/* The track record's By strategy titles wrap: on one line a long title pushed Trades, Net P&L and the rest
+   out of view behind a sideways scroll at every desktop width. */
+.trpanel td.name { white-space: normal; overflow-wrap: anywhere; min-width: 14em; }
 
 .sect, .section { margin-top: 32px; }
 .sect-head, .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 7px; border-bottom: 1px solid var(--rule); margin-bottom: 0; }
@@ -339,6 +344,13 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
    instead of widening the table past the viewport (no horizontal scroll). */
 .t-strat, .t-dep { table-layout: auto; width: 100%; min-width: 620px; }
 .t-strat td.name, .t-dep td.name { overflow-wrap: anywhere; white-space: normal; max-width: 30ch; }
+/* A long title keeps a readable Strategy column on the Strategies list (the Deploy board's holds 210px
+   below): the one-line market and status cells beside it squeezed it to a word a line at 1024. The
+   title holds 14em; those short cells wrap first. Desktop only: a phone stacks the rows. */
+@media (min-width: 761px) {
+  .t-strat td.name { min-width: 14em; }
+  .t-strat td[data-lab="Market"], .t-strat td.st { white-space: normal; }
+}
 th, td { padding: 10px 12px 9px; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--rule); white-space: nowrap; }
 th { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--rule-2); }
 td:first-child, th:first-child { padding-left: 0; }
@@ -1007,6 +1019,11 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
    white-space:normal lets the long "What" cell wrap instead of overflowing into "Amount". */
 .funds-page .funds-col table { table-layout: fixed; width: 100%; }
 .funds-page .funds-col td, .funds-page .funds-col th { overflow-wrap: anywhere; white-space: normal; }
+/* Fixed layout split the paper history into equal thirds: a wide When column beside a memo a word a line.
+   When and Amount take what they need; an amount never breaks mid-figure. */
+.funds-page .t-ledger th:first-child { width: 6.5em; }
+.funds-page .t-ledger th.num { width: 8.5em; }
+.funds-page .t-ledger td.num { overflow-wrap: normal; white-space: nowrap; }
 @media (min-width: 900px) {
   .funds-page .funds { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
   .funds-page .funds-history { grid-column: 1; grid-row: 1; }
@@ -2064,10 +2081,11 @@ body.landing-body .apf { display: none; }
 .monitor-setup, .monitor-limits { font-size: 13px; line-height: 18px; color: var(--ink-2); overflow-wrap: anywhere; }
 /* A demo monitor's line on what demo is for; on a phone the metrics stack right under it. */
 .monitor-config .demo-row { margin: 4px 0 10px; }
-.monitor-metrics { display: grid; grid-column: 2; grid-row: 1 / span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin: 0; text-align: left; }
+/* Each figure keeps its column on one line: at 1280 a +$14,444.55 realized broke as "+$14,444.5 / 5". */
+.monitor-metrics { display: grid; grid-column: 2; grid-row: 1 / span 2; grid-template-columns: repeat(2, minmax(min-content, 1fr)); gap: 4px 16px; margin: 0; text-align: left; }
 .monitor-metrics > div { min-width: 0; padding: 0; }
 .monitor-metrics dt { margin: 0; font: 400 13px/18px var(--f-ui); color: var(--ink-2); }
-.monitor-metrics dd { margin: 2px 0 0; font: 500 20px/24px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; overflow-wrap: anywhere; }
+.monitor-metrics dd { margin: 2px 0 0; font: 500 20px/24px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; }
 .monitor-unrealized dd { font-size: 16px; }
 .monitor-metrics .unavailable { font: 400 14px/20px var(--f-ui); }
 .monitor-footer { display: grid; grid-column: 3; grid-row: 1 / span 2; justify-items: end; gap: 4px; min-width: 0; }

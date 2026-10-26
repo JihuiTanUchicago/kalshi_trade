@@ -828,7 +828,7 @@ test('paper P&L reads "since reset" on the card and dashboard once the paper acc
     const span = reset_at ? 'since reset' : 'all time';
     // Both read total_pnl, which restarts at a reset; the track record keeps every closed trade.
     assert.match(f.root.querySelector('#dash-ap').innerHTML, new RegExp(`<dt>Paper P&amp;L, ${span}</dt><dd><span class="[^"]*">\\+\\$12\\.50`));
-    assert.match(f.root.querySelector('#boardbody').innerHTML, new RegExp(`\\+\\$12\\.50 ${span}`));
+    assert.match(f.root.querySelector('#boardbody').innerHTML, new RegExp(`<span class="amt">\\+\\$12\\.50</span> ${span}`));
     if (reset_at) assert.doesNotMatch(f.root.querySelector('#boardbody').innerHTML, /all time/);
   }
 });
@@ -3725,7 +3725,7 @@ test('a new account\'s paper card says nothing is on paper yet instead of "$0.00
     await f.viewDashboard(); await flush();
     const board = f.root.querySelector('#boardbody').innerHTML;
     if (empty) { assert.match(board, /\$1,000\.00 of practice money ·\u00a0no paper strategies yet/); assert.doesNotMatch(board, /at cost/); }
-    else assert.match(board, /\$1,000\.00 cash ·\u00a0\$0\.00 at cost ·\u00a0\$0\.00 all time/);  // a strategy on paper: its book, zeros and all
+    else assert.match(board, /\$1,000\.00 cash ·\u00a0\$0\.00 at cost ·\u00a0<span class="amt">\$0\.00<\/span> all time/);  // a strategy on paper: its book, zeros and all
   }
 });
 
