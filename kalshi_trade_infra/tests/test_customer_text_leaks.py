@@ -169,8 +169,8 @@ def test_the_billing_statement_never_names_staff_or_a_model_id(monkeypatch):
 def test_notifications_never_carry_an_email_or_a_raw_error(monkeypatch):
     bodies = ["%s mentioned you." % OTHER, "%s shared the strategy “Fade” with you." % OTHER,
               "“Fade” was paused automatically. %s" % HOST, "Dana commented on your post."]
-    monkeypatch.setattr(repo, "list_notifications", lambda cur, uid: [
-        {"id": i, "kind": "x", "body": b, "link": "/community", "created_at": None, "read_at": None}
+    monkeypatch.setattr(repo, "list_notifications", lambda cur, uid, **k: [
+        {"id": i, "kind": "x", "body": b, "link": "/community#post-%d" % i, "created_at": None, "read_at": None}
         for i, b in enumerate(bodies)])
     monkeypatch.setattr(repo, "count_unread_notifications", lambda cur, uid: 4)
     out = server.notifications(_ctx())
