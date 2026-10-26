@@ -284,3 +284,18 @@ def test_autopilot_crypto_research_is_bitcoin_only_and_manual_research_is_not(mo
     assert "only BTC markets" in agent._cooldown_line(None, 1)
     monkeypatch.setattr(agent, "AUTOPILOT_CRYPTO_COINS", [])
     assert agent.autopilot_scope_ok("eth_daily") and agent.autopilot_scope_line() == ""
+
+
+def test_with_every_allowed_market_on_cooldown_the_review_is_told_to_research_without_one(monkeypatch):
+    # Prod 2026-10-26 15:27-16:27Z: Bitcoin-only left btc15m/btc_daily, both on cooldown, and the
+    # reviews started nothing for an hour.
+    now = agent.repo.now_utc()
+    runs = [{"id": 2, "market": "btc15m", "status": "succeeded", "finished_at": now},
+            {"id": 1, "market": "btc_daily", "status": "succeeded", "finished_at": now}]
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: runs)
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily", "eth15m"])
+    monkeypatch.setattr(agent, "focus_keys", lambda cur, uid, keys: list(keys))
+    line = agent._cooldown_line(None, 1)
+    assert "does NOT mean stop" in line and "WITHOUT a market" in line
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily", "btc15m_tick"])
+    assert "do NOT propose these markets" in agent._cooldown_line(None, 1)  # btc15m_tick is still open
