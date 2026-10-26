@@ -332,3 +332,36 @@ def test_the_trades_download_stays_in_its_query_budget_and_reads_each_strategy_o
     log = []
     server.trades_csv(_ctx(log, 10.0, query={"mode": "live"}))
     assert len(log) == 1  # no trades, no second read
+
+
+def _paper_book(k):
+    """k running paper deployments (one strategy each), each 40 realistic trips in and down $2.50."""
+    import json
+
+    from app import spec as specmod
+
+    now = datetime(2026, 10, 25)
+    spec = json.dumps(specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}}))
+    deps = [{"id": 50 + s, "user_id": 7, "strategy_id": s, "market": "btc15m", "mode": "paper", "status": "running",
+             "status_reason": None, "last_decision_ts": None, "created_at": now - timedelta(days=3), "updated_at": now,
+             "last_scan_json": None, "last_scan_at": None, "title": "S%d" % s, "direction": None, "spec_json": spec,
+             "result_json": None, "realized_pnl": -2.5, "closed_trades": 40, "wins": 10, "open_positions": 0}
+            for s in range(1, k + 1)]
+    return {"FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id LEFT JOIN app_positions p": deps,
+            "SELECT t.strategy_id, COUNT(*) AS trips": [{"strategy_id": s, "trips": 40, "pnl": -2.5} for s in range(1, k + 1)]}
+
+
+def test_the_research_scoreboard_reads_the_same_for_two_paper_strategies_as_for_six(production):
+    """The dashboard's research loop board (/api/research/scoreboard), counted cold. It read each paper
+    strategy's record up to four times: the live-ready check (paper_evidence: five reads and a bootstrap,
+    even for a strategy down on paper, which can never pass) and the tournament's entrants and book (the
+    trips one strategy at a time, twice). Measured 2026-10-26 on a seeded account (320 runs, 4,500 ideas,
+    22 deployments, 4,000 positions): 118 -> 29 statements, 11.4s -> under 1s cold."""
+    counts = []
+    for k in (2, 6):
+        server._SHARED.clear()
+        log = []
+        server.research_scoreboard(_ctx(log, 10.0, query={"days": "14"}, extra=_paper_book(k)))
+        assert not any("FROM app_positions p JOIN app_deployments d" in s for s, _ in log)  # no per-strategy trips
+        counts.append(len(log))
+    assert counts[0] == counts[1], counts

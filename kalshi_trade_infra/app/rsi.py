@@ -439,8 +439,8 @@ def paper_outcomes(cur, user_id: int) -> Dict:
     the scoreboard) and per playbook (via the run that produced each strategy), so a playbook that
     yields gate passes which then bleed on paper stops looking like a winner.
 
-    Read-only. Strategies with too few trips to clear the paper gate skip the (bootstrap) live-ready
-    check, so this stays cheap enough for the panel."""
+    Read-only. Strategies with too few trips to clear the paper gate, or down on them, skip the
+    (bootstrap) live-ready check, so this stays cheap enough for the panel."""
     from app import agent
     from app import repository as repo
     deps = [d for d in repo.list_deployments(cur, user_id, include_stopped=True) if d.get("mode") == "paper"]
@@ -457,7 +457,9 @@ def paper_outcomes(cur, user_id: int) -> Dict:
         oos = (d.get("result") or {}).get("out_of_sample") or {}
         n_bt = int(oos.get("trades") or 0)
         ready = False
-        if trips >= agent.MIN_REALISTIC_PAPER_TRADES:
+        # `net` is the same trips' P&L summed exactly (DECIMAL); below zero, paper_evidence's net check
+        # refuses it whatever else it reads, so its five reads and its bootstrap are skipped.
+        if trips >= agent.MIN_REALISTIC_PAPER_TRADES and net >= 0:
             try:
                 ready = bool(agent.paper_evidence(cur, user_id, sid)["ready"])
             except Exception:  # noqa: BLE001 - informational; never fail the scoreboard

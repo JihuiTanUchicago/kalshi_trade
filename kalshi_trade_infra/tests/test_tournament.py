@@ -305,3 +305,48 @@ def test_strikes_of_one_event_count_as_one_bet(monkeypatch):
     monkeypatch.setattr(tournament, "_now", lambda: NOW)
     p = tournament.pooled(tournament.all_paper_trips(None, 1))
     assert p["trips"] == 2 and p["net_pnl"] == -3.0
+
+
+def test_standings_read_the_deployments_once_and_every_strategys_trips_at_once(monkeypatch):
+    """The scoreboard's tournament: the entrants and the book used to read the deployments twice and
+    each paper strategy's trips twice, one strategy at a time (2 + 2x strategies statements; 24 of the
+    board's 118 for a 22-deployment account, measured 2026-10-26). Now two reads, and the same standings
+    as the per-strategy reads give."""
+    from app import repository
+    deps = [{"id": 10 + k, "strategy_id": sid, "mode": mode, "status": status, "spec": SPEC, "result": {},
+             "title": "S%d" % sid, "market": "btc15m", "created_at": NOW - timedelta(days=3), "updated_at": NOW}
+            for k, (sid, mode, status) in enumerate([(4, "paper", "running"), (3, "paper", "stopped"),
+                                                     (2, "demo", "running"), (1, "paper", "paused")])]
+    trips = {sid: [{"pnl": (-1.0) ** k * sid, "ticker": "KXBTC15M-26OCT2415%02d-%d" % (k, k),
+                    "opened_at": NOW - timedelta(hours=40 - k + sid), "closed_at": NOW - timedelta(hours=39 - k + sid)}
+                   for k in range(6)] for sid in (1, 3, 4)}
+    reads = []
+
+    def list_deployments(cur, uid, include_stopped=False):
+        reads.append(("deployments", include_stopped))
+        return [d for d in deps if include_stopped or d["status"] != "stopped"]
+
+    def by_strategy(cur, uid, sids):
+        reads.append(("trips", tuple(sids)))
+        return {s: trips[s] for s in sids if s in trips}
+
+    def one(cur, uid, sid):
+        reads.append(("trips", sid))
+        return trips.get(sid, [])
+
+    monkeypatch.setattr(repository, "list_deployments", list_deployments)
+    monkeypatch.setattr(repository, "paper_round_trips_by_strategy", by_strategy)
+    monkeypatch.setattr(repository, "paper_round_trips", one)
+    monkeypatch.setattr(tournament, "weight_history", lambda cur, uid: {})
+    monkeypatch.setattr(tournament, "_now", lambda: NOW)
+    out = tournament.standings(None, 7)
+    assert reads == [("deployments", True), ("trips", (1, 3, 4))]
+    # The per-strategy reads (rebalance still makes them) give the same entrants, pooled sample and book.
+    reads.clear()
+    ents = tournament.entrants(None, 7)
+    every = tournament.all_paper_trips(None, 7)
+    assert [e["strategy_id"] for e in ents] == [4, 1] and len(reads) == 7
+    arms = tournament.allocate(ents, seed="7:%s" % NOW.strftime("%Y%m%d%H"))
+    assert [(r["strategy_id"], r["weight"]) for r in out["entrants"]] == [(a["strategy_id"], a["weight"]) for a in arms]
+    assert out["entrants"][0]["net_pnl"] == round(sum(t["pnl"] for t in trips[4]), 4)
+    assert out["pooled"] == tournament.pooled(every) and out["book"] == tournament.book(every, {})

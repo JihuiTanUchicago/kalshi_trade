@@ -104,17 +104,22 @@ def is_probation(cur, dep: Dict) -> bool:
 
 # -- data ----------------------------------------------------------------------------------------
 
-def entrants(cur, user_id: int) -> List[Dict]:
+def entrants(cur, user_id: int, deps: Optional[List[Dict]] = None,
+             trips_by: Optional[Dict[int, List[Dict]]] = None) -> List[Dict]:
     """Every paper deployment that hasn't been stopped, one per strategy (newest wins), each with its
-    realistic round trips (oldest first) and its per-event returns per dollar staked."""
+    realistic round trips (oldest first) and its per-event returns per dollar staked. `deps` and
+    `trips_by` are those reads already made (standings); without them each is read here."""
     from app import agent
     from app import repository as repo
     out, seen = [], set()
-    for d in repo.list_deployments(cur, user_id, include_stopped=False):
+    if deps is None:
+        deps = repo.list_deployments(cur, user_id, include_stopped=False)
+    for d in deps:
         if d.get("mode") != "paper" or d["strategy_id"] in seen:
             continue
         seen.add(d["strategy_id"])
-        trips = repo.paper_round_trips(cur, user_id, d["strategy_id"])
+        trips = (trips_by.get(d["strategy_id"], []) if trips_by is not None
+                 else repo.paper_round_trips(cur, user_id, d["strategy_id"]))
         stake = _stake(d)
         # One return per EVENT, not per trip: five strikes of one 15m event are one bet (the live
         # gate clusters the same way, #169), so correlated trips can't fake confidence.
@@ -147,17 +152,22 @@ def weight_history(cur, user_id: int) -> Dict[int, List[Tuple]]:
     return out
 
 
-def all_paper_trips(cur, user_id: int) -> List[Dict]:
+def all_paper_trips(cur, user_id: int, deps: Optional[List[Dict]] = None,
+                    trips_by: Optional[Dict[int, List[Dict]]] = None) -> List[Dict]:
     """Every realistic paper round trip of every strategy this user ever ran on paper, with the
     deployment it belongs to, for the book and the pooled sample (retired entrants included: dropping
-    them would make the record look better than it was)."""
+    them would make the record look better than it was). `deps` (stopped ones included) and
+    `trips_by` as in `entrants`."""
     from app import repository as repo
     out, seen = [], set()
-    for d in repo.list_deployments(cur, user_id, include_stopped=True):
+    if deps is None:
+        deps = repo.list_deployments(cur, user_id, include_stopped=True)
+    for d in deps:
         if d.get("mode") != "paper" or d["strategy_id"] in seen:
             continue
         seen.add(d["strategy_id"])
-        for t in repo.paper_round_trips(cur, user_id, d["strategy_id"]):
+        for t in (trips_by.get(d["strategy_id"], []) if trips_by is not None
+                  else repo.paper_round_trips(cur, user_id, d["strategy_id"])):
             out.append(dict(t, strategy_id=d["strategy_id"], ret=t["pnl"] / _stake(d), capital=_capital(d)))
     out.sort(key=lambda t: (t.get("opened_at") is None, t.get("opened_at")))
     return out
@@ -308,9 +318,16 @@ def book(trips: List[Dict], history: Dict[int, List[Tuple]]) -> Dict:
 # -- the referee ---------------------------------------------------------------------------------
 
 def standings(cur, user_id: int) -> Dict:
-    """Read-only: current entrants with their allocation, plus the pooled sample and the book."""
+    """Read-only: current entrants with their allocation, plus the pooled sample and the book. Two
+    reads feed both halves: the deployments (stopped ones included; the entrants are the others) and
+    every paper strategy's round trips at once (repo.paper_round_trips_by_strategy). Each half read
+    them again, and the trips one strategy at a time: 2 + 2x strategies statements per scoreboard."""
+    from app import repository as repo
     now = _now()
-    ents = entrants(cur, user_id)
+    deps = repo.list_deployments(cur, user_id, include_stopped=True)
+    trips_by = repo.paper_round_trips_by_strategy(
+        cur, user_id, sorted({d["strategy_id"] for d in deps if d.get("mode") == "paper"}))
+    ents = entrants(cur, user_id, [d for d in deps if d.get("status") != "stopped"], trips_by)
     arms = allocate(ents, seed="%s:%s" % (user_id, now.strftime("%Y%m%d%H")))
     by_sid = {e["strategy_id"]: e for e in ents}
     rows = []
@@ -320,7 +337,7 @@ def standings(cur, user_id: int) -> Dict:
                          market=(e or {}).get("market"), status=(e or {}).get("status"),
                          net_pnl=round(sum(t["pnl"] for t in (e or {}).get("trips", [])), 4),
                          verdict=verdict(e, a, now) if e else None))
-    trips = all_paper_trips(cur, user_id)
+    trips = all_paper_trips(cur, user_id, deps, trips_by)
     return {"entrants": rows, "pooled": pooled(trips), "book": book(trips, weight_history(cur, user_id)),
             "as_of": now.isoformat()}
 
