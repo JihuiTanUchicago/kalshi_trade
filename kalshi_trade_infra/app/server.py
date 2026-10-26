@@ -70,6 +70,7 @@ CSP = (
 
 
 from app.web.http import ApiError, Ctx, _int_param, _json_default, _num  # noqa: F401  (request types)
+from app.web.views import _gate_lines, _live_balance, _open_book, _with_gate_lines  # noqa: F401  (shared presenters)
 from app.web.settings import (  # noqa: F401  (server.py keeps the names for routing and tests)
     ADMIN_EMAIL,
     DEV_LOGIN,
@@ -140,6 +141,30 @@ from app.web.routes.billing import (  # noqa: F401  (moved; server.py keeps the 
     TRADE_MODES,
     _csv_safe,
     _usd4,
+)
+from app.web.routes.funds import (  # noqa: F401  (moved; server.py keeps the names for routing and tests)
+    delete_kalshi_dev_key,
+    delete_kalshi_key,
+    demo_reload,
+    funds,
+    paper_transfer,
+    save_kalshi_dev_key,
+    save_kalshi_key,
+    waitlist,
+)
+from app.web.routes.admin import (  # noqa: F401  (moved; server.py keeps the names for routing and tests)
+    admin_grant,
+    admin_kill_switch,
+    admin_kill_switch_set,
+    admin_overview,
+    admin_system,
+    admin_waitlist,
+    exec_latency,
+    exec_tca,
+    report_client_error,
+    system_code,
+    _require_admin,
+    _system_event,
 )
 
 
@@ -297,30 +322,6 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
         "realized_pnl": round(total, 2),
         "today_pnl": round(today, 2),
     }
-
-
-def _open_book(open_pos: List[Dict], mode: str) -> Dict:
-    """One mode's open positions: how many and what they cost (contracts x entry price). The dashboard
-    and Funds both read this, so the two pages show the same open money to the cent."""
-    pos = [p for p in open_pos if p["mode"] == mode]
-    return {"open_at_cost": round(sum(float(p["qty"]) * float(p["entry_price"]) for p in pos), 2),
-            "open_positions": len(pos)}
-
-
-def _live_balance(cur, uid: int) -> Dict:
-    """The user's REAL Kalshi cash (cached, best-effort) + where to deposit. We can't mint
-    real money, so an unconnected key or a failed fetch degrades to a connect/unavailable
-    state. The live key is never logged or echoed — only the resulting balance is surfaced."""
-    key = repo.get_kalshi_key(cur, uid)
-    out = {"connected": key is not None, "balance": None, "funding_url": kalshi_account.KALSHI_FUNDING_URL}
-    if key is not None:
-        try:
-            out["balance"] = kalshi_account.balance_cached(uid, kalshi_account.credentials_from_row(uid, key))
-        except Exception:
-            out["balance"] = None
-        if out["balance"] is not None:
-            out["balance_at"] = kalshi_account.balance_read_at(uid)  # the figure is up to a minute old
-    return out
 
 
 # The engine pauses a demo deployment with this in its reason when the user has no demo key.
@@ -679,39 +680,12 @@ def get_run(ctx: Ctx):
     }
 
 
-def _gate_lines(fn, *args) -> List[Dict]:
-    """services.gate_explain's per-gate lines, or none: a record it can't read never fails the page."""
-    try:
-        return fn(*args)
-    except (TypeError, ValueError, KeyError, AttributeError):
-        return []
-
-
 def _gate_tints(status: Optional[str], exp: Dict) -> Dict:
     """services.gate_explain's per-figure pass/fail, or none (every figure neutral) for a record it can't read."""
     try:
         return gate_explain.strategy_tints(status, exp)
     except (TypeError, ValueError, KeyError, AttributeError):
         return {}
-
-
-def _with_gate_lines(events: List[Dict]) -> List[Dict]:
-    """Each verdict event gains `why_failed`: one plain line per gate it missed (measured, needed,
-    what to try next), from the numbers the event already carries, and `note`: a plain sentence
-    the page shows in place of a message written for the ledger ("gatekeeper-held
-    (classification=...)", "Lead scan: control arm"). The model tiering line's internal model id
-    is dropped: the page never shows one. Display only; no extra read."""
-    for ev in events:
-        if ev.get("kind") == "verdict":
-            data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
-            data.pop("screen_model_id", None)
-            data["why_failed"] = _gate_lines(gate_explain.for_event, ev.get("message"), data)
-            try:
-                data["note"] = gate_explain.event_note(ev.get("message"), data)
-            except (TypeError, ValueError, KeyError, AttributeError):
-                data["note"] = None
-            ev["data"] = data
-    return events
 
 
 def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:
@@ -2204,409 +2178,6 @@ def autopilot_model(ctx: Ctx):
         raise ApiError(400, "Unknown model.")
     repo.set_autopilot_model(ctx.cur, ctx.uid, key)
     return {"ok": True, "model": key or catalog.DEFAULT_KEY}
-
-
-# -- funds -------------------------------------------------------------------------
-
-
-def funds(ctx: Ctx):
-    cur = ctx.cur
-    key = repo.get_kalshi_key(cur, ctx.uid)
-    kalshi = _live_balance(cur, ctx.uid)
-    if key is not None:
-        kalshi["key_id"] = key["key_id"][:4] + "…" + key["key_id"][-4:]
-    dev = repo.get_kalshi_dev_key(cur, ctx.uid)
-    kalshi_dev_key = {"connected": dev is not None}
-    if dev is not None:
-        kalshi_dev_key["key_id"] = dev["key_id"][:4] + "…" + dev["key_id"][-4:]
-        # The demo account's cash at Kalshi (the same cached read demo health makes), so Funds can
-        # say "Connected ✓ (balance $X)". None when it can't be read just now.
-        from app.trading import demo_twins
-
-        kalshi_dev_key["balance"] = demo_twins.balance_cached(cur, ctx.uid)
-        if kalshi_dev_key["balance"] is not None:
-            kalshi_dev_key["balance_at"] = demo_twins.balance_read_at(ctx.uid)  # up to a minute old, like Kalshi cash
-        # The demo cash the autopilot's demo copies wait for, so Funds can say why a small balance starts none.
-        kalshi_dev_key["copies_from"] = demo_twins.DEMO_TWIN_MIN_BALANCE if demo_twins.DEMO_TWINS else None
-    de = repo.demo_equity(cur, ctx.uid)
-    # Each book's open positions, so every figure says what it leaves out; paper's balance is cash plus
-    # open at cost, the dashboard's paper figure. Books are never added together.
-    open_pos = repo.user_positions(cur, ctx.uid, "open")
-    paper = _open_book(open_pos, "paper")
-    cash = round(repo.paper_balance(cur, ctx.uid), 2)
-    kalshi.update(_open_book(open_pos, "live"))
-    return {
-        "paper": {"cash": cash, "equity": round(cash + paper["open_at_cost"], 2), **paper,
-                  "ledger": repo.ledger_rows(cur, ctx.uid)},
-        "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"],
-                 "before_reload": de["before_reload"], **_open_book(open_pos, "demo")},
-        "kalshi": kalshi,
-        "kalshi_dev": kalshi_dev_key,
-    }
-
-
-def paper_transfer(ctx: Ctx):
-    kind = ctx.body.get("kind")
-    if kind not in ("deposit", "withdraw", "reset"):
-        raise ApiError(400, "Choose deposit, withdraw or reset.")
-    amount = round(_num(ctx.body, "amount", 1, MAX_PAPER_BALANCE), 2)
-    with repo.transaction(ctx.conn) as tx:
-        repo.lock_user(tx, ctx.uid)
-        if kind == "reset":
-            # Start fresh at `amount`. Blocked with open paper positions: wiping the ledger would
-            # orphan their already-debited cost and the equity math would double-count.
-            if any(p["mode"] == "paper" for p in repo.user_positions(tx, ctx.uid, "open")):
-                raise ApiError(409, "Close your open paper positions before resetting the account.")
-            repo.reset_paper_account(tx, ctx.uid, amount)
-            return {"ok": True}
-        bal = repo.paper_balance(tx, ctx.uid)
-        if kind == "withdraw" and amount > bal:
-            raise ApiError(409, "You only have $%.2f of paper cash free." % bal)
-        if kind == "deposit" and bal + amount > MAX_PAPER_BALANCE:
-            raise ApiError(409, "Paper accounts top out at $%s." % "{:,.0f}".format(MAX_PAPER_BALANCE))
-        repo.add_ledger(tx, ctx.uid, "deposit" if kind == "deposit" else "withdrawal",
-                        amount if kind == "deposit" else -amount,
-                        "Paper %s" % ("deposit" if kind == "deposit" else "withdrawal"))
-    return {"ok": True}
-
-
-def demo_reload(ctx: Ctx):
-    """Set the app-controlled demo starting capital. Demo places real sandbox orders but the money
-    is ours, so this never touches the real Kalshi demo-account balance — it just resets the
-    capital that real fills are applied to, and zeroes the displayed demo P&L from here."""
-    amount = round(_num(ctx.body, "amount", 1, MAX_PAPER_BALANCE), 2)
-    with repo.transaction(ctx.conn) as tx:
-        repo.lock_user(tx, ctx.uid)
-        repo.reload_demo(tx, ctx.uid, amount)
-    return {"ok": True}
-
-
-def save_kalshi_key(ctx: Ctx):
-    key_id = str(ctx.body.get("key_id") or "")
-    pem = str(ctx.body.get("private_key") or "")
-    try:
-        cash = kalshi_account.verify(key_id, pem)
-        blob = kalshi_account.encrypt_private_key(ctx.uid, pem.strip())
-    except kalshi_account.KalshiKeyError as e:
-        raise ApiError(400, str(e))
-    except RuntimeError:
-        raise ApiError(503, "This server can't store keys yet (encryption key not configured).")
-    with repo.transaction(ctx.conn) as tx:
-        repo.lock_user(tx, ctx.uid)
-        # Replacing the key while live deployments run would point their open positions' exits at
-        # another Kalshi account; the same rule as disconnecting.
-        if any(d["mode"] == "live" and d["status"] == "running" for d in repo.list_deployments(tx, ctx.uid)) \
-                and repo.get_kalshi_key(tx, ctx.uid) is not None:
-            raise ApiError(409, "Pause or stop your live deployments before replacing your Kalshi key.")
-        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "production")
-        repo.save_kalshi_key(tx, ctx.uid, key_id.strip(), blob)
-    kalshi_account.remember_balance(ctx.uid, cash)
-    return {"ok": True, "balance": cash}
-
-
-def delete_kalshi_key(ctx: Ctx):
-    with repo.transaction(ctx.conn) as tx:
-        repo.lock_user(tx, ctx.uid)
-        if any(d["mode"] == "live" and d["status"] == "running" for d in repo.list_deployments(tx, ctx.uid)):
-            raise ApiError(409, "Pause or stop your live deployments before disconnecting Kalshi.")
-        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "production")
-        repo.delete_kalshi_key(tx, ctx.uid)
-    return {"ok": True}
-
-
-def save_kalshi_dev_key(ctx: Ctx):
-    """Store the user's own Kalshi DEMO (sandbox) key, encrypted at rest. Mirrors
-    save_kalshi_key, but proves the key against the SANDBOX exchange (never production) and
-    stores it in the separate app_kalshi_dev_keys table, so demo orders can never pick up a
-    live key. The raw private key is used only to verify + encrypt here; it is never logged or echoed."""
-    key_id = str(ctx.body.get("key_id") or "").strip()
-    pem = str(ctx.body.get("private_key") or "")
-    if not key_id or len(key_id) > 128:
-        raise ApiError(400, "Paste the Key ID from the API keys page on demo.kalshi.co: the short code shown next "
-                            "to the key, like a952bcbe-ec3b-4b5b-….")
-    try:
-        creds = (key_id, kalshi_account.parse_private_key(pem))
-    except kalshi_account.KalshiKeyError as e:
-        raise ApiError(400, str(e))
-    try:
-        kalshi_dev_exec.demo_fills(creds)  # authenticate against the sandbox only — proves the key works
-    except kalshi_dev_exec.DemoHostError:
-        raise ApiError(503, "The demo (sandbox) exchange isn't configured on this server yet.")
-    except Exception:
-        raise ApiError(400, "Kalshi's demo exchange didn't accept this key, or couldn't be reached just now. Check "
-                            "that the Key ID and the private key come from the same key, and that you made it on "
-                            "demo.kalshi.co: a key from kalshi.com is a live key and goes in the Kalshi account box.")
-    try:
-        blob = kalshi_account.encrypt_private_key(ctx.uid, pem.strip())
-    except RuntimeError:
-        raise ApiError(503, "This server can't store keys yet (encryption key not configured).")
-    with repo.transaction(ctx.conn) as tx:
-        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
-        repo.set_kalshi_dev_key(tx, ctx.uid, key_id, blob)
-    from app.trading import demo_twins
-
-    demo_twins.forget_balance(ctx.uid)  # Funds reads the new key's demo cash, not the old memo
-    return {"ok": True}
-
-
-def delete_kalshi_dev_key(ctx: Ctx):
-    with repo.transaction(ctx.conn) as tx:
-        repo.lock_user(tx, ctx.uid)
-        if any(d["mode"] == "demo" and d["status"] == "running" for d in repo.list_deployments(tx, ctx.uid)):
-            raise ApiError(409, "Pause or stop your demo deployments before removing your demo key.")
-        _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
-        repo.delete_kalshi_dev_key(tx, ctx.uid)
-    return {"ok": True}
-
-
-def waitlist(ctx: Ctx):
-    email = str(ctx.body.get("email") or "").strip().lower()
-    note = str(ctx.body.get("note") or "").strip()[:500]
-    if not repo.EMAIL_RE.match(email) or len(email) > 320:
-        raise ApiError(400, "Enter a valid email address.")
-    cur = ctx.cur
-    if repo.recent_waitlist_from(cur, "", repo.now_utc() - timedelta(minutes=1)) >= MAX_WAITLIST_PER_MINUTE:
-        raise ApiError(429, "We're getting a lot of requests right now. Try again in a minute.")
-    is_new = repo.add_waitlist(cur, email, note or None)
-    if is_new:
-        notify.waitlist_request(email, note or None, repo.count_waitlist(cur))
-    return {"ok": True}
-
-
-# -- admin -----------------------------------------------------------------------
-
-
-def _require_admin(ctx: Ctx) -> None:
-    if (ctx.user["email"] or "").lower() != ADMIN_EMAIL.lower():
-        raise ApiError(403, "Admins only.")
-
-
-def admin_overview(ctx: Ctx):
-    _require_admin(ctx)
-    cur = ctx.cur
-    cur.execute("""SELECT u.id, u.email, u.name, u.created_at,
-                     COALESCE((SELECT SUM(amount_usd) FROM app_credit_ledger l WHERE l.user_id=u.id),0) AS balance
-                   FROM app_users u ORDER BY u.id DESC LIMIT 100""")
-    users = [{"id": r["id"], "email": r["email"], "name": r["name"], "created_at": r["created_at"],
-              "balance": round(float(r["balance"]), 2)} for r in cur.fetchall()]
-    # Waitlist and users are mutually exclusive: hide anyone who already has an account
-    # (case/space-insensitive — Google emails and typed waitlist emails can differ in case).
-    cur.execute("""SELECT w.email, w.note, w.status, w.created_at FROM app_waitlist w
-                   WHERE NOT EXISTS (SELECT 1 FROM app_users u
-                                     WHERE LOWER(TRIM(u.email))=LOWER(TRIM(w.email)))
-                   ORDER BY (w.status='approved'), w.id DESC LIMIT 200""")
-    waitlist = cur.fetchall()
-    # Open positions whose strategy was deleted: the engine no longer settles or flattens them.
-    return {"users": users, "waitlist": waitlist, "orphaned_open": repo.orphaned_open_positions(cur),
-            # Broken pages: browser error reports from the last 24h, grouped by message and page.
-            "client_errors": repo.client_error_groups(cur)}
-
-
-def report_client_error(ctx: Ctx):
-    """POST /api/client-errors: a page hit an uncaught error, an unhandled rejection, or an API call or
-    bug it shows as an error (boot.js sends these, fire-and-forget). Signed in or out: the signed-out
-    pages break too. Rate-limited in memory per address and per session, with one global cap, before
-    anything is written; every field is cleaned and bounded (client_errors.clean). Stores no user id
-    or address, only whether the visitor was signed in. The body cap is BODY_LIMITS."""
-    keys = ["ip:" + client_errors.client_ip(ctx.handler)]
-    read = getattr(ctx.handler, "cookies", None)
-    token = read().get(auth.SESSION_COOKIE) if callable(read) else None
-    if token:
-        keys.append("s:" + auth.hash_token(token)[:16])
-    if not client_errors.LIMITER.allow(keys):
-        raise ApiError(429, "Too many error reports. Try again later.")
-    try:
-        report = client_errors.clean(ctx.body)
-    except ValueError as e:
-        raise ApiError(400, str(e))
-    repo.insert_client_error(ctx.cur, report, signed_in=ctx.user is not None)
-    return {"ok": True}
-
-
-def admin_grant(ctx: Ctx):
-    _require_admin(ctx)
-    email = str(ctx.body.get("email") or "").strip().lower()
-    amount = _num(ctx.body, "amount", -100000, 100000)
-    target = repo.user_by_email(ctx.cur, email)
-    if not target:
-        raise ApiError(404, "No Tau user with that email (they must sign in first).")
-    from decimal import Decimal as _D
-    repo.add_credit(ctx.cur, target["id"], "admin_grant", _D(str(amount)),
-                    "Admin grant by %s" % ctx.user["email"])
-    return {"ok": True, "email": email, "balance": round(repo.credit_balance(ctx.cur, target["id"]), 2)}
-
-
-def admin_waitlist(ctx: Ctx):
-    """Approve a waitlist request (so that email can sign in) or remove it."""
-    _require_admin(ctx)
-    email = str(ctx.body.get("email") or "").strip()
-    action = ctx.body.get("action")
-    if not email or action not in ("approve", "remove"):
-        raise ApiError(400, "Pick an email and action (approve or remove).")
-    ok = repo.set_waitlist_status(ctx.cur, email, "approved") if action == "approve" \
-        else repo.remove_waitlist(ctx.cur, email)
-    if not ok:
-        raise ApiError(404, "That email isn't on the waitlist.")
-    return {"ok": True, "email": email, "action": action}
-
-
-def admin_kill_switch(ctx: Ctx):
-    """The DB-backed execution kill switch. While on, every engine process refuses new BUYS
-    within ~5s (no restart); SELLS always run. Admin-only."""
-    _require_admin(ctx)
-    from app.execution import kill_switch as ks
-    st = ks.read_state(ctx.cur)
-    return {"on": bool(st.get("on")), "reason": st.get("reason") or "", "by": st.get("by") or "",
-            "updated_at": st.get("updated_at_utc"), "env_on": os.getenv("APP_KILL_SWITCH") == "1"}
-
-
-def admin_kill_switch_set(ctx: Ctx):
-    """POST {on: bool, reason}: flip the DB-backed execution kill switch, then return its state."""
-    _require_admin(ctx)
-    from app.execution import kill_switch as ks
-    on = ctx.body.get("on")
-    if not isinstance(on, bool):
-        raise ApiError(400, "Send on: true or false.")
-    ks.write_state(ctx.cur, on, str(ctx.body.get("reason") or "")[:200], ctx.user["email"])
-    return admin_kill_switch(ctx)
-
-
-def exec_tca(ctx: Ctx):
-    """Transaction cost analysis of real orders over a trailing window (admin-only). Read-only."""
-    _require_admin(ctx)
-    from app.trading import tca
-    try:
-        days = float(ctx.query.get("days", "7"))
-    except (TypeError, ValueError):
-        days = 7.0
-    return tca.report(ctx.cur, days=max(0.1, min(days, 90.0)))
-
-
-def exec_latency(ctx: Ctx):
-    """Execution P2: order-path lag + error observability over a trailing window (admin-only —
-    operational money-path telemetry). p50/p95/p99 round-trip + total latency, encode/sign cost,
-    error/fill rates by outcome, and feed/mark staleness. Read-only."""
-    _require_admin(ctx)
-    try:
-        window = int(ctx.query.get("window", "3600"))
-    except (TypeError, ValueError):
-        window = 3600
-    window = max(60, min(window, 7 * 24 * 3600))
-    mode = ctx.query.get("mode")
-    mode = mode if mode in ("live", "demo") else None
-    return repo.order_latency_stats(ctx.cur, window_seconds=window, mode=mode)
-
-
-def admin_system(ctx: Ctx):
-    """Live telemetry for the system map: per-node freshness + volume, so the
-    graph shows what the running codebase is actually doing right now. Open to every
-    signed-in user (it's the product's 'show the homework' proof the pipeline is real);
-    fleet-wide specifics stay admin-only below."""
-    is_admin = (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower()
-    cur = ctx.cur
-
-    # Heartbeats: each collector/engine writes collector_state on every tick.
-    cur.execute("SELECT state_key, updated_at_utc FROM collector_state")
-    now = repo.now_utc().replace(tzinfo=None)
-    age = {}
-    for r in cur.fetchall():
-        if r["updated_at_utc"]:
-            age[r["state_key"]] = max(0, int((now - r["updated_at_utc"]).total_seconds()))
-
-    def approx_rows(table):
-        cur.execute("SELECT table_rows AS n FROM information_schema.tables "
-                    "WHERE table_schema=DATABASE() AND table_name=%s", (table,))
-        r = cur.fetchone()
-        return int(r["n"]) if r and r["n"] is not None else 0
-
-    def scalar(q, *a):
-        cur.execute(q, a); r = cur.fetchone()
-        return (list(r.values())[0] if r else 0) or 0
-
-    cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs GROUP BY status")
-    runs = {r["status"]: r["c"] for r in cur.fetchall()}
-    cur.execute("SELECT mode, COUNT(*) c FROM app_deployments WHERE status='running' GROUP BY mode")
-    running = {r["mode"]: int(r["c"]) for r in cur.fetchall()}
-
-    def safe_scalar(q, *a):
-        try:
-            cur.execute(q, a); r = cur.fetchone()
-            return (list(r.values())[0] if r else 0) or 0
-        except Exception:
-            return None
-
-    nodes = {
-        "kalshi":    {"kind": "ext", "series": safe_scalar("SELECT COUNT(DISTINCT series_ticker) c FROM hist_markets"),
-                      "markets": safe_scalar("SELECT COUNT(*) c FROM hist_markets")},
-        "coinbase":  {"kind": "ext"},
-        "bedrock":   {"kind": "ext"},
-        "stripe":    {"kind": "ext"},
-        "forward":   {"age": age.get("forward_collector_last_snapshot"), "rows": approx_rows("forward_quotes"), "unit": "quote rows"},
-        "cb_coll":   {"age": age.get("coinbase_collector_last_snapshot"), "rows": approx_rows("spot_candles_1m"), "unit": "1m candles"},
-        "features":  {"age": age.get("model_features_1m_last_snapshot"), "rows": approx_rows("model_features_1m"), "unit": "feature rows"},
-        "db":        {"rows": approx_rows("forward_quotes") + approx_rows("market_candles"), "size_mb": scalar("SELECT ROUND(SUM(data_length+index_length)/1048576) m FROM information_schema.tables WHERE table_schema=DATABASE()"),
-                      **({"top_tables": repo.largest_tables(cur)} if is_admin else {})},
-        "web":       {"up": True, **({"users": scalar("SELECT COUNT(*) c FROM app_users")} if is_admin else {})},
-        "agents":    {"running": runs.get("running", 0), "queued": runs.get("queued", 0), "done": runs.get("succeeded", 0) + runs.get("failed", 0)},
-        "backtest":  {"strategies": scalar("SELECT COUNT(*) c FROM app_strategies")},
-        # One process (app/trading/engine.py) runs every mode, so its heartbeat is both boxes' age. Running
-        # deployments are counted per mode: "N live" once counted paper and demo ones too.
-        "sim_engine":  {"age": age.get("recursive_engine_last_tick"), "paper": running.get("paper", 0)},
-        "live_engine": {"age": age.get("recursive_engine_last_tick"), "live": running.get("live", 0),
-                        "demo": running.get("demo", 0)},
-    }
-    # Recent activity feed: fleet-wide for the operator, but a normal user only ever
-    # sees their OWN agent events — never another user's private strategy names.
-    if is_admin:
-        cur.execute("""SELECT e.kind, e.message, e.data_json, e.created_at FROM app_agent_events e
-                       ORDER BY e.id DESC LIMIT 14""")
-    else:
-        cur.execute("""SELECT e.kind, e.message, e.data_json, e.created_at
-                       FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id
-                       WHERE r.user_id=%s ORDER BY e.id DESC LIMIT 14""", (ctx.uid,))
-    events = [_system_event(r) for r in cur.fetchall()]
-    return {"now": now.isoformat() + "Z", "nodes": nodes, "events": events}
-
-
-def _system_event(r: Dict) -> Dict:
-    """One row of the system page's activity feed. A verdict gains `data` {note, title} when the
-    run page would show a plain note in place of its ledger message (_with_gate_lines, judged on
-    the whole message before it is cut to 120 characters); nothing else of the event's data is sent."""
-    msg = r.get("message") or ""
-    ev = {"kind": r.get("kind"), "message": msg[:120], "created_at": r.get("created_at")}
-    if ev["kind"] != "verdict":
-        return ev
-    raw = r.get("data_json")
-    try:
-        data = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
-    except ValueError:
-        data = None
-    if not isinstance(data, dict):
-        return ev
-    data = _with_gate_lines([{"kind": "verdict", "message": msg, "data": data}])[0]["data"]
-    if data.get("note"):
-        ev["data"] = {"note": data["note"], "title": data.get("title") or None}
-    return ev
-
-
-def system_code(ctx: Ctx):
-    """System-map drill-down: component -> module -> function source + call graph.
-
-    Read-only static analysis of this repo's own source (app/ + data_pipeline/),
-    the 'show the homework' proof the pipeline is real - so, like admin_system,
-    it's open to any signed-in user. The module path is whitelisted in code_map
-    so a request can never read outside the repo."""
-    from app.web import code_map
-    try:
-        module = (ctx.query.get("module") or "").strip()
-        func = (ctx.query.get("func") or "").strip()
-        if func:
-            return code_map.function_detail(module, func)
-        if module:
-            return code_map.module_symbols(module)
-        return code_map.component_modules((ctx.query.get("component") or "").strip())
-    except code_map.CodeMapError as e:
-        raise ApiError(404, str(e))
 
 
 # -- routing -----------------------------------------------------------------------
