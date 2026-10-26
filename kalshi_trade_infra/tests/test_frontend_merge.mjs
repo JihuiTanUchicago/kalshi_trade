@@ -10,6 +10,7 @@ import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
+import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -192,6 +193,7 @@ trustGlitchCases({name: 'Tau', frontend});
 bellCases({name: 'Tau', frontend});
 researchPollCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend});
+strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
