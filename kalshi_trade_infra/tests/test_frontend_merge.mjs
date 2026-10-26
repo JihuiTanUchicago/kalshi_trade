@@ -99,7 +99,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => ({matches: false}), notifications} = {}) {
+function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => ({matches: false}), notifications, win = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
   let nextId = 0;
@@ -109,7 +109,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
     Intl, URL, URLSearchParams, AbortController,
     document: {body, getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {}, createElement: tag => new Element(tag)},
     window: {addEventListener() {}, scrollTo() {}, matchMedia,
-      ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {}), ...(stripe ? {Stripe: stripe} : {})},
+      ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {}), ...(stripe ? {Stripe: stripe} : {}), ...win},
     addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
     localStorage: storage || {getItem: () => null, setItem() {}},
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
@@ -134,7 +134,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, root, location, document: context.document, intervals, timeouts, requests, navigations, shiftClock};
+  return {...api, root, location, document: context.document, window: context.window, intervals, timeouts, requests, navigations, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -193,6 +193,40 @@ test('a signed-out deep link signs in back to the same page', async () => {
   const google = f.root.querySelectorAll('a[data-native]').map(a => a.getAttribute('href')).filter(h => h.startsWith('/auth/google'));
   assert.ok(google.length >= 1);
   assert.deepEqual([...new Set(google)], ['/auth/google?next=%2Fstrategies%2F42']);
+});
+
+// Boot fetch budget: the signed-in shell carries /api/me's reply and the page just loaded the current
+// build, so the first page's own reads go out at once (before: /api/me and /api/version first).
+test('a signed-in shell boots on the account it carries, with no /api/me or /api/version read', async () => {
+  const carried = {user: {id: 7, name: 'Carried', ui_theme: 'tau'}, markets: [], directions: []};
+  const f = frontend({win: {__TAU_ME__: carried, __BUILD__: 'build-1'}, fetchImpl: path => response(path === '/api/me' ? carried : {})});
+  f.S.me = null;
+  await f.render(); await flush(); await flush();
+  assert.equal(f.S.me, carried);
+  const paths = f.requests.map(({path}) => path.split('?')[0]);
+  assert.ok(!paths.includes('/api/me') && !paths.includes('/api/version'), paths.join(' '));
+  assert.ok(paths.includes('/api/strategies/42'), 'the page read went out');
+  // Taken once: a later boot (signed out, then back) asks the server.
+  assert.equal(f.window.__TAU_ME__, null);
+  f.S.me = null; f.requests.length = 0;
+  await f.render(); await flush();
+  assert.equal(f.requests[0].path, '/api/me');
+});
+
+test('the research page takes its model list from the account instead of waiting on /api/models', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/runs') return response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: null});
+    if (path.startsWith('/api/research/scoreboard') || path === '/api/research/estimate') return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.models = {models: [{key: 'm1', label: 'Model one'}, {key: 'm2', label: 'Model two'}], default: 'm2'};
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  assert.ok(!f.requests.some(({path}) => path === '/api/models'));
+  assert.match(f.root.innerHTML, /<option value="m2" selected>Model two/);
+  f.clearTimers();
 });
 
 test('a strategy from the seeded example session carries the Example tag and note on its own page', async () => {

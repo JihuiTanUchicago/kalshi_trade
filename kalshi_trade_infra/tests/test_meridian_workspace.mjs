@@ -119,7 +119,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), theme = 'meridian', build, notifications} = {}) {
+function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), theme = 'meridian', build, notifications, win = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body');
   const document = {body, activeElement: body, hidden: false,
     getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {},
@@ -135,7 +135,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
     window: {__TAU_UI__: theme, __BUILD__: build, addEventListener(name, callback) {
       const listeners = windowListeners.get(name) || []; listeners.push(callback); windowListeners.set(name, listeners);
     }, scrollTo() {}, matchMedia,
-      ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {})},
+      ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {}), ...win},
     addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
     localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value))},
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
@@ -160,7 +160,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, root, document, location, intervals, timeouts, windowListeners, requests, navigations, reloads, storage, shiftClock};
+  return {...api, root, document, window: context.window, location, intervals, timeouts, windowListeners, requests, navigations, reloads, storage, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -2793,6 +2793,47 @@ for (const [label, stored, blocked, expected] of [['default', null, false, 'tau'
     assert.equal(css.href, expected === 'meridian' ? dataset.merCss : '/static/app.css?v=tau-css');
   });
 }
+
+// Boot fetch budget: the signed-in shell carries /api/me's reply, so the first page's reads go out at once.
+test('Meridian boots on the account the signed-in shell carries, with no /api/me read', async () => {
+  const carried = {user: {id: 7, name: 'Carried', ui_theme: 'meridian'}, markets: [], directions: []};
+  const storage = new Map([['tau_ui', 'meridian']]);
+  const f = frontend({storage, win: {__TAU_ME__: carried}, fetchImpl: path => response(path === '/api/me' ? carried : {})});
+  f.S.me = null;
+  await f.render(); await flush(); await flush();
+  assert.equal(f.S.me, carried); assert.deepEqual(f.reloads, []);
+  const paths = f.requests.map(({path}) => path.split('?')[0]);
+  assert.ok(!paths.includes('/api/me') && !paths.includes('/api/version'), paths.join(' '));
+  assert.ok(paths.includes('/api/strategies/42'), 'the page read went out');
+  // Taken once: a later boot (signed out, then back) asks the server.
+  assert.equal(f.window.__TAU_ME__, null);
+  f.S.me = null; f.requests.length = 0;
+  await f.render(); await flush();
+  assert.equal(f.requests[0].path, '/api/me');
+});
+
+test('Meridian Research takes its model list from the account instead of waiting on /api/models', async () => {
+  const f = researchFrontend([]);
+  f.S.me.models = {models: [{key: 'm1', label: 'Model one'}, {key: 'm2', label: 'Model two'}], default: 'm2'};
+  await f.viewResearch(); await flush();
+  assert.ok(!f.requests.some(({path}) => path === '/api/models'));
+  assert.match(f.root.innerHTML, /<option value="m2" selected>Model two/);
+  f.clearTimers();
+});
+
+test('boot.js hands the app the account a signed-in shell carries, once, and survives a broken block', () => {
+  for (const [text, expected] of [['{"user":{"id":7},"n":"\\u003c/script\\u003e"}', {user: {id: 7}, n: '</script>'}], ['{not json', undefined]]) {
+    const node = {textContent: text, removed: false, remove() { this.removed = true; }};
+    const dataset = {ui: 'meridian', tauJs: '/static/app.js?v=t', tauVer: 't', merJs: '/static/app.meridian.js?v=m', merVer: 'm', merCss: '/static/app.meridian.css?v=m'};
+    const context = {window: {}, location: {pathname: '/'}, localStorage: {getItem: () => null, setItem() {}},
+      document: {getElementById: id => id === 'tau-me' ? node : id === 'tau-boot' ? {dataset} : null,
+        createElement: () => ({}), body: {appendChild() {}}}};
+    vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+    assert.deepEqual(context.window.__TAU_ME__ === undefined ? undefined : JSON.parse(JSON.stringify(context.window.__TAU_ME__)), expected);
+    assert.equal(node.removed, expected !== undefined);
+    assert.equal(context.window.__TAU_UI__, 'meridian');  // the theme choice runs either way
+  }
+});
 
 test('a research session that does not exist links to the list instead of offering Try again', async () => {
   const f = frontend({fetchImpl: path => (path.startsWith('/api/runs/9') ? {ok: false, status: 404, json: async () => ({error: 'No such research run.'})} : {ok: true, status: 200, json: async () => ({})})});

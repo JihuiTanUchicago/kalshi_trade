@@ -1,5 +1,6 @@
 """Request timing for Tau's web server: a bounded in-memory window of recent requests, the
-per-route p50/p95 and 5xx rate over it, and gzip for compressible responses.
+per-route p50/p95 and 5xx rate over it, gzip for compressible responses, and the cache headers
+and validators for static files.
 
 Stdlib only. The window lives in the web process, so it resets on a restart (a deploy); the
 on-box watchdog reads it from /internal/perf, which only answers loopback callers.
@@ -104,3 +105,44 @@ def gzip_bytes(body: bytes, cache_key: Optional[Tuple[str, int, int]] = None) ->
             _GZ_CACHE.clear()
         _GZ_CACHE[cache_key] = out
     return out
+
+
+# -- caching for static files and the page shell ---------------------------------------------------
+# Bundles are linked as /static/<name>?v=<content hash>, so a URL whose v is the file's current hash
+# can be cached for a year, by the browser and by CloudFront's /static/* behavior (keyed on path + v).
+# Any other request for a bundle (no v, or another build's v: an old page shell, or a deploy that was
+# rolled back) gets the current file with a revalidating cache instead. An immutable answer there would
+# pin those bytes under that URL for a year, so a later deploy of that hash would get the wrong file.
+# Self-hashed names (the fonts, rubik-latin-691cd1d9b4.woff2) are always immutable.
+IMMUTABLE = "public, max-age=31536000, immutable"
+REVALIDATE = "no-cache"
+_HASHED_NAME = re.compile(r"-[0-9a-f]{10}\.[a-z0-9]+$")
+
+
+def static_cache_control(name: str, query: str, current: Optional[str]) -> str:
+    if _HASHED_NAME.search(name):
+        return IMMUTABLE
+    v = next((p[2:] for p in (query or "").split("&") if p.startswith("v=")), None)
+    return IMMUTABLE if current and v == current else REVALIDATE
+
+
+def etag(version: str) -> str:
+    """Weak: one file goes out gzipped or not, so the validator names the content, not the bytes."""
+    return 'W/"%s"' % version
+
+
+def etag_matches(if_none_match: Optional[str], tag: str) -> bool:
+    """RFC 9110 weak comparison of an If-None-Match header against our ETag ("*" matches any)."""
+    want = tag[2:] if tag.startswith("W/") else tag
+    for part in (if_none_match or "").split(","):
+        part = part.strip()
+        if part and (part == "*" or (part[2:] if part.startswith("W/") else part) == want):
+            return True
+    return False
+
+
+def embed_json(payload_json: str) -> str:
+    """JSON text made safe inside a <script type="application/json"> data block: nothing that could
+    close the element or start markup survives, and JSON.parse reads back the same value."""
+    return (payload_json.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))

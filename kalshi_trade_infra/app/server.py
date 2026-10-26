@@ -415,6 +415,9 @@ def me(ctx: Ctx):
         "perps_live_available": kalshi_perps_trading.enabled(),  # hide the Funds perps box when live perps are off
         "markets": _researchable_markets(ctx.cur),
         "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
+        # The research form's model list (the same as GET /api/models), so /research doesn't wait on
+        # that read before it starts its own.
+        "models": models(ctx),
     }
 
 
@@ -3747,7 +3750,37 @@ class Handler(BaseHTTPRequestHandler):
         theme = user.get("ui_theme") if user.get("ui_theme") in UI_THEMES else "tau"
         return theme, [_ui_cookie(theme)]
 
-    def _send_static(self, path: str) -> None:
+    def _shell_boot(self, path: str) -> Tuple[Optional[str], List[str], Optional[Dict]]:
+        """(theme, Set-Cookie headers, the account as /api/me answers it or None) for the page shell.
+
+        Signed in, an app page's shell does /api/me's reads itself and carries the reply, so the app
+        starts its page's data reads at once instead of after a /api/me round trip of its own: one
+        serial round trip fewer on every full load. The account's saved theme picks the bundle (what
+        /api/me would have reloaded into). The sign-in and legal pages don't use it, so they keep
+        _shell_theme. Any failure falls back to the cookie's theme and the app's own /api/me read."""
+        cookies = self.cookies()
+        token = cookies.get(auth.SESSION_COOKIE)
+        if not token or path in ("/signin", "/terms", "/privacy"):
+            return self._shell_theme(path) + (None,)
+        theme = cookies.get(UI_COOKIE) if cookies.get(UI_COOKIE) in UI_THEMES else None
+        conn = None
+        try:
+            conn = get_db_conn()
+            user = repo.session_user(conn.cursor(), auth.hash_token(token))
+            if user is None:
+                return theme, [], None
+            theme = user.get("ui_theme") if user.get("ui_theme") in UI_THEMES else "tau"
+            ctx = Ctx(conn, user, (), {}, {}, self)
+            account = me(ctx)
+            return theme, ctx.set_cookies, account
+        except Exception as e:  # noqa: BLE001 - the shell must never fail on this; the app reads /api/me
+            _log_line("[app] shell account read failed (%s); the app reads /api/me" % type(e).__name__)
+            return theme, ([_ui_cookie(theme)] if theme and theme != cookies.get(UI_COOKIE) else []), None
+        finally:
+            if conn is not None:
+                conn.close()
+
+    def _send_static(self, path: str, query: str = "") -> None:
         if path == "/.well-known/apple-developer-merchantid-domain-association":
             f = STATIC_DIR / "apple-developer-merchantid-domain-association"
             if f.is_file():
@@ -3757,13 +3790,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
         if SPA_ROUTES.match(path):
             versions = _static_versions()
-            theme, cookies = self._shell_theme(path)
+            theme, cookies, account = self._shell_boot(path)
+            # A data block, not a script: CSP's script-src never applies, and boot.js parses it.
+            boot_me = "" if account is None else '\n<script type="application/json" id="tau-me">%s</script>' % (
+                webperf.embed_json(json.dumps(account, default=_json_default, separators=(",", ":"))))
             css = ("/static/app.meridian.css?v=" + versions["app.meridian.css"] if theme == "meridian"
                    else "/static/app.css?v=" + versions["app.css"])
             bundle = ("" if theme is None else '\n<script src="/static/%s?v=%s" defer></script>' % (
                 ("app.meridian.js", versions["app.meridian.js"]) if theme == "meridian" else ("app.js", versions["app.js"])))
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{ui_css}}", css).replace("{{ui}}", theme or "").replace("{{ui_bundle}}", bundle)
+                    .replace("{{boot_me}}", boot_me)
                     .replace("{{css_v}}", versions["app.css"])
                     .replace("{{js_v}}", versions["app.js"])
                     .replace("{{session_v}}", versions["session-data.js"])
@@ -3782,8 +3819,10 @@ class Handler(BaseHTTPRequestHandler):
             body = html.encode("utf-8")
             self._spa = True
             # Vary: the shell links the theme from the cookies, so no cache may serve one user's to another.
+            # One that carries the account is private: no shared cache (CloudFront) may keep it at all.
             self._send(200, "text/html; charset=utf-8", body,
-                       [("Cache-Control", "no-cache"), ("Vary", "Cookie")] + [("Set-Cookie", c) for c in cookies])
+                       [("Cache-Control", "no-cache" if account is None else "private, no-cache"), ("Vary", "Cookie")]
+                       + [("Set-Cookie", c) for c in cookies])
             return
         m = re.match(r"^/static/([a-z0-9_.-]+\.(css|js|svg|png|ico|woff2))$", path)
         f = STATIC_DIR / m.group(1) if m else None
@@ -3794,10 +3833,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         ctype = {"css": "text/css", "js": "text/javascript", "svg": "image/svg+xml", "png": "image/png",
                  "ico": "image/x-icon", "woff2": "font/woff2"}[m.group(2)]
-        body = f.read_bytes()
         st = f.stat()
+        current = _static_versions().get(f.name)
+        cache = webperf.static_cache_control(f.name, query, current)
+        tag = webperf.etag(current or "%x-%x" % (st.st_mtime_ns, st.st_size))
+        req_headers = getattr(self, "headers", None)
+        if webperf.etag_matches(req_headers.get("If-None-Match") if req_headers else None, tag):
+            # Still the copy the browser holds (an unversioned or other-build URL revalidating): no body.
+            self.send_response(304)
+            for k, v in (("ETag", tag), ("Cache-Control", cache), ("Vary", "Accept-Encoding")):
+                self.send_header(k, v)
+            self.end_headers()
+            return
+        body = f.read_bytes()
         self._send(200, ctype + ("; charset=utf-8" if m.group(2) in ("css", "js", "svg") else ""), body,
-                   [("Cache-Control", "public, max-age=31536000, immutable")], gz_key=(f.name, st.st_mtime_ns, st.st_size))
+                   [("Cache-Control", cache), ("ETag", tag)], gz_key=(f.name, st.st_mtime_ns, st.st_size))
 
     def _stripe_webhook(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
@@ -3877,7 +3927,7 @@ class Handler(BaseHTTPRequestHandler):
                       if meth == method for m in [m_.match(path)] if m), None)
         if route is None:
             if method == "GET" and not path.startswith(("/api/", "/auth/")):
-                return self._send_static(path)
+                return self._send_static(path, parsed.query)
             return self._send_json(404, {"error": "Not found"}, [])
         fn, params, needs_user = route
         if method == "POST" and self.headers.get("X-Recursive") != "1":
@@ -3910,7 +3960,8 @@ class Handler(BaseHTTPRequestHandler):
             result = fn(ctx)
             if isinstance(result, tuple) and result and result[0] == "image":
                 _, ctype, data = result
-                self._headers(200, ctype, len(data), [("Cache-Control", "public, max-age=31536000, immutable")])
+                # Behind sign-in, so private: the browser keeps it, no shared cache serves it to anyone else.
+                self._headers(200, ctype, len(data), [("Cache-Control", "private, max-age=31536000, immutable")])
                 self.wfile.write(data)
                 return
             if isinstance(result, tuple) and result[0] == "download":

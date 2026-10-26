@@ -558,7 +558,7 @@
   });
   // SPA deploys only take effect on a full reload. Check the server's build hash on each
   // navigation (throttled); if it changed, offer a one-click reload instead of silent staleness.
-  let _verAt = 0;
+  let _verAt = Date.now();  // the page just loaded this build: the first check waits, not the boot
   async function checkVersion() {
     if (!window.__BUILD__ || Date.now() - _verAt < 30000 || document.getElementById('verbar')) return;
     _verAt = Date.now();
@@ -605,7 +605,9 @@
       // signed out (-> signin); ANY other failure (slow/overloaded/offline) is transient, so show a
       // retry screen instead of spuriously bouncing a signed-in user to signin.
       let splashTid = root.firstChild ? null : setTimeout(() => { if (!S.me) root.innerHTML = bootSplash(); }, 250);
-      try { S.me = await api('/api/me', undefined, { timeoutMs: 12000 }); }
+      // A signed-in shell carries /api/me's reply (boot.js parks it), so the page's reads start now. Once only.
+      const carried = window.__TAU_ME__; window.__TAU_ME__ = null;
+      try { S.me = carried && carried.user ? carried : await api('/api/me', undefined, { timeoutMs: 12000 }); }
       catch (e) {
         if (splashTid) clearTimeout(splashTid);
         if (e.status === 401) { S.signedOutAt = Date.now(); return go(signinPath(), true); }
@@ -2029,7 +2031,8 @@
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
-    const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
+    // /api/me carries the model list, so the page's own reads below don't wait a round trip on it.
+    const mdl = (me && me.models) || await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (access pending)' : ''}</option>`).join('');
     shell('/research', boardTitle('Research', 'A self-improving research engine for Kalshi markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
       ${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}

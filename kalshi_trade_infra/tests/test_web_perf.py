@@ -321,10 +321,11 @@ def test_a_signed_in_device_without_the_cookie_gets_its_account_theme_and_the_co
     assert _theme_assets(html) == (["app.meridian.css"], ["app.meridian.js"])
     assert seen == [server.auth.hash_token("abc")]
     assert len(cookies) == 1 and cookies[0].startswith("tau_ui=meridian; Path=/; SameSite=Lax")
-    # Once the cookie is there, later loads skip the database read.
+    # Once the cookie is there it isn't set again. (The session read stays: a signed-in shell carries
+    # the account, which the app read from /api/me one round trip later before.)
     seen.clear()
-    _shell(web, "rsid=abc; tau_ui=meridian")
-    assert seen == []
+    html, cookies = _shell(web, "rsid=abc; tau_ui=meridian")
+    assert _theme_assets(html) == (["app.meridian.css"], ["app.meridian.js"]) and cookies == []
 
 
 def test_a_shell_whose_session_read_fails_still_serves(web, monkeypatch):
