@@ -1043,6 +1043,23 @@
   // refreshed() says whether the re-read came back; a write that landed says so either way, plus BEHIND.
   const refreshed = (p) => Promise.resolve(p).then(() => true, () => false);
   const BEHIND = ' The page didn’t refresh, so reload to see it.';
+  // A write on Funds (add, withdraw, reset, reload, a key) repaints the whole page, and keyboard focus
+  // fell to the top with the control that had it, though the result was announced. Note that control
+  // first (its form and field name or button kind, or its id), then put focus on its repainted twin, or
+  // on `fallback` when the write replaced it (Disconnect once a key connects, the Key ID field once it
+  // is removed). Only when focus was on a control and nothing else has taken it since.
+  async function holdFocus(fallback, fn) {
+    const a = document.activeElement, form = a && a.closest ? a.closest('form[id]') : null;
+    const name = a && a.getAttribute ? a.getAttribute('name') : null, kind = a && a.dataset ? a.dataset.kind : null;
+    const sel = !a || a === document.body ? '' : form ? `#${form.id} ${name ? `[name="${name}"]` : kind ? `[data-kind="${kind}"]` : 'button'}` : a.id ? '#' + a.id : '';
+    try { return await fn(); } finally {
+      const now = document.activeElement;
+      if (sel && (!now || now === document.body || !now.isConnected)) {
+        const el = root.querySelector(sel) || (fallback ? root.querySelector(fallback) : null);
+        if (el && el.focus) el.focus({ preventScroll: true });
+      }
+    }
+  }
   // A poll repaints a region only when its markup changed. The Deploy board rewrote every row and
   // every open position each 10s even when nothing moved: ~190ms of layout and style a poll on a
   // phone-speed CPU at 30 deployments and 60 positions, and an armed "Confirm stop" was reset. The
@@ -1526,7 +1543,7 @@
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
+        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -2313,7 +2330,8 @@
       // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
       const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
       root.querySelector('#rcount').textContent = [own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0');
-      root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map(runRow).join('')
+      const newest = d.runs.find((r) => !r.example);
+      root.querySelector('#runs').innerHTML = d.runs.length ? d.runs.map((r) => runRow(r, r === newest)).join('')
         : `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`;
     };
     await load();
@@ -2329,20 +2347,28 @@
     r.run_forever ? (runLive(r) ? 'Runs until you stop it' : 'Ran until stopped')
       : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' \u00b7\u00a0');
   const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
-  function runRow(r) {
+  // Why a finished session stopped, from the server (services.run_stop). A run-until-stopped session
+  // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
+  // one said "Cancelled" or "Failed" without who or what stopped it.
+  const RUN_STOP = { credits: 'Out of credits', user: 'Stopped by you', error: 'Stopped on an error', limit: 'Finished', complete: 'Finished' };
+  // `newest`: the user's newest session. When it ran out of credits its card offers Add credits, beside
+  // the card (a link can't sit inside the card's own link); older ones only say so.
+  function runRow(r, newest) {
+    const why = RUN_STOP[r.stop_reason] || '';
     const state = r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
-      : r.status === 'succeeded' ? `<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
+      : r.status === 'succeeded' ? `${why ? why + ' \u00b7\u00a0' : ''}<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
       : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${r.strategies_passed ? ` ·\u00a0<span class="gain">${r.strategies_passed} passed</span>` : ''}`
       : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
-      : r.status === 'cancelled' ? 'Cancelled' : '<span class="loss">Failed</span>';
+      : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
     // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
     // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
     const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
-    return `<a class="run-card ${band}" href="/research/${r.id}">
+    const card = `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-title"><b>${esc(sessionTitle(r))}</b>${r.example ? ' ' + EXAMPLE_TAG : ''}</span>
       <span class="run-meta">${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}${r.error ? ' \u00b7\u00a0' + esc(r.error) : ''}</span>
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
+    return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
   }
 
   // ======================================================================
@@ -3141,7 +3167,7 @@
     // A paused deployment (often paused automatically, and the bell links here) says so and why.
     const pausedLine = (ds) => {
       const p = ds.find((d) => d.status === 'paused');
-      return p ? `<p class="real-paused"><b>Paused</b>${p.status_reason ? ' ' + esc(p.status_reason) : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>` : '';
+      return p ? `<p class="real-paused"><b>Paused</b>${(p.status_why || p.status_reason) ? ': ' + esc((p.status_why || p.status_reason).replace(/\.$/, '')) + '.' : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>` : '';
     };
     const pace = (ds, n) => {
       if (!n || !oos || !(+oos.trades > 0) || !(stake > 0)) return '';
@@ -3922,9 +3948,9 @@
       const df = root.querySelector('#demo');
       if (df) df.onsubmit = async (e) => {
         e.preventDefault();
-        await busy(df.querySelector('button'), async () => {
+        await holdFocus(null, () => busy(df.querySelector('button'), async () => {
           try { await api('/api/funds/demo', { amount: +df.amount.value }); const fresh = await refreshed(load()); flash('#dmflash', 'Demo account reloaded.' + (fresh ? '' : BEHIND), 'good'); } catch (err) { flash('#dmflash', err.message, 'bad'); }
-        });
+        }));
       };
       const pf = root.querySelector('#paper');
       let kind = 'deposit';
@@ -3941,9 +3967,9 @@
         e.preventDefault();
         // Reset wipes the paper ledger and history, so it asks first; Add and Withdraw go at once.
         const k = kind, btn = pf.querySelector(`[data-kind="${k}"]`);
-        const run = () => busy(btn, async () => {
+        const run = () => holdFocus(null, () => busy(btn, async () => {
           try { await api('/api/funds/paper', { kind: k, amount: +pf.amount.value }); const fresh = await refreshed(load()); flash('#pflash', (k === 'deposit' ? 'Added to your paper account.' : k === 'withdraw' ? 'Withdrawn from your paper account.' : 'Paper account reset.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { flash('#pflash', err.message, 'bad'); }
-        });
+        }));
         return k === 'reset' ? armed(btn, 'Confirm reset', run) : run();
       };
       // The downloaded .key file fills the box, so nobody has to open it in an editor (hard on a phone).
@@ -3961,27 +3987,27 @@
         e.preventDefault();
         const bad = keyProblem(kf.key_id.value, kf.private_key.value, 'live');
         if (bad) { flash('#kflash', bad, 'bad'); return; }
-        await busy(kf.querySelector('button'), async () => {
+        await holdFocus('#disconnect', () => busy(kf.querySelector('button'), async () => {
           try { const r = await api('/api/kalshi-key', { key_id: kf.key_id.value, private_key: kf.private_key.value }); S.me.kalshi_connected = true; const fresh = await refreshed(load()); flash('#kflash', (r && r.balance != null ? `Connected ✓ (balance ${usd(r.balance)}). Kalshi confirmed the key.` : 'Connected ✓. Kalshi confirmed the key.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { flash('#kflash', err.message, 'bad'); }
-        });
+        }));
       };
       const dc = root.querySelector('#disconnect');
-      if (dc) dc.onclick = () => armed(dc, 'Confirm disconnect', () => busy(dc, async () => {
+      if (dc) dc.onclick = () => armed(dc, 'Confirm disconnect', () => holdFocus('#kalshi [name="key_id"]', () => busy(dc, async () => {
         try { await api('/api/kalshi-key/delete', {}); S.me.kalshi_connected = false; const fresh = await refreshed(load()); flash('#kflash', 'Disconnected. Tau deleted its copy of the key; the key itself stays valid until you delete it on kalshi.com.' + (fresh ? '' : BEHIND), 'good'); } catch (err) { flash('#kflash', err.message, 'bad'); }
-      }));
+      })));
       const kdf = root.querySelector('#kalshi-dev');
       if (kdf) kdf.onsubmit = async (e) => {
         e.preventDefault();
         const bad = keyProblem(kdf.key_id.value, kdf.private_key.value, 'demo');
         if (bad) { flash('#kdflash', bad, 'bad'); return; }
-        await busy(kdf.querySelector('button'), async () => {
+        await holdFocus('#dev-disconnect', () => busy(kdf.querySelector('button'), async () => {
           try { await api('/api/kalshi-dev-key', { key_id: kdf.key_id.value, private_key: kdf.private_key.value }); S.me.kalshi_dev_connected = true; let now = null; const fresh = await refreshed(load().then((d) => { now = d; })); const bal = now && now.kalshi_dev && now.kalshi_dev.balance; flash('#kdflash', (bal != null ? `Connected ✓ (balance ${usd(bal)}). Kalshi’s demo exchange confirmed the key.` : 'Connected ✓. Kalshi’s demo exchange confirmed the key.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { flash('#kdflash', err.message, 'bad'); }
-        });
+        }));
       };
       const dvc = root.querySelector('#dev-disconnect');
-      if (dvc) dvc.onclick = () => armed(dvc, 'Confirm remove', () => busy(dvc, async () => {
+      if (dvc) dvc.onclick = () => armed(dvc, 'Confirm remove', () => holdFocus('#kalshi-dev [name="key_id"]', () => busy(dvc, async () => {
         try { await api('/api/kalshi-dev-key/delete', {}); S.me.kalshi_dev_connected = false; const fresh = await refreshed(load()); flash('#kdflash', 'Demo key removed. Tau deleted its copy; delete the key on demo.kalshi.co too if you’re done with it.' + (fresh ? '' : BEHIND), 'good'); } catch (err) { flash('#kdflash', err.message, 'bad'); }
-      }));
+      })));
       return d;
     };
     await load();

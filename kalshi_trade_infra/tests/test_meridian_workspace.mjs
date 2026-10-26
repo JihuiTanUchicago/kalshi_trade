@@ -6,6 +6,7 @@ import {test} from 'node:test';
 import vm from 'node:vm';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
+import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -196,6 +197,7 @@ function strategyFrontend(detail = detailStrategy(), transport) {
 const postRequests = f => f.requests.filter(({options}) => options.method === 'POST');
 perpsFrontendCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests, source});
+stopReasonCases({name: 'Meridian', frontend});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},

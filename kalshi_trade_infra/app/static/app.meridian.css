@@ -2231,6 +2231,14 @@ body.landing-body .apf { display: none; }
 .research-history .run-ratio b { font: inherit; }
 .research-history .run-denominator { font: 400 12px/18px var(--f-ui); color: var(--ink-2); }
 .research-history .run-card.live .run-state { color: var(--ink); font-weight: 600; }
+/* Why a finished session stopped ("Out of credits", "Finished"), under its passed/tested ratio (beside
+   it once the row stacks on a phone). The state is a flex row, so the line takes its own row. */
+.research-history .run-state { flex-wrap: wrap; justify-content: flex-end; row-gap: 0; }
+.run-why { display: block; flex-basis: 100%; font: 400 12px/18px var(--f-ui); color: var(--ink-2); }
+/* The newest session that ran out of credits: its Add credits link sits under the row, not inside it. */
+.run-cell { border-bottom: 1px solid var(--rule); }
+.run-cell > .run-card { border-bottom: 0; }
+.run-add { display: inline-block; margin: 0 0 8px; padding: 4px 0; font-size: 13px; line-height: 18px; }
 
 /* Explore register: complete identity, YES quotes, then market activity. */
 .explore-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) 280px; align-items: center; gap: 8px 24px; max-width: none; margin-inline: auto; padding: 16px 0 8px; }
@@ -2362,7 +2370,8 @@ body.landing-body .apf { display: none; }
 }
 @container research-work (max-width: 599px) {
   .research-history .run-card { grid-template-columns: minmax(0, 1fr); }
-  .research-history .run-state { grid-column: 1; grid-row: 2; justify-self: start; text-align: left; }
+  .research-history .run-state { grid-column: 1; grid-row: 2; justify-self: start; text-align: left; justify-content: flex-start; }
+  .research-history .run-why { flex-basis: auto; }
   .research-total > h3 { flex-basis: 100%; }
   #research-status.measure { padding-left: 0; border-left: 0; }
   .research-compose .dispatch-tune { grid-template-columns: minmax(0, 1fr); }

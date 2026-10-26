@@ -247,6 +247,35 @@ def test_the_autopilot_panel_reads_position_totals_only_for_a_paper_deployment_p
     assert len(runs["today"][1]) == len(log) + 1
 
 
+# The Research list polls /api/runs every 5s. Cold: the policy, the runs, their spend, the active counts,
+# and the all-time totals (two reads, cached 30s), so 4 on most polls. Why each finished session
+# stopped (stop_reason: out of credits, by you, an error, finished) rides the runs read, not a read per run.
+RUNS_BUDGET = (6, 4)
+
+
+def test_the_research_list_says_why_each_session_stopped_inside_its_budget(production):
+    base = {"market": "btc15m", "direction": None, "prompt": "p", "hypotheses_tried": 4, "strategies_passed": 0,
+            "error": None, "created_at": None, "started_at": None, "finished_at": None, "heartbeat_at": None}
+    rows = [dict(base, id=9, status="succeeded", run_forever=1, out_of_credits=1),
+            dict(base, id=8, status="succeeded", run_forever=1, out_of_credits=0),
+            dict(base, id=7, status="succeeded", run_forever=0, out_of_credits=0),
+            dict(base, id=6, status="cancelled", run_forever=1, out_of_credits=0),
+            dict(base, id=5, status="failed", run_forever=0, out_of_credits=0, error="The session hit an unexpected error and stopped."),
+            dict(base, id=4, status="running", run_forever=1, out_of_credits=0)]
+    counts = []
+    for _ in range(2):
+        log = []
+        out = server.list_runs(_ctx(log, 10.0, extra={"FROM app_agent_runs r WHERE r.user_id=%s": [dict(r) for r in rows]}))
+        repeats = sorted({s for s in log if log.count(s) > 1})
+        assert not repeats, repeats
+        counts.append(len(log))
+    assert counts[0] <= RUNS_BUDGET[0] and counts[1] <= RUNS_BUDGET[1], counts
+    assert sum("FROM app_agent_events" in s for s, _ in log) == 1  # inside the runs read, never per run
+    assert {r["id"]: r["stop_reason"] for r in out["runs"]} == {
+        9: "credits", 8: "complete", 7: "limit", 6: "user", 5: "error", 4: None}
+    assert not any("out_of_credits" in r for r in out["runs"])
+
+
 def test_the_run_page_reads_the_dream_line_once_a_minute_not_every_poll(production, monkeypatch):
     server._LAST_DREAM.clear()
     clock = [time.time()]
