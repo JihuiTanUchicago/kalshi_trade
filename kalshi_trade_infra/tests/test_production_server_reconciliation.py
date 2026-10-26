@@ -5,6 +5,7 @@ import pymysql
 import pytest
 
 from app import schema, server
+from app.web.routes import auth as auth_routes
 from app.research import agent
 from app.adapters.llm import models_catalog as catalog
 
@@ -16,7 +17,7 @@ def context(body=None, query=None):
 @pytest.mark.parametrize('open_signup,expected', [(False, False), (True, True)])
 def test_google_creation_retains_deployed_signup_gate(monkeypatch, open_signup, expected):
     observed = []
-    monkeypatch.setattr(server, 'OPEN_SIGNUP', open_signup)
+    monkeypatch.setattr(auth_routes, 'OPEN_SIGNUP', open_signup)
     monkeypatch.setattr(server.repo, 'pop_oauth_state', lambda *args: {'code_verifier': 'fixture', 'nonce': 'fixture'})
     monkeypatch.setattr(server.auth, 'exchange_code', lambda *args: {
         'sub': 'synthetic', 'email': 'synthetic@example.test', 'name': 'Synthetic', 'picture': None})

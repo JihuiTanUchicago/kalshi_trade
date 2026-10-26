@@ -22,7 +22,7 @@ from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 from app.trading import backtest, engine
 from app.adapters.ses import notify
@@ -49,32 +49,17 @@ from data_pipeline.common import get_db_conn
 
 PORT = int(os.getenv("APP_PORT", "8090"))
 HOST = os.getenv("APP_HOST", "127.0.0.1")
-DEV_LOGIN = os.getenv("APP_DEV_LOGIN") == "1"
 # Canonical-host redirect: a top-level GET to any host in APP_REDIRECT_HOSTS (e.g. the old
 # CloudFront URL, or www) is 301'd to APP_CANONICAL_HOST, so old links keep working after the
 # custom-domain cutover. Empty APP_CANONICAL_HOST disables it entirely (the default), so this is
 # inert until the new domain is actually live. /api and /auth are never redirected, so an in-flight
 # request from an already-loaded old-host page still completes.
-# Open signup: when APP_OPEN_SIGNUP=1, ANY Google account can create a Tau account (no waitlist
-# approval). Default off = invite-only (operator + approved waitlist emails). Spend is still bounded
-# downstream (billing-readiness gate, bounded free credits), and the live-trading gate is untouched.
-OPEN_SIGNUP = os.getenv("APP_OPEN_SIGNUP") == "1"
 CANONICAL_HOST = os.getenv("APP_CANONICAL_HOST", "").strip().lower()
 REDIRECT_HOSTS = {h.strip().lower() for h in os.getenv("APP_REDIRECT_HOSTS", "").split(",") if h.strip()}
-SECURE_COOKIES = os.getenv("APP_INSECURE_COOKIES") != "1"
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 8 * 1024 * 1024  # allows a base64 image in a community post
 # Routes with a smaller body cap, checked from Content-Length before the body is read.
 BODY_LIMITS = {"/api/client-errors": client_errors.MAX_BODY}
-
-MAX_ACTIVE_RESEARCH = 2
-MAX_RESEARCH_PER_DAY = int(os.getenv("APP_MAX_RESEARCH_PER_DAY", "0"))  # 0 = unlimited (no daily cap)
-MAX_CHAT_PER_HOUR = 40
-MAX_ACTIVE_DEPLOYMENTS = 100
-MAX_PAPER_BALANCE = 1_000_000.0
-MAX_WAITLIST_PER_MINUTE = 10
-ADMIN_EMAIL = os.getenv("TAU_ADMIN_EMAIL", "tjhprivate0416@gmail.com")
-SPA_ROUTES = re.compile(r"^/(?:|dashboard|research(?:/\d+)?|strategies(?:/\d+)?|deploy|community|billing|admin|system|funds|explore|example|devlog|track-record|settings(?:/(?:account|billing|system|theme))?|signin|terms|privacy)$")
 
 CSP = (
     "default-src 'self'; script-src 'self' https://js.stripe.com https://pay.google.com; style-src 'self'; style-src-attr 'unsafe-inline'; "
@@ -85,114 +70,33 @@ CSP = (
 
 
 from app.web.http import ApiError, Ctx, _int_param, _json_default, _num  # noqa: F401  (request types)
+from app.web.settings import (  # noqa: F401  (server.py keeps the names for routing and tests)
+    ADMIN_EMAIL,
+    DEV_LOGIN,
+    MAX_ACTIVE_DEPLOYMENTS,
+    MAX_ACTIVE_RESEARCH,
+    MAX_CHAT_PER_HOUR,
+    MAX_PAPER_BALANCE,
+    MAX_RESEARCH_PER_DAY,
+    MAX_WAITLIST_PER_MINUTE,
+    OPEN_SIGNUP,
+    SECURE_COOKIES,
+    SPA_ROUTES,
+)
 
 
-# -- auth routes ---------------------------------------------------------------
-
-
-def _session_cookie(token: str, max_age: int) -> str:
-    return "%s=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=%d%s" % (
-        auth.SESSION_COOKIE, token, max_age, "; Secure" if SECURE_COOKIES else ""
-    )
-
-
-def _start_session(ctx: Ctx, user_id: int) -> None:
-    token = auth.new_session_token()
-    repo.create_session(ctx.cur, user_id, auth.hash_token(token), auth.SESSION_TTL)
-    ctx.set_cookies.append(_session_cookie(token, int(auth.SESSION_TTL.total_seconds())))
-
-
-# The account's theme, mirrored on the device so the page shell can link the right stylesheet and
-# bundle without a database read. Not a secret, not a session: a stale value is corrected by /api/me.
-# Not HttpOnly: the Settings switch writes it too, so a switch whose save failed still applies here.
-UI_COOKIE = "tau_ui"
-UI_THEMES = ("tau", "meridian")
-UI_COOKIE_MAX_AGE = 400 * 86400
-
-
-def _ui_cookie(theme: str) -> str:
-    return "%s=%s; Path=/; SameSite=Lax; Max-Age=%d%s" % (
-        UI_COOKIE, theme, UI_COOKIE_MAX_AGE, "; Secure" if SECURE_COOKIES else "")
-
-
-def _sync_ui_cookie(ctx: "Ctx", theme: str) -> None:
-    """Set the device's tau_ui cookie to the account's theme when it differs."""
-    read = getattr(ctx.handler, "cookies", None)
-    if (read().get(UI_COOKIE) if callable(read) else None) != theme:
-        ctx.set_cookies.append(_ui_cookie(theme))
-
-
-NEXT_COOKIE = "tau_next"
-
-
-def _safe_next(nxt: Optional[str]) -> Optional[str]:
-    """A post-sign-in destination, or None. Only an app page on this site (a SPA route, with an
-    optional plain query) passes, so the round-trip through Google can never become an open redirect."""
-    if not nxt or len(nxt) > 300 or not nxt.startswith("/") or nxt.startswith("//"):
-        return None
-    if any(c in nxt for c in "\\\r\n\t ") or any(ord(c) < 32 for c in nxt):
-        return None
-    u = urlparse(nxt)
-    if u.scheme or u.netloc or u.fragment or not SPA_ROUTES.match(u.path):
-        return None
-    return nxt
-
-
-def google_start(ctx: Ctx):
-    if not auth.google_configured():
-        raise ApiError(503, "Google sign-in is not configured on this server.")
-    login = auth.new_login()
-    repo.save_oauth_state(ctx.cur, login["state"], login["nonce"], login["verifier"])
-    # Remember the page a signed-out visitor was sent away from, for 10 minutes, so sign-in lands there.
-    nxt = _safe_next(ctx.query.get("next"))
-    if nxt:
-        ctx.set_cookies.append("%s=%s; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=600%s" % (
-            NEXT_COOKIE, quote(nxt, safe=""), "; Secure" if SECURE_COOKIES else ""))
-    return ("redirect", auth.authorize_url(login))
-
-
-def google_callback(ctx: Ctx):
-    if ctx.query.get("error"):
-        return ("redirect", "/signin?error=cancelled")
-    state = repo.pop_oauth_state(ctx.cur, ctx.query.get("state", ""))
-    if not state or not ctx.query.get("code"):
-        return ("redirect", "/signin?error=expired")
-    try:
-        ident = auth.exchange_code(ctx.query["code"], state["code_verifier"], state["nonce"])
-    except auth.AuthError:
-        return ("redirect", "/signin?error=google")
-    # Account creation gate: open to anyone when APP_OPEN_SIGNUP=1, else invite-only (operator or an
-    # approved waitlist email). Existing users always sign in regardless (upsert finds them).
-    email = ident["email"] or ""
-    allow_new = OPEN_SIGNUP or email.lower() == ADMIN_EMAIL.lower() or repo.is_waitlist_approved(ctx.cur, email)
-    user = repo.upsert_google_user(ctx.cur, ident["sub"], email, ident["name"], ident["picture"], allow_new=allow_new)
-    if user is None:
-        return ("redirect", "/signin?pending=1")  # request recorded; awaiting approval
-    _start_session(ctx, user["id"])
-    handler = getattr(ctx, "handler", None)
-    nxt = _safe_next(unquote(handler.cookies().get(NEXT_COOKIE, ""))) if handler is not None else None
-    if nxt:
-        ctx.set_cookies.append("%s=; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=0" % NEXT_COOKIE)
-    return ("redirect", nxt or "/")
-
-
-def dev_login(ctx: Ctx):
-    if not DEV_LOGIN:
-        raise ApiError(404, "Not found")
-    email = ctx.query.get("email") or "jonathan@example.com"
-    user = repo.upsert_google_user(ctx.cur, "dev:" + email, email, email.split("@")[0].title(), None)
-    _start_session(ctx, user["id"])
-    return ("redirect", _safe_next(ctx.query.get("next")) or "/")
-
-
-def logout(ctx: Ctx):
-    token = ctx.handler.cookies().get(auth.SESSION_COOKIE)
-    if token:
-        repo.delete_session(ctx.cur, auth.hash_token(token))
-    ctx.set_cookies.append(_session_cookie("", 0))
-    return {"ok": True}
-
-
+from app.web.routes.auth import (  # noqa: F401  (moved; server.py keeps the names for routing and tests)
+    UI_COOKIE,
+    UI_THEMES,
+    _sync_ui_cookie,
+    _ui_cookie,
+    dev_login,
+    google_callback,
+    google_start,
+    logout,
+    _start_session,
+    _safe_next,
+)
 from app.web.routes.brokers import (  # noqa: F401  (routes registered in ROUTES below)
     broker_connections,
     broker_connect,
