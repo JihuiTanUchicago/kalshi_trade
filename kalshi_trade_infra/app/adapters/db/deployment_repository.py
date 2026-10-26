@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
@@ -89,6 +90,32 @@ def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] =
     return [_strategy_row(r) for r in cur.fetchall()]
 
 
+DISPLAY_TOTALS = ("realized_pnl", "closed_trades", "wins", "open_positions")
+
+
+def deployment_strategies(cur, user_id: int) -> Dict[int, int]:
+    """{deployment_id: strategy_id} for every deployment the user has, stopped ones included (an
+    adjustment re-points a deployment at a new strategy row, set_deployment_strategy)."""
+    cur.execute("SELECT id, strategy_id FROM app_deployments WHERE user_id=%s", (user_id,))
+    return {int(r["id"]): int(r["strategy_id"]) for r in cur.fetchall()}
+
+
+def deployment_rows_for_display(cur, user_id: int, strategy_id: Optional[int] = None) -> List[Dict]:
+    """The rows list_deployments_for_display returns, without their position totals (DISPLAY_TOTALS)
+    and before _strategy_row: the same deployments, columns and order, read from the deployments and
+    their strategies alone (no position is read). services.book_memo adds the totals it kept from the
+    full read while the user's positions have not changed."""
+    one = (int(strategy_id),) if strategy_id is not None else ()
+    cur.execute(
+        """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
+                  d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json
+           FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
+           WHERE d.user_id=%s AND d.status <> 'stopped'""" + (" AND d.strategy_id=%s" if one else "") + """ ORDER BY d.id DESC""",
+        (user_id, *one),
+    )
+    return cur.fetchall()
+
+
 def deployment_closed_totals(cur, deployment_ids: List[int]) -> Dict[int, Tuple[int, Any]]:
     """{deployment_id: (closed positions, their summed P&L)}, as list_deployments counts closed_trades
     and realized_pnl, for the given deployments in one read over idx_pos_dep (deployment_id, status).
@@ -172,48 +199,87 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
     planner walked all users' deployments and their positions), then the strategy of each deployment
     in it, once. Rows come in the order of the group key, as the single join returned them. A trade
     whose deployment row is gone stays out, as the inner join left it out. `dep_status` is the
-    deployment's status now, so the page can say which strategies are stopped (they stay in)."""
-    # pymysql parses each DATETIME in Python and a busy book has two per trade (~60ms of a 9,000-trade
-    # read): the times come back as whole seconds and are rebuilt here (the columns hold no fraction).
+    deployment's status now, so the page can say which strategies are stopped (they stay in).
+    services.book_memo makes the same rows from the same three steps, keeping the first."""
+    trades = track_record_trades(cur, user_id)
+    if not trades:
+        return []
+    return track_record_join(trades, track_record_deployments(cur, trades))
+
+
+# track_record_trades' sums and times, packed into one comma-joined text per trade: pymysql decodes
+# every column of every row in Python, and a 23k-trade book's ten columns were ~220ms of the read.
+# The DECIMAL sums come back as their own text (what pymysql reads a DECIMAL column from), the times
+# as whole seconds; a NULL is '' (CONCAT_WS skips a NULL, which would shift the fields after it).
+_TRADE_PACKED = (
+    "CONCAT_WS(',', SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END), COALESCE(SUM(p.pnl),0), "
+    "COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0), COALESCE(SUM(p.qty * p.entry_price),0), "
+    "COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price END),0), "
+    "COALESCE(TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at)),''), "
+    "COALESCE(TIMESTAMPDIFF(SECOND, '1970-01-01', MAX(p.closed_at)),''))")
+_TRADE_FIELDS = ("open_slices", "pnl", "fees", "cost", "open_cost")
+
+
+def track_record_trades(cur, user_id: int) -> List[Dict]:
+    """track_record_rows' first read: the user's positions grouped per trade, before each trade's
+    deployment and strategy are attached: {mode, deployment_id, order_ref, open_slices, pnl, fees,
+    cost, open_cost (Decimals, as the sums read), opened_s, closed_s (whole seconds, None for none)}.
+    It reads positions alone, so services.book_memo keeps it while the user's positions are unchanged."""
     cur.execute(
-        """SELECT p.mode, p.deployment_id, MAX(p.order_ref) AS order_ref,
-                  SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END) AS open_slices,
-                  COALESCE(SUM(p.pnl),0) AS pnl,
-                  COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0) AS fees,
-                  COALESCE(SUM(p.qty * p.entry_price),0) AS cost,
-                  COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price END),0) AS open_cost,
-                  TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at)) AS opened_s,
-                  TIMESTAMPDIFF(SECOND, '1970-01-01', MAX(p.closed_at)) AS closed_s
+        "SELECT p.mode, p.deployment_id, MAX(p.order_ref) AS order_ref, " + _TRADE_PACKED + """ AS v
            FROM app_positions p
            WHERE p.user_id=%s
            GROUP BY p.mode, p.deployment_id, COALESCE(p.order_ref, CONCAT('row:', p.id))
            ORDER BY p.mode, p.deployment_id, COALESCE(p.order_ref, CONCAT('row:', p.id))""",
         (user_id,),
     )
-    trades = cur.fetchall()
+    out = []
+    for r in cur.fetchall():
+        v = r.pop("v")
+        v = (v.decode() if isinstance(v, (bytes, bytearray)) else v).split(",")
+        r.update(zip(_TRADE_FIELDS, map(Decimal, v[:5])))
+        r["opened_s"] = int(v[5]) if v[5] else None
+        r["closed_s"] = int(v[6]) if v[6] else None
+        out.append(r)
+    return out
+
+
+def track_record_deployments(cur, trades: List[Dict]) -> Dict[int, Dict]:
+    """{deployment_id: {id, strategy_id, status, title, market}} for the deployments the trades are in,
+    in one read (the strategy's title, or None when the strategy row is gone)."""
     dep_ids = sorted({t["deployment_id"] for t in trades})
     if not dep_ids:
-        return []
+        return {}
     cur.execute(
         "SELECT d.id, d.strategy_id, d.status, s.title, COALESCE(s.market, d.market) AS market FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id "
         "WHERE d.id IN (" + ",".join(["%s"] * len(dep_ids)) + ")",
         tuple(dep_ids),
     )
-    deps = {d["id"]: d for d in cur.fetchall()}
+    return {d["id"]: d for d in cur.fetchall()}
 
-    def at(seconds):
-        return None if seconds is None else _EPOCH + timedelta(seconds=int(seconds))
+
+def track_record_join(trades: List[Dict], deps: Dict[int, Dict], seconds: bool = False) -> List[Dict]:
+    """track_record_rows' rows from its two reads: each trade with its deployment's strategy and status,
+    the times rebuilt as naive-UTC datetimes; a trade whose deployment row is gone is left out.
+    `seconds` gives the times as the unix seconds they were read as instead (opened_ts/closed_ts, which
+    track_record.prepare takes as they are), skipping a datetime per time each way."""
+    def at(s):
+        return None if s is None else _EPOCH + timedelta(seconds=int(s))
 
     out = []
     for t in trades:
         d = deps.get(t["deployment_id"])
         if d is None:
             continue
-        out.append({"mode": t["mode"], "strategy_id": d["strategy_id"], "title": d["title"], "market": d["market"],
-                    "dep_status": d["status"],
-                    "order_ref": t["order_ref"], "open_slices": t["open_slices"], "pnl": t["pnl"], "fees": t["fees"],
-                    "cost": t["cost"], "open_cost": t["open_cost"], "opened_at": at(t["opened_s"]),
-                    "closed_at": at(t["closed_s"])})
+        row = {"mode": t["mode"], "strategy_id": d["strategy_id"], "title": d["title"], "market": d["market"],
+               "dep_status": d["status"],
+               "order_ref": t["order_ref"], "open_slices": t["open_slices"], "pnl": t["pnl"], "fees": t["fees"],
+               "cost": t["cost"], "open_cost": t["open_cost"]}
+        if seconds:
+            row["opened_ts"], row["closed_ts"] = t["opened_s"], t["closed_s"]
+        else:
+            row["opened_at"], row["closed_at"] = at(t["opened_s"]), at(t["closed_s"])
+        out.append(row)
     return out
 
 

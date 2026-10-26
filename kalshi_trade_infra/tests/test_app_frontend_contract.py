@@ -185,6 +185,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
          'autopilot_model': None},
         (), {}, {}, SimpleNamespace())
     monkeypatch.setattr(server.repo, 'list_deployments_brief', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'positions_version', lambda *a: (0, 0, 0))  # no positions: nothing kept
     monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda *a: None)
     monkeypatch.setattr(server.repo, 'realized_pnl', lambda *a: 0.0)
     monkeypatch.setattr(server.repo, 'last_autopilot_action', lambda *a: None)

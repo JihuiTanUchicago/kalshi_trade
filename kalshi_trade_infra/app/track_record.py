@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Dict, Iterable, List, Optional
 
 from app.quant import max_drawdown
@@ -59,8 +60,24 @@ def _ts(dt: Optional[datetime]) -> Optional[int]:
     return int(dt.timestamp())
 
 
+_EPOCH_DATE = date(1970, 1, 1)
+
+
 def _day(ts: int) -> date:
-    return datetime.fromtimestamp(ts, timezone.utc).date()
+    """The UTC date of a unix time: the date datetime.fromtimestamp(ts, utc) has, from the whole days
+    since the epoch (a busy record asks for it ~70k times; there are only as many dates as days)."""
+    return _day_n(ts // 86400)
+
+
+@lru_cache(maxsize=8192)
+def _day_n(n: int) -> date:
+    return _EPOCH_DATE + timedelta(days=int(n))
+
+
+@lru_cache(maxsize=8192)
+def _month_n(n: int) -> str:
+    """"YYYY-MM" of the n-th day since the epoch."""
+    return _day_n(n).strftime("%Y-%m")
 
 
 def _ts_date(now: datetime) -> date:
@@ -242,9 +259,18 @@ def sample_read(n: int, span_days: float, avg_ci: Optional[List[float]]) -> Dict
     return {"level": level, "edge": edge, "text": lead + tail}
 
 
-def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: int) -> Dict:
+def _peak_at_risk(trades: List[Dict], open_trades: List[Dict]) -> float:
+    """peak_capital over a bucket's closed round trips (in close order) and its trades still open."""
+    trades = sorted(trades, key=lambda t: (t["closed_ts"], t["opened_ts"] or 0))
+    return peak_capital([(t["opened_ts"], t["closed_ts"], t["cost"]) for t in trades]
+                        + [(t["opened_ts"], None, t["cost"]) for t in open_trades])
+
+
+def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: int,
+              peak_at_risk: Optional[float] = None) -> Dict:
     """Every headline figure for one money bucket. `trades` are closed round trips oldest-first
-    by close time: {pnl, fees, cost, opened_ts, closed_ts}; `open_trades`: {cost, opened_ts}."""
+    by close time: {pnl, fees, cost, opened_ts, closed_ts}; `open_trades`: {cost, opened_ts}.
+    `peak_at_risk` is _peak_at_risk(trades, open_trades) when the caller already has it."""
     trades = sorted(trades, key=lambda t: (t["closed_ts"], t["opened_ts"] or 0))
     n = len(trades)
     pnls = [t["pnl"] for t in trades]
@@ -252,8 +278,9 @@ def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: 
     losses = [p for p in pnls if p < 0]
     net = sum(pnls)
     fees = sum(t["fees"] for t in trades)
-    cap = peak_capital([(t["opened_ts"], t["closed_ts"], t["cost"]) for t in trades]
-                       + [(t["opened_ts"], None, t["cost"]) for t in open_trades])
+    cap = peak_at_risk if peak_at_risk is not None else peak_capital(
+        [(t["opened_ts"], t["closed_ts"], t["cost"]) for t in trades]
+        + [(t["opened_ts"], None, t["cost"]) for t in open_trades])
     curve, cum = [], 0.0
     for t in trades:
         cum += t["pnl"]
@@ -336,14 +363,16 @@ def monthly(trades: List[Dict], today: Optional[date] = None) -> List[Dict]:
     trades reads as one (trades 0, win_rate None) instead of silently dropping out of the grid."""
     out: Dict[str, Dict] = {}
     for t in trades:
-        k = _day(t["closed_ts"]).strftime("%Y-%m")
+        k = _month_n(t["closed_ts"] // 86400)
         m = out.setdefault(k, {"month": k, "pnl": 0.0, "trades": 0, "wins": 0})
         m["pnl"] += t["pnl"]
         m["trades"] += 1
         m["wins"] += t["pnl"] > 0
     if trades:
-        days = [_day(t["closed_ts"]) for t in trades]
-        for k in _months(min(days), max(days + ([today] if today else []))):
+        # _day never decreases as the time grows, so the first and last days are the earliest and
+        # latest closes' days.
+        first, last = _day(min(t["closed_ts"] for t in trades)), _day(max(t["closed_ts"] for t in trades))
+        for k in _months(first, max([last] + ([today] if today else []))):
             out.setdefault(k, {"month": k, "pnl": 0.0, "trades": 0, "wins": 0})
     rows = sorted(out.values(), key=lambda m: m["month"], reverse=True)
     for m in rows:
@@ -399,8 +428,13 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict]) -> List[Dict]:
 
 def build(rows: List[Dict], now: Optional[datetime] = None) -> Dict:
     """The whole page payload from repo.track_record_rows output."""
-    now = now or datetime.now(timezone.utc)
-    now_ts, today = _ts(now), _ts_date(now)
+    return finish(prepare(rows), now)
+
+
+def prepare(rows: List[Dict]) -> Dict:
+    """The part of `build` that depends on the rows alone: each bucket's closed round trips, its trades
+    still part-open and how many instant paper fills were left out. services.book_memo keeps it while
+    the book is unchanged; `finish` (which also reads the clock) never modifies it."""
     closed: Dict[str, List[Dict]] = {m: [] for m in MODES}
     opened: Dict[str, List[Dict]] = {m: [] for m in MODES}
     excluded: Dict[str, int] = {m: 0 for m in MODES}
@@ -413,7 +447,10 @@ def build(rows: List[Dict], now: Optional[datetime] = None) -> Dict:
             "strategy_id": int(r.get("strategy_id") or 0), "title": r.get("title") or "Removed strategy",
             "removed": r.get("title") is None, "dep_status": r.get("dep_status"),
             "market": r.get("market") or "", "pnl": float(r.get("pnl") or 0), "fees": float(r.get("fees") or 0),
-            "cost": float(r.get("cost") or 0), "opened_ts": _ts(r.get("opened_at")), "closed_ts": _ts(r.get("closed_at")),
+            "cost": float(r.get("cost") or 0),
+            # repo.track_record_join(seconds=True) hands the unix seconds over as they were read.
+            "opened_ts": r["opened_ts"] if "opened_ts" in r else _ts(r.get("opened_at")),
+            "closed_ts": r["closed_ts"] if "closed_ts" in r else _ts(r.get("closed_at")),
             "open_cost": float(r.get("open_cost") if r.get("open_cost") is not None else r.get("cost") or 0),
         }
         if int(r.get("open_slices") or 0) > 0:
@@ -425,11 +462,23 @@ def build(rows: List[Dict], now: Optional[datetime] = None) -> Dict:
         if t["closed_ts"] is None:
             continue
         closed[mode].append(t)
+    # The by-strategy table and the peak capital at risk read the trades alone, never the clock.
+    return {"closed": closed, "opened": opened, "excluded": excluded,
+            "strategies": {m: by_strategy(closed[m], opened[m]) for m in MODES},
+            "peak_at_risk": {m: _peak_at_risk(closed[m], opened[m]) for m in MODES}}
+
+
+def finish(prepared: Dict, now: Optional[datetime] = None) -> Dict:
+    """The page payload from `prepare`'s buckets, as of `now`."""
+    now = now or datetime.now(timezone.utc)
+    now_ts, today = _ts(now), _ts_date(now)
+    closed, opened, excluded = prepared["closed"], prepared["opened"], prepared["excluded"]
     modes = {}
     for m in MODES:
-        s = summarize(closed[m], opened[m], today, now_ts)
+        s = summarize(closed[m], opened[m], today, now_ts, prepared["peak_at_risk"][m])
+        # A fresh list of the rows: finish never hands out what prepare keeps.
         s.update(label=MODE_LABEL[m], excluded_instant_fills=excluded[m],
-                 monthly=monthly(closed[m], today), strategies=by_strategy(closed[m], opened[m]))
+                 monthly=monthly(closed[m], today), strategies=[dict(r) for r in prepared["strategies"][m]])
         modes[m] = s
     default = next((m for m in MODES if modes[m]["trades"]), "paper")
     return {"generated_at": now_ts, "default_mode": default, "modes": modes, "method": METHOD,

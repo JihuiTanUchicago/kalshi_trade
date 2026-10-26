@@ -380,6 +380,36 @@ def closed_book_totals(cur, user_id: int, since: datetime, visit: Optional[datet
     return realized, {m: int(r[m + "_n"]) for m in BOOK_MODES if r.get(m + "_n")}, recent
 
 
+def positions_version(cur, user_id: int) -> Tuple[int, int, int]:
+    """(position rows, closed rows, highest id) of the user's positions: what services.book_memo keys
+    the reads made from them on. Read from idx_pos_user alone (user_id, status, closed_at, then the
+    primary key), so no row is fetched: ~6ms at 23k positions against the 40-80ms each full-history
+    sum spends fetching rows. Every write the app makes to a position moves it: a new row (opened, a
+    partial exit's sold slice, a replayed paper trade) raises the count and the highest id, and a close
+    moves a row from open to closed. A closed row's money (pnl, fees, qty, prices, times, mode,
+    deployment) is never written again; the only later writes are hold_pnl/settle_result (the early-
+    exit score) and the open rows' marks and close claims, which no memoized read uses."""
+    cur.execute(
+        "SELECT COUNT(*) AS n, COUNT(CASE WHEN status='closed' THEN 1 END) AS closed, COALESCE(MAX(id),0) AS top "
+        "FROM app_positions FORCE INDEX (idx_pos_user) WHERE user_id=%s",
+        (user_id,),
+    )
+    r = cur.fetchone() or {}
+    return int(r.get("n") or 0), int(r.get("closed") or 0), int(r.get("top") or 0)
+
+
+def realized_pnl_between(cur, user_id: int, mode: str, start: datetime, end: datetime) -> Optional[Dict]:
+    """{"d": start's date, "pnl": the closed P&L in [start, end)} for one mode, or None when nothing
+    closed then: daily_pnl's row for that day when the window is the part of the day it counts."""
+    cur.execute(
+        """SELECT COUNT(*) AS n, SUM(pnl) AS pnl FROM app_positions
+           WHERE user_id=%s AND mode=%s AND status='closed' AND closed_at >= %s AND closed_at < %s""",
+        (user_id, mode, start, end),
+    )
+    r = cur.fetchone() or {}
+    return {"d": start.date(), "pnl": r.get("pnl")} if int(r.get("n") or 0) else None
+
+
 def closed_trade_counts(cur, user_id: int) -> Dict[str, int]:
     """{mode: closed position rows} for the user, in one grouped read (the dashboard shows a mode's
     trades download only where it has some). The same rows `realized_pnl` sums."""
@@ -458,11 +488,12 @@ def user_open_exposure(cur, user_id: int, mode: Optional[str] = None) -> Dict:
     return cur.fetchone()
 
 
-def daily_pnl(cur, user_id: int, mode: str, days: int = 60) -> List[Dict]:
+def daily_pnl(cur, user_id: int, mode: str, days: int = 60, since: Optional[datetime] = None) -> List[Dict]:
+    """Closed P&L per UTC day for one mode, oldest first, from `days` ago (or from `since`)."""
     cur.execute(
         """SELECT DATE(closed_at) AS d, SUM(pnl) AS pnl FROM app_positions
            WHERE user_id=%s AND mode=%s AND status='closed' AND closed_at >= %s
            GROUP BY DATE(closed_at) ORDER BY d""",
-        (user_id, mode, now_utc() - timedelta(days=days)),
+        (user_id, mode, since if since is not None else now_utc() - timedelta(days=days)),
     )
     return cur.fetchall()

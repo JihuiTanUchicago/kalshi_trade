@@ -259,7 +259,8 @@ def test_endpoint_builds_from_repo_rows_and_caches_per_user(monkeypatch):
     monkeypatch.setattr(server, "_TRACK_RECORD", {})
     monkeypatch.setattr(server, "_BOOK_SHAPE", {})
     monkeypatch.setattr(server, "TRACK_RECORD_CACHE_MIN_TRADES", 1)  # a busy book: one trade is enough here
-    monkeypatch.setattr(server.repo, "track_record_rows", lambda cur, uid: calls.append(uid) or [row("live", 3, ref="k")])
+    monkeypatch.setattr(server.book_memo, "track_record",
+                        lambda cur, uid: calls.append(uid) or tr.build([row("live", 3, ref="k")]))
     out = server.get_track_record(_ctx(7))
     assert out["default_mode"] == "live" and out["modes"]["live"]["net_pnl"] == 3
     server.get_track_record(_ctx(7))
@@ -277,7 +278,7 @@ def test_a_new_users_record_is_read_fresh_so_the_first_trade_shows_at_once(monke
     book = []
     monkeypatch.setattr(server, "_TRACK_RECORD", {})
     monkeypatch.setattr(server, "_BOOK_SHAPE", {})
-    monkeypatch.setattr(server.repo, "track_record_rows", lambda cur, uid: list(book))
+    monkeypatch.setattr(server.book_memo, "track_record", lambda cur, uid: tr.build(list(book)))
     assert server.get_track_record(_ctx(7))["modes"]["paper"]["trades"] == 0
     book.append(row("paper", 2.5))
     assert server.get_track_record(_ctx(7))["modes"]["paper"]["trades"] == 1
@@ -289,7 +290,7 @@ def test_a_busy_record_is_rebuilt_once_the_dashboard_sees_a_trade_it_predates(mo
     monkeypatch.setattr(server, "_TRACK_RECORD", {})
     monkeypatch.setattr(server, "_BOOK_SHAPE", {})
     monkeypatch.setattr(server, "TRACK_RECORD_CACHE_MIN_TRADES", 1)
-    monkeypatch.setattr(server.repo, "track_record_rows", lambda cur, uid: calls.append(uid) or [row("paper", 1)])
+    monkeypatch.setattr(server.book_memo, "track_record", lambda cur, uid: calls.append(uid) or tr.build([row("paper", 1)]))
     server._BOOK_SHAPE[7] = server._book_shape({"paper": 1}, 0)
     server.get_track_record(_ctx(7)); server.get_track_record(_ctx(7))
     assert calls == [7]
@@ -319,7 +320,7 @@ def test_endpoint_surfaces_a_db_failure_and_caches_nothing(monkeypatch):
     def boom(cur, uid):
         raise RuntimeError("db down")
 
-    monkeypatch.setattr(server.repo, "track_record_rows", boom)
+    monkeypatch.setattr(server.book_memo, "track_record", boom)
     with pytest.raises(RuntimeError):
         server.get_track_record(_ctx(7))
     assert server._TRACK_RECORD == {}

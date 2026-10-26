@@ -29,8 +29,19 @@ Then the deployments' curves (the Deploy board's 10s poll and the dashboard's 15
 account of 30 deployments and 3,000 closed trades: one JSON array per deployment instead of a row per
 kept point, 33 -> 19ms of the read; /api/deployments 67 -> 55ms, /api/dashboard 74 -> 60ms.
 Still one statement each; the dashboard measures 13 here (14 was its old ceiling).
+Measured 2026-10-26 on a seeded heavy autopilot account (950 runs, 207k events, 80 strategies, 15
+deployments, 23k positions, 40k paper-ledger rows) beside five lighter ones: the sums every polled page
+re-made from the whole position history (all-time realized P&L, each deployment's totals and curve,
+the paper record toward the live check and the backtest comparison, the track record's trades) are
+kept per user until the positions change (services.book_memo), behind one index-only version read
+(~6ms). Cold, a page pays that read once more (+1; +2 where the sums are grouped by strategy, which
+also read the deployments' strategies); while the book is unchanged: /api/dashboard 224 -> 40ms,
+/api/autopilot/status 112 -> 36ms, /api/deployments 103 -> 15ms (339 -> 22ms on the polls where its
+30s road cache lapses), /api/strategies 41 -> 17ms, /api/track-record after its minute's cache lapses
+990 -> ~130ms. The strategy page sums only its own deployments (cheap) and reads them directly.
 """
 from datetime import datetime, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 
 import time
@@ -38,18 +49,21 @@ import time
 import pytest
 
 from app import billing, engine, server
+from app.services import book_memo
 
 # A steady-state poll: the process-wide shared reads (series list, data freshness) and the run page's
 # dream line are warm, as they are for every request but one a minute. get_run's run is queued past
 # the overdue limit, so it also counts the queue ahead (5 for a run that is working normally).
-BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 13}  # dashboard: the trades CSV counts ride the realized-P&L pass
+BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}  # dashboard: the trades CSV counts ride the realized-P&L pass
+# Counted cold, as above: each page that sums the positions reads their version first (book_memo), +1
+# (not the strategy page, which sums only its own deployments).
 # The Deploy board polls /api/deployments every 10s; /api/strategies/<id> is the strategy page. Both
 # counted cold: the per-book backtest comparison is read once a minute, and these requests include it.
 # The board's 7th is each paper strategy's record toward the live check (one read for all of them,
 # cached 30s), so a paper row says how far it is and when the counts could be in.
-BUDGET.update({"list_deployments": 7, "get_strategy": 6})
+BUDGET.update({"list_deployments": 8, "get_strategy": 6})
 # The track record (cached a minute per user; a returning user pays it cold) and the Strategies page.
-BUDGET.update({"get_track_record": 2, "list_strategies": 3})
+BUDGET.update({"get_track_record": 3, "list_strategies": 4})
 # The trades download (user-clicked, not polled): the mode's closed trades, then their strategies once.
 BUDGET.update({"trades_csv": 2})
 
@@ -110,6 +124,7 @@ def production(monkeypatch):
     for key, val in (("series_with_candles", []), ("history_freshness", {})):
         server._SHARED[key] = {"val": val, "at": time.time(), "busy": False}
     server._LAST_DREAM[7] = (time.time(), None)
+    book_memo.clear()
 
 
 def _call(name, balance, **kw):
@@ -152,8 +167,12 @@ def _board_rows():
     strategy = {"id": 9, "run_id": 3, "parent_id": None, "market": "btc15m", "direction": None, "title": "Fade tails",
                 "thesis": "t", "spec_json": spec, "status": "passed", "result_json": result, "experiment_id": None,
                 "created_at": now, "hypotheses_tried": 4, "shared_from_user_id": None, "shared_from_name": None}
+    bare = {k: v for k, v in dep.items() if k not in server.repo.DISPLAY_TOTALS}
     return {"FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id LEFT JOIN": [
                 dict(dep, id=5, mode="paper"), dict(dep, id=6, mode="demo")],
+            # The same deployments without their position totals (read while those are kept).
+            "s.result_json FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id WHERE": [
+                dict(bare, id=5, mode="paper"), dict(bare, id=6, mode="demo")],
             "FROM app_strategies s LEFT JOIN app_agent_runs r": [strategy]}
 
 
@@ -254,13 +273,12 @@ def test_shared_billing_reads_answer_as_the_unshared_gate_does(monkeypatch):
 def _book_rows():
     """Three trades in two deployments (one still part-open), those deployments' strategy, and a
     deployed strategy card, so the track record and the Strategies page run every read they make."""
-    trade = {"mode": "paper", "order_ref": "sim:1", "open_slices": 0, "pnl": 1.5, "fees": 0.14, "cost": 4.0,
-             "open_cost": 0, "opened_s": 1761390000, "closed_s": 1761393600}
+    trade = {"mode": "paper", "order_ref": "sim:1", "v": "0,1.5000,0.1400,4.0000,0.0000,1761390000,1761393600"}
     rows = _board_rows()
     rows.update({
         "TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at))": [
-            dict(trade, deployment_id=5), dict(trade, deployment_id=5, order_ref="sim:2", pnl=-0.5),
-            dict(trade, deployment_id=6, mode="demo", order_ref="demo:3", open_slices=1, closed_s=None, open_cost=2.0)],
+            dict(trade, deployment_id=5), dict(trade, deployment_id=5, order_ref="sim:2", v=trade["v"].replace("1.5000", "-0.5000")),
+            dict(trade, deployment_id=6, mode="demo", order_ref="demo:3", v="1,1.5000,0.1400,4.0000,2.0000,1761390000,")],
         "FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id WHERE d.id IN": [
             {"id": 5, "strategy_id": 9, "status": "running", "title": "Fade tails", "market": "btc15m"},
             {"id": 6, "strategy_id": 9, "status": "running", "title": "Fade tails", "market": "btc15m"}],
@@ -293,16 +311,14 @@ def test_the_track_record_and_strategies_page_stay_in_their_query_budget(product
 
 def test_the_track_record_rebuilds_its_times_and_drops_a_trade_whose_deployment_is_gone():
     rows = {"TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at))": [
-                {"mode": "live", "deployment_id": 5, "order_ref": "live:1", "open_slices": 1, "pnl": 0, "fees": 0.07,
-                 "cost": 4.0, "open_cost": 4.0, "opened_s": 1761390061, "closed_s": None},
-                {"mode": "live", "deployment_id": 8, "order_ref": "live:2", "open_slices": 0, "pnl": 1, "fees": 0.07,
-                 "cost": 4.0, "open_cost": 0, "opened_s": 1761390000, "closed_s": 1761390900}],
+                {"mode": "live", "deployment_id": 5, "order_ref": "live:1", "v": "1,0.0000,0.0700,4.0000,4.0000,1761390061,"},
+                {"mode": "live", "deployment_id": 8, "order_ref": "live:2", "v": "0,1.0000,0.0700,4.0000,0.0000,1761390000,1761390900"}],
             "WHERE d.id IN": [{"id": 5, "strategy_id": 9, "status": "stopped", "title": None, "market": None}]}
     log = []
     assert server.repo.track_record_rows(CountingCursor(log, rows), 7) == [
-        {"mode": "live", "strategy_id": 9, "title": None, "market": None, "dep_status": "stopped", "order_ref": "live:1", "open_slices": 1,
-         "pnl": 0, "fees": 0.07, "cost": 4.0, "open_cost": 4.0, "opened_at": datetime(2025, 10, 25, 11, 1, 1),
-         "closed_at": None}]
+        {"mode": "live", "strategy_id": 9, "title": None, "market": None, "dep_status": "stopped", "order_ref": "live:1",
+         "open_slices": Decimal("1"), "pnl": Decimal("0.0000"), "fees": Decimal("0.0700"), "cost": Decimal("4.0000"),
+         "open_cost": Decimal("4.0000"), "opened_at": datetime(2025, 10, 25, 11, 1, 1), "closed_at": None}]
     assert log[1][1] == (5, 8)
     log = []
     assert server.repo.track_record_rows(CountingCursor(log, {}), 7) == [] and len(log) == 1  # no trades, no 2nd read
@@ -365,3 +381,64 @@ def test_the_research_scoreboard_reads_the_same_for_two_paper_strategies_as_for_
         assert not any("FROM app_positions p JOIN app_deployments d" in s for s, _ in log)  # no per-strategy trips
         counts.append(len(log))
     assert counts[0] == counts[1], counts
+
+
+# The positions' version (services.book_memo) and the full-history sums a page keeps behind it.
+VERSION = "COALESCE(MAX(id),0) AS top"
+HEAVY = ("SUM(pnl) OVER (PARTITION BY deployment_id", "LEFT JOIN (SELECT p.deployment_id", "AS paper_all",
+         "GROUP BY DATE(closed_at)", "SELECT t.strategy_id, COUNT(*) AS trips", "COUNT(DISTINCT SUBSTRING(p.ticker",
+         "TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at))", "SELECT d.strategy_id, p.order_ref, SUM(p.pnl)", "AS pnl_sq")
+STRATEGIES = "SELECT id, strategy_id FROM app_deployments WHERE user_id=%s"
+
+
+def _panel_rows(strategy_of_4=8):
+    return {"FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id WHERE d.user_id=%s": _deps(datetime(2026, 10, 18)),
+            STRATEGIES: [{"id": 5, "strategy_id": 9}, {"id": 4, "strategy_id": strategy_of_4}]}
+
+
+# (cold, kept) statements with these rows and a book of positions: cold pays the version read (and, for
+# the reads grouped by strategy, the deployments' strategies once); kept drops every heavy sum.
+KEPT_BUDGET = {"dashboard": (16, 14), "list_deployments": (9, 6), "get_track_record": (3, 2), "autopilot_status": (25, 23)}
+KEPT_PAGES = [("dashboard", {}, _board_rows), ("list_deployments", {}, _board_rows),
+              ("get_track_record", {}, _book_rows),
+              ("autopilot_status", {}, _panel_rows)]
+
+
+def _poll(name, kw, rows, version):
+    """One request with the positions at `version` and the rows `rows()` makes (a page's reads change
+    the rows they are handed): (its statements, the heavy sums among them, its JSON)."""
+    import json
+
+    for cache in (server._TRACK_RECORD, server._BACKTEST_CHECKS, server._ROADS, server._FAILING):
+        cache.clear()
+    log = []
+    out = getattr(server, name)(_ctx(log, 10.0, extra=dict(rows(), **{VERSION: [version]}), **kw))
+    return [s for s, _ in log], [s for s, _ in log if any(h in s for h in HEAVY)], json.dumps(
+        out, default=server._json_default, sort_keys=True)
+
+
+@pytest.mark.parametrize("name,kw,rows", KEPT_PAGES)
+def test_a_polled_page_keeps_its_position_sums_until_the_positions_change(production, name, kw, rows):
+    book = {"n": 40, "closed": 38, "top": 900}
+    cold, heavy, out = _poll(name, kw, rows, book)
+    assert heavy and sum(VERSION in s for s in cold) == 1  # the version is read once per request
+    warm, kept, again = _poll(name, kw, rows, book)
+    assert not kept, "%s re-summed the positions while they were unchanged:\n  %s" % (name, "\n  ".join(kept))
+    assert again == out
+    assert len(cold) <= KEPT_BUDGET[name][0] and len(warm) <= KEPT_BUDGET[name][1], (name, len(cold), len(warm))
+    # A position opened (n, top), closed (closed) or replaced (top): each sums again.
+    for changed in (dict(book, n=41, top=901), dict(book, closed=39), dict(book, top=950)):
+        assert _poll(name, kw, rows, changed)[1] == heavy, changed
+        book = changed
+    # No positions: nothing is kept (an empty book is never answered from a kept read).
+    for _ in range(2):
+        assert _poll(name, kw, rows, {"n": 0, "closed": 0, "top": 0})[1] == heavy
+
+
+def test_the_autopilot_panel_sums_again_when_a_deployment_moves_to_another_strategy(production):
+    """paper_progress and paper_event_counts group the positions by their deployment's strategy, and an
+    adjustment re-points a deployment without touching a position: the deployments are in the key."""
+    book = {"n": 40, "closed": 38, "top": 900}
+    _, heavy, _ = _poll("autopilot_status", {}, _panel_rows, book)
+    assert _poll("autopilot_status", {}, _panel_rows, book)[1] == []
+    assert _poll("autopilot_status", {}, lambda: _panel_rows(strategy_of_4=9), book)[1] == heavy

@@ -140,8 +140,9 @@ def test_the_track_record_and_strategies_page_say_what_they_said(conn, monkeypat
     assert sum(r["order_ref"] == "sim:same-ref" for r in new_rows) == 2
     assert new_rows == old_rows  # every value, the same type, in the same order
 
-    real_build = track_record.build
-    monkeypatch.setattr(server.track_record, "build", lambda rows, now=None: real_build(rows, NOW))
+    real_build, real_finish = track_record.build, track_record.finish
+    # The page finishes its kept buckets at the request's time (track_record.finish, as build does).
+    monkeypatch.setattr(server.track_record, "finish", lambda prepared, now=None: real_finish(prepared, NOW))
     server._TRACK_RECORD.pop(uid, None)
     page = _payload(server.get_track_record(server.Ctx(conn, {"id": uid}, (), {}, {}, None)))
     assert page == _payload(real_build(old_rows, NOW))
