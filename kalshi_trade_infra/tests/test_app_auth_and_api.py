@@ -997,3 +997,29 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypa
                                                          "live": {"pnl": 0.0, "trades": 0}},
                    "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1},
                    "own_sessions": True}
+
+
+def _capacity_ctx():
+    from types import SimpleNamespace
+    return server.Ctx(SimpleNamespace(cursor=lambda: object()), {"id": 7}, (), {}, {}, SimpleNamespace())
+
+
+def _active_runs(monkeypatch, n):
+    monkeypatch.setattr(server, "_require_billing_ready", lambda *_a: None)
+    monkeypatch.setattr(server.billing, "configured", lambda: False)
+    monkeypatch.setattr(server.repo, "count_runs", lambda *_a, **kw: n if kw.get("active_only") else 0)
+
+
+def test_full_research_slots_say_to_cancel_one_not_to_wait(monkeypatch):
+    # Sessions run until stopped by default, so "wait for one to finish" never came true.
+    _active_runs(monkeypatch, server.MAX_ACTIVE_RESEARCH)
+    with pytest.raises(server.ApiError) as error:
+        server._require_research_capacity(_capacity_ctx())
+    assert error.value.status == 429
+    assert "paused ones count" in error.value.message and "cancel one from its session page" in error.value.message
+    assert "finish" not in error.value.message
+
+
+def test_a_free_research_slot_lets_the_session_start(monkeypatch):
+    _active_runs(monkeypatch, server.MAX_ACTIVE_RESEARCH - 1)
+    assert server._require_research_capacity(_capacity_ctx()) is None

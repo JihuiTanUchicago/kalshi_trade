@@ -1458,10 +1458,26 @@ test('current research controls pause and resume and cancellation needs two curr
   f.runControls(host, 9, 'paused', reload);
   const resume = host.querySelector('#resume'); await resume.onclick({currentTarget: resume});
   assert.equal(postRequests(f)[1].path, '/api/runs/9/resume');
-  host.querySelector('#cancel').onclick(); assert.equal(postRequests(f).length, 2);
+  host.querySelector('#cancel').onclick(); assert.equal(postRequests(f).length, 2);  // the first press only arms
+  // The run page's 2s poll calls again with the same status: the armed confirm survives it, so the
+  // second press cancels instead of arming a fresh button.
   f.runControls(host, 9, 'paused', reload);
-  const cancel = host.querySelector('#cancel'); cancel.onclick(); assert.equal(postRequests(f).length, 2);
+  const cancel = host.querySelector('#cancel'); assert.equal(cancel.textContent, 'Confirm cancel');
   await cancel.onclick(); assert.equal(postRequests(f)[2].path, '/api/runs/9/cancel'); assert.equal(reloads, 3);
+  assert.match(cancel.getAttribute('title'), /^Ends the session for good\. What it has spent stays charged/);
+});
+
+test('a poll with the same run status leaves a pause in flight disabled, so it cannot be sent twice', async () => {
+  const pending = deferred(), f = frontend({fetchImpl: () => pending.promise}), host = new Element();
+  f.runControls(host, 9, 'running', async () => {});
+  const pause = host.querySelector('#pause'), pressing = pause.onclick({currentTarget: pause});
+  assert.equal(pause.disabled, true);
+  f.runControls(host, 9, 'running', async () => {});  // the poll lands while the POST is out
+  assert.equal(host.querySelector('#pause'), pause); assert.equal(pause.disabled, true);
+  assert.equal(postRequests(f).length, 1);
+  pending.resolve(response({ok: true})); await pressing;
+  f.runControls(host, 9, 'paused', async () => {});  // a new status repaints
+  assert.ok(host.querySelector('#resume')); assert.equal(host.querySelector('#pause'), null);
 });
 
 test('streaming thoughts and challenger/verdict update one hypothesis and navigation clears feed timers', () => {
@@ -2873,11 +2889,38 @@ test('Research says what a session usually costs beside Start session, and nothi
   assert.equal(cost().hidden, false);
   assert.equal(cost().textContent, 'Each round of ideas usually costs about $0.42 (your recent sessions); it keeps starting new rounds until you stop it.');
   const rf = f.root.querySelector('#runforever'); rf.checked = false; rf.dispatchEvent({type: 'change'});
-  assert.equal(cost().textContent, 'Usually about $0.42 (your recent sessions).');
+  assert.equal(cost().textContent, 'A session like this usually takes about $0.42 from your credits (your recent sessions).');
   f = researchFrontend([], {estimate: {yours: null, sessions: 2, typical: {offline: 3.1}}}); await f.viewResearch(); await flush();
   assert.match(cost().textContent, /about \$3\.10 \(recent sessions on this model\)/);
   f = researchFrontend([]); await f.viewResearch(); await flush();
   assert.equal(cost().hidden, true); assert.equal(cost().textContent, '');
+  // With payments on, a model with no estimate still says how it is billed and that it can be stopped.
+  f = researchFrontend([]); f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 12, min_run_balance: 1};
+  await f.viewResearch(); await flush();
+  assert.equal(cost().hidden, false);
+  assert.equal(cost().textContent, 'No cost estimate for this model yet. It’s charged to your credits as it runs, and you can stop it any time from its session page.');
+  assert.doesNotMatch(cost().textContent, /list price/i);
+});
+
+test('Research says a low balance before Start, shows a running session’s spend, and lists stopped and paused sessions as such', async () => {
+  const running = {...researchRun(5, 'running'), spent_usd: 2.37}, stopped = {...researchRun(4, 'stopped'), strategies_passed: 1, spent_usd: 6.1};
+  let f = researchFrontend([running, stopped, researchRun(3, 'paused')]);
+  f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, credit_balance: 0.5, min_run_balance: 1};
+  await f.viewResearch(); await flush();
+  assert.match(f.root.querySelector('#dispatch .notice').textContent, /You have \$0\.50 in credits — a research session needs at least \$1\.00 to start\./);
+  const foot = f.root.querySelector('#active-research .active-foot');
+  assert.deepEqual(foot.querySelectorAll('dt').map(dt => dt.textContent), ['Tested', 'Passed', 'Spent so far']);
+  assert.equal(foot.querySelectorAll('dd')[2].textContent, '$2.37');
+  // A session that ran until stopped reads like a finished one, not a red "Failed".
+  const card = f.root.querySelector('#runs a[href="/research/4"]');
+  assert.doesNotMatch(card.innerHTML, /Failed|loss/);
+  assert.match(card.querySelector('.run-state').textContent, /1\/4 passed/);
+  assert.match(card.getAttribute('class'), /\bvoid\b/);
+  assert.equal(f.root.querySelector('#runs a[href="/research/3"] .run-state').textContent, 'Outcome Paused');
+  // Enough credits: no notice.
+  f = researchFrontend([]); f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, credit_balance: 5, min_run_balance: 1};
+  await f.viewResearch(); await flush();
+  assert.equal(f.root.querySelector('#dispatch .notice'), null);
 });
 
 test('autopilot says why it is not trading: the card and the panel lead with one line and its action', async () => {

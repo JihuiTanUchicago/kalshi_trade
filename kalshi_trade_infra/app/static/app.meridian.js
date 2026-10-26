@@ -2055,7 +2055,7 @@
     const basis = own ? 'your recent sessions' : 'recent sessions on this model';
     return forever
       ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
-      : `Usually about ${usd(v)} (${basis}).`;
+      : `A session like this usually takes about ${usd(v)} from your credits (${basis}).`;
   }
   // Run-until-stopped has no natural size, so say its pace: about what an hour costs at recent rates
   // (/api/research/estimate per_hour, the user's own else the model's typical) and how long the
@@ -2078,6 +2078,7 @@
       <div class="research-page"><h1 class="page">Research</h1>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
 
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
+        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? `<div class="notice" role="status">${ICON.warn}<span>You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start. <a href="/billing">Add credits →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <details class="dispatch-opts" id="ropts"${phone() ? '' : ' open'}><summary><span class="dispatch-opts-t">Options</span><span class="dispatch-opts-sum" id="ropts-sum"></span></summary><div class="dispatch-opts-body">
@@ -2148,8 +2149,11 @@
         const forever = !!(rf && rf.checked), ph = (est && est.per_hour) || {};
         const hourly = ph.yours != null ? ph.yours : (ph.typical || {})[key];
         const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ph.yours != null, me) : '';
-        rc.hidden = v == null && !pace;
-        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace].filter(Boolean).join(' ');
+        // No ledger figure for this model (or the read failed): with payments on, still say how it
+        // is billed and that it can be stopped, rather than leaving the cost blank.
+        const none = v == null && !pace && me.billing_enabled ? 'No cost estimate for this model yet. It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
+        rc.hidden = v == null && !pace && !none;
+        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace, none].filter(Boolean).join(' ');
       };
       if (msel) msel.addEventListener('change', sync);
       api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; }).then(sync);
@@ -2194,7 +2198,7 @@
       root.querySelector('#active-research').innerHTML = active ? `<section class="active-research active-${esc(active.status)}">
         <div class="active-head"><h2 class="active-prompt" title="${esc(sessionTitle(active))}">${esc(sessionTitle(active))}</h2></div>
         <div class="active-meta"><div class="active-session"><span class="active-state">${active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span><b>Session ${esc(active.id)}</b></div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
-        <aside class="active-aside"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${active.strategies_passed || 0}</dd></div></dl></aside>
+        <aside class="active-aside"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${active.strategies_passed || 0}</dd></div>${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${usd(active.spent_usd)}</dd></div>` : ''}</dl></aside>
       </section>` : '';
       const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
       // The seeded example is listed but isn't the user's: it doesn't count as a session of theirs.
@@ -2215,13 +2219,15 @@
   const runLive = (r) => r.status === 'running' || r.status === 'queued' || r.status === 'paused';
   const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
   function runRow(r) {
+    // A `stopped` session (run until stopped, then out of credits, interrupted or capped) reads like a
+    // finished one: it fell through to a red "Failed".
     const state = r.status === 'running' ? 'Researching'
       : r.status === 'queued' ? 'Waiting'
-      : r.status === 'succeeded' ? `<span class="${r.strategies_passed ? 'gain' : ''}"><span class="run-ratio" aria-label="${esc(r.strategies_passed)} of ${esc(r.hypotheses_tried)}"><b class="run-passed">${r.strategies_passed}</b><span aria-hidden="true">/</span><b class="run-tested">${r.hypotheses_tried}</b></span> <span class="run-denominator">passed</span></span>`
+      : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${r.strategies_passed ? 'gain' : ''}"><span class="run-ratio" aria-label="${esc(r.strategies_passed)} of ${esc(r.hypotheses_tried)}"><b class="run-passed">${r.strategies_passed}</b><span aria-hidden="true">/</span><b class="run-tested">${r.hypotheses_tried}</b></span> <span class="run-denominator">passed</span></span>`
       : r.status === 'paused' ? 'Paused'
       : r.status === 'cancelled' ? 'Cancelled' : '<span class="loss">Failed</span>';
-    // status band: a thin color rule so passed/void/failed reads at a glance
-    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : r.status === 'cancelled' ? 'void' : 'live';
+    // status band: a thin color rule so passed/void/failed reads at a glance; only a real error is `fail`
+    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     return `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${r.example ? ' ' + EXAMPLE_TAG : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group"><span class="run-id">Session ${esc(r.id)}</span><span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
   }
@@ -2696,15 +2702,21 @@
   // Interrupt & continue: the obvious control cluster for a research run. Running → Pause;
   // Paused → Resume (the primary action); every active state can Cancel. Finished shows the
   // way onward. Pause/Resume are reversible so they act immediately; Cancel is armed to confirm.
+  // The run page polls every 2s and called this each time: the repaint undid an armed "Confirm cancel"
+  // before the second press could land, and re-enabled a Pause still in flight (a second POST, then a
+  // "Only a running session can be paused" error). The buttons repaint only when the status changes.
+  const CANCEL_BTN = '<button class="btn danger small" id="cancel" title="Ends the session for good. What it has spent stays charged; ideas it already tested are kept.">Cancel</button>';
   function runControls(host, id, status, reload) {
+    if (host.dataset.st === status) return;
+    host.dataset.st = status;
     if (status === 'paused') {
-      host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button><button class="btn danger small" id="cancel">Cancel</button></span>';
+      host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button>' + CANCEL_BTN + '</span>';
       host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/resume`, {}).catch((er) => alert0(er.message)); await reload(); });
     } else if (status === 'running') {
-      host.innerHTML = '<span class="runact"><button class="btn small" id="pause">Pause</button><button class="btn danger small" id="cancel">Cancel</button></span>';
+      host.innerHTML = '<span class="runact"><button class="btn small" id="pause" title="Holds the session where it is until you resume it.">Pause</button>' + CANCEL_BTN + '</span>';
       host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/pause`, {}).catch((er) => alert0(er.message)); await reload(); });
     } else if (status === 'queued') {
-      host.innerHTML = '<span class="runact"><button class="btn danger small" id="cancel">Cancel</button></span>';
+      host.innerHTML = '<span class="runact">' + CANCEL_BTN + '</span>';
     } else {
       host.innerHTML = status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '';
       return;
