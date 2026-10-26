@@ -345,3 +345,27 @@ test('a rejected focus change restores the previous choice', async () => {
   assert.equal(select.value, 'crypto'); assert.deepEqual([...f.S.ap.focus], ['crypto']);
   assert.deepEqual(f.alerts, []); assert.match(f.box.querySelector('#apf-flash').innerHTML, /error-text">Synthetic focus rejection/);
 });
+
+// Both bundles carry the same keyboard and screen-reader contracts. The behaviour is checked per
+// bundle (tests/test_frontend_merge.mjs, tests/test_meridian_workspace.mjs); these are the pieces
+// that are easy to drop on one side only.
+test('this bundle keeps the keyboard and screen-reader contracts of the main flows', () => {
+  // A control that goes disabled is blurred by the browser: busy() hands focus back to it.
+  assert.match(source, /async function busy\(btn, fn\) \{\n\s*const had = document\.activeElement === btn;/);
+  assert.match(source, /if \(had && btn\.isConnected && \(!a \|\| a === document\.body\) && btn\.focus\) btn\.focus\(\{ preventScroll: true \}\);/);
+  // Turning autopilot on or off is said out loud (the switch, its copy and the card change silently).
+  assert.match(source, /announce\('Autopilot is on\. It researches and trades on paper by itself; every move shows up in the autopilot panel\.'\);/);
+  assert.match(source, /announce\(on \? 'Autopilot is on\. It researches and trades on paper by itself\.' : 'Autopilot is off\. It only suggests ideas for you to approve\.'\);/);
+  // The live switch, the kill switch and a refused arm answer in the panel AND out loud.
+  assert.match(source, /function apFlash\(box, msg, kind\) \{[\s\S]*?if \(msg\) announce\(msg, kind === 'bad'\);/);
+  // The full-screen sheet keeps Tab inside it; the bell and the profile menu close when focus leaves.
+  assert.match(source, /if \(e\.key === 'Tab' && apSheet\(\) && apExpanded\(\)\) apSheetTab\(box, e\);/);
+  assert.match(source, /const apSheet = \(\) => !!\(window\.matchMedia && window\.matchMedia\('\(max-width: 600px\)'\)\.matches\);/);
+  assert.match(source, /wrap\.addEventListener\('focusout', \(e\) => \{ if \(!menu\.hidden && !wrap\.contains\(e\.relatedTarget\)\) close\(\); \}\);/);
+  assert.match(source, /prof\.addEventListener\('focusout', \(e\) => \{ if \(!menu\.hidden && !prof\.contains\(e\.relatedTarget\)\) close\(\); \}\);/);
+  // Every field a reader meets has a name of its own, and the hidden photo picker (driven by the
+  // Photo button) is not an unnamed, invisible tab stop.
+  assert.match(source, /<textarea class="input" id="post-body"[^>]*aria-label="Write a post"/);
+  assert.match(source, /<input class="input" maxlength="1000" aria-label="Write a reply"/);
+  assert.match(source, /<input type="file" id="photo-input"[^>]*tabindex="-1" aria-label="Choose a photo to attach">/);
+});

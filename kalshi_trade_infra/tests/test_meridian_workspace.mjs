@@ -83,6 +83,14 @@ class Element {
     return true;
   }
   querySelectorAll(selector) {
+    // A comma list ("button, input, ...", the way a focus walk asks for every control) answers in
+    // document order, as the DOM does.
+    if (selector.includes(',')) {
+      const order = [], walk = element => element.children.forEach(child => { order.push(child); walk(child); });
+      walk(this);
+      const hits = new Set(selector.split(',').map(part => part.trim()).filter(Boolean).flatMap(part => this.querySelectorAll(part)));
+      return order.filter(element => hits.has(element));
+    }
     const parts = selector.trim().split(/\s+(?![^\[]*\])/), found = [];
     const visit = element => element.children.forEach(child => {
       if (child.matches(parts.at(-1))) {
@@ -5245,4 +5253,95 @@ test('Meridian: a brand-new account\'s empty Strategies, Deploy and Research say
   f.location.pathname = '/research';
   await f.viewResearch(); await flush(); await flush(); f.clearTimers();
   assert.match(f.root.querySelector('.research-page').innerHTML, /<h1 class="page">Research<\/h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw\. The ones that pass can trade on paper\.<\/p>/);
+});
+
+// Keyboard and screen-reader paths through the autopilot switch and the notification list. A reader
+// hears a change only through a live region, and a keyboard user is lost the moment focus falls to
+// the top of the page; both used to happen on the one-click way into autopilot.
+const said = f => { [...f.timeouts.values()].forEach(callback => callback()); return f.document.getElementById('sr-status')?.textContent || ''; };
+
+test('turning autopilot on from the Overview card says so out loud and leaves focus on a control', async () => {
+  let status = {...apStatus, autopilot: false, mode: 'off', focus: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData());
+    if (path === '/api/autopilot/status') return response(status);
+    if (path === '/api/settings') { status = {...status, autopilot: true, mode: 'paper'}; return response({ok: true}); }
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }, storage: new Map([['tau_ap_open', '0']])});
+  f.S.me.user.autopilot = false; f.S.ap = status;
+  await f.viewDashboard(); await flush(); await flush();
+  const on = f.root.querySelector('#dash-ap [data-apcard="on"]');
+  on.focus();
+  await on.onclick(); for (let i = 0; i < 4; i++) await flush();
+  assert.match(said(f), /^Autopilot is on\. It researches and trades on paper by itself/);
+  // The card repaints without the pressed button, so focus follows to what replaced it.
+  assert.notEqual(f.document.activeElement, f.document.body);
+  assert.ok(f.document.activeElement.matches('.apf-x') || f.document.activeElement.matches('[data-apcard="open"]'),
+    'focus landed on ' + f.document.activeElement.className);
+  f.clearTimers();
+});
+
+test('the panel switch says its new state, and locking it does not drop keyboard focus', async () => {
+  let status = {...apStatus, autopilot: true, mode: 'paper', focus: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/autopilot/status') return response(status);
+    if (path === '/api/settings') { status = {...status, autopilot: false, mode: 'off'}; return response({ok: true}); }
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }, storage: new Map([['tau_ap_open', '1']])});
+  f.S.me.user.autopilot = true; f.S.ap = status;
+  const box = new Element('div', {id: 'autopilot-float'}); f.document.body.appendChild(box);
+  f.renderAutopilot(box, status); await flush();
+  const sw = box.querySelector('#apf-apswitch');
+  sw.focus(); sw.checked = false;
+  await sw.onchange(); for (let i = 0; i < 3; i++) await flush();
+  assert.equal(f.S.me.user.autopilot, false);
+  assert.match(said(f), /^Autopilot is off\. It only suggests ideas for you to approve\.$/);
+  assert.equal(f.document.activeElement, sw);
+  f.clearTimers();
+});
+
+test('the notification list closes when focus leaves it, so Tab out never leaves it open behind the page', async () => {
+  const f = frontend({fetchImpl: path => (path === '/api/dashboard' ? response(dashboardData()) : response({})),
+    notifications: {unread: 1, items: [{body: 'Autopilot put a strategy on paper.', link: '/deploy', created_at: '2026-10-17T10:00:00Z', read: false}]}});
+  await f.viewDashboard(); await flush(); await flush();
+  const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
+  await trig.onclick({stopPropagation() {}}); await flush();
+  assert.equal(menu.hidden, false); assert.equal(trig.getAttribute('aria-expanded'), 'true');
+  await trig.onclick({stopPropagation() {}});
+  assert.equal(menu.hidden, true);
+  await trig.onclick({stopPropagation() {}});
+  assert.equal(menu.hidden, false);
+  // Tab out of the list (focus moves to the profile button): it closes instead of staying open where
+  // Esc, bound to the bell, can no longer reach it.
+  wrap.dispatchEvent({type: 'focusout', relatedTarget: f.root.querySelector('.profile-trig')});
+  assert.equal(menu.hidden, true); assert.equal(trig.getAttribute('aria-expanded'), 'false');
+  f.clearTimers();
+});
+
+test('the full-screen autopilot sheet keeps Tab inside it; beside the page it lets Tab walk on', async () => {
+  for (const sheet of [true, false]) {
+    const f = frontend({storage: new Map([['tau_ap_open', '1']]),
+      matchMedia: () => ({matches: sheet}),   // under 601px the open panel covers the whole page
+      fetchImpl: path => {
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path.startsWith('/api/chat')) return response({messages: []});
+        throw new Error('Unexpected offline request: ' + path);
+      }});
+    const box = new Element('div', {id: 'autopilot-float'}); f.document.body.appendChild(box);
+    f.renderAutopilot(box, {...apStatus, focus: []}); await flush();
+    const first = box.querySelector('.apf-x'), last = box.querySelector('#apf-msg');
+    [first, last].forEach((el) => { el.offsetWidth = 40; });   // the rest is folded away or hidden
+    let prevented = 0;
+    const press = (shiftKey) => box.onkeydown({key: 'Tab', shiftKey, preventDefault: () => prevented++});
+    last.focus(); press(false);
+    assert.equal(f.document.activeElement, sheet ? first : last);
+    first.focus(); press(true);
+    assert.equal(f.document.activeElement, sheet ? last : first);
+    assert.equal(prevented, sheet ? 2 : 0);
+    f.clearTimers();
+  }
 });

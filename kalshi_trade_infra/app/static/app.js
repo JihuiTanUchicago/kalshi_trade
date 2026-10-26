@@ -824,6 +824,9 @@
     };
     // Esc closes the list and gives focus back to the bell.
     wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); trig.focus(); } });
+    // Tabbing past the last notification left the list open behind the page, where Esc (bound here) no
+    // longer reached it: focus leaving the bell closes the list, as a click outside already does.
+    wrap.addEventListener('focusout', (e) => { if (!menu.hidden && !wrap.contains(e.relatedTarget)) close(); });
   }
 
   function shell(active, board, main) {
@@ -857,6 +860,8 @@
         else close();
       };
       prof.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); trig.focus(); } });
+      // As with the bell: Tabbing out of the menu closes it, so it is never left open with Esc out of reach.
+      prof.addEventListener('focusout', (e) => { if (!menu.hidden && !prof.contains(e.relatedTarget)) close(); });
     }
     wireBell();
     // Phones scroll the section tabs in one row; bring the current one into view.
@@ -1020,9 +1025,18 @@
       if (document.querySelector('[data-armed="1"], [data-armed="wait"]')) e.preventDefault();
     }, true);
   }
+  // A control that goes disabled is blurred by the browser, which dropped keyboard focus to the top of
+  // the page on every busy action (Turn on autopilot, Buy credits, Start session, Verify and connect):
+  // focus goes back to the button once it is enabled again, unless the action moved focus itself or
+  // repainted the button away.
   async function busy(btn, fn) {
+    const had = document.activeElement === btn;
     btn.classList.add('busy'); btn.disabled = true;
-    try { return await fn(); } finally { btn.classList.remove('busy'); btn.disabled = false; }
+    try { return await fn(); } finally {
+      btn.classList.remove('busy'); btn.disabled = false;
+      const a = document.activeElement;
+      if (had && btn.isConnected && (!a || a === document.body) && btn.focus) btn.focus({ preventScroll: true });
+    }
   }
   // After a write lands, the page re-reads to show it. That read failing is not the write failing: shown
   // as the write's error, a top-up that went through read as one that didn't, and invited buying twice.
@@ -4037,11 +4051,11 @@
         <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
         <div id="feed">${loading(120)}${loading(120)}</div>
         <form class="panel composer-post" id="composer-post">
-          <textarea class="input" id="post-body" maxlength="2000" rows="1" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
+          <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
           <div id="photo-preview" hidden><img id="photo-img" alt="Attached photo preview"><button type="button" class="photo-x" id="photo-remove" aria-label="Remove photo">${ICON.cross}</button></div>
           <div class="post-tools">
             <button class="btn sm" type="button" id="photo-btn">${ICON.image}Photo</button>
-            <input type="file" id="photo-input" accept="image/png,image/jpeg,image/webp,image/gif" class="vh">
+            <input type="file" id="photo-input" accept="image/png,image/jpeg,image/webp,image/gif" class="vh" tabindex="-1" aria-label="Choose a photo to attach">
             <label class="field post-strat-f"><span class="vh">Attach a strategy</span>
               <select id="post-strat"><option value="">Attach a strategy… (optional)</option></select></label>
             <button class="btn sm" type="button" data-share="pnl">${ICON.up}Share my P&amp;L</button>
@@ -4149,7 +4163,7 @@
         box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
           ${d.comments.length > PAGE ? '<button type="button" class="btn sm cmt-more"></button>' : ''}
           <div class="cmt-list">${d.comments.map((c) => `<div class="cmt">${avatar(c.picture, c.author)}<div><b>${authorLine(c.author, c.username)}</b> <span class="when">${when(c.created_at)}</span><p>${mdLite(c.body)}</p></div></div>`).join('')}</div>
-          <form class="cmt-form"><input class="input" maxlength="1000" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form><div class="form-flash"></div>`;
+          <form class="cmt-form"><input class="input" maxlength="1000" aria-label="Write a reply" placeholder="Write a reply…" required><button class="btn sm" type="submit">Reply</button></form><div class="form-flash"></div>`;
         // Show the latest 10 (newest stay by the reply box); "Load earlier" reveals older in 10s.
         // Search (when present) filters the whole loaded set. ponytail: client-side over the ≤100
         // fetched — add a server offset if a thread ever tops that cap.
@@ -4879,10 +4893,18 @@
     S.me.user.autopilot = true;
     if (S.ap) S.ap = Object.assign({}, S.ap, { autopilot: true, mode: S.ap.mode === 'off' ? 'paper' : S.ap.mode });
     paintDashAp();
+    // The card (or the nudge) repaints without the pressed button, so a reader heard nothing and a
+    // keyboard user was left at the top of the page: say what changed, then follow it to the control
+    // that replaced it — the open panel's close button, else the card's Open autopilot.
+    announce('Autopilot is on. It researches and trades on paper by itself; every move shows up in the autopilot panel.');
     if (!phone()) apOpen();  // on a phone the open panel fills the screen; the card already says it's on
     const box = document.getElementById('autopilot-float');
     if (box && apExpanded()) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
     if (box) await refreshAutopilot(box);
+    // After the status read's repaint, so the control focus lands on is the one that stays.
+    const card = document.getElementById('dash-ap');
+    const to = (box && apExpanded() && box.querySelector('.apf-x')) || (card && card.querySelector('[data-apcard="open"]'));
+    if (to && to.focus) to.focus({ preventScroll: true });
   }
   const AP_PENDING_ON = { label: 'Autopilot on', cls: 'paper' };  // switch on, mode not read yet
   const AP_MODE = {
@@ -5116,11 +5138,28 @@
     }));
     box.classList.toggle('yield', covers);
   }
+  // The open panel is a full-screen sheet under this width (app.css: `.apf.open { inset: 0 }`), which is
+  // not phone(): between the two it still sits beside the page.
+  const apSheet = () => !!(window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
+  const AP_TABBABLE = 'a[href], button, input, select, textarea, summary, [tabindex]';
+  function apSheetTab(box, e) {
+    // What Tab would actually reach: enabled, in the tab order, and drawn (a folded fieldset or a
+    // hidden confirm form has no box).
+    const items = [...box.querySelectorAll(AP_TABBABLE)].filter((el) => !el.disabled && el.getAttribute('tabindex') !== '-1'
+      && (el.offsetWidth || el.offsetHeight || el === document.activeElement));
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1], a = document.activeElement;
+    if (e.shiftKey ? a === first : a === last) { e.preventDefault(); (e.shiftKey ? last : first).focus({ preventScroll: true }); }
+  }
   function apBuildShell(box) {
     box.dataset.shell = 'expanded'; box.apPill = '';
     box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Autopilot');
-    // Esc closes the open panel, and focus goes back to the pill.
-    box.onkeydown = (e) => { if (e.key === 'Escape' && apExpanded()) { e.stopPropagation(); apAction(box, 'toggle'); } };
+    // Esc closes the open panel, and focus goes back to the pill. As a full-screen sheet the panel
+    // covers the page, so Tab stays inside it instead of walking controls nobody can see.
+    box.onkeydown = (e) => {
+      if (e.key === 'Escape' && apExpanded()) { e.stopPropagation(); apAction(box, 'toggle'); return; }
+      if (e.key === 'Tab' && apSheet() && apExpanded()) apSheetTab(box, e);
+    };
     box.innerHTML = `
       <div class="apf-head"><span class="apf-dot" aria-hidden="true"></span><b id="apf-label"></b>
         <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse autopilot">${ICON.cross || '×'}</button></div>
@@ -5172,9 +5211,19 @@
       // autopilot was off. A failure puts it back to the saved state and says why in the panel, next to
       // it (the page under a phone's full-screen panel can't be seen).
       sw.disabled = true; apNote(box, '');
-      try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; }
-      catch (e) { sw.checked = !!(S.me && S.me.user && S.me.user.autopilot); apNote(box, e.message); return; }
-      finally { sw.disabled = false; }
+      let saved = false;
+      // Locking the switch blurs it, so focus goes back to it once it unlocks (the panel is the only
+      // thing on screen on a phone, and the page behind it is where focus used to land).
+      try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; saved = true; }
+      catch (e) { sw.checked = !!(S.me && S.me.user && S.me.user.autopilot); apNote(box, e.message); }
+      finally {
+        sw.disabled = false;
+        const a = document.activeElement;
+        if ((!a || a === document.body) && sw.isConnected && sw.focus) sw.focus({ preventScroll: true });
+      }
+      if (!saved) return;
+      // The switch's new state is said out loud: its label and the copy beside it change silently.
+      announce(on ? 'Autopilot is on. It researches and trades on paper by itself.' : 'Autopilot is off. It only suggests ideas for you to approve.');
       // Right after switching on, show where it may trade, so the focus is a choice and not a default nobody saw.
       if (on) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
       if (S.ap) S.ap = Object.assign({}, S.ap, { autopilot: on, mode: !on ? 'off' : S.ap.mode === 'off' ? 'paper' : S.ap.mode });
@@ -5367,7 +5416,13 @@
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }
-  function apFlash(box, msg, kind) { const f = box.querySelector('#apf-flash'); if (f) f.innerHTML = `<p class="${kind === 'bad' ? 'error-text' : 'hint'}">${esc(msg)}</p>`; }
+  // Read out as well as shown: the live switch, the kill switch and an unmet gate answered only in
+  // print, so a reader heard nothing after pressing them.
+  function apFlash(box, msg, kind) {
+    const f = box.querySelector('#apf-flash');
+    if (f) f.innerHTML = `<p class="${kind === 'bad' ? 'error-text' : 'hint'}">${esc(msg)}</p>`;
+    if (msg) announce(msg, kind === 'bad');
+  }
   // A setting in the panel (the switch, model, markets) that didn't save says why in the panel, read out
   // at once; '' clears it before the next try.
   function apNote(box, msg) {
