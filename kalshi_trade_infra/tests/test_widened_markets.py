@@ -8,8 +8,8 @@ Mirrors tests/test_nba_sports_market.py.
 """
 from datetime import datetime, timezone
 
-from app import backtest, engine, markets
-from app.markets import MARKETS, Contract, snapshot
+from app.trading import backtest, engine, markets
+from app.trading.markets import MARKETS, Contract, snapshot
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 

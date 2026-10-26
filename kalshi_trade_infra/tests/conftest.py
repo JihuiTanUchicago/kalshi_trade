@@ -18,7 +18,7 @@ def patch_intent_passthrough(monkeypatch):
     durability): intents log as no-ops, every booking wins its claim, and repo.transaction yields the
     connection's own cursor so the position/ledger writes land on the test's fake cursor as before.
     Durability/recovery/claim behaviour has its own dedicated tests (test_order_intent_recovery.py)."""
-    from app import engine
+    from app.trading import engine
 
     monkeypatch.setattr(engine.repo, "insert_order_intent", lambda *a, **k: None)
     monkeypatch.setattr(engine.repo, "mark_order_intent", lambda *a, **k: True)

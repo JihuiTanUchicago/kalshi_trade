@@ -110,10 +110,11 @@ def _trips(rows, mode):
 
 
 def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
-    from app import engine, server
+    from app import server
+    from app.trading import engine
     from app import repository as repo
-    from app import spec as specmod
-    from app.markets import Contract, snapshot
+    from app.trading import spec as specmod
+    from app.trading.markets import Contract, snapshot
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.architecture.simulated_venue import SimulatedVenue
 
@@ -361,10 +362,11 @@ def test_a_deleted_strategys_open_position_stays_in_the_book(conn, monkeypatch):
     board used to drop it, because they read open positions through the strategy row. Paper equity
     then fell by the position's cost while the track record still held it at cost. The reset guard
     also stopped seeing it, so a reset could orphan the cost it had already debited."""
-    from app import engine, server
+    from app import server
+    from app.trading import engine
     from app import repository as repo
-    from app import spec as specmod
-    from app.markets import Contract, snapshot
+    from app.trading import spec as specmod
+    from app.trading.markets import Contract, snapshot
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.architecture.simulated_venue import SimulatedVenue
 

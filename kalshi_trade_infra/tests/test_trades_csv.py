@@ -138,7 +138,7 @@ def conn():
 
 def _book(conn, uid, mode, trades):
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1}})

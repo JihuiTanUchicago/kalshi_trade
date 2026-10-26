@@ -98,7 +98,7 @@ under the repository's explicit parallel-work instruction.
 Protected: binary pricing/order/risk mechanics, execution kernel, live engine,
 broker/vault/OAuth/Alpaca services, credentials/environments, resources, existing
 jobs/services, sibling products and unrelated progress. Of 16 baseline protected
-files, only `app/engine.py` changes: explicit additive perpetual rejection before
+files, only `app/trading/engine.py` changes: explicit additive perpetual rejection before
 data/order work. Its existing binary mechanics and flags remain unchanged.
 See `BASELINE.json` and `PRESERVATION.json`.
 

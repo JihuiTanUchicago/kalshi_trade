@@ -1,4 +1,4 @@
-"""DB access for the catalog-driven market universe (app/markets.py reads this).
+"""DB access for the catalog-driven market universe (app/trading/markets.py reads this).
 
 Kept in the repository layer (per AGENTS.md) so markets.py holds no inline SQL and the
 generation filter is testable against FakeCursor. Returns plain rows; markets.py builds the

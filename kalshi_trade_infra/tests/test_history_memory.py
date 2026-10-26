@@ -9,9 +9,9 @@ kept, and a Snapshot carries no per-instance __dict__.
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from app import backtest
+from app.trading import backtest
 from app import repository as repo
-from app.markets import Contract, Snapshot, snapshot
+from app.trading.markets import Contract, Snapshot, snapshot
 
 SINCE = datetime(2026, 10, 1)
 CLOSE = datetime(2026, 10, 30, 12, 0)
@@ -97,7 +97,7 @@ def test_a_ticker_window_drops_other_contracts_while_streaming():
 
 
 def test_build_dataset_reads_tuples_and_dicts_the_same():
-    from app.markets import Market
+    from app.trading.markets import Market
 
     market = Market(key="t", series="KXMLBTOTAL", label="t", candle_minutes=1, history_days=30, underlying=None)
     tuples = repo.load_history(BufferedCur(), "KXMLBTOTAL", 1, SINCE, None)
@@ -148,7 +148,7 @@ def test_a_huge_window_keeps_its_most_recent_whole_events():
 def test_a_window_load_is_bounded_to_its_contracts_close_times():
     """The candle query no longer scans the whole series: since/until wrap the kept contracts."""
     from app import research_repository as rr
-    from app.markets import Market
+    from app.trading.markets import Market
 
     seen = {}
 

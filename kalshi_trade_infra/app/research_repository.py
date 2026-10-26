@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.markets import MARKETS, Market, cross_product
+from app.trading.markets import MARKETS, Market, cross_product
 from app.repository import _json, _loads, now_utc
 
 # -- pre-registration (app_experiments) ---------------------------------------

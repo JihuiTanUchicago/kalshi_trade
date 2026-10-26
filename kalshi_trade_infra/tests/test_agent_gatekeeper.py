@@ -11,7 +11,7 @@ import pytest
 from app.research import agent
 from app.research import exploration
 from app.research import gatekeeper
-from app import spec as specmod
+from app.trading import spec as specmod
 
 
 # -- fakes ---------------------------------------------------------------------
@@ -245,7 +245,7 @@ def test_calibration_block_surfaces_planted_longshot_bias():
     planted mispricing: 5c YES longshots that never settle YES are a positive buy-NO net edge."""
     import random
     from datetime import datetime, timezone
-    from app.markets import Contract, Snapshot
+    from app.trading.markets import Contract, Snapshot
     rng = random.Random(0)
     frames, results = [], {}
     for i in range(400):
@@ -271,7 +271,7 @@ def test_calibration_block_tells_the_proposer_when_there_is_no_lead():
     """A market priced right (50c contracts settling YES half the time) has no cell that clears 2 SE
     after fees, so the block says so outright instead of inviting another favorite-longshot thesis."""
     from datetime import datetime, timezone
-    from app.markets import Contract, Snapshot
+    from app.trading.markets import Contract, Snapshot
     frames, results = [], {}
     for i in range(60):
         close = datetime.fromtimestamp(1_700_000_000 + i * 900 + 900, tz=timezone.utc)
@@ -286,7 +286,7 @@ def test_calibration_block_tells_the_proposer_when_there_is_no_lead():
 def _fv_dataset(informative: bool, events: int = 60):
     import random
     from datetime import datetime, timezone
-    from app.markets import Contract, Snapshot
+    from app.trading.markets import Contract, Snapshot
     rng = random.Random(1)
     frames, results = [], {}
     for i in range(events):
@@ -337,7 +337,7 @@ def test_abandoned_theses_are_remembered_and_shown_to_the_next_round():
     run = {"market": "btc15m", "prompt": "x"}
     ds = SimpleNamespace(start_ts=0, end_ts=0, frames=[], results={}, cutoff_ts=0,
                          summary=lambda: {"out_of_sample_from": 0})
-    import app.backtest as bt
+    import app.trading.backtest as bt
     orig = bt.feature_coverage
     bt.feature_coverage = lambda ds: {}
     try:
@@ -487,7 +487,7 @@ def test_pooled_finalist_preregisters_on_the_merged_partition(monkeypatch):
 def test_pooled_finalist_is_power_screened_on_its_merged_research_data(monkeypatch):
     """Pooled specs used to skip the power pre-screen. With the run's merged research dataset cached
     (by _test_in_sample), the screen runs on that dataset against the merged partition and stream."""
-    from app import backtest
+    from app.trading import backtest
     store = FakeStore(monkeypatch)
     seen = []
     monkeypatch.setattr(agent.partitions, "ensure_merged_partition",
@@ -515,8 +515,8 @@ def test_code_window_exposes_quotes_both_at_top_level_and_in_features():
     """Generated code reads the quote either as c["yes_bid"] (documented) or c["features"]["yes_bid"]
     (how rule specs name it); both must see the real quote, never None."""
     from datetime import datetime, timezone
-    from app import backtest
-    from app.markets import Contract, Snapshot
+    from app.trading import backtest
+    from app.trading.markets import Contract, Snapshot
     c = Contract("T", 100.0, datetime.fromtimestamp(1_700_000_900, tz=timezone.utc))
     snap = Snapshot(c, 1_700_000_000, 0.41, 0.44, {"tte_min": 15.0})
     got = backtest._binary_window("kxcopperd", [(1_700_000_000, [snap])])["frames"][0]["contracts"][0]
@@ -530,7 +530,7 @@ def test_calibration_prices_each_contract_at_its_first_quote_in_the_cell():
     drops under 10c pays 9c. Priced at the average, a 7% YES rate looks like a buy-YES lead; priced
     at first touch (what a rule actually pays) it is a loss. The block must show the loss."""
     from datetime import datetime, timezone
-    from app.markets import Contract, Snapshot
+    from app.trading.markets import Contract, Snapshot
     frames, results = [], {}
     for i in range(400):
         close = datetime.fromtimestamp(1_700_000_000 + i * 900 + 900, tz=timezone.utc)
@@ -685,7 +685,7 @@ def test_a_dataless_pool_leg_fails_only_that_hypothesis(monkeypatch):
 
 def test_daily_settling_markets_use_all_their_history():
     """Run 2613 picked 156 of high_ny's 365 days: for one-event-per-day markets that's lost power."""
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
     def no_model(*a, **k):
         raise AssertionError("no planning call for a daily-settling market")
     logs = []

@@ -11,9 +11,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import engine
-from app import spec as specmod
-from app.markets import Contract, snapshot
+from app.trading import engine
+from app.trading import spec as specmod
+from app.trading.markets import Contract, snapshot
 
 
 # -- deploy gate ---------------------------------------------------------------

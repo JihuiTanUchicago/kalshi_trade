@@ -329,7 +329,7 @@ def book_for_series(series: str, load_rows, load_actuals=None) -> Optional[Forec
     rows: research passes a window-wide loader, the live engine a recent-days one.
     load_actuals(series), if given, returns repository.load_weather_actuals rows for the bias."""
     from app.adapters.data import freedata
-    from app.markets import WEATHER_STATIONS
+    from app.trading.markets import WEATHER_STATIONS
     station = WEATHER_STATIONS.get(series)
     offset = freedata.ASOS_LST_OFFSET_H.get(station) if station else None
     if offset is None:

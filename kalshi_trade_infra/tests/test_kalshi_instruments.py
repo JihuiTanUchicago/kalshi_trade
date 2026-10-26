@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.adapters.kalshi import instruments as ki
-from app.markets import MARKETS, Contract, Snapshot
+from app.trading.markets import MARKETS, Contract, Snapshot
 from trading_core.domain import InstrumentId, InstrumentKind
 
 CLOSE = datetime(2026, 10, 25, 21, 0, tzinfo=timezone.utc)

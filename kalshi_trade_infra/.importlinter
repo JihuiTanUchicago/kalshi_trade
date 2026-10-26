@@ -54,6 +54,10 @@ ignore_imports =
     ; moved as one package from the flat modules (layout step 3, 2026-10-26) with its imports as they
     ; were. Its pieces become services over ports one at a time (ARCHITECTURE.md step 10).
     app.research.* -> app.adapters.**
+    ; app.trading is the engine, backtest, spec DSL, market catalog, reconcilers and trade reports,
+    ; moved as one package (layout step 5, 2026-10-26) with its imports as they were; the engine is
+    ; still the live composition root until app.bootstrap exists (step 8).
+    app.trading.* -> app.adapters.**
     ; Named service -> adapter edges, each with the step that removes it:
     ; services.markets reads perps readiness (config, error type, collection batches); step 11 puts
     ; perps behind the Venue port.
@@ -76,17 +80,17 @@ forbidden_modules =
     app
 ignore_imports =
     ; runs on the web box, not the collector (scripts/systemd). Move to app.adapters when migrated.
-    data_pipeline.taostats_collector -> app.markets
+    data_pipeline.taostats_collector -> app.trading.markets
     data_pipeline.taostats_collector -> app.adapters.tao.tao_repository
 
 [importlinter:contract:server-is-top]
 name = nothing imports the web server module
 type = forbidden
 source_modules =
-    app.engine
-    app.backtest
-    app.spec
-    app.markets
+    app.trading.engine
+    app.trading.backtest
+    app.trading.spec
+    app.trading.markets
     app.research.gatekeeper
     app.research.agent
     app.repository
@@ -99,7 +103,7 @@ forbidden_modules =
 name = the live engine never imports the research agent, LLM client or web server
 type = forbidden
 source_modules =
-    app.engine
+    app.trading.engine
     app.execution
     data_pipeline.architecture
 forbidden_modules =

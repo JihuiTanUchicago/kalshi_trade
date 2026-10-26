@@ -42,7 +42,7 @@ class _Cur:
 
 def test_candidates_scan_the_stalest_first_and_skip_fresh_ones(monkeypatch):
     from app import repository as repo
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
     monkeypatch.setattr(repo, "series_with_candles", lambda cur: {MARKETS[k].series for k in ("btc15m", "high_ny", "eth15m")})
     now = rsi_scout._now()
     cur = _Cur(scanned={"btc15m": now - timedelta(hours=30), "high_ny": now - timedelta(hours=1)})

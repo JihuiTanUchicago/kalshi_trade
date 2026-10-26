@@ -1,6 +1,6 @@
 """Execution cost model from recorded top-of-book ticks: what trading a series actually costs.
 
-Our own fills are too few to calibrate a cost model (TCA, app/tca.py, measures them as they come).
+Our own fills are too few to calibrate a cost model (TCA, app/trading/tca.py, measures them as they come).
 The book itself is not: forward_quote_ticks records one row per top-of-book change for every
 contract the feed watches. This module replays those ticks and measures, per series:
 
@@ -31,7 +31,7 @@ symmetry of the YES book (no_ask = 1 - yes_bid), so the YES-buy view is reported
 
 Read-only. Pure functions over tick lists, plus one repository read per contract.
 
-    python -m app.exec_cost_model --hours 24 --series KXBTC15M,KXETH15M
+    python -m app.trading.exec_cost_model --hours 24 --series KXBTC15M,KXETH15M
 """
 from __future__ import annotations
 

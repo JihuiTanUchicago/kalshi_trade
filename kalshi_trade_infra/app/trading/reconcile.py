@@ -36,7 +36,7 @@ from datetime import timedelta
 from typing import Dict, List, NamedTuple
 
 from app import repository as repo
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 from data_pipeline.common import KALSHI_KEY_ID, api_get_auth, utc_now
 
 # Discrepancy kinds (stored verbatim in app_position_reconcile.kind).

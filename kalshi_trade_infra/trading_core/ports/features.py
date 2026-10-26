@@ -1,6 +1,6 @@
 """A source of point-in-time features, live or historical.
 
-Today the engine takes eight optional callables on ``app.engine.Sources`` (micro, forecasts,
+Today the engine takes eight optional callables on ``app.trading.engine.Sources`` (micro, forecasts,
 odds, weather_actuals, options, ...) and the backtest joins the same data its own way. Each of
 those becomes one FeatureProvider, used by both paths, so adding a data source is one adapter.
 """

@@ -56,7 +56,7 @@ def test_collectors_add_requested_series_after_their_own():
 
 def test_history_sync_puts_requested_markets_first_after_curated(monkeypatch):
     from app import market_history as mh
-    from app.markets import CURATED, Market
+    from app.trading.markets import CURATED, Market
     order = []
     monkeypatch.setattr(mh, "_sync_settled", lambda cur, m, now, stats: None)
     monkeypatch.setattr(mh, "sync_market_candles", lambda cur, m, deadline=None: order.append(m.key))

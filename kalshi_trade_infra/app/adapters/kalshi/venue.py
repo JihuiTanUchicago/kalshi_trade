@@ -66,5 +66,5 @@ class KalshiBinaryVenue:
         return self._read_cash() if self._read_cash else None
 
     def lookup(self, client_order_ids: Sequence[str]) -> Mapping[str, ExecutionReport]:
-        # Crash recovery stays in app.engine.recover_sent_intents until the engine moves (step 8).
+        # Crash recovery stays in app.trading.engine.recover_sent_intents until the engine moves (step 8).
         return {}

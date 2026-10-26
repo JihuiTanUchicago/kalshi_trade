@@ -3,8 +3,8 @@ regimes so the research agent can see WHERE its (leak-free research-fold) edge c
 Pure over Trade lists - no DB."""
 from datetime import datetime, timezone
 
-from app import backtest
-from app.markets import NEW_YORK
+from app.trading import backtest
+from app.trading.markets import NEW_YORK
 
 
 def _trade(entry_price, side, won, entry_ts, qty=10):

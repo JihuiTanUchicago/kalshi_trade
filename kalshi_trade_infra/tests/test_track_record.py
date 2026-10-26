@@ -1,9 +1,9 @@
-"""Track record math (app/track_record.py): pure functions over repo.track_record_rows output."""
+"""Track record math (app/trading/track_record.py): pure functions over repo.track_record_rows output."""
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from app import track_record as tr
+from app.trading import track_record as tr
 
 NOW = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
 

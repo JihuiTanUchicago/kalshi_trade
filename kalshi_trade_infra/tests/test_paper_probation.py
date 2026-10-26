@@ -25,7 +25,7 @@ def _patch(monkeypatch, cands, deps=(), candidates=(), on=True):
     monkeypatch.setattr(agent.rr, "experiments_for_strategy", lambda cur, sid, eid=None: None)
     monkeypatch.setattr(agent.repo, "create_deployment", lambda cur, uid, sid, m, mode: made.append((sid, m, mode)) or 1)
     monkeypatch.setattr(agent.repo, "create_proposal", lambda cur, uid, kind, reason, a, sid, status: props.append((kind, sid, status)) or 1)
-    from app import engine
+    from app.trading import engine
     monkeypatch.setattr(engine, "cross_deploy_block", lambda spec, mode: "")
     return made, props
 

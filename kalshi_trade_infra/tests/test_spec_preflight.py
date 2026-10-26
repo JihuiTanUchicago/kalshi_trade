@@ -9,9 +9,9 @@ import re
 
 import pytest
 
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.research import agent
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 
 BINARY = [k for k, m in MARKETS.items() if m.kind != "perpetual"]
 PERP = [k for k, m in MARKETS.items() if m.kind == "perpetual"]
@@ -69,7 +69,7 @@ def test_learned_model_kinds_validate_as_documented(kind):
 
 
 def test_every_documented_feature_validates_as_a_filter():
-    from app.markets import CROSS_FEATURES
+    from app.trading.markets import CROSS_FEATURES
     for name in specmod.FEATURES:
         market = ("btc15m" if name.startswith("eth_") else "eth15m") if name in CROSS_FEATURES else BINARY[0]
         specmod.validate({"market": market,
@@ -178,8 +178,8 @@ def test_the_code_window_names_each_contracts_event():
     # Prod 2026-10-24 run 2702: four NFL ladder ideas died "ticker format unknown" trying to group
     # strikes by game; the window now carries the event.
     from datetime import datetime, timezone
-    from app import backtest
-    from app.markets import Contract, Snapshot
+    from app.trading import backtest
+    from app.trading.markets import Contract, Snapshot
     c = Contract("KXNFLSPREAD-25OCT26KCWAS-KC7", 7.0, datetime(2026, 10, 26, tzinfo=timezone.utc))
     snap = Snapshot(contract=c, ts=1, yes_bid=0.4, yes_ask=0.42, features={})
     w = backtest._binary_window("x", [(1, [snap])])
@@ -198,7 +198,7 @@ def test_a_cross_leg_with_extra_keys_says_how_to_repair_it():
 
 
 def test_the_guide_says_pool_is_off_on_one_minute_event_series():
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
     sports = next(k for k, m in MARKETS.items() if m.kind == "binary" and not specmod._poolable(m))
     assert "POOL IS NOT AVAILABLE ON %s" % sports in specmod.research_guide(sports)
     assert "POOL IS NOT AVAILABLE" not in specmod.research_guide("btc15m")
@@ -242,7 +242,7 @@ def test_a_code_strategy_can_pool_and_trades_every_pooled_market():
 
 
 def test_a_pooled_code_strategy_trades_every_pooled_market(monkeypatch):
-    from app import backtest
+    from app.trading import backtest
     from app.research import sandbox
 
     def in_process(code, window, data_dir=None):   # this test's own trusted code; no confiner needed

@@ -8,7 +8,7 @@
   independent episodes. With the flag on, only the breacher sells, the deployment keeps running,
   the ticker can be re-entered as in the backtest, and the drawdown limit still flattens and pauses.
 - Code paper replay runs on Python 3.13 (2026-10-26): tau-code-paper.service (#378) called
-  /opt/kalshi/.venv, which is Python 3.9, so every hourly replay died importing app.markets
+  /opt/kalshi/.venv, which is Python 3.9, so every hourly replay died importing app.trading.markets
   (dataclass slots=True) and no code strategy reached paper. The unit now uses .venv313, and
   tests/test_web_units_python.py checks every unit deploy_web.sh installs.
 - The daily check-in reads cash from Kalshi (2026-10-26): Todd saw "Cash: $56.58 (kalshi_api)" on
@@ -433,7 +433,7 @@ A spec may carry `"pool": [<market>...]` (up to 3 extra markets sharing `spec.ma
 
 ## Backtest fills on the next bar at the live reservation price — October 24, 2026
 
-`app/backtest.py` now defaults to `FILL_MODEL="next_bar"` for single-contract binaries: a signal computed on bar t fills against bar t+1's quote, an entry is abandoned when that ask exceeds `execution_kernel.reservation_price(fair, min_edge, qty)` (the same cap live and paper enforce since the execution thread's change), fills are capped at displayed top-of-book size (`yes_ask_size` / `yes_bid_size` when the feed has them), and exits sell at the next bar's bid. Code strategies may not pay above their signal price. `TAU_BACKTEST_FILL_MODEL=signal_bar` restores the old optimistic same-quote fill for comparison. Research folds, validation and holdout all use it, so a gatekeeper pass now reflects fills live could actually get.
+`app/trading/backtest.py` now defaults to `FILL_MODEL="next_bar"` for single-contract binaries: a signal computed on bar t fills against bar t+1's quote, an entry is abandoned when that ask exceeds `execution_kernel.reservation_price(fair, min_edge, qty)` (the same cap live and paper enforce since the execution thread's change), fills are capped at displayed top-of-book size (`yes_ask_size` / `yes_bid_size` when the feed has them), and exits sell at the next bar's bid. Code strategies may not pay above their signal price. `TAU_BACKTEST_FILL_MODEL=signal_bar` restores the old optimistic same-quote fill for comparison. Research folds, validation and holdout all use it, so a gatekeeper pass now reflects fills live could actually get.
 
 ## Research gatekeeper can pass a real edge again — October 24, 2026
 
@@ -815,7 +815,7 @@ Builds §E.6: cross-contract relative value, sequenced AFTER the gatekeeper, wit
 FDR streams and a cross-day generalization gate. Research + EVALUATION only — no cross-contract
 LIVE execution, `engine.py`/the live gate untouched.
 
-- **Spec extension** (`app/spec.py`): an optional `cross` block turns a spec into a
+- **Spec extension** (`app/trading/spec.py`): an optional `cross` block turns a spec into a
   relative-value PAIR — `{"pairing": "cross_sectional"|"cross_strike"|"calendar",
   "legs": [{"market": …}], "relationship": "spread"}`. `cross_sectional` = two different
   markets (BTC vs ETH), `cross_strike` = two strikes of one event, `calendar` = one strike
@@ -823,7 +823,7 @@ LIVE execution, `engine.py`/the live gate untouched.
   the leg the GBM model says is underpriced + NO on the overpriced leg (combined edge ≥
   `entry.min_edge`). `cross=None` → ordinary single-contract spec, unchanged. Helpers:
   `is_cross_contract`, `involved_markets`, `stream_key`.
-- **Backtest** (`app/backtest.py`): `simulate()` dispatches a `cross` spec to `simulate_pairs()`
+- **Backtest** (`app/trading/backtest.py`): `simulate()` dispatches a `cross` spec to `simulate_pairs()`
   — one combined `Trade` per pair (entry_price = both legs' cost, exit_price = per-unit payoff),
   held to settlement, reusing the real Kalshi taker fee + `contracts_for` sizing.
   `merge_datasets()` unions single-market datasets into one whose frames carry every market's
@@ -875,13 +875,13 @@ holdout). Freedom must not reintroduce overfitting, and must not touch live trad
     rlimits (RLIMIT_CPU hard-kill + parent wall-clock + AS[Linux] + FSIZE + NOFILE + CORE=0).
     ponytail: RLIMIT_AS is Linux-only (macOS refuses it); tmpfs-over-every-secret-path on Linux
     is the follow-up if a non-exfil local read ever matters (unshare-net already makes it inert).
-- `app/spec.py` — `validate()` branches to `_validate_code_spec` when the spec has a `code`
+- `app/trading/spec.py` — `validate()` branches to `_validate_code_spec` when the spec has a `code`
   field: a minimal `{market, sizing, code}` spec (sizing range-checked like the DSL; code
   statically validated by the sandbox; unknown top-level fields rejected). `CODE_STRATEGY_GUIDE`
   (appended to `SPEC_GUIDE`, so every proposer prompt surfaces it) defines the interface;
   `describe()` renders a code spec in plain language; `is_code_spec()` is the one predicate
   callers use.
-- `app/backtest.py` — `simulate()` detects a code spec and precomputes a per-frame target book
+- `app/trading/backtest.py` — `simulate()` detects a code spec and precomputes a per-frame target book
   once via the sandbox (`_code_book`), then the EXISTING entry/exit/sizing/fee/settlement loop
   consumes it through `_code_entries`/`_code_exit` exactly as it consumes DSL `entries`/
   `exit_signal`. `_parse_book` validates the untrusted sandbox output (shape, tickers, side,
@@ -1429,7 +1429,7 @@ The 19 curated markets need hand-tuned, non-derivable config (strike/spot/close-
 stay authored by hand. But OUTCOME-SETTLED binaries (underlying=None, book-only, settle YES/NO on
 an event — the `nba_game` model) have uniform, derivable config, so they're now GENERATED from the
 catalog:
-- `app/markets.py`: `MARKETS` = catalog-generated set + the 19 `CURATED` layered on top (authoritative,
+- `app/trading/markets.py`: `MARKETS` = catalog-generated set + the 19 `CURATED` layered on top (authoritative,
   never shadowed). `load_catalog_markets()` reads the enriched `kalshi_series` at import, best-effort
   (no DB / empty / un-enriched catalog → just the curated 19; never raises, never hits the network).
   `market_from_series()` is the pure, testable config-derivation. SQL lives in `app/catalog_repository.py`.
@@ -1463,7 +1463,7 @@ The backtester now runs on any strike-ladder crypto series, not just BTC:
 Next: Phase 4 (cross-contract) + the Hot-Markets sidebar + user-facing Explore tab.
 
 ### STATUS (2026-10-17) — tradeable universe WIDENED to 19 deployable markets (committed on branch, not yet deployed)
-Curated static expansion of `app/markets.py` — 12 new `deployable=True` markets across 3 categories,
+Curated static expansion of `app/trading/markets.py` — 12 new `deployable=True` markets across 3 categories,
 each verified against the live public Kalshi + Coinbase APIs (not inferred):
 - **Crypto 15-min (strike + Coinbase spot):** sol15m, xrp15m, doge15m, near15m, zec15m, hype15m —
   series `KX<COIN>15M`, candle_minutes=1, history_days=30. Each has a live Coinbase USD product
@@ -1736,15 +1736,15 @@ ladder); agents emit a **thesis + parameterized spec**, never code; new consumer
 "The Tote Slip"; product name **Recursive**; Google-only sign-in.
 
 What exists:
-- `app/markets.py` + `app/spec.py`: one feature snapshot and one rule, shared by backtest and
-  engine. `app/backtest.py`: real Kalshi candles + results, taker fees, 70/30 time split, 5
+- `app/trading/markets.py` + `app/trading/spec.py`: one feature snapshot and one rule, shared by backtest and
+  engine. `app/trading/backtest.py`: real Kalshi candles + results, taker fees, 70/30 time split, 5
   gates, what-if (fees/slippage/stake). `app/market_history.py`: resumable backfill of Kalshi
   settled markets/candles + Coinbase 1m candles (new tables `hist_markets`, `btc_candles_1m`;
   reuses `market_candles`).
 - `app/research/agent.py`: 2-round research loop on in-sample only, OOS revealed only for frozen
   finalists, per-user memory; co-pilot chat/review with actions re-backtested; autopilot
   guardrails. `app/llm.py`: Claude over HTTPS with one JSON repair round.
-- `app/engine.py`: per-slot decisions for every user, paper fills at the live book capped by
+- `app/trading/engine.py`: per-slot decisions for every user, paper fills at the live book capped by
   size, live via `MarketableLimitKernel` with the user's key (gated by
   `APP_LIVE_TRADING_ENABLED`, off), settlement on Kalshi results, loss guard, daily reviews.
 - `app/server.py` + `app/static/`: Google OIDC/PKCE, hashed sessions, CSRF header, rate

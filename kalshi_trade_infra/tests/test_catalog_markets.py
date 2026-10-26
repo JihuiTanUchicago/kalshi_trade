@@ -1,4 +1,4 @@
-"""Catalog-driven outcome-settled universe (app/markets.py + app/catalog_repository.py).
+"""Catalog-driven outcome-settled universe (app/trading/markets.py + app/catalog_repository.py).
 
 Proves generation turns enriched `kalshi_series` rows into valid deployable, book-only Markets
 (the nba_game model: underlying=None, binary, YES/NO settlement), excludes the series classes that
@@ -7,10 +7,10 @@ backtest surface, and falls back to the curated 19 when the catalog is empty - n
 import collections
 from datetime import datetime, timezone
 
-from app import backtest
-from app import spec as specmod
-from app import markets as mk
-from app.markets import CURATED, MARKETS, market_from_series
+from app.trading import backtest
+from app.trading import spec as specmod
+from app.trading import markets as mk
+from app.trading.markets import CURATED, MARKETS, market_from_series
 
 
 def _row(series_ticker="KXHIGHMIA", title="Highest temperature in Miami", category="Climate and Weather",

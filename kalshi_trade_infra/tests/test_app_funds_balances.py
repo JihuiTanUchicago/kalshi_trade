@@ -227,7 +227,8 @@ def test_funds_dates_the_demo_balance_from_its_memo_and_never_reads_kalshi_for_i
     that couldn't be read carries no time, and dating it never makes another demo read."""
     from datetime import datetime, timezone
 
-    from app import demo_twins, server
+    from app import server
+    from app.trading import demo_twins
 
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: None)
     monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEVKEY-1234"})

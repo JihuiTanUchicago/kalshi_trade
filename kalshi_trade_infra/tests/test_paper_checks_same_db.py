@@ -39,7 +39,7 @@ def conn():
 def book(conn):
     """{uid, user, sids, deps}: three paper strategies' records, 60-130 trades each over ~10 days."""
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     rng = random.Random(464)
     cur = conn.cursor()

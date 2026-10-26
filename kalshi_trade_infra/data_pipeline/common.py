@@ -34,7 +34,7 @@ _KALSHI_PRIVATE_KEY = None
 # Override with TAU_MICRO_SERIES (comma list) for ad-hoc runs or to narrow collection cost.
 
 # Kalshi series categories we collect and trade (Todd, 2026-10-24: sports, weather and crypto
-# only). catalog_collector skips every other category, app/markets generates catalog markets only
+# only). catalog_collector skips every other category, app/trading/markets generates catalog markets only
 # inside it, and scripts/prune_untraded_markets.py deletes the stored rows of everything else.
 # Multi-leg (MVE) parlay series are out whatever their category: nothing here can trade them.
 TRADED_CATEGORIES = frozenset(

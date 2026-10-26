@@ -22,7 +22,7 @@ cost model should be calibrated against (backtest fill price + fee vs what live 
 Read-only and outside the order path: it never touches an order, and it runs against the same
 repository layer as everything else, so it is testable on fakes.
 
-    python -m app.tca --days 7          # JSON report to stdout
+    python -m app.trading.tca --days 7          # JSON report to stdout
 """
 from __future__ import annotations
 

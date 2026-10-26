@@ -3666,7 +3666,7 @@
   // ---------- track record ----------
   // What an allocator would check: realized results from closed trades only, one money bucket at a
   // time (live, demo and paper never mix), every figure next to the sample it rests on. All math is
-  // server-side (app/track_record.py); this only lays it out.
+  // server-side (app/trading/track_record.py); this only lays it out.
   const TR_MODES = [['live', 'Live'], ['demo', 'Demo'], ['paper', 'Paper']];
   const trFix = (v, dp = 2) => (v == null ? '—' : (+v).toFixed(dp).replace('-', '\u2212'));  // a true minus, as usd() prints
   const trDay = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
@@ -5897,9 +5897,9 @@
     web: 'app/server.py — the stdlib HTTP server: the SPA, the JSON API, Google sign-in, sessions, billing, and the admin surfaces.',
     db: 'Amazon RDS MySQL. Every collector writes here and every engine + the app reads here. One source of truth.',
     agents: 'app/worker.py (agents) — claims research/chat runs and drives Claude through the research loop, writing strategies + a live event log.',
-    backtest: 'app/backtest.py — runs each hypothesis on data it never saw and applies the deployment gates. Same spec the engines run.',
-    sim_engine: 'app/engine.py on paper money — prices from the live book, fills against the shown size, tracks P&L without real orders.',
-    live_engine: 'app/engine.py (the same engine) — places real orders: live money in a user’s own Kalshi account, demo on Kalshi’s sandbox. Live money also needs Tau’s live switch on, the user’s own opt-in and enough paper evidence.',
+    backtest: 'app/trading/backtest.py — runs each hypothesis on data it never saw and applies the deployment gates. Same spec the engines run.',
+    sim_engine: 'app/trading/engine.py on paper money — prices from the live book, fills against the shown size, tracks P&L without real orders.',
+    live_engine: 'app/trading/engine.py (the same engine) — places real orders: live money in a user’s own Kalshi account, demo on Kalshi’s sandbox. Live money also needs Tau’s live switch on, the user’s own opt-in and enough paper evidence.',
   };
   const sysNode = (id) => SYS_NODES.find((n) => n.id === id);
   function sysEdgePath(a, b) {

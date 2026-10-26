@@ -57,7 +57,7 @@ class _Feed:
 
 def _tick(feed, contracts, books, spot):
     """Snapshots and depth for one decision: books = {ticker: (bid, ask, bid_size)}."""
-    from app.markets import snapshot
+    from app.trading.markets import snapshot
 
     now = int(datetime.now(timezone.utc).timestamp())
     feats = {"spot": spot, "ret_1m": 0, "ret_5m": 0, "ret_15m": 0, "ret_60m": 0, "vol_15m": 0.0005, "vol_60m": 0.0005}
@@ -74,10 +74,11 @@ def _money(v):
 
 
 def test_every_paper_money_figure_agrees_to_the_cent(conn, monkeypatch):
-    from app import engine, server
+    from app import server
+    from app.trading import engine
     from app import repository as repo
-    from app import spec as specmod
-    from app.markets import Contract
+    from app.trading import spec as specmod
+    from app.trading.markets import Contract
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.architecture.simulated_venue import SimulatedVenue
 

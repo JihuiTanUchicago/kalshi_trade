@@ -28,10 +28,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app.adapters.data import freedata
-from app import spec as specmod
-from app.track_record import thin_min_max
+from app.trading import spec as specmod
+from app.trading.track_record import thin_min_max
 from app.adapters.data import options_fair, sports_odds, weather_fcst
-from app.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
+from app.trading.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
                          cross_features, cross_product,
                          weather_obs_applies)
 from data_pipeline.architecture.execution_kernel import reservation_price
@@ -1228,11 +1228,11 @@ SLOW_BOOK_S = 30.0
 def forecast_book(market: Market, since: datetime):
     """The window's external fair-value book: issued NWS forecasts for a weather series, collected
     sportsbook odds for an NBA/NHL game series, the Deribit options surface and Polymarket's prices
-    for a Bitcoin strike series (app.fair_books.combine), else None. None too if unreadable: the features are then absent, and a rule needing
+    for a Bitcoin strike series (app.trading.fair_books.combine), else None. None too if unreadable: the features are then absent, and a rule needing
     them simply never enters."""
     if market.series in options_fair.SERIES:
         from app.adapters.polymarket import features as polymarket
-        from app.fair_books import combine
+        from app.trading.fair_books import combine
         t0 = time.time()
         try:
             opt = options_fair.book_for_series(market.series, lambda: options_fair.load_book(since))
@@ -1319,7 +1319,7 @@ def fit_spec_on_research(spec: Dict, ds: Dataset, diag: Optional[Dict] = None) -
     per-feature non-null coverage, labelled/usable row counts, and a human `reason` string that is
     non-empty only when the model was left unfitted. Pure observability: it never changes the fit
     itself or when a model is left unfitted (still research-only, still frozen)."""
-    from app import spec as specmod
+    from app.trading import spec as specmod
     from app import stats
     if not specmod.is_learned_model(spec) or specmod.is_fitted(spec):
         return spec
@@ -1385,7 +1385,7 @@ def zero_trade_reason(spec: Dict, ds: Dataset) -> str:
     that selects ~0 rows - its binding constraint - so the develop loop gets a concrete reason
     instead of 'coef:[]/0 trades'. Counts each gate's pass rate independently over all snapshots
     and names the tightest. Observability only; it never changes a trade or a trial."""
-    from app import spec as specmod
+    from app.trading import spec as specmod
     if specmod.is_perpetual_spec(spec):
         return ("0 trades: " + ds.last_rejection if getattr(ds, "last_rejection", None) else
                 "0 trades: no perpetual rule signal with a complete lookback, funding coverage and next-bar fill.")
@@ -1432,7 +1432,7 @@ def feature_coverage(ds: Dataset) -> Dict[str, int]:
     trade flow) are null on markets whose feed never carried them (sports, NEAR).
     # ponytail: full scan over FEATURES x snapshots, once per research prompt; fine at research
     # dataset sizes, revisit if prompt-building ever shows up hot."""
-    from app.markets import FEATURES
+    from app.trading.markets import FEATURES
     if ds.market.kind == "perpetual":
         rows = [frame for _, frame in ds.frames]
         if not rows:
@@ -1456,7 +1456,7 @@ def feature_ranges(ds: Dataset, max_samples: int = 20000) -> Dict[str, List[floa
     """[p10, p50, p90] of every populated numeric feature on THIS market's snapshots (an evenly
     strided sample of at most max_samples), so the proposer sets filter cuts where the data lives:
     run 2563 asked for fcst_age_h below its 0.5h floor and took 0 trades."""
-    from app.markets import FEATURES
+    from app.trading.markets import FEATURES
     if not ds.frames or ds.market.kind == "perpetual":
         return {}
     total = sum(len(snaps) for _ts, snaps in ds.frames)

@@ -11,14 +11,14 @@ Paper proves the edge; demo proves the plumbing. Kalshi's demo exchange runs the
 The sweep is READ-ONLY against the demo exchange; the engine loop runs it every 15 minutes.
 A disagreement seen once is not counted: a fill booked a beat after the read, or a settlement the
 exchange zeroes before the engine books it, looks like a mismatch exactly once (as in the live
-reconciler, app/reconcile.py). Demo P&L is no part of this; the play-money book is too thin.
+reconciler, app/trading/reconcile.py). Demo P&L is no part of this; the play-money book is too thin.
 """
 from __future__ import annotations
 
 from datetime import timedelta
 from typing import Callable, Dict, List, Optional
 
-from app import reconcile
+from app.trading import reconcile
 from app import repository as repo
 
 DEMO_ORDERS_FOR_LIVE = 20

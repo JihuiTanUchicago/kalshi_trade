@@ -97,7 +97,7 @@ class _DropCur:
 
 
 def test_drop_old_refuses_when_a_curated_series_did_not_survive():
-    from app.markets import CURATED
+    from app.trading.markets import CURATED
     series = sorted({m.series for m in CURATED.values()})
     cur = _DropCur(new={s: 5 for s in series[1:]}, old={s: 5 for s in series})
     assert pr.drop_old_markets(cur) == 1

@@ -48,7 +48,8 @@ import time
 
 import pytest
 
-from app import engine, server
+from app import server
+from app.trading import engine
 from app.adapters.stripe import billing
 from app.services import book_memo
 
@@ -156,7 +157,7 @@ def _board_rows():
     strategy, so the Deploy board and the strategy page run every read they make."""
     import json
 
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     now = datetime(2026, 10, 25)
     spec = json.dumps(specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}}))
@@ -384,7 +385,7 @@ def _paper_book(k):
     """k running paper deployments (one strategy each), each 40 realistic trips in and down $2.50."""
     import json
 
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     now = datetime(2026, 10, 25)
     spec = json.dumps(specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}}))

@@ -27,8 +27,8 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
-from app import backtest
-from app.markets import Contract, snapshot
+from app.trading import backtest
+from app.trading.markets import Contract, snapshot
 
 # Kalshi demo base. Defaults to the PUBLIC demo host so the sim-vs-real second
 # line and slippage measurement work out of the box; override (or set to "") via

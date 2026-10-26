@@ -54,7 +54,7 @@ INSERT = """INSERT INTO app_positions (deployment_id, user_id, mode, ticker, sid
 def _book(conn, rng, label, n_trades):
     """One account with deployments in every mode and a book of closed and open trades."""
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, label + "@example.invalid", label, None)["id"]

@@ -1,8 +1,8 @@
-"""A research spec (the ``app.spec`` DSL) as a ``trading_core.ports.Strategy``, plus the replay that
+"""A research spec (the ``app.trading.spec`` DSL) as a ``trading_core.ports.Strategy``, plus the replay that
 runs it through ``trading_core.engine.TradingLoop`` (ARCHITECTURE.md step 8b).
 
 ``simulate_on_loop`` is the parity harness: on the same dataset it must produce the same trades as
-``app.backtest.simulate`` under either fill model. ``next_bar`` (the default there) decides on bar t
+``app.trading.backtest.simulate`` under either fill model. ``next_bar`` (the default there) decides on bar t
 and fills on bar t+1 within the reservation price, capped at the displayed size, with the position
 stop ahead of every exit; ``signal_bar`` fills at the signalling quote. Once parity holds on real
 data, the backtest can move onto the loop, then paper, then live, and all three run one code path.
@@ -14,11 +14,11 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.adapters.kalshi import instruments as ki
 from app.adapters.kalshi.convert import instrument_id
 from app.adapters.kalshi.fees import KalshiBinaryFees
-from app.markets import Contract, Snapshot
+from app.trading.markets import Contract, Snapshot
 from data_pipeline.architecture.execution_kernel import reservation_price
 from trading_core.domain import ExecutionReport, Instrument, InstrumentId, OrderIntent, Portfolio, Quote, Side
 from trading_core.engine import (CrossTheTouch, QuoteFillVenue, RiskChain, TradingLoop, max_open_positions,
@@ -221,8 +221,8 @@ def simulate_on_loop(spec: Dict, ds, start_ts: int, end_ts: int, fees: Optional[
     ``FILL_MODEL``; ``position_stop_pct`` to its ``POSITION_STOP_PCT`` (next-bar only, as there).
     ``what_if`` is a ``backtest.WhatIf``: its stake and stop fill in the arguments left None, its
     slippage goes to the fill model and its fee multiplier scales ``fees``."""
-    from app import backtest
-    from app.backtest import Trade, _first_frame
+    from app.trading import backtest
+    from app.trading.backtest import Trade, _first_frame
 
     w = what_if or backtest.WhatIf()
     stake = w.stake if stake is None else stake

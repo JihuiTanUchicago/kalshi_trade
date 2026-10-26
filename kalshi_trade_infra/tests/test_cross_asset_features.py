@@ -4,8 +4,8 @@ Crypto research kept dropping "BTC leads ETH/SOL/XRP" ideas as feature_unavailab
 import math
 from datetime import datetime, timezone
 
-from app import backtest, engine
-from app.markets import CROSS_FEATURES, MARKETS, BtcSeries, cross_feature_names, cross_product
+from app.trading import backtest, engine
+from app.trading.markets import CROSS_FEATURES, MARKETS, BtcSeries, cross_feature_names, cross_product
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 

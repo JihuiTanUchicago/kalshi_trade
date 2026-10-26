@@ -9,8 +9,8 @@ fee-negative trades near 50c. The fee is `ceil_cent(0.07*C*P*(1-P))`.
 """
 from datetime import datetime, timezone
 
-from app import spec as specmod
-from app.markets import Contract, snapshot
+from app.trading import spec as specmod
+from app.trading.markets import Contract, snapshot
 from data_pipeline import live_trading_engine as lte
 from data_pipeline import simulated_trading_engine as sim
 from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
@@ -24,7 +24,7 @@ def _snap(spot, strike, tte_min, bid, ask, vol=0.001):
     return snapshot(feats, c, ts, bid, ask)
 
 
-# --- app/spec.py: the rule the backtester AND app live/paper engine both call ---
+# --- app/trading/spec.py: the rule the backtester AND app live/paper engine both call ---
 
 def test_spec_entries_rejects_gross_positive_net_negative_near_50c():
     # min_edge 0.5c: small enough that a thin GROSS edge clears the OLD gross gate.

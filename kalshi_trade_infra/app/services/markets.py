@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Set
 
 from app import repository as repo
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 
 
 def researchable_markets(cur, ready_series: Optional[Set[str]] = None) -> List[Dict]:

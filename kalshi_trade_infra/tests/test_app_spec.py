@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import spec as specmod
-from app.markets import BtcSeries, Contract, snapshot
+from app.trading import spec as specmod
+from app.trading.markets import BtcSeries, Contract, snapshot
 from data_pipeline.binary_theory import theoretical_p_yes
 
 

@@ -349,7 +349,7 @@ def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balanc
     replaces what those caches hold, so the line never shows the previous key's cash."""
     from contextlib import nullcontext
 
-    from app import demo_twins
+    from app.trading import demo_twins
 
     keys = {"live": None, "dev": {"key_id": "DEVKEY-1234"}}
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: keys["live"])

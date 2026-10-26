@@ -6,9 +6,9 @@ present) passed research and then never traded on paper or live.
 """
 from datetime import datetime, timezone
 
-from app import engine
+from app.trading import engine
 from app import repository as repo
-from app.markets import MICRO_FEATURES
+from app.trading.markets import MICRO_FEATURES
 
 from tests.test_cross_market import T0, _sources
 

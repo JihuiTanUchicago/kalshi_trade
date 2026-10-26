@@ -1,14 +1,14 @@
 """Step 8b parity: a DSL spec run through trading_core's TradingLoop books the same trades as
-app.backtest.simulate (signal-bar fills) on the same dataset. Any divergence is a bug in one path."""
+app.trading.backtest.simulate (signal-bar fills) on the same dataset. Any divergence is a bug in one path."""
 import random
 from datetime import datetime, timezone
 
 import pytest
 
-from app import backtest
-from app import spec as specmod
+from app.trading import backtest
+from app.trading import spec as specmod
 from app.adapters.kalshi.spec_strategy import KalshiNextBarFill, SpecStrategy, simulate_on_loop
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 from trading_core.domain import InstrumentId, OrderIntent, Quote, Side
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600

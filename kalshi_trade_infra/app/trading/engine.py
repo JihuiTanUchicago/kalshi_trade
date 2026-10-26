@@ -29,9 +29,9 @@ import requests
 
 from app.adapters.data import freedata
 from app import repository as repo
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.adapters.data import options_fair, sports_odds, weather_fcst
-from app.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
+from app.trading.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
                          cross_features, cross_product,
                          compatible_cadence, snapshot, weather_obs_applies)
 from app.execution.refusal import OrderRefused
@@ -348,7 +348,7 @@ def _micro_for(sources: Sources, tickers: List[str], now_ts: int) -> Dict[str, D
 def _btc_fair_books(market: Market, sources: Sources, now_ts: int):
     """Deribit options + Polymarket for a Bitcoin strike series, each optional on its own."""
     from app.adapters.polymarket import features as polymarket
-    from app.fair_books import combine
+    from app.trading.fair_books import combine
     books = []
     for src, build in ((sources.options, lambda rows: options_fair.book_for_series(
                             market.series, lambda: options_fair.book_from_rows(rows))),
@@ -920,7 +920,7 @@ def decide(conn, dep: Dict, snaps: List[Snapshot], sizes: Dict, sources: Sources
             repo.set_deployment_status(cur, dep["user_id"], dep["id"], "paused", why)
             return {"paused": "%s disabled" % mode}
     # A book that still disagrees with the user's real Kalshi account after two reconcile sweeps
-    # halts new LIVE entries until it matches again (app/reconcile.py). Exits are never blocked.
+    # halts new LIVE entries until it matches again (app/trading/reconcile.py). Exits are never blocked.
     halts = repo.live_entry_halts(cur, dep["user_id"]) if mode == "live" else []
     if mode == "paper":
         # Paper runs the live execution policy against a simulated venue when wired (pairs too, so
@@ -2370,7 +2370,7 @@ def run_forever() -> None:
                     # trail + user notifications. Fully contained so it can never stop the loop.
                     if LIVE_TRADING_ENABLED and time.time() - last_reconcile > reconcile_every:
                         try:
-                            from app import reconcile
+                            from app.trading import reconcile
                             summary = reconcile.reconcile_all(conn)
                             if summary.get("discrepancies") or summary.get("errors"):
                                 print("[engine] reconcile %s" % summary, flush=True)

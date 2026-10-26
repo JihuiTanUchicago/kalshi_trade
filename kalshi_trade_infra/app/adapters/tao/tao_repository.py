@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from app.markets import TAO_USD_SYMBOL, Market
+from app.trading.markets import TAO_USD_SYMBOL, Market
 
 # The feature columns carried into the spot backtest window (joined by ts, like model_features_1m).
 _FEATURE_COLS = ("emission_weight", "tao_pool", "alpha_pool", "registrations", "net_stake_flow")

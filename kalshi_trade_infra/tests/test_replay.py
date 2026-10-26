@@ -2,8 +2,8 @@
 tree with no new LLM/backtest calls: it reveals recorded nodes as the policy
 sizes rounds, credits only outcomes that were actually recorded, and rewards
 reaching good strategies with fewer generations."""
-from app import replay
-from app.replay import Node, replay as run_replay
+from app.trading import replay
+from app.trading.replay import Node, replay as run_replay
 from app.research.exploration import DefaultPolicy, ExplorationPolicy, PolicyState, Batch
 
 

@@ -58,7 +58,7 @@ def _user(conn, risk=None, cash=None):
 
 def _deployment(conn, user, raw, mode="paper"):
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     spec = specmod.validate(dict(raw))
     sid = repo.insert_strategy(conn.cursor(), user["id"], None, None, "btc15m", "volatility", "T", "t", spec, "passed",
@@ -69,7 +69,7 @@ def _deployment(conn, user, raw, mode="paper"):
 
 def _ticks(seed, n=40, strikes=(98.0, 99.0, 100.0, 101.0, 102.0)):
     """(snapshots, sizes) per tick: one 15-minute event, a random-walk spot, noisy books and sizes."""
-    from app.markets import Contract, snapshot
+    from app.trading.markets import Contract, snapshot
 
     rng = random.Random(seed)
     base = int(datetime.now(timezone.utc).timestamp()) // 60 * 60
@@ -156,7 +156,7 @@ def _stall(conn, deps, snaps):
 
 def _run_both(conn, monkeypatch, raw, seed, risk=None, cash=None, sim=False, mode="paper", thin=False,
               stall=None):
-    from app import engine
+    from app.trading import engine
 
     feed = _Feed(thin)
     legacy_user, loop_user = _user(conn, risk, cash), _user(conn, risk, cash)
@@ -213,7 +213,7 @@ def test_demo_on_the_loop_waits_on_unresolved_orders_the_same(conn, monkeypatch,
 @pytest.mark.parametrize("risk,cash", [({"max_open_positions": 1}, None), ({"max_open_notional": 12}, None),
                                        (None, 14.0)])
 def test_user_caps_and_cash_bind_the_same_on_the_loop(conn, monkeypatch, risk, cash):
-    from app import engine
+    from app.trading import engine
 
     monkeypatch.setattr(engine, "PAPER_CAP_MULTIPLE", 1.0)   # the user's caps as set, not 10x for paper
     raw = {"side": "either", "entry": {"min_edge": 0.02}, "exit": {"take_profit": 0.05},
@@ -227,7 +227,7 @@ def test_user_caps_and_cash_bind_the_same_on_the_loop(conn, monkeypatch, risk, c
 
 
 def test_two_open_rows_on_one_contract_stay_on_the_legacy_path(conn, monkeypatch):
-    from app import engine
+    from app.trading import engine
     from app import repository as repo
 
     user = _user(conn)

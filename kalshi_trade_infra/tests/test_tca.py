@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import tca
+from app.trading import tca
 from data_pipeline.architecture.contracts import TradeIntent
 from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
 from data_pipeline.common import utc_now

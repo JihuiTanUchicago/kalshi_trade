@@ -137,7 +137,7 @@ def collect(cur, stations: Iterable[str], since: datetime, until: datetime, mode
 
 
 def stations() -> List[str]:
-    from app.markets import WEATHER_STATIONS
+    from app.trading.markets import WEATHER_STATIONS
     return sorted(set(WEATHER_STATIONS.values()))
 
 

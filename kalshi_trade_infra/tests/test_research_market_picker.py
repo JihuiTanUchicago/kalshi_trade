@@ -12,7 +12,7 @@ from app.research import agent
 from app import repository as repo
 from app import server
 from app.llm import LLMError, Usage
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 from app.services import markets as market_service
 
 

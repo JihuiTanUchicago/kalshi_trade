@@ -10,9 +10,10 @@ import pytest
 pa = pytest.importorskip("pyarrow")
 import pyarrow.parquet as pq
 
-from app import backtest, engine, repository
+from app import repository
+from app.trading import backtest, engine
 from app.adapters.data import options_fair
-from app.markets import FEATURES, MARKETS, BtcSeries, Contract
+from app.trading.markets import FEATURES, MARKETS, BtcSeries, Contract
 from data_pipeline import deribit_options as do
 from data_pipeline import options_surface as osf
 from data_pipeline import tick_archiver

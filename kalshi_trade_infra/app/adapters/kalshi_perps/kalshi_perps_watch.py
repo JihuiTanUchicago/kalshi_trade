@@ -1,6 +1,6 @@
 """Read-only watch over each user's native Bitcoin perps account.
 
-The binary reconciler (app/reconcile.py) and live_alerter.position_mismatches
+The binary reconciler (app/trading/reconcile.py) and live_alerter.position_mismatches
 exist because of 2026-09-27: the book and the exchange disagreed and nothing
 asked the exchange. Perps reconcile one order at a time inside
 kalshi_perps_trading, then never look again. With leverage the cost of not

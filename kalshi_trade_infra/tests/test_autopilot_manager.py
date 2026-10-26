@@ -62,8 +62,8 @@ def test_user_idea_research_prompt_stays_faithful():
 
 
 def _mini_ds(market_key):
-    from app import backtest
-    from app.markets import MARKETS
+    from app.trading import backtest
+    from app.trading.markets import MARKETS
     return backtest.Dataset(market=MARKETS[market_key], frames=[], results={}, start_ts=0, end_ts=86400, contracts=0)
 
 

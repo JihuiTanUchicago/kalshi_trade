@@ -21,9 +21,10 @@ from collections import Counter
 from datetime import timedelta, timezone
 from typing import Dict, List, Optional
 
-from app import backtest, research_repository as rr
+from app import research_repository as rr
+from app.trading import backtest
 from app.adapters.tao import tao_repository
-from app.markets import MARKETS, Market
+from app.trading.markets import MARKETS, Market
 from app.repository import now_utc
 
 # Ratio cuts (oldest -> newest). Research is the generator's whole world;

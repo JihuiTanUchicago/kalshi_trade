@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Hashable, List, Optional, Tuple
 
 from app import repository as repo
-from app import track_record as record
+from app.trading import track_record as record
 
 MAX_ENTRIES = 4096  # kept answers across users; cleared whole past this (a few per active user)
 _KEPT: Dict[Tuple, Tuple[Tuple[int, int, int], Any]] = {}
@@ -176,7 +176,7 @@ def paper_readouts(memo: BookMemo, strategy_ids: List[int]) -> Tuple[Dict[int, T
 
 
 def track_record(cur, uid: int, now: Optional[datetime] = None) -> Dict:
-    """The track record payload (app.track_record.build over repo.track_record_rows), with its slow
+    """The track record payload (app.trading.track_record.build over repo.track_record_rows), with its slow
     parts kept: the trades grouped from the positions (kept while the positions are unchanged) and the
     buckets made from them (track_record.prepare, kept while those trades and their deployments'
     strategy, status and title are unchanged). The deployments are read fresh every time, so a stop, a

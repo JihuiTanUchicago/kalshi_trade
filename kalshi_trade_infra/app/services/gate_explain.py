@@ -10,7 +10,7 @@ try next; `check` keeps the check's own neutral name. The pages render it as, e.
 
 Built only from numbers already stored: the strategy's result block, the gatekeeper's recorded
 validation/holdout row (the strategy page's experiment block), or a run's verdict event. The
-thresholds are read from app.research.gatekeeper and app.backtest, never restated, so the wording follows
+thresholds are read from app.research.gatekeeper and app.trading.backtest, never restated, so the wording follows
 the gates. Display only: nothing here judges, gates, sizes or trades, and a gate that cannot be
 told apart from the stored numbers says so instead of guessing. A gate this module does not know
 gets its humanised name and its numbers, never a raw code.
@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from app import backtest
+from app.trading import backtest
 from app.research import gatekeeper
 
 NB = "\u00a0"  # a no-break space: keeps a figure with its unit on a phone

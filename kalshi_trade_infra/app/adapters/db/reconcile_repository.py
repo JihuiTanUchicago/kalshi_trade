@@ -1,4 +1,4 @@
-"""Live position reconciliation reads: which users to reconcile and their internal book, for app/reconcile.py."""
+"""Live position reconciliation reads: which users to reconcile and their internal book, for app/trading/reconcile.py."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from app.adapters.db.sql import _json, now_utc
 
 
-# All DB access for app/reconcile.py lives here (repository layer), so the
+# All DB access for app/trading/reconcile.py lives here (repository layer), so the
 # reconcile/classify logic stays testable against a fake cursor.
 
 

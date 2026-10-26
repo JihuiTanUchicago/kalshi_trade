@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import engine
-from app import spec as specmod
+from app.trading import engine
+from app.trading import spec as specmod
 
 CLOSE = datetime.fromtimestamp(1_000_600, tz=timezone.utc)
 

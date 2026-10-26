@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app import market_history as mh
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 
 NOW = datetime(2026, 10, 24, 10, 0, tzinfo=timezone.utc)
 

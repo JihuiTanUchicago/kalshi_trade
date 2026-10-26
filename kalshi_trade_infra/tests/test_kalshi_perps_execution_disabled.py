@@ -3,8 +3,8 @@ from dataclasses import replace
 
 import pytest
 
-from app import engine
-from app.markets import Market
+from app.trading import engine
+from app.trading.markets import Market
 
 
 class _NoExecution:

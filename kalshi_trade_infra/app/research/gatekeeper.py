@@ -33,10 +33,11 @@ from datetime import timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from app import backtest, quant, stats
+from app import quant, stats
+from app.trading import backtest
 from app.research import partitions
 from app import research_repository as rr
-from app import spec as specmod
+from app.trading import spec as specmod
 
 log = logging.getLogger(__name__)
 

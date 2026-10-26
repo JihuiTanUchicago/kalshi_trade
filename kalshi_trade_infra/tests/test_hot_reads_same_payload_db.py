@@ -61,7 +61,7 @@ def _book(conn, rng, label, n_strategies, n_deployments, n_trades):
     """One account: strategies of every status, deployments in every mode and state, and a book of
     closed and open trades, some sold in slices that share their entry's order_ref."""
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, label + "@example.invalid", label, None)["id"]
@@ -112,7 +112,8 @@ def _payload(value):
 
 def test_the_track_record_and_strategies_page_say_what_they_said(conn, monkeypatch):
     from app import repository as repo
-    from app import server, track_record
+    from app import server
+    from app.trading import track_record
 
     rng = random.Random(20261026)
     uid, sids, deps = _book(conn, rng, "heavy", 60, 14, 1500)

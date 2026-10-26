@@ -2,7 +2,8 @@
 (or take-profit) position's contract settles, and the panel and review read whether the stop helped."""
 from datetime import datetime, timedelta, timezone
 
-from app import engine, server
+from app import server
+from app.trading import engine
 from app.research import agent
 from app import repository as repo
 

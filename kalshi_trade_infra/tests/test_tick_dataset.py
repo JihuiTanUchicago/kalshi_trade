@@ -4,9 +4,9 @@ import math
 import numpy as np
 import pytest
 
-from app import backtest, spec as specmod
+from app.trading import backtest, spec as specmod
 from app.adapters.data import tick_dataset
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 
 M = MARKETS["btc15m_tick"]
 T0 = M.data_from_ts            # 2026-10-24 20:00Z
@@ -86,7 +86,7 @@ def test_stale_books_and_contracts_outside_the_window_are_dropped():
 
 
 def test_minute_vols_are_rebuilt_from_per_second_spot_like_the_candle_path():
-    from app.markets import BtcSeries
+    from app.trading.markets import BtcSeries
     n = 4500
     frame = _frame(n=n, k_contracts=5, walk=True)
     ds = tick_dataset.load_window(M, _contracts(5), T0, T0 + n, read=lambda s, e, **k: frame)

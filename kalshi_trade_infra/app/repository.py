@@ -663,7 +663,7 @@ def _micro_select(cur, prefix: str = "") -> Tuple[str, List[str]]:
     live alike. Columns are re-read every _MICRO_COLS_TTL seconds; if they can't be read, all of
     MICRO_FEATURES is used, as before."""
     import time as _time
-    from app.markets import MICRO_FEATURES
+    from app.trading.markets import MICRO_FEATURES
     fields = _micro_cols_cache["fields"]
     if fields is None or _time.time() - _micro_cols_cache["at"] > _MICRO_COLS_TTL:
         try:
@@ -1037,7 +1037,7 @@ def seed_demo_session(cur, user_id: int) -> None:
 
 
 def _demo_spec():
-    from app import spec as _spec
+    from app.trading import spec as _spec
     return _spec.DEFAULT_SPEC
 
 

@@ -1,5 +1,5 @@
 """catalog_collector.refresh_series_meta: enrich kalshi_series with category + frequency from the
-bulk /series endpoint (what drives the catalog-market generation in app/markets.py)."""
+bulk /series endpoint (what drives the catalog-market generation in app/trading/markets.py)."""
 from data_pipeline import catalog_collector as cc
 
 

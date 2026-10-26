@@ -58,7 +58,8 @@ class _Feed:
 def offline(monkeypatch):
     """No request may reach Kalshi; the demo cash read answers whatever the test sets."""
     import requests
-    from app import demo_twins, server
+    from app import server
+    from app.trading import demo_twins
 
     def no_kalshi(*a, **k):
         raise AssertionError("a request escaped to %r" % (a[:1],))
@@ -91,7 +92,7 @@ def _user(conn, autopilot=True, key=True):
 
 def _strategy(conn, uid, stake=10.0, modes=("demo",)):
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": stake, "max_positions": 2}})
@@ -120,10 +121,10 @@ def _seen(conn, uid, sid):
 
 def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_says_so(conn, offline):
     """Today's engine behaviour, observed and left alone: the refusal escapes, nothing is booked."""
-    from app import engine
+    from app.trading import engine
     from app import repository as repo
     from app.execution.guard import ExecutionGuard
-    from app.markets import Contract, snapshot
+    from app.trading.markets import Contract, snapshot
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
 
     uid = _user(conn)
@@ -167,7 +168,8 @@ def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_s
 
 
 def test_each_demo_state_says_one_plain_thing(conn, offline):
-    from app import engine, server
+    from app import server
+    from app.trading import engine
     from app import repository as repo
 
     uid = _user(conn)

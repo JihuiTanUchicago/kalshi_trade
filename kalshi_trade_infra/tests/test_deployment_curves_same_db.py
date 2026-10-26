@@ -76,7 +76,7 @@ def conn():
 def _account(conn, rng, label):
     """Deployments whose closed trades cover each awkward case; one more is stopped (off the board)."""
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, label + "@example.invalid", label, None)["id"]

@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.services.trade_why import trade_why
 from tests.test_hot_endpoint_query_budget import _board_rows, _call, production  # noqa: F401 (fixture)
 

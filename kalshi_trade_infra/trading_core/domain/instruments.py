@@ -21,7 +21,7 @@ from typing import Optional, Union
 
 
 class InstrumentKind(str, Enum):
-    """Payoff family. Values match ``app.markets.Market.kind`` so legacy configs map 1:1."""
+    """Payoff family. Values match ``app.trading.markets.Market.kind`` so legacy configs map 1:1."""
 
     BINARY = "binary"        # pays ``payout`` if an event happens, else 0, at expiry
     SPOT = "spot"            # a continuously priced asset held long/flat (crypto, equity, TAO alpha)

@@ -28,10 +28,11 @@ import random
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
-from app import backtest, stats
+from app import stats
+from app.trading import backtest
 from app.research import gatekeeper
-from app import spec as specmod
-from app.markets import FEATURES, MARKETS
+from app.trading import spec as specmod
+from app.trading.markets import FEATURES, MARKETS
 
 # A "validated discovery" must clear a deflated-Sharpe floor of 0.95 plus a positive bootstrap lower
 # bound — scored AFTER deflating by the full search size (n_trials = budget), which is the memo's

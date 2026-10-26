@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from app import backtest, engine
+from app.trading import backtest, engine
 from app.adapters.ses import notify
 from app.adapters.stripe import billing
 from app.web import auth, devlog
@@ -39,12 +39,12 @@ from app.adapters.brokers import broker_oauth
 from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.services import backtest_check, book_memo, gate_explain, paper_checks, run_stop, trade_why
-from app import track_record
+from app.trading import track_record
 from app.web import client_errors, webperf
 from app import worker
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 from app.services import markets as market_service
 from data_pipeline.common import get_db_conn
 
@@ -525,7 +525,7 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None)
     `deps` are deployment rows (with spec). `stake` asks about a strategy that could go on demo but
     isn't there yet (the strategy page's next rung), so funds are checked even with nothing running.
     The balance read is the cached demo GET (demo_twins.balance_cached); unknown is never a problem."""
-    from app import demo_twins
+    from app.trading import demo_twins
 
     demo = [d for d in deps if d["mode"] == "demo"]
     active = [d for d in demo if d["status"] == "running"
@@ -718,7 +718,7 @@ def _paper_strategy_ids(deps: List[Dict]) -> set:
 def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, paper_sids: Optional[set] = None) -> Dict:
     res = d.get("result") or {}
     return {
-        # A demo deployment of a strategy that is also on paper is its demo copy (app.demo_twins makes
+        # A demo deployment of a strategy that is also on paper is its demo copy (app.trading.demo_twins makes
         # them): the row says what it copies and why its fills differ from paper's.
         "demo_copy": d["mode"] == "demo" and d["strategy_id"] in (paper_sids or ()),
         "id": d["id"], "strategy_id": d["strategy_id"], "title": d["title"], "direction": d["direction"],
@@ -2402,7 +2402,7 @@ def funds(ctx: Ctx):
         kalshi_dev_key["key_id"] = dev["key_id"][:4] + "…" + dev["key_id"][-4:]
         # The demo account's cash at Kalshi (the same cached read demo health makes), so Funds can
         # say "Connected ✓ (balance $X)". None when it can't be read just now.
-        from app import demo_twins
+        from app.trading import demo_twins
 
         kalshi_dev_key["balance"] = demo_twins.balance_cached(cur, ctx.uid)
         if kalshi_dev_key["balance"] is not None:
@@ -2524,7 +2524,7 @@ def save_kalshi_dev_key(ctx: Ctx):
     with repo.transaction(ctx.conn) as tx:
         _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
         repo.set_kalshi_dev_key(tx, ctx.uid, key_id, blob)
-    from app import demo_twins
+    from app.trading import demo_twins
 
     demo_twins.forget_balance(ctx.uid)  # Funds reads the new key's demo cash, not the old memo
     return {"ok": True}
@@ -3187,7 +3187,7 @@ def admin_kill_switch_set(ctx: Ctx):
 def exec_tca(ctx: Ctx):
     """Transaction cost analysis of real orders over a trailing window (admin-only). Read-only."""
     _require_admin(ctx)
-    from app import tca
+    from app.trading import tca
     try:
         days = float(ctx.query.get("days", "7"))
     except (TypeError, ValueError):
@@ -3262,7 +3262,7 @@ def admin_system(ctx: Ctx):
         "web":       {"up": True, **({"users": scalar("SELECT COUNT(*) c FROM app_users")} if is_admin else {})},
         "agents":    {"running": runs.get("running", 0), "queued": runs.get("queued", 0), "done": runs.get("succeeded", 0) + runs.get("failed", 0)},
         "backtest":  {"strategies": scalar("SELECT COUNT(*) c FROM app_strategies")},
-        # One process (app/engine.py) runs every mode, so its heartbeat is both boxes' age. Running
+        # One process (app/trading/engine.py) runs every mode, so its heartbeat is both boxes' age. Running
         # deployments are counted per mode: "N live" once counted paper and demo ones too.
         "sim_engine":  {"age": age.get("recursive_engine_last_tick"), "paper": running.get("paper", 0)},
         "live_engine": {"age": age.get("recursive_engine_last_tick"), "live": running.get("live", 0),

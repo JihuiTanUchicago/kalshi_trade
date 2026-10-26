@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
-from app import backtest
-from app import spec as specmod
-from app.markets import MARKETS
+from app.trading import backtest
+from app.trading import spec as specmod
+from app.trading.markets import MARKETS
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 
@@ -450,7 +450,7 @@ def test_hourly_weather_series_can_pool_with_each_other_but_not_with_1min_sports
     can pool their evidence; a 1-minute sports series still can't join (~1.4GB per load)."""
     import dataclasses
     import pytest
-    from app import markets
+    from app.trading import markets
     chi = dataclasses.replace(markets.MARKETS["high_ny"], key="kxhighchi", series="KXHIGHCHI")
     monkeypatch.setitem(markets.MARKETS, "kxhighchi", chi)
     monkeypatch.setitem(specmod.MARKETS, "kxhighchi", chi)
@@ -485,7 +485,7 @@ def test_frame_series_reach_each_frame_only_once_known():
     """Weather-station readings are joined per frame point-in-time: a frame before a reading is
     known lacks the feature, and every later frame carries the newest known value."""
     from datetime import datetime, timezone
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
     close = datetime.fromtimestamp(10_000, tz=timezone.utc)
     mk = [{"ticker": "W", "strike": 60.0, "close_time": close, "result": "yes"}]
     candles = [("W", ts, 0.40, 0.45) for ts in (1000, 2000, 3000)]

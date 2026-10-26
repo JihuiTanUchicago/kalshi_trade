@@ -13,14 +13,15 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from app import backtest, server
+from app import server
+from app.trading import backtest
 from app.research import agent, gatekeeper, partitions
 from app.adapters.kalshi_perps import kalshi_perps_collector as collector
 from app.adapters.kalshi_perps import kalshi_perps_data as data
 from app.adapters.kalshi_perps import kalshi_perps_repository as sources
 from app import research_repository as ledger
-from app import spec as specmod
-from app.markets import MARKETS
+from app.trading import spec as specmod
+from app.trading.markets import MARKETS
 from data_pipeline import common
 from tests.test_kalshi_perps_data import NOW, Response, Session, instrument_row
 from tests.test_research_repository import LedgerCursor, _insert_cols

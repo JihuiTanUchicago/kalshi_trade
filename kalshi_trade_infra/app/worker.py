@@ -16,7 +16,7 @@ import threading
 import time
 from datetime import timedelta
 
-from app import engine
+from app.trading import engine
 from app.adapters.stripe import billing
 from app.research import agent, sandbox
 from app import repository as repo

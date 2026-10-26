@@ -99,7 +99,7 @@ def refresh_series(cur, seen: Dict[str, Dict[str, object]], complete: bool) -> i
 
 PAGE_SLEEP = float(os.getenv("CATALOG_PAGE_SLEEP", "0.4"))  # gentle on a shared box/micro DB
 # Kalshi's open universe is ~99.5% multivariate parlays (KXMVECROSSCATEGORY*, ~8.8M rows by
-# 2026-10-24), which app/markets never trades and which made `markets` 190GB. With 200 pages of
+# 2026-10-24), which app/trading/markets never trades and which made `markets` 190GB. With 200 pages of
 # 1000 the scan also hit its page cap inside the parlays, before reaching most real series.
 # "exclude" skips them at the API; set CATALOG_MVE_FILTER="" to fetch everything again.
 MVE_FILTER = os.getenv("CATALOG_MVE_FILTER", "exclude")
@@ -126,11 +126,11 @@ def fetch_series_meta() -> Dict[str, tuple]:
 def refresh_series_meta(cur, meta: Optional[Dict[str, tuple]] = None) -> int:
     """Enrich kalshi_series with Kalshi's own `category`, `frequency` and series `title` for every
     series we track. The title matters: refresh_series only has a market's title ("Portland wins",
-    "Will the maximum temperature be >77° on Oct 25, 2026?"), which app/markets would otherwise
+    "Will the maximum temperature be >77° on Oct 25, 2026?"), which app/trading/markets would otherwise
     show as the series label.
 
     Kalshi's /markets payload carries neither, but the bulk /series endpoint returns both for all
-    series in ONE call. app/markets.load_catalog_markets filters on these two columns to generate
+    series in ONE call. app/trading/markets.load_catalog_markets filters on these two columns to generate
     the deployable outcome-settled universe, so without this pass they stay NULL and generation
     yields nothing (safe: the curated 19 still work). Returns the number of rows updated."""
     if meta is None:

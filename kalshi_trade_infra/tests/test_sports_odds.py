@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import backtest, engine
+from app.trading import backtest, engine
 from app.adapters.data import sports_odds as so
 from app import sports_odds_collect as soc
-from app.markets import FEATURES, MARKETS, Contract
+from app.trading.markets import FEATURES, MARKETS, Contract
 
 
 def _ts(s):

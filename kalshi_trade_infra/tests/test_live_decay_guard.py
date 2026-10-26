@@ -1,6 +1,6 @@
 """Live decay guard: a live deployment that loses money on average over its first
 LIVE_DECAY_MIN_TRADES closed trades is paused (flatten-on-pause then closes it). Only ever pauses."""
-from app import engine
+from app.trading import engine
 
 
 class _Cur:

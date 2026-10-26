@@ -45,7 +45,7 @@ def frozen(monkeypatch):
     """One clock for every read (the kept and the fresh JSON are compared byte for byte)."""
     import sys
 
-    from app import engine, track_record
+    from app.trading import engine, track_record
     from app.adapters.stripe import billing
     from app.research import rsi
     from app.adapters.db import sql
@@ -86,7 +86,7 @@ class Counting:
 
 def _book(conn, rng, label, n_trades):
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, label + "@example.invalid", label, None)["id"]
@@ -233,6 +233,6 @@ def test_kept_reads_answer_as_the_repository_does(conn, frozen):
         assert book_memo.paper_readouts(memo, sids) == (repo.paper_progress(cur, uid, sids), repo.paper_event_counts(cur, uid, sids))
         assert book_memo.paper_round_trips_by_strategy(memo, sids) == repo.paper_round_trips_by_strategy(cur, uid, sids)
         assert book_memo.book_trade_stats(memo, sids) == repo.book_trade_stats(cur, uid, sids)
-        assert book_memo.track_record(cur, uid) == __import__("app.track_record", fromlist=["build"]).build(
+        assert book_memo.track_record(cur, uid) == __import__("app.trading.track_record", fromlist=["build"]).build(
             repo.track_record_rows(cur, uid))
     assert book_memo._KEPT

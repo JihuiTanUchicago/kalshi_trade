@@ -25,7 +25,7 @@ def conn():
 
 def test_positions_in_one_contract_are_the_readers_own_by_mode_and_since_it_opened(conn):
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "mkt@example.com", "M", None)["id"]

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.research import gatekeeper as gk
-from app.backtest import Trade
+from app.trading.backtest import Trade
 from app.research.gatekeeper import Classification, HoldoutConsumed, Prereg
 
 
@@ -457,7 +457,7 @@ def test_judged_trials_counts_fitted_degrees_of_freedom():
     """A learned model's fitted coefficients each count as an implicit trial, so a richer model
     raises the DSR selection bar; a hand-specified gbm/code spec stays at 1. The weighting only
     ever INCREASES the trial count -> the gate can never get easier by adding parameters."""
-    from app import spec as specmod
+    from app.trading import spec as specmod
     gbm = {"spec": specmod.validate({})}
     logistic = {"spec": specmod.validate(
         {"model": {"kind": "logistic", "features": ["z_score", "ob_imbalance", "mid"]}})}

@@ -31,7 +31,7 @@ import re
 from collections import Counter, defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 
 # (tag, kind, pattern) checked in order; the first match wins. Built from the drop reasons of real
 # runs (2531, 2563, 2613): the proposer explains a drop in prose, so these are phrase patterns.
