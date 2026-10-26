@@ -12,11 +12,13 @@ Covers:
     drawdown is < 25%; does NOT fire within threshold; fires for a NO position; 0 disables it.
 """
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 
 from app import engine
+from app import repository as repo
 
 
 # -- helpers (mirror test_app_force_sell.py) -----------------------------------
@@ -186,11 +188,11 @@ def test_position_stop_does_not_fire_within_threshold(monkeypatch):
 
 
 def test_position_stop_is_side_aware_for_no(monkeypatch):
-    # NO position: liquidation ~ 1 - mark. Bought NO at 0.30 (cost basis), mark_price (YES bid) 0.80
+    # NO position: liquidation = 1 - mark. Bought NO at 0.30 (cost basis), mark_price (YES ask) 0.80
     # -> NO liquidation 0.20. Loss/cost = (0.30-0.20)/0.30 = 33% < 40%: NOT stopped.
     rec = _wire_stop(monkeypatch, [_pos(side="no", qty=10, entry=0.30, mark=0.80)], realized=[])
     assert engine.force_sell_if_drawn_down(_Conn(), _dep(mode="paper"), engine.Sources()) is False
-    # Now YES bid 0.88 -> NO liquidation 0.12. Loss/cost = (0.30-0.12)/0.30 = 60% >= 40%: stopped.
+    # Now YES ask 0.88 -> NO liquidation 0.12. Loss/cost = (0.30-0.12)/0.30 = 60% >= 40%: stopped.
     rec2 = _wire_stop(monkeypatch, [_pos(side="no", qty=10, entry=0.30, mark=0.88)], realized=[])
     assert engine.force_sell_if_drawn_down(_Conn(), _dep(mode="paper"), engine.Sources()) is True
     assert rec2["closed"] == [(1, "stop")]
@@ -255,3 +257,40 @@ def test_mark_staleness_gate_suppresses_trigger_off_stale_mark(monkeypatch):
     assert engine.worst_position_loss_pct(object(), _dep()) == pytest.approx(44.303797, abs=1e-4)
     # no mark_ts at all -> treated as fresh (additive: behaves as before the gate)
     assert engine._mark_is_fresh(_pos()) is True
+
+
+class _MarkCur:
+    def __init__(self):
+        self.calls = []
+        self.rowcount = 0
+
+    def execute(self, sql, args):
+        self.calls.append(args)
+        self.rowcount = 1
+
+
+def test_marks_a_no_position_at_its_own_bid():
+    # A NO position sells at 1 - yes_ask, so it is marked with the YES ask; a YES position with the
+    # YES bid. On a 0.30/0.40 book, 1 - yes_bid would value NO at 0.70 when it sells for 0.60.
+    cur = _MarkCur()
+    now = datetime(2026, 10, 25, 21, 0, tzinfo=timezone.utc)
+    assert repo.update_marks(cur, "nfl", {"T": (0.30, 0.40)}, now) == 2
+    assert [(a[0], a[-1]) for a in cur.calls] == [(0.30, "yes"), (0.40, "no")]
+    # A side with no usable price keeps its last mark: no YES offers means nobody bids for NO.
+    cur = _MarkCur()
+    repo.update_marks(cur, "nfl", {"T": (0.30, None), "U": (0.0, 1.0)}, now)
+    assert [(a[0], a[-1]) for a in cur.calls] == [(0.30, "yes")]
+
+
+def test_ws_mark_returns_bid_and_ask_from_one_fresh_quote():
+    now = datetime(2026, 10, 25, 21, 0, tzinfo=timezone.utc)
+
+    class _Feed:
+        def __init__(self, ts):
+            self.msg = {"ts": ts, "yes_bid_dollars": "0.30", "yes_ask_dollars": "0.40"}
+
+        def get_latest(self, ticker):
+            return self.msg
+
+    assert engine._ws_mark(_Feed(now.timestamp()), "T", now) == (0.30, 0.40)
+    assert engine._ws_mark(_Feed(now.timestamp() - 60), "T", now) is None  # stale: REST quote instead

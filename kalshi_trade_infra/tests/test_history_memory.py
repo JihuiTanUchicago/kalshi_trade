@@ -124,7 +124,7 @@ def test_deploy_applies_the_memory_caps_before_restarting():
     from pathlib import Path
 
     script = (Path(__file__).resolve().parents[1] / "scripts" / "deploy_web.sh").read_text()
-    assert "recursive-agents=3G" in script
+    assert "recursive-agents=8G" in script
     assert script.index("set-property") < script.index("systemctl restart ${SERVICES}\nsleep 5")
 
 

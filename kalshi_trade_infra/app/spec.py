@@ -101,7 +101,7 @@ CROSS_RELATIONSHIPS = ("spread",)  # ponytail: ratio is a trivial variant; add i
 MAX_CROSS_LEGS = 3
 MAX_POOL_MARKETS = 3  # extra markets a pooled spec may be judged across, beyond spec["market"]
 # Memory: each 1-minute market-month of snapshots is ~50MB and every leg is loaded per phase, so
-# 4 markets keeps a pooled research run well inside the agents worker's 3G MemoryMax.
+# 4 markets keeps a pooled research run well inside the agents worker's share of its 8G MemoryMax (4 lanes).
 # Hourly-candle, outcome-settled series (the daily weather highs/lows) are far lighter: a full
 # 365-day KXHIGHNY load measured +120MB RSS (2,190 contracts, 78k snapshots, 6.7s) on the box on
 # 10-24, so 1+6 cities is ~0.85GB per run, leaving room for two concurrent runs. More cities is the

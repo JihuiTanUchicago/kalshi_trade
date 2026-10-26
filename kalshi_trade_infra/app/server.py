@@ -903,17 +903,15 @@ def _strategy_card(s: Dict) -> Dict:
 
 
 def _mark_fields(p: Dict) -> Dict:
-    """Live mark-to-market for one open position from the engine-stamped mark_price
-    (the current YES bid). None until the engine's first mark after entry."""
+    """Live mark-to-market for one open position from the engine-stamped mark_price (the YES bid
+    on a YES position, the YES ask on a NO one). None until the engine's first mark after entry."""
     qty = int(p["qty"])
     cost = qty * float(p["entry_price"]) + float(p.get("entry_fee") or 0)
     mark = p.get("mark_price")
     if mark is None:
         return {"mark": None, "value": None, "unrealized": None, "mark_ts": None}
     mark = float(mark)
-    # mark is the YES bid. A YES contract liquidates ~yes_bid; a NO contract ~1-yes_ask, which we
-    # don't store — estimate NO as 1-yes_bid (slightly high). Same estimate across paper/sim/live
-    # (and the UI labels it "est."); NO positions now occur live too.
+    # A YES contract sells at the YES bid (mark); a NO contract at its own bid, 1 - yes_ask (1 - mark).
     value = round(qty * (mark if p["side"] == "yes" else 1.0 - mark), 2)
     return {"mark": mark, "value": value, "unrealized": round(value - cost, 2), "mark_ts": p.get("mark_ts")}
 
