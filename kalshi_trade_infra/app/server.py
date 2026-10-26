@@ -445,7 +445,8 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None)
         return {"code": "demo_key", "need": "your Kalshi demo key",
                 "line": "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page.",
                 "action": {"label": "Add demo key", "href": "/funds"}}
-    stakes = [float(d["spec"]["sizing"]["stake"]) for d in active if d["status"] == "running"]
+    stakes = [float(_spec_sizing(d)["stake"]) for d in active
+              if d["status"] == "running" and _spec_sizing(d).get("stake") is not None]
     if stake is not None:
         stakes.append(float(stake))
     if not stakes:
@@ -458,6 +459,13 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None)
     return {"code": "demo_funds", "need": "demo funds: your Kalshi demo account %s" % has,
             "line": "Demo isn't trading: your Kalshi demo account %s. Add demo funds on Kalshi's demo site." % has,
             "action": {"label": "Open Kalshi demo", "href": demo_twins.KALSHI_DEMO_SITE}}
+
+
+def _spec_sizing(row: Dict) -> Dict:
+    """A strategy or deployment row's spec sizing, {} when an older or seeded spec has none (display only)."""
+    spec = row.get("spec")
+    sizing = spec.get("sizing") if isinstance(spec, dict) else None
+    return sizing if isinstance(sizing, dict) else {}
 
 
 def _usd(v: float) -> str:
@@ -633,7 +641,7 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
         "status_why": _status_why(d),
         "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
         "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
-        "stake": d["spec"]["sizing"]["stake"], "max_positions": d["spec"]["sizing"]["max_positions"],
+        "stake": _spec_sizing(d).get("stake"), "max_positions": _spec_sizing(d).get("max_positions"),
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
     }
 
@@ -960,8 +968,8 @@ def _strategy_card(s: Dict) -> Dict:
         "created_at": s["created_at"], "hypotheses_tried": s.get("hypotheses_tried"),
         "in_sample": res.get("in_sample"), "out_of_sample": res.get("out_of_sample"),
         "equity": res.get("equity"), "capital": res.get("capital"),
-        "stake": s["spec"]["sizing"]["stake"],
-        "side": s["spec"]["perpetual"]["side"] if specmod.is_perpetual_spec(s["spec"]) else s["spec"].get("side"),
+        "stake": _spec_sizing(s).get("stake"),
+        "side": (s["spec"].get("perpetual") or {}).get("side") if specmod.is_perpetual_spec(s["spec"]) else s["spec"].get("side"),
         **({"kind": "perpetual", "research_only": True} if specmod.is_perpetual_spec(s["spec"]) else {}),
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
         "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
@@ -1351,7 +1359,7 @@ def what_if(ctx: Ctx):
     w = backtest.WhatIf(
         fee_multiplier=_num(ctx.body, "fee_multiplier", 0.0, 3.0, 1.0),
         slippage_cents=_num(ctx.body, "slippage_cents", 0.0, 5.0, default_slip),
-        stake=_num(ctx.body, "stake", 1.0, 500.0, s["spec"]["sizing"]["stake"]),
+        stake=_num(ctx.body, "stake", 1.0, 500.0, _spec_sizing(s).get("stake")),
     )
     try:
         res = backtest.evaluate(s["spec"], backtest.dataset(s["market"]), w)

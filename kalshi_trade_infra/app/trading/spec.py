@@ -1251,70 +1251,95 @@ def pair_entries(spec: Dict, snaps: List[Snapshot]) -> List[PairEntry]:
     return out
 
 
+_UNREADABLE = (KeyError, TypeError, ValueError, AttributeError, IndexError)
+
+
 def describe(spec: Dict) -> List[str]:
-    """Plain-language reading of a spec, for people who do not read JSON."""
-    if is_perpetual_spec(spec):
-        rule = spec["perpetual"]
-        return ["Bitcoin perpetual %s research, %s directions." % (rule["signal"], rule["side"]),
-                "Uses completed history and observed funding estimates; trades at the next bar open.",
-                "One position at 1x; maximum 24 hours; fixed fee and slippage scenario costs.",
-                "Research only: no broker paper, demo or live execution."]
-    if is_code_spec(spec):
+    """Plain-language reading of a spec, for people who do not read JSON. Display only: a stored spec
+    older or thinner than this code (a seeded row with no `model`, a field stored as null) loses just
+    the lines it can't fill, never the strategy page."""
+    if not isinstance(spec, dict):
+        return []
+    lines: List[str] = []
+
+    def say(make) -> None:
+        try:
+            got = make()
+        except _UNREADABLE:
+            return
+        lines.extend([got] if isinstance(got, str) else [g for g in got if g])
+
+    def stakes() -> str:
         s = spec["sizing"]
-        return [
-            "Agent-authored quant code (a custom signals() function), run in an isolated sandbox.",
-            "The backtester applies the same fees, settlement and sizing as any other strategy.",
-            "Stakes $%g per trade, at most %d open at once." % (s["stake"], s["max_positions"]),
-        ]
-    m, e, x, s = spec["model"], spec["entry"], spec["exit"], spec["sizing"]
-    side = {"yes": "YES contracts", "no": "NO contracts", "either": "YES or NO (whichever has more edge)"}[spec["side"]]
-    lines = ["Buys %s when its fair value beats the price by at least %d¢." % (side, round(e["min_edge"] * 100))]
-    kind = m.get("kind", "gbm")
-    if kind == "logistic":
-        fit = "fit on the research window" if m.get("coef") else "not yet fit"
-        lines.append("Fair value is a learned logistic model (%s) scoring %s."
-                     % (fit, ", ".join(m.get("features") or []) or "its features"))
-    elif kind == "calibration":
-        fit = "fit on the research window" if m.get("coef") else "not yet fit"
-        lines.append("Fair value recalibrates the market's own implied probability (%s) to correct the "
-                     "favorite-longshot bias." % fit)
-    else:
+        return "Stakes $%g per trade, at most %d open at once." % (s["stake"], s["max_positions"])
+
+    if is_perpetual_spec(spec):
+        say(lambda: "Bitcoin perpetual %s research, %s directions." % (spec["perpetual"]["signal"], spec["perpetual"]["side"]))
+        return lines + ["Uses completed history and observed funding estimates; trades at the next bar open.",
+                        "One position at 1x; maximum 24 hours; fixed fee and slippage scenario costs.",
+                        "Research only: no broker paper, demo or live execution."]
+    if is_code_spec(spec):
+        lines += ["Agent-authored quant code (a custom signals() function), run in an isolated sandbox.",
+                  "The backtester applies the same fees, settlement and sizing as any other strategy."]
+        say(stakes)
+        return lines
+    say(lambda: "Buys %s when its fair value beats the price by at least %d¢." % (
+        {"yes": "YES contracts", "no": "NO contracts", "either": "YES or NO (whichever has more edge)"}[spec["side"]],
+        round(spec["entry"]["min_edge"] * 100)))
+
+    def fair_value() -> str:
+        m = spec["model"]
+        kind = m.get("kind") or "gbm"
+        if kind == "logistic":
+            fit = "fit on the research window" if m.get("coef") else "not yet fit"
+            return "Fair value is a learned logistic model (%s) scoring %s." % (
+                fit, ", ".join(m.get("features") or []) or "its features")
+        if kind == "calibration":
+            fit = "fit on the research window" if m.get("coef") else "not yet fit"
+            return ("Fair value recalibrates the market's own implied probability (%s) to correct the "
+                    "favorite-longshot bias." % fit)
         view = "Fair value uses %d-minute realised volatility" % m["vol_window"]
         if abs(m["vol_scale"] - 1.0) > 1e-9:
             view += " scaled ×%.2f" % m["vol_scale"]
-        if m["drift_window"] and m["drift_beta"]:
+        if m.get("drift_window") and m.get("drift_beta"):
             view += ", leaning %s the last %d minutes (β %.2f)" % (
                 "with" if m["drift_beta"] > 0 else "against",
                 m["drift_window"],
                 m["drift_beta"],
             )
-        lines.append(view + ".")
-    lines.append(
-        "Pays %d¢–%d¢ per contract, %g–%g minutes before settlement, spread at most %d¢."
-        % (round(e["min_price"] * 100), round(e["max_price"] * 100), e["min_tte_min"], e["max_tte_min"], round(e["max_spread"] * 100))
-    )
-    for flt in e["filters"]:
-        lines.append("Only when %s %s %g." % (flt["feature"], flt["op"], flt["value"]))
-    exits = []
-    if x["take_profit"] is not None:
-        exits.append("takes profit at +%d¢" % round(x["take_profit"] * 100))
-    if x["stop_loss"] is not None:
-        exits.append("stops out at −%d¢" % round(x["stop_loss"] * 100))
-    if x["min_edge_to_hold"] is not None:
-        exits.append("sells when its edge drops below %d¢" % round(x["min_edge_to_hold"] * 100))
-    lines.append(("Exits: " + ", ".join(exits) + "; otherwise holds to settlement.") if exits else "Holds every position to settlement.")
-    lines.append("Stakes $%g per trade, at most %d open at once." % (s["stake"], s["max_positions"]))
+        return view + "."
+    say(fair_value)
+    e = spec.get("entry") if isinstance(spec.get("entry"), dict) else {}
+    say(lambda: "Pays %d¢–%d¢ per contract, %g–%g minutes before settlement, spread at most %d¢." % (
+        round(e["min_price"] * 100), round(e["max_price"] * 100), e["min_tte_min"], e["max_tte_min"],
+        round(e["max_spread"] * 100)))
+    for flt in e.get("filters") or []:
+        say(lambda: "Only when %s %s %g." % (flt["feature"], flt["op"], flt["value"]))
+
+    def exits() -> str:
+        x = spec["exit"]
+        out = []
+        if x.get("take_profit") is not None:
+            out.append("takes profit at +%d¢" % round(x["take_profit"] * 100))
+        if x.get("stop_loss") is not None:
+            out.append("stops out at −%d¢" % round(x["stop_loss"] * 100))
+        if x.get("min_edge_to_hold") is not None:
+            out.append("sells when its edge drops below %d¢" % round(x["min_edge_to_hold"] * 100))
+        return ("Exits: " + ", ".join(out) + "; otherwise holds to settlement.") if out else "Holds every position to settlement."
+    say(exits)
+    say(stakes)
     cross = spec.get("cross")
     if cross:
-        kind = {"cross_sectional": "two different markets (relative value)",
-                "cross_strike": "two strikes of the same event",
-                "calendar": "the same strike across two settlements"}.get(cross["pairing"], cross["pairing"])
-        lines.append("Relative-value pair across %s: buys YES on the underpriced leg and NO on the "
-                     "overpriced leg, holding both to settlement." % kind)
-        labels = [MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)]
-        lines.append("Legs: %s." % ", ".join(labels))
+        def pair() -> List[str]:
+            kind = {"cross_sectional": "two different markets (relative value)",
+                    "cross_strike": "two strikes of the same event",
+                    "calendar": "the same strike across two settlements"}.get(cross["pairing"], cross["pairing"])
+            return ["Relative-value pair across %s: buys YES on the underpriced leg and NO on the "
+                    "overpriced leg, holding both to settlement." % kind] if kind else []
+        say(pair)
+        say(lambda: "Legs: %s." % ", ".join(MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)))
     if spec.get("pool"):
-        labels = [MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)]
-        lines.append("Judged on the pooled trades of %s; trades %s." % (
-            ", ".join(labels), MARKETS[spec["market"]].label if spec["market"] in MARKETS else spec["market"]))
+        say(lambda: "Judged on the pooled trades of %s; trades %s." % (
+            ", ".join(MARKETS[m].label if m in MARKETS else m for m in involved_markets(spec)),
+            MARKETS[spec["market"]].label if spec["market"] in MARKETS else spec["market"]))
     return lines
