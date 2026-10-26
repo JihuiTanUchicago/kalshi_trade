@@ -513,7 +513,8 @@ def dashboard(ctx: Ctx):
         if u is not None and p.get("deployment_id") is not None:
             unreal_by_dep[p["deployment_id"]] = round(unreal_by_dep.get(p["deployment_id"], 0.0) + u, 2)
     deps = repo.list_deployments_for_display(cur, ctx.uid)
-    curves = repo.deployment_curves(cur, ctx.uid)
+    # Curves only for the deployments the Deployed table shows (a stopped one's history is not drawn).
+    curves = repo.deployment_curves(cur, ctx.uid, deployment_ids=[d["id"] for d in deps])
     ledger = repo.paper_ledger_summary(cur, ctx.uid)  # balance, deposits and reset: one read
     balance, deposited = ledger["balance"], ledger["deposited"]
     visit, first = _visit_since(ctx.query.get("since"))

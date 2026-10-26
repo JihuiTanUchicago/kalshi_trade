@@ -32,10 +32,10 @@ from app import billing, engine, server
 # A steady-state poll: the process-wide shared reads (series list, data freshness) and the run page's
 # dream line are warm, as they are for every request but one a minute. get_run's run is queued past
 # the overdue limit, so it also counts the queue ahead (5 for a run that is working normally).
-BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}
+BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}  # dashboard: the trades CSV counts ride the realized-P&L pass
 # The Deploy board polls /api/deployments every 10s; /api/strategies/<id> is the strategy page. Both
 # counted cold: the per-book backtest comparison is read once a minute, and these requests include it.
-BUDGET.update({"list_deployments": 6, "get_strategy": 6})  # dashboard: the trades CSV counts ride the realized-P&L pass
+BUDGET.update({"list_deployments": 6, "get_strategy": 6})
 
 # Statements that return one aggregate row; any other SELECT answers no rows unless listed below.
 AGGREGATE = ("SELECT COALESCE(", "SELECT COUNT(", "SELECT MAX(", "SELECT st.started")
@@ -157,6 +157,15 @@ def test_the_deploy_board_and_strategy_page_stay_in_their_query_budget(productio
     else:
         assert [p for s, p in log if "LEFT JOIN (SELECT p.deployment_id" in s] == [(7, 9, 7, 9)]
         assert not any("SUM(pnl) OVER" in s for s, _ in log)
+
+
+def test_the_dashboard_reads_curves_only_for_the_deployments_it_shows(production):
+    """The Deployed table's curves: read for its listed deployments only, and not at all when it lists
+    none (a stopped deployment's history is never drawn there)."""
+    log = _call("dashboard", 10.0, extra=_board_rows())
+    assert [p[3:5] for s, p in log if "SUM(pnl) OVER (PARTITION BY deployment_id" in s] == [(5, 6)]
+    log = _call("dashboard", 10.0)
+    assert not any("SUM(pnl) OVER" in s for s, _ in log)
 
 
 def _deps(paused_at):
