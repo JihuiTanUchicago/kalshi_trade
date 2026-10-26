@@ -1537,6 +1537,7 @@
       const d = await api('/api/dashboard' + (visitAt ? '?since=' + visitAt : ''), undefined, cfg);
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
+      S.dashDeps = d.deployments.length;  // the empty track record's button reads it (trackRecordPanel)
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
@@ -1877,8 +1878,8 @@
       const said = running
         ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now${queued ? ` ·\u00a0<em>${queued}</em> waiting` : ''} — <em>${tried}</em> hypotheses tested, <em>${passed}</em> through every gate.`
         : tried
-          ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea below</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
-          : `<a href="#dispatch">Describe an idea below</a> — the engine turns it into strategies and tests each on data it never saw.`;
+          ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
+          : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
       root.querySelector('#rstatus .said').innerHTML = said;
       root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
@@ -1888,7 +1889,7 @@
       const rex = root.querySelector('#rexample'), exHtml = exampleLine(d.runs);
       if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
       const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
-      if (exOpen) { exOpen.hidden = !exRun; if (exRun) exOpen.setAttribute('href', '/research/' + exRun.id); }
+      if (exOpen) { exOpen.hidden = !exRun || !!exHtml; if (exRun) exOpen.setAttribute('href', '/research/' + exRun.id); }
       // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
       const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
       root.querySelector('#rcount').textContent = [own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0');
@@ -2889,12 +2890,12 @@
     for (const [sel, fl] of [['#dep-paper', '#depflash'], ['#dep-paper-quick', '#depflash-quick']]) {
       const depPaper = root.querySelector(sel);
       if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
-        try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); go('/deploy'); } catch (e) { flash(fl, e.message, 'bad'); }
+        try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); S.deployed = { mode: 'paper', title: s.title }; go('/deploy'); } catch (e) { flash(fl, e.message, 'bad'); }
       });
     }
     const depDemo = root.querySelector('#dep-demo');
     if (depDemo) depDemo.onclick = () => { if (demoWhy) return; busy(depDemo, async () => {
-      try { await api('/api/deployments', { strategy_id: s.id, mode: 'demo' }); go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
+      try { await api('/api/deployments', { strategy_id: s.id, mode: 'demo' }); S.deployed = { mode: 'demo', title: s.title }; go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
     }); };
     const stopDep = root.querySelector('#stop-dep');
     if (stopDep) stopDep.onclick = () => armed(stopDep, 'Confirm stop', () => busy(stopDep, async () => {
@@ -2959,6 +2960,7 @@
   }
 
   // ---------- deploy + chat ----------
+  const deployedNote = (n) => `Deployed on ${n.mode}: ${n.title}. It trades only when its rule fires, ${n.mode === 'demo' ? 'on Kalshi’s demo exchange with no real money' : 'against live prices with paper money'}, so the first trade can take a while. Its trades show up here and on your dashboard.`;
   async function viewDeploy() {
     // Autopilot + the agent chat now live in the floating window (reachable from every view),
     // so Deploy is just the board: what's trading and the open positions.
@@ -2967,8 +2969,22 @@
       <div class="deploy-board"><div id="flash"></div><div id="demo-health"></div><div id="dep-ap"></div><div id="deps">${loading(260)}</div>
         <section class="section"><div class="section-head"><h2>Open positions</h2></div><div id="openpos"></div></section>
       </div>`);
+    // Just deployed from a strategy page: say it worked and what happens next, once (the new row
+    // reads 0 trades until its rule fires, which looked like nothing had happened).
+    if (S.deployed) { flash('#flash', deployedNote(S.deployed), 'good'); S.deployed = null; }
+    // An empty board asks once, in the background, how many strategies have passed: with none, "See
+    // passed strategies" opened an empty list too, so the button starts a session instead. Until it
+    // knows (or if the read fails) the board keeps that button.
+    let passedN = null, askedPassed = false;
     const loadBoard = async () => {
       const d = withUnrealized(await api('/api/deployments'));
+      if (!d.deployments.length && !askedPassed) {
+        askedPassed = true;
+        api('/api/strategies?status=passed').then((r) => {
+          passedN = r && r.counts ? +r.counts.passed || 0 : null;
+          if (passedN === 0) loadBoard().catch(() => {});
+        }, () => {});
+      }
       const running = d.deployments.filter((x) => x.status === 'running');
       const depAp = root.querySelector('#dep-ap');
       if (depAp) depAp.innerHTML = d.deployments.length ? apNudge('Want it to find and deploy more like this?', 'and it researches ideas and puts the ones that pass on paper by itself.') : '';
@@ -2995,7 +3011,7 @@
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
       const regs = curveRegs(d.deployments);
       root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3><p>Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}<a class="btn" href="/strategies">See passed strategies</a></div>`;
+        : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every gate in a research session, paper first.' : 'Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>'}</div>`;
       root.querySelector('#demo-health').innerHTML = d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '';
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
@@ -3041,7 +3057,12 @@
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
         : apOn ? 'Autopilot runs the strategies that pass every gate on paper. Every closed trade is recorded here.'
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
-      const go = apOn ? '<a class="btn" href="/research">See its research</a>' : '<a class="btn" href="/deploy">Go to Deploy</a>';
+      // With nothing deployed (the dashboard's board says so), Deploy is an empty board too and sent a
+      // new user Deploy → Strategies → Research; the button goes straight to the step that comes first.
+      const first = key === 'paper' && !apOn && S.dashDeps === 0;
+      const go = apOn ? '<a class="btn" href="/research">See its research</a>'
+        : first ? (S.dashNoSessions ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>')
+        : '<a class="btn" href="/deploy">Go to Deploy</a>';
       return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}${go}</div>${cav}`;
     }
     const s = m.sample;
@@ -3963,9 +3984,13 @@
   // A brand-new user (no research session of their own) gets the finished example first: one tap,
   // free. /example looks up the seeded example session (/api/runs/example) and opens it in place.
   const EXAMPLE_CTA = `<a class="btn primary ex-cta" href="/example" data-example>See an example session first</a>`;
+  // On Research it is a plain button, so Start session stays the page's one primary action, and it is
+  // left out when they came to start one (?new=1: "Describe your own idea" on the example itself, or
+  // "Try another idea"): they have just seen it.
   function exampleLine(runs) {
     const ex = (runs || []).find((r) => r.example), own = (runs || []).filter((r) => !r.example).length;
-    return ex && !own ? `<p class="research-ex"><a class="btn primary ex-cta" href="/research/${encodeURIComponent(ex.id)}" data-example>See an example session first</a> <span>A finished session Tau ran for you when you signed up, from idea to verdict. It cost you nothing.</span></p>` : '';
+    if (/[?&]new=1\b/.test(location.search)) return '';
+    return ex && !own ? `<p class="research-ex"><a class="btn ex-cta" href="/research/${encodeURIComponent(ex.id)}" data-example>See an example session first</a> <span>A finished session Tau ran for you when you signed up, from idea to verdict. It cost you nothing.</span></p>` : '';
   }
   async function viewExample() {
     shell('/research', '', loading(200));

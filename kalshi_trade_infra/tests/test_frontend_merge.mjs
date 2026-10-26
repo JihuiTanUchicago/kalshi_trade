@@ -455,7 +455,7 @@ test('the dashboard lists five deployments and positions, paused first, and link
 });
 
 test('the research status line links its "add an idea" ask to the form', async () => {
-  for (const [autopilot, tried, ask] of [[true, 2, 'add an idea below'], [false, 2, 'Seed another idea'], [false, 0, 'Describe an idea below']]) {
+  for (const [autopilot, tried, ask] of [[true, 2, 'add an idea'], [false, 2, 'Seed another idea'], [false, 0, 'Describe an idea']]) {
     const f = frontend({fetchImpl: path => {
       if (path === '/api/models') return response({models: [], default: ''});
       if (path === '/api/research/context') return response({markets: []});
@@ -468,6 +468,8 @@ test('the research status line links its "add an idea" ask to the form', async (
     await f.viewResearch(); await flush(); await flush();
     assert.ok(f.root.querySelector('form#dispatch'));
     assert.match(f.root.querySelector('#rstatus .said').innerHTML, new RegExp(`<a href="#dispatch">${ask}</a>`));
+    // The form sits above these figures on a wide screen (it said "below") and after them on a phone.
+    assert.doesNotMatch(f.root.querySelector('#rstatus .said').innerHTML, /below|above/);
     // The page paints its shell twice (instant switch, then content); the bell reads once.
     assert.equal(f.requests.filter(({path}) => path === '/api/notifications').length, 1);
   }
@@ -698,7 +700,8 @@ test('the empty paper track record follows the autopilot switch when a status re
   const host = new Element('section'); f.root.appendChild(host);
   await f.mountTrackRecord(host, {at: null});
   const panel = () => host.querySelector('.trpanel').innerHTML;
-  assert.match(panel(), /Go to Deploy/);
+  // Nothing deployed on this dashboard, so the button skips the empty Deploy board.
+  assert.match(panel(), /See passed strategies/); assert.doesNotMatch(panel(), /Go to Deploy/);
   // Switched on elsewhere (another tab, the chat): the next status poll carries it. The record's own
   // poll skips an unchanged payload, so before this the panel kept "Go to Deploy".
   status = {autopilot: true, mode: 'paper', story: [], research: {}, live_running: 0, demo_running: 0, paper_running: 0};
@@ -1919,14 +1922,25 @@ test('a brand-new user sees "See an example session first" on the dashboard and 
   let f = exResearch([exRun]);
   await f.viewResearch(); await flush(); await flush();
   const top = f.root.querySelector('#rexample').innerHTML;
-  assert.match(top, /<a class="btn primary ex-cta" href="\/research\/3" data-example>See an example session first<\/a>/);
+  // A plain button: Start session is the page's one primary action.
+  assert.match(top, /<a class="btn ex-cta" href="\/research\/3" data-example>See an example session first<\/a>/);
   assert.match(top, /It cost you nothing/);
   const html = f.root.innerHTML;
   assert.ok(html.indexOf('id="rexample"') < html.indexOf('id="dispatch"'));
+  assert.equal((f.root.querySelector('main').innerHTML.match(/class="btn primary/g) || []).length, 1);
+  // The form's own demo link would open the same session twice over: it waits until the line goes.
+  assert.equal(f.root.querySelector('[data-ex-open]').hidden, true);
   // A session of their own: no nudge.
   f = exResearch([ownRun, exRun]);
   await f.viewResearch(); await flush(); await flush();
   assert.equal(f.root.querySelector('#rexample').innerHTML, '');
+  // Came to start one (?new=1, "Describe your own idea" on the example itself): they have just seen it.
+  f = exResearch([exRun]);
+  f.location.pathname = '/research'; f.location.search = '?new=1';
+  await f.viewResearch(); await flush(); await flush();
+  assert.equal(f.root.querySelector('#rexample').innerHTML, '');
+  const back = f.root.querySelector('[data-ex-open]');
+  assert.equal(back.hidden, false); assert.equal(back.getAttribute('href'), '/research/3');  // still one quiet way back
 });
 
 test('/example opens the finished example session in place, or Research when there is none', async () => {
@@ -1951,6 +1965,7 @@ test('/example opens the finished example session in place, or Research when the
 test('the demo opens the finished example; running it again says plainly that it uses credits', async () => {
   let f = exResearch([exRun], {estimate: {yours: null, sessions: 0, typical: {opus: 2.25}}});
   f.S.me.billing_enabled = true;
+  f.location.pathname = '/research'; f.location.search = '?new=1';  // from the example: the form's own link leads back
   await f.viewResearch(); await flush(); await flush();
   const form = f.root.querySelector('#dispatch'), open = form.querySelector('[data-ex-open]');
   assert.equal(open.tag, 'a'); assert.equal(open.getAttribute('href'), '/research/3'); assert.equal(open.hidden, false);
@@ -2393,4 +2408,65 @@ test('the backtest luck line reads its trade bar from the server and names it as
   for (const line of lines) assert.match(line, /n=6 — under 30 trades, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
   assert.deepEqual(await flags({sample_caution: {min_trades: 5, gate_min_oos_trades: 10}}), []);
   assert.deepEqual(await flags({}), []);  // no bar from the server, no line: never a guessed constant
+});
+
+test('first-run funnel: an empty paper track record never sends a user with nothing deployed to an empty Deploy board', () => {
+  const f = frontend(), th = {min_sharpe_days: 30};
+  f.S.me = {user: {autopilot: false}};
+  const paper = () => f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
+  // No session of their own yet: straight to a new session (it was Deploy → Strategies → Research).
+  f.S.dashDeps = 0; f.S.dashNoSessions = true;
+  assert.match(paper(), /<a class="btn" href="\/research\?new=1">Start a research session<\/a>/); assert.doesNotMatch(paper(), /Go to Deploy/);
+  // Sessions but nothing deployed: the strategies that passed.
+  f.S.dashNoSessions = false;
+  assert.match(paper(), /<a class="btn" href="\/strategies">See passed strategies<\/a>/);
+  // Something deployed, or no dashboard read yet: Deploy as before. Live and demo keep their own button.
+  f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/);
+  f.S.dashDeps = undefined; assert.match(paper(), /Go to Deploy/);
+  f.S.dashDeps = 0; assert.match(f.trackRecordPanel({trades: 0, label: 'Live'}, 'live', th), /Go to Deploy/);
+});
+
+test('first-run funnel: an empty Deploy board with nothing passed starts a session instead of opening an empty list', async () => {
+  for (const [passed, cta, href] of [[0, 'Start a research session', '/research?new=1'], [2, 'See passed strategies', '/strategies'], [null, 'See passed strategies', '/strategies']]) {
+    const seen = [];
+    const f = frontend({fetchImpl: path => {
+      seen.push(path);
+      if (path === '/api/deployments') return response({deployments: [], open_positions: []});
+      if (path === '/api/strategies?status=passed') return passed == null ? response({error: 'down'}, 500) : response({strategies: [], counts: passed ? {passed} : {rejected: 3}});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDeploy(); await flush(); await flush(); await flush();
+    const deps = f.root.querySelector('#deps').innerHTML;
+    assert.match(deps, new RegExp(`<a class="btn" href="${href.replace(/[?]/g, '\\?')}">${cta}</a>`), String(passed));
+    assert.equal(/Nothing has passed yet/.test(deps), passed === 0);
+    assert.equal(seen.filter((p) => p.startsWith('/api/strategies')).length, 1);  // asked once, not every poll
+  }
+  // A board with deployments never asks.
+  const seen = [];
+  const g = frontend({fetchImpl: path => { seen.push(path); return response({deployments: [{id: 1, strategy_id: 4, title: 'A', mode: 'paper', status: 'running', realized_pnl: 0, curve: []}], open_positions: []}); }});
+  await g.viewDeploy(); await flush(); await flush();
+  assert.equal(seen.some((p) => p.startsWith('/api/strategies')), false);
+});
+
+test('first-run funnel: deploying from a strategy page lands on Deploy with a note that it worked and what happens next', async () => {
+  const f = strategyFrontend(detailStrategy({title: 'Momentum <b>fade</b>'}), (path, options) => {
+    if (options && options.method === 'POST') return response({id: 9});
+    if (path === '/api/deployments') return response({deployments: [], open_positions: []});
+    return response({strategies: [], counts: {passed: 1}});
+  });
+  await f.viewStrategy(42); await flush();
+  f.root.querySelector('#dep-paper').onclick(); await flush(); await flush();
+  assert.deepEqual(f.navigations, ['/deploy']);
+  if (f.S.deployed) await f.viewDeploy();  // the harness may not route; the view reads the note either way
+  await flush(); await flush();
+  const note = f.root.querySelector('#flash').innerHTML;
+  assert.match(note, /class="notice good"/);
+  assert.match(note, /Deployed on paper: Momentum &lt;b&gt;fade&lt;\/b&gt;\. It trades only when its rule fires, against live prices with paper money, so the first trade can take a while\. Its trades show up here and on your dashboard\./);
+  assert.equal(f.S.deployed, null);
+  // Once: the next visit to Deploy has no note.
+  await f.viewDeploy(); await flush();
+  assert.equal(f.root.querySelector('#flash').innerHTML, '');
+  // Demo says demo.
+  f.S.deployed = {mode: 'demo', title: 'X'}; await f.viewDeploy(); await flush();
+  assert.match(f.root.querySelector('#flash').innerHTML, /Deployed on demo: X\. It trades only when its rule fires, on Kalshi’s demo exchange with no real money/);
 });
