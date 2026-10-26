@@ -3807,3 +3807,36 @@ test('Meridian first-run funnel: deploying from a strategy page lands on Deploy 
   await f.viewDeploy(); await flush();
   assert.equal(f.root.querySelector('#flash').innerHTML, '');
 });
+
+test('Meridian money pages: open positions name their market, settle with date and zone, and a live row says LIVE', async () => {
+  const pos = (extra) => ({title: 'Drift', ticker: 'KXBTCD-26OCT2617-T68499.99', side: 'no', qty: 25, entry_price: .36, entry_fee: .41, cost: 9.41,
+    unrealized: null, mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z', ...extra});
+  const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}];
+  const f = frontend({fetchImpl: path => path === '/api/deployments'
+    ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date().toISOString()})]}) : response({})});
+  f.S.me.markets = markets;
+  await f.viewDeploy(); await flush(); await flush();
+  const html = f.root.querySelector('#openpos').innerHTML;
+  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
+  assert.match(html, /KXOTHER-1<\/td>/);
+  assert.match(html, /data-lab="Settles">Jan 1[56], \d\d:\d\d [^<\s]+<\/td>/);
+  assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
+  const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
+  const side = s.root.querySelector('main').innerHTML;
+  assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
+  assert.match(side, /1 open position at cost \+ fees \$9\.41/);
+  // The dashboard's expiry column names the zone too.
+  const g = frontend({fetchImpl: () => response(dashboardData({open_positions: [dashboardPosition(1, {market_close_time: '2030-01-15T17:30:00Z'})]}))});
+  await g.viewDashboard();
+  assert.match(g.root.querySelector('.position-expiry-cell time').textContent, /^Jan 1[56], \d\d:\d\d [^\s]+$/);
+  // The row's mode pill drops its fill, so its light text must change too or LIVE reads as blank.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.position-mode \.mk\.live \{ color: var\(--signal\); \}/);
+  // Track record: the calendar-day count is named, not "Days of history" beside "over 1 day".
+  const m = {trades: 2, wins: 1, losses: 1, label: 'Kalshi demo', net_pnl: -0.03, fees: 0.12, monthly: [], strategies: [], curve: [], days: 2,
+    sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
+  assert.match(g.trackRecordPanel(m, 'demo', {min_sharpe_days: 14, min_trades: 30}), /<dt>Calendar days \(UTC\)<\/dt><dd>2<\/dd>/);
+  // An empty paper record whose closed trades were all instant fills doesn't claim none closed.
+  const left = g.trackRecordPanel({trades: 0, label: 'Paper', excluded_instant_fills: 8}, 'paper', {min_sharpe_days: 14, min_trades: 30});
+  assert.match(left, /<h3>No paper trades in the record yet<\/h3>/); assert.match(left, /8 instant-fill paper trades left out/);
+});

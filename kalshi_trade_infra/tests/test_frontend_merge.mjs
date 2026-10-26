@@ -227,7 +227,7 @@ test('the sidebar lists each holding with every figure instead of a clipped five
   const output = f.root.querySelector('main').innerHTML;
   const list = output.slice(output.indexOf('<ul class="holdlist">'), output.indexOf('</ul>', output.indexOf('<ul class="holdlist">')));
   assert.equal((list.match(/<li>/g) || []).length, 2);
-  assert.match(list, /NO ×4 @ 37¢/); assert.match(list, /Cost \$1\.50/); assert.match(list, /Unreal\. —/); assert.match(list, /Settles /);
+  assert.match(list, /NO ×4 @ 37¢/); assert.match(list, /Cost \+ fee \$1\.50/); assert.match(list, /Unreal\. —/); assert.match(list, /Settles /);
   assert.match(list, /−\$0\.30|-\$0\.30/); assert.match(list, /<span class="mk live">Live<\/span>/);
   assert.doesNotMatch(list, /<x>/); assert.doesNotMatch(output, /<th>Contract<\/th><th>Position<\/th>/);
   // Each holding says why it was bought and how it will exit; one without a reason says nothing.
@@ -2531,4 +2531,48 @@ test('first-run funnel: deploying from a strategy page lands on Deploy with a no
   // Demo says demo.
   f.S.deployed = {mode: 'demo', title: 'X'}; await f.viewDeploy(); await flush();
   assert.match(f.root.querySelector('#flash').innerHTML, /Deployed on demo: X\. It trades only when its rule fires, on Kalshi’s demo exchange with no real money/);
+});
+
+test('money pages: an open position names its market and settles with a date and zone; an unmarked dashboard row says its figure is cost', async () => {
+  const pos = (extra) => ({title: 'Drift', ticker: 'KXBTCD-26OCT2617-T68499.99', side: 'no', qty: 25, entry_price: .36, entry_fee: .41, cost: 9.41,
+    unrealized: null, mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z', ...extra});
+  const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}];
+  const f = frontend({fetchImpl: path => path === '/api/deployments'
+    ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date().toISOString()})]}) : response({})});
+  f.S.me.markets = markets;
+  await f.viewDeploy(); await flush(); await flush();
+  const html = f.root.querySelector('#openpos').innerHTML;
+  // The raw ticker keeps its readable market under it; an unknown series gets no guessed label.
+  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
+  assert.match(html, /KXOTHER-1<\/td>/);
+  // Another day carries its date; today only the time; both name the zone (a bare "21:17" read as today, zone unknown).
+  assert.match(html, /data-lab="Settles">Jan 1[56], \d\d:\d\d [^<\s]+<\/td>/);
+  assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
+  // The strategy page's holding says its cost includes the fee, and settles the same way.
+  const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
+  const side = s.root.querySelector('main').innerHTML;
+  assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
+  assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
+  // Dashboard: an unmarked position's figure is its cost, never a bare dollar amount beside the marked rows' P&L.
+  const g = frontend({fetchImpl: path => {
+    if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), open_positions: [pos(), pos({qty: 10, entry_price: .47, unrealized: 0.32})]});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await g.viewDashboard(); await flush();
+  const main = g.root.querySelector('main').innerHTML;
+  assert.match(main, /<span>\$9\.00 at cost<\/span>/); assert.match(main, /<span><span class="gain">\+\$0\.32<\/span><\/span>/);
+});
+
+test('track record: the calendar-day count is named as such, so it never contradicts the sample line\'s elapsed days', () => {
+  const f = frontend({fetchImpl: () => response({})});
+  const m = {trades: 2, wins: 1, losses: 1, label: 'Kalshi demo', net_pnl: -0.03, fees: 0.12, monthly: [], strategies: [], curve: [], days: 2,
+    sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge: 2 trades over 1 day.'}};
+  const html = f.trackRecordPanel(m, 'demo', {min_sharpe_days: 14, min_trades: 30});
+  assert.match(html, /<dt>Calendar days \(UTC\)<\/dt><dd>2<\/dd>/); assert.doesNotMatch(html, /Days of history/);
+  // An empty paper record whose closed trades were all instant fills doesn't claim none closed.
+  const th = {min_sharpe_days: 14, min_trades: 30};
+  const left = f.trackRecordPanel({trades: 0, label: 'Paper', excluded_instant_fills: 8}, 'paper', th);
+  assert.match(left, /<h3>No paper trades in the record yet<\/h3>/); assert.match(left, /8 instant-fill paper trades left out/);
+  assert.match(f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th), /<h3>No closed paper trades yet<\/h3>/);
 });

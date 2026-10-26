@@ -231,6 +231,14 @@
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
   const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  // When an open contract settles: the time alone today, the date too on any other day, and always the
+  // zone. A bare "21:17" read as today in no stated zone, and a daily close settling tomorrow looked due.
+  const settleAt = (iso) => {
+    const d = new Date(iso || NaN);
+    if (!Number.isFinite(d.getTime())) return '—';
+    const today = d.toDateString() === new Date().toDateString();
+    return d.toLocaleString(undefined, { ...(today ? {} : { month: 'short', day: 'numeric' }), hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' });
+  };
   const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
   // Compact count for tight spaces (system-map node metrics): 1.1M, 352k, 940.
   const compact = (n) => (n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : num(n));
@@ -253,6 +261,12 @@
   // Category sort shared by the research picker and the strategies market filter.
   const catOrder = (a, b) => { const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); };
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
+  // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
+  // "Bitcoin daily close, 5pm EDT"), so an open position never shows only the raw ticker. Unknown: ''.
+  const contractMarket = (ticker) => {
+    const m = ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-'));
+    return m ? (m.label || marketShort(m.key)) : '';
+  };
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
@@ -1584,7 +1598,7 @@
         const market = positionMarket(r);
         const contract = market ? `<span class="position-prefix">${esc(market.series + '-')}</span>${esc(r.ticker.slice(market.series.length + 1))}` : esc(r.ticker);
         const close = r.market_close_time && new Date(r.market_close_time);
-        const expiry = close && Number.isFinite(close.getTime()) ? close.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',  }) : '';
+        const expiry = close && Number.isFinite(close.getTime()) ? close.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }) : '';
         return `<tr class="${closed ? 'settled-position' : 'open-position'}">
         <td class="name"><details class="position-details" data-position="${closed ? 'closed' : 'open'}-${esc(r.id)}"><summary aria-label="${market ? `${esc(market.label || marketShort(market.key))} ·\u00a0` : ''}${esc(r.title)} ·\u00a0${esc(r.ticker)} ·\u00a0${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'Demo' : 'Paper'}">${ICON.chev}<span class="position-title vh">${esc(r.title)}</span><span class="position-mode">${r.mode === 'live' ? '<span class="mk live">LIVE</span>' : r.mode === 'demo' ? 'Demo' : 'Paper'}</span>${market ? `<span class="position-market">${esc(market.label || marketShort(market.key))}</span>` : ''}<span class="position-contract">${contract}</span></summary><div class="sub-fig">${esc(r.ticker)} ·\u00a0${esc(r.title)}<span class="position-opened">${closed ? 'Closed' : 'Opened'} ${when(closed ? r.closed_at : r.opened_at)}</span>${r.why ? `<span class="position-why">${esc(r.why)}</span>` : ''}${close && Number.isFinite(close.getTime()) ? `<span class="position-absolute">Expires ${esc(close.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23' }))}</span>` : ''}${!closed && r.unrealized == null ? '<span class="position-mark-note">Unrealized P&amp;L unavailable</span>' : ''}</div></details></td>
         <td class="position-size-cell"><span class="position-size"><span class="position-side">${esc(r.side.toUpperCase())}</span><span aria-hidden="true"> × </span><span class="position-quantity"><span class="vh">Quantity </span>${esc(r.qty)}</span></span></td>
@@ -2822,12 +2836,12 @@
             const bookLine = (xs) => {
               const marked = xs.filter((p) => p.unrealized != null), unreal = marked.reduce((a, p) => a + p.unrealized, 0);
               const lead = books.length > 1 ? ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ' : '';
-              return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` ·\u00a0unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' ·\u00a0awaiting first mark'}.`;
+              return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` ·\u00a0unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' ·\u00a0awaiting first mark'}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             return `<section class="panel"><h3>Holding right now</h3>
-            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="tick">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div>
-              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${clock(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</li>`).join('')}</ul>
+            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="tick">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div>${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}
+              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
@@ -3056,7 +3070,7 @@
       root.querySelector('#demo-health').innerHTML = d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '';
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${esc(p.ticker)}${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${clock(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${esc(p.ticker)}${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>';
     };
     await loadBoard();
@@ -3106,7 +3120,10 @@
       const go = apOn ? '<a class="btn" href="/research">See its research</a>'
         : first ? (S.dashNoSessions ? '<a class="btn" href="/research?new=1">New session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>')
         : '<a class="btn" href="/deploy">Go to Deploy</a>';
-      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' && !first ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}${go}</div>${cav}`;
+      // Instant-fill paper trades are closed but left out (caveat below): "No closed paper trades" denied
+      // trades the user can see on Deploy, so the heading says none count yet instead.
+      const none = m.excluded_instant_fills ? `No ${esc(m.label.toLowerCase())} trades in the record yet` : `No closed ${esc(m.label.toLowerCase())} trades yet`;
+      return `<div class="empty"><h3>${none}</h3><p>${how}</p>${key === 'paper' && !first ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}${go}</div>${cav}`;
     }
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
@@ -3126,7 +3143,7 @@
       <dt>Gross P&amp;L before fees</dt><dd>${usd(m.gross_pnl, true)}</dd><dt>Fees paid</dt><dd>${usd(m.fees)}</dd>
       <dt>Current drawdown</dt><dd>${m.current_drawdown ? usd(-m.current_drawdown) : 'At a high'}</dd>
       <dt>Longest drawdown</dt><dd>${trFix(m.longest_drawdown_days, 1)} days</dd>
-      <dt>First trade</dt><dd>${trDay(m.first_trade_at)}</dd><dt>Days of history</dt><dd>${num(m.days)}</dd>
+      <dt>First trade</dt><dd>${trDay(m.first_trade_at)}</dd><dt>Calendar days (UTC)</dt><dd>${num(m.days)}</dd>
     </dl>`;
     const months = m.monthly.map((r) => `<tr><td class="name" data-lab="Month">${esc(trMonth(r.month))}</td>
       <td class="num" data-lab="Net P&amp;L">${money(r.pnl)}</td><td class="num" data-lab="Trades">${num(r.trades)}</td>

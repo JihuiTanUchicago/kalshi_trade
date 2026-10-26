@@ -1968,6 +1968,8 @@ body.landing-body .apf { display: none; }
 .position-prefix { color: var(--ink-3); }
 .position-mode { grid-column: 2; grid-row: 1; margin: 0; font-size: 12px; line-height: 20px; font-weight: 400; }
 .position-mode .mk { padding: 0; border: 0; background: none; font-size: 12px; line-height: 18px; letter-spacing: 0; }
+/* The pill's light text stayed on with its fill gone, so a live row's LIVE read as blank: the signal ink instead. */
+.position-mode .mk.live { color: var(--signal); }
 .position-side, .position-quantity { font-size: 15px; line-height: 20px; font-weight: 500; white-space: nowrap; }
 .t-positions td.position-expiry-cell { color: var(--ink-2); }
 .position-expiry { white-space: normal; font-size: 13px; line-height: 20px; }
@@ -2520,6 +2522,8 @@ body.landing-body .apf { display: none; }
 .holdlist-figs b { color: var(--ink); font-weight: 600; }
 /* A trade's one-line entry/exit reason (server trade_why), in the UI face even inside a .tick cell. */
 .pos-why { font-family: var(--f-ui); letter-spacing: normal; white-space: normal; }
+/* A contract's readable market under its ticker (contractMarket), in the same UI face. */
+.pos-mkt { font-family: var(--f-ui); letter-spacing: normal; white-space: normal; }
 /* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
 #openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
