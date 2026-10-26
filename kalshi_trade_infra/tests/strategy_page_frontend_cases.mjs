@@ -31,4 +31,27 @@ export function strategyPageCases({name, detailStrategy, strategyFrontend, postR
     const rule = await open({status: 'passed'});
     assert.ok(rule.root.querySelector('#dep-paper'));
   });
+
+  test(`${name}: the research figures read the stored per-trade returns, in stakes and % of stake`, async () => {
+    // The gatekeeper stores a phase as its per-trade net returns, not a running total.
+    const val = [[1000, 0.5], [2000, -0.8], [3000, 1.0]], hold = [[4000, 0.25], [5000, -0.05]];
+    const f = await open({status: 'passed', experiment: {classification: 'deployment_candidate',
+      validation: {n_trades: 3, mean_net_return: 0.02, ci_lo: 0.001, ci_hi: 0.04, p_value: 0.02, equity_curve: val},
+      holdout: {n_trades: 2, mean_net_return: 0.01, p_value: 0.04, consumed: true, equity_curve: hold},
+      folds: [{from_ts: 1000, to_ts: 2000, n_trades: 2, mean_net_return: -0.15}]}});
+    const html = main(f);
+    const between = (a, b) => html.slice(html.indexOf(a), html.indexOf(b, html.indexOf(a)));
+    const equity = between('Equity by phase', 'Validation vs holdout');
+    // Running totals 0.5, −0.3, 0.7 (validation): ticks in stakes, never dollars.
+    assert.match(equity, /\+0\.7×|\+1\.2×/); assert.doesNotMatch(equity, /\$/);
+    // The deepest drop is 0.8 stakes (from +0.5 down to −0.3), not a dollar figure.
+    assert.match(between('Drawdown (underwater)', 'Per-trade return distribution'), /−0\.8×/);
+    // Returns read as % of the stake, not cents; the two held-out averages are compared.
+    const vs = between('Validation vs holdout', 'Drawdown (underwater)');
+    assert.match(vs, /\+2\.00%/); assert.match(vs, /\+1\.00%/); assert.match(vs, /50% smaller than validation/);
+    assert.doesNotMatch(between('Validation-window evidence', 'The one-time locked holdout'), /¢|In-sample vs validation|research fold/);
+    assert.match(html, /Net return per trade<\/div><div class="val">\+2\.00%/);
+    // A walk-forward slice is labelled by its own date (the gatekeeper's from_ts), not "W1".
+    assert.doesNotMatch(between('Walk-forward windows', 'Backtest'), />W1</);
+  });
 }

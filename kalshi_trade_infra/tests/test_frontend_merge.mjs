@@ -3175,7 +3175,7 @@ test('Tau: the strategy page lists what it missed under Verdict and names the fi
 // same checks that write why_failed); the page restates no cutoff. These fixtures are what the server
 // sends for these numbers (tests/test_gate_explain.py pins the server side).
 const FIGURE_GATES = {'Trades': ['sample_size'], 'Bootstrap p-value': ['significance', 'multiple_testing'],
-  'Mean net return / trade': ['net_edge'], 'DSR': ['deflated_sharpe'], 'Placebo p-value': ['placebo']};
+  'Net return per trade': ['net_edge'], 'DSR': ['deflated_sharpe'], 'Placebo p-value': ['placebo']};
 const tintedFigures = html => [...String(html).matchAll(/<div class="rp-stat"><div class="k">([^<]*)<\/div><div class="val( sig)?">/g)]
   .filter(m => m[2]).map(m => m[1].replace(/&amp;/g, '&'));
 const missedFigures = lines => Object.keys(FIGURE_GATES).filter(k => lines.some(l => FIGURE_GATES[k].includes(l.gate)));
@@ -3196,7 +3196,7 @@ test('Tau: a research-paper figure is red exactly when its gate line says it mis
   const f = strategyFrontend(detailStrategy({status: 'failed', experiment: failing, why_failed: VAL_LINES})); await f.viewStrategy(42); await flush();
   const red = tintedFigures(paperSections(f.root.querySelector('main').innerHTML).validation);
   assert.deepEqual(red.sort(), missedFigures(VAL_LINES).sort());
-  assert.deepEqual(red.sort(), ['Bootstrap p-value', 'Mean net return / trade', 'Trades']);
+  assert.deepEqual(red.sort(), ['Bootstrap p-value', 'Net return per trade', 'Trades']);
   // Passed validation, failed holdout: the validation figures all pass (DSR 0.60 and placebo 0.02
   // would have been red under the old cutoffs); the holdout's p-value and mean are red as its lines
   // say, its sample is not judged, and a consumed holdout is a state, not a miss.
