@@ -1818,6 +1818,11 @@ body.landing-body .apf { display: none; }
 .research-ap button.busy { opacity: .6; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .run-next .btn { display: table; margin: 10px 0 0; }
+/* The foot of a finished session (runEnd), under the log's last line: its way on, as plain buttons. */
+.run-end { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 14px 0 0; }
+.run-end .research-ap { flex: 1 1 260px; margin: 0; }
+/* The run page's RSI explainer folds behind its title (closed on a phone, open wider). */
+#rsibox > .rsidisc { margin: 0 0 16px; }
 #dep-ap .research-ap { margin: 4px 0 14px; }
 #main > .research-ap:first-child, #main > .dispatch:first-child { margin-top: 18px; }  /* off the page deck */
 /* Phones, once there are sessions: the engine summary and your sessions come before the long new-session

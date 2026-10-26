@@ -933,6 +933,21 @@ test('the floating autopilot pill steps aside while it would cover a primary or 
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
+test('the floating autopilot pill steps aside from the Agent log header buttons on the run page', () => {
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><section><div class="section-head"><h2>Agent log</h2><span id="runact"><span class="runact"><button class="btn small" id="pause">Pause</button><button class="btn danger small" id="cancel">Cancel</button></span></span></div></section></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const none = rect(0, 0, 0, 0), cancel = f.root.querySelector('#cancel');
+  f.root.querySelector('#pause').getBoundingClientRect = none;
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);   // 390x844 phone
+  cancel.getBoundingClientRect = rect(300, 800, 374, 836);  // the header scrolled to the foot of the screen
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  cancel.getBoundingClientRect = rect(300, 200, 374, 236);  // scrolled up and away
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+});
+
 test('the autopilot panel shows Kill only once real money is armed or running', () => {
   const f = frontend();
   const controls = d => {
@@ -1715,6 +1730,48 @@ test('Tau: a finished session says what to do next: your own idea after the exam
   assert.equal(await at({status: 'running'}, []), '');  // still going: nothing to do yet
 });
 
+test('Tau: a finished session ends under its last log line with the way on: your own idea after the example, another idea or autopilot after nothing passed', async () => {
+  const at = async (run, strategies, autopilot = false) => {
+    const f = frontend({fetchImpl: () => response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: '2026-10-25T10:00:00Z', ...run}, events: [], strategies})});
+    f.S.me.user.autopilot = autopilot;
+    await f.viewRun(9); f.clearTimers();
+    return f;
+  };
+  let f = await at({status: 'succeeded', example: true}, []);
+  // Under the log, inside the Agent log section: a plain button, so the line above keeps the one primary.
+  const main = f.root.querySelector('main').innerHTML;
+  assert.ok(main.indexOf('id="runfeed"') < main.indexOf('id="runend"'));
+  assert.equal(f.root.querySelector('#runend').innerHTML, '<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>');
+  // Nothing passed: another idea, or let autopilot pick them (the same one-click switch as elsewhere).
+  f = await at({status: 'succeeded'}, [{id: 43, title: 'Fade', status: 'failed'}]);
+  const end = f.root.querySelector('#runend').innerHTML;
+  assert.match(end, /<a class="btn" href="\/research\?new=1">Try another idea<\/a><p class="research-ap">Rather not write ideas yourself\? <button type="button" data-research-ap>Turn on autopilot<\/button>/);
+  assert.doesNotMatch(end, /btn primary/);
+  assert.doesNotMatch((await at({status: 'stopped'}, [], true)).root.querySelector('#runend').innerHTML, /Turn on autopilot/);  // already on
+  assert.match((await at({status: 'stopped'}, [], true)).root.querySelector('#runend').innerHTML, /Try another idea/);
+  // Something passed (the line above links it), or still going: nothing at the foot.
+  assert.equal((await at({status: 'succeeded'}, [{id: 42, title: 'Late', status: 'passed'}])).root.querySelector('#runend').innerHTML, '');
+  assert.equal((await at({status: 'running'}, [])).root.querySelector('#runend').innerHTML, '');
+});
+
+test('Tau: the run page folds its RSI explainer on a phone, opens it wider, and keeps the reader\'s choice across repaints', async () => {
+  const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+  const rsi = {evolved: false, last_dream: null, min_history: 12};
+  for (const phone of [true, false]) {
+    const f = frontend({matchMedia: () => ({matches: phone}), fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: [], rsi}); }});
+    await f.viewRun(9);
+    const box = f.root.querySelector('#rsibox'), disc = () => box.querySelector('details.rsidisc');
+    assert.equal('open' in disc().attributes, !phone, String(phone));
+    assert.match(disc().querySelector('summary').innerHTML, /Self-improving research/);
+    assert.match(box.innerHTML, /The agent is <b>self-tuning<\/b>/);
+    // The reader flips it; the next poll's repaint keeps their choice.
+    disc().open = phone;
+    await [...f.intervals.values()].at(-1)(); await flush();
+    assert.equal('open' in disc().attributes, phone, String(phone));
+    f.clearTimers();
+  }
+});
+
 test('Tau: after a deploy the Deploy page offers autopilot in words, and the panel says what its switch does', async () => {
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [{id: 1, strategy_id: 1, title: 'Dep 1', market: 'btc15m', mode: 'paper', status: 'running', status_reason: null, realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-25T08:00:00Z', curve: [], stake: 5, max_positions: 20, backtest: {out_of_sample: null}}], open_positions: []}) : response({})});
   f.S.me.user.autopilot = false;
@@ -1913,10 +1970,13 @@ test('a brand-new user sees "See an example session first" on the dashboard and 
       throw new Error('Unexpected offline request: ' + path);
     }});
     await f.viewDashboard(); await flush();
-    const empty = f.root.querySelector('#deps-empty').innerHTML;
-    assert.equal(/<a class="btn primary ex-cta" href="\/example" data-example>See an example session first<\/a>/.test(empty), shown, String(own));
-    // and up top, in the strip, where a phone sees it without scrolling
+    // Up top, in the strip, where a phone sees it without scrolling: the page's one way to the example.
     assert.equal(/No sessions of your own yet\. <a href="\/example" data-example>See an example session first<\/a>/.test(f.root.querySelector('#dash-since').innerHTML), shown);
+    // The empty Deployed box no longer repeats it as a second primary button beside the autopilot card's.
+    assert.doesNotMatch(f.root.querySelector('#deps-empty').innerHTML, shown ? /class="btn/ : /href="\/example"/, String(own));
+    const page = ['#boardbody', 'main', '#dash-ap'].map((sel) => f.root.querySelector(sel).innerHTML).join('');
+    assert.equal((page.match(/href="\/example"/g) || []).length, shown ? 1 : 0, String(own));
+    assert.deepEqual(page.match(/class="btn primary[^>]*>[^<]*/g), ['class="btn primary" data-apcard="on">Turn on autopilot'], String(own));
   }
   // Research: only the seeded example so far, so it leads with it (one tap, straight to the session).
   let f = exResearch([exRun]);
@@ -2417,11 +2477,13 @@ test('first-run funnel: an empty paper track record never sends a user with noth
   // No session of their own yet: straight to a new session (it was Deploy → Strategies → Research).
   f.S.dashDeps = 0; f.S.dashNoSessions = true;
   assert.match(paper(), /<a class="btn" href="\/research\?new=1">Start a research session<\/a>/); assert.doesNotMatch(paper(), /Go to Deploy/);
+  // The dashboard's autopilot card above already offers the switch: the record doesn't repeat it.
+  assert.doesNotMatch(paper(), /Turn on autopilot/);
   // Sessions but nothing deployed: the strategies that passed.
   f.S.dashNoSessions = false;
   assert.match(paper(), /<a class="btn" href="\/strategies">See passed strategies<\/a>/);
   // Something deployed, or no dashboard read yet: Deploy as before. Live and demo keep their own button.
-  f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/);
+  f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/); assert.match(paper(), /Turn on autopilot/);
   f.S.dashDeps = undefined; assert.match(paper(), /Go to Deploy/);
   f.S.dashDeps = 0; assert.match(f.trackRecordPanel({trades: 0, label: 'Live'}, 'live', th), /Go to Deploy/);
 });

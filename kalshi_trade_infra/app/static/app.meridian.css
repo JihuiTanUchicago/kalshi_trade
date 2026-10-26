@@ -2503,6 +2503,11 @@ body.landing-body .apf { display: none; }
 .research-ap button.busy { opacity: .6; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .run-next .btn { display: table; margin: 10px 0 0; }
+/* The foot of a finished session (runEnd): under the last strategy card, or the example's last log line. */
+.run-end { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 14px 0 0; }
+.run-end .research-ap { flex: 1 1 260px; margin: 0; }
+#runend > .run-end { margin: 0 0 28px; }
+.run-artifacts:not([hidden]) + #runend > .run-end { margin-top: -14px; }
 #dep-ap .research-ap { margin: 4px 0 14px; }
 .research-page > .research-ap { grid-column: 1 / -1; }
 

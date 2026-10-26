@@ -2437,14 +2437,24 @@
     if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each strategy below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
+  // The foot of a finished session. The way on sat only above the list and the log: the example's
+  // log ended on its last line saying to describe a real idea, and a session where nothing passed
+  // ended on its last missed idea. The example's goes under the log's last line, the others under
+  // the last strategy card. Plain buttons: the line above keeps the page's one primary action.
+  function runEnd(r, strategies) {
+    if (r.example) return `<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>`;
+    if (r.status !== 'succeeded' && r.status !== 'stopped') return '';
+    if ((strategies || []).some((s) => s.status === 'passed')) return '';
+    return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
+  }
   async function viewRun(id) {
     shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="flash"></div>
-      <section class="run-artifacts" id="run-artifacts" hidden></section>
+      <section class="run-artifacts" id="run-artifacts" hidden></section><div id="runend"></div>
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
       <details class="run-history" id="run-history" open><summary class="section-head"><h2>Agent log</h2>${ICON.chev}</summary>
-        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div></details>`);
+        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div><div id="runend-log"></div></details>`);
     let after = 0, tried = 0, runActive = true, loaded = false;
     const whyBySid = new Map();  // strategy id -> the gates its verdict missed, kept across polls
     const stream = runFeed(root.querySelector('#runfeed'));
@@ -2470,6 +2480,12 @@
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', r.strategies_passed == null ? '—' : r.strategies_passed);
       const next = root.querySelector('#runnext');
       if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
+      // Painted only when it changes, so a repaint never undoes the autopilot line's "on" note.
+      const endHtml = active ? '' : runEnd(r, d.strategies);
+      [['#runend', r.example ? '' : endHtml], ['#runend-log', r.example ? endHtml : '']].forEach(([sel, html]) => {
+        const el = root.querySelector(sel);
+        if (el && el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
+      });
       (d.events || []).forEach((ev) => {
         const dd = ev.data || {};
         if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
@@ -3085,10 +3101,12 @@
       // With nothing deployed (the dashboard's board says so), Deploy is an empty board too and sent a
       // new user Deploy → Strategies → Research; the button goes straight to the step that comes first.
       const first = key === 'paper' && !apOn && S.dashDeps === 0;
+      // Nothing deployed yet: the dashboard's autopilot card above already offers the switch, so the
+      // record doesn't offer it a second time.
       const go = apOn ? '<a class="btn" href="/research">See its research</a>'
         : first ? (S.dashNoSessions ? '<a class="btn" href="/research?new=1">New session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>')
         : '<a class="btn" href="/deploy">Go to Deploy</a>';
-      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}${go}</div>${cav}`;
+      return `<div class="empty"><h3>No closed ${esc(m.label.toLowerCase())} trades yet</h3><p>${how}</p>${key === 'paper' && !first ? apNudge('Rather not pick strategies yourself?', 'and it runs the ones that pass on paper. Their trades fill this record.') : ''}${go}</div>${cav}`;
     }
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
@@ -4024,8 +4042,8 @@
   // autopilot is on: the card above says what it is doing, and "is researching" contradicted a card
   // reporting a stale check-in or a billing pause.
   // A brand-new user (no research session of their own) gets the finished example first: one tap,
-  // free. /example looks up the seeded example session (/api/runs/example) and opens it in place.
-  const EXAMPLE_CTA = `<a class="btn primary ex-cta" href="/example" data-example>See an example session first</a>`;
+  // free, from the strip up top (sinceStrip). /example looks up the seeded example session
+  // (/api/runs/example) and opens it in place.
   // On Research it is a plain button, so Start session stays the page's one primary action, and it is
   // left out when they came to start one (?new=1: "Describe your own idea" on the example itself, or
   // "Try another idea"): they have just seen it.
@@ -4059,11 +4077,12 @@
   // On a phone, a secondary section (method, raw lists, what-if, share, remove) folds behind its
   // title, closed; wider screens render it as before. Money figures and verdicts never fold.
   const fold = (title, html) => html ? `<details class="fold"${phone() ? '' : ' open'}><summary class="fold-h">${title}</summary>${html}</details>` : '';
+  // For that new user the box adds no button of its own: it repeated the strip's example link as a
+  // second primary button, next to the autopilot card's Turn on autopilot and "or research by hand".
   function depsEmpty(on) {
-    const ex = S.dashNoSessions ? `<p class="hint">New here? See what a finished session looks like first. It’s free.</p>${EXAMPLE_CTA}` : '';
-    return ex ? (on
-      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p>${ex}</div>`
-      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or start a session yourself.</p>${ex}</div>`) : on
+    return S.dashNoSessions ? (on
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p></div>`
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or start a session yourself.</p></div>`) : on
       ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
       : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or start a session yourself.</p><a class="btn" href="/research?new=1">New session</a></div>`;
   }
