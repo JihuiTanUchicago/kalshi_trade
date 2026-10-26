@@ -1984,7 +1984,7 @@
     const basis = own ? 'your recent sessions' : 'recent sessions on this model';
     return forever
       ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
-      : `Usually about ${usd(v)} (${basis}).`;
+      : `A session like this usually takes about ${usd(v)} from your credits (${basis}).`;
   }
   // Run-until-stopped has no natural size, so say its pace: about what an hour costs at recent rates
   // (/api/research/estimate per_hour, the user's own else the model's typical) and how long the
@@ -2087,8 +2087,11 @@
         const forever = !!(rf && rf.checked), ph = (est && est.per_hour) || {};
         const hourly = ph.yours != null ? ph.yours : (ph.typical || {})[key];
         const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ph.yours != null, me) : '';
-        rc.hidden = v == null && !pace;
-        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace].filter(Boolean).join(' ');
+        // No ledger figure for this model (or the read failed): with payments on, still say how it
+        // is billed and that it can be stopped, rather than leaving the cost blank.
+        const none = v == null && !pace && me.billing_enabled ? 'No cost estimate for this model yet. It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
+        rc.hidden = v == null && !pace && !none;
+        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace, none].filter(Boolean).join(' ');
       };
       if (msel) msel.addEventListener('change', sync);
       api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; }).then(sync);
@@ -2158,6 +2161,7 @@
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
       : r.status === 'succeeded' ? `<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
       : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${r.strategies_passed ? ` ·\u00a0<span class="gain">${r.strategies_passed} passed</span>` : ''}`
+      : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
       : r.status === 'cancelled' ? 'Cancelled' : '<span class="loss">Failed</span>';
     // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
     // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
@@ -2669,15 +2673,21 @@
   // Interrupt & continue: the obvious control cluster for a research run. Running → Pause;
   // Paused → Resume (the primary action); every active state can Cancel. Finished shows the
   // way onward. Pause/Resume are reversible so they act immediately; Cancel is armed to confirm.
+  // The run page polls every 2s and called this each time: the repaint undid an armed "Confirm cancel"
+  // before the second press could land, and re-enabled a Pause still in flight (a second POST, then a
+  // "Only a running session can be paused" error). The buttons repaint only when the status changes.
+  const CANCEL_BTN = '<button class="btn danger small" id="cancel" title="Ends the session for good. What it has spent stays charged; ideas it already tested are kept.">Cancel</button>';
   function runControls(host, id, status, reload) {
+    if (host.dataset.st === status) return;
+    host.dataset.st = status;
     if (status === 'paused') {
-      host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button><button class="btn danger small" id="cancel">Cancel</button></span>';
+      host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button>' + CANCEL_BTN + '</span>';
       host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/resume`, {}).catch((er) => alert0(er.message)); await reload(); });
     } else if (status === 'running') {
-      host.innerHTML = '<span class="runact"><button class="btn small" id="pause">Pause</button><button class="btn danger small" id="cancel">Cancel</button></span>';
+      host.innerHTML = '<span class="runact"><button class="btn small" id="pause" title="Holds the session where it is until you resume it.">Pause</button>' + CANCEL_BTN + '</span>';
       host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/pause`, {}).catch((er) => alert0(er.message)); await reload(); });
     } else if (status === 'queued') {
-      host.innerHTML = '<span class="runact"><button class="btn danger small" id="cancel">Cancel</button></span>';
+      host.innerHTML = '<span class="runact">' + CANCEL_BTN + '</span>';
     } else {
       host.innerHTML = status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '';
       return;

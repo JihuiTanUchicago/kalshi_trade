@@ -1235,10 +1235,26 @@ test('current research controls pause and resume and cancellation needs two curr
   f.runControls(host, 9, 'paused', reload);
   const resume = host.querySelector('#resume'); await resume.onclick({currentTarget: resume});
   assert.equal(postRequests(f)[1].path, '/api/runs/9/resume');
-  host.querySelector('#cancel').onclick(); assert.equal(postRequests(f).length, 2);
+  host.querySelector('#cancel').onclick(); assert.equal(postRequests(f).length, 2);  // the first press only arms
+  // The run page's 2s poll calls again with the same status: the armed confirm survives it, so the
+  // second press cancels instead of arming a fresh button.
   f.runControls(host, 9, 'paused', reload);
-  const cancel = host.querySelector('#cancel'); cancel.onclick(); assert.equal(postRequests(f).length, 2);
+  const cancel = host.querySelector('#cancel'); assert.equal(cancel.textContent, 'Confirm cancel');
   await cancel.onclick(); assert.equal(postRequests(f)[2].path, '/api/runs/9/cancel'); assert.equal(reloads, 3);
+  assert.match(cancel.getAttribute('title'), /^Ends the session for good\. What it has spent stays charged/);
+});
+
+test('a poll with the same run status leaves a pause in flight disabled, so it cannot be sent twice', async () => {
+  const pending = deferred(), f = frontend({fetchImpl: () => pending.promise}), host = new Element();
+  f.runControls(host, 9, 'running', async () => {});
+  const pause = host.querySelector('#pause'), pressing = pause.onclick({currentTarget: pause});
+  assert.equal(pause.disabled, true);
+  f.runControls(host, 9, 'running', async () => {});  // the poll lands while the POST is out
+  assert.equal(host.querySelector('#pause'), pause); assert.equal(pause.disabled, true);
+  assert.equal(postRequests(f).length, 1);
+  pending.resolve(response({ok: true})); await pressing;
+  f.runControls(host, 9, 'paused', async () => {});  // a new status repaints
+  assert.ok(host.querySelector('#resume')); assert.equal(host.querySelector('#pause'), null);
 });
 
 test('streaming thoughts and challenger/verdict update one hypothesis and navigation clears feed timers', () => {
@@ -1503,7 +1519,7 @@ test('beside Start session the form says what a session usually costs, from ledg
   assert.equal(cost().hidden, false);
   assert.equal(cost().textContent, 'Each round of ideas usually costs about $1.80 (your recent sessions); it keeps starting new rounds until you stop it.');
   rf.checked = false; rf.dispatchEvent({type: 'change'});
-  assert.equal(cost().textContent, 'Usually about $1.80 (your recent sessions).');
+  assert.equal(cost().textContent, 'A session like this usually takes about $1.80 from your credits (your recent sessions).');
   assert.match(f.root.querySelector('#rf-hint').textContent, /A session takes a few minutes/);  // the hint still follows the switch
   // Fewer than 3 of their own: the typical cost for the chosen model, following the model picker.
   f = research({yours: null, sessions: 1, typical: {opus: 2.25}});
@@ -1517,6 +1533,26 @@ test('beside Start session the form says what a session usually costs, from ledg
     await f.viewResearch(); await flush(); await flush();
     assert.equal(cost().hidden, true); assert.equal(cost().textContent, '');
   }
+  // With payments on, a model with no estimate still says how it is billed and that it can be stopped,
+  // and a model with one goes back to its figure.
+  f = research({yours: null, sessions: 1, typical: {opus: 2.25}});
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 12, min_run_balance: 1};
+  await f.viewResearch(); await flush(); await flush();
+  const picker = f.root.querySelector('#rmodel'); picker.value = 'haiku'; picker.dispatchEvent({type: 'change'});
+  assert.equal(cost().hidden, false);
+  assert.equal(cost().textContent, 'No cost estimate for this model yet. It’s charged to your credits as it runs, and you can stop it any time from its session page.');
+  picker.value = 'opus'; picker.dispatchEvent({type: 'change'});
+  assert.match(cost().textContent, /^Each round of ideas usually costs about \$2\.25/);
+  assert.doesNotMatch(cost().textContent, /No cost estimate|list price/i);
+});
+
+test('the research list says Paused for a paused session, not a red Failed', () => {
+  const f = frontend();
+  const row = f.runRow({id: 4, status: 'paused', prompt: 'Fade the favourite', market: 'btc15m', created_at: '2026-10-17T10:00:00Z',
+    hypotheses_tried: 3, strategies_passed: 0, spent_usd: 1.2});
+  assert.match(row, /<span class="run-state">Paused<\/span>/);
+  assert.doesNotMatch(row, /Failed|class="loss"/);
+  assert.match(row, /Spent so far: \$1\.20/);
 });
 
 test('autopilot says why it is not trading: the card and the panel lead with one line and its action', async () => {
@@ -3094,14 +3130,15 @@ test('run-until-stopped says what an hour costs at recent rates, how long the ba
   assert.equal(cost().textContent, 'Each round of ideas usually costs about $0.40 (your recent sessions); it keeps starting new rounds until you stop it. '
     + 'At recent rates it costs about $1.25 an hour (your recent sessions). Your $23.40 covers about 19 hours. It stops by itself if your credits run out.');
   const rf = f.root.querySelector('#runforever'); rf.checked = false; rf.dispatchEvent({type: 'change'});
-  assert.equal(cost().textContent, 'Usually about $0.40 (your recent sessions).');  // a set-size session: no hourly line
+  assert.equal(cost().textContent, 'A session like this usually takes about $0.40 from your credits (your recent sessions).');  // a set-size session: no hourly line
   // No own rate: the model's typical one; with auto-reload on it says that instead of stopping.
   f = research({yours: null, sessions: 0, typical: {}, per_hour: {yours: null, typical: {opus: 3}}});
   f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 100, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
   await f.viewResearch(); await flush(); await flush();
   assert.equal(cost().textContent, 'At recent rates it costs about $3.00 an hour (recent sessions on this model). Your $100.00 covers about 33 hours. Auto-reload adds $20.00 when your balance falls to $5.00.');
   const model = f.root.querySelector('#rmodel'); model.value = 'haiku'; model.dispatchEvent({type: 'change'});
-  assert.equal(cost().hidden, true);  // nothing known for this model
+  // Nothing known for this model: with payments on it says how it is billed instead of going blank.
+  assert.match(cost().textContent, /^No cost estimate for this model yet\. It’s charged to your credits as it runs/);
 });
 
 test('the autopilot card puts credits left and the only limit beside its spend, and a credits pause says how much it needs', async () => {

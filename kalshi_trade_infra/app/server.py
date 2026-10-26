@@ -879,7 +879,9 @@ def _require_research_capacity(ctx: Ctx) -> None:
         raise ApiError(402, "You need at least $%.2f in credits to start a research session. Add credits "
                             "on the Billing tab." % float(billing.MIN_RUN_BALANCE))
     if repo.count_runs(ctx.cur, ctx.uid, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
-        raise ApiError(429, "You already have %d agents researching. Wait for one to finish." % MAX_ACTIVE_RESEARCH)
+        # "Wait for one to finish" never came true for a session that runs until stopped (the default).
+        raise ApiError(429, "You already have %d research sessions going (paused ones count). To start "
+                            "another, cancel one from its session page." % MAX_ACTIVE_RESEARCH)
     if MAX_RESEARCH_PER_DAY and repo.count_runs(ctx.cur, ctx.uid, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
         raise ApiError(429, "Daily research limit reached (%d). It resets over the next 24 hours." % MAX_RESEARCH_PER_DAY)
 
