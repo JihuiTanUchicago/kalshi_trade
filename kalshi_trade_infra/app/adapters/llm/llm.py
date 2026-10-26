@@ -230,7 +230,7 @@ def _bedrock(system: str, messages: List[Dict[str, str]], model: "Optional[str]"
     exhausted (LLMThrottled, e.g. the daily token cap), drop to the next-best model in the catalog's
     FALLBACK_ORDER and retry. The chain is rebuilt every call, so once the preferred model's quota
     frees up it is used again automatically. A non-throttle failure propagates unchanged."""
-    from app import models_catalog as _catalog  # lazy: avoid an import cycle
+    from app.adapters.llm import models_catalog as _catalog  # lazy: avoid an import cycle
     full = _catalog.fallback_chain_from(model or BEDROCK_MODEL)
     # Skip models still in a DAILY-quota cooldown: a per-day cap won't clear for hours, so once a
     # model trips it we stop paying a wasted round-trip on EVERY later call and go straight to the

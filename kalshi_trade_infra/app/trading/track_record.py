@@ -26,8 +26,8 @@ from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional
 
-from app.quant import max_drawdown
-from app.stats import probabilistic_sharpe_ratio
+from app.trading.quant import max_drawdown
+from app.research.stats import probabilistic_sharpe_ratio
 
 MODES = ("live", "demo", "paper")
 MODE_LABEL = {"live": "Live money", "demo": "Kalshi demo", "paper": "Paper"}

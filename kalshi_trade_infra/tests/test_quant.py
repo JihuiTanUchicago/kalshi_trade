@@ -1,7 +1,7 @@
-"""Sanity properties for the Kalshi binary-option quant toolkit (app/quant.py)."""
+"""Sanity properties for the Kalshi binary-option quant toolkit (app/trading/quant.py)."""
 import math
 
-from app import quant
+from app.trading import quant
 
 
 def _sig():

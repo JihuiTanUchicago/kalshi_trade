@@ -2,7 +2,7 @@
 can route off a throttled model. The setter validates against the catalog; unknown keys are refused."""
 import pytest
 
-from app import models_catalog as catalog
+from app.adapters.llm import models_catalog as catalog
 from app import repository as repo, server
 from app.server import ApiError
 

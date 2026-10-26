@@ -1,5 +1,5 @@
 """Statistical validity toolkit for the Tau research engine. Pure math; no I/O, no DB,
-no LLM. Reuses app.quant for the normal CDF (and any pricing/fee/drawdown need); it never
+no LLM. Reuses app.trading.quant for the normal CDF (and any pricing/fee/drawdown need); it never
 re-implements fees, drawdown, or sizing. See RESEARCH_PIPELINE_DESIGN.md §B.1 — that spec is
 the contract the gatekeeper is written against, so signatures/return shapes here are exact.
 
@@ -19,7 +19,7 @@ What each tool is for and its key assumption (the gatekeeper needs to pick the r
 VALIDITY CAVEAT (§F): online-FDR / a p-value budget bounds the error RATE across a stream, it
 does not sanitize a leaked or reused holdout. A budget does not un-leak a contaminated test.
 
-Normal CDF (Φ) is reused from app.quant (math.erf). Φ⁻¹ is `norm_ppf` (Acklam, no scipy).
+Normal CDF (Φ) is reused from app.trading.quant (math.erf). Φ⁻¹ is `norm_ppf` (Acklam, no scipy).
 numpy is used for the bootstrap resampling/percentiles (already a pinned dependency; invisible
 to callers — the public contract is pure python types).
 ponytail: the stationary bootstrap reads numpy's draws off raw PCG64 words in bulk and walks only its
@@ -32,7 +32,7 @@ import math
 
 import numpy as np
 
-from app.quant import _norm_cdf  # reuse: standard normal CDF (math.erf), no duplication
+from app.trading.quant import _norm_cdf  # reuse: standard normal CDF (math.erf), no duplication
 
 EULER_MASCHERONI = 0.5772156649015329
 

@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import models_catalog, repository as repo, server
+from app import repository as repo, server
+from app.adapters.llm import models_catalog
 from app.adapters.db import agent_run_repository
 
 

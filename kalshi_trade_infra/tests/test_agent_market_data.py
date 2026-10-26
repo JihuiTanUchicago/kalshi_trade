@@ -6,7 +6,7 @@ import pytest
 
 from app.research import agent, agent_market_data as market
 from app.adapters.data.alpaca_data import MarketDataError, iso
-from app.llm import LLMError, Usage
+from app.adapters.llm.llm import LLMError, Usage
 from tests.test_app_agent import Conn, RUN, Store, WINNER, hyps, plan
 from tests.test_app_backtest import _dataset
 

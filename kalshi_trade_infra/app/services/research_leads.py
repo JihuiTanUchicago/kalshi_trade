@@ -300,7 +300,7 @@ def summary(arm: bool, result: Optional[Dict]) -> Dict:
 
 def scan_dataset(ds) -> Dict:
     """scan() with the live gate's costs and validation level, for a research dataset."""
-    from app import stats
+    from app.research import stats
     from app.research import gatekeeper, partitions
     from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
     research_days = max((ds.end_ts - ds.start_ts) / 86400.0, 0.0)

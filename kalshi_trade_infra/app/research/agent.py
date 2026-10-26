@@ -40,13 +40,13 @@ from app.adapters.stripe import billing
 from app.research import dreaming
 from app.research import exploration
 from app.research import gatekeeper
-from app import models_catalog as catalog
+from app.adapters.llm import models_catalog as catalog
 from app.research import partitions
 from app import repository as repo
-from app import research_repository as rr
+from app.research import research_repository as rr
 from app.trading import spec as specmod
-from app import stats
-from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model, public_message
+from app.research import stats
+from app.adapters.llm.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model, public_message
 from app.trading.markets import MARKETS
 from app.services import markets as market_service
 from app.services import research_memory

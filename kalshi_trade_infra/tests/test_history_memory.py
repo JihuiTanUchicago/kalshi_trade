@@ -131,7 +131,7 @@ def test_deploy_applies_the_memory_caps_before_restarting():
 def test_a_huge_window_keeps_its_most_recent_whole_events():
     """An 18k-contract one-minute series can't load inside the step limit: the window keeps its
     latest whole events (every strike of a game together) up to the estimated candle budget."""
-    from app import research_repository as rr
+    from app.research import research_repository as rr
 
     def c(event, strike, open_ts, life_min):
         return {"ticker": "KXS-%s-%s" % (event, strike), "open_ts": open_ts, "close_ts": open_ts + life_min * 60}
@@ -147,7 +147,7 @@ def test_a_huge_window_keeps_its_most_recent_whole_events():
 
 def test_a_window_load_is_bounded_to_its_contracts_close_times():
     """The candle query no longer scans the whole series: since/until wrap the kept contracts."""
-    from app import research_repository as rr
+    from app.research import research_repository as rr
     from app.trading.markets import Market
 
     seen = {}

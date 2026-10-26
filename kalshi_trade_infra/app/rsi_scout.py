@@ -82,7 +82,7 @@ def research_window(cur, market: str) -> Dict:
     """The market's research window WITHOUT freezing anything: its active partition if one exists,
     else the boundaries a first research run would freeze."""
     from app.research import partitions
-    from app import research_repository as rr
+    from app.research import research_repository as rr
     active = rr.get_active_partition(cur, market)
     if active:
         return active

@@ -36,9 +36,9 @@ from app.adapters.kalshi import kalshi_dev_exec
 from app.adapters.kalshi_perps import kalshi_perps_trading
 from app.adapters.alpaca import alpaca_paper
 from app.adapters.brokers import broker_oauth
-from app import models_catalog as catalog
+from app.adapters.llm import models_catalog as catalog
 from app import repository as repo
-from app import research_repository as research_repo
+from app.research import research_repository as research_repo
 from app.trading import spec as specmod
 from app.services import backtest_check, book_memo, gate_explain, paper_checks, run_stop, trade_why
 from app.trading import track_record

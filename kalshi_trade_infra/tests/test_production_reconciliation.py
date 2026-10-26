@@ -11,7 +11,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from app import llm, models_catalog, repository
+from app import repository
+from app.adapters.llm import llm, models_catalog
 from app.adapters.stripe import billing
 from app.research import gatekeeper, partitions
 

@@ -1,4 +1,4 @@
-"""Tests for app.research_repository against an in-memory fake cursor (no live
+"""Tests for app.research.research_repository against an in-memory fake cursor (no live
 DB), extending the FakeCursor idea in tests/conftest.py to the four new ledger
 tables. Covers the immutability contract (INSERT-only experiments/results),
 fdr-state round-trip, and the holdout one-way latch.
@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 
-from app import research_repository as rr
+from app.research import research_repository as rr
 
 
 class LedgerCursor:

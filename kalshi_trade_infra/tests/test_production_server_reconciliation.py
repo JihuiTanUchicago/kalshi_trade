@@ -6,7 +6,7 @@ import pytest
 
 from app import schema, server
 from app.research import agent
-from app import models_catalog as catalog
+from app.adapters.llm import models_catalog as catalog
 
 
 def context(body=None, query=None):

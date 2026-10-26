@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Sequence
 
 from app.adapters.sim.maker_eval import evaluate
-from app.llm import Usage
+from app.adapters.llm.llm import Usage
 from app.services.maker_lab import S3Ledger, run_lab, split, summary_lines
 from trading_core.engine.maker_policy import MAKER_SERIES
 
@@ -56,8 +56,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
     import boto3
-    from app import models_catalog as catalog
-    from app.llm import claude
+    from app.adapters.llm import models_catalog as catalog
+    from app.adapters.llm.llm import claude
     from data_pipeline.tick_store import BUCKET
     end = datetime.fromisoformat(a.end).replace(tzinfo=timezone.utc) if a.end else \
         datetime.now(timezone.utc) - timedelta(minutes=30)

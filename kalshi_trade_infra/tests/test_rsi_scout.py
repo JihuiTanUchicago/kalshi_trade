@@ -92,7 +92,7 @@ def test_save_then_rank_against_a_real_database():
 
 
 def test_the_research_window_is_computed_without_freezing_a_partition(monkeypatch):
-    from app import research_repository as rr
+    from app.research import research_repository as rr
     monkeypatch.setattr(rr, "get_active_partition", lambda cur, m: None)
     monkeypatch.setattr(rr, "save_partition", lambda *a, **k: pytest.fail("the scout must not freeze partitions"))
     t0 = 1_760_000_000

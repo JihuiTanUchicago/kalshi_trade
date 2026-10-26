@@ -16,7 +16,7 @@ from app.research.gatekeeper import Classification, HoldoutConsumed, Prereg
 
 
 class FakeRepo:
-    """In-memory stand-in for app.research_repository: just enough of the surface the
+    """In-memory stand-in for app.research.research_repository: just enough of the surface the
     gatekeeper calls, storing experiments / result rows / fdr state / holdout ledger in dicts."""
 
     def __init__(self):
@@ -515,7 +515,7 @@ def test_classify_rejects_actively_negative_edge():
 
 import random as _random
 
-from app import stats as _stats
+from app.research import stats as _stats
 
 
 def _uniform_trades(n, gross_edge, seed, days=16):

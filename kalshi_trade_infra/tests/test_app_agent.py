@@ -4,7 +4,7 @@ import re
 import pytest
 
 from app.research import agent
-from app.llm import LLMError
+from app.adapters.llm.llm import LLMError
 from tests.test_app_backtest import _dataset
 
 
@@ -438,7 +438,7 @@ def test_run_worker_reads_the_owner():
 
 def test_plan_lookback_clamps_to_available_history():
     from app.research import agent
-    from app.llm import Usage
+    from app.adapters.llm.llm import Usage
     from app.trading.markets import MARKETS
     big = "```json\n%s\n```" % json.dumps({"lookback_days": 9999, "why": "lots"})
     model, _ = scripted([big])

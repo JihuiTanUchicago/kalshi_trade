@@ -62,9 +62,9 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     from app import server
     from app.adapters.stripe import billing
     from app.research import agent
-    from app import models_catalog as catalog
+    from app.adapters.llm import models_catalog as catalog
     from app import repository as repo
-    from app.llm import Usage
+    from app.adapters.llm.llm import Usage
 
     # -- payments on, in-process ----------------------------------------------------------------
     monkeypatch.setattr(billing, "STRIPE_SECRET_KEY", "sk_test_credits_add_up")

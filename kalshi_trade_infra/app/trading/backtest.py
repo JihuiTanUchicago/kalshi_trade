@@ -1192,7 +1192,7 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
     try:
         with conn.cursor() as cur:
             if market.source == "ticks":
-                from app import research_repository as rr
+                from app.research import research_repository as rr
                 from app.adapters.data import tick_dataset
                 contracts = rr.partition_contracts(cur, market, since)
                 return tick_dataset.load_window(market, contracts, 0, 2 ** 62)
@@ -1320,7 +1320,7 @@ def fit_spec_on_research(spec: Dict, ds: Dataset, diag: Optional[Dict] = None) -
     non-empty only when the model was left unfitted. Pure observability: it never changes the fit
     itself or when a model is left unfitted (still research-only, still frozen)."""
     from app.trading import spec as specmod
-    from app import stats
+    from app.research import stats
     if not specmod.is_learned_model(spec) or specmod.is_fitted(spec):
         return spec
     m = spec["model"]
@@ -1483,7 +1483,7 @@ def research_fold_trades(spec: Dict, ds: Dataset, embargo_seconds: int, n_splits
     """The trades research_fold_metrics scores: simulate the spec across the whole Research window,
     keep only the pooled PURGED walk-forward test folds (stats.purged_walkforward_splits), ordered
     by entry. Too few trades to split -> every trade. Research data only, so free to inspect."""
-    from app import stats
+    from app.research import stats
     trades = sorted(simulate(spec, ds, ds.start_ts, ds.end_ts + 1, what_if), key=lambda t: t.entry_ts)
     if not trades:
         return []

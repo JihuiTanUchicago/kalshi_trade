@@ -6,7 +6,7 @@ import pytest
 
 from app.research import agent, agent_market_data as market
 from app.adapters.data import massive_data
-from app.llm import Usage
+from app.adapters.llm.llm import Usage
 from tests.test_agent_market_data import final_check, provider as alpaca_provider, scripted
 from tests.test_app_agent import Conn, RUN, Store, WINNER, hyps, plan
 from tests.test_app_backtest import _dataset

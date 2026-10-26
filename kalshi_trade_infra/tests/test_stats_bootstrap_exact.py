@@ -12,7 +12,7 @@ import time
 import numpy as np
 import pytest
 
-from app import stats
+from app.research import stats
 from app.research import agent
 
 M32 = 0xFFFFFFFF

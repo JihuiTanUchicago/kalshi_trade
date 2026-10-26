@@ -58,7 +58,7 @@ from typing import Dict, List, Optional, Tuple
 
 from app.trading import backtest
 from app import repository as repo
-from app import research_repository as rr
+from app.research import research_repository as rr
 from app.research.exploration import ExplorationPolicy, PolicyState
 
 # Objective coefficients. Tunable; defaults keep the penalties small relative to a

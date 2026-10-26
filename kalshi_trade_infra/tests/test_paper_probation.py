@@ -1,7 +1,7 @@
 """Forward paper probation: validation near misses run on paper (flag-gated, autopilot only, capped),
 and never get a live path, since live still requires a gatekeeper DEPLOYMENT_CANDIDATE."""
 from app.research import agent
-from app import research_repository as rr
+from app.research import research_repository as rr
 
 USER = {"id": 2, "autopilot": True}
 SPEC = {"side": "yes", "sizing": {"stake": 5, "max_positions": 1}}

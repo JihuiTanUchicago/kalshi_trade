@@ -6,7 +6,8 @@ import io
 from datetime import datetime
 from types import SimpleNamespace
 
-from app import models_catalog, server
+from app import server
+from app.adapters.llm import models_catalog
 from app.adapters.db import billing_repository
 
 

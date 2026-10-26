@@ -134,7 +134,7 @@ def run_cost_usd(run: Dict, screen: Optional[Dict] = None) -> float:
     `screen` verdict payload: its tokens are part of the run's totals but priced at the screen
     model's rate (services.research_screen)."""
     from app.adapters.stripe import billing
-    from app import models_catalog as catalog
+    from app.adapters.llm import models_catalog as catalog
     from app.services.research_screen import screen_cost_split
     try:
         model_id = catalog.resolve(run.get("model")).model_id

@@ -330,7 +330,7 @@ def load_catalog_markets() -> Dict[str, Market]:
         return {}
     curated_series = {m.series for m in CURATED.values()}
     try:
-        from app import catalog_repository
+        from app.trading import catalog_repository
         from data_pipeline.common import get_db_conn
     except Exception:
         return {}

@@ -904,13 +904,13 @@ Full design + signatures: `RESEARCH_PIPELINE_DESIGN.md` (source of truth). The r
 loop was turned from "generate → fixed-70/30-OOS gate" into a statistically-disciplined
 engine that separates GENERATION from JUDGMENT:
 
-- `app/stats.py` — pure validity math: Benjamini-Hochberg / Benjamini-Yekutieli FDR,
+- `app/research/stats.py` — pure validity math: Benjamini-Hochberg / Benjamini-Yekutieli FDR,
   LORD++ online-FDR (persistable alpha-wealth state), Probabilistic + Deflated Sharpe,
   stationary-bootstrap CI (the primary validation p-value), timestamp-based purged
-  walk-forward + embargo splitter. Reuses `app/quant.py`.
+  walk-forward + embargo splitter. Reuses `app/trading/quant.py`.
 - Immutable experiment ledger (`app/schema.py`: `app_experiments` [pre-registration,
   INSERT-only], `app_experiment_results` [append-only verdicts], `app_fdr_state`,
-  `app_holdout_ledger`, `app_data_partitions`) via `app/research_repository.py`.
+  `app_holdout_ledger`, `app_data_partitions`) via `app/research/research_repository.py`.
 - `app/research/partitions.py` — frozen chronological Research/Validation/Locked-Holdout split
   (60/25/15), purge/embargo tied to each market's settlement cadence; validation/holdout
   loaders are gatekeeper-only (the generator can't reach them).
@@ -1432,7 +1432,7 @@ catalog:
 - `app/trading/markets.py`: `MARKETS` = catalog-generated set + the 19 `CURATED` layered on top (authoritative,
   never shadowed). `load_catalog_markets()` reads the enriched `kalshi_series` at import, best-effort
   (no DB / empty / un-enriched catalog → just the curated 19; never raises, never hits the network).
-  `market_from_series()` is the pure, testable config-derivation. SQL lives in `app/catalog_repository.py`.
+  `market_from_series()` is the pure, testable config-derivation. SQL lives in `app/trading/catalog_repository.py`.
 - Generation filter (all derivable from the catalog): recurring frequency (fifteen_min/hourly/daily/
   weekly/custom — excludes one_off/annual/sparse monthly+quarterly), allowed category (Sports, Weather,
   Economics, Commodities, Sci/Tech, Companies, Health, World, Transportation — EXCLUDES Crypto [curated,
@@ -1664,7 +1664,7 @@ SES verification email sent to tjhprivate016@gmail.com (operator mail works afte
 so signup confirmations to arbitrary addresses deliver once AWS approves (~24h). Until then only the
 verified operator address receives mail.
 
-**Agent LLM via Bedrock.** `app/llm.py` gained a Bedrock backend: `APP_LLM_PROVIDER=bedrock` (set in
+**Agent LLM via Bedrock.** `app/adapters/llm/llm.py` gained a Bedrock backend: `APP_LLM_PROVIDER=bedrock` (set in
 `.env.app`) routes Claude calls through Amazon Bedrock via the instance role (AWS credits, no
 Anthropic key). `APP_BEDROCK_MODEL` default `anthropic.claude-sonnet-5-5`. Role has `TauBedrockInvoke`
 (bedrock:InvokeModel). End-to-end verified except **model access**: an on-box invoke returns
@@ -1743,7 +1743,7 @@ What exists:
   reuses `market_candles`).
 - `app/research/agent.py`: 2-round research loop on in-sample only, OOS revealed only for frozen
   finalists, per-user memory; co-pilot chat/review with actions re-backtested; autopilot
-  guardrails. `app/llm.py`: Claude over HTTPS with one JSON repair round.
+  guardrails. `app/adapters/llm/llm.py`: Claude over HTTPS with one JSON repair round.
 - `app/trading/engine.py`: per-slot decisions for every user, paper fills at the live book capped by
   size, live via `MarketableLimitKernel` with the user's key (gated by
   `APP_LIVE_TRADING_ENABLED`, off), settlement on Kalshi results, loss guard, daily reviews.

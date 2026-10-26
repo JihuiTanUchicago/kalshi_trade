@@ -3,7 +3,8 @@ happened and what to do; the detail goes to the server log. Synthetic inputs onl
 or database is called."""
 import pytest
 
-from app import llm, server
+from app import server
+from app.adapters.llm import llm
 from app.adapters.stripe import billing
 from app.research import agent
 from app.server import ApiError

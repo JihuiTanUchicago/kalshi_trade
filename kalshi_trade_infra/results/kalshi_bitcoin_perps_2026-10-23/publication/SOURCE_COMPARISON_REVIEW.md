@@ -35,7 +35,7 @@ Offline, read-only review of the canonical `READINESS_39884723368.json` in the f
 | `app/research/agent.py` | 173625 | `c78ee13f989b038e4bafc24da684a851bf2121dc8ac70827f9c442ef9902c4da` | No exact local source or older exact hash witness found |
 | `app/adapters/stripe/billing.py` | 13576 | `0fd9b234d03df7db3c83ac0c45f487063f8eaa37f677fcfa37971708d3d3baef` | No exact local source or older exact hash witness found |
 | `app/web/devlog.py` | 101322 | `913520e1fd7686a689b4738ed8a7d8eb14540b9497131cccdea80075cc80fab7` | No exact local source or older exact hash witness found |
-| `app/llm.py` | 22318 | `1ce41cbc588c116d26adc33c041b4576ed793fe188146229cb1367cfd7129444` | No exact local source or older exact hash witness found |
+| `app/adapters/llm/llm.py` | 22318 | `1ce41cbc588c116d26adc33c041b4576ed793fe188146229cb1367cfd7129444` | No exact local source or older exact hash witness found |
 | `app/repository.py` | 102323 | `2cb1037da11b513f6389cbfd5eb139e9861b718e37de09b0ef64fcdc962fc5c7` | No exact local source or older exact hash witness found |
 | `app/schema.py` | 39642 | `6738460234b7e46ff230cb64e287354e2e3e0f46a548f8fb504ef17c476c1084` | Same hash appears in Oct21 Meridian deployment inventories and `RESTORE_PIN_REVIEW.json`; source bytes unavailable locally |
 | `app/server.py` | 107139 | `8d93c845e51c7b46696725f99ab18e20c2b5ce0041f52ac56d81a0410e7cea68` | No exact local source or older exact hash witness found |

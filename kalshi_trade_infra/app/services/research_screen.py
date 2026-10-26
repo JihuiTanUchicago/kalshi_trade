@@ -25,8 +25,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
-from app import models_catalog as catalog
-from app.llm import ModelFn, Usage
+from app.adapters.llm import models_catalog as catalog
+from app.adapters.llm.llm import ModelFn, Usage
 
 SCREEN_MODEL = os.getenv("APP_SCREEN_MODEL", "auto").strip().lower()
 # 0, not 0.5: stopped 2026-10-25 08:50Z. Over ~58 screen-arm ideas the screen developed none and

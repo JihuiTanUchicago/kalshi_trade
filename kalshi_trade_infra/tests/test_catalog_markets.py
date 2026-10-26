@@ -1,4 +1,4 @@
-"""Catalog-driven outcome-settled universe (app/trading/markets.py + app/catalog_repository.py).
+"""Catalog-driven outcome-settled universe (app/trading/markets.py + app/trading/catalog_repository.py).
 
 Proves generation turns enriched `kalshi_series` rows into valid deployable, book-only Markets
 (the nba_game model: underlying=None, binary, YES/NO settlement), excludes the series classes that
@@ -94,7 +94,7 @@ class _StubCursor:
 
 
 def test_deployable_series_builds_bounded_filter():
-    from app import catalog_repository
+    from app.trading import catalog_repository
     rows = [_row()]
     cur = _StubCursor(rows)
     out = catalog_repository.deployable_series(
@@ -112,7 +112,7 @@ def test_deployable_series_builds_bounded_filter():
 
 
 def test_deployable_series_empty_when_no_categories():
-    from app import catalog_repository
+    from app.trading import catalog_repository
     cur = _StubCursor([])
     assert catalog_repository.deployable_series(cur, set(), 2, 150, [], ["daily"]) == []
 
@@ -154,7 +154,7 @@ def test_load_catalog_markets_caps_global_and_per_category(monkeypatch):
     # The ceilings still work as a throttle when set low: 60 Sports + 60 Weather rows,
     # global cap 150, per-category 40 -> 40 of each kept. (Caps pinned here so the test proves
     # the MECHANISM regardless of the generous production defaults.)
-    from app import catalog_repository
+    from app.trading import catalog_repository
     import data_pipeline.common as common
     rows = ([_row(series_ticker="KXSPORT%d" % i, category="Sports", frequency="custom", open_markets=50 - i % 10)
              for i in range(60)] +
@@ -175,7 +175,7 @@ def test_load_catalog_markets_caps_global_and_per_category(monkeypatch):
 def test_default_caps_do_not_starve_the_collected_universe(monkeypatch):
     # The owner's bar: every collected, tradeable series becomes deployable, not a curated subset.
     # 300 eligible series (far above the OLD 150/40 caps) must ALL generate under the defaults.
-    from app import catalog_repository
+    from app.trading import catalog_repository
     import data_pipeline.common as common
     rows = [_row(series_ticker="KXSPORT%d" % i, category="Sports", frequency="custom",
                  open_markets=100 - i % 20) for i in range(300)]
