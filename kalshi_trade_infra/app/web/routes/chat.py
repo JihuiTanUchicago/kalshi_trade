@@ -31,6 +31,7 @@ from app.web.routes.brokers import _paper_call, _perps_live_call
 from app.web.settings import MAX_CHAT_PER_HOUR
 from app.web.views import (
     _demo_health,
+    credit_cents,
     credit_exact,
     credit_usd,
     _needs_card,
@@ -228,6 +229,20 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
             # What research actually debited this week (the credit ledger), not tokens re-priced:
             # re-pricing billed a screen-arm run's screen tokens at the developer model's rate.
             "cost_7d": credit_usd(spent if spent is not None else repo.credit_week(cur, uid, since)["research"])}
+
+
+def _research_cents(credits: Dict) -> float:
+    """The week's research credits (repo.credit_week) as Billing's week split shows them: "your research
+    sessions" plus "autopilot research", each to the cent first (credit_cents), so the autopilot card's
+    research is the sum of the two figures Billing shows. Rounded once, $40.936666 + $59.066899 read
+    $100.00 on the card beside Billing's $40.94 and $59.07. The seeded example session is left out of
+    research; it debits nothing, and if it ever did, the figure is the research total to the cent."""
+    if not credits["research"]:
+        return 0.0  # no research debits this week: nothing to split
+    by = credits["by_source"]
+    if abs(by["research"] + by["autopilot_research"] - credits["research"]) > 1e-9:
+        return credit_usd(credits["research"])
+    return credit_usd(credit_cents(by["research"]) + credit_cents(by["autopilot_research"]))
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
@@ -739,7 +754,7 @@ def autopilot_status(ctx: Ctx):
             soon = min(etas, key=etas.get)
             paper_progress.update(soonest_days=etas[soon], soonest_title=titles[soon])
     out = {
-        "research": _research_activity(cur, ctx.uid, pulse, credits["research"]),
+        "research": _research_activity(cur, ctx.uid, pulse, _research_cents(credits)),
         "autopilot": on,
         "autopilot_live": bool(u.get("autopilot_live")),
         "live_enabled": bool(engine.LIVE_TRADING_ENABLED),

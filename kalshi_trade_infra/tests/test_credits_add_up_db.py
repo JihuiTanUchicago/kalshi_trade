@@ -197,7 +197,9 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     since = repo.now_utc() - server.timedelta(days=7)
     assert Decimal(str(repo.research_spent_since(cur, uid, since))).quantize(SIX) == research_usd
     status = server.autopilot_status(ctx())
-    assert status["research"]["cost_7d"] == float(_cents(research_usd))
+    # To the cent as Billing's week split shows its two research parts: the research total to the cent,
+    # or one cent from it when each part's rounding moves the same way.
+    assert abs(Decimal(str(status["research"]["cost_7d"])) - _cents(research_usd)) <= Decimal("0.01")
     assert server._autopilot_week(cur, uid, status["research"])["research_credits"] == status["research"]["cost_7d"]
     assert spent_total - research_usd == per_run[chat_id] > 0  # the chat turn is billed, just not as research
 
@@ -256,6 +258,9 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     # The week split by what spent it adds up to the week, and the chat turn is its own part.
     by = state["spent_7d_by"]
     assert _cents(sum(Decimal(str(v)) for v in by.values())) == _cents(state["spent_7d"])
+    # The autopilot card's research is Billing's two research parts as shown, its check-ins Billing's part.
+    assert Decimal(str(status["research"]["cost_7d"])) == Decimal(str(by["research"])) + Decimal(str(by["autopilot_research"]))
+    assert server._autopilot_week(cur, uid, status["research"])["checkin_credits"] == by["autopilot_review"]
     assert _cents(by["research"]) == _cents(research_usd) and _cents(by["chat"]) == _cents(per_run[chat_id])
     assert state["spent_24h"] == state["spent_7d"]  # everything here happened just now
     # Each usage line says what it was for and the model's name; the invokable id never shows.
