@@ -3867,3 +3867,23 @@ test('autopilot walk (Meridian): the since strip counts the research sessions th
     autopilot: {research: 2, set_risk: 1}, runs: {}}};
   assert.match(f.sinceStrip(d, '#dash-paused'), /It started 2 research sessions, made 1 other change\./);
 });
+
+test('a Deploy poll that reads the same board repaints nothing, and repaints what changed', async () => {
+  const dep = {id: 1, strategy_id: 101, title: 'Strategy 1', market: 'btc15m', mode: 'paper', status: 'running', stake: 5,
+    max_positions: 2, backtest: {out_of_sample: {pnl: 12}}, created_at: '2026-10-17T10:00:00Z', realized_pnl: 3,
+    unrealized_pnl: null, closed_trades: 1, open_positions: 1, curve: []};
+  const pos = {title: 'Strategy 1', ticker: 'KXBTC15M-T1', side: 'yes', qty: 2, entry_price: .4, entry_fee: .02, unrealized: null,
+    market_close_time: '2026-10-25T17:30:00Z', mode: 'paper'};
+  let board = {deployments: [dep], open_positions: [pos]}, reads = 0;
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); reads++; return response(board); }});
+  await f.viewDeploy(); await flush(); await flush();
+  const regions = ['#dfigs', '#deps', '#openpos'].map(sel => f.root.querySelector(sel));
+  const first = regions.map(el => el.writes);
+  const tick = f.intervals.get(f.S.timers.at(-1));
+  tick(); await flush(); await flush();
+  assert.equal(reads, 2); assert.deepEqual(regions.map(el => el.writes), first);
+  board = {deployments: [{...dep, realized_pnl: 4.5, closed_trades: 2}], open_positions: []};  // a trade closed
+  tick(); await flush(); await flush();
+  assert.equal(reads, 3); assert.deepEqual(regions.map((el, i) => el.writes - first[i]), [1, 1, 1]);
+  assert.match(f.root.querySelector('#openpos').innerHTML, /No open positions/);
+});

@@ -887,7 +887,13 @@ def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS,
     way. A busy trader's stopped deployments hold much of their history, which the full read sorted
     for curves nobody shows. The timestamp is computed in SQL from the naive-UTC DATETIME
     (TIMESTAMPDIFF, which no session time zone touches), the same integer the Python conversion
-    gave, without decoding thousands of datetimes."""
+    gave, without decoding thousands of datetimes.
+
+    Each deployment's kept points come back as one JSON array row ([rn, ts, cum] per point), sorted
+    by rn here: pymysql decodes a row at a time in Python, and a busy board's ~3,000 point rows were
+    most of this read (33 -> 19ms at 30 deployments and 3,000 closed trades). JSON_ARRAYAGG takes no
+    ORDER BY on MySQL, hence rn. cum is the DECIMAL's own text in the array, so float() of it is the
+    float the DECIMAL gave."""
     buckets = max(1, (max_points - 2) // 2)
     ids: Tuple = ()
     where = "user_id=%s AND status='closed'"
@@ -897,7 +903,8 @@ def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS,
             return {}
         where = "deployment_id IN (" + ",".join(["%s"] * len(ids)) + ") AND " + where
     cur.execute(
-        """SELECT deployment_id, TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', closed_at) AS ts, cum FROM (
+        """SELECT deployment_id,
+                  JSON_ARRAYAGG(JSON_ARRAY(rn, TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', closed_at), cum)) AS pts FROM (
              SELECT deployment_id, closed_at, cum, rn,
                     ROW_NUMBER() OVER (PARTITION BY deployment_id, b ORDER BY cum, rn) AS lo,
                     ROW_NUMBER() OVER (PARTITION BY deployment_id, b ORDER BY cum DESC, rn) AS hi
@@ -915,12 +922,15 @@ def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS,
              ) bucketed
            ) ranked
            WHERE lo = 1 OR hi = 1
-           ORDER BY deployment_id, rn""",
+           GROUP BY deployment_id
+           ORDER BY deployment_id""",
         (max_points, buckets, buckets, *ids, user_id),
     )
     out: Dict[int, List[List]] = {}
     for r in cur.fetchall():
-        out.setdefault(r["deployment_id"], []).append([int(r["ts"]), round(float(r["cum"]), 4)])
+        pts = r["pts"]
+        pts = sorted(json.loads(pts.decode() if isinstance(pts, (bytes, bytearray)) else pts))
+        out[r["deployment_id"]] = [[int(ts), round(float(cum), 4)] for _, ts, cum in pts]
     return out
 
 

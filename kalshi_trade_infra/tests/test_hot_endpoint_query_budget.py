@@ -25,6 +25,10 @@ then each deployment's strategy once, times read as seconds); /api/strategies 90
 (idx_dep_strategy answers each strategy's active-deployment probes). Then GET /api/trades.csv for a
 5,000-trade book: ~110 -> ~40ms of SQL, 1 -> 2 statements (the times and amounts read as the file's
 text in one packed column, then each deployment's strategy once instead of joined to every trade).
+Then the deployments' curves (the Deploy board's 10s poll and the dashboard's 15s one) on a seeded
+account of 30 deployments and 3,000 closed trades: one JSON array per deployment instead of a row per
+kept point, 33 -> 19ms of the read; /api/deployments 67 -> 55ms, /api/dashboard 74 -> 60ms.
+Still one statement each; the dashboard measures 13 here (14 was its old ceiling).
 """
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -38,7 +42,7 @@ from app import billing, engine, server
 # A steady-state poll: the process-wide shared reads (series list, data freshness) and the run page's
 # dream line are warm, as they are for every request but one a minute. get_run's run is queued past
 # the overdue limit, so it also counts the queue ahead (5 for a run that is working normally).
-BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}  # dashboard: the trades CSV counts ride the realized-P&L pass
+BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 13}  # dashboard: the trades CSV counts ride the realized-P&L pass
 # The Deploy board polls /api/deployments every 10s; /api/strategies/<id> is the strategy page. Both
 # counted cold: the per-book backtest comparison is read once a minute, and these requests include it.
 BUDGET.update({"list_deployments": 6, "get_strategy": 6})
@@ -162,8 +166,9 @@ def test_the_deploy_board_and_strategy_page_stay_in_their_query_budget(productio
     # The board's curves are read for the deployments it lists, not every stopped one's history;
     # the strategy page sums only its own strategy's deployments.
     if name == "list_deployments":
-        curves = [p for s, p in log if "SUM(pnl) OVER (PARTITION BY deployment_id" in s]
-        assert len(curves) == 1 and curves[0][3:5] == (5, 6)
+        curves = [(s, p) for s, p in log if "SUM(pnl) OVER (PARTITION BY deployment_id" in s]
+        assert len(curves) == 1 and curves[0][1][3:5] == (5, 6)
+        assert "JSON_ARRAYAGG" in curves[0][0]  # one row per deployment, not one per point
     else:
         assert [p for s, p in log if "LEFT JOIN (SELECT p.deployment_id" in s] == [(7, 9, 7, 9)]
         assert not any("SUM(pnl) OVER" in s for s, _ in log)
@@ -176,6 +181,19 @@ def test_the_dashboard_reads_curves_only_for_the_deployments_it_shows(production
     assert [p[3:5] for s, p in log if "SUM(pnl) OVER (PARTITION BY deployment_id" in s] == [(5, 6)]
     log = _call("dashboard", 10.0)
     assert not any("SUM(pnl) OVER" in s for s, _ in log)
+
+
+def test_a_deployment_curve_comes_back_as_one_row_and_is_put_in_trade_order():
+    """Each deployment's kept points arrive as one JSON array of [trade number, unix ts, cumulative
+    P&L], in no promised order (JSON_ARRAYAGG has no ORDER BY on MySQL); the curve is put back in trade
+    order, as the row-per-point read returned it, and the DECIMAL's text keeps its float."""
+    rows = {"JSON_ARRAYAGG(JSON_ARRAY(rn,": [
+        {"deployment_id": 5, "pts": "[[3, 1761390120, 1.2500], [1, 1761390000, -0.2500], [2, 1761390060, 0.1000]]"},
+        {"deployment_id": 6, "pts": b"[[1, 1761393600, 12345678.1234]]"}]}
+    log = []
+    curves = server.repo.deployment_curves(CountingCursor(log, rows), 7, deployment_ids=[6, 5])
+    assert curves == {5: [[1761390000, -0.25], [1761390060, 0.1], [1761390120, 1.25]], 6: [[1761393600, 12345678.1234]]}
+    assert list(curves) == [5, 6] and len(log) == 1 and log[0][1][3:] == (5, 6, 7)
 
 
 def _deps(paused_at):

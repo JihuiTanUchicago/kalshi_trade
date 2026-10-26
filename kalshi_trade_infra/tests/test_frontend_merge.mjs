@@ -2621,3 +2621,64 @@ test('autopilot walk: the since strip counts the research sessions the autopilot
   d.since.autopilot = {research: 1};
   assert.match(f.sinceStrip(d, '#dash-deps'), /It started 1 research session\./);
 });
+
+test('a Deploy poll that reads the same board repaints nothing, and repaints what changed', async () => {
+  const dep = {id: 1, strategy_id: 1, title: 'Dep 1', market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: 5, open_positions: 1, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5,
+    max_positions: 1, backtest: {out_of_sample: null}};
+  const pos = {title: 'Dep 1', ticker: 'KXBTC15M-T1', side: 'yes', qty: 2, entry_price: .4, entry_fee: .02, unrealized: null,
+    market_close_time: '2026-10-25T17:30:00Z', mode: 'paper'};
+  let board = {deployments: [dep], open_positions: [pos]}, reads = 0;
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/deployments') { reads++; return response(board); }
+    return response({});
+  }});
+  await f.viewDeploy(); await flush(); await flush();
+  const regions = ['#dfigs', '#deps', '#openpos', '#dep-ap'].map(sel => f.root.querySelector(sel));
+  const writes = () => regions.map(el => el.writes);
+  const first = writes(), stop = f.root.querySelector('#deps [data-act="stop"]');
+  stop.onclick();  // armed: a poll used to rewrite the row and drop the confirmation
+  assert.equal(stop.textContent, 'Confirm stop');
+  const tick = f.intervals.get(f.S.timers.at(-1));
+  tick(); await flush(); await flush();
+  assert.equal(reads, 2); assert.deepEqual(writes(), first);
+  assert.equal(f.root.querySelector('#deps [data-act="stop"]'), stop); assert.equal(stop.textContent, 'Confirm stop');
+  board = {deployments: [{...dep, realized_pnl: 2.5, closed_trades: 6}], open_positions: []};  // a trade closed
+  tick(); await flush(); await flush();
+  assert.equal(reads, 3);
+  assert.deepEqual(writes().map((n, i) => n - first[i]), [1, 1, 1, 0]);  // the nudge above the rows did not change
+  assert.match(f.root.querySelector('#openpos').innerHTML, /No open positions/);
+  assert.match(f.root.querySelector('#deps').innerHTML, /\+\$2\.50/);
+});
+
+test('the dashboard asks for the track record beside the board, once, and draws it below', async () => {
+  const empty = (label) => ({trades: 0, label});
+  const tr = {generated_at: 1, default_mode: 'paper', method: [], thresholds: {min_sharpe_days: 14, min_trades: 30},
+    modes: {live: empty('Live money'), demo: empty('Kalshi demo'), paper: empty('Paper')}};
+  const dash = deferred();
+  let failTrack = true;
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return dash.promise;
+    if (path === '/api/track-record') return failTrack ? response({error: 'Tau is restarting.'}, 500) : response(tr);
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  // The real page has <main> inside a wrapper the record is appended to; the harness's elements
+  // only know their parent, so give them the DOM's name for it while this test runs.
+  Object.defineProperty(Element.prototype, 'parentNode', {get() { return this.parent; }, configurable: true});
+  try {
+    const view = f.viewDashboard(); await flush();
+    const paths = () => f.requests.map(r => r.path).filter(p => p !== '/api/notifications' && p !== '/api/autopilot/status');
+    assert.deepEqual(paths(), ['/api/track-record', '/api/dashboard']);  // both asked before the board has answered
+    dash.resolve(response(emptyDashboard()));
+    await view; await flush(); await flush();
+    const host = f.root.querySelector('#track-record');
+    assert.match(host.innerHTML, /Tau is restarting\./);  // the early read failed: the record says so, with a retry
+    failTrack = false;
+    host.querySelector('[data-retry]').onclick(); await flush(); await flush();
+    assert.match(host.innerHTML, /Track record/);
+    assert.deepEqual(paths(), ['/api/track-record', '/api/dashboard', '/api/track-record']);  // the retry asks again
+  } finally {
+    delete Element.prototype.parentNode;
+  }
+});

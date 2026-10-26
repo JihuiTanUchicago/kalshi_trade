@@ -827,6 +827,16 @@
     btn.classList.add('busy'); btn.disabled = true;
     try { return await fn(); } finally { btn.classList.remove('busy'); btn.disabled = false; }
   }
+  // A poll repaints a region only when its markup changed. The Deploy board rewrote every row and
+  // every open position each 10s even when nothing moved: ~190ms of layout and style a poll on a
+  // phone-speed CPU at 30 deployments and 60 positions, and an armed "Confirm stop" was reset. The
+  // markup is kept per element, so a new view's elements (shell) always paint.
+  const painted = new WeakMap();
+  function paint(el, html) {
+    if (!el || painted.get(el) === html) return;
+    painted.set(el, html);
+    el.innerHTML = html;
+  }
   function flash(where, msg, kind) {
     const el = typeof where === 'string' ? root.querySelector(where) : where;
     if (el) el.innerHTML = notice(msg, kind);
@@ -1546,6 +1556,12 @@
   const DASH_ROWS = 5;  // rows per dashboard list before it links to the full page
   async function viewDashboard() {
     shell('/', loading(120), loading(320));
+    // The track record is its own read: asked for now, beside the board, instead of after the board
+    // has painted (it waited the whole dashboard read before it started). Drawn below the board, so
+    // asked only where dashTrackRecord can put it.
+    const trWrap = root.querySelector('main') && root.querySelector('main').parentNode;
+    const trFirst = trWrap && trWrap.appendChild ? api('/api/track-record', undefined, { keep: true }) : null;
+    if (trFirst) trFirst.catch(() => {});  // a failure is drawn by dashTrackRecord, with its retry
     const visitAt = visitStart();
     const load = async (cfg) => {
       const d = await api('/api/dashboard' + (visitAt ? '?since=' + visitAt : ''), undefined, cfg);
@@ -1605,8 +1621,8 @@
             <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed.slice(0, DASH_ROWS), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
           </aside>
         </div></div>`;
-      root.querySelector('#boardbody').innerHTML = board;
-      root.querySelector('main').innerHTML = main;
+      paint(root.querySelector('#boardbody'), board);  // the 15s poll repaints only what changed
+      paint(root.querySelector('main'), main);
       S.dashPaper = p;
       paintDashAp();
       const dd = root.querySelector('#dash-deps');
@@ -1614,7 +1630,7 @@
     };
     await load();
     poll(load, 15000, 'dash-stale');
-    dashTrackRecord();
+    dashTrackRecord(trFirst);
   }
 
   // ---------- research ----------
@@ -3021,7 +3037,7 @@
       }
       const running = d.deployments.filter((x) => x.status === 'running');
       const depAp = root.querySelector('#dep-ap');
-      if (depAp) depAp.innerHTML = d.deployments.length ? apNudge('Want it to find and deploy more like this?', 'and it researches ideas and puts the ones that pass on paper by itself.') : '';
+      paint(depAp, d.deployments.length ? apNudge('Want it to find and deploy more like this?', 'and it researches ideas and puts the ones that pass on paper by itself.') : '');
       // Live, paper and demo results are never summed into one figure: each book gets its own. Removed
       // deployments aren't listed, so their P&L isn't here (the dashboard and track record keep it).
       const sumPnl = (xs) => xs.reduce((a, x) => a + x.realized_pnl, 0);
@@ -3036,21 +3052,21 @@
       const liveOn = !!(S.me && S.me.live_trading_available) || liveDeps.length > 0;
       const openSplit = ['paper', 'demo', 'live'].map((m) => [m, d.open_positions.filter((p) => (p.mode || 'paper') === m).length])
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join(' ·\u00a0') || 'None';
-      root.querySelector('#dfigs').innerHTML = fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
+      paint(root.querySelector('#dfigs'), fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
         (liveDeps.length
           ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: paperDeps.length ? `real money, strategies listed below ·\u00a0${usd(paperRealized, true)} on paper, counted apart` : 'real money, strategies listed below' })
           : paperDeps.length || !demoDeps.length ? fig('Realized', usd(paperRealized, true), { v: paperRealized, small: 'paper money, not real ·\u00a0strategies listed below' }) : '') +
         (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} ·\u00a0strategies listed below` }) : '') +
         fig('Open positions', openSplit) +
-        fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' });
+        fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
-      root.querySelector('#deps').innerHTML = d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every gate in a research session, paper first.' : 'Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>'}</div>`;
-      root.querySelector('#demo-health').innerHTML = d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '';
+      paint(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
+        : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every gate in a research session, paper first.' : 'Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>'}</div>`);
+      paint(root.querySelector('#demo-health'), d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '');
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
-      root.querySelector('#openpos').innerHTML = d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
+      paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
         ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${esc(p.ticker)}${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
-        : '<p class="hint">No open positions.</p>';
+        : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
     poll(loadBoard, 10000);
@@ -3151,8 +3167,8 @@
   }
   // Lives on the dashboard (Todd, 2026-10-25): its own request below the live board, so the 15s
   // dashboard poll never waits on it and never wipes it. The server caches it 60s per user.
-  async function mountTrackRecord(host, last) {
-    const d = await api('/api/track-record', undefined, { keep: true });
+  async function mountTrackRecord(host, last, pending) {
+    const d = await (pending || api('/api/track-record', undefined, { keep: true }));
     if (!host.isConnected || (last && last.at === d.generated_at)) return;
     if (last) last.at = d.generated_at;
     let tab; try { tab = localStorage.getItem('tau_tr_tab'); } catch (e) { /* private mode */ }
@@ -3176,7 +3192,7 @@
     host.querySelectorAll('[data-trtab]').forEach((b) => (b.onclick = () => setTab(b.dataset.trtab)));
     setTab(tab);
   }
-  async function dashTrackRecord() {
+  async function dashTrackRecord(pending) {
     const gen = S.gen, mainEl = root.querySelector('main'), wrap = mainEl && mainEl.parentNode;
     if (!wrap || !wrap.appendChild) return;
     const host = document.createElement('section');
@@ -3185,7 +3201,8 @@
     const last = { at: null };
     // A failed first read offers a retry; before, the record stayed an error until a reload.
     const first = async () => {
-      try { await mountTrackRecord(host, last); } catch (e) {
+      const read = pending; pending = null;  // the view's own read once; a retry asks again
+      try { await mountTrackRecord(host, last, read); } catch (e) {
         if (gen !== S.gen) return;
         host.innerHTML = loadFail(e.message);
         host.querySelector('[data-retry]').onclick = () => { host.innerHTML = loading(260); return first(); };
