@@ -8,6 +8,7 @@ from typing import Dict, Optional
 
 from app import repository as repo
 from app.adapters.ses import notify
+from app.services import customer_text
 from app.web.http import ApiError, Ctx, _int_param
 from data_pipeline.common import get_db_conn
 
@@ -49,7 +50,7 @@ def _post_out(p: Dict) -> Dict:
     return {
         "id": p["id"], "body": p["body"], "kind": p["kind"], "snapshot": p.get("snapshot"),
         "likes": p["likes_count"], "comments": p["comments_count"], "created_at": p["created_at"],
-        "author": p.get("name") or "Trader", "username": p.get("username"), "picture": p.get("picture_url"),
+        "author": customer_text.display_name(p.get("name"), "Trader"), "username": p.get("username"), "picture": p.get("picture_url"),
         "mine": p.get("mine", False), "liked": p.get("liked", False),
         "reactions": p.get("reactions", []),
         "image": ("/api/community/image/%d" % p["image_id"]) if p.get("image_id") else None,
@@ -106,7 +107,8 @@ def _notify_mentions(cur, author_uid: int, author_name: str, body: str, link: st
 
 def mention_candidates(ctx: Ctx):
     q = (ctx.query.get("q") or "").strip()[:32]
-    return {"users": [{"username": u["username"], "name": u["name"]} for u in repo.mention_candidates(ctx.cur, q)]}
+    return {"users": [{"username": u["username"], "name": customer_text.display_name(u["name"], u["username"])}
+                      for u in repo.mention_candidates(ctx.cur, q)]}
 
 
 def create_community_post(ctx: Ctx):
@@ -128,7 +130,7 @@ def create_community_post(ctx: Ctx):
         image_id = repo.store_image(cur, ctx.uid, ctype, raw)
     snapshot = _post_snapshot(cur, ctx.uid, kind, int(ctx.body.get("ref_id") or 0)) if kind != "note" else None
     pid = repo.create_post(cur, ctx.uid, body or _default_share_text(kind, snapshot), kind, snapshot, image_id)
-    author = (repo.get_user(cur, ctx.uid) or {}).get("name") or "A trader"
+    author = customer_text.display_name((repo.get_user(cur, ctx.uid) or {}).get("name"), "A trader")
     _notify_mentions(cur, ctx.uid, author, body, "/community")
     _email_community_post_async(ctx.uid, author, body or _default_share_text(kind, snapshot))
     return {"id": pid}
@@ -203,7 +205,7 @@ def react_post(ctx: Ctx):
 
 def post_comments(ctx: Ctx):
     pid = _int_param(ctx)
-    return {"comments": [{"body": c["body"], "author": c["name"] or "Trader", "username": c.get("username"), "picture": c["picture_url"], "created_at": c["created_at"]} for c in repo.list_comments(ctx.cur, pid)]}
+    return {"comments": [{"body": c["body"], "author": customer_text.display_name(c["name"], "Trader"), "username": c.get("username"), "picture": c["picture_url"], "created_at": c["created_at"]} for c in repo.list_comments(ctx.cur, pid)]}
 
 
 def create_comment(ctx: Ctx):
@@ -217,7 +219,7 @@ def create_comment(ctx: Ctx):
     if not author:
         raise ApiError(404, "No such post.")
     repo.add_comment(ctx.cur, pid, ctx.uid, body)
-    commenter = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "Someone"
+    commenter = customer_text.display_name((repo.get_user(ctx.cur, ctx.uid) or {}).get("name"), "Someone")
     _notify_mentions(ctx.cur, ctx.uid, commenter, body, "/community")
     if author["user_id"] != ctx.uid:  # don't notify yourself
         try:
@@ -228,7 +230,6 @@ def create_comment(ctx: Ctx):
     # Don't email yourself, or anyone who turned optional email off in Settings.
     if author["user_id"] != ctx.uid and author.get("email") and not author.get("email_opt_out"):
         try:
-            commenter = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "Someone"
             notify.comment_notice(author["email"], author.get("name"), commenter, author.get("preview") or "", body)
         except Exception as e:
             print("[community] reply notice failed for post %s: %r" % (pid, e), flush=True)

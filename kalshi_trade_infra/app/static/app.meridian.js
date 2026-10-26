@@ -5613,7 +5613,7 @@
       wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && S.hotFail) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }); }
   }
 
-  const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
+  const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Credits from Tau support' };
   // /api/me is read once per page load, and the since-strip, the research form and the autopilot card
   // read its balance and card: after a top-up they kept saying "Credits are at $0.40" until a reload.
   // Each Billing read copies its own figures over (the same reads /api/me makes), and a moved balance

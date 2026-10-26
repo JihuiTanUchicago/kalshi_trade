@@ -39,7 +39,7 @@ from app.adapters.llm import models_catalog as catalog
 from app import repository as repo
 from app.research import research_repository as research_repo
 from app.trading import spec as specmod
-from app.services import backtest_check, book_memo, gate_explain, paper_checks, run_stop, trade_why
+from app.services import backtest_check, book_memo, customer_text, gate_explain, paper_checks, run_stop, trade_why
 from app.trading import track_record
 from app.web import client_errors, webperf
 from app import worker
@@ -562,7 +562,7 @@ def _status_why(d: Dict) -> Optional[str]:
     if raw == "By you" and d.get("status") == "stopped":
         return "You removed it"
     if raw not in ("By you", "Approved agent proposal", "Kill switch") and not re.search(r"% >= (?:stop|limit) ", raw):
-        return raw
+        return customer_text.clean(raw, "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")
     clause = _pause_clause(raw)
     return clause[:1].upper() + clause[1:]
 
@@ -588,6 +588,7 @@ def list_runs(ctx: Ctx):
     for r in runs:  # why a finished session stopped (out of credits, by you, an error, finished): services.run_stop
         r["stop_reason"] = run_stop.stop_reason(r)
         r.pop("out_of_credits", None)
+    customer_text.run_rows(runs)
     return {"runs": runs, "counts": repo.active_run_counts(ctx.cur, ctx.uid, silent_before=_silent_before()),
             "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
 
@@ -672,9 +673,10 @@ def get_run(ctx: Ctx):
     run["wait"] = wait
     # The run stores the model's key, NULL for the default: the page names the model a customer picked.
     run["model_label"] = catalog.label_for_key(run.get("model"))
+    customer_text.run_rows([run])
     return {
         "run": run,
-        "events": _with_gate_lines(repo.run_events(ctx.cur, run["id"], after)),
+        "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after))),
         "strategies": [_strategy_card(s) for s in strategies if s["run_id"] == run["id"]],
         "rsi": _rsi_block(pol, dream),
     }
@@ -1001,7 +1003,7 @@ def share_strategy(ctx: Ctx):
 
 
 def notifications(ctx: Ctx):
-    rows = repo.list_notifications(ctx.cur, ctx.uid)
+    rows = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid))
     return {
         "unread": repo.count_unread_notifications(ctx.cur, ctx.uid),
         "items": [{"id": r["id"], "kind": r["kind"], "body": r["body"], "link": r["link"],
@@ -1474,7 +1476,7 @@ def get_chat(ctx: Ctx):
     wait = _run_wait(run)
     # agent_wait: the oldest chat/review in flight has waited or gone quiet past the reaper's limit,
     # so the panel's pulse says that instead of "working" for as long as it lasts.
-    return {"messages": repo.chat_messages(ctx.cur, ctx.uid, after), "agent_busy": run is not None,
+    return {"messages": customer_text.chat_rows(repo.chat_messages(ctx.cur, ctx.uid, after)), "agent_busy": run is not None,
             "agent_wait": wait if wait and wait["overdue"] else None}
 
 
@@ -1770,7 +1772,7 @@ def _plain_pause_reason(why: str) -> str:
         return "it lost %.0f%% of its money, past its %.0f%% limit" % (float(m.group(1)), float(m.group(2)))
     if why.lower().startswith("lost $"):
         return "it hit its loss guard"
-    return why.rstrip(".")[:120] or "it was paused"
+    return (customer_text.clean(why, "") or "").rstrip(".")[:120] or "it was paused"
 
 
 def _tournament_summary(cur, uid: int, deps: List[Dict]) -> Optional[Dict]:
