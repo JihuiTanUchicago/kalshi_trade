@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import backtest, sandbox
+from app import backtest
+from app.research import sandbox
 from app import spec as specmod
 from app.markets import MARKETS
 

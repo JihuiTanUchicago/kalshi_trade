@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from app import agent, auth, backtest, billing, devlog, dreaming, engine, notify
+from app import auth, backtest, billing, devlog, engine, notify
+from app.research import agent, dreaming
 from app.adapters.kalshi import kalshi_account
 from app.adapters.kalshi import kalshi_dev
 from app.adapters.kalshi import kalshi_dev_exec
@@ -1542,7 +1543,7 @@ def _paper_pace(deps: List[Dict], strategy_id: int, trades: int, events: int, sp
     own first-to-last span). Counted from its oldest running paper deployment; a strategy with none
     running is not adding to its record, so it has no estimate. Display only: it says nothing about
     whether the record will be up or clear the edge and demo checks by then, and it gates nothing."""
-    from app import rsi
+    from app.research import rsi
     running = [d for d in deps if int(d["strategy_id"]) == int(strategy_id) and d["mode"] == "paper"
                and d["status"] == "running" and isinstance(d.get("created_at"), datetime)]
     if not running:
@@ -1957,7 +1958,7 @@ def _plain_pause_reason(why: str) -> str:
 
 
 def _tournament_summary(cur, uid: int, deps: List[Dict]) -> Optional[Dict]:
-    from app import tournament
+    from app.research import tournament
     try:
         return tournament.panel_summary(cur, uid, {int(d["strategy_id"]): _short_title(d.get("title")) for d in deps})
     except Exception:  # noqa: BLE001 - a readout; the table may not exist before the first schema run
@@ -2255,7 +2256,7 @@ def autopilot_status(ctx: Ctx):
                           "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "net_pnl": round(net, 2),
                           "strategies": len(sids)}
         # When the soonest one could have a full record for the live check, at the pace each trades.
-        from app import rsi
+        from app.research import rsi
         dep_of = {int(d["strategy_id"]): d for d in reversed(paper_run)}  # oldest deployment per strategy
         etas = {s: rsi.paper_eta_days(dep_of[s], prog.get(s, (0, 0.0))[0], events=events.get(s)) for s in sids}
         etas = {s: v for s, v in etas.items() if v is not None}
@@ -3497,7 +3498,7 @@ def research_context(ctx: Ctx):
 
 def research_scoreboard(ctx: Ctx):
     """How the user's research loop is doing: funnel, spend, efficiency and why ideas die, in total,
-    per market family and per day (app/rsi.py). ?days= (1-60, default 7)."""
+    per market family and per day (app/research/rsi.py). ?days= (1-60, default 7)."""
     try:
         days = min(max(int(ctx.query.get("days") or 7), 1), 60)
     except ValueError:
@@ -3513,7 +3514,7 @@ SCOREBOARD_TTL_S = 60.0
 
 
 def _research_scoreboard(cur, uid: int, days: int) -> Dict:
-    from app import rsi, rsi_playbook
+    from app.research import rsi, rsi_playbook
     board = rsi.load_scoreboard(cur, days, uid)
     try:
         board["autopilot"] = agent.autopilot_scorecard(board, agent.focus_tokens(repo.get_user(cur, uid)))
@@ -3530,7 +3531,7 @@ def _research_scoreboard(cur, uid: int, days: int) -> Dict:
         board["paper"] = rsi.paper_outcomes(cur, uid)
     except Exception:  # noqa: BLE001 - informational; the research half of the board still renders
         board["paper"] = None
-    from app import tournament
+    from app.research import tournament
     try:
         board["tournament"] = tournament.standings(cur, uid)
     except Exception:  # noqa: BLE001 - informational; the table may not exist before the first schema run
@@ -3539,7 +3540,7 @@ def _research_scoreboard(cur, uid: int, days: int) -> Dict:
         board["early_exits"] = repo.early_exit_scorecard(cur, uid)
     except Exception:  # noqa: BLE001 - informational
         board["early_exits"] = None
-    from app import rsi_repair
+    from app.research import rsi_repair
     board["data_requests"] = rsi_repair.summary(cur, uid)
     return board
 

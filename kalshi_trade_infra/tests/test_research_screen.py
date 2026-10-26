@@ -1,6 +1,6 @@
 """Model tiering (services.research_screen): the cheaper model screens, the run's model develops."""
-from app import agent as A
-from app import rsi
+from app.research import agent as A
+from app.research import rsi
 from app.llm import Usage
 from app.research_watch import screen_ab
 from app.services import research_screen as rs

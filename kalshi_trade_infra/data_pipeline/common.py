@@ -60,7 +60,7 @@ def micro_series() -> List[str]:
 
 
 def requested_series(cur, kind: str, limit: int) -> List[str]:
-    """Series research asked a collector to add (app_data_requests, written by app/rsi_repair.py on the
+    """Series research asked a collector to add (app_data_requests, written by app/research/rsi_repair.py on the
     web box; read here so the collector box needs no app/ code). Oldest open request first. [] when the
     table is absent or unreadable: a collector must never stop over it."""
     try:

@@ -416,7 +416,7 @@ Provider contracts: [Historical HTTP API](https://databento.com/docs/api-referen
 ## Massive FX, rates and options for agents — October 17, 2026
 
 `app/adapters/data/massive_data.py` supplies read-only REST data to the existing agent loop in
-`app/agent_market_data.py`. Alpaca continues to supply stock/ETF data independently.
+`app/research/agent_market_data.py`. Alpaca continues to supply stock/ETF data independently.
 Both integrations are disabled by default and use the existing model metering,
 run events and research cancellation path. There are no new dependencies or tables.
 
@@ -524,7 +524,7 @@ availability. Verification and handoff (local archive: `../results/massive_integ
 ## Alpaca stock/ETF data for agents — October 16, 2026
 
 `app/adapters/data/alpaca_data.py` reads US stock/ETF snapshots and historical OHLCV bars from
-Alpaca. `app/agent_market_data.py` connects those reads to the actual research and
+Alpaca. `app/research/agent_market_data.py` connects those reads to the actual research and
 copilot worker functions. No new dependency, database table or browser credential
 is required. This is market-data context; the Kalshi strategy language, backtester
 and order engine still evaluate Kalshi contracts. Equity strategy execution is a
@@ -898,7 +898,7 @@ execution kernel against `SimulatedVenue` (realistic fills, `order_ref` prefix `
 ## Gates (all must pass to deploy)
 
 The old five point-threshold gates were replaced by the statistical gatekeeper
-(`app/gatekeeper.py`): bootstrap CI, PSR, DSR deflated by the trial count, a market-implied
+(`app/research/gatekeeper.py`): bootstrap CI, PSR, DSR deflated by the trial count, a market-implied
 placebo, LORD++ FDR, Benjamini–Hochberg, purged walk-forward and a +1c cost stress on
 Validation, then the one-time holdout and a marginal-contribution check. Only a
 `DEPLOYMENT_CANDIDATE` may go live, manually or by autopilot, and the autopilot puts only

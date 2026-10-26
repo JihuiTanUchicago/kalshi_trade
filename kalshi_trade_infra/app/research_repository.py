@@ -14,8 +14,8 @@ Immutability is enforced by table split, not by triggers:
   - partitions supersede via active=0 (save_partition), never by mutation.
 
 This module is DB-access only. The partition *math* (boundary snapping, purge/
-embargo, fingerprint) is in app/partitions.py; the statistical verdicts are in
-app/gatekeeper.py. Both call into here for persistence.
+embargo, fingerprint) is in app/research/partitions.py; the statistical verdicts are in
+app/research/gatekeeper.py. Both call into here for persistence.
 """
 from __future__ import annotations
 

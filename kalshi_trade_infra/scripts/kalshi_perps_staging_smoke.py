@@ -259,7 +259,7 @@ def run_acceptance() -> dict:
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
     from pymysql.err import IntegrityError
-    from app import agent
+    from app.research import agent
     from app.adapters.kalshi_perps import kalshi_perps_trading as trading
     from app.adapters.kalshi import kalshi_account as account
     from app import repository as repo, server

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app import agent, agent_market_data as market
+from app.research import agent, agent_market_data as market
 from app.adapters.data import massive_data
 from app.llm import Usage
 from tests.test_agent_market_data import final_check, provider as alpaca_provider, scripted

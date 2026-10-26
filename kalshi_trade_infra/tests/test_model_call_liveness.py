@@ -2,7 +2,7 @@
 while healthy, and the stall beater used to let the watchdog reap it mid-call."""
 import time
 
-from app import agent
+from app.research import agent
 
 
 def test_a_call_in_flight_holds_progress_for_the_grace_then_releases(monkeypatch):

@@ -5,7 +5,7 @@ into the hash/provenance, and the enrich() join actually reaching the window's f
 from app import backtest
 from app.adapters.data import freedata
 from app import spec as specmod
-from app.gatekeeper import Prereg
+from app.research.gatekeeper import Prereg
 
 from tests.test_code_strategy import _dataset, _code_spec, BUY_ALL
 
@@ -267,7 +267,8 @@ def test_gated_partition_windows_carry_the_station_features(monkeypatch):
     """Validation/holdout windows load through partitions._load_window; they must join the same
     settling-day station readings research saw, or a rule using obs_high_f is judged without it."""
     import data_pipeline.common as common
-    from app import backtest, partitions
+    from app import backtest
+    from app.research import partitions
     from app.markets import MARKETS
 
     class Conn:

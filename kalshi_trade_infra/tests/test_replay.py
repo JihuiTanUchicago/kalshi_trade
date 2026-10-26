@@ -4,7 +4,7 @@ sizes rounds, credits only outcomes that were actually recorded, and rewards
 reaching good strategies with fewer generations."""
 from app import replay
 from app.replay import Node, replay as run_replay
-from app.exploration import DefaultPolicy, ExplorationPolicy, PolicyState, Batch
+from app.research.exploration import DefaultPolicy, ExplorationPolicy, PolicyState, Batch
 
 
 def _node(score, pnl, trades, tested=True, oos=0.0, passed=False):

@@ -31,7 +31,8 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from app import backtest, partitions
+from app import backtest
+from app.research import partitions
 from app import repository as repo
 from app import spec as specmod
 from app.markets import MARKETS

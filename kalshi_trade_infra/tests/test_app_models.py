@@ -94,7 +94,7 @@ def test_each_model_prices_exactly_from_the_registry():
 
 
 def _bill_recorder(monkeypatch):
-    from app import agent
+    from app.research import agent
     billed = []
     monkeypatch.setattr(agent.billing, "charge_usage",
                         lambda conn, uid, model, i, o, rid: billed.append(model))
@@ -102,7 +102,7 @@ def _bill_recorder(monkeypatch):
 
 
 def test_research_bills_at_the_chosen_models_price(monkeypatch):
-    from app import agent
+    from app.research import agent
     Store(monkeypatch)
     billed = _bill_recorder(monkeypatch)
     model, _ = scripted([plan(), hyps(WINNER, LOSER), hyps(WINNER)])
@@ -112,7 +112,7 @@ def test_research_bills_at_the_chosen_models_price(monkeypatch):
 
 
 def test_research_without_a_model_bills_at_the_default_sonnet(monkeypatch):
-    from app import agent
+    from app.research import agent
     Store(monkeypatch)
     billed = _bill_recorder(monkeypatch)
     model, _ = scripted([plan(), hyps(WINNER, LOSER), hyps(WINNER)])

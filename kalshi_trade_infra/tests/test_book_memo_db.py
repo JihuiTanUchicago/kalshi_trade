@@ -45,7 +45,8 @@ def frozen(monkeypatch):
     """One clock for every read (the kept and the fresh JSON are compared byte for byte)."""
     import sys
 
-    from app import billing, engine, rsi, track_record
+    from app import billing, engine, track_record
+    from app.research import rsi
     from app.adapters.db import sql
     from app.services import book_memo
 

@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from app import agent
+from app.research import agent
 from app.llm import LLMError
 from tests.test_app_backtest import _dataset
 
@@ -41,7 +41,7 @@ class Store:
         # classifies every approved finalist STAT_SUPPORTED (-> "passed"), and the challenger
         # approves each finalist as-is WITHOUT a model call, so the scripted replies stay 1:1
         # with the proposer rounds (prompt counts unchanged from the pre-gatekeeper loop).
-        from app import gatekeeper
+        from app.research import gatekeeper
         self._gk = gatekeeper
         monkeypatch.setattr(agent.partitions, "ensure_partition",
                             lambda cur, market: {"id": 1, "embargo_seconds": 900, "purge_seconds": 900})
@@ -437,7 +437,7 @@ def test_run_worker_reads_the_owner():
 
 
 def test_plan_lookback_clamps_to_available_history():
-    from app import agent
+    from app.research import agent
     from app.llm import Usage
     from app.markets import MARKETS
     big = "```json\n%s\n```" % json.dumps({"lookback_days": 9999, "why": "lots"})
@@ -932,7 +932,7 @@ def test_the_drawn_playbook_reaches_the_proposer_and_the_develop_turn(monkeypatc
 def test_after_a_run_the_playbook_is_scored_settled_and_rewritten(monkeypatch):
     """_rsi_learn credits the run to its playbook, settles the trial, and with no candidate pending
     asks the model for the next version from this run's verdicts (labels only)."""
-    from app import rsi_playbook
+    from app.research import rsi_playbook
     calls, logged = {}, []
     events = [{"kind": "verdict", "message": "DROPPED", "data": {"status": "abandoned", "title": "A",
                                                                   "why": "obs_high_f is not available"}}]

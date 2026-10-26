@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import backtest, sandbox
-from app import gatekeeper as gk
+from app import backtest
+from app.research import sandbox
+from app.research import gatekeeper as gk
 from app import spec as specmod
 from app.adapters.tao import tao_repository as taorepo
 from app.backtest import Trade

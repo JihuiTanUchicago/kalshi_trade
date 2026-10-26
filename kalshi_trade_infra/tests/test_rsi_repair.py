@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from app import rsi_repair
+from app.research import rsi_repair
 
 
 def test_what_each_pipeline_death_asks_for():
@@ -114,7 +114,7 @@ def test_a_missing_feature_opens_one_request_then_requeues_once_ready(conn, monk
         [("eth15m", "micro", "taker_yes_vol_60s", "open")]
     assert "KXETH15M" in rsi_repair.wanted_series(cur, "micro", 50)
     # data arrives: one re-test, then never again
-    from app import agent
+    from app.research import agent
     monkeypatch.setattr(agent, "research_unavailable_reason", lambda m: None)
     monkeypatch.setattr(rsi_repair, "is_ready", lambda cur, req: True)
     rsi_repair.run(conn)

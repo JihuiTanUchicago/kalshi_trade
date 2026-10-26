@@ -672,7 +672,7 @@ def _code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int,
     With `warm_from` signals() also sees the frames from there to start_ts; their picks are dropped.
     # ponytail: serializes the window to JSON per simulate() call (O(frames x contracts)); fine
     # for current window sizes, switch to a binary channel if windows grow much larger."""
-    from app import sandbox
+    from app.research import sandbox
     lo = start_ts if warm_from is None else min(warm_from, start_ts)
     frames = [(ts, snaps) for ts, snaps in ds.frames if lo <= ts < end_ts]
     window = _binary_window(spec["market"], frames)
@@ -720,7 +720,7 @@ def freeze_code_model(spec: Dict, ds: Dataset, diag: Optional[Dict] = None) -> D
     research loop can tell the agent WHY its hypothesis took ~0 trades (a single-class training
     window is the usual cause) instead of leaving it to guess. Pure observability: it never changes
     the fit or whether the spec is frozen."""
-    from app import sandbox
+    from app.research import sandbox
     if ds.market.kind == "perpetual":
         # Phase one uses trusted causal rules, never a full-fold arbitrary code strategy.
         return specmod.validate(spec)
@@ -893,7 +893,7 @@ def _spot_code_book(spec: Dict, ds: Dataset, start_ts: int, end_ts: int) -> Dict
     """Run the spot strategy and return {ts: (side, score)} for in-window frames. The window
     carries the alpha-in-TAO price, the TAO/USD rate, the derived alpha-in-USD price and the TAO
     subnet features, so signals() can trade and report in either denomination (§C mechanisms)."""
-    from app import sandbox
+    from app.research import sandbox
     frames = [(ts, fr) for ts, fr in ds.frames if start_ts <= ts < end_ts]
     window = _spot_window(spec["market"], frames)
     freedata.enrich(spec, window)  # as-of join requested free external data into frame["external"]
@@ -1278,9 +1278,9 @@ def partition_dataset(market_key: str, partition: Dict, phase: str) -> Dataset:
     """Build the Dataset for one partition window: 'research', 'validation' or 'holdout'. The
     generator loads only 'research' (via partitions.research_dataset) and hands the 'validation'
     window straight to the gatekeeper without ever reading a number off it — this keeps the
-    validation/holdout loaders out of agent.py entirely (§B.4). Lazy import of app.partitions
+    validation/holdout loaders out of agent.py entirely (§B.4). Lazy import of app.research.partitions
     avoids the import cycle (partitions imports this module)."""
-    from app import partitions
+    from app.research import partitions
     loaders = {"research": partitions.research_dataset,
                "validation": partitions.validation_dataset,
                "holdout": partitions.holdout_dataset}

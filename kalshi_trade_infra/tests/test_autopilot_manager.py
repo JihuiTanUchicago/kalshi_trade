@@ -5,7 +5,7 @@
   3. PORTFOLIO — promote-over-explore still holds and portfolio guidance is present.
 Plus a guard that the delegation path touches no money gate/clamp.
 """
-from app import agent
+from app.research import agent
 from app import repository as repo
 
 

@@ -17,7 +17,7 @@ crypto, we should automatically launch data pipeline to store data"). A feature 
 BELIEVED missing (it is a core feature every frame carries) is not collectable: the playbook's
 PIPELINE FACTS is where that lesson goes, so no request is made.
 
-    python -m app.rsi_repair [--days 3]
+    python -m app.research.rsi_repair [--days 3]
 """
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ def classify_need(market: str, tag: str, why: str) -> Optional[Tuple[str, str, s
 
 def _pipeline_deaths(cur, days: int) -> List[Dict]:
     """Dropped ideas and failed runs whose reason is missing data, for crypto markets."""
-    from app import rsi
+    from app.research import rsi
     since = _now() - timedelta(days=days)
     cur.execute("SELECT id, user_id, market, status, error FROM app_agent_runs WHERE kind='research' "
                 "AND created_at >= %s AND market IS NOT NULL ORDER BY id", (since,))
@@ -142,7 +142,7 @@ def window_contracts(cur, market: str) -> int:
 def research_window(cur, market: str) -> Tuple[datetime, datetime]:
     """[from, to) of the data a research run on `market` would load: the active partition's research
     window, or where a fresh partition would put it (the oldest RESEARCH_FRAC of history_days)."""
-    from app import partitions
+    from app.research import partitions
     from app import research_repository as rr
     active = None
     try:
@@ -223,7 +223,7 @@ def wanted_series(cur, kind: str, limit: int) -> List[str]:
 
 def requeue_block(cur, user_id: int, market: str) -> Optional[str]:
     """Why a re-test may not start now ('' / None = it may). The same caps autopilot research obeys."""
-    from app import agent
+    from app.research import agent
     from app import repository as repo
     user = repo.get_user(cur, user_id) or {}
     if not user.get("autopilot"):

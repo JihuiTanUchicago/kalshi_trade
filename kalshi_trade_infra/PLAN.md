@@ -48,7 +48,7 @@
   trades a day. Production on 2026-10-25 had 11 probation-shaped near misses across all users, a cap
   of 4 paper slots per user, and 2 realistic paper round trips ever. The best near miss (#16001 sol15m,
   p=0.155) was paused for good after 2 trades by a single position stop.
-- `app/tournament.py` (Todd approved idea 2, 2026-10-25):
+- `app/research/tournament.py` (Todd approved idea 2, 2026-10-25):
   - Standings: realistic round trips per paper entrant as return per dollar staked, normal posterior
     shrunk toward 0 (10 pseudo-trips), Thompson P(best) with a cash arm at exactly 0. Weight =
     0.8 x P(best) + 0.2 / arms.
@@ -67,7 +67,7 @@
   entry counts only its own mode's open positions (`engine._entry_caps`). Live keeps the user's exact
   limits; paper gets them x APP_PAPER_CAP_MULTIPLE (default 10, fake money).
 - Surfaces: review context, autopilot panel story line, research page "Paper tournament" section,
-  `/api/research/scoreboard` -> `tournament`, `python -m app.tournament --user 1`.
+  `/api/research/scoreboard` -> `tournament`, `python -m app.research.tournament --user 1`.
 
 ## Bitcoin settlement nowcast for the final seconds (2026-10-25)
 
@@ -323,13 +323,13 @@ trees); nothing measured whether research got better, and nothing learned what t
 2026-10-15 note named the missing piece: evolving proposal guidance needs an evaluator that replay
 cannot give. Live runs are that evaluator.
 
-- `app/rsi.py` (measure): a scorecard per run from its verdict events (explored, dropped, challenger,
+- `app/research/rsi.py` (measure): a scorecard per run from its verdict events (explored, dropped, challenger,
   underpowered, not-finalist, gated, passed, holdout, deploy candidates, model spend) and a scoreboard
   in total / per family / per day: gate-reach rate, gated and passed per $100, and why ideas die. Drop
   reasons are classified by phrase rules built from real runs into pipeline (the pipeline failed the
   idea: "feature not available", no data), spec (0 trades), edge (loses, fee floor, falsified), other.
-  `GET /api/research/scoreboard?days=` and `python -m app.rsi --days 7 [--user N] [--cards]`.
-- `app/rsi_playbook.py` (learn and keep what helps): one playbook per (user, market family)
+  `GET /api/research/scoreboard?days=` and `python -m app.research.rsi --days 7 [--user N] [--cards]`.
+- `app/research/rsi_playbook.py` (learn and keep what helps): one playbook per (user, market family)
   (`rsi.family`: weather-high, weather-low, crypto, sports, ...). The proposer and the develop turn read
   the drawn playbook. After every run with ideas: the run is credited to the playbook it drew, the
   candidate-vs-active trial is settled, and with no candidate pending the model rewrites the active
@@ -830,11 +830,11 @@ LIVE execution, `engine.py`/the live gate untouched.
   snapshots per decision ts (what a cross-sectional pair needs) and whose synthetic `Market.key`
   is the combined stream key. Contract gained a `series` field so a BTC leg is distinguishable
   from an ETH leg at the same frame. ETH/SOL/XRP ladders were already backtest-able (Phase 3).
-- **FDR streams** (`app/gatekeeper.py` + schema): a cross spec's validation keys its LORD++
+- **FDR streams** (`app/research/gatekeeper.py` + schema): a cross spec's validation keys its LORD++
   stream on the merged dataset's combined `market` (`btc_daily+eth_daily`) — ONE shared stream,
   never double-spending each leg's per-market budget; single markets keep separate streams.
   `market` columns widened VARCHAR(16)→(48) to hold the combined key (idempotent MODIFY).
-- **Cross-day gate** (`app/gatekeeper.py` `_cross_day`): splits validation trades into purged
+- **Cross-day gate** (`app/research/gatekeeper.py` `_cross_day`): splits validation trades into purged
   walk-forward folds (`stats.purged_walkforward_splits`) and buckets per-trade returns by day.
   STAT_SUPPORTED now also requires a majority of folds net-positive AND no single day carrying
   >90% of the positive edge — a one-day fluke drops to INCONCLUSIVE. The per-fold breakdown is
@@ -851,7 +851,7 @@ pipeline. Freedom in METHOD, same bar on PROOF — the code computes the signal,
 strategy still goes through pre-registration + the gatekeeper (purged walk-forward, FDR, DSR,
 holdout). Freedom must not reintroduce overfitting, and must not touch live trading.
 
-- `app/sandbox.py` — now two tiers.
+- `app/research/sandbox.py` — now two tiers.
   - Tier 1 (unchanged): `safe_policy()` runs a PURE-function ExplorationPolicy in-process
     (AST ban + minimal builtins + timeout + fall back to DefaultPolicy).
   - Tier 2 (new): `run_strategy_signals(code, window)` runs untrusted strategy code in a FRESH
@@ -888,7 +888,7 @@ holdout). Freedom must not reintroduce overfitting, and must not touch live trad
   finite score); ANY sandbox failure or malformed output → empty book → zero trades, so a
   broken/hostile strategy fails the gate honestly instead of crashing research. The gatekeeper
   re-simulates the frozen code spec on validation/holdout with no change (same `simulate`).
-- `app/agent.py` — `act()` deploy / deploy_live now reject `is_code_spec` strategies up front:
+- `app/research/agent.py` — `act()` deploy / deploy_live now reject `is_code_spec` strategies up front:
   arbitrary code runs ONLY in the research sandbox and never in the live/paper engine (which
   evaluates the DSL rule via `specmod.entries`). Live-trading gate and `engine.py` untouched.
 - Tests: `tests/test_sandbox_isolation.py` (socket/env/file/os-import/dunder/subprocess blocked;
@@ -911,14 +911,14 @@ engine that separates GENERATION from JUDGMENT:
 - Immutable experiment ledger (`app/schema.py`: `app_experiments` [pre-registration,
   INSERT-only], `app_experiment_results` [append-only verdicts], `app_fdr_state`,
   `app_holdout_ledger`, `app_data_partitions`) via `app/research_repository.py`.
-- `app/partitions.py` — frozen chronological Research/Validation/Locked-Holdout split
+- `app/research/partitions.py` — frozen chronological Research/Validation/Locked-Holdout split
   (60/25/15), purge/embargo tied to each market's settlement cadence; validation/holdout
   loaders are gatekeeper-only (the generator can't reach them).
-- `app/gatekeeper.py` — the Statistical Gatekeeper, the only module that reads
+- `app/research/gatekeeper.py` — the Statistical Gatekeeper, the only module that reads
   validation/holdout. Pre-registers hypotheses, spends the FDR budget, classifies
   Rejected→Inconclusive→Promising→Stat-supported→Forward-validated→Deployment-candidate.
   STAT_SUPPORTED ⟺ LORD reject AND BH reject AND DSR≥0.95 AND CI_lo>0 AND placebo passes.
-- `app/agent.py` — 9-phase proposer + a Challenger LLM pass (3-role: propose→challenge→
+- `app/research/agent.py` — 9-phase proposer + a Challenger LLM pass (3-role: propose→challenge→
   execute); `_memory_block` no longer leaks held-out pnl into the next prompt; deploy /
   deploy_live gained an ADDITIVE, fail-closed `DEPLOYMENT_CANDIDATE` requirement on top of
   every existing live gate (nothing weakened). Strategy detail page is now a research paper
@@ -952,7 +952,7 @@ Verification: 336 passed / 7 skipped; live-gate tests green; `/security-review` 
 
 Implemented for PR review; disabled by default. Agents previously received only
 Kalshi-specific data summaries. `app/adapters/data/alpaca_data.py` now reads stock/ETF snapshots
-and raw OHLCV history, and `app/agent_market_data.py` supplies watchlist context and
+and raw OHLCV history, and `app/research/agent_market_data.py` supplies watchlist context and
 bounded on-demand reads to the actual research/copilot call sites. Research reads
 stay within its training window; current snapshots are restricted to copilot.
 Feed/time provenance, stale/invalid data, pagination, cache separation, retry and
@@ -993,7 +993,7 @@ Publication handoff (local archive: `results/alpaca_pr_2026-10-16/HANDOFF.md`).
 
 Implemented locally; focused/full tests and read-only live IEX checks pass. New
 `app/adapters/data/alpaca_data.py` supplies snapshots and paginated raw OHLCV bars;
-`app/agent_market_data.py` supplies watchlist context and bounded on-demand symbol
+`app/research/agent_market_data.py` supplies watchlist context and bounded on-demand symbol
 reads to actual research/copilot calls. Provider/feed/time provenance, stale-data
 handling, fixed data-only endpoints, retries/cache/request bounds and historical
 training cutoffs are enforced. Usage includes tool-request model rounds; research
@@ -1741,7 +1741,7 @@ What exists:
   gates, what-if (fees/slippage/stake). `app/market_history.py`: resumable backfill of Kalshi
   settled markets/candles + Coinbase 1m candles (new tables `hist_markets`, `btc_candles_1m`;
   reuses `market_candles`).
-- `app/agent.py`: 2-round research loop on in-sample only, OOS revealed only for frozen
+- `app/research/agent.py`: 2-round research loop on in-sample only, OOS revealed only for frozen
   finalists, per-user memory; co-pilot chat/review with actions re-backtested; autopilot
   guardrails. `app/llm.py`: Claude over HTTPS with one JSON repair round.
 - `app/engine.py`: per-slot decisions for every user, paper fills at the live book capped by

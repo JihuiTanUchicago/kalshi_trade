@@ -6,7 +6,7 @@ import random
 from datetime import datetime, timezone
 
 from app import backtest
-from app import gatekeeper as gk
+from app.research import gatekeeper as gk
 from app import spec as specmod
 from app import stats
 from app.markets import MARKETS

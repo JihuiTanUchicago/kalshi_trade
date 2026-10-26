@@ -1,6 +1,6 @@
 """Which markets research may run on, and whether each has a backtest surface yet.
 
-Shared by the web picker (app.server) and the autopilot's own market pick (app.agent), so the
+Shared by the web picker (app.server) and the autopilot's own market pick (app.research.agent), so the
 research agent no longer imports the web server to ask (ARCHITECTURE.md step 4).
 """
 from __future__ import annotations

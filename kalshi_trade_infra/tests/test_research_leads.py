@@ -84,7 +84,8 @@ def test_power_line_reads_validation_power():
 
 
 def test_a_leads_arm_run_shows_the_table_the_counterparty_rule_and_power(monkeypatch):
-    from app import agent, backtest
+    from app import backtest
+    from app.research import agent
     from tests.test_app_backtest import _dataset
     ds = _dataset()
     run = {"market": "btc15m", "prompt": "x"}
@@ -101,7 +102,7 @@ def test_a_leads_arm_run_shows_the_table_the_counterparty_rule_and_power(monkeyp
 
 
 def test_the_run_card_and_watch_split_the_leads_arm():
-    from app import rsi
+    from app.research import rsi
     from app.research_watch import screen_ab
     run = {"id": 3, "model": "opus-4-6", "status": "succeeded", "input_tokens": 1000, "output_tokens": 100,
            "hypotheses_tried": 8}

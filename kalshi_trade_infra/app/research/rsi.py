@@ -20,7 +20,7 @@ gate verdict. This module turns that into a scorecard per run and a scoreboard a
 
 Read-only. The scoreboard reads labels and counts only; no held-out number is computed here.
 
-    python -m app.rsi --days 7 [--user 2]
+    python -m app.research.rsi --days 7 [--user 2]
 """
 from __future__ import annotations
 
@@ -399,7 +399,7 @@ def paper_eta_days(dep: Dict, trips: int, now=None, events: Optional[int] = None
     event pace), so before that this is a lower bound. Says nothing about whether it will be up by
     then. None without a pace. `span_hours` (first trade to last, as the gate measures it) replaces
     the deployment's age in the hours term when the caller has it."""
-    from app import agent
+    from app.research import agent
     rate = paper_trade_rate(dep, trips, now)
     if rate is None:
         return None
@@ -441,7 +441,7 @@ def paper_outcomes(cur, user_id: int) -> Dict:
 
     Read-only. Strategies with too few trips to clear the paper gate, or down on them, skip the
     (bootstrap) live-ready check, so this stays cheap enough for the panel."""
-    from app import agent
+    from app.research import agent
     from app import repository as repo
     deps = [d for d in repo.list_deployments(cur, user_id, include_stopped=True) if d.get("mode") == "paper"]
     by_strategy: Dict[int, Dict] = {}

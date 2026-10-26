@@ -15,7 +15,7 @@ Branch: `codex/databento-primary-20261018`, based on GitHub main
 OAuth PR #10 stays separate and unmerged. Tracked files were clean; existing
 untracked result archives belong to earlier work and are preserved.
 
-Owned paths: `app/agent_market_data.py`, a focused market-data settings/preflight
+Owned paths: `app/research/agent_market_data.py`, a focused market-data settings/preflight
 module, related tests, `.env.example`, a production configuration template/helper,
 the agent-worker systemd unit if required, `app/README.md`, provider/deployment
 documentation, `PLAN.md`, `../mvp.md`, the planned data entries in `app/devlog.py`,

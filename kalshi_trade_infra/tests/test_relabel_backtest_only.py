@@ -1,7 +1,7 @@
-"""The one-time legacy relabel (app/relabel_backtest_only.py) must flip ONLY un-validated
+"""The one-time legacy relabel (app/research/relabel_backtest_only.py) must flip ONLY un-validated
 'passed' rows — never a genuinely gatekeeper-linked one — and be idempotent. FakeCursor, no DB.
 """
-from app.relabel_backtest_only import relabel_legacy_passed
+from app.research.relabel_backtest_only import relabel_legacy_passed
 
 
 class FakeCursor:

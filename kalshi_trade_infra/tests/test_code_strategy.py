@@ -8,10 +8,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import agent, backtest, sandbox
-from app import gatekeeper as gk
+from app import backtest
+from app.research import agent, sandbox
+from app.research import gatekeeper as gk
 from app import spec as specmod
-from app.gatekeeper import Classification, Prereg
+from app.research.gatekeeper import Classification, Prereg
 from app.markets import MARKETS
 
 from tests.test_gatekeeper import FakeRepo  # reuse the in-memory research_repository stand-in

@@ -10,7 +10,8 @@ from data_pipeline.common import get_db_conn
 from app.adapters.kalshi_perps import kalshi_perps_repository
 from app.adapters.alpaca import alpaca_paper_repository
 from app.adapters.brokers import broker_repository
-from app import rsi_playbook, rsi_repair, rsi_scout, tournament
+from app import rsi_scout
+from app.research import rsi_playbook, rsi_repair, tournament
 from app.adapters.kalshi_perps import kalshi_perps_orders_repository
 
 DDL = [

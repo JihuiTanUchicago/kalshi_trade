@@ -7,7 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import agent, backtest, partitions, server, spec
+from app import backtest, server, spec
+from app.research import agent, partitions
 from app.adapters.kalshi_perps import kalshi_perps_backtest as simulator
 from app.adapters.kalshi_perps import kalshi_perps_repository as sources
 

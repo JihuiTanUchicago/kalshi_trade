@@ -74,7 +74,7 @@ import threading
 from dataclasses import asdict
 from typing import Callable, Dict, List, Optional
 
-from app.exploration import Batch, DefaultPolicy, ExplorationPolicy, PolicyState
+from app.research.exploration import Batch, DefaultPolicy, ExplorationPolicy, PolicyState
 
 
 class PolicyError(Exception):
@@ -235,7 +235,7 @@ STRATEGY_FSIZE_BYTES = 256 * 1024 * 1024  # RLIMIT_FSIZE (model artifacts to the
 # the sandbox regardless of this (see _confined_argv), so file access never exposes keys/DSN/AWS.
 STRATEGY_DATA_DIR = os.getenv(
     "APP_STRATEGY_DATA_DIR",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "strategy_data"))
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "strategy_data"))
 # Where STRATEGY_DATA_DIR appears inside a Linux (bwrap) sandbox. It lives UNDER /tmp (the only
 # writable tmpfs) because the root is --ro-bind read-only, so bwrap can't create a mount point at
 # the root (e.g. "/data" fails with "Read-only file system"); /tmp/data is creatable in the tmpfs.
@@ -410,7 +410,7 @@ def _secret_mask_targets() -> "tuple[List[str], List[str]]":
     tmpfs over dirs) so strategy code with file access still cannot read keys / DB DSN / AWS creds.
     AWS creds via IMDS are already inert under --unshare-net; this closes the on-disk .env/key path."""
     import glob
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # kalshi_trade_infra/
     files = sorted(p for p in glob.glob(os.path.join(root, ".env*")) if os.path.isfile(p))
     dirs = [d for d in (os.path.join(root, "credentials"),) if os.path.isdir(d)]
     return files, dirs

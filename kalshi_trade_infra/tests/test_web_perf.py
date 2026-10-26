@@ -273,7 +273,8 @@ def test_dashboard_freshness_uses_the_shared_read(monkeypatch):
 
 
 def test_the_rsi_block_names_the_history_the_first_policy_check_needs():
-    from app import dreaming, server
+    from app import server
+    from app.research import dreaming
     block = server._rsi_block(None, None)
     assert block["evolved"] is False and block["last_dream"] is None
     assert block["min_history"] == dreaming.MIN_TREE

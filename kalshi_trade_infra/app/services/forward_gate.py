@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from typing import Dict, List
 
-from app import gatekeeper
+from app.research import gatekeeper
 from app import repository as repo
 from app import research_repository as rr
 

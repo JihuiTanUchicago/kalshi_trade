@@ -3,7 +3,7 @@ research, but every money/risk value it sets is CLAMPED into a safe envelope, an
 a logged proposal (applied on autopilot, pending otherwise). These tests pin the clamps and the
 proposal/apply discipline so a future change can't quietly let the agent disable a stop, exceed a
 cap, or loosen past a safe maximum."""
-from app import agent
+from app.research import agent
 
 
 def _capture(monkeypatch):

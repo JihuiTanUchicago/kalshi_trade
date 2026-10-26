@@ -2,7 +2,7 @@
 and a demo book that matches the demo exchange."""
 from datetime import datetime, timedelta
 
-from app import agent
+from app.research import agent
 from app import repository as repo
 from app.services import demo_record
 

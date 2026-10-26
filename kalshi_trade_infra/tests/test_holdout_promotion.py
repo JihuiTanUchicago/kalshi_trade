@@ -1,4 +1,4 @@
-"""The §E.5 promotion WIRING (app.agent): a validation pass must flow through the one-time
+"""The §E.5 promotion WIRING (app.research.agent): a validation pass must flow through the one-time
 Locked-Holdout and the marginal-contribution gate to become a DEPLOYMENT_CANDIDATE, or live
 deploy is impossible. The gatekeeper verdict logic itself is covered in test_gatekeeper; here we
 pin the pipeline hand-off agent._promote_if_forward_validated + _is_deployment_candidate:
@@ -7,8 +7,8 @@ second pass, and the anti-leak boundary (held-out numbers never reach the genera
 """
 import json
 
-from app import agent, gatekeeper
-from app.gatekeeper import Classification
+from app.research import agent, gatekeeper
+from app.research.gatekeeper import Classification
 
 # Reuse the in-memory gatekeeper fakes (DRY): FakeRepo + canned trade lists + dataset/partition stubs.
 from tests.test_gatekeeper import (FakeRepo, _ds, _edge_trades, _finalist, _null_trades,

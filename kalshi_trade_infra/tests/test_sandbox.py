@@ -2,9 +2,9 @@
 degrade to the DefaultPolicy instead of breaking research or escaping."""
 import pytest
 
-from app import sandbox
-from app.sandbox import PolicyError, load_policy, safe_policy
-from app.exploration import DefaultPolicy, PolicyState
+from app.research import sandbox
+from app.research.sandbox import PolicyError, load_policy, safe_policy
+from app.research.exploration import DefaultPolicy, PolicyState
 
 
 VALID = """

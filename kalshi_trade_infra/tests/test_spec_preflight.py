@@ -9,7 +9,8 @@ import re
 
 import pytest
 
-from app import agent, spec as specmod
+from app import spec as specmod
+from app.research import agent
 from app.markets import MARKETS
 
 BINARY = [k for k, m in MARKETS.items() if m.kind != "perpetual"]
@@ -144,7 +145,7 @@ def test_one_invalid_idea_gets_one_repair_then_no_longer_sinks_the_batch():
 
 
 def test_a_proposer_batch_that_never_validates_is_a_logged_drop_not_a_dead_run():
-    from app import rsi
+    from app.research import rsi
     assert rsi.classify_drop("spec invalid: unknown field(s) for a code strategy: side") == ("spec_invalid", "pipeline")
     assert rsi.classify_drop("The agent's reply could not be used: hypotheses[0].spec: x")[0] == "spec_invalid"
     card = rsi.run_card({"id": 1, "status": "failed", "market": BINARY[0],
@@ -241,7 +242,8 @@ def test_a_code_strategy_can_pool_and_trades_every_pooled_market():
 
 
 def test_a_pooled_code_strategy_trades_every_pooled_market(monkeypatch):
-    from app import backtest, sandbox
+    from app import backtest
+    from app.research import sandbox
 
     def in_process(code, window, data_dir=None):   # this test's own trusted code; no confiner needed
         ns = {}

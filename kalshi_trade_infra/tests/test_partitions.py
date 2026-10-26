@@ -1,4 +1,4 @@
-"""Tests for app.partitions: the chronological 60/25/15 split math (boundary
+"""Tests for app.research.partitions: the chronological 60/25/15 split math (boundary
 snapping, settlement-cadence purge/embargo, fingerprint) and ensure_partition's
 freeze/supersede against the in-memory LedgerCursor. No live DB; the dataset
 LOADERS (research/validation/holdout_dataset) are integration-only and not
@@ -8,7 +8,7 @@ from datetime import timedelta
 
 import pytest
 
-from app import partitions
+from app.research import partitions
 from app.markets import MARKETS
 from app.repository import now_utc
 from tests.test_research_repository import LedgerCursor

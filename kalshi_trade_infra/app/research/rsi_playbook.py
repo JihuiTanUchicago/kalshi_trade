@@ -234,7 +234,7 @@ def _check(obj: Dict) -> Dict:
 def idea_lines(events: List[Dict], limit: int = 40) -> List[str]:
     """One line per idea the run judged: title, outcome label and the stated reason (labels only).
     A drop carries its scoreboard tag (rsi.classify_drop), so structural misses stand out."""
-    from app.rsi import classify_drop
+    from app.research.rsi import classify_drop
     out = []
     for ev in events:
         if ev.get("kind") != "verdict":

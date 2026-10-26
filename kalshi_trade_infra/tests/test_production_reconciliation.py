@@ -11,7 +11,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from app import billing, gatekeeper, llm, models_catalog, partitions, repository
+from app import billing, llm, models_catalog, repository
+from app.research import gatekeeper, partitions
 
 
 @pytest.fixture

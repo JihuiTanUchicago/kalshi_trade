@@ -1,6 +1,6 @@
 """Pause notice: when the engine pauses a deployment on its own (loss guard, force-close), the
 review it queues rings the user's bell. Read-only toward trading."""
-from app import agent
+from app.research import agent
 
 USER = {"id": 2}
 

@@ -4,7 +4,8 @@ import json
 
 import pytest
 
-from app import agent, server
+from app import server
+from app.research import agent
 
 CRYPTO = {"id": 1, "autopilot": 1, "autopilot_focus": json.dumps(["crypto"])}
 

@@ -28,7 +28,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
-from app import backtest, gatekeeper, stats
+from app import backtest, stats
+from app.research import gatekeeper
 from app import spec as specmod
 from app.markets import FEATURES, MARKETS
 

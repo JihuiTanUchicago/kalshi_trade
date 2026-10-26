@@ -39,7 +39,7 @@ COMPONENTS: Dict[str, List[str]] = {
     ],
     "db": ["data_pipeline/common.py", "app/schema.py", "data_pipeline/init_schema.py"],
     "web": ["app/server.py", "app/repository.py", "app/auth.py", "app/billing.py"],
-    "agents": ["app/worker.py", "app/agent.py", "app/llm.py"],
+    "agents": ["app/worker.py", "app/research/agent.py", "app/llm.py"],
     "backtest": ["app/backtest.py", "app/engine.py", "app/spec.py"],
     # Both engine boxes are app/engine.py (recursive-engine), which runs paper, demo and live
     # deployments; the legacy data_pipeline engines are retired and no longer trade.

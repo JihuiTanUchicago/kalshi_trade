@@ -85,7 +85,8 @@ def _board(conn, user):
 
 
 def test_the_gates_evidence_is_the_loops_on_a_seeded_paper_book(conn, book, monkeypatch):
-    from app import agent, stats
+    from app import stats
+    from app.research import agent
     from tests.test_stats_bootstrap_exact import reference_ci
 
     cur = conn.cursor()
@@ -106,7 +107,8 @@ def test_the_gates_evidence_is_the_loops_on_a_seeded_paper_book(conn, book, monk
 
 
 def test_the_boards_checks_are_the_same_however_they_are_read(conn, book, monkeypatch):
-    from app import agent, repository as repo, server
+    from app import repository as repo, server
+    from app.research import agent
     from app.services import paper_checks
 
     uid, user = book["uid"], book["user"]

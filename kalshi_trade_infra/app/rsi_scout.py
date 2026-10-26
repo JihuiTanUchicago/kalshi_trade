@@ -57,7 +57,7 @@ def _now():
 
 def scan_dataset(ds) -> Dict:
     """Leads in one research dataset: counts, and the strongest by z = net edge / SE."""
-    from app import agent
+    from app.research import agent
     leads = []
     for c in agent.calibration_cells(ds):
         if c["lead"]:
@@ -81,7 +81,7 @@ def scan_dataset(ds) -> Dict:
 def research_window(cur, market: str) -> Dict:
     """The market's research window WITHOUT freezing anything: its active partition if one exists,
     else the boundaries a first research run would freeze."""
-    from app import partitions
+    from app.research import partitions
     from app import research_repository as rr
     active = rr.get_active_partition(cur, market)
     if active:
@@ -95,7 +95,7 @@ def research_window(cur, market: str) -> Dict:
 
 
 def scan_market(cur, market: str) -> Dict:
-    from app import partitions
+    from app.research import partitions
     window = research_window(cur, market)
     ds = partitions.research_dataset(market, window)
     try:
@@ -106,7 +106,7 @@ def scan_market(cur, market: str) -> Dict:
 
 
 def save(cur, market: str, row: Dict) -> None:
-    from app import rsi
+    from app.research import rsi
     cur.execute(
         "REPLACE INTO app_rsi_scout (market, family, scanned_at, contracts, research_days, cal_leads, fv_leads, "
         "best_z, best_net_c, best_what, error) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
@@ -177,7 +177,7 @@ def main() -> None:
     try:
         n = run(conn, a.market, a.max_markets, a.stale_hours)
         print("[scout] scanned %d market(s)" % n, flush=True)
-        from app import rsi_repair   # same cadence: ask for missing data, re-test ideas whose data arrived
+        from app.research import rsi_repair   # same cadence: ask for missing data, re-test ideas whose data arrived
         try:
             print("[scout] data repair %s" % rsi_repair.run(conn), flush=True)
         except Exception as e:  # noqa: BLE001 - the scan's results are already committed

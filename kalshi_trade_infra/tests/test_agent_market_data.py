@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import agent, agent_market_data as market
+from app.research import agent, agent_market_data as market
 from app.adapters.data.alpaca_data import MarketDataError, iso
 from app.llm import LLMError, Usage
 from tests.test_app_agent import Conn, RUN, Store, WINNER, hyps, plan

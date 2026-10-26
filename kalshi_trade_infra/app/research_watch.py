@@ -29,7 +29,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
-from app import rsi
+from app.research import rsi
 
 STALL_MIN = float(os.getenv("TAU_WATCH_STALL_MIN", "20"))
 QUEUE_MIN = float(os.getenv("TAU_WATCH_QUEUE_MIN", "45"))

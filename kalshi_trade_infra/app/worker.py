@@ -16,7 +16,8 @@ import threading
 import time
 from datetime import timedelta
 
-from app import agent, billing, engine, sandbox
+from app import billing, engine
+from app.research import agent, sandbox
 from app import repository as repo
 from data_pipeline.common import get_db_conn
 

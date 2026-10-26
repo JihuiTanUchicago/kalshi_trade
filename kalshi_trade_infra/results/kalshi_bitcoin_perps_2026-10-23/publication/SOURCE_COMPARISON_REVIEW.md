@@ -32,7 +32,7 @@ Offline, read-only review of the canonical `READINESS_39884723368.json` in the f
 
 | Installed path | Bytes | Installed SHA-256 | Additional provenance |
 | --- | ---: | --- | --- |
-| `app/agent.py` | 173625 | `c78ee13f989b038e4bafc24da684a851bf2121dc8ac70827f9c442ef9902c4da` | No exact local source or older exact hash witness found |
+| `app/research/agent.py` | 173625 | `c78ee13f989b038e4bafc24da684a851bf2121dc8ac70827f9c442ef9902c4da` | No exact local source or older exact hash witness found |
 | `app/billing.py` | 13576 | `0fd9b234d03df7db3c83ac0c45f487063f8eaa37f677fcfa37971708d3d3baef` | No exact local source or older exact hash witness found |
 | `app/devlog.py` | 101322 | `913520e1fd7686a689b4738ed8a7d8eb14540b9497131cccdea80075cc80fab7` | No exact local source or older exact hash witness found |
 | `app/llm.py` | 22318 | `1ce41cbc588c116d26adc33c041b4576ed793fe188146229cb1367cfd7129444` | No exact local source or older exact hash witness found |

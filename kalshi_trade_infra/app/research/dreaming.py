@@ -17,9 +17,10 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional
 
-from app import replay, sandbox
+from app import replay
+from app.research import sandbox
 from app import repository as repo
-from app.exploration import DefaultPolicy
+from app.research.exploration import DefaultPolicy
 from app.llm import Usage, ask_json
 
 MIN_TREE = 12          # need some history before evolving is meaningful
