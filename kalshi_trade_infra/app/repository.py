@@ -61,7 +61,7 @@ from app.adapters.db.position_repository import (  # noqa: F401
     closed_trade_counts, closed_trades_for_export, daily_pnl,
     deployment_realized_series, early_exit_scorecard, insert_closed_position, insert_position,
     market_has_open_positions, open_positions, orphaned_open_positions, positions_for_strategy, realized_pnl,
-    score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions,
+    score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions, user_positions_in_ticker,
 )
 from app.adapters.db.paper_ledger_repository import (  # noqa: F401
     STARTING_PAPER_BALANCE, add_ledger, ledger_rows, lock_user, paper_balance, paper_deposits, paper_ledger_summary,

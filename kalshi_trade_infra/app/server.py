@@ -3400,10 +3400,42 @@ def _cnum(x) -> Optional[float]:
         return None
 
 
+_MINE_FIELDS = ("id", "mode", "side", "qty", "entry_price", "status", "title", "strategy_id", "market_close_time",
+                "opened_at", "closed_at", "exit_price", "pnl", "close_reason")
+
+
+def _market_mine(ctx: Ctx, ticker: str, open_ts: Optional[int]) -> Optional[Dict]:
+    """The reader's own positions in one contract, for its market page: open ones marked to market,
+    and those settled since the contract opened (30 days back when its open time is unknown). Each
+    row keeps its mode; the page totals each money book apart. None when the read failed, so the
+    page says so instead of showing an empty book."""
+    since = datetime.fromtimestamp(open_ts, timezone.utc) if open_ts else datetime.now(timezone.utc) - timedelta(days=30)
+    try:
+        rows = repo.user_positions_in_ticker(ctx.cur, ctx.uid, ticker, since.replace(tzinfo=None))
+    except Exception as e:
+        print("[explore] market %s positions failed: %r" % (ticker, e), flush=True)
+        return None
+    pick = lambda p: {**{k: p.get(k) for k in _MINE_FIELDS},
+                      "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p.get("entry_fee") or 0), 2)}
+    return {"open": [{**pick(p), **_mark_fields(p)} for p in rows["open"]], "closed": [pick(p) for p in rows["closed"]]}
+
+
+def _market_terms(m: Dict) -> Dict:
+    """How a contract settles, from Kalshi's market record: its rules, when the result is expected,
+    and the result once it has one."""
+    return {"rules": m.get("rules_primary") or "", "rules_more": m.get("rules_secondary") or "",
+            "settles_at": m.get("expected_expiration_time") or m.get("expiration_time"), "result": m.get("result") or ""}
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def explore_market(ctx: Ctx):
-    """One market's dataset for the Explore detail view: its metadata plus the price
-    history Kalshi has for it (the same candlesticks the backtester trains on). Fetched
-    on demand from Kalshi's public API — no lake query, no new storage."""
+    """One market's dataset for the Explore detail view: its metadata, how it settles, the price
+    history Kalshi has for it (the same candlesticks the backtester trains on), and the reader's
+    own positions in it. Fetched on demand from Kalshi's public API — no lake query, no new storage.
+    `as_of` is when the figures were read: now for Kalshi's record, the feed's time for its snapshot."""
     from data_pipeline.common import api_get, parse_iso_to_dt
     import time as _time
     ticker = (ctx.query.get("ticker") or "").strip()
@@ -3411,6 +3443,7 @@ def explore_market(ctx: Ctx):
         raise ApiError(400, "No market given.")
     series = ticker.split("-", 1)[0]
     m: Dict = {}
+    open_ts = None
     try:
         m = (api_get("/markets/%s" % ticker) or {}).get("market") or {}
         open_ts = int(parse_iso_to_dt(m.get("open_time")).timestamp()) if m.get("open_time") else None
@@ -3433,16 +3466,18 @@ def explore_market(ctx: Ctx):
         # feed's snapshot of it. Only the chart waits for Kalshi (history_unavailable).
         snap = m and {"title": m.get("title"), "sub": m.get("yes_sub_title") or m.get("subtitle"), "yes_bid": m.get("yes_bid_dollars"),
                       "yes_ask": m.get("yes_ask_dollars"), "last": m.get("last_price_dollars"), "volume_24h": m.get("volume_24h_fp"),
-                      "open_interest": m.get("open_interest_fp"), "status": m.get("status"), "close_time": m.get("close_time")}
+                      "open_interest": m.get("open_interest_fp"), "status": m.get("status"), "close_time": m.get("close_time"),
+                      **_market_terms(m), "as_of": _iso_now()}
         if not snap:
-            f = next((x for x in (_explore_feed().get("markets") or []) if x.get("t") == ticker), None)
+            feed = _explore_feed()
+            f = next((x for x in (feed.get("markets") or []) if x.get("t") == ticker), None)
             snap = f and {"title": f.get("ti"), "sub": f.get("su"), "yes_bid": f.get("bid"), "yes_ask": f.get("ask"),
                           "last": f.get("last"), "volume_24h": f.get("v24"), "open_interest": f.get("oi"),
-                          "status": f.get("st"), "close_time": None}
+                          "status": f.get("st"), "close_time": None, "as_of": feed.get("at"), "snapshot": True}
         if not snap:
             raise ApiError(502, "Kalshi didn't send this market's history just now. Try again in a minute.")
         return {**snap, "ticker": ticker, "series": series, "title": snap["title"] or ticker, "sub": snap["sub"] or "",
-                "period_min": None, "points": [], "history_unavailable": True}
+                "period_min": None, "points": [], "history_unavailable": True, "mine": _market_mine(ctx, ticker, open_ts)}
     points = []
     for c in cs:
         price = (c.get("price") or {})
@@ -3459,6 +3494,7 @@ def explore_market(ctx: Ctx):
         "yes_bid": m.get("yes_bid_dollars"), "yes_ask": m.get("yes_ask_dollars"), "last": m.get("last_price_dollars"),
         "volume_24h": m.get("volume_24h_fp"), "open_interest": m.get("open_interest_fp"),
         "status": m.get("status"), "close_time": m.get("close_time"), "period_min": period, "points": points,
+        **_market_terms(m), "as_of": _iso_now(), "mine": _market_mine(ctx, ticker, open_ts),
     }
 
 

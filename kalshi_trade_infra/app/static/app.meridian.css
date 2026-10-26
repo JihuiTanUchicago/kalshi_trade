@@ -1599,6 +1599,10 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 100%; h
 .pc-grid { stroke: var(--rule); stroke-width: 1; }
 .pc-ylab { font-family: var(--f-nar); font-size: 10.5px; fill: var(--ink-3); letter-spacing: .03em; text-anchor: end; }
 .pc-xlab { font-family: var(--f-nar); font-size: 10.5px; fill: var(--ink-3); letter-spacing: .03em; }
+/* Market page: the reader's positions, one block per money book, and Kalshi's settlement rules */
+.mk-book { margin-top: 14px; }
+.mk-book-h { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 2px; }
+.mk-rules { max-width: 72ch; margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* ---------- Floating autopilot window (bottom-right) ---------- */
 .apf { position: relative; flex: none; z-index: 60; font-family: var(--f-ui); }

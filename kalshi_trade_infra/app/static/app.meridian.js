@@ -294,6 +294,8 @@
     const m = ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-'));
     return m ? (m.label || marketShort(m.key)) : '';
   };
+  // A contract ticker that opens its market page (price, settlement rules, your positions in it).
+  const contractLink = (ticker) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(ticker)}</a>`;
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
@@ -3209,7 +3211,7 @@
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             return `<section class="panel"><h3>Holding right now</h3>
-            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="tick">${esc(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div>${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}
+            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="tick">${contractLink(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div>${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}
               <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
@@ -3441,7 +3443,7 @@
       paint(root.querySelector('#demo-health'), d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '');
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${esc(p.ticker)}${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${contractLink(p.ticker)}${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
@@ -4103,8 +4105,35 @@
     const x = (t) => pl + (t - t0) / tr * iw, y = (v) => pt + (1 - v) * ih;
     const grid = [0, .25, .5, .75, 1].map((v) => `<line x1="${pl}" y1="${y(v).toFixed(1)}" x2="${W - pr}" y2="${y(v).toFixed(1)}" class="pc-grid"/><text x="${pl - 8}" y="${(y(v) + 3).toFixed(1)}" class="pc-ylab">${Math.round(v * 100)}¢</text>`).join('');
     const line = points.map((p) => `${x(p.t).toFixed(1)},${y(p.yes).toFixed(1)}`).join(' ');
-    const fmt = (t) => { const d = new Date(t * 1000); return `${d.getMonth() + 1}/${d.getDate()}`; };
-    return `<svg class="pchart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Yes price history">${grid}<polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><text x="${pl}" y="${H - 6}" class="pc-xlab">${fmt(t0)}</text><text x="${W - pr}" y="${H - 6}" class="pc-xlab" text-anchor="end">${fmt(t1)}</text></svg>`;
+    // A chart within one day gets clock times (a 15-minute market read "10/26 … 10/26"), one over a few
+    // days the date and clock, and the right-hand label names the reader's zone, as every time on the
+    // market page does.
+    const md = (t) => { const d = new Date(t * 1000); return `${d.getMonth() + 1}/${d.getDate()}`; };
+    const fmt = new Date(t0 * 1000).toDateString() === new Date(t1 * 1000).toDateString() ? (t) => clock(t * 1000)
+      : tr < 3 * 86400 ? (t) => `${md(t)} ${clock(t * 1000)}` : md;
+    const zone = tzName();
+    return `<svg class="pchart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Yes price history, ${esc(fmt(t0))} to ${esc(fmt(t1))}${zone ? ' ' + esc(zone) : ''}">${grid}<polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><text x="${pl}" y="${H - 6}" class="pc-xlab">${fmt(t0)}</text><text x="${W - pr}" y="${H - 6}" class="pc-xlab" text-anchor="end">${fmt(t1)}${zone ? ' ' + esc(zone) : ''}</text></svg>`;
+  }
+  // Kalshi's market status in words: "active" read as jargon, and "finalized" never said it had settled.
+  const MKT_STATUS = { initialized: 'Not open yet', unopened: 'Not open yet', active: 'Open for trading', open: 'Open for trading', paused: 'Trading paused', closed: 'Closed, result pending', determined: 'Result in, paying out', settled: 'Settled', finalized: 'Settled' };
+  // The reader's own positions in this contract, one block per money book: paper, demo and live
+  // money are never added into one figure. Each strategy links to its page.
+  function marketMine(d) {
+    if (d.mine == null) return '<p class="hint">Your positions in this market didn’t load. Reload the page to try again.</p>';
+    const all = [...d.mine.open, ...d.mine.closed];
+    if (!all.length) return '<p class="hint">None of your strategies holds or has traded this contract.</p>';
+    const BOOK = { live: ['<span class="mk live">Live</span>', 'real money'], demo: ['<span class="mk dep">Demo</span>', 'Kalshi’s demo exchange, no real money'], paper: ['<span class="mk">Paper</span>', 'paper money, not real'] };
+    return ['live', 'demo', 'paper'].map((mode) => {
+      const xs = all.filter((p) => (p.mode || 'paper') === mode);
+      if (!xs.length) return '';
+      const op = xs.filter((p) => p.status === 'open'), cl = xs.filter((p) => p.status !== 'open');
+      const marked = op.filter((p) => p.unrealized != null);
+      const lastMark = marked.map((p) => p.mark_ts).filter(Boolean).sort().pop();
+      const sum = [op.length ? `${op.length} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` ·\u00a0unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : ' ·\u00a0awaiting first mark'}` : '',
+        cl.length ? `${cl.length} closed ·\u00a0realized ${money(cl.reduce((a, p) => a + (+p.pnl || 0), 0))}` : ''].filter(Boolean).join(' ·\u00a0');
+      const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? '—' : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? `Open, settles ${settleAt(p.market_close_time)}` : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
+      return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    }).join('');
   }
   async function viewMarketDetail(ticker) {
     shell('/explore', boardTitle('Market'), loading(300));
@@ -4117,13 +4146,24 @@
     }
     const mid = midOf({ bid: d.yes_bid, ask: d.yes_ask, last: d.last });
     const label = mktLabel({ ti: d.title, su: d.sub, t: d.ticker });
-    const closes = d.close_time ? new Date(d.close_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
     const gran = d.period_min >= 1440 ? 'daily' : d.period_min >= 60 ? 'hourly' : 'per-minute';
-    const fmtT = (t) => new Date(t * 1000).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    shell('/explore', boardTitle(label, `${d.series} ·\u00a0${d.status || 'market'} ·\u00a0${d.ticker}`) +
+    const fmtT = (t) => new Date(t * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    // The price says what it is (a Yes pays $1, so 42¢ is about a 42% chance), the book it comes from,
+    // and when it was read; the Explore feed's snapshot (Kalshi unreachable) says how old it is.
+    const bid = +d.yes_bid, ask = +d.yes_ask;
+    const priceSub = [mid == null ? '' : `≈\u00a0${Math.round(mid * 100)}% chance of Yes`, bid > 0 && ask > 0 ? `bid ${cents(bid)} / ask ${cents(ask)}` : '',
+      d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as of ${settleAt(d.as_of)}`) : ''].filter(Boolean).join(' ·\u00a0');
+    const settled = d.result === 'yes' || d.result === 'no';
+    const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
+    shell('/explore', boardTitle(label, esc(`${contractMarket(d.ticker) || d.series} ·\u00a0${MKT_STATUS[d.status] || d.status || 'market'} ·\u00a0${d.ticker}`)) +
       '<dl class="figures measure" style="margin-top:14px">' +
-        fig('Yes price', mid == null ? '—' : cents(mid)) + fig('24h volume', num(Math.round(+d.volume_24h || 0))) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0))) + fig('Closes', closes) + '</dl>', `
+        (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
+          : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
+        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>', `
+      <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
+      <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
+        ${d.rules ? `<p class="mk-rules">${esc(d.rules)}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(d.rules_more)}</p>` : ''}`
+          : `<p class="hint mk-rules">Kalshi’s settlement rules didn’t come with this snapshot. <a href="${kalshiLink}" target="_blank" rel="noopener">Read them on Kalshi ↗</a></p>`}</section>
       <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : ` ·\u00a0Kalshi ${gran} candles`}</p></div>
         <div class="pchart-wrap">${d.history_unavailable
           ? '<div class="empty"><h3>Price history didn’t load</h3><p>Kalshi didn’t send it just now. The figures above are from the latest market snapshot.</p><button class="btn sm" type="button" id="mk-retry">Try again</button></div>'
@@ -4132,7 +4172,7 @@
         <div id="rawsect"></div></section>
       <div class="xpage"><a class="btn sm" href="/explore">← Back to Explore</a>
         <span class="xpage-acts"><button class="btn sm" id="dl-csv" ${d.points.length ? '' : 'disabled'}>Download CSV</button>
-        <a class="btn sm" href="https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}" target="_blank" rel="noopener">View on Kalshi ↗</a></span></div>`);
+        <a class="btn sm" href="${kalshiLink}" target="_blank" rel="noopener">View on Kalshi ↗</a></span></div>`);
     const retry = root.querySelector('#mk-retry');
     if (retry) retry.onclick = () => viewMarketDetail(ticker);
     const pts = d.points.slice().reverse();  // newest first
@@ -4142,7 +4182,7 @@
       if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'Waiting on Kalshi for the candles.' : 'No candles recorded for this market yet.'}</p></div>`; return; }
       const pages = Math.max(1, Math.ceil(pts.length / PER));
       const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
-      rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (UTC)</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
+      rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (${esc(tzName() || 'local')})</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
         <div class="xpage">${pg > 0 ? `<button class="btn sm" data-rp="${pg - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${pg + 1} of ${num(pages)} ·\u00a0${num(pts.length)} points</span>${pg + 1 < pages ? `<button class="btn sm" data-rp="${pg + 1}">Next →</button>` : '<span></span>'}</div>`;
       rawEl.querySelectorAll('[data-rp]').forEach((b) => b.onclick = () => { pg = +b.dataset.rp; renderRaw(); window.scrollTo({ top: rawEl.offsetTop - 80, behavior: smooth() }); });
     };
