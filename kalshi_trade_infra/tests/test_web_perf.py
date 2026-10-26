@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
+from app.web.routes import explore as explore_routes
 from app.web import webperf
 
 
@@ -218,11 +219,11 @@ def test_static_versions_rehash_only_when_a_file_changes(monkeypatch):
 
 def test_explore_feed_serves_stale_while_one_thread_refreshes(monkeypatch):
     fetched = []
-    monkeypatch.setattr(server, "_EXPLORE_CACHE", {"at": 0.0, "data": None})
-    monkeypatch.setattr(server, "_fetch_explore_feed", lambda: fetched.append(1) or {"at": len(fetched), "markets": []})
+    monkeypatch.setattr(explore_routes, "_EXPLORE_CACHE", {"at": 0.0, "data": None})
+    monkeypatch.setattr(explore_routes, "_fetch_explore_feed", lambda: fetched.append(1) or {"at": len(fetched), "markets": []})
     assert server._explore_feed()["at"] == 1  # cold: the first caller waits for S3 once
     assert server._explore_feed()["at"] == 1 and len(fetched) == 1  # warm: cached
-    server._EXPLORE_CACHE["at"] -= 60  # stale
+    explore_routes._EXPLORE_CACHE["at"] -= 60  # stale
     started = []
     monkeypatch.setattr(server.threading, "Thread", lambda target, daemon: SimpleNamespace(start=lambda: started.append(target)))
     assert server._explore_feed()["at"] == 1 and server._explore_feed()["at"] == 1  # served stale, no wait
@@ -232,11 +233,11 @@ def test_explore_feed_serves_stale_while_one_thread_refreshes(monkeypatch):
 
 
 def test_explore_feed_keeps_last_good_copy_when_s3_fails(monkeypatch):
-    monkeypatch.setattr(server, "_EXPLORE_CACHE", {"at": 0.0, "data": {"at": "good", "markets": [1]}})
-    monkeypatch.setattr(server, "_fetch_explore_feed", lambda: None)
-    server._EXPLORE_CACHE["refreshing"] = True
+    monkeypatch.setattr(explore_routes, "_EXPLORE_CACHE", {"at": 0.0, "data": {"at": "good", "markets": [1]}})
+    monkeypatch.setattr(explore_routes, "_fetch_explore_feed", lambda: None)
+    explore_routes._EXPLORE_CACHE["refreshing"] = True
     server._refresh_explore_feed()
-    assert server._EXPLORE_CACHE["data"]["at"] == "good" and server._EXPLORE_CACHE["refreshing"] is False
+    assert explore_routes._EXPLORE_CACHE["data"]["at"] == "good" and explore_routes._EXPLORE_CACHE["refreshing"] is False
 
 
 def test_shared_reads_compute_once_then_refresh_in_one_background_thread(monkeypatch):
