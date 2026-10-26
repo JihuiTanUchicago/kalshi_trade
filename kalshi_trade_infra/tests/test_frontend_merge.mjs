@@ -1951,3 +1951,71 @@ test('on a phone the strategy page folds its secondary sections, never money fig
     assert.match(f.root.querySelector('#figs').innerHTML, /Unseen-data P&L/);
   }
 });
+
+const PEM = '-----BEGIN RSA PRIVATE KEY-----\nMIIEsecretsecretsecret\n-----END RSA PRIVATE KEY-----';
+const KID = 'a952bcbe-ec3b-4b5b-b8f9-11dae589608c';
+const keyFunds = (state) => frontend({fetchImpl: (path, options = {}) => {
+  if (path === '/api/funds') { state.reads++; return response({...funds(), kalshi: state.live, kalshi_dev: state.dev}); }
+  if (path === '/api/kalshi-key') { state.live = {connected: true, balance: state.liveBalance, key_id: 'a952…608c', funding_url: 'https://kalshi.com/account/funding'}; return response({ok: true, balance: state.liveBalance}); }
+  if (path === '/api/kalshi-dev-key') { state.dev = {connected: true, key_id: 'a952…608c', balance: state.devBalance}; return response({ok: true}); }
+  throw new Error('Unexpected offline request: ' + path);
+}});
+const submitKey = async (f, id, kid, pem) => {
+  const form = f.root.querySelector('#' + id); form.key_id = {value: kid}; form.private_key = {value: pem};
+  await form.onsubmit({preventDefault() {}}); await flush();
+};
+
+test('Funds says where each Kalshi key comes from, what to paste, and which key goes where', async () => {
+  const f = keyFunds({reads: 0, live: {connected: false}, dev: {connected: false}});
+  await f.viewFunds();
+  const live = f.root.querySelector('#kalshi').closest('section').innerHTML, main = f.root.querySelector('main').innerHTML;
+  assert.match(live, /<a href="https:\/\/kalshi\.com\/account\/profile" target="_blank" rel="noopener">your profile<\/a>, find API Keys and click Create New API Key/);
+  assert.match(live, /<b>Key ID<\/b> \(like a952bcbe-ec3b-…\) and downloads a <b>private key<\/b> file \(\.key\), once/);
+  assert.match(live, /A key made on demo\.kalshi\.co won’t work here: add it under Demo key\./);
+  assert.match(main, /<a href="https:\/\/demo\.kalshi\.co\/" target="_blank" rel="noopener">Sign up or sign in at demo\.kalshi\.co<\/a> \(free\)/);
+  assert.match(main, /<a href="https:\/\/demo\.kalshi\.co\/account\/profile" target="_blank" rel="noopener">your demo profile<\/a>/);
+  assert.match(main, /A real-money key from kalshi\.com won’t work here\./);
+  assert.equal((main.match(/href="https:\/\/docs\.kalshi\.com\/getting_started\/api_keys"/g) || []).length, 2);
+  assert.equal((main.match(/name="key_id"[^>]*placeholder="like a952bcbe-ec3b-4b5b-…"/g) || []).length, 2);
+  assert.doesNotMatch(main, /<details class="connection-help">/);  // the steps are never folded shut for a new user
+});
+
+test('a mixed-up Kalshi key gets a plain reason before anything is sent, and never echoes the key', async () => {
+  const f = keyFunds({reads: 0, live: {connected: false}, dev: {connected: false}});
+  await f.viewFunds();
+  const cases = [
+    [PEM, KID, /That’s the key file’s text; it goes in the Private key box/],
+    [KID, KID, /That looks like the Key ID; it goes in the Key ID box/],
+    [KID, '-----BEGIN PUBLIC KEY-----\nMIIBsecret\n-----END PUBLIC KEY-----', /That’s a public key\. Tau needs the private key/],
+    [KID, 'hello secret', /That isn’t a private key\. Paste the whole \.key file/],
+    [KID, PEM.slice(0, 50), /That private key is cut off/],
+    ['', PEM, /Paste the Key ID: the short code shown next to the key on the API keys page on demo\.kalshi\.co\./],
+  ];
+  for (const [kid, pem, said] of cases) {
+    await submitKey(f, 'kalshi-dev', kid, pem);
+    const out = f.root.querySelector('#kdflash').innerHTML;
+    assert.match(out, said); assert.doesNotMatch(out, /secret|MIIE/);
+  }
+  await submitKey(f, 'kalshi', '', PEM);
+  assert.match(f.root.querySelector('#kflash').innerHTML, /on the API keys page on kalshi\.com\./);
+  assert.equal(postRequests(f).length, 0);
+});
+
+test('connecting a Kalshi key confirms it with the balance: "Connected ✓ (balance $X)"', async () => {
+  const state = {reads: 0, live: {connected: false}, dev: {connected: false}, liveBalance: 1234.5, devBalance: 25000};
+  const f = keyFunds(state);
+  await f.viewFunds();
+  await submitKey(f, 'kalshi', KID, PEM);
+  assert.match(f.root.querySelector('#kflash').innerHTML, /Connected ✓ \(balance \$1,234\.50\)\. Kalshi confirmed the key\./);
+  assert.match(f.root.querySelector('main').innerHTML, /<p class="key-ok"><b>Connected ✓<\/b> \(balance \$1,234\.50\)<\/p>/);
+  await submitKey(f, 'kalshi-dev', KID, PEM);
+  assert.match(f.root.querySelector('#kdflash').innerHTML, /Connected ✓ \(balance \$25,000\.00\)\. Kalshi’s demo exchange confirmed the key\./);
+  assert.match(f.root.querySelector('main').innerHTML, /<b>Connected ✓<\/b> \(balance \$25,000\.00\) <span class="hint">in your Kalshi demo account<\/span>/);
+  const sent = postRequests(f).map(({path}) => path);
+  assert.deepEqual(sent, ['/api/kalshi-key', '/api/kalshi-dev-key']);
+  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /MIIE|BEGIN RSA PRIVATE KEY-----\n/);  // the key is never shown back
+  // A balance Kalshi couldn't read just now still says it connected, without inventing a figure.
+  const g = keyFunds({reads: 0, live: {connected: true, balance: null, key_id: 'a952…608c'}, dev: {connected: true, key_id: 'a952…608c', balance: null}});
+  await g.viewFunds();
+  assert.equal((g.root.querySelector('main').innerHTML.match(/<b>Connected ✓<\/b> \(couldn’t read the balance just now\)/g) || []).length, 2);
+});
