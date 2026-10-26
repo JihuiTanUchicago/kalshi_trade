@@ -6,6 +6,8 @@ guarantees that keep validation/holdout evidence away from the generator.
 """
 from types import SimpleNamespace
 
+import pytest
+
 from app import agent
 from app import exploration
 from app import gatekeeper
@@ -690,3 +692,20 @@ def test_daily_settling_markets_use_all_their_history():
     assert agent._plan_lookback({"prompt": "x"}, "high_ny", no_model, None,
                                 lambda *a: logs.append(a)) == MARKETS["high_ny"].history_days
     assert "independent settlement" in logs[0][1]
+
+
+def test_a_pool_still_over_the_cap_after_the_repair_round_is_trimmed_not_dropped():
+    # Prod 2026-10-26 (runs 3375, 3409): the proposer pooled all four other crypto 15m twice in a row
+    # and lost the idea. The first round still sends the error back; the repair round keeps the
+    # first 3 in the proposer's order.
+    check = agent._hypotheses_check("zec15m", 3)
+    batch = {"hypotheses": [{"title": "Pooled longshot NO", "thesis": "deep OTM YES is overpriced",
+                             "spec": {"pool": ["btc15m", "eth15m", "zec15m", "sol15m", "xrp15m"]}}]}
+    with pytest.raises(ValueError, match="pool holds at most 3"):
+        check(batch)
+    out = check(batch)
+    assert out[0]["spec"]["pool"] == ["btc15m", "eth15m", "sol15m"] and check.invalid == []
+    # any other spec fault still kills the idea
+    bad = {"hypotheses": [{"title": "t", "thesis": "x", "spec": {"pool": ["nope", "btc15m"]}}]}
+    with pytest.raises(ValueError, match="not a known market"):
+        check(bad)

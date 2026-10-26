@@ -468,6 +468,23 @@ def _stream_proposer(model: ModelFn, sink: _StreamSink) -> ModelFn:
     return m
 
 
+def _trim_pool(raw, err: Exception) -> Optional[Dict]:
+    """A spec whose only fault is a pool past the cap, still over it after the repair round, kept with
+    its first `cap` extra markets in the proposer's order; None for anything else. Prod 2026-10-26:
+    runs 3375 and 3409 lost an idea each to pooling all four other crypto 15m. Nothing is tested
+    yet, so trimming here peeks at nothing."""
+    if not (isinstance(raw, dict) and isinstance(raw.get("pool"), list) and "pool holds at most" in str(err)):
+        return None
+    keep: list = []
+    for k in raw["pool"]:
+        if k != raw.get("market") and k not in keep:
+            keep.append(k)
+    try:
+        return specmod.validate({**raw, "pool": keep[:specmod.max_pool(MARKETS.get(raw.get("market")))]})
+    except specmod.SpecError:
+        return None
+
+
 def _hypotheses_check(market: str, max_n: int) -> Callable[[Dict], List[Dict]]:
     """Validate a proposer batch. An invalid spec gets ONE repair round (the errors go back to the
     model); after that the valid ideas go ahead and each still-invalid one is kept on
@@ -500,9 +517,11 @@ def _hypotheses_check(market: str, max_n: int) -> Callable[[Dict], List[Dict]]:
             try:
                 spec = specmod.validate(raw)
             except specmod.SpecError as e:
-                problems.append("hypotheses[%d].spec: %s" % (i, e))
-                check.invalid.append({"title": title[:120], "why": "spec invalid: %s" % e})
-                continue
+                spec = _trim_pool(raw, e) if state["calls"] > 1 else None
+                if spec is None:
+                    problems.append("hypotheses[%d].spec: %s" % (i, e))
+                    check.invalid.append({"title": title[:120], "why": "spec invalid: %s" % e})
+                    continue
             # The §C pre-registration fields are OPTIONAL (older callers/tests send only
             # title/thesis/spec): the challenger and the gatekeeper's Prereg fall back to
             # sane defaults when a proposer omits them.
