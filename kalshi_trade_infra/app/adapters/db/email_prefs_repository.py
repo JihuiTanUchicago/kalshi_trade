@@ -2,7 +2,9 @@
 the unsubscribe link both write, and the reads every optional send checks first.
 
 Optional email is the community mail (new posts, replies, mentions) and the "ready for live trading"
-notice. Live-money safety alerts (app/adapters/kalshi_perps/kalshi_perps_watch.py) never read this switch."""
+notice. Live-money safety alerts (app/adapters/kalshi_perps/kalshi_perps_watch.py) and the failed
+auto-reload email (app/adapters/stripe/billing.py: research stops when the credits run out) are account
+email and never read this switch."""
 from __future__ import annotations
 
 from datetime import timedelta

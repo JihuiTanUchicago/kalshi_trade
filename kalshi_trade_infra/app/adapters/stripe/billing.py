@@ -419,9 +419,31 @@ def reload_failed_notice(conn, user_id: int, amount, error: Optional[StripeError
             ok_at = repo.last_credit_at(cur, user_id, "autoreload")
             if ok_at is None or ok_at < last["created_at"]:
                 return False
-        repo.add_notification(cur, user_id, RELOAD_FAILED_KIND,
-                              reload_failed_body(amount, reload_failed_reason(error, status)), "/billing")
-        return True
+        reason = reload_failed_reason(error, status)
+        repo.add_notification(cur, user_id, RELOAD_FAILED_KIND, reload_failed_body(amount, reason), "/billing")
     except Exception as e:  # noqa: BLE001 - the notice must never reach the charge path
         print("[billing] auto-reload failure notice not written for user %s: %r" % (user_id, e), flush=True)
+        return False
+    reload_failed_email(conn, user_id, amount, reason)
+    return True
+
+
+def reload_failed_email(conn, user_id: int, amount, reason: str) -> bool:
+    """Email the user the notice reload_failed_notice just wrote, so someone away from the bell learns
+    research is about to pause. Called only after a notice is written, so it keeps the notice's
+    throttle: one email per notice. An account email, sent whatever Settings' optional-email switch
+    says (app/adapters/db/email_prefs_repository.py). Runs after the notice's autocommit write, outside
+    any transaction, and every error is logged and swallowed: it can never change the charge path.
+    True when SES accepted it."""
+    try:
+        from app import repository as repo
+        from app.adapters.ses import notify
+
+        user = repo.get_user(conn.cursor(), user_id) or {}
+        if not user.get("email"):
+            return False
+        return bool(notify.reload_failed_email(user["email"], user.get("name"),
+                                               Decimal(str(amount)).quantize(CENT, rounding=ROUND_HALF_UP), reason))
+    except Exception as e:  # noqa: BLE001 - the email must never reach the charge path
+        print("[billing] auto-reload failure email not sent for user %s: %r" % (user_id, e), flush=True)
         return False

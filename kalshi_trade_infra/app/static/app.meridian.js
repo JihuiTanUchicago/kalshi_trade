@@ -906,7 +906,7 @@
   ];
   // Settings' email switch. It writes app_users.email_opt_out, the field the unsubscribe link in
   // community emails also sets; the server checks it before every optional email. Perps safety
-  // alerts never read it, and the copy says so.
+  // alerts and the failed auto-reload email never read it, and the copy says so.
   const emailState = (off) => off
     ? 'Off. Tau doesn’t email you about replies to your posts, mentions of your @name, new community posts, or a paper strategy that’s ready for live trading. The bell in Tau still shows replies, mentions and ready-for-live notices.'
     : 'On. Tau emails you about replies to your posts, mentions of your @name, new community posts (at most one email every 4 hours), and a paper strategy that’s ready for live trading.';
@@ -918,7 +918,7 @@
           <label class="switch"><input type="checkbox" id="email-optional" role="switch" aria-describedby="email-state"${off ? '' : ' checked'}><span>Updates and community email</span></label>
           <div id="email-flash"></div>
           <p class="hint" id="email-state">${esc(emailState(off))}</p>
-          <p class="hint email-always"><b>Always sent:</b> safety alerts about a Bitcoin perps account you trade through Tau: a position that doesn’t match Tau’s orders, a position near liquidation, or heavy margin use. They protect real money, so this switch doesn’t stop them.</p>
+          <p class="hint email-always"><b>Always sent:</b> safety alerts about a Bitcoin perps account you trade through Tau: a position that doesn’t match Tau’s orders, a position near liquidation, or heavy margin use. They protect real money, so this switch doesn’t stop them. Also an email when an auto-reload of your credits fails, since research pauses when they run out.</p>
         </div>
       </section>`;
   }

@@ -1,8 +1,11 @@
 """A failed auto-reload reaches the user: one bell notice (throttled) with the customer-safe reason,
 the credits it tried to add and a link to Billing, and a banner on Billing until an auto-reload
 succeeds or a card is saved. What is charged, when, with which idempotency key, and what the ledger
-records are unchanged, and nothing about the notice can break or roll back the charge path.
-MySQL twin: test_autoreload_failure_notice_db.py."""
+records are unchanged, and nothing about the notice can break or roll back the charge path. Each
+notice written is also emailed once (an account email, whatever Settings' optional-email switch says),
+through a stubbed boto3 with sockets blocked. MySQL twin: test_autoreload_failure_notice_db.py."""
+import socket
+import sys
 from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -27,7 +30,20 @@ def world(monkeypatch):
     Every Stripe call is stubbed; notices land in a list."""
     from app import repository as repo
 
-    w = SimpleNamespace(notes=[], credits=[], charges=[], charge_result=None, charge_error=None, ok_at=None)
+    w = SimpleNamespace(notes=[], credits=[], charges=[], charge_result=None, charge_error=None, ok_at=None,
+                        emails=[], ses_error=None)
+    monkeypatch.setattr(socket.socket, "connect", lambda *a: pytest.fail("a socket was opened: %r" % (a,)))
+
+    def send_email(**kw):
+        if w.ses_error:
+            raise w.ses_error
+        w.emails.append(kw)
+
+    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=lambda service, region_name=None: (
+        SimpleNamespace(send_email=send_email) if service == "ses" else pytest.fail(service))))
+    monkeypatch.setattr(repo, "get_user", lambda cur, uid: {"id": uid, "email": "away@example.com", "name": "Ada"})
+    # Account email: the optional-email switch is never read for it.
+    monkeypatch.setattr(repo, "optional_email_address", lambda *a: pytest.fail("read the optional-email switch"))
     monkeypatch.setattr(billing, "STRIPE_SECRET_KEY", "sk_test_autoreload_failure")
     monkeypatch.setattr(billing, "_stripe", lambda *a, **k: pytest.fail("a Stripe call escaped the stubs"))
     monkeypatch.setattr(repo, "get_stripe_customer", lambda cur, uid: {
@@ -87,6 +103,17 @@ def test_a_declined_auto_reload_rings_the_bell_with_the_reason_and_still_raises_
                             "Try another card. Research pauses when your credits run out. Update your card on Billing.")
     assert "req_abc123" not in note["body"] and "pm_fixture" not in note["body"]  # never Stripe's own text
     assert "list price" not in note["body"]
+    # One email for the one notice: the same words, a link to Billing, nothing internal.
+    [mail] = world.emails
+    assert mail["Destination"] == {"ToAddresses": ["away@example.com"]}
+    assert mail["Message"]["Subject"]["Data"] == "Tau auto-reload couldn't add credits"
+    text = mail["Message"]["Body"]["Text"]["Data"]
+    assert text.startswith("Hi Ada,\n\nAuto-reload couldn't add $25.00 in credits. Your card was declined for "
+                           "insufficient funds. Try another card.\n\nResearch pauses when your credits run out.")
+    from app.adapters.ses import notify
+    assert "  %s/billing\n" % notify.PUBLIC_URL in text
+    for internal in ("req_abc123", "pm_fixture", "cus_fixture", "pi_", "reload-7", "list price", "margin", "user_id"):
+        assert internal not in text.lower()
 
 
 def test_an_outage_says_the_charge_did_not_complete_never_the_upstream_text(world):
@@ -112,12 +139,13 @@ def test_a_charge_that_did_not_succeed_rings_the_bell_and_returns_false_as_befor
 def test_a_processing_charge_is_not_a_failure(world):
     world.charge_result = {"id": "pi_x", "status": "processing"}  # the webhook credits it if it succeeds
     assert billing.auto_reload(Conn(), UID, trigger="run3") is False
-    assert world.notes == []
+    assert world.notes == [] and world.emails == []
 
 
 def test_a_successful_auto_reload_writes_no_notice(world):
     assert billing.auto_reload(Conn(), UID, trigger="run4") is True
     assert world.credits == [("autoreload", Decimal("25.00"), "pi_reload-7-run4")] and world.notes == []
+    assert world.emails == []
 
 
 def test_one_notice_while_the_card_keeps_failing(world):
@@ -126,6 +154,7 @@ def test_one_notice_while_the_card_keeps_failing(world):
         with pytest.raises(billing.StripeError):
             billing.auto_reload(Conn(), UID, trigger=trigger)
     assert len(world.charges) == 3 and len(world.notes) == 1  # charges unchanged, one notice
+    assert len(world.emails) == 1  # and one email: it is sent only for a notice written
     # Read in the bell, but within the window: still one.
     world.notes[0]["read_at"] = NOW
     with pytest.raises(billing.StripeError):
@@ -135,17 +164,17 @@ def test_one_notice_while_the_card_keeps_failing(world):
     world.notes[0].update(read_at=None, created_at=NOW - timedelta(hours=30))
     with pytest.raises(billing.StripeError):
         billing.auto_reload(Conn(), UID, trigger="run8")
-    assert len(world.notes) == 1
+    assert len(world.notes) == 1 and len(world.emails) == 1
     # Read and older than the window: the next failure rings again.
     world.notes[0].update(read_at=NOW - timedelta(hours=7), created_at=NOW - timedelta(hours=7))
     with pytest.raises(billing.StripeError):
         billing.auto_reload(Conn(), UID, trigger="run9")
-    assert len(world.notes) == 2
+    assert len(world.notes) == 2 and len(world.emails) == 2
     # A successful auto-reload since the last notice ends the spell: the next failure is told at once.
     world.ok_at = NOW + timedelta(seconds=1)
     with pytest.raises(billing.StripeError):
         billing.auto_reload(Conn(), UID, trigger="run9b")
-    assert len(world.notes) == 3
+    assert len(world.notes) == 3 and len(world.emails) == 3
 
 
 def test_a_broken_notice_write_never_reaches_the_charge_path(world, monkeypatch, capsys):
@@ -159,11 +188,40 @@ def test_a_broken_notice_write_never_reaches_the_charge_path(world, monkeypatch,
     world.charge_error, world.charge_result = None, {"id": "pi_y", "status": "requires_action"}
     assert billing.auto_reload(Conn(), UID, trigger="run11") is False
     assert "notice not written" in capsys.readouterr().out
+    assert world.emails == []  # no notice, no email
     # And charge_usage still swallows the reload failure, as before: research keeps its result.
     monkeypatch.setattr(billing, "usage_cost", lambda *a: Decimal("0.5"))
     world.charge_error = _declined()
     billing.charge_usage(Conn(), UID, "m", 10, 10, run_id=12)
     assert ("usage", Decimal("-0.5"), None) in world.credits
+
+
+def test_a_failed_email_never_reaches_the_charge_path_or_the_notice(world, monkeypatch, capsys):
+    from app import repository as repo
+
+    # SES refuses (sandbox, outage): logged by the sender, the notice stands, the charge error is unchanged.
+    world.ses_error, world.charge_error = RuntimeError("MessageRejected: not verified"), _declined()
+    with pytest.raises(billing.StripeError) as raised:
+        billing.auto_reload(Conn(), UID, trigger="run20")
+    assert raised.value is world.charge_error and len(world.notes) == 1 and world.emails == []
+    assert "SES send to away@example.com failed" in capsys.readouterr().out
+    # The address read breaks: logged and swallowed, the notice still counts as written.
+    world.notes.clear()
+    monkeypatch.setattr(repo, "get_user", lambda *a: (_ for _ in ()).throw(RuntimeError("db gone")))
+    world.charge_error, world.charge_result = None, {"id": "pi_z", "status": "requires_payment_method"}
+    assert billing.auto_reload(Conn(), UID, trigger="run21") is False
+    assert len(world.notes) == 1 and "failure email not sent" in capsys.readouterr().out
+    assert world.credits == [] and [c["idem"] for c in world.charges] == ["reload-7-run20", "reload-7-run21"]
+
+
+def test_a_user_without_an_address_gets_the_notice_and_no_email(world, monkeypatch):
+    from app import repository as repo
+
+    monkeypatch.setattr(repo, "get_user", lambda cur, uid: {"id": uid, "email": None, "name": "Ada"})
+    world.charge_error = _declined()
+    with pytest.raises(billing.StripeError):
+        billing.auto_reload(Conn(), UID, trigger="run22")
+    assert len(world.notes) == 1 and world.emails == []
 
 
 def _ctx(body=None):

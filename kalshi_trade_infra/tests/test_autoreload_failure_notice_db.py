@@ -1,12 +1,16 @@
 """A failed auto-reload reaches the user, against a real MySQL: the bell gets one notice per failing
 spell (with the customer-safe reason, the credits it tried to add and a link to Billing), Billing
 says it by the auto-reload switch until an auto-reload succeeds or a card is saved, and the charges
-and the ledger are exactly what they were without the notice. Payments are on in-process with every
-Stripe call stubbed. Opt in as for test_app_engine_db.py (APP_TEST_MYSQL=1)."""
+and the ledger are exactly what they were without the notice. Every notice written is emailed once,
+and a throttled failure sends none; the email goes out with Settings' optional-email switch off (it
+is account email). Payments are on in-process with every Stripe call stubbed, and boto3 is a stub
+that records SES sends. Opt in as for test_app_engine_db.py (APP_TEST_MYSQL=1)."""
 import os
+import sys
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -45,10 +49,16 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
         return {"id": "pi_" + idem, "status": "succeeded"}
 
     monkeypatch.setattr(billing, "charge", charge)
+    emails = []
+    ses = SimpleNamespace(client=lambda service, region_name=None: SimpleNamespace(
+        send_email=lambda **kw: emails.append(kw)) if service == "ses" else pytest.fail(service))
+    monkeypatch.setitem(sys.modules, "boto3", ses)  # no real SES: every send lands in `emails`
 
     cur = conn.cursor()
-    user = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "reloadfail@example.com", "R", None)
+    address = "reloadfail-%s@example.com" % uuid.uuid4().hex[:8]
+    user = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, address, "R", None)
     uid = user["id"]
+    assert repo.set_email_opt_out(cur, uid, True)  # optional email off: this one is account email
 
     def ctx(body=None):
         return server.Ctx(conn, repo.get_user(cur, uid), (), {}, body or {}, None)
@@ -83,6 +93,12 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
     assert note["body"] == ("Auto-reload couldn't add $25.00 in credits. That card has expired. Add a current card and try "
                             "again. Research pauses when your credits run out. Update your card on Billing.")
     assert "req_Z9" not in note["body"] and "pm_fail" not in note["body"]
+    [mail] = emails  # three failing calls, one notice, one email
+    assert mail["Destination"] == {"ToAddresses": [address]}
+    text = mail["Message"]["Body"]["Text"]["Data"]
+    assert ("Auto-reload couldn't add $25.00 in credits. That card has expired. Add a current card and try again.\n\n"
+            "Research pauses when your credits run out.") in text and "/billing\n" in text
+    assert not any(s in text for s in ("req_Z9", "pm_fail", customer, "pi_", "reload-%s" % uid, "list price"))
     bell = server.notifications(ctx())
     assert bell["unread"] >= 1 and any(i["kind"] == "reload_failed" and i["link"] == "/billing" for i in bell["items"])
 
@@ -92,18 +108,21 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
     server.mark_notifications_read(ctx())
     billing.charge_usage(conn, uid, "sonnet-4-6", 1000, 100, run_b + 1)
     assert len(notices()) == 1 and server.billing_state(ctx())["reload_failed"] is not None
+    assert len(emails) == 1  # throttled: no notice, no email
     # Seven hours on, still failing: one more notice.
     cur.execute("UPDATE app_notifications SET created_at=%s, read_at=%s WHERE user_id=%s AND kind='reload_failed'",
                 (repo.now_utc() - timedelta(hours=7), repo.now_utc() - timedelta(hours=7), uid))
     billing.charge_usage(conn, uid, "sonnet-4-6", 1000, 100, run_b + 2)
-    assert len(notices()) == 2
+    assert len(notices()) == 2 and len(emails) == 2
 
     # -- a broken notice write never reaches the charge or the ledger ------------------------------
     before = len(ledger())
     monkeypatch.setattr(repo, "latest_notification", lambda *a: (_ for _ in ()).throw(RuntimeError("db gone")))
     billing.charge_usage(conn, uid, "sonnet-4-6", 1000, 100, run_b + 3)
     assert len(ledger()) == before + 1 and charges[-1][2] == "reload-%s-run%s" % (uid, run_b + 3)
-    monkeypatch.undo()  # back to the real repository; re-stub Stripe for what follows
+    assert len(emails) == 2  # no notice written, no email
+    monkeypatch.undo()  # back to the real repository; re-stub Stripe and SES for what follows
+    monkeypatch.setitem(sys.modules, "boto3", ses)
     monkeypatch.setattr(billing, "STRIPE_SECRET_KEY", "sk_test_autoreload_failure")
     monkeypatch.setattr(billing, "_stripe", lambda *a, **k: pytest.fail("a Stripe call escaped the stubs: %r" % (a,)))
     monkeypatch.setattr(billing, "charge", charge)
@@ -117,7 +136,7 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
     outcome["error"] = None
     billing.charge_usage(conn, uid, "sonnet-4-6", 1000, 100, run_b + 4)
     assert ledger()[-1] == ("autoreload", Decimal("25"), "pi_reload-%s-run%s" % (uid, run_b + 4))
-    assert server.billing_state(ctx())["reload_failed"] is None
+    assert server.billing_state(ctx())["reload_failed"] is None and len(emails) == 2
 
     # -- it fails again, then a new card is saved: the notice is answered, so it goes --------------
     outcome["error"] = billing.StripeError("boom", kind="card_error", code="card_declined", decline_code="do_not_honor")
@@ -125,6 +144,7 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
         repo.add_credit(tx, uid, "usage", Decimal("-25"), "Agent usage · fixture")
     billing.charge_usage(conn, uid, "sonnet-4-6", 1000, 100, run_b + 5)
     assert len(notices()) == 3  # the success ended the last spell: told at once, though one is unread
+    assert len(emails) == 3 and billing.CARD_DECLINED in emails[-1]["Message"]["Body"]["Text"]["Data"]
     assert billing.CARD_DECLINED in server.billing_state(ctx())["reload_failed"]["text"]
     assert server.billing_card_added(ctx({"payment_method_id": "pm_new"})) == {"ok": True}
     assert not notices() and server.billing_state(ctx())["reload_failed"] is None
