@@ -35,9 +35,9 @@ def test_research_outside_the_focus_is_refused_and_inside_goes_ahead(monkeypatch
     rec = _capture(monkeypatch)
     text, _ = agent.act(None, CRYPTO, {"type": "research", "market": "nfl_game", "idea": "sportsbook vs crowd recalibration"}, True)
     assert rec["runs"] == [] and "focus on crypto" in text
-    agent.act(None, CRYPTO, {"type": "research", "market": "eth15m", "idea": "order-flow imbalance on 15m"}, True)
+    agent.act(None, CRYPTO, {"type": "research", "market": "btc15m", "idea": "order-flow imbalance on 15m"}, True)
     agent.act(None, CRYPTO, {"type": "research", "idea": "let the picker choose inside the focus"}, True)
-    assert rec["runs"] == ["eth15m", None]
+    assert rec["runs"] == ["btc15m", None]
 
 
 def test_deploys_outside_the_focus_are_refused(monkeypatch):

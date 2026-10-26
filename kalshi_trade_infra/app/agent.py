@@ -707,6 +707,28 @@ def focus_refusal(user: Dict, market: Optional[str]) -> Optional[str]:
             "change the focus." % (", ".join(tokens), label))
 
 
+# Todd 2026-10-26 14:45Z ("Bitcoin only"): autopilot crypto research picks only these coins. The
+# audit found taker bets on these markets lose before fees, and the alt-coin 15m/daily markets
+# developed no ideas in 34h; BTC has the richest data. Research a person starts by hand is not
+# limited. Empty = every coin.
+AUTOPILOT_CRYPTO_COINS = [c for c in re.split(r"[,\s]+", os.getenv("TAU_AUTOPILOT_CRYPTO_COINS", "btc").lower()) if c]
+
+
+def autopilot_scope_ok(market: Optional[str]) -> bool:
+    """False for a crypto market whose coin the autopilot no longer researches (AUTOPILOT_CRYPTO_COINS)."""
+    if not market or not AUTOPILOT_CRYPTO_COINS:
+        return True
+    from app import rsi
+    return not rsi.family(market).startswith("crypto") or _underlying_tag(market) in AUTOPILOT_CRYPTO_COINS
+
+
+def autopilot_scope_line() -> str:
+    if not AUTOPILOT_CRYPTO_COINS:
+        return ""
+    return ("Crypto research scope (the user's decision): only %s markets; do NOT propose research on "
+            "other coins' markets." % ", ".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS))
+
+
 # -- the autopilot's own scorecard -------------------------------------------------------------
 # The research scoreboard (app.rsi) grades the research pipeline; this grades the autopilot as the
 # manager that spends on it: did it follow the user's focus, and did its spend go where ideas reach
@@ -2566,6 +2588,12 @@ def run_research(
             log("step", "%s is outside your autopilot focus — picking a market inside it for this angle."
                 % (MARKETS[market].label if market in MARKETS else market))
             market = None
+        if market and run.get("brief") and not ckpt.get("market") and not autopilot_scope_ok(market):
+            # A delegated run queued on a coin the autopilot no longer researches (before the scope
+            # changed): keep the angle, let the picker choose inside the scope.
+            log("step", "Crypto research is limited to %s now — picking a market inside that for this angle."
+                % "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS))
+            market = None
         if not market:  # user left it to the agent — it picks the market from the idea first
             if resuming and ckpt.get("market"):
                 market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
@@ -2573,6 +2601,8 @@ def run_research(
                 checkpoint()
                 blocked = _research_blocked_markets(cur, user_id)
                 ready = focus_keys(cur, user_id, _researchable_keys(cur))
+                if run.get("brief"):
+                    ready = [k for k in ready if autopilot_scope_ok(k)] or ready
                 if not ready:
                     raise RuntimeError("No market inside your autopilot focus is open for research right now.")
                 keys = [k for k in ready if k not in blocked] or _least_recent_markets(cur, user_id, ready)
@@ -3552,9 +3582,11 @@ def _market_research_recent(cur, user_id: int, market: str, runs: Optional[List[
 
 def _cooldown_line(cur, user_id: int) -> str:
     blocked = _research_blocked_markets(cur, user_id)
+    scope = autopilot_scope_line()
+    scope = scope + "\n" if scope else ""
     if not blocked:
-        return "Research cooldown: none, every market is open for a fresh research line."
-    return ("Research cooldown, do NOT propose these markets now (pick others, or omit market to let the "
+        return scope + "Research cooldown: none, every market is open for a fresh research line."
+    return scope + ("Research cooldown, do NOT propose these markets now (pick others, or omit market to let the "
             "specialist choose): %s." % ", ".join(sorted(blocked)))
 
 
@@ -4093,6 +4125,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         sid = int(action.get("strategy_id") or 0)
         market = action.get("market") or None
         unsupported = None  # a market the review named that Tau doesn't have (autopilot only)
+        off_scope = None  # a crypto market outside AUTOPILOT_CRYPTO_COINS (autopilot only)
         idea = str(action.get("idea") or action.get("reason") or "").strip()[:1000]
         if sid:
             strat = repo.get_strategy(cur, user_id, sid)
@@ -4106,6 +4139,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 # isn't a Tau market, so nothing started for 90 minutes. Keep the angle and let the
                 # research specialist pick a supported, in-focus market, as the cooldown path does.
                 unsupported, market = market, None
+            elif autopilot and not autopilot_scope_ok(market):
+                off_scope, market = market, None
             if len(idea) < 8:
                 return "Tell me the idea to research in a sentence or two.", None
         refusal = focus_refusal(user, strat["market"] if sid else market)
@@ -4150,6 +4185,10 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         # Stamp the user's autopilot model so the run uses it (NULL = catalog default).
         repo.create_run(cur, user_id, "research", market, direction, idea, brief=True,
                         model=user.get("autopilot_model"))
+        if not sid and off_scope:
+            return ("Crypto research is %s only now, so I started this angle on a market the research "
+                    "specialist picks instead of %s. Follow it on the Research page."
+                    % ("/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS), off_scope)), None
         if not sid and unsupported:
             return ("%s isn't a market Tau supports, so I started this angle on a supported market the "
                     "research specialist picks. Follow it on the Research page." % unsupported), None
