@@ -4408,7 +4408,7 @@
   // need this more than the one-time welcome credit.
   const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
   async function viewBilling() {
-    shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token for the model you pick. Paper and live trading themselves are free.') +
+    shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token for the model you pick. Paper and live trading themselves are free. The <a href="/research">research form</a> shows what a session usually costs before you start.') +
       '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl>', loading(360));
     let stripe = null, card = null;
     const load = async () => {
@@ -4420,6 +4420,11 @@
           ? fig('Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${usd(d.spent_7d)} a week` })
           : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' }));
       const feeNote = `Credits plus a ${d.topup_fee_pct}% purchase fee.`;
+      const payCard = d.cards.find((c) => c.id === d.default_pm) || d.cards[0];
+      const payName = payCard ? `your ${esc((payCard.brand || 'card').toUpperCase())} •••• ${esc(payCard.last4 || '')}` : 'your card';
+      const reloadWhen = (on, amount, threshold) => on
+        ? `<b>On.</b> When a research or chat charge takes your balance to ${usd(threshold)} or less, we charge ${payName} for ${usd(amount)} of credits plus the ${d.topup_fee_pct}% purchase fee.`
+        : '<b>Off.</b> When your credits run low, new research sessions won’t start until you add more.';
       const cardLines = d.cards.length
         ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
             <td class="name" data-lab="Card">${esc((c.brand || 'card').toUpperCase())} •••• ${esc(c.last4 || '')}</td>
@@ -4429,8 +4434,8 @@
         : '<p class="hint">No card on file. Add one to buy credits or turn on auto-reload.</p>';
       const main = !d.configured
         ? `<div class="notice">${ICON.warn}<span>Payments aren’t enabled on this server yet. You can still use your free credits.</span></div>
-           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt</a></div>${ledgerTable(d.ledger)}</section>`
-        : `<div class="detail">
+           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d.ledger, d.topup_fee_pct)}</section>`
+        : `<div class="detail bill-detail">
             <div>
               <section class="panel"><h3>Payment method</h3><div id="cards">${cardLines}</div>
                 <div id="card-add" style="margin-top:14px">
@@ -4442,12 +4447,13 @@
                   <label class="switch"><input type="checkbox" id="autoreload" ${d.auto_reload ? 'checked' : ''}><span>Auto-reload</span></label>
                   <button type="button" class="autorel-edit" id="autorel-edit" aria-expanded="false" aria-controls="autorel-config"><span id="autorel-sum">Reload $${d.autoreload_amount} at $${d.autoreload_threshold}</span><span class="chev">${ICON.chev}</span></button>
                 </div>
+                <p class="hint autorel-when" id="autorel-when">${reloadWhen(d.auto_reload, d.autoreload_amount, d.autoreload_threshold)}</p>
                 <div class="autorel-config" id="autorel-config" hidden>
                   <p class="autorel-line">Reload <input class="input xs" id="reload-amt" type="number" min="${d.min_reload_amount}" step="1" value="${d.autoreload_amount}"> dollars when my balance drops to <input class="input xs" id="reload-thr" type="number" min="${d.min_reload_threshold}" step="1" value="${d.autoreload_threshold}"> dollars.</p>
                   <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
                 </div>
               </section>
-              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt</a></div>${ledgerTable(d.ledger)}</section>
+              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d.ledger, d.topup_fee_pct)}</section>
             </div>
             <aside>
               <section class="panel"><h3>Add credits</h3>
@@ -4487,6 +4493,7 @@
         const threshold = Math.max(d.min_reload_threshold, +arThr.value || d.min_reload_threshold);
         arAmt.value = amount; arThr.value = threshold;
         arSum.textContent = `Reload $${amount} at $${threshold}`;
+        root.querySelector('#autorel-when').innerHTML = reloadWhen(arBox.checked, amount, threshold);
         try {
           await api('/api/billing/auto-reload', { on: arBox.checked, amount, threshold });
           flash('#autorel-flash', arBox.checked ? `On ·\u00a0reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
@@ -4520,11 +4527,19 @@
     };
     await load();
   }
-  function ledgerTable(rows) {
+  // What a ledger line is, under its name: usage is one model call (the memo names the model), and credits
+  // bought show the credits, while the card paid those plus the purchase fee. Amounts are the server's.
+  const USAGE_PREFIX = /^Agent usage\s\u00b7\s/;  // the server's memo, "Agent usage" then a middle dot
+  function ledgerNote(r, feePct) {
+    if (r.kind === 'usage') return r.memo ? esc(r.memo.replace(USAGE_PREFIX, '')) : '';  // the model; the key above says it's one call
+    if ((r.kind === 'topup' || r.kind === 'autoreload') && feePct != null) return `Card charged for these credits plus the ${esc(feePct)}% purchase fee`;
+    return '';
+  }
+  function ledgerTable(rows, feePct) {
     if (!rows.length) return '<p class="hint">No credit activity yet.</p>';
-    return `<div class="sheet"><table class="table stack t-dep t-ledger"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${rows.map((r) => `<tr>
+    return `<p class="hint ledger-key">Newest first. Research and chat bill one line per model call, named by its model. The receipt has every line, with exact amounts.</p><div class="sheet"><table class="table stack t-dep t-ledger"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${rows.map((r) => `<tr>
       <td class="hint" data-lab="When">${when(r.created_at)}</td>
-      <td class="name" data-lab="Item">${esc(KIND_LABEL[r.kind] || r.kind)}${r.memo && r.kind === 'usage' ? `<div class="sub-fig">${esc(r.memo)}</div>` : ''}</td>
+      <td class="name" data-lab="Item">${esc(KIND_LABEL[r.kind] || r.kind)}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
       <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${usd(r.amount, true)}</span></td></tr>`).join('')}</tbody></table></div>`;
   }
 
