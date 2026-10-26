@@ -1290,6 +1290,79 @@ test('the current research run renders a safe streaming log and its paused statu
   assert.ok(f.root.querySelector('#resume')); assert.match(f.root.querySelector('#runpulse').innerHTML, /resume/);
 });
 
+test('Tau: research counts a paused session as paused, not as researching', async () => {
+  const at = (counts) => frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/runs') return response({runs: [], counts, policy: null, totals: {tried: 8, passed: 0}});
+    if (path.startsWith('/api/research/scoreboard')) return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  // One running and one paused said "Researching now 2" (the server folded paused into running).
+  let f = at({research_running: 1, research_paused: 1, research_queued: 0});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  const said = f.root.querySelector('#rstatus .said').innerHTML, figs = f.root.querySelector('#rfigs').innerHTML;
+  assert.match(said, /<em>1<\/em> agent researching now · <em>1<\/em> paused — /);
+  assert.match(figs, /Researching now<\/dt><dd><span class="fig ">1<\/span><\/dd><div class="sub-fig">1 paused<\/div>/);
+  f.clearTimers();
+  // Only a paused one: nothing is researching, and the line still says one is paused.
+  f = at({research_running: 0, research_paused: 1, research_queued: 0});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /^<em>1<\/em> paused — /);
+  assert.doesNotMatch(f.root.querySelector('#rstatus .said').innerHTML, /researching now/);
+  f.clearTimers();
+});
+
+test('Tau: a run names its model and says it runs until stopped, or how many strategies it tests', async () => {
+  const page = async (extra) => {
+    const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', ...extra};
+    const f = frontend({fetchImpl: () => response({run, events: []})});
+    await f.viewRun(9);
+    const deck = f.root.querySelector('#runboard').innerHTML;
+    f.clearTimers();
+    return deck;
+  };
+  // The default model's key is null: the server sends its customer name, never the internal id.
+  assert.match(await page({model: null, model_label: 'Claude Opus 4.6', run_forever: 1, max_hypotheses: 10}), /Claude Opus 4\.6 · Runs until you stop it/);
+  assert.match(await page({model: 'sonnet-4-6', model_label: 'Claude Sonnet 4.6', run_forever: 0, max_hypotheses: 25}), /Claude Sonnet 4\.6 · Up to 25 strategies/);
+  assert.match(await page({model_label: 'Claude Sonnet 4.6', run_forever: 0, max_hypotheses: 1}), /Up to 1 strategy</);
+  assert.match(await page({status: 'stopped', model_label: 'Claude Opus 4.6', run_forever: true}), /Claude Opus 4\.6 · Ran until stopped/);
+  const deck = await page({model: 'sonnet-4-6', model_label: '<b>x</b>', run_forever: 1});
+  assert.doesNotMatch(deck, /sonnet-4-6|<b>x/);
+  // The seeded example says it is an example, not a model.
+  assert.doesNotMatch(await page({status: 'succeeded', direction: 'random_walk', example: true, model_label: 'Claude Opus 4.6', run_forever: 0, max_hypotheses: 2}), /Claude Opus|Up to/);
+});
+
+test('Tau: Pause and Cancel sit beside the run title, above the spend figure, not at the Agent log', async () => {
+  const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', spent_usd: 1.2};
+  const f = frontend({fetchImpl: () => response({run, events: []})});
+  await f.viewRun(9);
+  const html = f.root.innerHTML;
+  assert.match(html, /<div class="run-header"><div id="runboard">[\s\S]*<\/div><span id="runact"><\/span><\/div><div id="flash"><\/div><dl class="figures measure" id="runfigs"/);
+  assert.match(html, /<h2>Agent log<\/h2><\/div>/);
+  assert.ok(f.root.querySelector('#pause') && f.root.querySelector('#cancel'));
+  f.clearTimers();
+});
+
+test('Tau: a Pause that keeps failing replaces its error notice instead of stacking one per press', async () => {
+  const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+  const f = frontend({fetchImpl: (path, opts) => (opts && opts.method === 'POST')
+    ? response({error: 'Only a running session can be paused.'}, 409) : response({run, events: []})});
+  await f.viewRun(9);
+  for (let i = 0; i < 3; i++) {
+    const pause = f.root.querySelector('#pause');
+    await pause.onclick({currentTarget: pause});
+  }
+  assert.equal(postRequests(f).length, 3);
+  const flashHtml = f.root.querySelector('#flash').innerHTML;
+  assert.equal((flashHtml.match(/class="notice bad"/g) || []).length, 1);
+  assert.match(flashHtml, /Only a running session can be paused\./);
+  f.clearTimers();
+});
+
 test('a queued run counts its wait from the server, and past the reaper limit says plainly it is waiting', async () => {
   const at = (wait, status = 'queued') => {
     const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', wait};

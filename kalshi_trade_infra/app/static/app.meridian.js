@@ -1495,12 +1495,20 @@
     const next = root.querySelector(`[data-dep="${id}"]`) || document.getElementById('main');
     if (next && next.focus) next.focus({ preventScroll: true });
   }
+  // An action's error notice replaces the last one: a run page's Pause failing on each press stacked
+  // a new notice per press. #flash holds one notice; on a page without it, the last one is removed.
   function alert0(msg) {
     const host = root.querySelector('#flash') || root.querySelector('main');
     if (!host) return;
-    const el = document.createElement('div');
-    el.innerHTML = notice(msg, 'bad', true);
-    host.prepend(el.firstChild);
+    if (host.id === 'flash') host.innerHTML = notice(msg, 'bad', true);
+    else {
+      const prev = host.querySelector('[data-alert0]');
+      if (prev) prev.remove();
+      const el = document.createElement('div');
+      el.innerHTML = notice(msg, 'bad', true);
+      el.firstChild.setAttribute('data-alert0', '');
+      host.prepend(el.firstChild);
+    }
     announce(msg, true);
   }
 
@@ -2189,8 +2197,9 @@
       // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
       const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
       const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
-      const running = d.counts.research_running, queued = d.counts.research_queued;
-      root.querySelector('#research-status').innerHTML = fig('Running', running) + fig('Queued', queued);
+      // A paused session holds one of the two session slots but isn't running: it says paused.
+      const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
+      root.querySelector('#research-status').innerHTML = fig('Running', running) + (paused ? fig('Paused', paused) : '') + fig('Queued', queued);
       root.querySelector('#rfigs').innerHTML = fig(gl('Passed', 'gate'), passed) + fig('Tested', tried);
       root.querySelector('#rfigs').setAttribute('title', tried ? `${pct(passed / tried, false)} of ${num(tried)} tested` : 'No strategies tested');
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
@@ -2217,6 +2226,12 @@
   // What a run has taken from credits (the ledger rows billed to it, `spent_usd` from the server).
   // A run still going says "so far"; a finished one states its cost.
   const runLive = (r) => r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+  // Which model a session uses and how far it goes, beside its market on the run page: it never said
+  // either. model_label is the model's customer name from the server (the run's key is NULL for the
+  // default model); run_forever is the form's "Let it run until I stop it", else its strategy count.
+  const runSetup = (r) => [r.model_label ? esc(r.model_label) : '',
+    r.run_forever ? (runLive(r) ? 'Runs until you stop it' : 'Ran until stopped')
+      : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' \u00b7\u00a0');
   const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
   function runRow(r) {
     // A `stopped` session (run until stopped, then out of credits, interrupted or capped) reads like a
@@ -2773,7 +2788,7 @@
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
       runActive = active;
-      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : ''}`);
+      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       const late = r.wait && r.wait.overdue ? r.wait : null;

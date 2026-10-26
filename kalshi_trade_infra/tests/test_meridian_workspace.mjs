@@ -1515,6 +1515,38 @@ test('the current research run renders a safe streaming log and its paused statu
   assert.ok(f.root.querySelector('#resume')); assert.equal(f.root.querySelector('#runpulse'), null);
 });
 
+test('Meridian: a run names its model and says it runs until stopped, or how many strategies it tests', async () => {
+  const page = async (extra) => {
+    const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', ...extra};
+    const f = frontend({fetchImpl: () => response({run, events: []})});
+    await f.viewRun(9);
+    const deck = f.root.querySelector('#runboard').innerHTML;
+    f.clearTimers();
+    return deck;
+  };
+  // The default model's key is null: the server sends its customer name, never the internal id.
+  assert.match(await page({model: null, model_label: 'Claude Opus 4.6', run_forever: 1, max_hypotheses: 10}), /Claude Opus 4\.6 · Runs until you stop it/);
+  assert.match(await page({model: 'sonnet-4-6', model_label: 'Claude Sonnet 4.6', run_forever: 0, max_hypotheses: 25}), /Claude Sonnet 4\.6 · Up to 25 strategies/);
+  assert.match(await page({status: 'cancelled', model_label: 'Claude Opus 4.6', run_forever: 1}), /Ran until stopped/);
+  assert.doesNotMatch(await page({model: 'sonnet-4-6', model_label: '<b>x</b>', run_forever: 1}), /sonnet-4-6|<b>x/);
+});
+
+test('Meridian: a Pause that keeps failing replaces its error notice instead of stacking one per press', async () => {
+  const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
+  const f = frontend({fetchImpl: (path, opts) => (opts && opts.method === 'POST')
+    ? response({error: 'Only a running session can be paused.'}, 409) : response({run, events: []})});
+  await f.viewRun(9);
+  for (let i = 0; i < 3; i++) {
+    const pause = f.root.querySelector('#pause');
+    await pause.onclick({currentTarget: pause});
+  }
+  assert.equal(postRequests(f).length, 3);
+  const flashHtml = f.root.querySelector('#flash').innerHTML;
+  assert.equal((flashHtml.match(/class="notice bad"/g) || []).length, 1);
+  assert.match(flashHtml, /Only a running session can be paused\./);
+  f.clearTimers();
+});
+
 test('a Research run queued or silent past the reaper limit says how long instead of Queued', async () => {
   const at = (wait, status = 'queued') => {
     const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', wait};
@@ -1699,9 +1731,26 @@ function researchFrontend(runs = [], {policy = null, ...options} = {}) {
     if (path === '/api/research/estimate') return response(options.estimate || {yours: null, sessions: 0, typical: {}});
     assert.equal(path, '/api/runs');
     return response({runs, counts: {research_running: runs.filter(run => run.status === 'running').length,
+      research_paused: runs.filter(run => run.status === 'paused').length,
       research_queued: runs.filter(run => run.status === 'queued').length}, policy: typeof policy === 'function' ? policy() : policy});
   }});
 }
+
+test('Meridian: Research counts a paused session as paused, not as running', async () => {
+  // One running and one paused said "Running 2" (the server folded paused into running).
+  let f = researchFrontend([researchRun(4, 'running'), researchRun(5, 'paused')]);
+  await f.viewResearch(); await flush();
+  let status = f.root.querySelector('#research-status').innerHTML;
+  assert.match(status, /Running<\/dt><dd><span class="fig ">1<\/span>/);
+  assert.match(status, /Paused<\/dt><dd><span class="fig ">1<\/span>/);
+  f.clearTimers();
+  // No paused session: no Paused figure.
+  f = researchFrontend([researchRun(4, 'running')]);
+  await f.viewResearch(); await flush();
+  status = f.root.querySelector('#research-status').innerHTML;
+  assert.doesNotMatch(status, /Paused/);
+  f.clearTimers();
+});
 
 test('Research lists the seeded example as an example and does not count it as a session', async () => {
   const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};

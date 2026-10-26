@@ -738,6 +738,8 @@ def get_run(ctx: Ctx):
     if wait and wait["overdue"] and wait["state"] == "queued":
         wait["ahead"] = repo.research_queue_ahead(ctx.cur, run["id"])
     run["wait"] = wait
+    # The run stores the model's key, NULL for the default: the page names the model a customer picked.
+    run["model_label"] = catalog.label_for_key(run.get("model"))
     return {
         "run": run,
         "events": _with_gate_lines(repo.run_events(ctx.cur, run["id"], after)),
