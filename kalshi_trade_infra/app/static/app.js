@@ -1451,6 +1451,10 @@
     }
     return `<div class="sub-fig road-line">Toward live: ${text}</div>`;
   };
+  // A demo row says what it is: Kalshi's sandbox with play money, a copy of its paper run when it has
+  // one, there to prove the order path before live. Its fills differ from paper's because the demo
+  // book is thin, which is also why its P&L is no evidence of the edge (paper keeps that job).
+  const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   function deploymentSlip(d, regs, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
     // Realized beside what the backtest's unseen-data average per trade says the same trades should
@@ -1465,7 +1469,7 @@
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div>${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
+        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -1818,6 +1822,8 @@
       // The figure above it is Kalshi's cash for the whole account; this line is Tau's own trades.
       const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${b.open_positions} open${b.open_positions ? ' (not in cash)' : ''} ·\u00a0${usd(b.realized_pnl, true)} realized all time ·\u00a0${usd(b.today_pnl, true)} realized today (UTC)` : zero;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
+      // Demo is Kalshi's sandbox, not paper: with a demo deployment on, "Paper money only" mislabelled it.
+      const hasDemo = d.deployments.some((x) => x.mode === 'demo' && x.status !== 'stopped');
       // A new account's paper book has never been used: say so instead of "$0.00 at cost · $0.00 all time".
       const paperUsed = p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper');
       // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
@@ -1828,7 +1834,7 @@
       const paused = d.deployments.filter((x) => x.status === 'paused').length;
       const needs = stale || paused > 0;
       const said = [
-        hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized all time` : 'Paper money only',
+        hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized all time` : hasDemo ? 'No real money: paper and demo' : 'Paper money only',
         running ? `${running} strateg${running > 1 ? 'ies' : 'y'} running` : 'Nothing deployed',
         paused ? `<a class="needs-link" href="#dash-deps"><em>${paused} paused, needs you</em></a>` : '',  // paused rows list first
         agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
@@ -3071,13 +3077,21 @@
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats} ·\u00a0${demoHealthLine(s.demo_health)}</p>`;
       return `<p><span class="mk ${cls}">${label}</span> ${ds.some((d) => d.status === 'running') ? 'running' : 'paused'} ·\u00a0${stats}</p>`;
     });
+    // Paper proves the edge, demo the order path: say so under the demo book, with its settled demo
+    // orders against what the live check needs once Road to live is in.
+    const p = road && road.paper;
+    if (books.length && running.some(([m]) => m === 'demo')) {
+      const orders = p && p.demo_orders_needed ? ` Live needs ${num(p.demo_orders_needed)}+ settled demo orders: ${num(p.demo_orders || 0)} so far.` : '';
+      books.splice(running.findIndex(([m]) => m === 'demo') + 1, 0, `<p class="hint rung-demo">Paper tests the edge; demo tests the order path on Kalshi’s sandbox with play money. Its book is thin, so demo fills and P&amp;L differ from paper’s.${orders}</p>`);
+    }
     const next = LADDER[running.length ? LADDER.indexOf(running[running.length - 1]) + 1 : 0];
     let need = '';
     if (!next) need = 'Top rung: it trades live money.';
     else if (!canDeploy) need = '';
     else if (next[0] === 'paper') need = 'Next rung, paper: nothing needed. Deploy it on paper below.';
-    else if (next[0] === 'demo') need = demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a>.'
-      : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}` : 'Next rung, demo: nothing needed. Deploy it on demo below.';
+    else if (next[0] === 'demo') need = (demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a>.'
+      : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}` : 'Next rung, demo: nothing needed. Deploy it on demo below.')
+      + ' Demo runs the same rules on Kalshi’s sandbox with play money, to prove its orders place, fill and book before live money.';
     else if (road) {
       const left = roadLeft(road, s);
       need = `Next rung, live: ${roadClear(road) ? 'its record clears every check. It trades live money only once you deploy it there' : `${left.length} check${left.length === 1 ? '' : 's'} left, first ${left[0]}`}.`;
@@ -3656,7 +3670,10 @@
     : `<p class="key-ok"><b>Connected ✓</b> (balance ${usd(bal)}${at ? ', read ' + when(at) : ''})${kind === 'demo' ? ' <span class="hint">in your Kalshi demo account</span>' : ''}</p>`;
   // Kalshi refuses orders from a demo account with no cash, and a new one starts empty. Tau's demo balance is
   // Tau's own figure, so a $0.00 here would otherwise read as harmless.
-  const demoEmpty = (bal) => bal != null && bal < 0.005 ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has $0.00, so Kalshi refuses demo orders. Add demo funds in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (play money, not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>` : '';
+  // `from` is the demo cash the autopilot's demo copies wait for (server: demo_twins), so a balance
+  // under it says why no copy starts, not only an empty one.
+  const demoEmpty = (bal, from) => bal == null ? '' : bal < 0.005 ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has $0.00, so Kalshi refuses demo orders. Add demo funds in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (play money, not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>`
+    : from && bal < from ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has ${usd(bal)}. Demo copies of your paper strategies start once it holds ${usd(from)}: add play money in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>` : '';
 
   // Each Funds figure says what it leaves out: a book's open positions, by count and cost (contracts x entry,
   // the dashboard's "at cost"). An API without the counts says nothing rather than "0 open".
@@ -3675,7 +3692,7 @@
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
       root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' : k.balance == null ? KALSHI_UNREAD : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}. ${openLeft(k, 'live')}` }) +
-        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${DEMO_WHAT}` }) +
+        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}practice money` });
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
@@ -3701,7 +3718,7 @@
         <section class="panel">
           <h3>Kalshi demo (sandbox) account</h3>
           <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>P&amp;L ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
-          <p class="lede" style="margin-bottom:14px">Demo places real orders on Kalshi’s sandbox for real fills, so slippage is realistic — but the money is ours to set. Reload it to any amount; this never touches your real demo-account balance. A reload starts P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
+          <p class="lede" style="margin-bottom:14px">Demo places real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is ours to set: reload it to any amount; this never touches your Kalshi demo account’s balance. A reload starts P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
             <label class="field"><span>Reload to</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="1000"></label>
             <button class="btn" type="submit">Reload demo</button>
@@ -3709,10 +3726,10 @@
           <div id="dmflash" style="margin-top:10px"></div>
           <h3 style="margin-top:24px">Demo key</h3>
           ${kd.connected ? `
-            ${keyOk(kd.balance, 'demo', kd.balance_at)}${demoEmpty(kd.balance)}<dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
+            ${keyOk(kd.balance, 'demo', kd.balance_at)}${demoEmpty(kd.balance, kd.copies_from)}<dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">Demo deployments trade Kalshi’s sandbox exchange with this key — real order-book fills, no real money. Your demo key is stored separately from your live key and is never used for live trading. To use a different demo key, remove this one and connect the new one.</p>
             <button class="btn danger" id="dev-disconnect">Remove demo key</button>` : `
-            <p class="lede" style="margin-bottom:12px">Connect a Kalshi <b>demo</b> API key to deploy strategies on the sandbox exchange — real market fills, no real money. It’s kept separate from your live key.</p>
+            <p class="lede" style="margin-bottom:12px">Connect a Kalshi <b>demo</b> API key to deploy strategies on the sandbox exchange: play money, no real money. Demo is the step between paper and live: it proves orders place, fill and book, and live needs a clean demo record. It’s kept separate from your live key.</p>
             ${keySteps('demo')}
             <form id="kalshi-dev" style="display:grid;gap:12px">
               <label class="field"><span>Demo key ID</span><input class="input" name="key_id" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="like a952bcbe-ec3b-4b5b-…"></label>

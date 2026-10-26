@@ -901,7 +901,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Your real cash at Kalshi, read 5m ago\. 2 open live positions \(\$8\.09 at cost\) not included/);
-  assert.match(figs, /\$1,000\.00 capital ·\u00a01 open \(\$3\.05 at cost\) ·\u00a0real fills/);
+  assert.match(figs, /\$1,000\.00 capital ·\u00a01 open \(\$3\.05 at cost\) ·\u00a0needs a demo key ·\u00a0real fills/);
   // Paper is the dashboard's figure (cash + open at cost), never cash alone under another name.
   assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.09 at cost\)/); assert.doesNotMatch(figs, /Paper cash/);
   // Each book stays its own figure: no sum of live, demo and paper anywhere.
@@ -3445,6 +3445,42 @@ test('a paused deployment row names its book beside "Paused"', async () => {
     }});
     await f.viewDashboard(); await flush();
     assert.equal(f.root.querySelector('#dash-deps td[data-lab="Status"]').innerHTML, `<span class="mk armed">Paused</span> ${tag}`);
+  }
+});
+
+test('the dashboard status line never calls demo paper money', async () => {
+  const dep = (mode, status = 'running') => ({id: 1, strategy_id: 1, title: 'S', market: 'btc15m', mode, status, status_reason: null, stake: 5, max_positions: 2,
+    realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, created_at: '2026-10-25T08:00:00Z'});
+  for (const [deps, said] of [[[dep('paper')], 'Paper money only'], [[dep('paper'), dep('demo')], 'No real money: paper and demo'],
+    [[dep('paper'), dep('demo', 'stopped')], 'Paper money only'], [[dep('demo', 'paused')], 'No real money: paper and demo']]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response({...emptyDashboard(), deployments: deps});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    assert.equal(f.root.querySelector('.statusline .said').innerHTML.split('<span class="sep">')[0], said);
+  }
+});
+
+test('Funds says what demo proves, where it sits on the ladder, and why a small demo balance starts no copies', async () => {
+  const view = async (dev) => {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return response({...funds(), kalshi_dev: dev}); }});
+    await f.viewFunds();
+    return {main: f.root.querySelector('main').innerHTML, figs: f.root.querySelector('#ffigs').innerHTML};
+  };
+  const none = await view({connected: false});
+  // Demo is the order path's test, not realistic slippage: its book is thin, so it is no evidence of the edge.
+  assert.match(none.main, /to prove the order path before live money\. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job\./);
+  assert.doesNotMatch(none.main, /slippage is realistic/);
+  assert.match(none.main, /Demo is the step between paper and live: it proves orders place, fill and book/);
+  assert.match(none.figs, /needs a demo key ·\u00a0real fills on Kalshi’s sandbox/);
+  const dev = {connected: true, key_id: 'DEVK…1234', copies_from: 100};
+  const low = await view({...dev, balance: 40});
+  assert.doesNotMatch(low.figs, /needs a demo key/);
+  assert.match(low.main, /Your Kalshi demo account has \$40\.00\. Demo copies of your paper strategies start once it holds \$100\.00: add play money in your account on <a href="https:\/\/demo\.kalshi\.co[^"]*"/);
+  assert.match((await view({...dev, balance: 0})).main, /Your Kalshi demo account has \$0\.00, so Kalshi refuses demo orders\./);
+  for (const ok of [{...dev, balance: 100}, {...dev, balance: 40, copies_from: null}, {...dev, balance: null}]) {
+    assert.doesNotMatch((await view(ok)).main, /Your Kalshi demo account has/);
   }
 });
 

@@ -54,6 +54,16 @@ def test_under_ten_trades_is_too_early_to_tell(n):
     assert bc.book_check("live", _stats([0.1] * 10), bc.backtest_figures(OOS, 5.0))["verdict"] != "early"
 
 
+def test_a_demo_line_says_its_thin_book_is_no_evidence_of_the_edge():
+    # Demo proves the order path; its sandbox book is thin, so ahead or behind is not edge evidence.
+    bt = bc.backtest_figures(OOS, 5.0)
+    for pnls in ([5.0] * 4, _alternating(40, 0.40, 0.2), _alternating(40, -0.10, 0.2)):
+        line = bc.book_check("demo", _stats(pnls), bt)["line"]
+        assert line.endswith("Demo's book is thin, so this is no evidence of the edge either way.")
+    for mode in ("paper", "live"):
+        assert "thin" not in bc.book_check(mode, _stats([5.0] * 4), bt)["line"]
+
+
 def test_out_of_sample_figures_first_then_the_tested_data():
     assert bc.backtest_figures(OOS, 5.0)["source"] == "out_of_sample"
     ins_only = {"out_of_sample": {"trades": 0, "pnl": 0}, "in_sample": {"trades": 50, "pnl": 10.0, "win_rate": 0.55}}

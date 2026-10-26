@@ -28,6 +28,9 @@ Z = 2.0  # about 95% of n-trade averages land within two standard errors
 SAME_SIZE = (0.75, 1.25)
 BOOKS = ("live", "demo", "paper")
 LABEL = {"live": "live", "demo": "demo", "paper": "paper"}
+# Demo fills come from Kalshi's sandbox book, which is thin: a demo book ahead of or behind its
+# backtest says how its orders filled there, not whether the edge is real (paper keeps that job).
+DEMO_NOTE = " Demo's book is thin, so this is no evidence of the edge either way."
 
 
 def _usd(v: float) -> str:
@@ -55,7 +58,14 @@ def backtest_figures(result: Optional[Dict], stake: Optional[float]) -> Optional
 
 def book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optional[Dict]:
     """The comparison for one book, or None when there is nothing to compare (no completed trade,
-    or no backtest trades)."""
+    or no backtest trades). A demo book's line ends with DEMO_NOTE."""
+    out = _book_check(mode, stats, bt)
+    if out is not None and mode == "demo":
+        out["line"] += DEMO_NOTE
+    return out
+
+
+def _book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optional[Dict]:
     n = int((stats or {}).get("trades") or 0)
     if n < 1 or bt is None:
         return None
