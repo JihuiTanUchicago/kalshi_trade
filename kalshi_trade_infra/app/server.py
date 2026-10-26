@@ -1136,11 +1136,17 @@ class Handler(BaseHTTPRequestHandler):
                 conn.close()
 
 
+class Server(ThreadingHTTPServer):
+    # The default listen backlog is 5: twenty pages polling at once had connections refused and
+    # retried a second later, the 1.3-1.6s client spikes the server never saw.
+    request_queue_size = 128
+    daemon_threads = True
+
+
 def main() -> None:
     if DEV_LOGIN and HOST not in ("127.0.0.1", "localhost"):
         raise SystemExit("APP_DEV_LOGIN=1 is only allowed when bound to localhost.")
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    server.daemon_threads = True
+    server = Server((HOST, PORT), Handler)
     threading.Thread(target=warm_shared, daemon=True).start()
     threading.Thread(target=warm_static, daemon=True).start()
     paper_checks.start()  # a lapsed paper check is read again in the background
