@@ -125,7 +125,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewCommunity, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -1110,6 +1110,73 @@ test('a shared demo deployment says demo, not paper', () => {
   const f = frontend();
   const snap = (mode) => f.postSnapshot({kind: 'deployment', id: 1, title: 'Fade', market: 'btc15m', mode, realized_pnl: 1.5, closed_trades: 3});
   assert.match(snap('demo'), /·\u00a0demo ·/); assert.match(snap('paper'), /·\u00a0paper ·/); assert.match(snap('live'), /·\u00a0live ·/);
+});
+
+test('a shared deployment wears its own book’s badge and says since when', () => {
+  const f = frontend(), host = new Element();
+  for (const [mode, badge, cls] of [['demo', 'Demo', 'dep'], ['paper', 'Paper', null], ['live', 'Live', 'live']]) {
+    host.innerHTML = f.postSnapshot({kind: 'deployment', id: 1, title: 'Fade', market: 'btc15m', mode, realized_pnl: 1.5, closed_trades: 1, since: '2026-10-03T12:00:00Z'});
+    const mk = host.querySelector('.snap-head .mk');
+    assert.equal(mk.textContent, badge); assert.equal(mk.classList.contains('dep'), cls === 'dep'); assert.equal(mk.classList.contains('live'), cls === 'live');
+    assert.match(host.querySelector('.snap-meta').textContent, /1 trade since Oct 3, 2026$/);
+  }
+});
+
+test('another trader’s shared strategy says whose it is instead of linking to a page the viewer cannot open', () => {
+  const f = frontend(), host = new Element();
+  const strat = {kind: 'strategy', id: 42, title: 'Fade', market: 'btc15m', status: 'passed', pnl: 42.17, trades: 23, win_rate: .61, days: 9.4};
+  host.innerHTML = f.postSnapshot(strat, '@bob');
+  assert.equal(host.querySelector('a'), null);
+  assert.equal(host.querySelector('.snap-note').textContent, 'Only @bob can open this strategy. Ask them to share a copy from its page.');
+  assert.match(host.querySelector('.snap-meta').textContent, /backtest on unseen data over 9 days: \+\$42\.17 .*23 trades .*61\.0% win$/);
+  host.innerHTML = f.postSnapshot(strat, '');
+  assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42'); assert.equal(host.querySelector('.snap-note'), null);
+  host.innerHTML = f.postSnapshot(strat, '<img src=x>');
+  assert.doesNotMatch(host.innerHTML, /<img/);
+});
+
+test('a shared P&L names each book’s trades, says all time, and never shows $0.00 for a book with no trades', () => {
+  const f = frontend(), host = new Element();
+  host.innerHTML = f.postSnapshot({kind: 'pnl', paper_pnl: 120.5, live_pnl: 0, paper_trades: 12, live_trades: 0});
+  const rows = host.querySelectorAll('.snap-row').map((r) => r.textContent.replace(/\s+/g, ' ').trim());
+  assert.deepEqual(rows, ['Paper+$120.50 on 12 trades', 'Live (real money)no trades yet']);
+  assert.match(host.querySelector('.snap-meta').textContent, /all time/);
+  host.innerHTML = f.postSnapshot({kind: 'pnl', paper_pnl: 3, live_pnl: -1});  // a post from before counts were kept
+  assert.deepEqual(host.querySelectorAll('.snap-row b').map((b) => b.textContent), ['+$3.00', '−$1.00']);
+});
+
+test('Community replies that fail to load say so with Try again, never an empty thread', async () => {
+  let failing = true;
+  const post = {id: 11, body: 'Hi', author: 'Bob', username: 'bob', created_at: '2026-10-17T10:00:00Z', mine: false, comments: 2, reactions: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/strategies') return response({strategies: []});
+    if (path === '/api/community') return response({posts: [post]});
+    if (path === '/api/community/11/comments') return failing ? response({error: 'Server error.'}, 500) : response({comments: [{body: 'First', author: 'Ana', created_at: '2026-10-17T10:00:00Z'}]});
+    return response({});
+  }});
+  await f.viewCommunity(); await flush();
+  const feed = f.root.querySelector('#feed'), click = (target) => feed.listeners.get('click')({target});
+  const thread = feed.querySelector('[data-act="comments"]');
+  thread.click = () => click(thread);
+  await click(thread); await flush();
+  const box = feed.querySelector('.comments');
+  assert.equal(box.hidden, false); assert.match(box.querySelector('.notice').textContent, /Replies didn’t load/);
+  assert.equal(box.querySelector('.cmt-list'), null);
+  failing = false;
+  await click(box.querySelector('[data-replies-retry]')); await flush();
+  assert.match(box.querySelector('.cmt-list').textContent, /First/);
+});
+
+test('Explore with no search and no markets says the list has not arrived, and a failed read offers Try again', async () => {
+  let reply = () => response({total: 0, shown: 0, matched: 0, per: 40, page: 0, markets: []});
+  const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? reply() : response({}))});
+  await f.viewExplore(); await flush();
+  const body = f.root.querySelector('#xbody');
+  assert.equal(body.querySelector('.empty h3').textContent, 'No markets to show yet'); assert.doesNotMatch(body.innerHTML, /No markets match/);
+  reply = () => response({error: 'Server error.'}, 500);
+  await body.querySelector('[data-xretry]').onclick(); await flush();
+  assert.equal(body.querySelector('.empty h3').textContent, 'Markets didn’t load');
+  assert.ok(body.querySelector('[data-xretry]'));
 });
 
 test('a track record whose trades all closed in one minute spaces them one per trade', () => {

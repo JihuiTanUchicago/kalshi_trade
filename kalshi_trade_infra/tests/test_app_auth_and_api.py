@@ -751,6 +751,30 @@ def test_notify_mentions_excludes_author(monkeypatch):
     assert notes == [(2, "mention")]  # author (uid 1) is not notified about their own mention
 
 
+def test_shared_pnl_keeps_each_book_apart_with_its_trade_count(monkeypatch):
+    sums = {"paper": 120.504, "live": -0.6, "demo": 999.0}
+    monkeypatch.setattr(server.repo, "realized_pnl", lambda cur, uid, mode: sums[mode])
+    monkeypatch.setattr(server.repo, "closed_trade_counts", lambda cur, uid: {"paper": 12, "demo": 40})
+    snap = server._post_snapshot(None, 1, "pnl", 0)
+    assert snap == {"kind": "pnl", "paper_pnl": 120.5, "live_pnl": -0.6, "paper_trades": 12, "live_trades": 0}
+
+
+def test_shared_strategy_and_deployment_say_over_what_span(monkeypatch):
+    from datetime import datetime
+    monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: {
+        "id": sid, "title": "Fade", "market": "btc15m", "status": "passed",
+        "result": {"out_of_sample": {"pnl": 4.2, "trades": 23, "win_rate": .61, "days": 9.4}}})
+    assert server._post_snapshot(None, 1, "strategy", 5)["days"] == 9.4
+    monkeypatch.setattr(server.repo, "get_deployment", lambda cur, uid, did: {
+        "id": did, "title": "Fade", "market": "btc15m", "mode": "demo", "realized_pnl": 7.2, "closed_trades": 4,
+        "created_at": datetime(2026, 10, 3, 12, 0, 0)})
+    snap = server._post_snapshot(None, 1, "deployment", 9)
+    assert (snap["mode"], snap["since"]) == ("demo", "2026-10-03T12:00:00Z")
+    monkeypatch.setattr(server.repo, "get_deployment", lambda cur, uid, did: None)
+    with pytest.raises(server.ApiError, match="isn't yours"):
+        server._post_snapshot(None, 1, "deployment", 9)
+
+
 def test_unsubscribe_token_is_bound_to_user():
     from app import notify
     t = notify.unsubscribe_token(42)

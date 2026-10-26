@@ -3752,20 +3752,27 @@
   }
 
   // ---------- community ----------
-  function postSnapshot(snap) {
+  // A shared figure says what it is: which book (a backtest, paper, demo or live), over what span and on
+  // how many trades, each book on its own line. `owner` names the author when the post isn't the viewer's:
+  // a strategy page is its owner's alone, so the card says how to get a copy instead of a dead link.
+  const snapPnl = (v, n) => n === 0 ? '<dd>No trades yet</dd>' : `<dd class="${tone(v)}">${usd(v, true)}${n != null ? `<span class="snap-n">on ${realTrades(n)}</span>` : ''}</dd>`;
+  function postSnapshot(snap, owner) {
     if (!snap) return '';
     if (snap.kind === 'pnl') {
-      return `<div class="snap snap-pnl"><div class="snap-head"><b>Realized P&amp;L</b></div><dl class="snap-metrics"><div><dt>Paper</dt><dd class="${tone(snap.paper_pnl)}">${usd(snap.paper_pnl, true)}</dd></div>
-        <div><dt>Live</dt><dd class="${tone(snap.live_pnl)}">${usd(snap.live_pnl, true)}</dd></div></dl></div>`;
+      return `<div class="snap snap-pnl"><div class="snap-head"><b>Realized P&amp;L</b><div class="snap-meta-line"><span class="snap-kind">All time, as of this post</span></div></div><dl class="snap-metrics"><div><dt>Paper</dt>${snapPnl(snap.paper_pnl, snap.paper_trades)}</div>
+        <div><dt>Live (real money)</dt>${snapPnl(snap.live_pnl, snap.live_trades)}</div></dl></div>`;
     }
     if (snap.kind === 'strategy') {
-      return `<a class="snap snap-strategy" href="/strategies/${snap.id}"><div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${mark(snap.status)}${researchBadge(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Strategy</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Out-of-sample P&amp;L</dt><dd class="${tone(snap.pnl)}">${snap.pnl == null ? '—' : usd(snap.pnl, true)}</dd></div>${snap.trades != null ? `<div class="snap-secondary"><dt>Trades</dt><dd>${esc(snap.trades)}</dd></div>` : ''}${snap.win_rate != null ? `<div class="snap-secondary"><dt>Win rate</dt><dd>${pct(snap.win_rate, false)}</dd></div>` : ''}</dl></a>`;
+      const body = `<div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${mark(snap.status)}${researchBadge(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Strategy</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Out-of-sample P&amp;L</dt><dd class="${tone(snap.pnl)}">${snap.pnl == null ? '—' : usd(snap.pnl, true)}</dd></div>${snap.trades != null ? `<div class="snap-secondary"><dt>Trades</dt><dd>${esc(snap.trades)}</dd></div>` : ''}${snap.win_rate != null ? `<div class="snap-secondary"><dt>Win rate</dt><dd>${pct(snap.win_rate, false)}</dd></div>` : ''}</dl><p class="snap-note">Backtest on data the agent never saw${overDays(snap.days)}, not paper or live trading.${owner ? ` Only ${esc(owner)} can open this strategy; ask them to share a copy from its page.` : ''}</p>`;
+      return owner ? `<div class="snap snap-strategy">${body}</div>` : `<a class="snap snap-strategy" href="/strategies/${snap.id}">${body}</a>`;
     }
     if (snap.kind === 'deployment') {
-      return `<div class="snap snap-deployment"><div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${deploymentMode(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Deployment</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Realized P&amp;L</dt><dd class="${tone(snap.realized_pnl)}">${usd(snap.realized_pnl, true)}</dd></div><div class="snap-secondary"><dt>Closed trades</dt><dd>${esc(snap.closed_trades)}</dd></div></dl></div>`;
+      return `<div class="snap snap-deployment"><div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${deploymentMode(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Deployment</span><span class="snap-meta">${esc(marketShort(snap.market))}</span>${snap.since ? `<span class="snap-kind snap-since">since ${trDay(Date.parse(snap.since) / 1000)}</span>` : ''}</div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Realized P&amp;L</dt><dd class="${tone(snap.realized_pnl)}">${usd(snap.realized_pnl, true)}</dd></div><div class="snap-secondary"><dt>Closed trades</dt><dd>${esc(snap.closed_trades)}</dd></div></dl></div>`;
     }
     return '';
   }
+  // Who a post's strategy card belongs to, when it isn't the viewer's own.
+  const snapOwner = (p) => (p.mine ? '' : p.username ? '@' + p.username : p.author || 'its author');
   function avatar(pic, name) {
     const initial = esc((name || '?').trim()[0].toUpperCase());
     return pic ? `<img class="pfp" src="${esc(pic)}" alt="" referrerpolicy="no-referrer">` : `<span class="pfp ph" aria-hidden="true">${initial}</span>`;
@@ -3800,7 +3807,7 @@
       <div class="post-col">
         <div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
         ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
-        ${postSnapshot(p.snapshot)}
+        ${postSnapshot(p.snapshot, snapOwner(p))}
         <div class="post-footer"><div class="reactions">${reactionChips(p.reactions)}</div>
         <div class="post-actions">
           <button class="thread-link" data-act="comments"><span>${replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
@@ -3898,6 +3905,8 @@
       catch (err) { alert0(err.message); }
     };
     feed.addEventListener('click', async (e) => {
+      const retry = e.target.closest('[data-replies-retry]');
+      if (retry) { const art = retry.closest('.post'); art.querySelector('.comments').hidden = true; art.querySelector('[data-act="comments"]').click(); return; }
       const addBtn = e.target.closest('[data-react-add]');
       if (addBtn) { const art = addBtn.closest('.post'); openEmojiPicker(addBtn, (emoji) => react(art.dataset.id, art, emoji)); return; }
       const chip = e.target.closest('.rx[data-emoji]');
@@ -3914,7 +3923,8 @@
       } else if (act.dataset.act === 'edit') {
         const main = art.querySelector('.post-main'); const bodyEl = main.querySelector('.post-body');
         if (main.querySelector('.edit-form')) return;
-        const current = bodyEl.textContent;
+        // Edit the text as written: the rendered body has lost its **bold**, `code` and [link](url) marks.
+        const current = bodies.has(pid) ? bodies.get(pid) : bodyEl.textContent;
         const ef = document.createElement('form'); ef.className = 'edit-form';
         ef.innerHTML = `<textarea class="input" maxlength="2000">${esc(current)}</textarea><div class="edit-actions"><button class="btn sm" type="button" data-cancel>Cancel</button><button class="btn primary sm" type="submit">Save</button></div>`;
         bodyEl.hidden = true; bodyEl.insertAdjacentElement('afterend', ef);
@@ -3925,7 +3935,7 @@
           await busy(ef.querySelector('[type=submit]'), async () => {
             try {
               await api(`/api/community/${pid}/edit`, { body: nb });
-              bodyEl.textContent = nb; bodyEl.hidden = false; ef.remove();
+              bodies.set(pid, nb); bodyEl.innerHTML = mdLite(nb); bodyEl.hidden = false; ef.remove();
               const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += ' ·\u00a0edited';
             } catch (err) { alert0(err.message); }
           });
@@ -3934,7 +3944,10 @@
         const box = art.querySelector('.comments');
         if (!box.hidden) { box.hidden = true; return; }
         box.hidden = false; box.innerHTML = loading(40);
-        const d = await api(`/api/community/${pid}/comments`).catch(() => ({ comments: [] }));
+        // A failed read says so: an empty thread under "2 replies" would read as the replies being gone.
+        let d;
+        try { d = await api(`/api/community/${pid}/comments`); }
+        catch (err) { box.innerHTML = `<div class="cmt-err">${notice('Replies didn’t load just now.', 'bad')}<button type="button" class="btn sm" data-replies-retry>Try again</button></div>`; return; }
         const many = d.comments.length > 6;      // search bar once a thread gets long
         const PAGE = 10;
         box.innerHTML = `${many ? '<div class="cmt-search"><input class="input" type="search" placeholder="Search replies…" aria-label="Search replies"><span class="cmt-count"></span></div>' : ''}
@@ -3981,11 +3994,13 @@
       }
     });
     let lastFeed = '', mineOnly = false;
+    const bodies = new Map();  // post id -> body as written (the source the edit box starts from)
     const load = async (force) => {
       // Never wipe a reply the user is writing: skip the refresh while a reply box is open
       // or anything in the feed is focused (unless this is the first/explicit render).
       if (!force && (feed.querySelector('.cmt-form') || feed.contains(document.activeElement))) return;
       const d = await api('/api/community' + (mineOnly ? '?mine=1' : ''));
+      d.posts.forEach((p) => bodies.set(String(p.id), p.body));
       const html = d.posts.length ? d.posts.map((p, i) => {
         const prev = d.posts[i - 1];  // the post just above (newer) — a run by one author groups under it
         const grouped = !!prev && !!p.username && prev.username === p.username
@@ -4102,6 +4117,9 @@
     };
   }
 
+  // Explore's empty and failed states: what happened, and a way to ask again.
+  const EXPLORE_WAIT = 'The market list refreshes about once a minute and hasn’t come in yet. Try again shortly.';
+  const exploreEmpty = (title, text) => `<div class="empty"><h3>${esc(title)}</h3><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
     if (q.get('m')) return viewMarketDetail(q.get('m'));
@@ -4122,13 +4140,23 @@
     const sync = () => history.replaceState(null, '', '/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
     const load = async () => {
       const mine = ++seq;
-      const d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
+      let d;
+      try { d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) })); }
+      catch (e) {
+        if (mine !== seq || gen !== S.gen) return;
+        body.innerHTML = exploreEmpty('Markets didn’t load', e.message); body.querySelector('[data-xretry]').onclick = load; return;
+      }
       if (mine !== seq || gen !== S.gen) return;
       const snapshotAt = d.at ? Date.parse(d.at) : NaN;
       const snapshotOld = !Number.isFinite(snapshotAt) || Date.now() - snapshotAt > 180000;
       figs.innerHTML = '<dl class="explore-counts">' + fig('Available markets', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig(Number.isFinite(snapshotAt) && snapshotOld ? 'Stale snapshot' : 'Snapshot', Number.isFinite(snapshotAt) ? `<span class="snapshot-age">${sinceMin(d.at)}</span><time datetime="${esc(d.at)}">${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}</time>` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>';
       figs.querySelector('.snapshot-time').setAttribute('title', Number.isFinite(snapshotAt) ? 'Source snapshot: ' + d.at : 'Source snapshot time unavailable');
-      if (!d.markets.length) { body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3></div>`; return; }
+      if (!d.markets.length) {
+        // No search and no markets is the feed not having arrived yet, not a search that missed.
+        if (f.q) body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3></div>`;
+        else { body.innerHTML = exploreEmpty('No markets to show yet', EXPLORE_WAIT); body.querySelector('[data-xretry]').onclick = load; }
+        return;
+      }
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
         const label = mktLabel(m);

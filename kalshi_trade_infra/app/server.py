@@ -2434,18 +2434,25 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
         if strat is None:
             raise ApiError(404, "That strategy isn't yours or doesn't exist.")
         oos = (strat.get("result") or {}).get("out_of_sample") or {}
+        # The backtest's held-out window: `days` is its span, so the feed can say over what.
         return {"kind": "strategy", "id": strat["id"], "title": strat["title"], "market": strat["market"],
-                "status": strat["status"], "pnl": oos.get("pnl"), "trades": oos.get("trades"), "win_rate": oos.get("win_rate")}
+                "status": strat["status"], "pnl": oos.get("pnl"), "trades": oos.get("trades"), "win_rate": oos.get("win_rate"),
+                "days": oos.get("days")}
     if kind == "deployment":
         dep = repo.get_deployment(cur, user_id, ref_id)
         if dep is None:
             raise ApiError(404, "That deployment isn't yours or doesn't exist.")
+        since = dep.get("created_at")
         return {"kind": "deployment", "id": dep["id"], "title": dep["title"], "market": dep["market"],
-                "mode": dep["mode"], "realized_pnl": round(float(dep["realized_pnl"]), 2), "closed_trades": dep["closed_trades"]}
+                "mode": dep["mode"], "realized_pnl": round(float(dep["realized_pnl"]), 2), "closed_trades": dep["closed_trades"],
+                "since": since.strftime("%Y-%m-%dT%H:%M:%SZ") if since else None}
     if kind == "pnl":
+        # Each book's all-time realized P&L with its closed-trade count, never added together.
         paper = repo.realized_pnl(cur, user_id, "paper")
         live = repo.realized_pnl(cur, user_id, "live")
-        return {"kind": "pnl", "paper_pnl": round(paper, 2), "live_pnl": round(live, 2)}
+        counts = repo.closed_trade_counts(cur, user_id)
+        return {"kind": "pnl", "paper_pnl": round(paper, 2), "live_pnl": round(live, 2),
+                "paper_trades": counts.get("paper", 0), "live_trades": counts.get("live", 0)}
     return None
 
 

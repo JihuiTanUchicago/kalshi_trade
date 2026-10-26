@@ -1333,6 +1333,8 @@ a.snap:hover { border-color: var(--ink-3); }
 .snap-meta { color: var(--ink-3); font-size: 12.5px; margin-top: 4px; }
 .snap-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13.5px; }
 .snap-row span { color: var(--ink-3); }
+.snap-row > span + span { color: var(--ink); text-align: right; }
+.snap-note { color: var(--ink-3); font-size: 12.5px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--rule); }
 /* Emoji reactions */
 .reactions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .reactions:empty { display: none; }
@@ -1449,6 +1451,7 @@ a.snap:hover { border-color: var(--ink-3); }
 .email-pref .email-always b { color: var(--ink-2); font-weight: 600; }
 .email-pref #email-flash:empty { display: none; }
 .cmt-form { display: flex; gap: 8px; }
+.cmt-err { display: grid; justify-items: start; gap: 8px; }
 .cmt-form .input { min-height: 38px; }
 @media (max-width: 680px) { .post-tools .btn { margin-left: 0; } }
 
