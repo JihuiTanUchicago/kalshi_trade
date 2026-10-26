@@ -129,7 +129,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), session, theme = 'meridian', build, notifications, win = {}} = {}) {
+function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), session, theme = 'meridian', build, notifications, win = {}, globals = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body');
   const document = {body, activeElement: body, hidden: false,
     getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {},
@@ -162,6 +162,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
       if (fetchImpl) return fetchImpl(path, options);
       throw new Error('Unexpected offline request: ' + path);
     },
+    ...globals,  // page globals a check stands in for (a counting Intl)
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
@@ -5383,4 +5384,99 @@ test('the full-screen autopilot sheet keeps Tab inside it; beside the page it le
     assert.equal(prevented, sheet ? 2 : 0);
     f.clearTimers();
   }
+});
+
+// A log list whose rows really leave and come back (the shared fake only flags a removed node), for the
+// long-log fold: rows held off the page, then put back above the ones on screen.
+class LiveList extends Element {
+  get children() { return (this.kids || []).filter(k => k.parent === this && !k.removed); }
+  set children(value) { this.kids = value; }
+  appendChild(child) { this.insertBefore(child, null); }
+  get firstChild() { return this.children[0] || null; }
+  insertBefore(child, ref) {
+    const add = child.tag === '#fragment' ? child.kids.slice() : [child];
+    this.kids = this.kids.filter(k => !add.includes(k));  // a node lives in one place
+    const at = ref ? this.kids.indexOf(ref) : -1;
+    add.forEach(c => { c.parent = this; c.removed = false; });
+    this.kids.splice(at < 0 ? this.kids.length : at, 0, ...add);
+  }
+}
+if (!Object.getOwnPropertyDescriptor(Element.prototype, 'nextSibling')) {
+  Object.defineProperty(Element.prototype, 'nextSibling', {get() { const s = this.parent ? this.parent.children : []; return s[s.indexOf(this) + 1] || null; }});
+}
+const longFeed = (f) => {
+  const section = new Element(), log = new LiveList('ol', {class: 'log stream'});
+  const jump = new Element('button', {class: 'jumplatest', hidden: ''});
+  section.querySelector = sel => ({'.log': log, '.jumplatest': jump})[sel] || null;
+  f.document.createDocumentFragment = () => new LiveList('#fragment');
+  return {stream: f.runFeed(section), log, jump};
+};
+const runEvent = (id, kind, message, data = {}) => ({id, kind, message, data, created_at: '2026-10-17T10:00:00Z'});
+
+test('Meridian: a long research log paints its latest rows first and shows the earlier ones on request, in place', () => {
+  const f = frontend(), {stream, log, jump} = longFeed(f);
+  const events = [runEvent(1, 'hypothesis', 'Early idea', {thesis: 'Old'})];
+  for (let i = 2; i <= 120; i++) events.push(runEvent(i, 'step', `Step ${i}`));
+  stream.push(events);
+  assert.equal(log.children.length, 61);
+  const fold = log.children[0];
+  assert.equal(fold.className, 'log-earlier');
+  assert.match(fold.innerHTML, /<button type="button" class="btn small">Show 60 earlier entries<\/button>/);
+  assert.match(log.children[1].innerHTML, /Step 61/); assert.match(log.children[60].innerHTML, /Step 120/);
+  log.scrollHeight = 100; log.scrollTop = 0; log.clientHeight = 100;  // at the foot: it sticks
+  stream.push([runEvent(121, 'verdict', 'FAILED - Early idea: no edge', {title: 'Early idea', status: 'failed'})]);
+  assert.equal(log.children.length, 61);  // the verdict landed on its held card
+  log.scrollHeight = 5000; log.scrollTop = 0;  // scrolled up: the "N new" chip, as before
+  stream.push([runEvent(122, 'step', 'Step 122')]);
+  assert.equal(jump.hidden, false); assert.equal(jump.textContent, '1 new ↓');
+  fold.querySelector('button').onclick();
+  assert.equal(log.children.length, 121); assert.equal(log.querySelector('.log-earlier'), null);
+  assert.match(log.children[0].querySelector('[data-review]').innerHTML, /Verdict|failed|Void/i);
+  assert.match(log.children[59].innerHTML, /Step 60/); assert.match(log.children[60].innerHTML, /Step 61/);
+  assert.equal(f.document.activeElement, log.children[59]); assert.equal(log.children[59].focusOptions.preventScroll, true);
+  assert.equal(log.style.scrollBehavior, '');
+  // A short log is never folded.
+  const g = frontend(), short = longFeed(g);
+  short.stream.push(Array.from({length: 80}, (_, i) => runEvent(i + 1, 'step', `Step ${i + 1}`)));
+  assert.equal(short.log.children.length, 80);
+});
+
+test('Meridian: run log times build each date format once, and read as toLocaleString did', () => {
+  let made = 0;
+  const CountingIntl = Object.assign(Object.create(Intl), {DateTimeFormat: function (...a) { made++; return new Intl.DateTimeFormat(...a); }});
+  const f = frontend({globals: {Intl: CountingIntl}}), {stream, log} = longFeed(f);
+  stream.push(Array.from({length: 10}, (_, i) => runEvent(i + 1, 'step', `Step ${i + 1}`)));
+  const after10 = made;
+  stream.push(Array.from({length: 50}, (_, i) => runEvent(i + 11, 'step', `Step ${i + 11}`)));
+  assert.equal(made, after10);
+  const d = new Date('2026-10-17T10:00:00Z');
+  const time = log.children[0].querySelector('time');
+  assert.equal(time.getAttribute('title'), d.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}));
+  assert.equal(time.textContent, d.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}));
+});
+
+test('Meridian: the run page poll leaves its unchanged figures, strategies and policy box alone', async () => {
+  const run = {id: 9, prompt: 'Lag', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', spent_usd: 1.5, hypotheses_tried: 3};
+  const strategies = [{id: 41, title: 'Lag idea', status: 'failed', market: 'btc15m', out_of_sample: {pnl: -1, trades: 30, win_rate: .4}}];
+  let spent = 1.5;
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9')
+    ? response({run: {...run, spent_usd: spent}, events: [], strategies, rsi: {evolved: false, min_history: 12}}) : response({})});
+  await f.viewRun(9); await flush();
+  const els = ['#runfigs', '#runboard', '#runnext', '#run-artifacts', '#rsibox'].map((s) => f.root.querySelector(s));
+  assert.match(els[3].innerHTML, /Lag idea/); assert.match(els[4].innerHTML, /Self-tuning/);
+  const writes = els.map((el) => el.writes);
+  for (const tick of f.intervals.values()) tick();
+  await flush(); await flush();
+  assert.deepEqual(els.map((el) => el.writes), writes);
+  spent = 2;  // a figure that moved repaints, and only it
+  for (const tick of f.intervals.values()) tick();
+  await flush(); await flush();
+  assert.deepEqual(els.map((el) => el.writes), [writes[0] + 1, ...writes.slice(1)]);
+});
+
+test('Meridian: the Show earlier row has its own style, and the live pill pulses on the compositor', () => {
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.log > li\.log-earlier \{ display: block; text-align: center;/);
+  assert.match(css, /@keyframes apf-pulse \{ 0%,100% \{ opacity: 1; transform: scale\(1\); \} 50% \{ opacity: 0; transform: scale\(2\.25\); \} \}/);
+  assert.match(css, /prefers-reduced-motion: no-preference\) \{ \.apf\.live \.apf-dot::after \{ animation: apf-pulse/);
 });

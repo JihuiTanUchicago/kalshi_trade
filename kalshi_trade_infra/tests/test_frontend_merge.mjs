@@ -110,7 +110,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia = () => ({matches: false}), notifications, win = {}} = {}) {
+function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia = () => ({matches: false}), notifications, win = {}, globals = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
   const delays = new Map();
@@ -137,6 +137,7 @@ function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia 
       if (fetchImpl) return fetchImpl(path, options);
       throw new Error('Unexpected offline request: ' + path);
     },
+    ...globals,  // page globals a check stands in for (getComputedStyle, a counting Intl)
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
@@ -4360,4 +4361,139 @@ test('the notification list closes when focus leaves it, so Tab out never leaves
   await trig.onclick({stopPropagation() {}});
   wrap.dispatchEvent({type: 'focusout', relatedTarget: wrap.querySelector('.notif')});
   assert.equal(menu.hidden, false);
+});
+
+// A log list whose rows really leave and come back (the shared fake only flags a removed node), for the
+// long-log fold: rows held off the page, then put back above the ones on screen.
+class LiveList extends Element {
+  get children() { return (this.kids || []).filter(k => k.parent === this && !k.removed); }
+  set children(value) { this.kids = value; }
+  appendChild(child) { this.insertBefore(child, null); }
+  get firstChild() { return this.children[0] || null; }
+  insertBefore(child, ref) {
+    const add = child.tag === '#fragment' ? child.kids.slice() : [child];
+    this.kids = this.kids.filter(k => !add.includes(k));  // a node lives in one place
+    const at = ref ? this.kids.indexOf(ref) : -1;
+    add.forEach(c => { c.parent = this; c.removed = false; });
+    this.kids.splice(at < 0 ? this.kids.length : at, 0, ...add);
+  }
+}
+if (!Object.getOwnPropertyDescriptor(Element.prototype, 'nextSibling')) {
+  Object.defineProperty(Element.prototype, 'nextSibling', {get() { const s = this.parent ? this.parent.children : []; return s[s.indexOf(this) + 1] || null; }});
+}
+const longFeed = (f) => {
+  const section = new Element(), log = new LiveList('ol', {class: 'log stream'});
+  const jump = new Element('button', {class: 'jumplatest', hidden: ''}), pulse = new Element('div', {class: 'runpulse'});
+  section.querySelector = sel => ({'.log': log, '.jumplatest': jump, '.runpulse': pulse})[sel] || null;
+  f.document.createDocumentFragment = () => new LiveList('#fragment');
+  return {stream: f.runFeed(section), log, jump};
+};
+const runEvent = (id, kind, message, data = {}) => ({id, kind, message, data, created_at: '2026-10-17T10:00:00Z'});
+
+test('Tau: a long research log paints its latest rows first and shows the earlier ones on request, in place', () => {
+  const f = frontend(), {stream, log, jump} = longFeed(f);
+  const events = [runEvent(1, 'hypothesis', 'Early idea', {thesis: 'Old'})];
+  for (let i = 2; i <= 120; i++) events.push(runEvent(i, 'step', `Step ${i}`));
+  stream.push(events);
+  // 120 rows: the newest 60 are on the page, the other 60 wait behind one button at the top.
+  assert.equal(log.children.length, 61);
+  const fold = log.children[0];
+  assert.equal(fold.className, 'log-earlier');
+  assert.match(fold.innerHTML, /<button type="button" class="btn small">Show 60 earlier entries<\/button>/);
+  assert.match(log.children[1].innerHTML, /Step 61/); assert.match(log.children[60].innerHTML, /Step 120/);
+  // A late verdict still lands on its held card, and adds no row of its own.
+  log.scrollHeight = 100; log.scrollTop = 0; log.clientHeight = 100;  // at the foot: it sticks
+  stream.push([runEvent(121, 'verdict', 'FAILED - Early idea: no edge', {title: 'Early idea', status: 'failed'})]);
+  assert.equal(log.children.length, 61);
+  // Scrolled up, a new entry raises the "N new" chip as before.
+  log.scrollHeight = 5000; log.scrollTop = 0;
+  stream.push([runEvent(122, 'step', 'Step 122')]);
+  assert.equal(jump.hidden, false); assert.equal(jump.textContent, '1 new ↓');
+  // Show earlier puts every held row back above the rest, drops the button and leaves focus on the
+  // newest revealed row (the pressed button is gone).
+  fold.querySelector('button').onclick();
+  assert.equal(log.children.length, 121);
+  assert.equal(log.querySelector('.log-earlier'), null);
+  assert.match(log.children[0].querySelector('[data-review]').innerHTML, /Verdict/);
+  assert.match(log.children[59].innerHTML, /Step 60/); assert.match(log.children[60].innerHTML, /Step 61/);
+  assert.equal(log.children[59].focused, true); assert.equal(log.children[59].getAttribute('tabindex'), '-1');
+  assert.equal(log.style.scrollBehavior, '');  // the instant jump put the log's smooth scrolling back
+  stream.reveal(); assert.equal(log.children.length, 121);  // nothing left to show
+});
+
+test('Tau: a short research log is never folded, and a jump to an older idea shows its held card', () => {
+  const f = frontend(), {stream, log} = longFeed(f);
+  stream.push(Array.from({length: 80}, (_, i) => runEvent(i + 1, 'step', `Step ${i + 1}`)));
+  assert.equal(log.children.length, 80); assert.equal(log.querySelector('.log-earlier'), null);
+  assert.match(source, /if \(!card\) \{ stream\.reveal\(\); card = find\(\); \}/);
+});
+
+test('Tau: run log times build each date format once, and read as toLocaleString did', () => {
+  let made = 0;
+  const CountingIntl = Object.assign(Object.create(Intl), {DateTimeFormat: function (...a) { made++; return new Intl.DateTimeFormat(...a); }});
+  const f = frontend({globals: {Intl: CountingIntl}}), {stream, log} = longFeed(f);
+  stream.push(Array.from({length: 10}, (_, i) => runEvent(i + 1, 'step', `Step ${i + 1}`)));
+  const after10 = made;
+  stream.push(Array.from({length: 50}, (_, i) => runEvent(i + 11, 'step', `Step ${i + 11}`)));
+  assert.equal(made, after10);
+  const d = new Date('2026-10-17T10:00:00Z');
+  const title = d.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'});
+  const time = log.children[0].querySelector('time');
+  assert.equal(time.getAttribute('title'), title);
+  assert.equal(time.textContent, d.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}));
+  assert.match(source, /if \(!Number\.isFinite\(d\.getTime\(\)\)\) return 'Invalid Date';/);
+});
+
+test('Tau: the run page poll leaves its unchanged title, figures and next line alone', async () => {
+  const run = {id: 9, prompt: 'Lag', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', spent_usd: 1.5, hypotheses_tried: 3};
+  let spent = 1.5;
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run: {...run, spent_usd: spent}, events: [], strategies: []}) : response({})});
+  await f.viewRun(9); await flush();
+  const figs = f.root.querySelector('#runfigs'), board = f.root.querySelector('#runboard'), next = f.root.querySelector('#runnext');
+  const writes = [figs.writes, board.writes, next.writes];
+  for (const tick of f.intervals.values()) tick();
+  await flush(); await flush();
+  assert.deepEqual([figs.writes, board.writes, next.writes], writes);
+  spent = 2;  // a figure that moved repaints
+  for (const tick of f.intervals.values()) tick();
+  await flush(); await flush();
+  assert.equal(figs.writes, writes[0] + 1); assert.match(figs.innerHTML, /\$2\.00/);
+});
+
+test('Tau: the pill does not hit-test log rows its scrolling log has clipped out of view', () => {
+  const styles = new Map(), plain = {overflowX: 'visible', overflowY: 'visible', position: 'static'};
+  const f = frontend({globals: {getComputedStyle: el => styles.get(el) || plain}}), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><ol class="log stream"><li><dl><dd>0.21</dd></dl></li></ol></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const log = f.root.querySelector('.log'), dd = f.root.querySelector('dd');
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);   // 390x844 phone
+  styles.set(log, {overflowX: 'visible', overflowY: 'auto', position: 'static'});
+  log.getBoundingClientRect = rect(16, 200, 374, 700);   // the log's box ends well above the pill
+  dd.getBoundingClientRect = rect(260, 800, 330, 820);   // a row scrolled below it, under the pill
+  let hits = 0;
+  f.document.elementsFromPoint = () => { hits++; return [dd]; };
+  f.apYield(); assert.equal(box.classes.has('yield'), false); assert.equal(hits, 0);
+  log.getBoundingClientRect = rect(16, 200, 374, 810);   // the log reaches the pill: the row shows there
+  f.apYield(); assert.equal(box.classes.has('yield'), true); assert.ok(hits > 0);
+  // One pass over the page for every kind of thing it steps aside from.
+  assert.match(source, /for \(const el of document\.body\.querySelectorAll\(AP_UNDER_SEL\)\)/);
+});
+
+test('Tau: a long run log stays cheap to animate on a phone', () => {
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  // Only the open thought pulses (120 sealed ones repainted the log every frame), under reduced motion too.
+  assert.match(css, /\.log\.stream \.lane-think \.node::after \{ background: var\(--stock-raised\); border-color: var\(--ink-2\); \}/);
+  assert.match(css, /\.log\.stream \.lane-think:not\(\.sealed\) \.node::after \{ animation: thinkpulse/);
+  assert.match(css, / {2}\.log\.stream \.lane-think:not\(\.sealed\) \.node::after \{ animation: none; \}/);
+  assert.match(css, /\.log\.stream \{ contain: paint; \}/);
+  // The live dot beats with transform and opacity (the compositor's), never a box-shadow.
+  assert.match(css, /@keyframes rsibeat \{ 0%, 100% \{ opacity: 1; transform: scale\(1\); \} 50% \{ opacity: 0; transform: scale\(2\.4\); \} \}/);
+  assert.match(css, /\.rsiobs-pdot, \.rsiobs-pdot::after \{ animation: none !important; \}/);
+  assert.match(css, /\.log > li\.log-earlier \{/);
+  // So does the live autopilot pill's dot, on every page (a box-shadow pulse held a phone at ~33%).
+  assert.match(css, /@keyframes apf-pulse \{ 0%,100% \{ opacity: 1; transform: scale\(1\); \} 50% \{ opacity: 0; transform: scale\(2\.25\); \} \}/);
+  assert.match(css, /prefers-reduced-motion: no-preference\) \{ \.apf\.live \.apf-dot::after \{ animation: apf-pulse/);
+  assert.doesNotMatch(css, /@keyframes (rsibeat|apf-pulse) \{[^\n]*box-shadow/);
 });
