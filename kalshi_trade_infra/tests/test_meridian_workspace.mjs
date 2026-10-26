@@ -14,6 +14,7 @@ import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
+import {settingsCases} from './settings_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -218,6 +219,7 @@ deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
 stopReasonCases({name: 'Meridian', frontend});
 trustGlitchCases({name: 'Meridian', frontend});
 bellCases({name: 'Meridian', frontend});
+settingsCases({name: 'Meridian', frontend, current: 'meridian', storageFor: m => m, cardWallOpts: () => ({stripeLoader: async () => STRIPE_STUB})});
 researchPollCases({name: 'Meridian', frontend});
 runPageCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend});
@@ -2957,10 +2959,10 @@ test('Meridian theme selection stays local to the theme preference and can switc
   assert.deepEqual(JSON.parse(postRequests(f)[0].options.body), {theme: 'tau'});
 });
 
-test('theme preference save failure retains the existing local fallback without financial writes', async () => {
+test('theme preference save failure stays on this theme without a reload or financial writes', async () => {
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/ui-theme'); return response({error: 'Synthetic unavailable preference service'}, 503); }});
   await f.viewSettings(); f.root.querySelector('[data-theme="tau"]').onclick(); await flush();
-  assert.equal(f.storage.get('tau_ui'), 'tau'); assert.deepEqual(f.reloads, [true]);
+  assert.equal(f.storage.get('tau_ui'), undefined); assert.deepEqual(f.reloads, []);
   assert.deepEqual(postRequests(f).map(row => row.path), ['/api/ui-theme']);
 });
 

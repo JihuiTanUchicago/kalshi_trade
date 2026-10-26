@@ -13,6 +13,7 @@ import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
+import {settingsCases} from './settings_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -129,12 +130,12 @@ class Element {
 
 function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia = () => ({matches: false}), notifications, win = {}, globals = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
-  const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
+  const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [], reloads = [];
   const delays = new Map();
   // Runs the pending timers set for at most `ms` (an armed confirm's hold, say) and leaves the longer ones.
   const elapse = ms => { for (const [id, run] of [...timeouts]) if ((delays.get(id) || 0) <= ms) { timeouts.delete(id); run(); } };
   let nextId = 0;
-  const location = {pathname: '/strategies/42', search: '', origin: 'http://offline.invalid'};
+  const location = {pathname: '/strategies/42', search: '', origin: 'http://offline.invalid', reload: () => reloads.push(true)};
   const navigate = (_state, _title, path) => { navigations.push(path); const [p, q] = String(path).split('?'); location.pathname = p; location.search = q ? '?' + q : ''; };
   const context = vm.createContext({
     Intl, URL, URLSearchParams, AbortController,
@@ -167,7 +168,7 @@ function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia 
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, win: context.window, root, location, document: context.document, window: context.window, intervals, timeouts, elapse, requests, navigations, shiftClock};
+  return {...api, win: context.window, root, location, document: context.document, window: context.window, intervals, timeouts, elapse, requests, navigations, reloads, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -198,6 +199,8 @@ runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 explorePageCases({name: 'Tau', frontend});
+settingsCases({name: 'Tau', frontend, current: 'tau', cardWallOpts: () => ({stripe: STRIPE_STUB}),
+  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},

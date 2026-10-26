@@ -701,7 +701,7 @@
     if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
     dlg.addEventListener('cancel', (e) => e.preventDefault());  // Esc can't dismiss
     dlg.querySelector('[data-signout]').onclick = async () => {
-      await api('/api/logout', {}).catch(() => {}); S.me = null; closePay(); go('/signin');
+      if (await signOut(dlg.querySelector('#pay-hint'))) { closePay(); go('/signin'); }
     };
     // Animated showcase reel on the left.
     const stage = dlg.querySelector('#pay-stage'), cap = dlg.querySelector('#pay-cap'), dots = dlg.querySelector('#pay-dots');
@@ -876,7 +876,13 @@
     const tabs = root.querySelector('.services-in'), here0 = tabs && tabs.querySelector('[aria-current="page"]');
     if (here0 && here0.offsetLeft + here0.offsetWidth > tabs.clientWidth) tabs.scrollLeft = here0.offsetLeft - 16;
     if (tabs) tabEdges(tabs);
-    root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); }));
+    root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => {
+      if (await signOut(signOutNote())) return go('/signin');
+      // The menu closes so the note under it shows, and keyboard focus goes back to the menu's button.
+      const menu = root.querySelector('.profile-menu'), trig = root.querySelector('.profile-trig');
+      if (menu) menu.hidden = true;
+      if (trig) { trig.setAttribute('aria-expanded', 'false'); trig.focus(); }
+    }));
     const prof = root.querySelector('.profile');
     if (prof) {
       const trig = prof.querySelector('.profile-trig'), menu = prof.querySelector('.profile-menu');
@@ -936,6 +942,9 @@
     { key: 'tau', name: 'Tau', desc: 'The full interface — every feature, the station-timetable look.' },
     { key: 'meridian', name: 'Meridian', desc: 'A lighter redesign of the dashboard, settings and markets.' },
   ];
+  const themeName = (key) => (THEMES.find((t) => t.key === key) || THEMES[0]).name;
+  // Set for the one reload after a saved switch, so the new theme's Settings says the switch took.
+  const THEME_SAVED = 'tau_theme_saved';
   // Settings' email switch. It writes app_users.email_opt_out, the field the unsubscribe link in
   // community emails also sets; the server checks it before every optional email. Perps safety
   // alerts and the failed auto-reload email never read it, and the copy says so.
@@ -976,12 +985,13 @@
     shell('/settings', boardTitle('Settings'), `
       <section class="sect theme-settings"><div class="section-head"><h2>Theme</h2></div>
         <div class="theme-pick" role="radiogroup" aria-label="Theme">
-          ${THEMES.map((t) => `<button type="button" class="theme-opt${t.key === current ? ' on' : ''}" role="radio" aria-checked="${t.key === current}" data-theme="${t.key}">
+          ${THEMES.map((t) => `<button type="button" class="theme-opt${t.key === current ? ' on' : ''}" role="radio" aria-checked="${t.key === current}" tabindex="${t.key === current ? 0 : -1}" data-theme="${t.key}">
               <span class="theme-meta"><b>${esc(t.name)}</b></span>
               <span class="theme-mark" aria-hidden="true">${ICON.check}</span>
             </button>`).join('')}
         </div>
-        <div id="theme-flash" class="hint" role="status"></div>
+        <p class="hint" style="margin-top:12px;max-width:420px">Changes how every page looks, wherever you sign in. Switching reloads Tau; you can switch back here anytime.</p>
+        <div id="theme-flash"></div>
       </section>
       ${emailSettings()}`);
     wireEmailSettings();
@@ -989,13 +999,28 @@
       const key = b.dataset.theme;
       if (key === current) return;
       busy(b, async () => {
-        try { localStorage.setItem('tau_ui', key); } catch (e) { /* private mode */ }
-        // The shell links the theme from this cookie (the server sets it too, on the save below).
+        // The account's theme is saved first: a signed-in page is served in the account's theme, so a
+        // switch whose save failed reloaded straight back into this one, with no word why.
+        try { await api('/api/ui-theme', { theme: key }); } catch (e) {
+          flash('#theme-flash', `Your theme is still ${themeName(current)}: Tau didn’t confirm the switch. Try again in a moment.`, 'bad');
+          return;
+        }
+        try { localStorage.setItem('tau_ui', key); sessionStorage.setItem(THEME_SAVED, key); } catch (e) { /* private mode */ }
+        // The shell links the theme from this cookie (the server set it too, on the save above).
         document.cookie = `tau_ui=${key}; Path=/; Max-Age=34560000; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
-        try { await api('/api/ui-theme', { theme: key }); } catch (e) { /* local still applies */ }
         location.reload();
       });
     }));
+    const opts = root.querySelectorAll('[data-theme]');
+    opts.forEach((b, i) => (b.onkeydown = (e) => {
+      const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      opts[(i + step + opts.length) % opts.length].focus();
+    }));
+    let saved = null;
+    try { saved = sessionStorage.getItem(THEME_SAVED); sessionStorage.removeItem(THEME_SAVED); } catch (e) { /* private mode */ }
+    if (saved === current) flash('#theme-flash', `Theme set to ${themeName(current)}. It’s saved to your account, so it applies wherever you sign in.`, 'good');
   }
   // One measured cell. Money direction rides a tint field behind the figure
   // (opts.v), never a colour on the digits and never the reserved signal red.
@@ -1137,6 +1162,25 @@
       el.id = id; el.className = 'vh'; el.setAttribute('aria-live', level); el.setAttribute('aria-atomic', 'true');
       document.body.appendChild(el);
     });
+  }
+  // Sign out. A sign-out Tau didn't confirm (no reply, or its 5xx) left the session in place, yet the page
+  // went to sign-in, which sent the still-signed-in reader straight back to the dashboard with no word why:
+  // it says so where it was pressed and stays. A 401 means the session had already ended.
+  const SIGNOUT_FAIL = 'You’re still signed in: Tau didn’t confirm the sign-out. Check your connection and try again.';
+  async function signOut(where) {
+    try { await api('/api/logout', {}); }
+    catch (e) { if (e.status !== 401) { flash(where, SIGNOUT_FAIL, 'bad'); return false; } }
+    S.me = null;
+    return true;
+  }
+  // The profile menu's sign-out note, at the top of the page.
+  function signOutNote() {
+    const m = root.querySelector('#main');
+    if (!m) return null;
+    let n = m.querySelector('#signout-flash');
+    if (!n) { n = document.createElement('div'); n.id = 'signout-flash'; if (m.prepend) m.prepend(n); else m.appendChild(n); }
+    if (n.scrollIntoView) n.scrollIntoView({ block: 'nearest' });
+    return n;
   }
   function announce(msg, urgent) {
     if (!msg) return;
