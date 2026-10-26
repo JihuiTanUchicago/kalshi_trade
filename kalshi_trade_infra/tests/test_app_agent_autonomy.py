@@ -122,8 +122,9 @@ def test_research_action_starts_a_fresh_line(monkeypatch):
 
 def test_research_action_rejects_an_unknown_market(monkeypatch):
     rec = _capture(monkeypatch)
+    # By hand only; on autopilot the angle runs on a market the specialist picks (test below).
     text, pid = agent.act(None, USER, {"type": "research", "market": "not_a_market",
-                          "idea": "something plausible here"}, True)
+                          "idea": "something plausible here"}, False)
     assert pid is None and rec["runs"] == [] and "market" in text.lower()
 
 
@@ -213,6 +214,20 @@ def test_research_action_on_cooldown_still_refuses_when_not_autopilot(monkeypatc
     text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
                           "idea": "Another angle on BTC overreaction."}, False)
     assert pid is None and rec["runs"] == [] and "cooldown" in text.lower()
+
+
+def test_autopilot_research_on_an_unsupported_market_lets_the_specialist_pick(monkeypatch):
+    # Prod 2026-10-26 06:10-07:40Z: every review proposed "z-score on LTC 15m", ltc15m isn't a Tau
+    # market, the action was refused before any run existed, and no research started for 90 min.
+    rec = _capture(monkeypatch)
+    text, pid = agent.act(None, USER, {"type": "research", "market": "ltc15m",
+                          "idea": "Diversify the z-score mechanism to another crypto 15m."}, True)
+    assert pid is None and rec["runs"] == [(None, None, "Diversify the z-score mechanism to another crypto 15m.")]
+    assert "ltc15m isn't a market tau supports" in text.lower()
+    # a person asking by hand still gets told the market isn't supported
+    text, _ = agent.act(None, USER, {"type": "research", "market": "ltc15m",
+                        "idea": "Diversify the z-score mechanism to another crypto 15m."}, False)
+    assert "can't research that market" in text and len(rec["runs"]) == 1
 
 
 def test_blocked_markets_and_cooldown_line_come_from_one_read(monkeypatch):
