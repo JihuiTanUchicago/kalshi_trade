@@ -2,9 +2,10 @@
 
 stats.stationary_bootstrap_ci is the gatekeeper's primary validation p-value and the paper -> live
 edge test (agent.paper_evidence). It read ~3 numpy calls per resampled point (~1.3s for an 800-event
-paper record, on the Deploy board's request path); it now reads the same PCG64 words in bulk. These
-tests hold it, bit for bit, to the original loop (kept below as the reference) and to numpy's own
-Generator draws, including Lemire's rejection branch, which natural draws at small n almost never hit.
+paper record, on the Deploy board's request path); it now reads the same PCG64 words in bulk and walks
+only the new blocks (stats._pcg64_stationary_blocks). These tests hold it, bit for bit, to the original
+loop (kept below as the reference) and to numpy's own Generator draws, including Lemire's rejection
+branch, which natural draws at small n almost never hit, and the breaks in the chain the rows follow.
 """
 import time
 
@@ -113,7 +114,7 @@ class _Crafted:
 
     def __init__(self, seed):
         g = np.random.default_rng(seed)
-        self.w = g.integers(0, 2 ** 64, size=200_000, dtype=np.uint64)
+        self.w = g.integers(0, 2 ** 64, size=400_000, dtype=np.uint64)
         self.w[g.random(self.w.size) < 0.3] = 0
         self.at = 0
 
@@ -122,21 +123,55 @@ class _Crafted:
         return self.w[self.at - size:self.at]
 
 
-@pytest.mark.parametrize("n", [3, 5])
-@pytest.mark.parametrize("chunk", [1 << 16, 1])  # 1: refetch every few words, mid-rejection too
-def test_the_fast_rows_take_the_rejection_branch_exactly(n, chunk, monkeypatch):
-    monkeypatch.setattr(stats, "_RAW_CHUNK", chunk)
-    rows = list(stats._pcg64_stationary_rows(_Crafted(n), n, 0.5, 400))
-    words = _Words(_Crafted(n))
-    want = []
-    for _ in range(400):
+def _loop_rows(bg, n, p, n_boot):
+    """The index rows as the loop draws them, through _Words (numpy's own draws, written out)."""
+    words = _Words(bg)
+    out = []
+    for _ in range(n_boot):
         i = words.integers(n)
         row = [i]
         for _t in range(1, n):
-            i = words.integers(n) if words.random() < 0.5 else (i + 1) % n
+            i = words.integers(n) if words.random() < p else (i + 1) % n
             row.append(i)
-        want.append(row)
-    assert rows == want
+        out.append(row)
+    return out
+
+
+def _block_rows(bg, n, p, n_boot):
+    return [row.tolist() for rows in stats._pcg64_stationary_blocks(bg, n, p, n_boot) for row in rows]
+
+
+@pytest.mark.parametrize("n", [3, 5, 21, 300])
+@pytest.mark.parametrize("block", [1 << 16, 7])  # 7: a row per block, refetching words mid-rejection too
+def test_the_fast_rows_take_the_rejection_branch_exactly(n, block, monkeypatch):
+    monkeypatch.setattr(stats, "_BLOCK_POINTS", block)
+    n_boot = 400 if n < 100 else 150
+    assert _block_rows(_Crafted(n), n, 0.5, n_boot) == _loop_rows(_Crafted(n), n, 0.5, n_boot)
+
+
+@pytest.mark.parametrize("n", [2, 3, 7, 64, 301, 1000])
+@pytest.mark.parametrize("p", [0.5, 0.2, 1 / 7.5, 0.03])
+@pytest.mark.parametrize("squarings", [5, 0])  # 0: a chain full of side branches, so it breaks often
+def test_the_block_rows_are_the_loops_rows(n, p, squarings, monkeypatch):
+    monkeypatch.setattr(stats, "_BLOCK_POINTS", 4096)  # several blocks, rows straddling a refetch
+    monkeypatch.setattr(stats, "_CHAIN_SQUARINGS", squarings)
+    n_boot = max(12, 6000 // n)
+    for seed in (0, 7):
+        assert _block_rows(np.random.PCG64(seed), n, p, n_boot) == _loop_rows(np.random.PCG64(seed), n, p, n_boot)
+
+
+def test_a_seeded_paper_record_gets_the_same_edge_test_as_the_loop():
+    """The paper -> live edge test as the gate runs it (2,000 resamples, alpha 0.10, the automatic block
+    length) on a paper record shaped like a busy seeded account's: every figure the same bit for bit."""
+    g = np.random.default_rng(11)
+    qty, entry = g.integers(1, 11, 400), g.uniform(0.05, 0.9, 400)
+    won = g.random(400) < 0.5
+    events = list(np.round(qty * (won - entry) - (0.07 * qty * entry * (1 - entry) + 0.01), 4))
+    fast = stats.stationary_bootstrap_ci(events, stat="mean", alpha=0.10)
+    _same(fast, reference_ci(events, stat="mean", alpha=0.10))
+    agent._EDGE_P.clear()
+    assert agent._paper_edge_p_value(events) == fast["p_value"]
+    agent._EDGE_P.clear()
 
 
 def test_the_fast_bootstrap_is_several_times_faster_than_the_loop():

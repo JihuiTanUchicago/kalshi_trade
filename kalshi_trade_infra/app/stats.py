@@ -22,8 +22,9 @@ does not sanitize a leaked or reused holdout. A budget does not un-leak a contam
 Normal CDF (Φ) is reused from app.quant (math.erf). Φ⁻¹ is `norm_ppf` (Acklam, no scipy).
 numpy is used for the bootstrap resampling/percentiles (already a pinned dependency; invisible
 to callers — the public contract is pure python types).
-ponytail: the stationary bootstrap is still an O(n_boot·n) python loop, over raw PCG64 words read in
-bulk since profiling showed it hot (_pcg64_stationary_rows: same draws, ~5x faster).
+ponytail: the stationary bootstrap reads numpy's draws off raw PCG64 words in bulk and walks only its
+new blocks in python, since profiling showed it hot (_pcg64_stationary_blocks: same draws, ~15x faster
+than the per-point numpy loop).
 """
 from __future__ import annotations
 
@@ -403,8 +404,11 @@ def stationary_bootstrap_ci(x: list[float], stat: str = "mean", n_boot: int = 20
     rng = np.random.default_rng(seed)
     boot = np.empty(n_boot, dtype=float)
     if isinstance(rng.bit_generator, np.random.PCG64) and n < 2 ** 32:
-        for b, idx in enumerate(_pcg64_stationary_rows(rng.bit_generator, n, p, n_boot)):
-            boot[b] = _stat_value(arr[idx], stat)
+        b = 0
+        for rows in _pcg64_stationary_blocks(rng.bit_generator, n, p, n_boot):
+            for idx in rows:
+                boot[b] = _stat_value(arr[idx], stat)
+                b += 1
         return _ci_result(boot, _stat_value(arr, stat), alpha, n_boot, ab)
     for b in range(n_boot):
         idx = np.empty(n, dtype=np.int64)
@@ -422,70 +426,209 @@ def stationary_bootstrap_ci(x: list[float], stat: str = "mean", n_boot: int = 20
 
 _M32 = 0xFFFFFFFF
 _INV53 = 1.0 / 9007199254740992.0  # 2**-53: numpy's next_double scale
-_RAW_CHUNK = 1 << 16  # raw words fetched at a time
+_BLOCK_POINTS = 1 << 16  # resampled points worked out at a time (bounds a block's arrays to ~11MB)
+_CHAIN_SQUARINGS = 5  # the chain is the states F**32 reaches (see _pcg64_stationary_blocks)
 
 
-def _pcg64_stationary_rows(bg: "np.random.PCG64", n: int, p: float, n_boot: int):
-    """The stationary bootstrap's index rows, exactly as the loop above draws them from
-    Generator(bg) (`rng.integers(0, n)` to start a block, `rng.random() < p` to continue one), read
-    off bg's raw 64-bit words fetched in bulk instead of ~3 numpy calls per resampled point (~5x
-    faster: 2.4s -> 0.47s for 800 points x 2,000 resamples, measured 2026-10-26; that is a paper
-    strategy's live-readiness check, on the Deploy board's request path). Same draws, so the same
-    p-values bit for bit (tests/test_stats_bootstrap_exact.py holds it to the loop). The emulation is
-    numpy's own:
-    random() = (next64 >> 11) * 2**-53; integers(0, n) = Lemire's bounded draw on next32, where next32
-    hands out the low then the high half of one 64-bit word (PCG64's has_uint32 buffer, which random()
-    leaves alone), rejecting while the product's low word is under (2**32 - n) % n. bg must be fresh."""
-    chunk = max(_RAW_CHUNK, 4 * n + 64)
+class _ShortOfWords(Exception):
+    """A block read past the raw words fetched for it; it is worked out again with more."""
 
-    def fetch(w, isnew, j):
-        raw = bg.random_raw(chunk)
-        return w[j:] + raw.tolist(), isnew[j:] + (((raw >> np.uint64(11)) * _INV53) < p).tolist()
 
-    w: list = []
-    isnew: list = []
-    j, has, half = 0, False, 0
+def _pcg64_stationary_blocks(bg: "np.random.PCG64", n: int, p: float, n_boot: int):
+    """The stationary bootstrap's index rows, exactly as the loop above draws them from Generator(bg)
+    (`rng.integers(0, n)` to start a block, `rng.random() < p` to continue one), as int64 arrays of up
+    to _BLOCK_POINTS // n rows each. bg must be fresh.
+
+    numpy's draws, off bg's raw 64-bit words: random() = (next64 >> 11) * 2**-53; integers(0, n) =
+    Lemire's bounded draw on next32, rejecting while the product's low word is under (2**32 - n) % n,
+    where next32 hands out the low then the high half of one word (PCG64's has_uint32 buffer, which
+    random() leaves alone). So each point after a row's first reads one word, its coin (a new block
+    when under p), and a new block also draws a 32-bit value: a fresh word when the buffer is empty
+    (keeping its high half), the buffered half otherwise.
+
+    The loop walked that per point in Python (~0.5s for 730 points x 2,000 resamples, on the Deploy
+    board's request path). Here Python walks only the new blocks, and mostly skips those too: the next
+    new block from word j is the next word whose coin says new (a cumsum lookup). After a new block at
+    word x drawn with the buffer empty, the next one is at the first new coin from x+2 (the draw read
+    x+1) and draws from the buffer; drawn from the buffer, the next is at the first new coin from x+1
+    and draws a fresh word. That successor map over (word, buffer) states is fixed by the words alone,
+    and walks from different states merge within a few steps (mean 3, max ~50 at p=0.5), so the states
+    32 steps reach form one long chain: it is laid out once per block of words with each new block's
+    drawn index, and a row follows it a slice at a time (one search for where the row ends). The
+    Python walk does each row's start, the steps until it joins the chain, every break in the chain
+    and every Lemire rejection (which takes an extra draw, so it leaves the chain). Same draws, so the
+    same rows bit for bit (tests/test_stats_bootstrap_exact.py holds it to the loop and to numpy's own
+    draws): 0.44s -> 0.13s for 730 points x 2,000 resamples (measured 2026-10-26)."""
     thr = ((_M32 + 1) - n) % n
-    for _b in range(n_boot):
-        if len(w) - j < 2 * n + 2:  # a resample takes at most 2n words, short of rejections
-            w, isnew = fetch(w, isnew, j)
-            j = 0
-        row = [0] * n
-        for t in range(n):
-            if t:
-                new = isnew[j]
-                j += 1
-                if not new:
-                    i += 1
-                    if i == n:
-                        i = 0
-                    row[t] = i
-                    continue
+    per = max(1, _BLOCK_POINTS // n)
+    buf = np.empty(0, dtype=np.uint64)
+    base = 0  # buf[k] is raw word base + k
+    state = (0, False, 0)  # (next raw word, a half is buffered, that half)
+    done = 0
+    while done < n_boot:
+        rows = min(per, n_boot - done)
+        need = rows * (n + n // 2 + 2) + 256  # a row reads at most ~1.5n words, rejections aside
+        while True:
+            buf, base = buf[state[0] - base:], state[0]
+            if len(buf) < need:
+                more = bg.random_raw(need - len(buf))
+                if not len(more):
+                    raise RuntimeError("the bit generator gave no words")
+                buf = np.concatenate([buf, more])
+            try:
+                block, state = _stationary_block(buf, base, state, rows, n, p, thr)
+                break
+            except _ShortOfWords:
+                need *= 2
+        yield block
+        done += rows
+
+
+def _stationary_chain(buf: np.ndarray, n: int, p: float, thr: int) -> dict:
+    """The block's words laid out for _stationary_block: `cs[j]` new coins before word j, `nxt[r]` the
+    word of the r-th new coin (len(buf) past the last), and the chain: for each chain state (word, buffer
+    empty or not) in word order, `tidx` (state id 2*r + buffered -> chain position, or -1), its word
+    `tpos`, `tbuf`, `c` (words that are coins up to it: a row's points between two chain states), `ti`
+    (the index its draw gives), and `stops`, the positions a walk along the chain may not step onto
+    (the link from the state before is not the successor map, or its draw is rejected)."""
+    N = len(buf)
+    isnew = ((buf >> np.uint64(11)) * _INV53) < p
+    cs = np.zeros(N + 3, dtype=np.int64)
+    np.cumsum(isnew, out=cs[1:N + 1])
+    cs[N + 1:] = cs[N]
+    pos = np.flatnonzero(isnew)
+    M = len(pos)
+    nxt = np.append(pos, N)
+    # The successor map over state ids 2*r + buffered (r: the new coin's rank); 2M, 2M+1: past the end.
+    F = np.empty(2 * M + 2, dtype=np.int64)
+    F[0:2 * M:2] = 2 * cs[pos + 2] + 1
+    F[1:2 * M:2] = 2 * cs[pos + 1]
+    F[2 * M:] = (2 * M, 2 * M + 1)
+    G = F
+    for _ in range(_CHAIN_SQUARINGS):
+        G = G[G]
+    reached = np.zeros(2 * M + 2, dtype=bool)
+    reached[G] = True
+    ids = np.flatnonzero(reached[:2 * M])
+    tidx = np.full(2 * M + 2, -1, dtype=np.int64)
+    T = len(ids)
+    if T == 0:
+        return {"cs": cs, "nxt": nxt, "tidx": tidx, "T": 0}
+    tidx[ids] = np.arange(T)
+    tpos = pos[ids >> 1]
+    tbuf = ids & 1
+    # Words that are coins up to each state: its word, less the draw words read before it.
+    drawn = np.zeros(T, dtype=np.int64)
+    np.cumsum(tbuf[:-1] == 0, out=drawn[1:])
+    c = tpos - drawn
+    # The 32-bit value each state draws: the low half of the word after its coin, or (buffered) the
+    # high half of the word the state before it read.
+    word = np.minimum(tpos + 1, N - 1)
+    before = np.concatenate([np.zeros(1, dtype=np.uint64), buf[word[:-1]]])
+    x = np.where(tbuf == 0, buf[word] & np.uint64(_M32), before >> np.uint64(32))
+    m = x * np.uint64(n)
+    stop = np.ones(T, dtype=bool)
+    stop[1:] = (F[ids[:-1]] != ids[1:]) | ((m[1:] & np.uint64(_M32)) < np.uint64(thr)) | (tpos[1:] + 1 >= N)
+    return {"cs": cs, "nxt": nxt, "tidx": tidx, "T": T, "tpos": tpos, "tbuf": tbuf, "c": c,
+            "ti": (m >> np.uint64(32)).astype(np.int64), "stops": np.flatnonzero(stop).tolist()}
+
+
+def _stationary_block(buf: np.ndarray, base: int, state: tuple, rows: int, n: int, p: float, thr: int):
+    """`rows` index rows from raw words buf (word `base` onward), starting from `state`; returns them
+    with the state after them. Raises _ShortOfWords if they read past buf."""
+    import bisect
+
+    ch = _stationary_chain(buf, n, p, thr)
+    cs, nxt, tidx, T = ch["cs"], ch["nxt"], ch["tidx"], ch["T"]
+    if T:
+        tpos, tbuf, c, stops = ch["tpos"], ch["tbuf"], ch["c"], ch["stops"]
+    N = len(buf)
+    j, has, half = state
+    ev_k: list = []  # (point, index) of each new block the walk drew
+    ev_i: list = []
+    seg_lo: list = []  # chain slices a row followed: positions [lo, hi), point of position q = base + c[q]
+    seg_hi: list = []
+    seg_base: list = []
+    for r in range(rows):
+        kb = r * n
+        t, q = 0, -1
+        while True:
+            # Draw this point's index: integers(0, n), with Lemire's rejection.
             if has:
                 x, has = half, False
             else:
-                x = w[j]
+                if j - base >= N:
+                    raise _ShortOfWords
+                w = int(buf[j - base])
                 j += 1
-                half, x, has = x >> 32, x & _M32, True
+                half, x, has = w >> 32, w & _M32, True
             m = x * n
-            if (m & _M32) < thr:  # Lemire rejection: ~n / 2**32 of draws
-                while (m & _M32) < thr:
-                    if has:
-                        x, has = half, False
+            rejected = (m & _M32) < thr
+            while (m & _M32) < thr:
+                if has:
+                    x, has = half, False
+                else:
+                    if j - base >= N:
+                        raise _ShortOfWords
+                    w = int(buf[j - base])
+                    j += 1
+                    half, x, has = w >> 32, w & _M32, True
+                m = x * n
+            ev_k.append(kb + t)
+            ev_i.append(m >> 32)
+            if q >= 0 and not rejected:
+                # On the chain: follow it to the last new block this row holds, short of a stop.
+                s = bisect.bisect_right(stops, q)
+                hi = stops[s] if s < len(stops) else T
+                cq = int(c[q])
+                q2 = q - 1 + int(np.searchsorted(c[q:hi], cq + (n - 1 - t), side="right"))
+                if q2 > q:
+                    seg_lo.append(q + 1)
+                    seg_hi.append(q2 + 1)
+                    seg_base.append(kb + t - cq)
+                    t += int(c[q2]) - cq
+                    at = int(tpos[q2])
+                    if tbuf[q2]:
+                        j, has = base + at + 1, False
                     else:
-                        if j >= len(w):
-                            w, isnew = fetch(w, isnew, j)
-                            j = 0
-                        x = w[j]
-                        j += 1
-                        half, x, has = x >> 32, x & _M32, True
-                    m = x * n
-                if len(w) - j < 2 * n + 2:
-                    w, isnew = fetch(w, isnew, j)
-                    j = 0
-            i = m >> 32
-            row[t] = i
-        yield row
+                        j, has, half = base + at + 2, True, int(buf[at + 1]) >> 32
+            t += 1
+            if t >= n:
+                break
+            # The next new block in this row: the next new coin, unless the row ends first.
+            rk = int(cs[j - base]) if j - base <= N else -1
+            if rk < 0:
+                raise _ShortOfWords
+            e = int(nxt[rk]) + base
+            if t + (e - j) >= n:
+                j += n - t
+                if j - base > N:
+                    raise _ShortOfWords
+                break
+            if e - base >= N:
+                raise _ShortOfWords
+            t += e - j
+            j = e + 1
+            q = int(tidx[2 * rk + has]) if T else -1
+    K = rows * n
+    idx = np.zeros(K, dtype=np.int64)
+    new = np.zeros(K, dtype=bool)
+    k = np.asarray(ev_k, dtype=np.int64)
+    idx[k] = ev_i
+    new[k] = True
+    if seg_lo:
+        lo = np.asarray(seg_lo, dtype=np.int64)
+        ln = np.asarray(seg_hi, dtype=np.int64) - lo
+        qs = np.repeat(lo - (np.cumsum(ln) - ln), ln) + np.arange(int(ln.sum()))
+        k = np.repeat(np.asarray(seg_base, dtype=np.int64), ln) + c[qs]
+        idx[k] = ch["ti"][qs]
+        new[k] = True
+    # Every other point continues the block before it: the previous index + 1, wrapping at n.
+    at = np.arange(K)
+    last = np.maximum.accumulate(np.where(new, at, 0))
+    idx = idx[last] + (at - last)
+    idx[idx >= n] -= n
+    return idx.reshape(rows, n), (j, has, half)
 
 
 def block_bootstrap_ci(x: list[float], stat: str = "mean", n_boot: int = 2000, block: int = 0,

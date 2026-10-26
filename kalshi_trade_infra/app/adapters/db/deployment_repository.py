@@ -567,3 +567,15 @@ def autopilot_paper_week(cur, user_id: int, since) -> Dict:
     )
     r = cur.fetchone() or {}
     return {"started": int(r.get("started") or 0), "pnl": float(r.get("pnl") or 0), "trades": int(r.get("trades") or 0)}
+
+
+def paper_board_users(cur, limit: int) -> List[int]:
+    """Up to `limit` users with a paper deployment running or paused (a road to live on their Deploy
+    board), most recently signed in first."""
+    cur.execute(
+        """SELECT d.user_id FROM app_deployments d JOIN app_users u ON u.id=d.user_id
+           WHERE d.mode='paper' AND d.status <> 'stopped'
+           GROUP BY d.user_id ORDER BY MAX(u.last_login_at) DESC, d.user_id LIMIT %s""",
+        (int(limit),),
+    )
+    return [int(r["user_id"]) for r in cur.fetchall()]
