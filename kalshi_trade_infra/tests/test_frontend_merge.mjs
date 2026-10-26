@@ -125,7 +125,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewCommunity, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewCommunity, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render, paymentGate};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -649,7 +649,7 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
     assert.match(body, /on <a href="\/funds">Funds<\/a> to trade real money/);
     assert.match(body, on ? /Autopilot is on\. Strategies that pass/ : /Research an idea</);
     assert.doesNotMatch(body, on ? /Research an idea</ : /See its research/);
-    if (!on) assert.match(body, /Turn on autopilot above and the strategies that pass every gate/);  // points at the card's switch
+    if (!on) assert.match(body, /Turn on autopilot above and the strategies that pass every research test/);  // points at the card's switch
   }
 });
 
@@ -710,7 +710,7 @@ test('the empty paper track record follows the autopilot switch when a status re
   for (const tick of [...f.intervals.values()]) tick();
   await flush(); await flush();
   assert.equal(f.S.me.user.autopilot, true);
-  assert.match(panel(), /Autopilot runs the strategies that pass every gate on paper/); assert.doesNotMatch(panel(), /Go to Deploy/);
+  assert.match(panel(), /Autopilot runs the strategies that pass every research test on paper, with pretend money/); assert.doesNotMatch(panel(), /Go to Deploy/);
 });
 
 test('the empty Deployed box never says autopilot is researching while the card says it is quiet or paused', async () => {
@@ -1191,7 +1191,7 @@ test('an empty paper track record points at autopilot when it is on, live and de
   const f = frontend(), th = {min_sharpe_days: 30};
   f.S.me = {user: {autopilot: true}};
   const paper = f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
-  assert.match(paper, /Autopilot runs the strategies that pass every gate on paper/);
+  assert.match(paper, /Autopilot runs the strategies that pass every research test on paper, with pretend money/);
   assert.match(paper, /href="\/research">See its research/); assert.doesNotMatch(paper, /Turn on autopilot|Go to Deploy/);
   assert.match(f.trackRecordPanel({trades: 0, label: 'Live'}, 'live', th), /Go to Deploy/);
   f.S.me = {user: {autopilot: false}};
@@ -3479,4 +3479,53 @@ test('track record: stopped and removed strategies stay in the table and say so;
   // Every trade's P&L is net of fees, so the ratio isn't "gross" beside the gross-before-fees line.
   assert.match(html, /winning trades ÷ losing trades, after fees/); assert.doesNotMatch(html, /gross wins/);
   assert.match(html, /−1\.25/); assert.match(html, /Sortino −2\.50/); assert.doesNotMatch(html, />-1\.25</);
+});
+
+// A newcomer's first hour: what the card wall charges, what the dashboard says right after the switch, and
+// what the empty autopilot feed promises.
+const cardWall = async (billing) => {
+  const f = frontend({stripe: STRIPE_STUB, fetchImpl: path => {
+    if (path === '/api/billing') return response({configured: true, publishable_key: 'synthetic-only', ...billing});
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.location.pathname = '/'; Object.assign(f.S.me, {needs_card: true, free_bonus: 20});
+  await f.paymentGate(); await flush();
+  return f.document.body.querySelector('.pay-modal');
+};
+
+test('the card wall says saving the card charges nothing and what auto-reload will charge it, before it is saved', async () => {
+  const dlg = await cardWall({auto_reload: true, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1});
+  assert.match(dlg.querySelector('.wl-sub').innerHTML, /Save a card and we'll add \$20 in free credits\./);
+  assert.doesNotMatch(dlg.innerHTML, /by the token|list price/i);
+  const terms = dlg.querySelector('#pay-terms');
+  assert.equal(terms.hidden, false);
+  assert.equal(terms.textContent, 'Saving the card charges nothing. Auto-reload is on: when your credits fall to $5.00, we charge the card $21.10 for $20.00 more. You can turn it off on Billing.');
+  // Auto-reload already off on this account: no reload promise.
+  const off = await cardWall({auto_reload: false, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1});
+  assert.equal(off.querySelector('#pay-terms').textContent, 'Saving the card charges nothing.');
+});
+
+test('turning autopilot on updates the last-24-hours row at once, not only after a reload', async () => {
+  const f = frontend({fetchImpl: (path) => {
+    if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), since: {at: '2026-10-25T08:00:00+00:00', first: true,
+      books: {}, passed: {n: 0, items: []}, autopilot: {}, runs: {}, own_sessions: false}});
+    if (path === '/api/settings') return response({ok: true});
+    if (path === '/api/autopilot/status') return response(apOn);
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const row = () => f.root.querySelector('#dash-since [data-since-ap]').textContent;
+  assert.equal(row(), 'Off.');
+  await f.root.querySelector('#dash-ap [data-apcard="on"]').onclick(); await flush(); await flush();
+  assert.equal(row(), 'On. It made no changes.');
+});
+
+test('the empty autopilot feed says it trades real money only after live autopilot is turned on', async () => {
+  const f = frontend({fetchImpl: () => response({messages: []})});
+  const box = f.document.createElement('div'); box.innerHTML = '<ol id="apf-messages"></ol>';
+  await f.apLoadChat(box, true);
+  const empty = box.querySelector('#apf-messages').innerHTML;
+  assert.match(empty, /on paper \(pretend money\)\. It trades real money only if you also turn on live autopilot\./);
+  assert.doesNotMatch(empty, /promoting to paper or live|gates/);
 });

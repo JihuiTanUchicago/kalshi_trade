@@ -661,8 +661,9 @@
         </aside>
         <form class="wl-inner pay-right" id="payform">
           <h2>Add a payment method</h2>
-          <p class="wl-sub">Tau meters the agent by the token. Add a card now, and we'll give you $${S.me.free_bonus} in credits — free.</p>
+          <p class="wl-sub">Tau bills its research agent from a credit balance. Save a card and we'll add $${S.me.free_bonus} in free credits.</p>
           <div id="pay-el" class="pay-el">${loading(120)}</div>
+          <p class="wl-note pay-terms" id="pay-terms" hidden></p>
           <div id="pay-hint"></div>
           <div class="pay-foot">
             <button class="pill solid wl-submit" type="submit" id="pay-submit">Save payment method</button>
@@ -701,6 +702,11 @@
     try {
       const state = await api('/api/billing', undefined, { keep: true });
       if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
+      // What the card will be charged, before it is saved: nothing now, and auto-reload is on by default.
+      const terms = dlg.querySelector('#pay-terms');
+      terms.textContent = 'Saving the card charges nothing.' + (state.auto_reload && state.autoreload_charge
+        ? ` Auto-reload is on: when your credits fall to ${usd(state.autoreload_threshold)}, we charge the card ${usd(state.autoreload_charge)} for ${usd(state.autoreload_amount)} more. You can turn it off on Billing.` : '');
+      terms.hidden = false;
       const Stripe = await loadStripe();
       const sp = Stripe(state.publishable_key);
       const si = await api('/api/billing/setup-intent', {});
@@ -3421,7 +3427,7 @@
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
       paint(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every gate in a research session, paper first.' : 'Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every gate deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>'}</div>`);
+        : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.' : 'Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>'}</div>`);
       paint(root.querySelector('#demo-health'), d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '');
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
@@ -3466,7 +3472,7 @@
       const apOn = key === 'paper' && !!(S.me && S.me.user && S.me.user.autopilot);
       const how = key === 'live' ? 'Deploy a strategy that has proven itself on paper to live money, and its closed trades show up here.'
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
-        : apOn ? 'Autopilot runs the strategies that pass every gate on paper. Every closed trade is recorded here.'
+        : apOn ? 'Autopilot runs the strategies that pass every research test on paper, with pretend money. Every closed trade is recorded here.'
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
       // With nothing deployed (the dashboard's board says so), Deploy is an empty board too and sent a
       // new user Deploy → Strategies → Research; the button goes straight to the step that comes first.
@@ -4285,6 +4291,8 @@
     const s = String(r).replace(/^Autopilot:\s*/, '').replace(/\.\s*$/, '');
     return s.length <= 110 ? s : s.slice(0, 110).replace(/\s+\S*$/, '') + '\u2026';
   };
+  // The strip's Autopilot row when it made no moves: just the switch, which syncApCopy keeps current.
+  const sinceApWord = (on) => on ? 'On. It made no changes.' : 'Off.';
   function sinceStrip(d, pausedHref) {
     const s = d.since;
     if (!s) return '';
@@ -4309,7 +4317,7 @@
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', k === 'research' ? plural(ap[k], 'research session', 'research sessions') : num(ap[k])));
     const other = Object.entries(ap).filter(([k]) => !known.has(k)).reduce((a, [, n]) => a + n, 0);
     if (other) did.push('made ' + plural(other, 'other change', 'other changes'));
-    const auto = did.length ? `It ${did.join(', ')}.` : apOn ? 'On. It made no changes.' : 'Off.';
+    const auto = did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`;
     const needs = d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
       .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_reason))}</span>` : ''}`);
     const pausedN = d.deployments.filter((x) => x.status === 'paused').length;
@@ -4572,10 +4580,10 @@
   // second primary button, next to the autopilot card's Turn on autopilot and "or research by hand".
   function depsEmpty(on) {
     return S.dashNoSessions ? (on
-      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p></div>`
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every research test land here on paper first, with no real money.</p></div>`
       : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or research an idea yourself.</p></div>`) : on
-      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
-      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research">Research an idea</a></div>`;
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every research test land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every research test on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research">Research an idea</a></div>`;
   }
   // Copy that depends on the switch follows it without a reload, so turning autopilot on doesn't leave
   // "Turn on autopilot above" or a Turn on nudge under a card that already says it's on.
@@ -4585,6 +4593,7 @@
     const box = document.getElementById('deps-empty');
     if (box && box.dataset.on !== (on ? '1' : '0')) { box.dataset.on = on ? '1' : '0'; box.innerHTML = depsEmpty(on); }
     if (document.body) document.body.querySelectorAll('.research-ap').forEach((p) => { p.hidden = on; });
+    if (document.body) document.body.querySelectorAll('[data-since-ap]').forEach((n) => { n.textContent = sinceApWord(on); });
     if (trAp && trAp.host.isConnected && trAp.on !== apSwitchOn()) trAp.repaint();
   }
   function apNudge(lead, rest) {
@@ -4744,7 +4753,7 @@
       msgs.appendChild(li);
     });
     if (d.messages.length) apFeedFirst = false;
-    if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet. On its own schedule it reviews every deployment and open position, then works the whole pipeline end to end — researching angles, clearing strategies through the gates, promoting to paper or live, and tuning risk, execution and model params. Each move lands here as it happens. Message it below to steer.</li>';
+    if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet. While it\u2019s on, it checks in on its own schedule: it reviews what\u2019s running, starts research, and puts the strategies that pass every research test on paper (pretend money). It trades real money only if you also turn on live autopilot. Each move lands here as it happens. Message it below to steer.</li>';
     // The live pulse — the research session's "working" signal, scoped to the operation.
     const pulse = box.querySelector('#apf-pulse');
     if (pulse) {
