@@ -92,4 +92,24 @@ export function strategyPageCases({name, detailStrategy, strategyFrontend, postR
     assert.ok(methodology.length > 0 && methodology.includes('Data &amp; partitioning'));
     assert.doesNotMatch(methodology.slice(0, methodology.indexOf('</details>', methodology.indexOf('Data &amp; partitioning'))), /class="rules"/);
   });
+
+  test(`${name}: the research paper's statistics and test names come with plain words`, async () => {
+    const f = await open({status: 'failed', experiment: {classification: 'inconclusive', registered_at: '2026-10-20T10:00:00Z',
+      primary_metric: 'mean_net_return_per_trade', planned_test: 'stationary_bootstrap one-sided, alpha from LORD++',
+      planned_n_tests: 37, correction_method: 'LORD++', n_trials_audited: 37,
+      validation: {n_trades: 58, mean_net_return: 0.022, p_value: 0.03, psr: 0.95, dsr: 0.88, fdr_alpha_i: 0.05, fdr_reject: true, placebo_p: 0.03},
+      holdout: {n_trades: 31, mean_net_return: -0.004, p_value: 0.58, consumed: true}}});
+    const html = main(f);
+    for (const raw of ['mean_net_return_per_trade', 'stationary_bootstrap', 'FDR α spent', 'rejects the null', 'label-shuffle', 'roll to fresh forward data', 'alpha budget', 'false-discovery budget']) {
+      assert.ok(!html.includes(raw), `still shows ${raw}`);
+    }
+    assert.match(html, /average net return per trade, after fees/);
+    assert.match(html, /one-sided bootstrap test \(resamples its trades in blocks\), significance bar from LORD\+\+/);
+    assert.match(html, /37 planned tests · LORD\+\+ \(a false-discovery control: it keeps count of every idea tested, so lucky passes stay rare\)/);
+    assert.match(html, /chance a rule with no edge does this well; lower is better/);
+    assert.match(html, /p-value needed<\/div><div class="val">0\.0500<\/div><div class="sub">the bar its p-value had to clear; it cleared it/);
+    assert.match(html, /used once, as designed: it can’t be re-run on this data/);
+    const bh = await open({status: 'passed', experiment: {classification: 'statistically_supported', correction_method: 'BH', planned_n_tests: 4}});
+    assert.match(main(bh), /4 planned tests · Benjamini–Hochberg/);
+  });
 }

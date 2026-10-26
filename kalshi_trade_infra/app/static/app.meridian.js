@@ -1274,6 +1274,11 @@
   const rpInt = (v) => (v == null ? '—' : num(v));
   const rpText = (v) => esc(v == null ? '' : String(v));
   const rpHuman = (k) => String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+  // The gatekeeper's pre-registration names its metric and test in code words; say them plainly.
+  const rpPlain = (t) => String(t).replace(/\bmean_net_return_per_trade\b/g, 'average net return per trade, after fees')
+    .replace(/\bstationary_bootstrap( one-sided)?/g, (m, one) => (one ? 'one-sided ' : '') + 'bootstrap test (resamples its trades in blocks)').replace(/\balpha from\b/g, 'significance bar from')
+    .replace(/\b([a-z]+)_([a-z_]+)\b/g, (m) => m.replace(/_/g, ' '));
+  const LORD_WORDS = ' (a false-discovery control: it keeps count of every idea tested, so lucky passes stay rare)';
   const rpStamp = (iso) => { try { return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(iso); } };
   // The gatekeeper stores each phase as its per-trade net returns ([ts, return] per trade), not a running
   // total. The equity and drawdown figures add them up, counted in stakes (+2× = twice one trade's stake);
@@ -1429,11 +1434,11 @@
 
   function rpConclusion(cls) {
     const m = {
-      deployment_candidate: ['good', 'Deployment candidate. It cleared validation under the audited false-discovery budget, survived the one-time locked holdout, and is diverse enough from the deployed book to add something new.'],
+      deployment_candidate: ['good', 'Deployment candidate. It cleared validation on data it had never seen, held up on the one-time locked holdout, and is different enough from your deployed strategies to add something new.'],
       forward_validated: ['good', 'Forward-validated. It passed validation and then held up on the locked holdout, which is evaluated exactly once — the strongest evidence this pipeline produces.'],
-      statistically_supported: ['', 'Statistically supported. The validation edge survives multiple-testing correction and the deflated-Sharpe test, but has not yet been spent against the locked holdout.'],
+      statistically_supported: ['', 'Statistically supported. Its validation edge passed the significance, deflated-Sharpe and placebo checks, but it has not yet faced the one-time locked holdout.'],
       promising: ['', 'Promising. An in-research edge that has not yet faced the validation partition.'],
-      inconclusive: ['quiet', 'Inconclusive. The evidence was too weak, or the sample too small, to move the verdict — and no alpha budget was spent claiming it works.'],
+      inconclusive: ['quiet', 'Inconclusive. The evidence was too weak, or the sample too small, to show an edge that isn’t luck.'],
       rejected: ['sig', 'Rejected. It failed in-research, lacked a credible mechanism, or was indistinguishable from its placebo. It is kept on the record so the next search does not repeat it.'],
     };
     return m[cls] || ['quiet', 'Awaiting a recorded verdict.'];
@@ -1469,10 +1474,10 @@
     const pre = [];
     if (exp.null_hypothesis) pre.push(['Null hypothesis', exp.null_hypothesis]);
     if (exp.alt_hypothesis) pre.push(['Alternative', exp.alt_hypothesis]);
-    if (exp.primary_metric) pre.push(['Primary metric', exp.primary_metric]);
-    if (exp.planned_test) pre.push(['Planned test', exp.planned_test]);
+    if (exp.primary_metric) pre.push(['Primary metric', rpPlain(exp.primary_metric)]);
+    if (exp.planned_test) pre.push(['Planned test', rpPlain(exp.planned_test)]);
     if (exp.min_sample != null) pre.push(['Minimum sample', exp.min_sample + ' trades']);
-    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests ·\u00a0' : ''}${exp.correction_method || '—'}`]);
+    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests ·\u00a0' : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
     if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${v}`).join(' ·\u00a0')]);
     if (pre.length) {
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
@@ -1490,12 +1495,12 @@
       const ciTxt = (v.ci_lo != null && v.ci_hi != null) ? `90% CI ${rpRet(v.ci_lo)} to ${rpRet(v.ci_hi)}` : '';
       const stats = [
         stat('Net return per trade', rpRet(v.mean_net_return), tint('validation', 'mean_net_return'), 'average, as % of its stake' + (ciTxt ? ' ·\u00a0' + ciTxt : '')),
-        stat('Bootstrap p-value', rpProb(v.p_value), tint('validation', 'p_value'), 'one-sided, autocorr-robust'),
-        stat('PSR', rpProb(v.psr), '', 'prob. true Sharpe > 0'),
-        stat('DSR', rpProb(v.dsr), tint('validation', 'dsr'), 'deflated for selection'),
-        stat('Trials audited', rpInt(exp.n_trials_audited), '', 'competed for this evidence'),
-        stat('FDR α spent', rpProb(v.fdr_alpha_i, 4), '', v.fdr_reject == null ? '' : (v.fdr_reject ? 'rejects the null' : 'does not reject')),
-        stat('Placebo p-value', rpProb(v.placebo_p), tint('validation', 'placebo_p'), 'label-shuffle control'),
+        stat('Bootstrap p-value', rpProb(v.p_value), tint('validation', 'p_value'), 'chance a rule with no edge does this well; lower is better'),
+        stat('PSR', rpProb(v.psr), '', 'probability its true risk-adjusted return (Sharpe) is above 0'),
+        stat('DSR', rpProb(v.dsr), tint('validation', 'dsr'), 'the same, discounted for the many ideas tried'),
+        stat('Trials audited', rpInt(exp.n_trials_audited), '', 'ideas tested on this data; more ideas, more lucky passes'),
+        stat('p-value needed', rpProb(v.fdr_alpha_i, 4), '', 'the bar its p-value had to clear' + (v.fdr_reject == null ? '' : v.fdr_reject ? '; it cleared it' : '; it missed it')),
+        stat('Placebo p-value', rpProb(v.placebo_p), tint('validation', 'placebo_p'), 'chance shuffled outcomes do as well; lower is better'),
         stat('Trades', rpInt(v.n_trades), tint('validation', 'n_trades'), 'on the validation window'),
       ].join('');
       const figs = `<div class="rp-figs">
@@ -1508,7 +1513,7 @@
         <div class="rp-fig wide"><h5>Per-trade return distribution</h5>${rpReturnDist((v.equity_curve || []).map((p) => +p[1]), v.ci_lo, v.ci_hi, v.mean_net_return)}<div class="cap">Bars: the net return of each validation trade, as % of its stake. Shaded band: the 90% bootstrap confidence interval of the mean. Dashed line: the mean. A band entirely right of break-even means the edge clears fees.</div></div>
         <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds)}<div class="cap">The validation window cut into consecutive slices, with each slice's average net return per trade (as % of its stake) and its trade count. The same sign in most slices is robustness; one slice carrying the whole edge is a warning.</div></div>
       </div>`;
-      parts.results += sub('Validation-window evidence', `<p class="rp-sub" style="margin-top:0">The window the agent iterated against is in-sample; these are the numbers from the held-out validation partition, under the audited false-discovery budget.</p><div class="rp-stats">${stats}</div>${figs}`);
+      parts.results += sub('Validation-window evidence', `<p class="rp-sub" style="margin-top:0">The agent searched and tuned on earlier data (in-sample). These numbers come from the validation window after it: data the agent never saw while searching.</p><div class="rp-stats">${stats}</div>${figs}`);
     }
     // Verdict — the ladder, the one-time locked holdout, and the gatekeeper's conclusion.
     parts.verdict += `<div class="paper-sub"><h4 class="paper-h">Where it reached on the ladder</h4>${rpLadder(exp.classification)}</div>`;
@@ -1517,7 +1522,7 @@
       <div class="rp-stat"><div class="k">Net return per trade</div><div class="val${tint('holdout', 'mean_net_return') ? ' sig' : ''}">${rpRet(h.mean_net_return)}</div><div class="sub">average, as % of its stake${h.ci_lo != null && h.ci_hi != null ? ' ·\u00a090% CI ' + rpRet(h.ci_lo) + ' to ' + rpRet(h.ci_hi) : ''}</div></div>
       <div class="rp-stat"><div class="k">Bootstrap p-value</div><div class="val${tint('holdout', 'p_value') ? ' sig' : ''}">${rpProb(h.p_value)}</div></div>
       <div class="rp-stat"><div class="k">Trades</div><div class="val${tint('holdout', 'n_trades') ? ' sig' : ''}">${rpInt(h.n_trades)}</div></div>
-      <div class="rp-stat"><div class="k">Holdout</div><div class="val">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'spent — roll to fresh forward data' : 'evaluations remain'}</div></div>
+      <div class="rp-stat"><div class="k">Holdout</div><div class="val">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'used once, as designed: it can’t be re-run on this data' : 'not used yet'}</div></div>
     </div>` : `<div class="rp-empty">Not yet evaluated on the locked holdout. The holdout is spent only once, on strategies that already passed validation — so an empty holdout here is expected until then.</div>`;
     parts.verdict += sub('The one-time locked holdout', holdBody);
     const [vtone, words] = rpConclusion(exp.classification);
