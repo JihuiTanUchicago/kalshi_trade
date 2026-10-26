@@ -1052,7 +1052,26 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypa
     assert out == {"at": now, "first": False, "books": {"paper": {"pnl": 2.42, "trades": 3}, "demo": {"pnl": -1.0, "trades": 1},
                                                          "live": {"pnl": 0.0, "trades": 0}},
                    "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1},
-                   "own_sessions": True}
+                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}}
+
+
+def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monkeypatch):
+    # Credits spent are real money: the strip shows them on their own row, never added to a book, and
+    # with payments off nothing is billed, so there is no cost to show. Forward-gate passes and
+    # live-ready strategies (from the bell) ride along as strategy ids.
+    from datetime import datetime
+    now = datetime(2026, 10, 25, 12, 0)
+    act = {"autopilot": {}, "runs": {}, "own_sessions": True, "spent": {"since": 27.45, "week": 27.45},
+           "milestones": {"passed": [232], "live_ready": [232]}}
+    monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: act)
+    monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since: {"n": 0, "items": []})
+    monkeypatch.setattr(server.billing, "configured", lambda: True)
+    out = server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})
+    assert out["spent"] == {"since": 27.45, "week": 27.45}
+    assert out["books"] == {"paper": {"pnl": 12.65, "trades": 36}}  # the books never carry the credits
+    assert out["milestones"] == {"passed": [232], "live_ready": [232]}
+    monkeypatch.setattr(server.billing, "configured", lambda: False)
+    assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"] is None
 
 
 def _capacity_ctx():

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -443,22 +444,44 @@ def activity_since(cur, user_id: int, since) -> Dict:
     its own ({kind: n} of its applied, never-decided proposals: deploy, pause, resume, adjust...),
     the research sessions started since then ({status: n}, the seeded example left out), and
     whether the user has ever run a research session of their own (`own_sessions`; a brand-new
-    account's dashboard points at the example session instead). The last is a LIMIT 1 probe."""
+    account's dashboard points at the example session instead). The last is a LIMIT 1 probe.
+    Also what credits the usage debits took since then and over the last 7 days (`spent`: real
+    money, the strip shows it apart from every book), and the strategies whose bell said they
+    passed the paper forward gate or became ready for live (`milestones`: {kind: [strategy ids]}).
+    Those passes happen days after the strategy was created, so passed_since never sees them."""
+    week = now_utc() - timedelta(days=7)
     cur.execute(
         "SELECT 'ap' AS src, kind AS k, COUNT(*) AS n FROM app_proposals "
         "WHERE user_id=%s AND status='applied' AND decided_at IS NULL AND created_at>=%s GROUP BY kind "
         "UNION ALL SELECT 'run' AS src, status AS k, COUNT(*) AS n FROM app_agent_runs "
         "WHERE user_id=%s AND kind='research' AND created_at>=%s AND (direction IS NULL OR direction<>%s) GROUP BY status "
         "UNION ALL SELECT 'own' AS src, 'any' AS k, COUNT(*) AS n FROM (SELECT id FROM app_agent_runs "
-        "WHERE user_id=%s AND kind='research' AND (direction IS NULL OR direction<>%s) LIMIT 1) o",
-        (user_id, since, user_id, since, DEMO_DIRECTION, user_id, DEMO_DIRECTION),
+        "WHERE user_id=%s AND kind='research' AND (direction IS NULL OR direction<>%s) LIMIT 1) o "
+        "UNION ALL SELECT 'spent' AS src, 'since' AS k, COALESCE(-SUM(amount_usd),0) AS n FROM app_credit_ledger "
+        "WHERE user_id=%s AND kind='usage' AND created_at>=%s "
+        "UNION ALL SELECT 'spent' AS src, 'week' AS k, COALESCE(-SUM(amount_usd),0) AS n FROM app_credit_ledger "
+        "WHERE user_id=%s AND kind='usage' AND created_at>=%s "
+        "UNION ALL SELECT 'note' AS src, CONCAT(kind, ' ', COALESCE(link, '')) AS k, COUNT(*) AS n FROM app_notifications "
+        "WHERE user_id=%s AND kind IN ('passed','live_ready') AND created_at>=%s GROUP BY kind, link",
+        (user_id, since, user_id, since, DEMO_DIRECTION, user_id, DEMO_DIRECTION,
+         user_id, since, user_id, week, user_id, since),
     )
-    out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False}
+    out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False,
+                           "spent": {"since": 0.0, "week": 0.0}, "milestones": {"passed": [], "live_ready": []}}
     for r in cur.fetchall():
         if r["src"] == "own":
             out["own_sessions"] = int(r["n"]) > 0
+        elif r["src"] == "spent":
+            out["spent"][r["k"]] = round(float(r["n"] or 0), 2)
+        elif r["src"] == "note":
+            kind, _, link = str(r["k"]).partition(" ")
+            m = re.match(r"^/strategies/(\d+)$", link)
+            if m and kind in out["milestones"] and int(m.group(1)) not in out["milestones"][kind]:
+                out["milestones"][kind].append(int(m.group(1)))
         else:
             out["autopilot" if r["src"] == "ap" else "runs"][r["k"]] = int(r["n"])
+    for ids in out["milestones"].values():
+        ids.sort(reverse=True)
     return out
 
 

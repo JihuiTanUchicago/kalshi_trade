@@ -3726,3 +3726,79 @@ test('a page that breaks on a reply it did not expect reports the bug, and the u
   assert.equal(reports[0][0], 'view'); assert.equal(reports[0][1].name, 'TypeError');
   f.clearTimers();
 });
+
+test('a returning user reads what the time away cost, the paper forward-test passes and a live-ready strategy in the strip', async () => {
+  // A week away: the autopilot spent credits (real money), a paper strategy passed its forward test and
+  // became ready for live days after it was created, and auto-reload is off with two days of credit left.
+  const since = {at: '2026-10-19T08:00:00+00:00', first: false, books: {paper: {pnl: 12.65, trades: 36}},
+    passed: {n: 0, items: []}, autopilot: {}, runs: {succeeded: 6},
+    spent: {since: 27.45, week: 27.45}, milestones: {passed: [232], live_ready: [232]}};
+  const deployments = [{id: 7, strategy_id: 232, title: 'ETH <i>drift</i>', market: 'eth15m', mode: 'paper', status: 'running',
+    status_reason: null, stake: 10, max_positions: 3, realized_pnl: 97.07, unrealized_pnl: null,
+    closed_trades: 32, open_positions: 0, curve: [], created_at: '2026-10-19T08:00:00Z'}];
+  const strip = async (extra, me) => {
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), deployments, since, ...extra});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, credit_balance: 7.15, min_run_balance: 1, auto_reload: null, ...me};
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    return f.root.querySelector('#dash-since').innerHTML;
+  };
+  const text = await strip({});
+  // What it cost: its own row, real money, never added to the paper book above it.
+  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
+  assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$12\.65<\/span>/);
+  assert.doesNotMatch(text, /\$40\.10|−\$14\.80|\$14\.80/);  // paper and credits never summed or netted
+  // The forward-test pass leads New results when nothing else passed, named from the page's deployments.
+  assert.match(text, /<dt>New results<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> passed its paper forward test: a candidate for live <span class="since-sub">/);
+  assert.doesNotMatch(text, /Nothing new passed/);
+  // Live-ready is the week's next step, first under Needs you; the runway warns before the pause.
+  assert.match(text, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> is ready for live trading\. Going live is your call\./);
+  assert.match(text, /Credits run out in about 2 days at this week’s pace, then research pauses\. <a href="\/billing">Add credits or turn on auto-reload<\/a>/);
+  // Auto-reload on: no runway warning. A plenty balance: none either.
+  assert.doesNotMatch(await strip({}, {auto_reload: {amount: 20, charge: 21.1, threshold: 5}}), /Credits run out/);
+  assert.doesNotMatch(await strip({}, {credit_balance: 80}), /Credits run out/);
+  // Under the research floor the floor line says it, not both.
+  const floor = await strip({}, {credit_balance: 0.42});
+  assert.match(floor, /Credits are at \$0\.42/); assert.doesNotMatch(floor, /Credits run out/);
+  // Payments off (the server sends no spend): no Cost row. Nothing spent: says so.
+  assert.doesNotMatch(await strip({since: {...since, spent: null}}), /<dt>Cost<\/dt>/);
+  assert.match(await strip({since: {...since, spent: {since: 0, week: 0}}}), /<dt>Cost<\/dt><dd>No credits spent/);
+  // Something else passed too: the list first, the forward test after it.
+  const both = await strip({since: {...since, passed: {n: 1, items: [{id: 9, title: 'Fade'}]}}});
+  assert.match(both, /1 strategy passed: <a href="\/strategies\/9">Fade<\/a>.*\. <a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> passed its paper forward test: a candidate for live\./);
+});
+
+test('the last move says the forward test verdict and drops the live-ready marker, and a credits pause says what keeps trading', async () => {
+  const f = frontend();
+  const t = (text) => f.apMoveText({text, at: new Date().toISOString()});
+  assert.equal(t('Paper forward gate: ETH late-window drift PASSED (32 paper trades, p=0.021, +6.1% per trade) and is now a deployment candidate. Live still needs your live switch.'),
+    'ETH late-window drift passed its paper forward test');
+  assert.equal(t('Paper forward gate: BTC fade did not pass its one paper judgment (INCONCLUSIVE, 30 paper trades, p=0.210, -0.5% per trade).'),
+    'BTC fade did not pass its paper forward test');
+  assert.equal(t('Paper forward gate: BTC fade passed on paper (30 paper trades, p=0.010, +2.0% per trade) but stays off the candidate list: too close to one you run.'),
+    'BTC fade passed on paper, not added to the candidates');
+  assert.equal(t('[live-ready #232] “ETH drift” cleared every paper-to-live check: 32 realistic paper trades, +$97.07 net. Going live is your call.'),
+    '“ETH drift” cleared every paper-to-live check: 32 realistic paper trades, +$97.07 net');
+  const g = frontend({fetchImpl: path => {
+    if (path.startsWith('/api/dashboard')) return response(emptyDashboard());
+    if (path === '/api/autopilot/status') return response({autopilot: true, mode: 'paper'});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  g.S.me = {...g.S.me, billing_enabled: true, credit_balance: 0.42, min_run_balance: 1, auto_reload: null};
+  g.S.me.user.autopilot = true;
+  await g.viewDashboard(); await flush();
+  const paused = {autopilot: true, mode: 'paper', research: {active: []}, billing_blocked: true, billing_reason: 'credits'};
+  g.S.ap = {...paused, paper_running: 1}; g.paintDashAp();
+  assert.match(g.root.querySelector('#dash-ap').innerHTML, /and it picks up on its own\. The strategy already running keeps trading\./);
+  g.S.ap = {...paused, paper_running: 2, demo_running: 1}; g.paintDashAp();
+  assert.match(g.root.querySelector('#dash-ap').innerHTML, /The 3 strategies already running keep trading\./);
+  g.S.ap = {...paused, paper_running: 0}; g.paintDashAp();
+  assert.doesNotMatch(g.root.querySelector('#dash-ap').innerHTML, /keeps? trading/);
+  g.clearTimers();
+});
