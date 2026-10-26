@@ -122,7 +122,8 @@ test('a failed model save restores the existing preference without changing trad
   f.apBuildShell(f.box); await flush();
   const select = f.box.querySelector('#apf-model'); select.value = 'opus'; await select.onchange();
   assert.equal(f.S.ap.model, 'sonnet'); assert.equal(select.value, 'sonnet'); assert.equal(select.disabled, false);
-  assert.deepEqual(f.alerts, ['Synthetic model preference rejection']);
+  // Said in the panel, beside the control (alert0 put it on the page under the panel).
+  assert.deepEqual(f.alerts, []); assert.match(f.box.querySelector('#apf-flash').innerHTML, /error-text">Synthetic model preference rejection/);
   assert.deepEqual(posts(f).map(row => row.path), ['/api/autopilot/model']);
   assert.equal(f.apLiveBlock(status()), 'Live trading isn’t available on this server yet. ');
 });
@@ -342,5 +343,5 @@ test('a rejected focus change restores the previous choice', async () => {
   f.S.ap.focus = ['crypto']; f.apBuildShell(f.box); await flush();
   const select = f.box.querySelector('#apf-focus'); select.value = 'sports'; await select.onchange();
   assert.equal(select.value, 'crypto'); assert.deepEqual([...f.S.ap.focus], ['crypto']);
-  assert.deepEqual(f.alerts, ['Synthetic focus rejection']);
+  assert.deepEqual(f.alerts, []); assert.match(f.box.querySelector('#apf-flash').innerHTML, /error-text">Synthetic focus rejection/);
 });

@@ -3802,3 +3802,159 @@ test('the last move says the forward test verdict and drops the live-ready marke
   assert.doesNotMatch(g.root.querySelector('#dash-ap').innerHTML, /keeps? trading/);
   g.clearTimers();
 });
+
+// ---- Failures a user can act on: a write that failed says why next to it and puts the screen back; a write
+// that landed says so even when the page can't refresh after it; one send per press.
+
+test('the autopilot switch in the panel locks while it saves, and a failed save goes back to the saved state and says why in the panel', async () => {
+  const save = deferred(); let posts = 0;
+  const f = frontend({storage: memoryStorage(), fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/settings') { posts++; return save.promise; }
+    if (path === '/api/autopilot/status') return response({...apOn, autopilot: false, mode: 'off', focus: []});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false; f.S.ap = {...apOn, autopilot: false, mode: 'off', focus: []};
+  await f.viewDashboard(); await flush();
+  await f.root.querySelector('#dash-ap [data-apcard="focus"]').onclick(); await flush();
+  const box = f.root.parent.querySelector('#autopilot-float'), sw = box.querySelector('#apf-apswitch');
+  sw.checked = true; const saving = sw.onchange(); await flush();
+  assert.equal(sw.disabled, true);  // a second flip can't race the first
+  save.resolve(response({error: 'Autopilot could not be saved. Try again.'}, 500)); await saving; await flush();
+  assert.equal(posts, 1);
+  assert.equal(sw.checked, false); assert.equal(sw.disabled, false); assert.notEqual(f.S.me.user.autopilot, true);
+  assert.match(box.querySelector('#apf-flash').innerHTML, /error-text">Autopilot could not be saved\. Try again\./);
+  f.clearTimers();
+});
+
+test('an auto-reload change that does not save puts the switch, amounts and summary back, and locks while it saves', async () => {
+  let pending = null; const sent = [];
+  const f = frontend({stripe: STRIPE_STUB, fetchImpl: (path, options = {}) => {
+    if (path === '/api/billing') return response(cardedBilling());
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    if (path === '/api/billing/auto-reload') { sent.push(JSON.parse(options.body)); pending = deferred(); return pending.promise; }
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewBilling(); await flush();
+  const box = f.root.querySelector('#autoreload'), amt = f.root.querySelector('#reload-amt'), when = () => f.root.querySelector('#autorel-when').innerHTML;
+  assert.equal(box.checked, true); assert.match(when(), /^<b>On\.<\/b>[\s\S]*\$25\.00 of credits/);
+  // A new amount that fails: auto-reload stays on, at the saved amount (it used to flip the switch off).
+  amt.value = '40'; let saving = amt.onchange(); await flush();
+  assert.deepEqual([box.disabled, amt.disabled], [true, true]);
+  assert.deepEqual(sent.at(-1), {on: true, amount: 40, threshold: 8});
+  pending.resolve(response({error: 'Your card was declined.'}, 402)); await saving; await flush();
+  assert.equal(box.checked, true); assert.equal(String(amt.value), '25'); assert.equal(box.disabled, false);
+  assert.equal(f.root.querySelector('#autorel-sum').textContent, 'Reload $25 at $8');
+  assert.match(when(), /^<b>On\.<\/b>[\s\S]*\$25\.00 of credits/);
+  assert.match(f.root.querySelector('#autorel-flash').innerHTML, /notice bad[\s\S]*Your card was declined\./);
+  // Switching off that fails: the summary doesn't keep saying Off.
+  box.checked = false; saving = box.onchange(); await flush();
+  pending.resolve(response({}, 503)); await saving; await flush();
+  assert.equal(box.checked, true); assert.match(when(), /^<b>On\.<\/b>/);
+  assert.match(f.root.querySelector('#autorel-flash').innerHTML, /may or may not have gone through/);
+  // A save that lands becomes the state the next failure goes back to.
+  box.checked = false; saving = box.onchange(); await flush();
+  pending.resolve(response({ok: true})); await saving; await flush();
+  assert.match(when(), /^<b>Off\.<\/b>/);
+  box.checked = true; saving = box.onchange(); await flush();
+  pending.resolve(response({error: 'Try again.'}, 400)); await saving; await flush();
+  assert.equal(box.checked, false); assert.match(when(), /^<b>Off\.<\/b>/);
+});
+
+test('a top-up that went through says so even when the page cannot refresh after it, so nobody buys twice', async () => {
+  let reads = 0;
+  const f = frontend({stripe: STRIPE_STUB, fetchImpl: path => {
+    if (path === '/api/billing') return ++reads === 1 ? response(cardedBilling()) : response({error: 'Tau is busy.'}, 500);
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    if (path === '/api/billing/topup') return response({ok: true, balance: 27.42});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewBilling(); await flush();
+  const btn = f.root.querySelector('#topup-btn');
+  await btn.onclick({currentTarget: btn}); await flush();
+  const said = f.root.querySelector('#topup-flash').innerHTML;
+  assert.match(said, /notice good/); assert.doesNotMatch(said, /Tau is busy/);
+  assert.match(said, /Added \$20\.00 in credits\.[\s\S]*New balance is \$27\.42\. The page didn’t refresh, so reload to see it\./);
+});
+
+test('Community: Post and Share my P&L send once while either is out, and a failed reply says why under its own box', async () => {
+  const post = {id: 11, body: 'Hi', author: 'Bob', username: 'bob', created_at: '2026-10-17T10:00:00Z', mine: false, comments: 1, reactions: [{emoji: '👍', count: 1, mine: false}]};
+  const sending = deferred(), reacting = deferred(); let posts = 0, reacts = 0, feedOk = true;
+  const f = frontend({fetchImpl: (path, options = {}) => {
+    if (path === '/api/strategies') return response({strategies: []});
+    if (path === '/api/community' && options.method === 'POST') { posts++; return sending.promise; }
+    if (path === '/api/community') return feedOk ? response({posts: [post]}) : response({error: 'Tau is busy.'}, 500);
+    if (path === '/api/community/11/react') { reacts++; return reacting.promise; }
+    if (path === '/api/community/11/comments' && options.method === 'POST') return response({error: 'Replies are closed on this post.'}, 400);
+    if (path === '/api/community/11/comments') return response({comments: [{body: 'First', author: 'Ana', created_at: '2026-10-17T10:00:00Z'}]});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewCommunity(); await flush();
+  const form = f.root.querySelector('#composer-post'), share = form.querySelector('[data-share="pnl"]'), postBtn = form.querySelector('[type=submit]');
+  const first = share.onclick(); await flush();
+  assert.deepEqual([share.disabled, postBtn.disabled], [true, true]);
+  await share.onclick(); form.onsubmit({preventDefault() {}}); await flush();
+  assert.equal(posts, 1);
+  feedOk = false;  // the post lands, the feed refresh after it doesn't
+  sending.resolve(response({ok: true, id: 12})); await first; await flush();
+  assert.deepEqual([share.disabled, postBtn.disabled], [false, false]);
+  assert.match(f.root.querySelector('#post-flash').innerHTML, /notice good[\s\S]*Posted\. The page didn’t refresh/);
+  feedOk = true;
+  // A reaction is one send per tap: a second tap while the first is out doesn't toggle it back off.
+  const feed = f.root.querySelector('#feed'), click = (target) => feed.listeners.get('click')({target});
+  const chip = feed.querySelector('.rx[data-emoji]');
+  click(chip); click(chip); await flush();
+  assert.equal(reacts, 1);
+  reacting.resolve(response({reactions: [{emoji: '👍', count: 2, mine: true}]})); await flush(); await flush();
+  click(feed.querySelector('.rx[data-emoji]')); await flush();
+  assert.equal(reacts, 2);
+  // A reply that fails says so under the reply box, not at the top of the feed.
+  await click(feed.querySelector('[data-act="comments"]')); await flush();
+  const box = feed.querySelector('.comments'), cf = box.querySelector('.cmt-form');
+  cf.querySelector('input').value = 'Nice';
+  await cf.onsubmit({preventDefault() {}, currentTarget: cf}); await flush();
+  assert.match(box.querySelector('.form-flash').innerHTML, /notice bad[\s\S]*Replies are closed on this post\./);
+  assert.equal(f.root.querySelector('main [data-alert0]'), null);
+});
+
+test('a card wall whose card form did not load says what to do, and Save becomes Try again', async () => {
+  let up = false;
+  const f = frontend({stripe: STRIPE_STUB, fetchImpl: path => {
+    if (path === '/api/billing') return response({configured: true, publishable_key: 'synthetic-only'});
+    if (path === '/api/billing/setup-intent') { if (!up) throw new TypeError('Failed to fetch'); return response({client_secret: 'synthetic'}); }
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.location.pathname = '/'; Object.assign(f.S.me, {needs_card: true, free_bonus: 20});
+  await f.paymentGate(); await flush();
+  const wall = () => f.document.body.querySelectorAll('.pay-modal').filter(d => d.isConnected).at(-1);
+  let dlg = wall();
+  assert.match(dlg.querySelector('#pay-hint').innerHTML, /The card form didn’t load\. Check your connection, or allow js\.stripe\.com if a blocker is on, then try again\./);
+  assert.doesNotMatch(dlg.querySelector('#pay-hint').innerHTML, /Failed to fetch|may or may not/);
+  assert.equal(dlg.querySelector('#pay-submit').textContent, 'Try again');
+  up = true;
+  dlg.querySelector('#payform').onsubmit({preventDefault() {}}); await flush(); await flush();
+  dlg = wall();
+  assert.equal(dlg.querySelector('#pay-hint').innerHTML, '');
+  assert.equal(dlg.querySelector('#pay-submit').textContent, 'Save payment method');
+});
+
+test('a session that ends mid-use says so on the sign-in page, and that a change was not saved', async () => {
+  const f = frontend({fetchImpl: () => response({error: 'Please sign in.'}, 401)});
+  f.location.pathname = '/community';
+  await assert.rejects(f.api('/api/community', {body: 'draft'}), /Please sign in/); await flush(); await flush();
+  assert.deepEqual(f.navigations, ['/signin?next=%2Fcommunity']);
+  assert.match(f.root.querySelector('.lnotice').textContent, /You were signed out, so that last change wasn’t saved\. Sign in to go back to the page and try it again\./);
+  // Said once: a later visit to sign-in is the plain page.
+  const signin = f.routes.find(([pattern]) => pattern.test('/signin'))[1];
+  await signin(); await flush();
+  assert.equal(f.root.querySelector('.lnotice'), null);
+  // A read that hits an ended session says only that it ended.
+  f.S.me = {user: {id: 7}}; f.location.pathname = '/deploy';
+  await assert.rejects(f.api('/api/deployments'), /Please sign in/); await flush(); await flush();
+  assert.match(f.root.querySelector('.lnotice').textContent, /^You were signed out\. Sign in to go back to the page you were on\.$/);
+  // An edge page in front of Tau that answers a 4xx with no words says what to do.
+  const g = frontend({fetchImpl: () => ({ok: false, status: 403, json: async () => { throw new SyntaxError('html'); }})});
+  await assert.rejects(g.api('/api/funds/paper', {kind: 'deposit', amount: 5}), /Tau couldn't do that \(403\)\. Reload the page and try again\./);
+});

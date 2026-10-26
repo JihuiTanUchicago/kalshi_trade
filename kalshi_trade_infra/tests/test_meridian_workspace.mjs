@@ -4895,3 +4895,134 @@ test('the last move says the forward test verdict and drops the live-ready marke
   assert.doesNotMatch(g.root.querySelector('#dash-ap').innerHTML, /keeps? trading/);
   g.clearTimers();
 });
+
+// ---- Failures a user can act on (Meridian): a write that failed says why next to it and puts the screen back;
+// a write that landed says so even when the page can't refresh after it; one send per press.
+
+test('Meridian: the autopilot switch in the panel locks while it saves, and a failed save goes back and says why in the panel', async () => {
+  const save = deferred(); let posts = 0;
+  const off = {...apStatus, autopilot: false, mode: 'off', focus: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData());
+    if (path === '/api/settings') { posts++; return save.promise; }
+    if (path === '/api/autopilot/status') return response(off);
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false; f.S.ap = off;
+  await f.viewDashboard(); await flush();
+  await f.root.querySelector('#dash-ap [data-apcard="focus"]').onclick(); await flush();
+  const box = f.root.parent.querySelector('#autopilot-float'), sw = box.querySelector('#apf-apswitch');
+  sw.checked = true; const saving = sw.onchange(); await flush();
+  assert.equal(sw.disabled, true);
+  save.resolve(response({error: 'Autopilot could not be saved. Try again.'}, 500)); await saving; await flush();
+  assert.equal(posts, 1);
+  assert.equal(sw.checked, false); assert.equal(sw.disabled, false); assert.notEqual(f.S.me.user.autopilot, true);
+  assert.match(box.querySelector('#apf-flash').innerHTML, /error-text">Autopilot could not be saved\. Try again\./);
+  f.clearTimers();
+});
+
+test('Meridian: an auto-reload change that does not save puts the switch, amounts and summary back', async () => {
+  let pending = null; const sent = [];
+  const f = frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: (path, options = {}) => {
+    if (path === '/api/billing') return response(cardedBilling());
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    if (path === '/api/billing/auto-reload') { sent.push(JSON.parse(options.body)); pending = deferred(); return pending.promise; }
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewBilling(); await flush();
+  const box = f.root.querySelector('#autoreload'), amt = f.root.querySelector('#reload-amt'), when = () => f.root.querySelector('#autorel-when').innerHTML;
+  amt.value = '40'; let saving = amt.onchange(); await flush();
+  assert.deepEqual([box.disabled, amt.disabled], [true, true]);
+  assert.deepEqual(sent.at(-1), {on: true, amount: 40, threshold: 8});
+  pending.resolve(response({error: 'Your card was declined.'}, 402)); await saving; await flush();
+  assert.equal(box.checked, true); assert.equal(String(amt.value), '25'); assert.equal(box.disabled, false);
+  assert.equal(f.root.querySelector('#autorel-sum').textContent, 'Reload $25 at $8');
+  assert.match(when(), /^<b>On\.<\/b>[\s\S]*\$25\.00 of credits/);
+  box.checked = false; saving = box.onchange(); await flush();
+  pending.resolve(response({}, 503)); await saving; await flush();
+  assert.equal(box.checked, true); assert.match(when(), /^<b>On\.<\/b>/);
+});
+
+test('Meridian: a top-up that went through says so even when the page cannot refresh after it', async () => {
+  let reads = 0;
+  const f = frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: path => {
+    if (path === '/api/billing') return ++reads === 1 ? response(cardedBilling()) : response({error: 'Tau is busy.'}, 500);
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    if (path === '/api/billing/topup') return response({ok: true, balance: 27.42});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewBilling(); await flush();
+  const btn = f.root.querySelector('#topup-btn');
+  await btn.onclick({currentTarget: btn}); await flush();
+  const said = f.root.querySelector('#topup-flash').innerHTML;
+  assert.match(said, /notice good/); assert.doesNotMatch(said, /Tau is busy/);
+  assert.match(said, /New balance is \$27\.42\. The page didn’t refresh, so reload to see it\./);
+});
+
+test('Meridian Community: Post and Share my P&L send once while either is out, and a failed reply says why under its own box', async () => {
+  const post = {id: 11, body: 'Hi', author: 'Bob', username: 'bob', created_at: '2026-10-17T10:00:00Z', mine: false, comments: 1, reactions: [{emoji: '👍', count: 1, mine: false}]};
+  const sending = deferred(), reacting = deferred(); let posts = 0, reacts = 0, feedOk = true;
+  const f = frontend({fetchImpl: (path, options = {}) => {
+    if (path === '/api/strategies') return response({strategies: []});
+    if (path === '/api/community' && options.method === 'POST') { posts++; return sending.promise; }
+    if (path === '/api/community') return feedOk ? response({posts: [post]}) : response({error: 'Tau is busy.'}, 500);
+    if (path === '/api/community/11/react') { reacts++; return reacting.promise; }
+    if (path === '/api/community/11/comments' && options.method === 'POST') return response({error: 'Replies are closed on this post.'}, 400);
+    if (path === '/api/community/11/comments') return response({comments: [{body: 'First', author: 'Ana', created_at: '2026-10-17T10:00:00Z'}]});
+    return response({});
+  }});
+  await f.viewCommunity(); await flush();
+  const form = f.root.querySelector('#composer-post'), share = form.querySelector('[data-share="pnl"]'), postBtn = form.querySelector('[type=submit]');
+  const first = share.onclick(); await flush();
+  assert.deepEqual([share.disabled, postBtn.disabled], [true, true]);
+  await share.onclick(); form.onsubmit({preventDefault() {}}); await flush();
+  assert.equal(posts, 1);
+  feedOk = false;
+  sending.resolve(response({ok: true, id: 12})); await first; await flush();
+  assert.deepEqual([share.disabled, postBtn.disabled], [false, false]);
+  assert.match(f.root.querySelector('#post-flash').innerHTML, /notice good[\s\S]*Posted\. The page didn’t refresh/);
+  feedOk = true;
+  const feed = f.root.querySelector('#feed'), click = (target) => feed.listeners.get('click')({target});
+  const chip = feed.querySelector('.rx[data-emoji]');
+  click(chip); click(chip); await flush();
+  assert.equal(reacts, 1);
+  reacting.resolve(response({reactions: [{emoji: '👍', count: 2, mine: true}]})); await flush(); await flush();
+  await click(feed.querySelector('[data-act="comments"]')); await flush();
+  const box = feed.querySelector('.comments'), cf = box.querySelector('.cmt-form');
+  cf.querySelector('input').value = 'Nice';
+  await cf.onsubmit({preventDefault() {}, currentTarget: cf}); await flush();
+  assert.match(box.querySelector('.form-flash').innerHTML, /notice bad[\s\S]*Replies are closed on this post\./);
+});
+
+test('Meridian: a card wall whose card form did not load says what to do, and Save becomes Try again', async () => {
+  let up = false;
+  const f = frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: path => {
+    if (path === '/api/billing') return response({configured: true, publishable_key: 'synthetic-only'});
+    if (path === '/api/billing/setup-intent') { if (!up) throw new TypeError('Failed to fetch'); return response({client_secret: 'synthetic'}); }
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.location.pathname = '/'; Object.assign(f.S.me, {needs_card: true, free_bonus: 20});
+  await f.paymentGate(); await flush();
+  const wall = () => f.document.body.querySelectorAll('.pay-modal').filter(d => d.isConnected).at(-1);
+  let dlg = wall();
+  assert.match(dlg.querySelector('#pay-hint').innerHTML, /The card form didn’t load\. Check your connection, or allow js\.stripe\.com if a blocker is on, then try again\./);
+  assert.equal(dlg.querySelector('#pay-submit').textContent, 'Try again');
+  up = true;
+  dlg.querySelector('#payform').onsubmit({preventDefault() {}}); await flush(); await flush();
+  dlg = wall();
+  assert.equal(dlg.querySelector('#pay-hint').innerHTML, '');
+  assert.equal(dlg.querySelector('#pay-submit').textContent, 'Save payment method');
+});
+
+test('Meridian: a session that ends mid-use says so on the sign-in page, once', async () => {
+  const f = frontend({fetchImpl: () => response({error: 'Please sign in.'}, 401)});
+  const signin = f.routes.find(([pattern]) => pattern.test('/signin'))[1];
+  f.location.pathname = '/signin';  // already there: the harness's history keeps the query in the path
+  await assert.rejects(f.api('/api/community', {body: 'draft'}), /Please sign in/);
+  await signin(); await flush();
+  assert.match(f.root.querySelector('.lnotice').textContent, /You were signed out, so that last change wasn’t saved\./);
+  await signin(); await flush();
+  assert.equal(f.root.querySelector('.lnotice'), null);
+});
