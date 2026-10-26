@@ -322,7 +322,9 @@ test('live deployment forwards the exact trimmed typed phrase and leaves rejecte
     });
     await f.viewStrategy(42);
     const form = f.root.querySelector('#live-confirm');
+    let focused = false; form.confirm = {value: '', focus: () => { focused = true; }};
     assert.equal(form.hidden, true); f.root.querySelector('#dep-live').onclick(); assert.equal(form.hidden, false);
+    assert.equal(focused, true);  // the typed confirm takes keyboard focus as it opens
     form.confirm = {value: typed}; form.onsubmit({preventDefault() {}}); await flush();
     assert.equal(postRequests(f).length, 1); assert.deepEqual(f.navigations, []);
     assert.match(f.root.querySelector('#depflash').innerHTML, /Synthetic server confirmation refusal/);
@@ -2742,4 +2744,33 @@ test('a page that throws on a reply it did not expect shows plain words, not the
   const html = f.root.querySelector('main').innerHTML;
   assert.match(html, /Something went wrong on this page\. Try again\./);
   assert.doesNotMatch(html, /TypeError|is not a function|undefined/);
+});
+
+test('Tau: a page change names the tab, and a deployment control names its strategy and says what it did', async () => {
+  const dep = {id: 1, strategy_id: 1, title: 'Dep <1>', market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5,
+    max_positions: 1, backtest: {out_of_sample: null}};
+  let stopped = false;
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/deployments') return response({deployments: stopped ? [] : [dep], open_positions: []});
+    if (path === '/api/deployments/1/stop') { stopped = true; return response({ok: true}); }
+    return response({});
+  }});
+  f.location.pathname = '/deploy';
+  await f.render(); await flush(); await flush();
+  assert.equal(f.document.title, 'Deploy · Tau');
+  // Every row's Pause and Remove read the same; the hidden strategy name tells them apart.
+  assert.match(f.root.querySelector('#deps [data-act="pause"]').innerHTML, /^Pause<span class="vh"> Dep &lt;1&gt;<\/span>$/);
+  // The live regions are in the page before anything is said, and each message goes out through them.
+  const said = (id) => { [...f.timeouts.values()].forEach((run) => run()); f.timeouts.clear(); return f.document.getElementById(id).textContent; };
+  const stop = f.root.querySelector('#deps [data-act="stop"]');
+  stop.onclick();
+  assert.equal(stop.textContent, 'Confirm stop');
+  assert.equal(f.document.getElementById('sr-status').getAttribute('aria-live'), 'polite');
+  assert.equal(f.document.getElementById('sr-alert').getAttribute('aria-live'), 'assertive');
+  assert.equal(said('sr-status'), 'Confirm stop: press again within 5 seconds.');
+  stop.dataset.armed = '1';  // running the timers above also ran the 5s disarm
+  stop.onclick(); await flush(); await flush(); await flush();
+  assert.equal(stopped, true);
+  assert.equal(said('sr-status'), 'Deployment stopped.');
 });

@@ -431,6 +431,8 @@
   // Public routes: viewable signed-OUT, so the boot guard must not force /api/me + a signin bounce.
   const PUBLIC = new Set(['/signin', '/terms', '/privacy']);
   const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+  // A scroll the page animates jumps instead for a reader who asked for less motion.
+  const smooth = () => (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
   // On a phone the section tabs scroll sideways in one row. Mark the edges that have more tabs past
   // them (more-l / more-r on the nav), so the CSS fades and points only those edges, and the hint goes
   // away once the last tab is in view.
@@ -464,7 +466,12 @@
     // re-render dropped the reader back at the top of the page.
     const h = e.target.closest('a[href^="#"]');
     const to = h && h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1));
-    if (to) { e.preventDefault(); to.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (to) {
+      e.preventDefault(); to.scrollIntoView({ behavior: smooth(), block: 'start' });
+      // Focus follows the scroll (Skip to content), so the next Tab starts from the target, not from the link.
+      if (!to.hasAttribute('tabindex')) to.setAttribute('tabindex', '-1');
+      to.focus({ preventScroll: true }); return;
+    }
     const a = e.target.closest('a[href^="/"]');
     if (!a || a.target || e.metaKey || e.ctrlKey || e.shiftKey || a.hasAttribute('download') || a.dataset.native != null) return;
     e.preventDefault();
@@ -532,6 +539,21 @@
     } catch (e) { /* best-effort */ }
   }
 
+  // A new page in the app names itself in the tab title and puts keyboard focus at its top (<main>), as a
+  // full page load would: a screen reader says where it landed, and Tab starts from the page instead of
+  // from the link the repaint removed. The first page of a visit and a repaint of the same page leave
+  // focus alone, and so does a page that already put focus somewhere (a field it opened).
+  let shownPath = null;
+  function pageArrived(path) {
+    const h = root.querySelector('h1'), tab = root.querySelector('.services [aria-current="page"]');
+    // The signed-out landing keeps the plain product name; its headline is not a page name.
+    const name = root.querySelector('.services') ? ((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
+    document.title = name ? `${name.length > 60 ? name.slice(0, 59) + '\u2026' : name} \u00b7\u00a0Tau` : 'Tau';
+    const moved = shownPath !== null && shownPath !== path;
+    shownPath = path;
+    const a = document.activeElement, main = document.getElementById('main');
+    if (moved && main && main.focus && (!a || a === document.body)) main.focus({ preventScroll: true });
+  }
   async function render() {
     clearTimers();
     checkVersion();
@@ -577,6 +599,7 @@
     }
     if (gen !== S.gen) return;  // the user moved on while this page loaded
     root.setAttribute('aria-busy', 'false');
+    pageArrived(path);
     paymentGate().catch(() => {});
   }
 
@@ -628,7 +651,7 @@
     };
     // Animated showcase reel on the left.
     const stage = dlg.querySelector('#pay-stage'), cap = dlg.querySelector('#pay-cap'), dots = dlg.querySelector('#pay-dots');
-    dots.innerHTML = PAY_SHOW.map((_, i) => `<button type="button" class="pay-dot${i === 0 ? ' on' : ''}"></button>`).join('');
+    dots.innerHTML = PAY_SHOW.map((s, i) => `<button type="button" class="pay-dot${i === 0 ? ' on' : ''}" aria-label="${esc(s[1])}"></button>`).join('');
     let sIdx = -1;
     const show = (i) => {
       sIdx = (i + PAY_SHOW.length) % PAY_SHOW.length;
@@ -696,6 +719,7 @@
     const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
     const paint = (d) => {
       dot.hidden = !d.unread;
+      trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
       list.innerHTML = d.items.length
         ? d.items.map((n) => `<a class="notif ${n.read ? '' : 'unread'}" href="${n.link || '#'}">${esc(n.body)}<time>${when(n.created_at)}</time></a>`).join('')
         : '<p class="bell-empty">No notifications yet.</p>';
@@ -709,11 +733,13 @@
       if (!menu.hidden) { close(); return; }
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
       if (data.unread) {
-        data.unread = 0; dot.hidden = true;
+        data.unread = 0; dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
         list.querySelectorAll('.notif.unread').forEach((n) => n.classList.remove('unread'));
         api('/api/notifications/read', {}).catch(() => {});
       }
     };
+    // Esc closes the list and gives focus back to the bell.
+    wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); trig.focus(); } });
   }
 
   function shell(active, board, main) {
@@ -746,6 +772,7 @@
         if (menu.hidden) { menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true); }
         else close();
       };
+      prof.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); trig.focus(); } });
     }
     wireBell();
     // Phones scroll the section tabs in one row; bring the current one into view.
@@ -827,7 +854,8 @@
   const fig = (label, value, opts = {}) =>
     `<div class="m ${opts.cls || ''}"><dt class="lab">${label}</dt><dd><span class="fig ${opts.v > 0 ? 'tint pos' : opts.v < 0 ? 'tint neg' : ''}">${value}</span></dd>${opts.small ? `<div class="sub-fig">${opts.small}</div>` : ''}</div>`;
   const dirTag = () => '';
-  const notice = (msg, kind = '') => `<div class="notice ${kind}" role="${kind === 'bad' ? 'alert' : 'status'}">${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
+  // quiet: the words go out through announce(), so the notice leaves off its own live role (read once).
+  const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
   // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
   const loadFail = (msg) => `<div class="load-fail">${notice(msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
   // A page's own bug (a TypeError on a reply it didn't expect) is not something to print to the user.
@@ -849,6 +877,7 @@
     if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.classList.remove('armed'); return fire(); }
     const orig = btn.innerHTML;
     btn.dataset.armed = '1'; btn.classList.add('armed'); btn.textContent = label;
+    announce(`${label}: press again within 5 seconds.`);
     setTimeout(() => { if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.classList.remove('armed'); btn.innerHTML = orig; } }, 5000);
   }
   async function busy(btn, fn) {
@@ -867,7 +896,39 @@
   }
   function flash(where, msg, kind) {
     const el = typeof where === 'string' ? root.querySelector(where) : where;
-    if (el) el.innerHTML = notice(msg, kind);
+    if (el) { el.innerHTML = notice(msg, kind, true); announce(msg, kind === 'bad'); }
+  }
+  // Two live regions for the whole app, in the page from boot (a region added along with its words is
+  // often not read out): news (a deploy landed, a confirm is armed) goes to the polite one, an error to
+  // the assertive one. Emptying first lets the same words be read again.
+  function setupAnnouncer() {
+    if (!document.body || !document.createElement) return;
+    [['sr-status', 'polite'], ['sr-alert', 'assertive']].forEach(([id, level]) => {
+      if (document.getElementById(id)) return;
+      const el = document.createElement('div');
+      el.id = id; el.className = 'vh'; el.setAttribute('aria-live', level); el.setAttribute('aria-atomic', 'true');
+      document.body.appendChild(el);
+    });
+  }
+  function announce(msg, urgent) {
+    if (!msg) return;
+    setupAnnouncer();
+    const el = document.getElementById(urgent ? 'sr-alert' : 'sr-status');
+    if (!el) return;
+    el.textContent = '';
+    setTimeout(() => { el.textContent = msg; }, 50);
+  }
+  // A repaint that replaces the control holding keyboard focus puts focus on its copy (same id, or same
+  // tag, class and link), so a poll or a toggle does not drop a keyboard user at the top of the page.
+  function keepFocus(host, repaint) {
+    const a = document.activeElement;
+    const had = a && a !== host && host.contains && host.contains(a) ? a : null;
+    repaint();
+    if (!had || had.isConnected) return;
+    const cls = String(had.className || '').split(/\s+/)[0], href = had.getAttribute('href');
+    const key = had.id ? '#' + had.id : had.tagName.toLowerCase() + (cls ? '.' + cls : '') + (href ? `[href="${href.replace(/"/g, '\\"')}"]` : '');
+    let next = null; try { next = host.querySelector(key); } catch (e) { /* a selector the page cannot read */ }
+    if (next && next.focus) next.focus({ preventScroll: true });
   }
 
   // ---------- charts ----------
@@ -1282,9 +1343,9 @@
     const live = d.mode === 'live';
     const modeTag = live ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">DEMO</span>' : '<span class="mk">PAPER</span>';
     const actions = controls ? `<td class="act" data-lab="">
-        ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause</button>` : ''}
-        ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume</button>` : ''}
-        <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove</button></td>` : '';
+        ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause<span class="vh"> ${esc(d.title)}</span></button>` : ''}
+        ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume<span class="vh"> ${esc(d.title)}</span></button>` : ''}
+        <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
         <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div>${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
@@ -1302,18 +1363,28 @@
     scope.querySelectorAll('[data-dep]').forEach((btn) => {
       btn.onclick = () => {
         const run = () => busy(btn, async () => {
-          try { await api(`/api/deployments/${btn.dataset.dep}/${btn.dataset.act}`, {}); await after(); } catch (e) { alert0(e.message); }
+          try { await api(`/api/deployments/${btn.dataset.dep}/${btn.dataset.act}`, {}); await after(); depActed(btn.dataset.dep, btn.dataset.act); } catch (e) { alert0(e.message); }
         });
         if (btn.dataset.act === 'stop') armed(btn, 'Confirm stop', run); else run();
       };
     });
   }
+  // After Pause, Resume or Remove the board is repainted without the pressed button: say what happened,
+  // and put focus on that deployment's next control, or at the top of the page once its row is gone.
+  function depActed(id, act) {
+    announce({ pause: 'Deployment paused.', resume: 'Deployment resumed.', stop: 'Deployment stopped.' }[act]);
+    const a = document.activeElement;
+    if (a && a !== document.body && a.isConnected !== false) return;
+    const next = root.querySelector(`[data-dep="${id}"]`) || document.getElementById('main');
+    if (next && next.focus) next.focus({ preventScroll: true });
+  }
   function alert0(msg) {
     const host = root.querySelector('#flash') || root.querySelector('main');
     if (!host) return;
     const el = document.createElement('div');
-    el.innerHTML = notice(msg, 'bad');
+    el.innerHTML = notice(msg, 'bad', true);
     host.prepend(el.firstChild);
+    announce(msg, true);
   }
 
   // ---------- landing (pre-login) ----------
@@ -1638,6 +1709,7 @@
       ].filter(Boolean).join('<span class="sep">/</span>');
       // While autopilot is off its card's "Turn on autopilot" is the one primary button on the page.
       const board = `
+        <h1 class="vh">Dashboard</h1>
         <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn${S.me.user.autopilot ? ' primary' : ''}" href="/research">New research</a></div>
         ${sinceStrip(d, '#dash-deps')}
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>
@@ -2645,7 +2717,7 @@
       const anyPassed = list.some(bulkDeployable);
       slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed })).join(''), anyPassed)
         + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} ·\u00a0${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
-      slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; load(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; load(); window.scrollTo({ top: 0, behavior: smooth() }); });
       wireBulk();
     };
     // Multi-select deploy (paper only; live stays per-strategy behind the typed-LIVE gate).
@@ -3049,7 +3121,7 @@
     }); };
     const stopDep = root.querySelector('#stop-dep');
     if (stopDep) stopDep.onclick = () => armed(stopDep, 'Confirm stop', () => busy(stopDep, async () => {
-      try { for (const d of activeDeps) await api(`/api/deployments/${d.id}/stop`, {}); viewStrategy(s.id); } catch (e) { flash('#delflash', e.message, 'bad'); }
+      try { for (const d of activeDeps) await api(`/api/deployments/${d.id}/stop`, {}); viewStrategy(s.id).then(() => depActed(null, 'stop')); } catch (e) { flash('#delflash', e.message, 'bad'); }
     }));
     const delStrat = root.querySelector('#del-strat');
     if (delStrat) delStrat.onclick = () => {
@@ -3073,7 +3145,7 @@
       });
     };
     const depLive = root.querySelector('#dep-live');
-    if (depLive) depLive.onclick = () => { if (!liveWhy) root.querySelector('#live-confirm').hidden = false; };
+    if (depLive) depLive.onclick = () => { if (!liveWhy) { const f = root.querySelector('#live-confirm'); f.hidden = false; if (f.confirm && f.confirm.focus) f.confirm.focus(); } };
     const lc = root.querySelector('#live-confirm');
     if (lc) lc.onsubmit = (e) => {
       e.preventDefault();
@@ -3840,7 +3912,7 @@
       const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
       rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (UTC)</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
         <div class="xpage">${pg > 0 ? `<button class="btn sm" data-rp="${pg - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${pg + 1} of ${num(pages)} ·\u00a0${num(pts.length)} points</span>${pg + 1 < pages ? `<button class="btn sm" data-rp="${pg + 1}">Next →</button>` : '<span></span>'}</div>`;
-      rawEl.querySelectorAll('[data-rp]').forEach((b) => b.onclick = () => { pg = +b.dataset.rp; renderRaw(); window.scrollTo({ top: rawEl.offsetTop - 80, behavior: 'smooth' }); });
+      rawEl.querySelectorAll('[data-rp]').forEach((b) => b.onclick = () => { pg = +b.dataset.rp; renderRaw(); window.scrollTo({ top: rawEl.offsetTop - 80, behavior: smooth() }); });
     };
     renderRaw();
     const dl = root.querySelector('#dl-csv');
@@ -3879,7 +3951,7 @@
       const pages = Math.max(1, Math.ceil(d.matched / d.per));
       body.innerHTML = `<div class="sheet"><table class="stack t-explore"><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open int.</th><th class="num" aria-label="Link"></th></tr></thead><tbody>${rows}</tbody></table></div>
         ${pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : ''}`;
-      body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: 'smooth' }); load(); });
+      body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: smooth() }); load(); });
     };
     let t; root.querySelector('#xq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); f.page = 0; sync(); load(); }, 220); });
     root.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; root.querySelectorAll('[data-sort]').forEach((o) => o.setAttribute('aria-pressed', o === b)); sync(); load(); });
@@ -4407,8 +4479,17 @@
       box.className = 'apf' + (m.cls ? ' ' + m.cls : '');
       box.dataset.shell = '';
       const tip = d && d.autopilot ? ((d.story && d.story[0]) || '') : '';
-      box.innerHTML = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false"${tip ? ` title="${esc(tip)}"` : ''}>
+      const pill = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false"${tip ? ` title="${esc(tip)}"` : ''}>
         <span class="apf-dot" aria-hidden="true"></span><span class="apf-pill-label">${esc(apPillLabel(d, m))}</span>${ICON.chev || ''}</button>`;
+      // The 20s status read repaints the pill only when it changed (a screen reader re-read a focused pill
+      // each time), and a repaint or the panel closing leaves focus on the pill.
+      if (box.apPill === pill && box.querySelector('.apf-pill')) { apYield(); return; }
+      box.apPill = pill;
+      if (box.removeAttribute) { box.removeAttribute('role'); box.removeAttribute('aria-label'); }
+      const a = document.activeElement, hadFocus = !!(a && a !== document.body && box.contains && box.contains(a));
+      box.innerHTML = pill;
+      const pb = box.querySelector('.apf-pill');
+      if (hadFocus && pb && pb.focus) pb.focus({ preventScroll: true });
       box.querySelector('[data-ap]').onclick = (e) => apAction(box, 'toggle', e);
       apYield();
       return;
@@ -4437,10 +4518,13 @@
     box.classList.toggle('yield', covers);
   }
   function apBuildShell(box) {
-    box.dataset.shell = 'expanded';
+    box.dataset.shell = 'expanded'; box.apPill = '';
+    box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Autopilot');
+    // Esc closes the open panel, and focus goes back to the pill.
+    box.onkeydown = (e) => { if (e.key === 'Escape' && apExpanded()) { e.stopPropagation(); apAction(box, 'toggle'); } };
     box.innerHTML = `
       <div class="apf-head"><span class="apf-dot" aria-hidden="true"></span><b id="apf-label"></b>
-        <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse">${ICON.cross || '×'}</button></div>
+        <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse autopilot">${ICON.cross || '×'}</button></div>
       <div class="apf-top">
         <div class="autopilot" id="apf-ap">
           <span id="apf-ap-copy"></span>
@@ -4657,7 +4741,13 @@
   }
   function apFlash(box, msg, kind) { const f = box.querySelector('#apf-flash'); if (f) f.innerHTML = `<p class="${kind === 'bad' ? 'error-text' : 'hint'}">${esc(msg)}</p>`; }
   async function apAction(box, action, e) {
-    if (action === 'toggle') { localStorage.setItem('tau_ap_open', apExpanded() ? '0' : '1'); renderAutopilot(box, S.ap); return; }
+    if (action === 'toggle') {
+      const opening = !apExpanded();
+      localStorage.setItem('tau_ap_open', opening ? '1' : '0'); renderAutopilot(box, S.ap);
+      // Opened, focus goes into the panel (its close button comes first); closed, back to the pill.
+      const to = opening && box.querySelector('.apf-x'); if (to && to.focus) to.focus({ preventScroll: true });
+      return;
+    }
     if (action === 'livearm') {
       const reason = apLiveBlock(S.ap);
       if (reason) return apFlash(box, reason.trim(), 'bad');  // don't open the confirm if a gate is unmet
@@ -4699,16 +4789,17 @@
     const d = S.hot;
     const rows = d && d.markets && d.markets.length ? d.markets.map(hotRowHtml).join('')
       : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying in a minute.' : loading(120)}</div>`;
-    rail.innerHTML = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}"><span class="hot-tab-label">Hot markets</span><span class="hot-chev">${open ? '‹' : '›'}</span></button>
+    keepFocus(rail, () => { rail.innerHTML = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}"><span class="hot-tab-label">Hot markets</span><span class="hot-chev">${open ? '‹' : '›'}</span></button>
       <div class="hot-panel">
-        <div class="hot-head"><div><span class="hot-kicker">Hot markets</span><span class="hot-now"><span class="hot-dot"></span>Right now</span></div><button class="hot-x" data-hot="toggle" aria-label="Collapse">‹</button></div>
+        <div class="hot-head"><div><span class="hot-kicker">Hot markets</span><span class="hot-now"><span class="hot-dot"></span>Right now</span></div><button class="hot-x" data-hot="toggle" aria-label="Collapse hot markets">‹</button></div>
         <div class="hot-list">${rows}</div>
         <div class="hot-ft">${d && d.at ? 'Updated ' + sinceMin(d.at) : ''} ·\u00a0<a href="/explore">See all markets →</a></div>
-      </div>`;
+      </div>`; });
     rail.querySelectorAll('[data-hot="toggle"]').forEach((b) => b.onclick = (e) => {
       if (e.currentTarget.classList.contains('hot-tab') && open) return; // the spine only expands
       const next = !hotOpen(); localStorage.setItem('tau_hotrail', next ? '1' : '0');
       document.body.classList.toggle('hot-open', next); renderHotRail();
+      const to = rail.querySelector(next ? '.hot-x' : '.hot-tab'); if (to && to.focus) to.focus({ preventScroll: true });
     });
     rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
   }
@@ -5131,6 +5222,7 @@
     poll(load, 4000);
   }
 
+  setupAnnouncer();
   setupGlossary();
   render();
 })();
