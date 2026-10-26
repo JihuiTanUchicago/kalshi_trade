@@ -76,6 +76,22 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.equal(g.navigations.at(-1), '/strategies?status=');
   });
 
+  test(`${name}: the pass rate is left out under the Deployed toggle, where it could only read 100%`, async () => {
+    const figs = async (search, counts) => {
+      const f = frontend({fetchImpl: () => response({...listOf(2), counts})});
+      f.location.pathname = '/strategies'; f.location.search = search;
+      await f.viewStrategies(); await flush();
+      const passrate = f.root.querySelector('#strategy-passrate');  // Meridian's summary line
+      return f.root.querySelector('#sfigs').innerHTML + (passrate ? ' | ' + passrate.textContent : '');
+    };
+    const on = await figs('?status=&deployed=1', {total: 5, passed: 5, deployed: 5});
+    assert.doesNotMatch(on, /100\.0%/); assert.match(on, /not with Deployed on: only passed strategies deploy/);
+    const off = await figs('?status=', {total: 56, passed: 16, failed: 19, rejected: 14, deployed: 5});
+    assert.match(off, /28\.6%/); assert.doesNotMatch(off, /not with Deployed on/);
+    // Nothing passed yet is a 0% rate, not a blank.
+    assert.match(await figs('?status=', {total: 4, rejected: 4}), /0\.0%/);
+  });
+
   test(`${name}: a strategy the autopilot found is tagged on its row; the user's own are not`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const tag = /<span class="mk quiet ap-run-tag" title="Found in a research session the autopilot started\.">Autopilot<\/span>/;

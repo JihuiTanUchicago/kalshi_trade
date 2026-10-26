@@ -3465,9 +3465,12 @@
       // A remembered page past the end (the list shrank since) starts again at the first.
       if (sp > 0 && d.matched && !(d.strategies || []).length) { sp = 0; history.replaceState(null, '', location.pathname + location.search.replace(/([?&])page=\d+&?/, '$1').replace(/[?&]$/, '')); return load(); }
       const counts = d.counts || {}, total = counts.total || 0, c = (st) => counts[st] || 0;
+      // Under the Deployed toggle every counted strategy passed (only passed ones deploy), so its rate read
+      // a meaningless 100%: it is left out there rather than shown.
+      const rate = total && !f.deployed ? c('passed') / total : null;
       root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed')) + fig(gl('Void on unseen data', 'void'), c('failed')) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
-        fig('Pass rate', total ? pct(c('passed') / total, false) : '—');
-      root.querySelector('#strategy-passrate').textContent = total ? `${pct(c('passed') / total, false)} pass rate` : 'Research results';
+        fig('Pass rate', rate != null ? pct(rate, false) : '—', { small: f.deployed ? 'not with Deployed on: only passed strategies deploy' : '' });
+      root.querySelector('#strategy-passrate').textContent = rate != null ? `${pct(rate, false)} pass rate` : 'Research results';
       const kept = total - c('failed') - c('rejected');
       root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; });
       const depChip = root.querySelector('[data-toggle="deployed"]');
