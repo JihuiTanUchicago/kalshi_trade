@@ -1255,6 +1255,25 @@
   // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.
   // Each signed amount stays on one line (a phone would otherwise break between the minus and the $).
   const btCheckLine = (c, tag = 'div') => c && c.line ? `<${tag} class="sub-fig bt-check bt-${esc(c.verdict)}">${esc(c.line).replace(/[+\u2212]\$[\d,]+\.\d\d/g, (m) => `<span class="amt">${m}</span>`)}</${tag}>` : '';
+  // A paper row's strategy record toward the live check (the server's `road`: all its paper
+  // deployments, counted as the strategy page's Road to live counts them) and when the trades, events
+  // and hours could be in at its pace; once they are, which checks still refuse it (`failing`).
+  const ROAD_FAILING = { candidate: 'gatekeeper', legacy_trades: 'trade count', legacy_pnl: 'P&amp;L', net_pnl: 'P&amp;L', edge: 'edge', recent: 'recent form', demo: 'demo record' };
+  const roadLine = (d) => {
+    const r = d.road;
+    if (!r) return '';
+    const parts = [[r.trades, r.trades_needed, 'trades'], [r.events, r.events_needed, 'events'], [Math.floor(r.span_hours), r.span_needed_hours, 'hours']]
+      .filter(([have, need]) => have < need).map(([have, need, unit]) => `${num(have)}/${num(need)}\u00a0${unit}`);
+    let text;
+    if (parts.length) text = parts.join(' ·\u00a0') + (!r.running ? ' ·\u00a0paused, so not growing' : r.eta_days != null ? ` ·\u00a0enough in ${roadDays(r.eta_days)} at its pace` : '');
+    else if (!r.failing) text = 'trades, events and hours are in';
+    else if (!r.failing.length) text = 'its record clears every check. Live money only if you deploy it there';
+    else {
+      const names = [...new Set(r.failing.map((k) => ROAD_FAILING[k] || esc(k.replace(/_/g, ' '))))];
+      text = `trades, events and hours are in; ${names.length} check${names.length === 1 ? '' : 's'} left: ${names.join(', ')}`;
+    }
+    return `<div class="sub-fig road-line">Toward live: ${text}</div>`;
+  };
   function deploymentSlip(d, regs, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
     // Realized beside what the backtest's unseen-data average per trade says the same trades should
@@ -1268,7 +1287,7 @@
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove</button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div>${btCheckLine(d.backtest_check)}</td>
+        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div>${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${d.status === 'running' ? modeTag : mark(d.status, live)}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -2693,6 +2712,52 @@
     }).join('');
     return lines ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}</section>` : '';
   }
+  // Road to live in words, from the checks the server sends (live-readiness): what is left, each with
+  // what it has and what it needs, and when the trades, events and hours could be in at the pace it
+  // trades (the server's `pace`). Real money never follows on its own: it takes the user's own step.
+  const roadDays = (d) => d < 1 ? 'under a day' : d < 1.5 ? 'about a day' : `about ${Math.round(d)} days`;
+  // Three places, so a p of 0.104 never reads "0.10" beside "needs 0.10 or lower".
+  const roadP = (v) => v == null ? '—' : v < 0.001 ? 'under 0.001' : (+v).toFixed(3);
+  const roadClear = (r) => !!(r.deployment_candidate && r.paper && r.paper.ready);
+  function roadLeft(r, s) {
+    const p = r.paper, c = p.checks || {}, left = [];
+    const more = (have, need, unit) => `${num(Math.max(0, need - have))} more ${unit} (${num(have)} of ${num(need)})`;
+    const demoOn = (s.deployments || []).some((d) => d.mode === 'demo' && d.status !== 'stopped');
+    if (!r.deployment_candidate) left.push('the gatekeeper’s clearance');
+    if (c.realistic_trades === false) left.push(more(+p.trades, +p.trades_needed, 'paper trades'));
+    if (c.legacy_pnl === false) left.push(`paper P&amp;L with every fill at $0 or above (now ${usd(p.legacy_pnl, true)})`);
+    if (c.events === false) left.push(more(+p.events, +p.events_needed, 'events'));
+    if (c.net_pnl === false) left.push(`net P&amp;L above $0 (now ${usd(p.net_pnl, true)})`);
+    if (c.span === false) left.push(`${num(Math.ceil(p.span_needed_hours - p.span_hours))}h more of record (${num(Math.floor(p.span_hours))}h of ${num(p.span_needed_hours)}h)`);
+    if (c.edge === false) left.push(p.p_value == null ? 'the edge test, run once the trades and events are in' : `a clearer edge (p ${roadP(p.p_value)}, needs ${p.p_value_needed.toFixed(2)} or lower)`);
+    if (c.recent === false) left.push(`its newer trades above $0 (now ${usd(p.recent_net_pnl, true)})`);
+    if (c.demo === false) {
+      left.push(+p.demo_orders < +p.demo_orders_needed ? more(+p.demo_orders, +p.demo_orders_needed, 'demo orders') + (demoOn ? '' : ' on a demo deployment')
+        : p.demo_unresolved ? `${num(p.demo_unresolved)} lost demo order${p.demo_unresolved === 1 ? '' : 's'} accounted for`
+        : (p.demo_mismatched_tickers || []).length ? 'a demo book that matches the demo exchange'
+        : 'a check of its demo book against the demo exchange in the last 24h');
+    }
+    // A failing check this page doesn't name is said in the server's own words.
+    if (!left.length && !roadClear(r)) left.push(esc(p.why || r.blocking || 'a check this page can’t name'));
+    return left;
+  }
+  function roadSummary(r, s, liveWhy, total) {
+    const p = r.paper, c = p.checks || {}, pace = r.pace, left = roadLeft(r, s);
+    const lines = [];
+    if (roadClear(r)) {
+      lines.push(`<p class="road-sum"><b>Its record clears every check.</b> It still trades paper money only. ${liveWhy ? 'Before it can go live: ' + liveWhy : 'Moving it to live money is your call: Deploy with live money, then type LIVE.'}</p>`);
+    } else {
+      lines.push(`<p class="road-sum"><b>${left.length} of ${total} check${total === 1 ? '' : 's'} left</b> before it may trade real money: ${left.join('; ')}.</p>`);
+      const counts = c.realistic_trades === false || c.events === false || c.span === false;
+      const paused = (s.deployments || []).some((d) => d.mode === 'paper' && d.status === 'paused');
+      const tpd = pace && pace.trades_per_day;
+      if (pace && !pace.running) lines.push(`<p class="hint">${paused ? 'Its paper deployment is paused, so its record isn’t growing. <a href="/deploy">Resume it on Deploy</a>.'
+        : `It isn’t running on paper, so its record isn’t growing${+p.trades ? `. Its ${num(p.trades)} earlier paper trade${+p.trades === 1 ? '' : 's'} still count` : ''}. Deploy it on paper to add to it.`}</p>`);
+      else if (pace && counts && pace.eta_days != null) lines.push(`<p class="hint road-eta">At its ${pace.rate_from === 'paper' ? 'paper' : 'backtest'} pace (${tpd >= 1 ? `about ${num(Math.round(tpd))} trade${Math.round(tpd) === 1 ? '' : 's'} a day` : 'under one trade a day'}), it could have the trades, events and hours in <b>${roadDays(pace.eta_days)}</b>. The P&amp;L, edge and demo checks are judged on that record, and it may not pass them.</p>`);
+      else if (pace && counts) lines.push('<p class="hint road-eta">It hasn’t traded enough yet to estimate when it could have the trades, events and hours.</p>');
+    }
+    return lines.join('');
+  }
   // Where a strategy sits on the paper → demo → live ladder: one line per book it runs in now, each
   // with its own closed trades and realized P&L (never added to another book's), then one line on what
   // the next rung needs. The live rung's needs come from Road to live (live-readiness); until that data
@@ -2700,14 +2765,15 @@
   const LADDER = [['paper', 'Paper', ''], ['demo', 'Demo', 'dep'], ['live', 'Live', 'live']];
   function ladderLines(s, { canDeploy, demoWhy, road }) {
     const deps = s.deployments || [];
-    const running = LADDER.filter(([m]) => deps.some((d) => d.mode === m && d.status === 'running'));
+    // A paused book is still on its rung (deploying it there again would double its positions): it says paused.
+    const running = LADDER.filter(([m]) => deps.some((d) => d.mode === m && d.status !== 'stopped'));
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
       const n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0), pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0);
       const stats = `${num(n)} closed trade${n === 1 ? '' : 's'} ·\u00a0${money(pnl)} realized`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats} ·\u00a0${demoHealthLine(s.demo_health)}</p>`;
-      return `<p><span class="mk ${cls}">${label}</span> running ·\u00a0${stats}</p>`;
+      return `<p><span class="mk ${cls}">${label}</span> ${ds.some((d) => d.status === 'running') ? 'running' : 'paused'} ·\u00a0${stats}</p>`;
     });
     const next = LADDER[running.length ? LADDER.indexOf(running[running.length - 1]) + 1 : 0];
     let need = '';
@@ -2716,7 +2782,10 @@
     else if (next[0] === 'paper') need = 'Next rung, paper: nothing needed. Deploy it on paper below.';
     else if (next[0] === 'demo') need = demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a>.'
       : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}` : 'Next rung, demo: nothing needed. Deploy it on demo below.';
-    else if (road) need = `Next rung, live: ${road.ready ? 'every gate is clear' : 'blocked because ' + esc(road.blocking)}.`;
+    else if (road) {
+      const left = roadLeft(road, s);
+      need = `Next rung, live: ${roadClear(road) ? 'its record clears every check. It trades live money only once you deploy it there' : `${left.length} check${left.length === 1 ? '' : 's'} left, first ${left[0]}`}.`;
+    }
     return books.join('') + (need ? `<p class="hint">${need}</p>` : '');
   }
   async function viewStrategy(id) {
@@ -2769,7 +2838,7 @@
         <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>${luckFlag(m)}` : `<p class="hint">Not tested on unseen data — ${rejectReason(s)}</p>`;
     const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(g.name)}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
-        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="tick" data-lab="Contract">${esc(t.ticker)}</td><td data-lab="Side">${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
+        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }))}</td><td class="tick" data-lab="Contract">${esc(t.ticker)}</td><td data-lab="Side">${esc(t.side.toUpperCase())} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table>` : '<p class="hint">No unseen-data trades to show.</p>';
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     // Stopped deployments can still hold positions; the server refuses the delete until they close.
@@ -2937,30 +3006,32 @@
         }
       } catch (e) { /* demo replay is best-effort; leave the sim-only chart */ }
     })();
-    // Road to live: the exact gates the deploy paths enforce (gatekeeper, realistic paper record,
-    // live autopilot), with progress. Best-effort and fetched after the page, like the dev curve.
+    // Road to live: the strategy's own checks, the ones the deploy paths enforce (gatekeeper, realistic
+    // paper record, demo record), with progress, what is left and when the counts could be in. How it
+    // then reaches real money (the user's own step) is said apart, never as a check that runs by itself.
+    // Best-effort and fetched after the page, like the dev curve.
     if (root.querySelector('#road-live-body')) (async () => {
       try {
         const r = await api('/api/strategies/' + s.id + '/live-readiness');
         const lb = root.querySelector('#ladder-body');
         if (lb) lb.innerHTML = ladderLines(s, { canDeploy, demoWhy, road: r });
         const p = r.paper, c = p.checks;
-        const pv = p.p_value == null ? '—' : p.p_value.toFixed(2);
         const rows = [
           { name: 'Gatekeeper cleared', threshold: 'holdout + diversification', ok: r.deployment_candidate, value: r.deployment_candidate ? 'yes' : 'no' },
           { name: 'Realistic paper trades', threshold: p.trades_needed + '+', ok: c.realistic_trades, value: p.trades + ' / ' + p.trades_needed },
+          ...(c.legacy_pnl === false ? [{ name: 'Paper P&L, every fill', threshold: '$0 or above', ok: false, value: p.legacy_pnl }] : []),
           { name: 'Net after fees', threshold: 'above $0', ok: c.net_pnl, value: p.net_pnl },
-          { name: 'Separate events', threshold: (p.events_needed || 20) + '+', ok: c.events, value: p.events == null ? '—' : p.events },
-          { name: 'First to last paper trade', threshold: p.span_needed_hours + 'h+', ok: c.span, value: Math.round(p.span_hours) + 'h' },
-          { name: 'Edge is not luck', threshold: 'p ≤ ' + p.p_value_needed.toFixed(2), ok: c.edge, value: pv },
+          { name: 'Separate events', threshold: (p.events_needed || 20) + '+', ok: c.events, value: p.events == null ? '—' : p.events + ' / ' + (p.events_needed || 20) },
+          { name: 'First to last paper trade', threshold: p.span_needed_hours + 'h+', ok: c.span, value: Math.round(p.span_hours) + 'h / ' + p.span_needed_hours + 'h' },
+          { name: 'Edge is not luck', threshold: 'p ≤ ' + p.p_value_needed.toFixed(2), ok: c.edge, value: roadP(p.p_value) },
           { name: 'Still working lately', threshold: 'newer half above $0', ok: c.recent, value: p.recent_trades ? p.recent_net_pnl : '—' },
           { name: 'Clean demo record', threshold: (p.demo_orders_needed || 20) + '+ demo orders, book matches', ok: c.demo, value: p.demo_orders == null ? '—' : p.demo_orders + ' / ' + p.demo_orders_needed },
-          { name: 'Live autopilot', threshold: 'on, key, under daily loss', ok: r.live_autopilot.ok, value: r.live_autopilot.ok ? 'ready' : 'off' },
         ];
+        const auto = r.live_autopilot && r.live_autopilot.ok;
         const body = root.querySelector('#road-live-body');
-        if (body) body.innerHTML = gatesHtml(rows)
+        if (body) body.innerHTML = roadSummary(r, s, liveWhy, rows.length) + gatesHtml(rows)
           + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? 'Paper is <b>losing money</b> per trade, while the backtest made money on unseen data.' : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's unseen-data P&amp;L per trade.`}</p>` : '')
-          + `<p class="hint" style="margin-top:6px">${r.ready ? 'Every gate is clear. Autopilot may move this to live money within your caps.' : 'Blocked: ' + esc(r.blocking) + '.'} Paper counts only fills simulated against the live order book.</p>`;
+          + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading on this server: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
       } catch (e) {
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = '<p class="hint">Live readiness is unavailable right now.</p>';

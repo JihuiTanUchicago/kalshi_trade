@@ -473,10 +473,11 @@ def test_paper_waiting_lists_strategies_whose_last_decision_bought_nothing():
 # -- Road to live: read-only readiness view ------------------------------------------
 
 
-def _readiness_ctx(monkeypatch, *, strategy=True, candidate=True, trips=(), live=(True, "")):
+def _readiness_ctx(monkeypatch, *, strategy=True, candidate=True, trips=(), live=(True, ""), running=()):
     from app import agent, server
     monkeypatch.setattr(server.repo, "get_strategy",
                         lambda cur, uid, sid: ({"id": sid, "status": "passed"} if strategy else None))
+    monkeypatch.setattr(server.repo, "list_deployments_brief", lambda cur, uid: list(running))
     monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: candidate)
     monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid, include_stopped=False: [
         {"strategy_id": 7, "mode": "paper", "closed_trades": 40, "realized_pnl": 5.0}])
@@ -506,6 +507,77 @@ def test_readiness_names_the_gatekeeper_first(monkeypatch):
     from app import server
     out = server.strategy_live_readiness(_readiness_ctx(monkeypatch, candidate=False))
     assert out["ready"] is False and "gatekeeper" in out["blocking"]
+
+
+def test_readiness_says_when_the_counts_could_be_in_at_its_pace(monkeypatch):
+    from app import server
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    # 12 trips over 30h of a running paper deployment: 9.6 a day, 18 to go -> about 1.9 days.
+    t0 = now - timedelta(hours=29)
+    trips = [{"pnl": 0.2, "opened_at": t0 + timedelta(hours=2 * i), "closed_at": t0 + timedelta(hours=2 * i, minutes=14),
+              "ticker": "KXBTC15M-%d-1" % i} for i in range(12)]
+    running = [{"id": 1, "strategy_id": 7, "mode": "paper", "status": "running", "created_at": now - timedelta(hours=30),
+                "result": {"in_sample": {"trades_per_day": 50}}}]
+    out = server.strategy_live_readiness(_readiness_ctx(monkeypatch, trips=trips, running=running))
+    assert out["pace"]["running"] is True and out["pace"]["rate_from"] == "paper"
+    assert out["pace"]["trades_per_day"] == 9.6 and out["pace"]["eta_days"] == 1.9
+    # The gate's own answer is unchanged by the readout.
+    assert out["ready"] is False and "realistic fills" in out["blocking"]
+
+
+def test_readiness_has_no_pace_when_nothing_runs_on_paper(monkeypatch):
+    from app import server
+    paused = [{"id": 1, "strategy_id": 7, "mode": "paper", "status": "paused", "created_at": datetime.now(timezone.utc).replace(tzinfo=None)}]
+    out = server.strategy_live_readiness(_readiness_ctx(monkeypatch, running=paused))
+    assert out["pace"] == {"running": False, "eta_days": None, "trades_per_day": None, "rate_from": None}
+
+
+def test_deploy_roads_count_the_record_as_road_to_live_does(monkeypatch):
+    from app import agent, server
+    server._ROADS.clear(); server._FAILING.clear()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    t0 = now - timedelta(hours=60)
+    # Two strikes of one event are one event; the span is first entry to last exit.
+    few = [{"pnl": 0.1, "opened_at": t0, "closed_at": t0 + timedelta(minutes=10), "ticker": "KXR-26OCT01-A"},
+           {"pnl": 0.1, "opened_at": t0 + timedelta(hours=1), "closed_at": t0 + timedelta(hours=10), "ticker": "KXR-26OCT01-B"}]
+    many = [{"pnl": 0.3, "opened_at": t0 + timedelta(hours=i), "closed_at": t0 + timedelta(hours=i, minutes=5),
+             "ticker": "KXR-E%d-A" % i} for i in range(55)]
+    monkeypatch.setattr(server.repo, "paper_round_trips_by_strategy", lambda cur, uid, sids: {7: few, 8: many})
+    monkeypatch.setattr(agent, "paper_evidence", lambda cur, uid, sid: {"checks": {"net_pnl": True, "edge": False, "demo": False}})
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: True)
+    deps = [{"id": 1, "strategy_id": 7, "mode": "paper", "status": "running", "created_at": now - timedelta(hours=61), "result": {}},
+            {"id": 2, "strategy_id": 8, "mode": "paper", "status": "paused", "created_at": now - timedelta(hours=61), "result": {}},
+            {"id": 3, "strategy_id": 8, "mode": "demo", "status": "running", "created_at": now, "result": {}}]
+    roads = server._deploy_roads(None, 1, deps)
+    assert roads[7]["trades"] == 2 and roads[7]["events"] == 1 and roads[7]["span_hours"] == 10.0
+    assert roads[7]["running"] is True and "failing" not in roads[7]  # the counts aren't in yet
+    assert roads[8]["trades"] == 55 and roads[8]["events"] == 55 and roads[8]["running"] is False
+    assert roads[8]["failing"] == ["edge", "demo"]
+    assert (roads[8]["trades_needed"], roads[8]["events_needed"], roads[8]["span_needed_hours"]) == (30, 20, 48.0)
+    server._ROADS.clear(); server._FAILING.clear()
+
+
+def test_deploy_roads_rerun_the_paper_gate_only_when_the_record_moves(monkeypatch):
+    # paper_evidence runs the gate's bootstrap; the 10s Deploy poll must not pay it while nothing closes.
+    from app import agent, server
+    server._ROADS.clear(); server._FAILING.clear()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    t0 = now - timedelta(hours=60)
+    trips = [{"pnl": 0.3, "opened_at": t0 + timedelta(hours=i), "closed_at": t0 + timedelta(hours=i, minutes=5),
+              "ticker": "KXR-E%d-A" % i} for i in range(55)]
+    calls = []
+    monkeypatch.setattr(server.repo, "paper_round_trips_by_strategy", lambda cur, uid, sids: {8: list(trips)})
+    monkeypatch.setattr(agent, "paper_evidence", lambda cur, uid, sid: calls.append(sid) or {"checks": {"edge": False}})
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: True)
+    deps = [{"id": 2, "strategy_id": 8, "mode": "paper", "status": "running", "created_at": now - timedelta(hours=61), "result": {}}]
+    assert server._deploy_roads(None, 1, deps)[8]["failing"] == ["edge"]
+    server._ROADS.clear()  # the board's 30s cache lapses, the record hasn't moved
+    assert server._deploy_roads(None, 1, deps)[8]["failing"] == ["edge"] and calls == [8]
+    trips.append({"pnl": 0.3, "opened_at": now - timedelta(hours=1), "closed_at": now, "ticker": "KXR-E99-A"})
+    server._ROADS.clear()  # a trade closed: the gate is asked again
+    server._deploy_roads(None, 1, deps)
+    assert calls == [8, 8]
+    server._ROADS.clear(); server._FAILING.clear()
 
 
 def test_readiness_unknown_strategy_is_404(monkeypatch):

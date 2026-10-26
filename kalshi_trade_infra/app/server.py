@@ -1325,10 +1325,14 @@ def list_deployments(ctx: Ctx):
     deps = repo.list_deployments_for_display(ctx.cur, ctx.uid)
     curves = repo.deployment_curves(ctx.cur, ctx.uid, deployment_ids=[d["id"] for d in deps])
     checks = _backtest_checks(ctx.cur, ctx.uid, {d["strategy_id"]: d for d in deps})
+    roads = _deploy_roads(ctx.cur, ctx.uid, deps)
     return {
-        # Each row carries its own book's backtest comparison (same strategy, same mode).
+        # Each row carries its own book's backtest comparison (same strategy, same mode), and a paper
+        # row its strategy's paper record toward the live check (all its paper deployments, as the
+        # strategy page counts it).
         "deployments": [{**_deployment_out(d, curves.get(d["id"], [])),
-                         "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None)}
+                         "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None),
+                         "road": roads.get(d["strategy_id"]) if d["mode"] == "paper" else None}
                         for d in deps],
         "demo_health": _demo_health(ctx.cur, ctx.uid, deps),
         "open_positions": _with_why(_with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")), deps),
@@ -1400,14 +1404,97 @@ def create_deployment(ctx: Ctx):
     return {"id": dep_id}
 
 
+def _paper_pace(deps: List[Dict], strategy_id: int, trades: int, events: int, span_hours: float) -> Dict:
+    """When this strategy's paper record could hold the trades, events and hours the live check counts,
+    at the pace it trades (rsi.paper_eta_days, as the autopilot panel estimates it, with the record's
+    own first-to-last span). Counted from its oldest running paper deployment; a strategy with none
+    running is not adding to its record, so it has no estimate. Display only: it says nothing about
+    whether the record will be up or clear the edge and demo checks by then, and it gates nothing."""
+    from app import rsi
+    running = [d for d in deps if int(d["strategy_id"]) == int(strategy_id) and d["mode"] == "paper"
+               and d["status"] == "running" and isinstance(d.get("created_at"), datetime)]
+    if not running:
+        return {"running": False, "eta_days": None, "trades_per_day": None, "rate_from": None}
+    dep = min(running, key=lambda d: d["created_at"])
+    rate = rsi.paper_trade_rate(dep, trades)
+    return {"running": True, "eta_days": rsi.paper_eta_days(dep, trades, events=events, span_hours=span_hours),
+            "trades_per_day": round(rate["per_day"], 1) if rate else None, "rate_from": rate["source"] if rate else None}
+
+
+def _paper_record(trips: List[Dict]) -> Dict:
+    """Trades, separate events and first-to-last hours of a strategy's realistic paper round trips,
+    counted as agent.paper_evidence counts them, for the Deploy board's road-to-live line."""
+    span_h = 0.0
+    if trips:
+        start = trips[0].get("opened_at")
+        end = max((t.get("closed_at") for t in trips if t.get("closed_at")), default=None)
+        if start and end:
+            span_h = max(0.0, (end - start).total_seconds() / 3600.0)
+    return {"trades": len(trips), "events": len(agent._trip_events(trips)), "span_hours": round(span_h, 1)}
+
+
+ROAD_TTL = 30.0  # seconds; the Deploy board polls every 10s and a record moves only when a trade closes
+_ROADS: Dict[Tuple, Tuple[float, Dict]] = {}
+# paper_evidence runs the paper gate's bootstrap (~200ms a strategy), so the board keeps each
+# strategy's `failing` until its record changes or FAILING_TTL passes (the demo check can move alone).
+FAILING_TTL = 300.0
+_FAILING: Dict[Tuple, Tuple[float, List[str]]] = {}
+
+
+def _deploy_roads(cur, uid: int, deps: List[Dict]) -> Dict[int, Dict]:
+    """{strategy_id: its paper record toward the live check} for the strategies running or paused on
+    paper: the counts the strategy page's Road to live shows (trades, events, hours, each with what
+    the check needs) and when they could be met at its pace. Once those are in, `failing` lists the
+    checks still refusing it (agent.paper_evidence's keys, "candidate" for the gatekeeper); empty means
+    its record clears every check, which never moves it to live money by itself. Display only, cached
+    per user for ROAD_TTL."""
+    sids = sorted({int(d["strategy_id"]) for d in deps if d["mode"] == "paper"})
+    if not sids:
+        return {}
+    key = (uid, tuple(sids), tuple(sorted((int(d["id"]), d["status"]) for d in deps if d["mode"] == "paper")))
+    hit = _ROADS.get(key)
+    if hit and time.time() - hit[0] < ROAD_TTL:
+        return hit[1]
+    trips = repo.paper_round_trips_by_strategy(cur, uid, sids)
+    out = {}
+    for sid in sids:
+        rec = _paper_record(trips.get(sid, []))
+        road = {**rec, "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "events_needed": agent.MIN_PAPER_EVENTS,
+                "span_needed_hours": agent.MIN_PAPER_SPAN_HOURS,
+                **_paper_pace(deps, sid, rec["trades"], rec["events"], rec["span_hours"])}
+        if (rec["trades"] >= agent.MIN_REALISTIC_PAPER_TRADES and rec["events"] >= agent.MIN_PAPER_EVENTS
+                and rec["span_hours"] >= agent.MIN_PAPER_SPAN_HOURS):
+            # Once the counts are in, the rest of the check decides: the same reads as Road to live, so
+            # the board can say it clears (or which checks are left) without the user opening each page.
+            fkey = (uid, sid, rec["trades"], rec["events"], rec["span_hours"])
+            fhit = _FAILING.get(fkey)
+            if fhit and time.time() - fhit[0] < FAILING_TTL:
+                road["failing"] = list(fhit[1])
+            else:
+                ev = agent.paper_evidence(cur, uid, sid)
+                road["failing"] = ([] if agent._is_deployment_candidate(cur, sid) else ["candidate"]) + [
+                    k for k, ok in ev["checks"].items() if not ok]
+                if len(_FAILING) > 5000:
+                    _FAILING.clear()
+                _FAILING[fkey] = (time.time(), list(road["failing"]))
+        out[sid] = road
+    if len(_ROADS) > 5000:
+        _ROADS.clear()
+    _ROADS[key] = (time.time(), out)
+    return out
+
+
 def strategy_live_readiness(ctx: Ctx):
     """Road to live: every gate between this strategy and real money, with progress. Read-only;
-    the same functions the deploy paths enforce, so this view can never disagree with them."""
+    the same functions the deploy paths enforce, so this view can never disagree with them.
+    `pace` (display only) says when the record could hold enough trades, events and hours."""
     s = repo.get_strategy(ctx.cur, ctx.uid, _int_param(ctx))
     if s is None:
         raise ApiError(404, "No such strategy.")
     candidate = bool(agent._is_deployment_candidate(ctx.cur, s["id"]))
     paper = agent.paper_evidence(ctx.cur, ctx.uid, s["id"])
+    pace = _paper_pace(repo.list_deployments_brief(ctx.cur, ctx.uid), s["id"], int(paper["trades"]),
+                       int(paper.get("events") or 0), float(paper.get("span_hours") or 0))
     live_ok, live_why = agent.live_autopilot_ok(ctx.cur, ctx.user)
     blocking = ("" if candidate else "the gatekeeper hasn't cleared it as a deployment candidate") \
         or paper["why"] or live_why
@@ -1418,6 +1505,7 @@ def strategy_live_readiness(ctx: Ctx):
         "live_autopilot": {"ok": live_ok, "why": live_why},
         "ready": candidate and paper["ready"] and live_ok,
         "blocking": blocking,
+        "pace": pace,
     }
 
 
