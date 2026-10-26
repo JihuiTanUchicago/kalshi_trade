@@ -112,6 +112,6 @@ test('Meridian: a deployment monitor keeps each figure on one line in its own co
 
 test('Tau: the dashboard paper line keeps its all-time figure whole, and a clamped session title has a tooltip', () => {
   const js = read('app.js');
-  assert.match(js, /<span class="amt">\$\{usd\(p\.total_pnl, true\)\}<\/span> \$\{paperSpan\(p\)\}/);
+  assert.match(js, /<span class="amt">\$\{usd\(p\.realized_pnl, true\)\}<\/span> realized all time/);
   assert.match(js, /<span class="run-title"><b title="\$\{esc\(sessionTitle\(r\)\)\}">/);
 });

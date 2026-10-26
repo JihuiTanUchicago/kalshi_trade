@@ -245,6 +245,21 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.doesNotMatch(thinned, /one point per closed trade/);
   });
 
+  test(`${name}: the track record's headline names its book and since when, so a scrolled-past figure is never another book's`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const th = {min_sharpe_days: 14, min_trades: 30};
+    const first = Date.UTC(2026, 9, 23, 12) / 1000;
+    const m = {trades: 5, wins: 3, losses: 2, label: 'Paper', net_pnl: 5.61, fees: 1.26, first_trade_at: first, monthly: [], strategies: [],
+      curve: [], sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge.'}};
+    const day = new Date(first * 1000).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
+    for (const [key, book] of [['paper', 'Paper'], ['demo', 'Demo'], ['live', 'Live']]) {
+      const html = f.trackRecordPanel(m, key, th);
+      assert.ok(html.includes(`${book} net P&amp;L`), key);
+      assert.ok(html.includes(`after $1.26 in fees · since ${day}`), key);
+    }
+    assert.doesNotMatch(f.trackRecordPanel({...m, first_trade_at: null}, 'paper', th), /since/);  // no date, no window claimed
+  });
+
   test(`${name}: a strategy holding on paper, demo and live sums each book apart, never all together`, async () => {
     const h = (mode, cost, unrealized) => ({ticker: 'KXBTC15M-' + mode, side: 'yes', qty: 2, entry_price: 0.4, cost, unrealized, mode,
       market_close_time: '2026-10-25T07:45:00Z'});

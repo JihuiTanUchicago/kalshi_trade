@@ -18,8 +18,9 @@ is deployed again. Demo is reloaded between its settlements and its stops.
 
 Then every page is read the way the app reads it, and each figure is held to its own book's position
 rows, for the same window: the dashboard's buckets, its "Since your last visit" strip (#397) and its
-deployments; the Deploy board and the strategy page (#400); each book's backtest line (#398); the
-trades CSV; and the track record. Where two pages count differently on purpose, the test asserts
+deployments; the Funds page (each book's realized P&L, closed trades, open positions and balance);
+the Deploy board and the strategy page (#400); each book's backtest line (#398); the trades CSV; and
+the track record. Where two pages count differently on purpose, the test asserts
 the documented relationship instead:
   - closed position rows (dashboard, CSV, Deploy board) against completed round trips (track
     record, backtest line);
@@ -247,6 +248,8 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
 
     since = int(visit.replace(tzinfo=timezone.utc).timestamp())
     dash = server.dashboard(ctx(since=since))
+    page = server.funds(ctx())
+    funds = {"paper": page["paper"], "demo": page["demo"], "live": page["kalshi"]}
     board = server.list_deployments(ctx())
     record = server.get_track_record(ctx())["modes"]
     csvs = {}
@@ -281,6 +284,16 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
         assert bucket["open_positions"] == 1 and bucket["open_at_cost"] == _money(b["open_cost"]), mode
         # Today: the same rows the CSV dates today.
         assert bucket["today_pnl"] == csv_sum(lines, day)[0] == _money(sum(float(r["pnl"]) for r in b["today"])), mode
+
+        # -- Funds: the dashboard's figure for each book, its own rows only (demo's since its reload) --
+        fb = funds[mode]
+        assert fb["closed_trades"] == n_closed, mode
+        assert (fb["open_positions"], fb["open_at_cost"]) == (1, _money(b["open_cost"])), mode
+        if mode == "demo":
+            assert (fb["realized"], fb["before_reload"], fb["equity"]) == \
+                (bucket["realized_pnl"], bucket["before_reload"], bucket["equity"])
+        else:
+            assert fb["realized_pnl"] == bucket["realized_pnl"] == realized, mode
 
         # -- "Since your last visit": each book on its own, the CSV's rows since then --
         assert dash["since"]["books"][mode] == {"pnl": csv_sum(lines, visit)[0], "trades": csv_sum(lines, visit)[1]}, mode
@@ -347,6 +360,7 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
     pb = dash["paper"]
     assert pb["cash"] == _money(cash) and pb["deposited"] == RESET_TO and pb["reset_at"] is not None
     assert pb["equity"] == _money(cash + paper["open_cost"])
+    assert (page["paper"]["cash"], page["paper"]["equity"]) == (pb["cash"], pb["equity"])  # Funds' paper figure
     assert pb["total_pnl"] == _money(since_reset - fee)  # since the reset, the held position's fee in
     assert _money(sum(float(r["pnl"]) for r in pb["daily"])) == pb["realized_pnl"]  # every day, before the reset too
     # Open positions on the dashboard and the board: the same rows, each its own book's mark.

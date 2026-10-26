@@ -2021,6 +2021,7 @@
       // Demo is Kalshi's sandbox, not paper: with a demo deployment on, "Paper money only" mislabelled it.
       const hasDemo = d.deployments.some((x) => x.mode === 'demo' && x.status !== 'stopped');
       // A new account's paper book has never been used: say so instead of "$0.00 at cost · $0.00 all time".
+      // Its P&L is realized from closed trades, the figure the track record, Deploy and the strategy page show.
       const paperUsed = p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper');
       // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
       // every user something was wrong that they couldn't act on).
@@ -2045,7 +2046,7 @@
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (d.live.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : (d.live.balance_at ? `Read from Kalshi ${when(d.live.balance_at)} \u00b7\u00a0` : '') + mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
-          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0<span class="amt">${usd(p.total_pnl, true)}</span> ${paperSpan(p)}${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
+          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
       // The dashboard is a summary: the first few deployments (paused ones, which need the user, then
@@ -3826,6 +3827,8 @@
   // time (live, demo and paper never mix), every figure next to the sample it rests on. All math is
   // server-side (app/trading/track_record.py); this only lays it out.
   const TR_MODES = [['live', 'Live'], ['demo', 'Demo'], ['paper', 'Paper']];
+  // The headline names its book and its window: scrolled past the tabs, "+$5.61" alone could be any book's.
+  const trBook = (key) => (TR_MODES.find(([k]) => k === key) || [key, key])[1];
   const trFix = (v, dp = 2) => (v == null ? '—' : (+v).toFixed(dp).replace('-', '\u2212'));  // a true minus, as usd() prints
   const trDay = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
   const trMonth = (k) => { const [y, m] = k.split('-'); return new Date(Date.UTC(+y, +m - 1, 15)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', timeZone: 'UTC' }); };
@@ -3873,7 +3876,7 @@
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
     const figs = `<dl class="figures measure tr-figs">
-      ${fig('Net P&amp;L', usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `after ${usd(m.fees)} in fees` })}
+      ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `after ${usd(m.fees)} in fees${m.first_trade_at ? ` \u00b7\u00a0since ${trDay(m.first_trade_at)}` : ''}` })}
       ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${m.annualized_return != null ? ` ·\u00a0${pct(m.annualized_return)} a year` : ''}` })}
       ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
       ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)} ·\u00a0Sortino ${trFix(m.sortino)}` })}
@@ -4020,7 +4023,25 @@
   const openAt = (b) => b.open_positions ? `${b.open_positions} open (${usd(b.open_at_cost)} at cost) ·\u00a0` : '';
   const openLeft = (b, mode) => b.open_positions == null ? 'Open positions not included'
     : b.open_positions ? `${b.open_positions} open ${mode} position${b.open_positions === 1 ? '' : 's'} (${usd(b.open_at_cost)} at cost) not included` : `No open ${mode} positions`;
+  // What each book has made: its realized P&L from closed trades, the figure the dashboard, Deploy and the
+  // track record show, never added to another book's. Before a book's first close it says when one shows.
+  // An API without the figure says nothing. Demo's is since its last reload, as on the dashboard.
+  const bookPnl = (b, mode, pnl = b.realized_pnl, span = 'all time') => b.closed_trades == null ? ''
+    : b.closed_trades ? `${usd(pnl, true)} realized ${span} \u00b7\u00a0` : `P&amp;L shows once a ${mode} trade closes \u00b7\u00a0`;
+  const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time.`
+    : k.connected ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : '';
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
+  // A paper history line in plain words. The engine writes prices as dollars ("@ 0.40") and exit reasons as
+  // codes ("stop_loss"); a settled row's $0.00 read as nothing happening when the contract lost. Display only:
+  // the stored memo and the amount are unchanged.
+  const ledgerWhat = (r) => {
+    const memo = String(r.memo || r.kind || '').replace(/ (@|->) (\d*\.\d+)/g, (m, w, p) => ` ${w === '@' ? 'at' : '\u2192'} ${Math.round(+p * 100)}\u00a2`)
+      .replace(/\(([a-z]+(?:_[a-z]+)+)/g, (m, c) => '(' + c.replace(/_/g, ' '));
+    const settled = r.kind === 'settlement' ? (+r.amount > 0 ? ' \u00b7\u00a0won, paid $1 a contract' : ' \u00b7\u00a0lost, paid $0') : '';
+    return esc(memo) + (settled ? `<span class="hint">${settled}</span>` : '');
+  };
+  // Fees and settlement, once, in plain words, where the cash moves.
+  const LEDGER_HOW = 'Cash in and out of your paper account, newest first. A buy takes the contracts\u2019 price plus Kalshi\u2019s fee, as a real order would. When a market settles, each winning contract pays $1 and each losing one pays $0; a sale before then pays the price it sold at, less the fee. A trade\u2019s P&amp;L is what it brought back less everything it cost, fees included.';
   async function viewFunds() {
     const gen = S.gen;
     shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
@@ -4031,9 +4052,9 @@
       const k = d.kalshi;
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
-      root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' : k.balance == null ? KALSHI_UNREAD : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}. ${openLeft(k, 'live')}` }) +
-        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
-        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}practice money` });
+      root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
+        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
+        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}practice money` });
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
@@ -4095,8 +4116,9 @@
         <div class="funds-col funds-history">
         <section class="panel">
           <h3>Paper history</h3>
+          <p class="hint ledger-how">${LEDGER_HOW}${d.paper.ledger.length >= 50 ? ' The latest 50 entries.' : ''}</p>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
-            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
+            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
         </section>
         </div></div>`;
@@ -4717,9 +4739,6 @@
     const text = apStale();
     ['apf-stale', 'dash-ap-stale'].forEach((id) => { const el = document.getElementById(id); if (el) el.textContent = text; });
   }
-  // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
-  // "since reset" then; the track record keeps every closed trade and would otherwise disagree.
-  function paperSpan(p) { return p && p.reset_at ? 'since reset' : 'all time'; }
   // Demo P&L restarts at a reload (before_reload holds what came before), unlike the track record.
   function demoSpan(dm) { return dm && dm.before_reload ? 'since reload' : 'all time'; }
 
@@ -4878,9 +4897,12 @@
     if (!d) { host.className = 'apcard on'; host.innerHTML = ''; return; }  // on, status still loading
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
     const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
-    const pnl = S.dashPaper ? S.dashPaper.total_pnl : null;
+    // Realized, as the paper card, the track record, Deploy and the strategy page count it. The equity
+    // change (total_pnl) is a fourth number: it takes off open positions' entry fees and drops every
+    // trade before a reset, so "Paper P&L" read $5.19 here beside a $5.61 track record.
+    const pnl = S.dashPaper ? S.dashPaper.realized_pnl : null;
     const cells = [
-      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, ' + paperSpan(S.dashPaper), pnl == null ? '—' : money(pnl)],
+      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a>`]
