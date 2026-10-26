@@ -168,6 +168,22 @@ def collect(cur) -> Dict:
         }
         for r in cur.fetchall()
     ]
+    # Real-money app trades live in app_positions (mode 'live'), not the legacy live_* tables: one
+    # "model" per app deployment, so their entries and the day's P&L reach this email too.
+    cur.execute(
+        "SELECT deployment_id, ticker, side, qty, entry_price FROM app_positions "
+        "WHERE mode='live' AND status='open'"
+    )
+    positions += [
+        {
+            "model": "app #%d %s" % (int(r["deployment_id"]), r["side"]),
+            "ticker": r["ticker"],
+            "qty": int(r["qty"]),
+            "entry": float(r["entry_price"]),
+            "cost": float(r["entry_price"]) * int(r["qty"]),
+        }
+        for r in cur.fetchall()
+    ]
 
     cur.execute("SELECT COALESCE(MAX(id),0) m FROM live_trades WHERE status='closed'")
     last_trade_id = int((cur.fetchone() or {}).get("m") or 0)
@@ -177,6 +193,11 @@ def collect(cur) -> Dict:
         "WHERE status='closed' AND DATE(closed_at_utc)=UTC_DATE() GROUP BY model_name"
     )
     daily = {r["model_name"]: float(r["p"]) for r in cur.fetchall()}
+    cur.execute(
+        "SELECT deployment_id, COALESCE(SUM(pnl),0) p FROM app_positions "
+        "WHERE mode='live' AND status='closed' AND closed_at >= UTC_DATE() GROUP BY deployment_id"
+    )
+    daily.update({"app #%d" % int(r["deployment_id"]): float(r["p"]) for r in cur.fetchall()})
 
     cash, cash_source, cash_as_of = _cash(cur)
 
