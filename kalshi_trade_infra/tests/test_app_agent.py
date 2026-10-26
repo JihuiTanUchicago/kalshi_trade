@@ -231,6 +231,20 @@ def test_autopilot_run_on_a_vanished_market_repicks_instead_of_failing(monkeypat
     assert store.finished[0] == "stopped"  # reached the data load on the new market, not 'failed'
 
 
+def test_an_autopilot_run_queued_on_an_alt_coin_repicks_among_bitcoin_markets(monkeypatch):
+    """Todd 2026-10-26 ("Bitcoin only"): a delegated run queued on an alt-coin crypto market before
+    the scope changed keeps the angle, and the picker only sees BTC (plus non-crypto) markets."""
+    store = Store(monkeypatch)
+    picked, pinned = [], []
+    monkeypatch.setattr(agent, "_pick_market", lambda run, model, usage, log, keys, hist: picked.append(keys) or "btc15m")
+    monkeypatch.setattr(agent.repo, "set_run_market", lambda cur, rid, m: pinned.append(m))
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily", "eth15m", "zec15m", "nba_game"])
+    model, _ = scripted([])
+    agent.run_research(Conn(), {**RUN, "market": "zec15m", "brief": 1}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=2))
+    assert pinned == ["btc15m"] and set(picked[0]) <= {"btc15m", "btc_daily", "nba_game"}
+
+
 def test_sports_market_passes_the_universe_guard_and_runs(monkeypatch):
     """The guard must NOT reject a real curated sports market (underlying=None): nba_game is in
     MARKETS, so the run gets past the chokepoint and researches exactly like a crypto market."""

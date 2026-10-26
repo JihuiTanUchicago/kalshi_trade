@@ -248,9 +248,9 @@ def test_research_action_allows_a_different_market(monkeypatch):
     monkeypatch.setattr(agent.repo, "list_runs",
                         lambda cur, uid, limit=30: [{"id": 7, "market": "btc15m", "status": "running",
                                                      "finished_at": None}])
-    text, pid = agent.act(None, USER, {"type": "research", "market": "eth_daily",
-                          "idea": "Mean-revert ETH after a sharp daily gap."}, True)
-    assert pid is None and rec["runs"] == [("eth_daily", None, "Mean-revert ETH after a sharp daily gap.")]
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc_daily",
+                          "idea": "Mean-revert BTC after a sharp daily gap."}, True)
+    assert pid is None and rec["runs"] == [("btc_daily", None, "Mean-revert BTC after a sharp daily gap.")]
 
 
 def test_with_every_market_on_cooldown_research_rotates_to_the_stalest_ones(monkeypatch):
@@ -268,3 +268,19 @@ def test_with_every_market_on_cooldown_research_rotates_to_the_stalest_ones(monk
     assert agent._least_recent_markets(None, 1, ready) == ["xrp15m", "eth15m", "sol15m"]
     assert agent._least_recent_markets(None, 1, ready, n=5) == ["xrp15m", "eth15m", "sol15m", "btc15m"]
     assert agent._least_recent_markets(None, 1, ["zec15m"]) == ["zec15m"]  # only a busy one left: keep it
+
+
+def test_autopilot_crypto_research_is_bitcoin_only_and_manual_research_is_not(monkeypatch):
+    # Todd 2026-10-26 14:45Z picked "Bitcoin only" for autopilot crypto research.
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [])
+    text, _ = agent.act(None, USER, {"type": "research", "market": "zec15m",
+                        "idea": "Order-flow imbalance on ZEC 15m."}, True)
+    assert rec["runs"][-1][0] is None and "BTC only" in text and "zec15m" in text
+    agent.act(None, USER, {"type": "research", "market": "zec15m", "idea": "Order-flow imbalance on ZEC 15m."}, False)
+    assert rec["runs"][-1][0] == "zec15m"  # a person asking by hand still gets the coin they named
+    assert agent.autopilot_scope_ok("btc15m_tick") and agent.autopilot_scope_ok("nba_game")
+    assert not agent.autopilot_scope_ok("eth_daily") and not agent.autopilot_scope_ok("sol15m")
+    assert "only BTC markets" in agent._cooldown_line(None, 1)
+    monkeypatch.setattr(agent, "AUTOPILOT_CRYPTO_COINS", [])
+    assert agent.autopilot_scope_ok("eth_daily") and agent.autopilot_scope_line() == ""
