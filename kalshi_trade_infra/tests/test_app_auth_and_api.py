@@ -377,6 +377,7 @@ def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balanc
     kalshi_account._BALANCE_CACHE[1] = (0.0, 5.0)  # what the previous key held
     monkeypatch.setattr(kalshi_account, "balance", lambda creds: 1234.5)
     monkeypatch.setattr(server.repo, "save_kalshi_key", lambda cur, uid, kid, blob: None)
+    monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid: [])
     assert server.save_kalshi_key(ctx({"key_id": "a952bcbe", "private_key": pem})) == {"ok": True, "balance": 1234.5}
     monkeypatch.setattr(kalshi_account, "balance", lambda creds: (_ for _ in ()).throw(AssertionError("no re-read")))
     assert kalshi_account.balance_cached(1, None) == 1234.5
