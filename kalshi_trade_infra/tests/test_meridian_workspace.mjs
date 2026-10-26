@@ -625,8 +625,35 @@ test('Funds names the live figure Kalshi cash, open positions not included', asy
     d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, funding_url: 'https://kalshi.com'}; return response(d); }});
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
-  assert.match(figs, /Kalshi cash/); assert.match(figs, /Real money at Kalshi, open positions not included/);
+  assert.match(figs, /Kalshi cash/); assert.match(figs, /Real money at Kalshi\. Open positions not included/);
   assert.doesNotMatch(figs, /Live money/);
+});
+
+test('Funds says when Kalshi cash was read, what each book has open, and matches the Overview paper figure', async () => {
+  const read = new Date(Date.now() - 5 * 60000).toISOString();
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
+    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, balance_at: read, open_positions: 1, open_at_cost: 3.05, funding_url: 'https://kalshi.com'};
+    d.demo = {...d.demo, open_positions: 2, open_at_cost: 8.09};
+    d.paper = {...d.paper, cash: 991.91, equity: 1000, open_positions: 3, open_at_cost: 8.09}; return response(d); }});
+  await f.viewFunds(); await flush();
+  const figs = f.root.querySelector('#ffigs').innerHTML;
+  assert.match(figs, /Real money at Kalshi, read 5m ago\. 1 open live position \(\$3\.05 at cost\) not included/);
+  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.09 at cost\) ·\u00a0real fills/);
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.09 at cost\)/); assert.doesNotMatch(figs, /Paper cash/);
+  assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);  // books are never summed
+  const h = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: null, open_positions: 0, open_at_cost: 0}; return response(d); }});
+  await h.viewFunds(); await flush();
+  assert.match(h.root.querySelector('#ffigs').innerHTML, /Kalshi didn’t answer just now\. Reload in a minute to try again\./);
+});
+
+test('Overview Kalshi cash says when it was read, and keeps Tau\'s realized line when Kalshi is down', async () => {
+  for (const balance of [3333, null]) {
+    const f = apDashboard(dashboardData({deployments: [dashboardDeployment('live')], live: {connected: true, balance, balance_at: new Date().toISOString(), open_positions: 2}}), {...apStatus});
+    await f.viewDashboard(); await flush();
+    const text = f.root.querySelector('.live-summary').textContent;
+    if (balance) assert.match(text, /\+\$17\.00 realized all time by Tau trades ·\u00a0cash read from Kalshi just now/);
+    else assert.match(text, /Couldn’t read your Kalshi balance just now ·\u00a0\+\$17\.00 realized all time by Tau trades/);
+  }
 });
 
 test('Deploy open positions say their cost includes the entry fee', async () => {

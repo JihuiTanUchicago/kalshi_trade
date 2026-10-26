@@ -192,3 +192,59 @@ def test_live_balance_surfaces_cached_value_when_connected(monkeypatch):
     out = server._live_balance(object(), 5)
     assert out["connected"] is True
     assert out["balance"] == 150.25
+
+
+# -- Funds: how old the live figure is, and what each book has open ----------
+
+
+def test_balance_read_at_dates_the_memo_and_never_reads_kalshi(monkeypatch):
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(kalshi_account, "balance", lambda creds: (_ for _ in ()).throw(AssertionError("no read")))
+    kalshi_account._BALANCE_CACHE.pop(779, None)
+    assert kalshi_account.balance_read_at(779) is None  # nothing memoized: no time to show
+    kalshi_account._BALANCE_CACHE[779] = (kalshi_account.time.monotonic() - 40, 12.0)
+    at = kalshi_account.balance_read_at(779)
+    age = (datetime.now(timezone.utc).replace(tzinfo=None) - at).total_seconds()
+    assert at.tzinfo is None and 38 <= age <= 45, age  # naive UTC, as the API's other times
+    kalshi_account._BALANCE_CACHE.pop(779, None)
+
+
+def test_live_balance_says_when_it_was_read_only_when_it_was(monkeypatch):
+    from app import server
+
+    monkeypatch.setattr(repo, "get_kalshi_key", lambda cur, uid: {"key_id": "abcd1234", "private_key_enc": b""})
+    monkeypatch.setattr(kalshi_account, "credentials_from_row", lambda uid, row: ("abcd1234", object()))
+    monkeypatch.setattr(kalshi_account, "balance_read_at", lambda uid: "T")
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: 150.25)
+    assert server._live_balance(object(), 5)["balance_at"] == "T"
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: None)  # Kalshi didn't answer
+    assert "balance_at" not in server._live_balance(object(), 5)
+
+
+def test_funds_names_each_books_open_positions_and_paper_matches_the_dashboard(monkeypatch):
+    """Funds' paper figure is the dashboard's (cash + open at cost), and every book reports only its own
+    open positions: a live, a demo and two paper positions never land in another book's count."""
+    from app import server
+
+    pos = [{"mode": "live", "qty": 10, "entry_price": 0.40}, {"mode": "demo", "qty": 5, "entry_price": 0.61},
+           {"mode": "paper", "qty": 12, "entry_price": 0.42}, {"mode": "paper", "qty": 5, "entry_price": 0.61}]
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: None)
+    monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: None)
+    monkeypatch.setattr(server.repo, "demo_equity", lambda cur, uid: {"capital": 750.0, "equity": 753.77, "realized": 3.77,
+                                                                       "before_reload": 0})
+    monkeypatch.setattr(server.repo, "paper_balance", lambda cur, uid: 2001.74)
+    monkeypatch.setattr(server.repo, "ledger_rows", lambda cur, uid: [])
+    monkeypatch.setattr(server.repo, "user_positions", lambda cur, uid, status: pos)
+
+    class Ctx:
+        cur, uid = object(), 1
+
+    out = server.funds(Ctx())
+    assert (out["kalshi"]["open_positions"], out["kalshi"]["open_at_cost"]) == (1, 4.0)
+    assert (out["demo"]["open_positions"], out["demo"]["open_at_cost"]) == (1, 3.05)
+    assert (out["paper"]["open_positions"], out["paper"]["open_at_cost"]) == (2, 8.09)
+    assert out["paper"]["cash"] == 2001.74 and out["paper"]["equity"] == 2009.83
+    assert out["demo"]["equity"] == 753.77  # demo's own figure, untouched by paper or live
+    # The dashboard's buckets read the same helper, so the two pages agree to the cent.
+    assert server._open_book(pos, "paper") == {"open_at_cost": 8.09, "open_positions": 2}
