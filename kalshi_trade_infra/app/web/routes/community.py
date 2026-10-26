@@ -106,7 +106,8 @@ def _notify_mentions(cur, author_uid: int, author_name: str, body: str, link: st
             print("[mention] in-app notice failed: %r" % e, flush=True)
         if u.get("email") and not u.get("email_opt_out"):  # optional email: Settings can turn it off
             try:
-                notify.mention_notice(u["email"], u.get("name"), author_name, body)
+                notify.mention_notice(u["email"], u.get("name"), author_name, body, notify.page_url(link),
+                                      notify.unsubscribe_url(u["id"]))
             except Exception as e:
                 print("[mention] email failed: %r" % e, flush=True)
 
@@ -138,20 +139,22 @@ def create_community_post(ctx: Ctx):
     pid = repo.create_post(cur, ctx.uid, body or _default_share_text(kind, snapshot), kind, snapshot, image_id)
     author = customer_text.display_name((repo.get_user(cur, ctx.uid) or {}).get("name"), "A trader")
     _notify_mentions(cur, ctx.uid, author, body, post_link(pid))
-    _email_community_post_async(ctx.uid, author, body or _default_share_text(kind, snapshot))
+    _email_community_post_async(ctx.uid, author, body or _default_share_text(kind, snapshot), pid)
     return {"id": pid}
 
 
-def _email_community_post_async(author_uid: int, author: str, preview: str) -> None:
-    """Email opted-in users about a new post, off the request thread so posting stays snappy.
-    Cooldown + opt-out are enforced per recipient; SES sandbox silently no-ops unverified sends."""
+def _email_community_post_async(author_uid: int, author: str, preview: str, pid: int) -> None:
+    """Email opted-in users about a new post, with a link to it, off the request thread so posting
+    stays snappy. Cooldown + opt-out are enforced per recipient; SES sandbox silently no-ops
+    unverified sends."""
     def run():
         try:
             conn = get_db_conn()
             cur = conn.cursor()
             recipients = repo.community_email_recipients(cur, author_uid)
             for r in recipients:
-                notify.community_post_notice(r["email"], r.get("name"), author, preview, notify.unsubscribe_url(r["id"]))
+                notify.community_post_notice(r["email"], r.get("name"), author, preview, notify.unsubscribe_url(r["id"]),
+                                             notify.page_url(post_link(pid)))
             repo.mark_community_emailed(cur, [r["id"] for r in recipients])  # cooldown applies even to sandbox-skipped
         except Exception as e:
             print("[community] post email dispatch failed: %r" % e, flush=True)
@@ -236,7 +239,8 @@ def create_comment(ctx: Ctx):
     # Don't email yourself, or anyone who turned optional email off in Settings.
     if author["user_id"] != ctx.uid and author.get("email") and not author.get("email_opt_out"):
         try:
-            notify.comment_notice(author["email"], author.get("name"), commenter, author.get("preview") or "", body)
+            notify.comment_notice(author["email"], author.get("name"), commenter, author.get("preview") or "", body,
+                                  notify.page_url(post_link(pid)), notify.unsubscribe_url(author["user_id"]))
         except Exception as e:
             print("[community] reply notice failed for post %s: %r" % (pid, e), flush=True)
     return {"ok": True}

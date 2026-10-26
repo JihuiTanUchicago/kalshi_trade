@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
 from typing import Optional
 
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
@@ -37,6 +38,30 @@ def unsubscribe_token_valid(user_id: int, token: str) -> bool:
 
 def unsubscribe_url(user_id: int) -> str:
     return "%s/unsubscribe?u=%d&t=%s" % (PUBLIC_URL, user_id, unsubscribe_token(user_id))
+
+
+def page_url(path: str) -> str:
+    """A Tau page as an email links it (the bell's /community#post-<id> becomes a full address)."""
+    return PUBLIC_URL + path
+
+
+_MD_LINK = re.compile(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
+_MD_PAIRS = re.compile(r"`([^`\n]+)`|\*\*([^*\n]+)\*\*")
+
+
+def _plain(text: Optional[str], limit: int = 0) -> str:
+    """A post or reply as an email quotes it: the feed's `code`, **bold** and [text](url) marks read as
+    plain words, cut at `limit` characters with an ellipsis."""
+    s = _MD_PAIRS.sub(lambda m: m.group(1) or m.group(2), _MD_LINK.sub(r"\1 (\2)", text or "")).strip()
+    return s[:limit - 1].rstrip() + "…" if limit and len(s) > limit else s
+
+
+def _optional_footer(unsub_url: Optional[str]) -> str:
+    """How to stop an optional email: the one-click link when the sender has one, and Settings' switch."""
+    settings = "%s/settings" % PUBLIC_URL
+    if unsub_url:
+        return "Don't want these? Unsubscribe: %s\n(or turn them off anytime under Email in Settings: %s)" % (unsub_url, settings)
+    return "(Turn these off anytime under Email in Settings: %s)" % settings
 
 
 def _send(to: str, subject: str, body: str, reply_to: Optional[str] = None) -> bool:
@@ -89,45 +114,49 @@ def waitlist_request(email: str, note: Optional[str], count: int) -> bool:
 
 
 def comment_notice(to_email: str, author_name: Optional[str], commenter: str,
-                   post_preview: str, comment_body: str) -> bool:
-    """Tell a post's author that someone replied. Best-effort (SES sandbox only
-    delivers to verified addresses until production access lands)."""
+                   post_preview: str, comment_body: str, link: Optional[str] = None,
+                   unsub_url: Optional[str] = None) -> bool:
+    """Tell a post's author that someone replied, with a link that opens the post and its replies.
+    Best-effort (SES sandbox only delivers to verified addresses until production access lands)."""
     body = (
         "Hi %s,\n\n"
         "%s replied to your post on Tau:\n\n"
         "  Your post: “%s”\n"
         "  Their reply: “%s”\n\n"
-        "Open the Community tab to read the full thread and reply back.\n\n"
+        "Read the replies and answer: %s\n\n"
         "— Tau\n\n"
-        "(Turn these off anytime under Email in Settings: %s/settings)"
-    ) % (author_name or "there", commenter, (post_preview or "").strip(), comment_body.strip(), PUBLIC_URL)
+        "%s"
+    ) % (author_name or "there", commenter, _plain(post_preview, 140), _plain(comment_body, 280),
+         link or page_url("/community"), _optional_footer(unsub_url))
     return _send(to_email, "%s replied to your Tau post" % commenter, body)
 
 
 def community_post_notice(to_email: str, name: Optional[str], author: str,
-                          preview: str, unsub_url: str) -> bool:
-    """Tell a user a new post landed in the community. Best-effort; respects the
+                          preview: str, unsub_url: str, link: Optional[str] = None) -> bool:
+    """Tell a user a new post landed in the community, with a link to it. Best-effort; respects the
     per-recipient cooldown and opt-out enforced by the caller."""
     body = (
         "Hi %s,\n\n"
         "%s just posted in the Tau community:\n\n"
         "  “%s”\n\n"
-        "Open the Community tab to read it and join in.\n\n"
+        "Read it and join in: %s\n\n"
         "— Tau\n\n"
-        "Don't want these? Unsubscribe: %s"
-    ) % (name or "there", author, (preview or "").strip()[:280], unsub_url)
+        "%s"
+    ) % (name or "there", author, _plain(preview, 280), link or page_url("/community"), _optional_footer(unsub_url))
     return _send(to_email, "New in the Tau community", body)
 
 
-def mention_notice(to_email: str, name: Optional[str], author: str, body: str) -> bool:
-    """Tell a user they were @-mentioned in the community. Best-effort."""
+def mention_notice(to_email: str, name: Optional[str], author: str, body: str,
+                   link: Optional[str] = None, unsub_url: Optional[str] = None) -> bool:
+    """Tell a user they were @-mentioned in the community, with a link to where. Best-effort."""
     text = (
         "Hi %s,\n\n"
         "%s mentioned you in the Tau community:\n\n"
         "  “%s”\n\n"
-        "Open the Community tab to reply.\n\n"
-        "— Tau"
-    ) % (name or "there", author, (body or "").strip()[:280])
+        "Read it and reply: %s\n\n"
+        "— Tau\n\n"
+        "%s"
+    ) % (name or "there", author, _plain(body, 280), link or page_url("/community"), _optional_footer(unsub_url))
     return _send(to_email, "%s mentioned you on Tau" % author, text)
 
 
