@@ -3565,7 +3565,10 @@ def _market_research_recent(cur, user_id: int, market: str, runs: Optional[List[
     now = repo.now_utc()
     recent_fails = 0
     for r in runs:
-        if r.get("market") != market:
+        # The example session every account is seeded with at sign-up is not research: it put Bitcoin
+        # 15-min on a 6h cooldown, so a new user's first autopilot review was told "btc15m was just
+        # researched (run #1)" and its first session was moved off the market it chose.
+        if r.get("market") != market or r.get("direction") == repo.DEMO_DIRECTION:
             continue
         if r.get("status") in ("queued", "running", "paused"):
             return "a research line is already running on %s (run #%s)" % (market, r.get("id"))

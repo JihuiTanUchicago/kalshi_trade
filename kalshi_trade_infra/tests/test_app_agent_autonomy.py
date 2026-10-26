@@ -243,6 +243,26 @@ def test_blocked_markets_and_cooldown_line_come_from_one_read(monkeypatch):
     assert "do NOT propose" in line and "btc15m" in line and "eth_daily" in line and "high_ny" not in line
 
 
+def test_the_seeded_example_session_puts_no_market_on_cooldown(monkeypatch):
+    # A new account's example session (Todd's random walk on BTC 15-min, finished at sign-up) blocked
+    # btc15m for 6h: the first autopilot review was told "btc15m was just researched (run #1)" and its
+    # first session moved off the market it chose. The example is not research; a real run still blocks.
+    rec = _capture(monkeypatch)
+    now = agent.repo.now_utc()
+    example = {"id": 1, "market": "btc15m", "direction": agent.repo.DEMO_DIRECTION, "status": "succeeded",
+               "finished_at": now}
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [example])
+    assert agent._market_research_recent(None, 1, "btc15m") is None
+    assert agent._research_blocked_markets(None, 1) == {}
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
+                          "idea": "Short-term momentum after big moves."}, True)
+    assert pid is None and rec["runs"] == [("btc15m", None, "Short-term momentum after big moves.")]
+    assert "cooldown" not in text and "run #" not in text
+    real = dict(example, id=2, direction=None)
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [real, example])
+    assert "just researched (run #2" in agent._market_research_recent(None, 1, "btc15m")
+
+
 def test_research_action_allows_a_different_market(monkeypatch):
     rec = _capture(monkeypatch)
     monkeypatch.setattr(agent.repo, "list_runs",
