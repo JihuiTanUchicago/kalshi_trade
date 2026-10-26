@@ -1,6 +1,6 @@
 # Research / code-strategy sandbox stack — installed into the worker venv so agent-authored
 # `signals(window)` strategies can use real quant/ML/stat tooling (the sandbox allowlist in
-# app/sandbox.py mirrors these import roots). NOT imported by the app itself; the kernel
+# app/research/sandbox.py mirrors these import roots). NOT imported by the app itself; the kernel
 # confiner (no network, scratch-only fs) makes them safe to expose to untrusted strategy code.
 # numpy + scikit-learn are already pinned in requirements.txt.
 pandas>=2.2,<3

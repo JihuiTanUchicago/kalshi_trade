@@ -13,7 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import backtest, gatekeeper, server
+from app import backtest, server
+from app.research import gatekeeper
 from app.services import gate_explain as ge
 
 KEYS = {"gate", "check", "label", "measured", "needed", "next"}

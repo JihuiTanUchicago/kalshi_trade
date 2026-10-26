@@ -4,8 +4,8 @@
 
 Single source of truth for the Wave-2 implementation agents. This document specifies
 *what to build* (signatures, schema, file ownership, prompts). It contains no production
-code. Ground truth was read from `app/agent.py`, `app/backtest.py`, `app/exploration.py`,
-`app/dreaming.py`, `app/replay.py`, `app/sandbox.py`, `app/quant.py`, `app/spec.py`,
+code. Ground truth was read from `app/research/agent.py`, `app/backtest.py`, `app/research/exploration.py`,
+`app/research/dreaming.py`, `app/replay.py`, `app/research/sandbox.py`, `app/quant.py`, `app/spec.py`,
 `app/markets.py`, `app/schema.py`, `app/repository.py`, `app/server.py`, and the
 `data_pipeline/` collectors, at the state of the repo on 2026-10-16.
 
@@ -84,7 +84,7 @@ probability of crowning a fluke rises without any accounting for it.
 
 **Leak 1 — One fixed split, reused on every hypothesis forever, with no correction.**
 `backtest.Dataset.cutoff_ts` (`app/backtest.py:47`) is a single 70/30 time split
-(`IN_SAMPLE_FRACTION = 0.7`). `_gate_and_save` (`app/agent.py:274`) calls
+(`IN_SAMPLE_FRACTION = 0.7`). `_gate_and_save` (`app/research/agent.py:274`) calls
 `backtest.evaluate(t["spec"], ds)` on that **same** out-of-sample slice for every finalist
 of every chunk. In a `run_forever` session the identical OOS window is queried against
 hundreds or thousands of finalists. The `gates()` function (`app/backtest.py:294`) applies
@@ -96,7 +96,7 @@ holdout; it is a **repeatedly-queried validation set masquerading as one.**
 
 **Leak 2 — The generator sees validation evidence across runs.** `strategy_memory`
 (`app/repository.py:693`) returns prior strategies' full `result_json`, and `_memory_block`
-(`app/agent.py:123-140`) formats the **out-of-sample pnl** ("`; unseen $%s`") straight into
+(`app/research/agent.py:123-140`) formats the **out-of-sample pnl** ("`; unseen $%s`") straight into
 the next run's prompt. The generator is explicitly told to "learn from it; do not repeat
 failures" against OOS numbers. That is textbook holdout contamination: the thing that is
 supposed to be unseen steers future generation. Generation and validation are coupled.
@@ -119,7 +119,7 @@ interval, no null distribution, no p-value anywhere in the stack. `score()`
 (`:320`) promotes on in-sample pnl with a 5-trade floor.
 
 **Leak 5 — The self-evolving policy optimizes *to* the reused OOS outcomes.** `dreaming`
-(`app/dreaming.py`) + `replay` (`app/replay.py`) tune each user's exploration policy to
+(`app/research/dreaming.py`) + `replay` (`app/replay.py`) tune each user's exploration policy to
 maximize `best_unseen_pnl` over their recorded discovery tree, where `oos_pnl` is the very
 same reused OOS. `replay_generalization` shuffles *orderings* but the OOS *outcomes* are
 fixed and reused across every policy candidate and every dreaming round. This is a second
@@ -130,7 +130,7 @@ reserved, untouched, for a one-time evaluation of frozen deployment candidates.
 
 ### A.3 The minimal set of changes that closes the leaks
 
-Do not rewrite the pipeline. The research loop in `run_research` (`app/agent.py:341`) —
+Do not rewrite the pipeline. The research loop in `run_research` (`app/research/agent.py:341`) —
 propose → in-sample test → refine → freeze finalists → gate — is a sound *skeleton*. The
 fix is to **split generation from judgment** and insert a gatekeeper where `_gate_and_save`
 sits:
@@ -295,7 +295,7 @@ never spends more than available wealth and reproduces a published LORD++ toy se
 bootstrap `p_value` → 0 while a shuffled-label version gets `p_value` ≈ uniform; the purged
 splitter produces zero train/test settlement overlap.
 
-### B.2 New module — `app/gatekeeper.py` (the Statistical Gatekeeper)
+### B.2 New module — `app/research/gatekeeper.py` (the Statistical Gatekeeper)
 
 Architecturally separate from the generator. The generator (`agent.py`) proposes and
 freezes finalists; it may **never** call `backtest.evaluate` on validation or holdout data
@@ -499,7 +499,7 @@ CREATE TABLE IF NOT EXISTS app_data_partitions (
   columns on each result row, which reconstruct the stream exactly.
 - `app_holdout_ledger`, `app_data_partitions`: written by the gatekeeper/partitions module.
 
-### B.4 New module — `app/partitions.py` + data-partition policy
+### B.4 New module — `app/research/partitions.py` + data-partition policy
 
 Computes and freezes the chronological split for a market, and serves the three datasets
 behind the gatekeeper (so `agent.py` cannot reach validation/holdout).
@@ -553,7 +553,7 @@ set its `max_evaluations = 3`.
 
 ### B.5 Wiring into the existing flow (exact changes, minimal disruption)
 
-**`app/agent.py` — the generator. Changed functions only:**
+**`app/research/agent.py` — the generator. Changed functions only:**
 
 1. `run_research` (`:341`): change the dataset source from `dataset_fn(market)` to
    `partitions.research_dataset(market, partitions.ensure_partition(cur, market))`. The
@@ -589,7 +589,7 @@ range), and expose per-trade net-return extraction (`trades -> [pnl_i/cost_i]` o
 research-fold path and the existing what-if UI; the **production gate** no longer calls
 `gates()`. `GATES`/`IN_SAMPLE_FRACTION` stay for the in-research fold and backward compat.
 
-**`app/exploration.py` / `app/dreaming.py` / `app/replay.py`:** small, surgical.
+**`app/research/exploration.py` / `app/research/dreaming.py` / `app/replay.py`:** small, surgical.
 - `replay.build_tree` (`app/replay.py:75`) reads `strategy_records` whose `oos_pnl` is now
   the **validation** pnl recorded by the gatekeeper (via `research_repository`, not the old
   reused OOS). No signature change.
@@ -610,7 +610,7 @@ research-fold path and the existing what-if UI; the **production gate** no longe
 
 ## C. The rigorous research-agent system prompt (drop-in for `agent.py`)
 
-Replace `RESEARCH_SYSTEM` (`app/agent.py:63`). The three-role separation is realized as:
+Replace `RESEARCH_SYSTEM` (`app/research/agent.py:63`). The three-role separation is realized as:
 **Proposer** (this prompt) → **Challenger** (a second LLM pass, `CHALLENGER_SYSTEM`, that
 must approve the economic falsifiability before `preregister`) → **Executor** (the
 backtester + gatekeeper, code). The proposer emits the pre-registration fields; the
@@ -770,9 +770,9 @@ one owner.
 | Agent | Owns (writes) | Depends on | Ships |
 |---|---|---|---|
 | **A — stats core** | `app/stats.py`, `tests/test_stats.py` | nothing (pure math, reuses `quant.py`) | 1st |
-| **B — ledger & data layer** | `app/schema.py` (the 4-table DDL block + `_add_column_if_missing` calls), `app/research_repository.py`, `app/partitions.py`, `tests/test_research_repository.py` | A (none at runtime) | 2nd |
-| **C — gatekeeper** | `app/gatekeeper.py`, `tests/test_gatekeeper.py` (FakeCursor per `tests/conftest.py`) | A, B | 3rd |
-| **D — generator wiring + prompt + 3-role** | edits to `app/agent.py`, `app/backtest.py`, `app/exploration.py`, `app/dreaming.py`, `app/replay.py`, `tests/test_agent_gatekeeper.py` | C | 4th |
+| **B — ledger & data layer** | `app/schema.py` (the 4-table DDL block + `_add_column_if_missing` calls), `app/research_repository.py`, `app/research/partitions.py`, `tests/test_research_repository.py` | A (none at runtime) | 2nd |
+| **C — gatekeeper** | `app/research/gatekeeper.py`, `tests/test_gatekeeper.py` (FakeCursor per `tests/conftest.py`) | A, B | 3rd |
+| **D — generator wiring + prompt + 3-role** | edits to `app/research/agent.py`, `app/backtest.py`, `app/research/exploration.py`, `app/research/dreaming.py`, `app/replay.py`, `tests/test_agent_gatekeeper.py` | C | 4th |
 | **E — API + research-paper page** | `app/server.py` (field additions), `app/static/*`, `tests/test_app_research_page.py` | B, C (data shapes frozen) | parallel to D after shapes freeze |
 
 **Safest sequencing:** A → B → C → D, with E starting once C's response shapes are frozen.
@@ -781,7 +781,7 @@ pattern). Each agent ships behind its tests with no behavior change to the live 
 flips `_gate_and_save` over to the gatekeeper.
 
 **LIVE-TRADING GATE — explicit flags for Agent D and the reviewer:**
-- Agent D touches `act` (`app/agent.py:525`), which contains `deploy_live`. The change is
+- Agent D touches `act` (`app/research/agent.py:525`), which contains `deploy_live`. The change is
   **purely additive**: require `classification == DEPLOYMENT_CANDIDATE` *in addition to* the
   existing `live_autopilot_ok` (`:488`) and `_proven_on_paper` (`:510`) checks. Do **not**
   remove, reorder, or weaken any existing check. `engine.LIVE_TRADING_ENABLED` stays the

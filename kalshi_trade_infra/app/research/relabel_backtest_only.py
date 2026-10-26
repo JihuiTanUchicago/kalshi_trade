@@ -12,7 +12,7 @@ even if its experiment_id column was never backfilled.
 
 NOT auto-run and NOT part of init_schema. Run it manually on the box after review:
 
-    python -m app.relabel_backtest_only
+    python -m app.research.relabel_backtest_only
 """
 from __future__ import annotations
 

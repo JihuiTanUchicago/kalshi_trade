@@ -50,6 +50,10 @@ ignore_imports =
     ; is still refused unless named below. It narrows by itself as the app/ layout moves each flat
     ; module into its layer (ARCHITECTURE.md), and goes when app.bootstrap injects the adapters.
     app.* -> app.adapters.**
+    ; app.research is the research loop (agent, gatekeeper, partitions, RSI, tournament, sandbox),
+    ; moved as one package from the flat modules (layout step 3, 2026-10-26) with its imports as they
+    ; were. Its pieces become services over ports one at a time (ARCHITECTURE.md step 10).
+    app.research.* -> app.adapters.**
     ; Named service -> adapter edges, each with the step that removes it:
     ; services.markets reads perps readiness (config, error type, collection batches); step 11 puts
     ; perps behind the Venue port.
@@ -83,8 +87,8 @@ source_modules =
     app.backtest
     app.spec
     app.markets
-    app.gatekeeper
-    app.agent
+    app.research.gatekeeper
+    app.research.agent
     app.repository
     app.worker
     data_pipeline
@@ -99,10 +103,10 @@ source_modules =
     app.execution
     data_pipeline.architecture
 forbidden_modules =
-    app.agent
+    app.research.agent
     app.llm
     app.server
-    app.dreaming
+    app.research.dreaming
 
 [importlinter:contract:pure-math-stays-pure]
 name = quant/stats/fees/order contracts do no I/O

@@ -36,11 +36,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import backtest, billing
-from app import dreaming
-from app import exploration
-from app import gatekeeper
+from app.research import dreaming
+from app.research import exploration
+from app.research import gatekeeper
 from app import models_catalog as catalog
-from app import partitions
+from app.research import partitions
 from app import repository as repo
 from app import research_repository as rr
 from app import spec as specmod
@@ -53,9 +53,9 @@ from app.services import research_leads
 from app.services import research_screen
 from app.services import demo_record
 from app.services import gate_explain
-from app.agent_market_data import AgentMarketData, DataScope
-from app.agent_knowledge import AgentKnowledge
-from app.agent_news import AgentNews
+from app.research.agent_market_data import AgentMarketData, DataScope
+from app.research.agent_knowledge import AgentKnowledge
+from app.research.agent_news import AgentNews
 
 _LOG = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ def _family_menu() -> str:
 
 DEFAULT_HYPOTHESES = 8    # when the user doesn't set a budget
 MAX_BUDGET = 1000         # hard ceiling a user can request for one finite run (run-forever is uncapped)
-# Batch width and finalist selection now live in app/exploration.py (the exploration policy).
+# Batch width and finalist selection now live in app/research/exploration.py (the exploration policy).
 MAX_ACTIONS = 3
 MIN_FRAMES = 200
 DREAM_EVERY_CHUNKS = max(1, int(os.getenv("TAU_DREAM_EVERY_CHUNKS", "2")))  # dream every N explore chunks in a forever run
@@ -625,7 +625,7 @@ _BRIEF_PATH = os.path.join(os.path.dirname(__file__), "research_brief.md")
 
 
 def _brief() -> str:
-    """The operator-editable research constitution (app/research_brief.md), read fresh each run
+    """The operator-editable research constitution (app/research/research_brief.md), read fresh each run
     so edits take effect without a deploy. Empty string if it's missing."""
     try:
         with open(_BRIEF_PATH) as f:
@@ -664,7 +664,7 @@ def in_focus(market: Optional[str], tokens: List[str]) -> bool:
     """True when `market` is inside the focus (or there is no focus, or no market yet)."""
     if not tokens or not market:
         return True
-    from app import rsi  # local: rsi reads agent lazily too
+    from app.research import rsi  # local: rsi reads agent lazily too
     fam, key, coin = rsi.family(market), market.lower(), _underlying_tag(market)
     return any(t == key or t == fam or fam.startswith(t + "-") or (coin and t == coin) for t in tokens)
 
@@ -672,7 +672,7 @@ def in_focus(market: Optional[str], tokens: List[str]) -> bool:
 def normalize_focus(values) -> List[str]:
     """Validate a focus the user (via chat or the API) asked for: each token must name a market
     family, a market key or a coin. Raises ValueError naming what isn't recognised."""
-    from app import rsi
+    from app.research import rsi
     if isinstance(values, str):
         values = re.split(r"[,\s]+", values)
     known = set(MARKETS) | {rsi.family(k) for k in MARKETS} | {_underlying_tag(k) for k in MARKETS} - {""}
@@ -718,7 +718,7 @@ def autopilot_scope_ok(market: Optional[str]) -> bool:
     """False for a crypto market whose coin the autopilot no longer researches (AUTOPILOT_CRYPTO_COINS)."""
     if not market or not AUTOPILOT_CRYPTO_COINS:
         return True
-    from app import rsi
+    from app.research import rsi
     return not rsi.family(market).startswith("crypto") or _underlying_tag(market) in AUTOPILOT_CRYPTO_COINS
 
 
@@ -730,7 +730,7 @@ def autopilot_scope_line() -> str:
 
 
 # -- the autopilot's own scorecard -------------------------------------------------------------
-# The research scoreboard (app.rsi) grades the research pipeline; this grades the autopilot as the
+# The research scoreboard (app.research.rsi) grades the research pipeline; this grades the autopilot as the
 # manager that spends on it: did it follow the user's focus, and did its spend go where ideas reach
 # the gate. It feeds back into every review (so the next decision improves on the last) and is
 # shared on /api/research/scoreboard as "autopilot".
@@ -1184,7 +1184,7 @@ def calibration_cells(ds: backtest.Dataset) -> List[Dict]:
 def _rsi_choose(cur, user_id: int, market: str, run_id: int, log) -> str:
     """Draw this run's research playbook (rsi_playbook.choose) and return its prompt block, "" for
     the empty version 0. Best-effort: a playbook hiccup never blocks research."""
-    from app import rsi, rsi_playbook
+    from app.research import rsi, rsi_playbook
     fam = rsi.family(market)
     try:
         pb = rsi_playbook.choose(cur, user_id, fam, run_id)
@@ -1203,7 +1203,7 @@ def _rsi_learn(conn, cur, run: Dict, ds, explored: int, tokens_in: int, tokens_o
     """After a run: credit its ideas to the playbook it drew, settle the candidate-vs-active trial,
     and (with no candidate pending) have the model rewrite the active playbook from this run's
     verdicts into the next candidate. Research-window evidence and gate labels only."""
-    from app import rsi, rsi_playbook
+    from app.research import rsi, rsi_playbook
     user_id, market, run_id = run["user_id"], run["market"], run["id"]
     fam = rsi.family(market)
     try:
@@ -1583,7 +1583,7 @@ def _recent_drops(cur, user_id: int, market: str) -> List[Dict]:
         own = repo.dropped_theses(cur, user_id, market)
     except Exception:
         return []
-    from app import rsi
+    from app.research import rsi
     fam = rsi.family(market)
     siblings = [k for k in MARKETS if k != market and fam not in ("other", "unknown") and rsi.family(k) == fam]
     try:
@@ -1593,7 +1593,7 @@ def _recent_drops(cur, user_id: int, market: str) -> List[Dict]:
 
 
 def _mechanism_of(h: Dict) -> Optional[str]:
-    from app import rsi
+    from app.research import rsi
     return rsi.mechanism(h.get("title"))
 
 
@@ -1602,7 +1602,7 @@ def _sibling_dead(rows: List[Dict], min_drops: int = _SIBLING_MIN_DROPS,
     """(mechanism, its sibling drops newest first) for each mechanism dropped at least `min_drops`
     times on at least `min_markets` sibling markets, most-dropped first. Rows without "market"
     (this market's own drops) are ignored."""
-    from app import rsi
+    from app.research import rsi
     by: Dict[str, List[Dict]] = defaultdict(list)
     for d in rows:
         mech = d.get("market") and rsi.mechanism(d["title"])
@@ -1623,7 +1623,7 @@ _NEVER_RATIONED = ("generic learned recalibration (logistic / multi-factor)",)
 def _rationed_mechanisms(dropped: Optional[List[Dict]], run: Dict) -> Dict[str, int]:
     """{mechanism: sibling drops} for the mechanisms to ration on this run, leaving out the catch-all
     bucket and whatever the run's own prompt asks to study."""
-    from app import rsi
+    from app.research import rsi
     asked = rsi.mechanism(run.get("prompt") or "")
     return {m: len(v) for m, v in _sibling_dead(dropped or [], _RATION_MIN_DROPS, _RATION_MIN_MARKETS)
             if m not in _NEVER_RATIONED and m != asked}
@@ -2371,7 +2371,7 @@ def _should_dream(cur, user_id: int) -> bool:
 
 
 def _dream_cadence_self_check() -> None:
-    import app.agent as A
+    import app.research.agent as A
     orig_latest, orig_count = A.repo.latest_dream_event, A.repo.count_runs
     try:
         A.repo.latest_dream_event = lambda cur, uid: None
@@ -3208,7 +3208,7 @@ def _develop_self_check() -> None:
     """One runnable check: the per-thesis loop refines-then-commits exactly ONE spec reading only
     the research fold; abandons to None on the agent's call; and never commits an untradeable spec
     (0-trade DOA with no explicit commit -> dropped, no trial)."""
-    import app.agent as A
+    import app.research.agent as A
     ds = type("DS", (), {"start_ts": 0, "cutoff_ts": 1, "frames": []})()
     calls = {"backtests": 0, "asks": 0}
 
@@ -3681,7 +3681,7 @@ PAPER_MIN_AGE = timedelta(hours=int(os.getenv("APP_PAPER_MIN_AGE_HOURS", "24")))
 # kxrain at p=0.30 and 0.34. Paper risks no money; live still needs a DEPLOYMENT_CANDIDATE.
 PROBATION_MAX_P = float(os.getenv("APP_PROBATION_MAX_P", "0.35"))
 PROBATION_MIN_TRADES = int(os.getenv("APP_PROBATION_MIN_TRADES", "20"))
-# 20, not 4: the paper tournament (app/tournament.py) runs every near miss at once so the pooled
+# 20, not 4: the paper tournament (app/research/tournament.py) runs every near miss at once so the pooled
 # forward sample reaches the gate's 400+ trades in days, and it retires losers to free slots.
 PROBATION_MAX_ACTIVE = int(os.getenv("APP_PROBATION_MAX_ACTIVE", "20"))
 # Validation verdicts with no p-value (under the gate's min sample) are unmeasured, not rejected:
@@ -3814,10 +3814,10 @@ def _add_missing_probation_legs(cur, user: Dict, deps: List[Dict]) -> List[str]:
 
 def _tournament_hold(cur, user_id: int, dep: Dict) -> str:
     """Why autopilot may not pause this paper tournament entrant yet, or ''. A probation entrant is
-    retired by the tournament's own rule (app/tournament.py) once it has enough round trips to judge;
+    retired by the tournament's own rule (app/research/tournament.py) once it has enough round trips to judge;
     a review pausing it on a few bad trades cuts the forward sample the gate needs. Any read error
     allows the pause (pausing paper risks nothing)."""
-    from app import tournament
+    from app.research import tournament
     try:
         if _is_deployment_candidate(cur, dep["strategy_id"]):
             return ""
@@ -4337,7 +4337,7 @@ def _copilot_context(cur, user: Dict) -> str:
     # passed, this says what held up on realistic paper fills. Steer research toward families whose
     # passes survive paper, away from ones whose passes bleed or never fire. Best-effort.
     try:
-        from app import rsi
+        from app.research import rsi
         paper_lines = rsi.paper_outcomes_lines(rsi.paper_outcomes(cur, user["id"]))
     except Exception:
         paper_lines = []
@@ -4345,14 +4345,14 @@ def _copilot_context(cur, user: Dict) -> str:
         lines += ["", "How research's passes did on paper, by market family (all paper deployments, including stopped):"]
         lines += paper_lines
     try:
-        from app import tournament
+        from app.research import tournament
         t_lines = tournament.context_lines(tournament.standings(cur, user["id"]))
     except Exception:
         t_lines = []
     if t_lines:
         lines += [""] + t_lines
     try:
-        from app import rsi
+        from app.research import rsi
         lines += [""] + autopilot_scorecard_lines(autopilot_scorecard(
             rsi.load_scoreboard(cur, days=SCORECARD_DAYS, user_id=user["id"]), focus))
     except Exception:
@@ -4577,7 +4577,7 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             except Exception as e:  # best-effort, like the funnel above
                 print("[agent] paper forward gate failed for user %s: %r" % (user["id"], e), flush=True)
             try:
-                from app import tournament
+                from app.research import tournament
                 for line in tournament.rebalance(cur, user):
                     repo.add_chat(cur, user["id"], "system", line)
             except Exception as e:  # best-effort, like the funnel above

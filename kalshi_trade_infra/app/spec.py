@@ -174,7 +174,7 @@ each feature is overfitting, and the higher bar will reject it."""
 
 # -- arbitrary-quant code strategies ----------------------------------------
 # A strategy may instead be agent-authored Python (any pure-Python/numpy quant method). It is
-# ONE spec field, `code`, that defines a `signals(window)` function run in app.sandbox's
+# ONE spec field, `code`, that defines a `signals(window)` function run in app.research.sandbox's
 # OS-isolated child interpreter (no network/DB/credentials/filesystem). The rest of the spec is
 # just `market` and `sizing`; the backtester applies the SAME fee/sizing/settlement, and the
 # gatekeeper judges it identically to a DSL spec (pre-registration hashes the code as the rule).
@@ -410,7 +410,7 @@ def _validate_code_spec(raw: Dict) -> Dict[str, Any]:
     """Validate an arbitrary-quant code strategy: market + sizing + a `signals(window)` body
     that passes the sandbox's static gate. DSL-only fields (CODE_SPEC_IGNORED) are dropped; any
     other unknown top-level field is an error. The returned spec is minimal: {market, sizing, code}."""
-    from app import sandbox  # local import: sandbox pulls in exploration/dataclasses
+    from app.research import sandbox  # local import: sandbox pulls in exploration/dataclasses
     errors: List[str] = []
     extra = set(raw) - CODE_SPEC_KEYS - set(CODE_SPEC_IGNORED) - {"pool"}
     if extra:

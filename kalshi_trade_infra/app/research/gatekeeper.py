@@ -33,7 +33,8 @@ from datetime import timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from app import backtest, partitions, quant, stats
+from app import backtest, quant, stats
+from app.research import partitions
 from app import research_repository as rr
 from app import spec as specmod
 

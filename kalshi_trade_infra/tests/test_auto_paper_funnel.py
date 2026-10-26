@@ -1,7 +1,7 @@
 """Autopilot funnel: every gatekeeper-cleared candidate that never ran on paper is put on paper
 through act()'s deploy path, bounded per review and in total; never live; never re-deploys a
 strategy whose paper run was stopped."""
-from app import agent
+from app.research import agent
 
 S = lambda sid, market="btc15m": {"id": sid, "status": "passed", "title": "S%d" % sid, "market": market,
                                   "spec": {"side": "yes", "sizing": {"stake": 5.0, "max_positions": 5}}}

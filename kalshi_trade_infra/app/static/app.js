@@ -2003,7 +2003,7 @@
       <div class="rsidisc-body">${body}</div>
     </details>`;
   }
-  // The research loop's own report card (GET /api/research/scoreboard, app/rsi.py): is research
+  // The research loop's own report card (GET /api/research/scoreboard, app/research/rsi.py): is research
   // getting better, what it has learned per market family (playbooks under A/B test), where the
   // free scan points it next, and which ideas the pipeline (not the market) killed. Fetched at
   // most once a minute; the 5s page poll re-renders from the cached board.

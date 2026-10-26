@@ -5,8 +5,8 @@ import json
 import pytest
 import requests
 
-from app import agent_knowledge as knowledge
-from app.agent_market_data import DataScope
+from app.research import agent_knowledge as knowledge
+from app.research.agent_market_data import DataScope
 from app.adapters.data.exa_data import ExaDataClient
 from app.llm import LLMError, Usage, ask_json
 from tests.test_exa_data import CUTOFF, KEY, NOW, Response, Session, response_payload, source

@@ -190,7 +190,7 @@ def collect_series(cur, mark, series: str, is_primary: bool) -> Optional[str]:
         return None
 
 
-REQUESTED_MAX_SERIES = 12      # extra series research may ask for (app/rsi_repair.py MAX_MICRO_SERIES)
+REQUESTED_MAX_SERIES = 12      # extra series research may ask for (app/research/rsi_repair.py MAX_MICRO_SERIES)
 REQUESTED_REFRESH_SECONDS = 600
 
 

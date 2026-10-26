@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import agent
+from app.research import agent
 from app.services import paper_checks
 
 REC = (55, 40, 72.0)  # trades, events, hours

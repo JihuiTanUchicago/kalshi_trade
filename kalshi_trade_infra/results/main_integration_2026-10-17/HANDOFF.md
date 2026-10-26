@@ -22,7 +22,7 @@ not blindly pop it onto the integrated tree; it represents the older local state
 Other pre-existing stashes, PR branches/worktrees and historical results remain.
 
 A detached integration checkout reconciled six conflicted files before shared main
-was updated: `PLAN.md`, `mvp.md`, `app/agent.py`, `app/server.py`, Tau `app.js` and
+was updated: `PLAN.md`, `mvp.md`, `app/research/agent.py`, `app/server.py`, Tau `app.js` and
 `app.css`. All other local files applied cleanly, including sibling source changes.
 The original source was compared with the snapshot immediately before the stash /
 fast-forward / tested-file install. The completed main has no unmerged index entry

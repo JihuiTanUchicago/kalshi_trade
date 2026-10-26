@@ -156,7 +156,7 @@ def test_feature_ranges_show_where_each_populated_feature_sits():
 
 def test_develop_turn_lists_the_populated_features():
     """The develop turn (where theses get abandoned) sees which features exist and their range."""
-    from app import agent
+    from app.research import agent
     ds = _dataset_with_micro({"ob_imbalance": 0.9})
     block = agent._feature_block(ds)
     assert "ob_imbalance 100% [0.9, 0.9, 0.9]" in block and "trades_60s" not in block
@@ -499,7 +499,7 @@ def test_feature_block_states_the_window_carries_strikes_and_events():
     """Runs 2761/2772/2775 dropped sports ladder theses as missing_context ("no strike values, no
     event context") because the feature list said "anything missing is not" and strike/event are
     window fields, not features. The block now measures and names them."""
-    from app import agent
+    from app.research import agent
     block = agent._feature_block(_dataset_with_micro({"ob_imbalance": 0.9}))
     assert "Per-contract fields in a code window" in block
     assert "strike (nonzero on 100% of contracts, p10/p50/p90 98/98/98)" in block

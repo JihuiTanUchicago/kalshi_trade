@@ -13,7 +13,8 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from app import agent, backtest, gatekeeper, partitions, server
+from app import backtest, server
+from app.research import agent, gatekeeper, partitions
 from app.adapters.kalshi_perps import kalshi_perps_collector as collector
 from app.adapters.kalshi_perps import kalshi_perps_data as data
 from app.adapters.kalshi_perps import kalshi_perps_repository as sources

@@ -26,7 +26,7 @@ import time
 import traceback
 from typing import Dict, List, Optional, Tuple
 
-from app import agent
+from app.research import agent
 
 FAILING_TTL = 300.0  # seconds an answer is served as it is
 STALE_MAX = 3600.0  # past FAILING_TTL and under this, served while the worker reads it again

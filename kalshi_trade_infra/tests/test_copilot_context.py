@@ -2,7 +2,7 @@
 memory/awareness blocks added so a review stops repeating dead ends, double-launching research, or
 spending blind to its budget — and that a context-read hiccup degrades gracefully instead of failing
 the whole review (every block is best-effort)."""
-from app import agent
+from app.research import agent
 
 
 def _wire(monkeypatch, **over):

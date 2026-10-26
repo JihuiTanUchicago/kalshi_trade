@@ -47,7 +47,7 @@ unless the owner turns it on. Newest decisions and incident notes are at the top
 
 ## Research gates
 
-History is split Research 60% / Validation 25% / locked Holdout 15% (`app/partitions.py`), with
+History is split Research 60% / Validation 25% / locked Holdout 15% (`app/research/partitions.py`), with
 purge and embargo at each cut. The generator only ever iterates on Research.
 
 ```mermaid
@@ -97,7 +97,7 @@ flowchart LR
     Verdict -. "RSI: scoreboard + per-family playbooks;<br/>labels only, never held-out numbers" .-> Proposer
 ```
 
-Thresholds live at the top of `app/gatekeeper.py`: `ALPHA=0.10`, `DSR_MIN=0.5` (owner's choice;
+Thresholds live at the top of `app/research/gatekeeper.py`: `ALPHA=0.10`, `DSR_MIN=0.5` (owner's choice;
 `research_eval` keeps 0.95), `CORR_MAX=0.80`, `COST_STRESS_CENTS=1.0` (held-out trades re-run with
 1c extra slippage must stay positive), and a power pre-screen that marks ideas `underpowered`
 before spending validation. `tests/test_gate_power.py` checks that a planted 15c edge passes and
@@ -108,15 +108,15 @@ a fair market does not; run it before blaming "no edge exists". Full spec:
 
 Research is meant to get better at finding edges from its own results:
 
-- `app/rsi.py`: per-run scorecard and a scoreboard (funnel, spend, why ideas died). API
-  `GET /api/research/scoreboard`, CLI `python -m app.rsi --days 7`.
-- `app/rsi_playbook.py`: one playbook per (user, market family). After each run the model
+- `app/research/rsi.py`: per-run scorecard and a scoreboard (funnel, spend, why ideas died). API
+  `GET /api/research/scoreboard`, CLI `python -m app.research.rsi --days 7`.
+- `app/research/rsi_playbook.py`: one playbook per (user, market family). After each run the model
   rewrites it into a candidate, and a Thompson draw A/B-tests candidate against incumbent on
   gate-reach rate. A promotion is held if the candidate's passes lose on paper.
 - `app/rsi_scout.py`: free mispricing scan of the research window (`tau-scout.timer`).
-- `app/rsi_repair.py`: a crypto idea that died for missing data files an `app_data_requests` row;
+- `app/research/rsi_repair.py`: a crypto idea that died for missing data files an `app_data_requests` row;
   the pipeline collects it and the idea is re-tested once.
-- `app/dreaming.py`: the original exploration-policy evolution, still called by the agent.
+- `app/research/dreaming.py`: the original exploration-policy evolution, still called by the agent.
 
 ## Markets and data
 

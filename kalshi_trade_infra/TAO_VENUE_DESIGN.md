@@ -33,7 +33,7 @@ A Kalshi contract and a TAO alpha token are different *kinds* of objects. The bi
 | `moneyness = ln(spot/strike)`, `z_score`, `tte_min` | `app/markets.py::snapshot` | There is no strike or time-to-expiry to compute. |
 | NO is the mirror of YES: `(1-yes_bid, 1-yes_ask)` | `app/spec.py::side_prices` | Long/short a token is not a 0–100¢ complement. |
 | Settlement: `won = result == side`, payoff ∈ {$0,$1} | `app/backtest.py::simulate` / `simulate_pairs` | A token never "settles". PnL = `qty·(exit_price − entry_price)`. |
-| Placebo: win-value `1/entry_price` on cheap contracts | `app/gatekeeper.py::_placebo_pvalue` | Binary-specific; meaningless for a continuous price. |
+| Placebo: win-value `1/entry_price` on cheap contracts | `app/research/gatekeeper.py::_placebo_pvalue` | Binary-specific; meaningless for a continuous price. |
 
 Retrofitting these would mean a pile of `if instrument == "binary"` branches through the hottest, most-tested code in the repo. That is the fragile-hack path AGENTS.md warns against. Reject it.
 
@@ -42,7 +42,7 @@ Retrofitting these would mean a pile of `if instrument == "binary"` branches thr
 Three layers are already instrument-agnostic and we pay nothing to reuse them:
 
 1. **`spot_candles_1m`** (`app/schema.py:42`) — keyed by `(symbol, start_ts)`, already generalized beyond BTC ("so the backtester can price any crypto series off its own underlying"). A subnet alpha price series is just another `symbol` (e.g. `TAO-SN64`). **Zero schema change.**
-2. **The code-strategy sandbox** (`app/spec.py` `CODE_SPEC_KEYS`, `app/sandbox.py`, `app/backtest.py::_code_book`) — an agent writes `signals(window)` returning a target book per frame; the shared `simulate()` loop does sizing/fees/settlement. The signal logic is *already* decoupled from the digital-option DSL. This is the seam.
+2. **The code-strategy sandbox** (`app/spec.py` `CODE_SPEC_KEYS`, `app/research/sandbox.py`, `app/backtest.py::_code_book`) — an agent writes `signals(window)` returning a target book per frame; the shared `simulate()` loop does sizing/fees/settlement. The signal logic is *already* decoupled from the digital-option DSL. This is the seam.
 3. **The gatekeeper + `app/stats.py`** — bootstrap CI, PSR/DSR, LORD++ FDR, Benjamini-Hochberg, cross-day folds all operate on `_per_trade` net returns (`pnl/cost`), which is instrument-agnostic. Only `_placebo_pvalue` is binary-specific.
 
 ### A.3 Recommended representation — opinionated
@@ -224,7 +224,7 @@ Phase 0 spike ──pass?──► Phase 1 research pipeline ──James wants l
 - `app/markets.py` — `Market`, `Snapshot`, `snapshot()` (binary features: moneyness/z_score/strike).
 - `app/spec.py` — digital-option DSL (`fair_yes`, `side_prices`), and the reusable code-strategy surface (`CODE_SPEC_KEYS`, `signals(window)`).
 - `app/backtest.py` — `simulate()`/`simulate_pairs()` (binary settlement), `metrics()` (instrument-agnostic), `_code_book`/`_code_entries` (the seam).
-- `app/gatekeeper.py` — `_per_trade`/`_net_returns` (instrument-agnostic), `_placebo_pvalue` (binary-specific — the one thing to replace).
+- `app/research/gatekeeper.py` — `_per_trade`/`_net_returns` (instrument-agnostic), `_placebo_pvalue` (binary-specific — the one thing to replace).
 - `app/stats.py` — bootstrap/PSR/DSR/LORD++/BH (all reusable on a return series).
 - `app/schema.py:42` — `spot_candles_1m` (already generalized by `symbol`).
 - `app/repository.py:1114` — `load_history` (selects price by `underlying` symbol).

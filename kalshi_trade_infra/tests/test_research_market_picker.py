@@ -8,7 +8,7 @@
 """
 import pytest
 
-from app import agent
+from app.research import agent
 from app import repository as repo
 from app import server
 from app.llm import LLMError, Usage

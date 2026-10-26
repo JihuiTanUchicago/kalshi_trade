@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import gatekeeper as gk
+from app.research import gatekeeper as gk
 from app.backtest import Trade
-from app.gatekeeper import Classification, HoldoutConsumed, Prereg
+from app.research.gatekeeper import Classification, HoldoutConsumed, Prereg
 
 
 # -- fakes ---------------------------------------------------------------------
@@ -684,7 +684,7 @@ def test_holdout_cap_counts_looks_across_refrozen_windows(repo, monkeypatch):
 def test_dsr_floor_is_a_selection_check_not_a_second_significance_test():
     """DSR >= 0.5 (observed Sharpe beats the expected best lucky null); significance comes from
     LORD++. The offline research_eval scorecard, which has no LORD++ stream, keeps 0.95."""
-    from app import research_eval
+    from app.research import research_eval
     assert gk.DSR_MIN == 0.5
     assert research_eval.DSR_MIN == 0.95
     assert _clf(dsr=0.6) == Classification.STAT_SUPPORTED

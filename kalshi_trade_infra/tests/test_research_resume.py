@@ -11,7 +11,7 @@ import copy
 import json
 from datetime import timedelta
 
-from app import agent
+from app.research import agent
 from app import repository as repo
 from tests.test_app_agent import Conn, LOSER, RUN, Store, WINNER, hyps, plan, scripted
 from tests.test_app_backtest import _dataset

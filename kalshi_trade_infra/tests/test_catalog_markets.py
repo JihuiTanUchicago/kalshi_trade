@@ -229,7 +229,7 @@ def test_generated_market_builds_backtest_and_settles(monkeypatch):
     code = ("def signals(window):\n"
             "    return [[{'ticker': c['ticker'], 'side': 'yes'} for c in fr['contracts']]\n"
             "            for fr in window['frames']]\n")
-    from app import sandbox
+    from app.research import sandbox
     if sandbox.os_sandbox_available():
         monkeypatch.setitem(MARKETS, m.key, m)   # register the generated market so spec.validate accepts it
         s = specmod.validate({"market": m.key, "code": code,

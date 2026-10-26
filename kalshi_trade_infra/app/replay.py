@@ -59,7 +59,7 @@ from typing import Dict, List, Optional, Tuple
 from app import backtest
 from app import repository as repo
 from app import research_repository as rr
-from app.exploration import ExplorationPolicy, PolicyState
+from app.research.exploration import ExplorationPolicy, PolicyState
 
 # Objective coefficients. Tunable; defaults keep the penalties small relative to a
 # dollar of out-of-sample P&L so that *finding a better strategy* dominates, with

@@ -5,7 +5,7 @@ import json
 import pytest
 import pymysql
 
-from app import agent, agent_knowledge as knowledge, agent_market_data as market, agent_news as news
+from app.research import agent, agent_knowledge as knowledge, agent_market_data as market, agent_news as news
 from app.adapters.data.exa_data import ExaDataClient
 from app.llm import LLMError, Usage
 from app.adapters.data.market_data_common import iso

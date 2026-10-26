@@ -439,8 +439,8 @@ def _priority_rank(series: str) -> Optional[int]:
 
 
 def _requested(cur) -> List[str]:
-    """Markets research asked for history on (app/rsi_repair.py): synced right after the curated set."""
-    from app import rsi_repair
+    """Markets research asked for history on (app/research/rsi_repair.py): synced right after the curated set."""
+    from app.research import rsi_repair
     return [r["market"] for r in rsi_repair.wanted(cur, "history")]
 
 

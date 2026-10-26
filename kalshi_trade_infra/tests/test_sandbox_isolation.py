@@ -10,8 +10,8 @@ import time
 
 import pytest
 
-from app import sandbox
-from app.sandbox import SandboxError, StrategyCodeError
+from app.research import sandbox
+from app.research.sandbox import SandboxError, StrategyCodeError
 
 WIN = {"market": "btc15m", "frames": [{"ts": 1, "contracts": []}]}
 

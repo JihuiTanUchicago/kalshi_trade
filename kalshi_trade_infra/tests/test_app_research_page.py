@@ -8,7 +8,8 @@ against a FakeCursor in the conftest style (no live DB), covering:
 """
 import json
 
-from app import dreaming, server
+from app import server
+from app.research import dreaming
 from app.repository import now_utc
 
 

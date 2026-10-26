@@ -1,7 +1,7 @@
 """Research scoreboard: the funnel, spend and death reasons the self-improving loop measures."""
 import json
 
-from app import rsi
+from app.research import rsi
 
 # Drop reasons as the proposer actually wrote them (run 2613, high_ny, 2026-10-24), shortened.
 REAL_2613 = [
@@ -108,7 +108,7 @@ def test_load_scoreboard_reads_runs_then_their_verdicts():
 def test_scoreboard_endpoint_is_scoped_to_the_user_and_clamps_days(monkeypatch):
     from types import SimpleNamespace
     from app import server
-    from app import rsi_playbook
+    from app.research import rsi_playbook
     cur = _Cur()
     monkeypatch.setattr(rsi_playbook, "summary", lambda c, uid: [{"family": "weather-high", "version": 1}])
     monkeypatch.setattr(server, "_SHARED", {})
@@ -127,7 +127,7 @@ def test_scoreboard_endpoint_is_scoped_to_the_user_and_clamps_days(monkeypatch):
 
 
 def _paper_setup(monkeypatch, deps, progress, assignments, ready_ids=()):
-    from app import agent
+    from app.research import agent
     from app import repository as repo
     monkeypatch.setattr(repo, "list_deployments", lambda cur, uid, include_stopped=False: deps)
     monkeypatch.setattr(repo, "paper_progress", lambda cur, uid, ids: {k: v for k, v in progress.items() if k in ids})
@@ -173,7 +173,7 @@ def test_paper_outcomes_score_families_and_playbooks_on_realistic_fills(monkeypa
 
 
 def test_paper_outcomes_skip_the_bootstrap_until_there_are_enough_trips(monkeypatch):
-    from app import agent
+    from app.research import agent
     cur = _paper_setup(monkeypatch, [_dep(5, "high_ny")], {5: (3, 1.0)}, {})
     monkeypatch.setattr(agent, "paper_evidence", lambda *a: (_ for _ in ()).throw(AssertionError("too early")))
     out = rsi.paper_outcomes(cur, 2)
@@ -185,7 +185,7 @@ def test_paper_outcomes_skip_the_live_check_for_a_strategy_down_on_paper(monkeyp
     net check whatever else it reads, so its five reads and its bootstrap are skipped (20 paper
     strategies were 100 of the board's 118 statements and 11s of its cold read, measured 2026-10-26).
     Flat (exactly $0) and up still run the check: only a strict loss is certain to fail it."""
-    from app import agent
+    from app.research import agent
     deps = [_dep(1, "high_ny"), _dep(2, "high_ny"), _dep(3, "high_ny")]
     cur = _paper_setup(monkeypatch, deps, {1: (40, -0.0001), 2: (40, 0.0), 3: (40, 6.0)}, {}, ready_ids={3})
     asked = []

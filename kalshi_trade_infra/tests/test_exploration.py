@@ -1,8 +1,8 @@
 """The DefaultPolicy reproduces the pipeline's historical exploration behavior:
 constant batch width capped by the remaining budget, and the top few profitable
 in-sample candidates (min trade count) as finalists."""
-from app import exploration
-from app.exploration import DefaultPolicy, PolicyState
+from app.research import exploration
+from app.research.exploration import DefaultPolicy, PolicyState
 
 
 def _widths(budget):

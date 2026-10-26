@@ -300,7 +300,8 @@ def summary(arm: bool, result: Optional[Dict]) -> Dict:
 
 def scan_dataset(ds) -> Dict:
     """scan() with the live gate's costs and validation level, for a research dataset."""
-    from app import gatekeeper, partitions, stats
+    from app import stats
+    from app.research import gatekeeper, partitions
     from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
     research_days = max((ds.end_ts - ds.start_ts) / 86400.0, 0.0)
     val_days = research_days * partitions.VALIDATION_FRAC / partitions.RESEARCH_FRAC
@@ -322,7 +323,8 @@ def main() -> None:
     ap.add_argument("--market", action="append", required=True)
     ap.add_argument("--no-s3", action="store_true")
     a = ap.parse_args()
-    from app import partitions, rsi_scout
+    from app import rsi_scout
+    from app.research import partitions
     from data_pipeline.common import get_db_conn
     conn = get_db_conn()
     out = {}

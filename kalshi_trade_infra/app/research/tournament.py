@@ -22,7 +22,7 @@ Paper only. Engine sizing is untouched: the bandit allocates virtual dollars, no
 a bigger paper stake adds no evidence and takes more of a thin book than live would. Nothing here
 reads or changes the live gate (agent.paper_evidence, _is_deployment_candidate).
 
-    python -m app.tournament --user 1
+    python -m app.research.tournament --user 1
 """
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def _stake(dep: Dict) -> float:
 
 
 def is_probation(cur, dep: Dict) -> bool:
-    from app import agent
+    from app.research import agent
     return dep.get("mode") == "paper" and not agent._is_deployment_candidate(cur, dep["strategy_id"])
 
 
@@ -109,7 +109,7 @@ def entrants(cur, user_id: int, deps: Optional[List[Dict]] = None,
     """Every paper deployment that hasn't been stopped, one per strategy (newest wins), each with its
     realistic round trips (oldest first) and its per-event returns per dollar staked. `deps` and
     `trips_by` are those reads already made (standings); without them each is read here."""
-    from app import agent
+    from app.research import agent
     from app import repository as repo
     out, seen = [], set()
     if deps is None:
@@ -247,7 +247,7 @@ def verdict(entry: Dict, arm: Dict, now) -> Optional[str]:
 def _events(trips: List[Dict]) -> List[Dict]:
     """Trips grouped into events per strategy (agent._trip_event_key): summed return and P&L, closed
     when the event's last trip closed. Oldest event first."""
-    from app import agent
+    from app.research import agent
     groups: Dict[Tuple, Dict] = {}
     for i, t in enumerate(trips):
         key = (t.get("strategy_id"), agent._trip_event_key(t, i))

@@ -19,7 +19,7 @@ Do not run the standard deployment script while interruption is prohibited.
   CI `39883215379` and isolated MySQL/HTTP staging `39883215499` succeeded.
   Staging used a disposable database and synthetic broker; it does not prove
   production lock behavior, running-worker compatibility or perps replay readiness.
-- `app/worker.py`, `app/sandbox.py`, `app/research_brief.md`, all `data_pipeline/`,
+- `app/worker.py`, `app/research/sandbox.py`, `app/research_brief.md`, all `data_pipeline/`,
   requirements and source systemd units are unchanged in this Git range.
 - The locally available header-operations method at `094382a` clones installed
   packages, preserves ownership/modes, fences complete source/control snapshots,

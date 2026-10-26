@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import agent
+from app.research import agent
 from app import backtest
 from app import engine
 from app import spec as specmod

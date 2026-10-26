@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import gatekeeper as gk
-from app.gatekeeper import Classification
+from app.research import gatekeeper as gk
+from app.research.gatekeeper import Classification
 from app.services import forward_gate
 from tests.test_gatekeeper import FakeRepo, _edge_trades, _null_trades
 

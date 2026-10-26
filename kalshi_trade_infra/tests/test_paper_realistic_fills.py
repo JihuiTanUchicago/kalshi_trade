@@ -294,7 +294,8 @@ def test_paper_progress_groups_round_trips_per_strategy_in_one_query():
 
 def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     from types import SimpleNamespace
-    from app import agent, server
+    from app import server
+    from app.research import agent
     ctx = server.Ctx(SimpleNamespace(cursor=lambda: object()),
                      {"id": 7, "email": "t@example.invalid", "name": "S", "picture_url": None,
                       "autopilot": 1, "autopilot_live": 0, "autopilot_daily_loss_limit": 50,
@@ -475,7 +476,8 @@ def test_paper_waiting_lists_strategies_whose_last_decision_bought_nothing():
 
 
 def _readiness_ctx(monkeypatch, *, strategy=True, candidate=True, trips=(), live=(True, ""), running=()):
-    from app import agent, server
+    from app import server
+    from app.research import agent
     monkeypatch.setattr(server.repo, "get_strategy",
                         lambda cur, uid, sid: ({"id": sid, "status": "passed"} if strategy else None))
     monkeypatch.setattr(server.repo, "list_deployments_brief", lambda cur, uid: list(running))
@@ -534,7 +536,8 @@ def test_readiness_has_no_pace_when_nothing_runs_on_paper(monkeypatch):
 
 
 def test_deploy_roads_count_the_record_as_road_to_live_does(monkeypatch):
-    from app import agent, server
+    from app import server
+    from app.research import agent
     server._ROADS.clear(); server._FAILING.clear()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     t0 = now - timedelta(hours=60)
@@ -560,7 +563,8 @@ def test_deploy_roads_count_the_record_as_road_to_live_does(monkeypatch):
 
 def test_deploy_roads_rerun_the_paper_gate_only_when_the_record_moves(monkeypatch):
     # paper_evidence runs the gate's bootstrap; the 10s Deploy poll must not pay it while nothing closes.
-    from app import agent, server
+    from app import server
+    from app.research import agent
     server._ROADS.clear(); server._FAILING.clear()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     t0 = now - timedelta(hours=60)

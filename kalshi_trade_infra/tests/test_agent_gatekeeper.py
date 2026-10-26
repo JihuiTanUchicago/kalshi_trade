@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import agent
-from app import exploration
-from app import gatekeeper
+from app.research import agent
+from app.research import exploration
+from app.research import gatekeeper
 from app import spec as specmod
 
 
@@ -395,7 +395,7 @@ def test_dropped_theses_newest_first_and_capped_without_sql_ordering():
 
 def test_mechanism_buckets_put_renamed_ideas_together():
     """Prod 2026-10-24: the same four crypto ideas died ~600 times under new names on 10 markets."""
-    from app import rsi
+    from app.research import rsi
     fl = "favorite-longshot / calibration"
     assert rsi.mechanism("ZEC Favorite-Longshot Calibration Bias") == fl
     assert rsi.mechanism("Fitted recalibration \u2014 favorite-longshot bias correction") == fl

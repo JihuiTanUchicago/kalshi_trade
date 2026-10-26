@@ -7,9 +7,10 @@ a model that re-fit inside signals() at validation time would score itself on he
 its "edge" would be fake. These tests prove the params are frozen, part of the experiment
 identity, fed to signals on a DIFFERENT window, and that no cross-fold channel (data_dir) is open.
 """
-from app import backtest, sandbox
+from app import backtest
+from app.research import sandbox
 from app import spec as specmod
-from app.gatekeeper import Prereg
+from app.research.gatekeeper import Prereg
 
 from tests.test_code_strategy import _dataset, _code_spec, BUY_ALL, needs_confiner
 
@@ -72,7 +73,7 @@ def test_fit_failure_records_reason_in_diag(monkeypatch):
 
 
 def test_diagnose_surfaces_code_fit_failure():
-    from app import agent
+    from app.research import agent
     msg = agent._diagnose({"kind": "code", "code": "x"}, None, {"trades": 0},
                           {"code_fit_failed": "only one class present"})
     assert "fit() raised" in msg and "only one class present" in msg

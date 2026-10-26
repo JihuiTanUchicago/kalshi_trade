@@ -13,7 +13,8 @@ from datetime import timedelta
 
 import pytest
 
-from app import agent, backtest, sandbox
+from app import backtest
+from app.research import agent, sandbox
 from app.markets import MARKETS
 
 
@@ -174,7 +175,7 @@ def test_extra_research_libs_allowlisted():
 
 
 def test_research_eval_null_baseline_and_discovery_efficiency():
-    from app import research_eval as E
+    from app.research import research_eval as E
     # Calibration: on a pure-noise market, mechanical random search makes ~no validated discovery.
     noise = E.run_episode("null", E.random_spec, E.noise_backtest(seed=1), budget=24, seed=1)
     assert noise.discovery_efficiency <= 0.1
@@ -268,7 +269,7 @@ def test_sports_profile_says_a_spread_or_total_price_is_still_a_probability():
     p = agent._market_profile("nhl_game")
     assert "PROBABILITY of YES" in p and "never a" in p and "handicap" in p
     assert "ONE STRIKE of a ladder" in p and '"strike"' in p
-    from app import rsi_playbook as pb
+    from app.research import rsi_playbook as pb
     assert "the probability of YES" in pb.REFLECT_SYSTEM
     assert "the profile is right" in pb.prompt_block({"version": 2, "text": "PIPELINE FACTS\n- x"}, "sports")
 
@@ -277,6 +278,7 @@ def test_code_guide_and_playbook_say_lagged_features_are_computable():
     # Prod 2026-10-24: ~1 in 8 drops in three hours said a thesis needed a lagged/derived feature
     # ("spread collapse", "mid crossing 0.50", "asymmetry ratio") the "snapshot-only" data lacked;
     # a code strategy sees the whole frame sequence and can compute all of them.
-    from app import rsi_playbook as pb, spec
+    from app import spec
+    from app.research import rsi_playbook as pb
     assert "no time-series history" in spec.CODE_STRATEGY_GUIDE and "write it as code" in spec.CODE_STRATEGY_GUIDE
     assert "snapshot-only data)" not in pb.REFLECT_SYSTEM and 'Never record "snapshot-only"' in pb.REFLECT_SYSTEM

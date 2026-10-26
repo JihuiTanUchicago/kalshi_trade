@@ -4,7 +4,8 @@ from types import SimpleNamespace
 import pymysql
 import pytest
 
-from app import agent, schema, server
+from app import schema, server
+from app.research import agent
 from app import models_catalog as catalog
 
 

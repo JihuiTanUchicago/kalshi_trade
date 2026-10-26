@@ -7,7 +7,8 @@ classification LABELS + the hypotheses' own specs feed back — never a held-out
 """
 import json
 
-from app import agent, repository as repo
+from app import repository as repo
+from app.research import agent
 from app.services import research_memory
 
 

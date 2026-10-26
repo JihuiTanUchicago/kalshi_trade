@@ -294,7 +294,7 @@ def test_bounded_series_does_not_change_gate_correlation(cur):
     # RIGOR: marginal_contribution_ok correlates the STORED series via gatekeeper._daily_corr,
     # which buckets by UTC day first. Day-summing the stored copy must leave that correlation
     # IDENTICAL to the full per-trade series, so no deploy decision can flip from the cap.
-    from app import gatekeeper as gk
+    from app.research import gatekeeper as gk
     days, per_day = 150, 400                         # > cap, forces the day-bucket path
     # Per-trade returns vary with the DAY (plus per-trade jitter) so daily sums have real
     # day-to-day variance and genuine comovement — otherwise the correlation is a trivial 0.
