@@ -13,6 +13,7 @@ from app.web.routes import research as research_routes
 from app.web.routes import billing as billing_routes
 from app.adapters.llm import models_catalog
 from app.adapters.db import billing_repository
+from tests.autopilot_status_parts import stub_merged_reads
 
 
 def _ctx():
@@ -317,6 +318,7 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
     monkeypatch.setattr(server.repo, "research_week", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "strategies_passed_since", lambda *a: 0)
     monkeypatch.setattr(server.repo, "research_spent_since", lambda *a: usd)
+    stub_merged_reads(monkeypatch)  # the autopilot panel's merged reads, from the single reads stubbed here
     monkeypatch.setattr(server.repo, "autopilot_paper_week", lambda *a: {"started": 0, "pnl": 0.0, "trades": 0})
     monkeypatch.setattr(server.repo, "activity_since", lambda *a: {"autopilot": {}, "runs": {}, "spent": {"since": usd, "week": usd}})
     monkeypatch.setattr(server.repo, "passed_since", lambda *a, **k: {})

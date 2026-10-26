@@ -17,7 +17,9 @@ from app.adapters.db.billing_repository import (  # noqa: F401
     add_credit, credit_balance, credit_rows, credit_spent_total, credit_statement, credit_totals, get_stripe_customer,
     finished_session_costs, forever_session_rates, recent_session_costs, research_spent_since, runs_spent,
     last_credit_at, usage_by_source, save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
+    credit_week, _usage_key,
 )
+from app.adapters.db.autopilot_pulse_repository import _pulse_at, _pulse_list, _pulse_secs, autopilot_pulse  # noqa: F401
 from app.adapters.db.kalshi_keys_repository import (  # noqa: F401
     delete_kalshi_key, get_kalshi_key, save_kalshi_key,
 )
@@ -64,7 +66,7 @@ from app.adapters.db.position_repository import (  # noqa: F401
     closed_trade_counts, closed_trades_for_export, daily_pnl,
     deployment_realized_series, early_exit_scorecard, insert_closed_position, insert_position,
     market_has_open_positions, open_positions, orphaned_open_positions, positions_for_strategy, positions_version,
-    realized_pnl, realized_pnl_between,
+    realized_pnl, realized_pnl_between, realized_pnl_by_mode,
     score_early_exit, unscored_early_exits, update_marks, user_open_exposure, user_positions, user_positions_in_ticker,
 )
 from app.adapters.db.paper_ledger_repository import (  # noqa: F401

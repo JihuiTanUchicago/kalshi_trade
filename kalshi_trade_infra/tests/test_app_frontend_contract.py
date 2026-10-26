@@ -6,6 +6,7 @@ import pytest
 from app import server
 from app.web.routes import research as research_routes
 from app.web.routes import chat as chat_routes
+from tests.autopilot_status_parts import stub_merged_reads
 
 
 def context(body=None, admin=False):
@@ -208,6 +209,7 @@ def _ap_ctx(monkeypatch, autopilot=1):
     monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 10.0)
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a: 0.0)
     monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a, **k: dict(_NO_USAGE))
+    stub_merged_reads(monkeypatch)  # the panel's two merged reads, made from the single reads stubbed above
     return ctx
 
 

@@ -39,6 +39,15 @@ also read the deployments' strategies); while the book is unchanged: /api/dashbo
 /api/autopilot/status 112 -> 36ms, /api/deployments 103 -> 15ms (339 -> 22ms on the polls where its
 30s road cache lapses), /api/strategies 41 -> 17ms, /api/track-record after its minute's cache lapses
 990 -> ~130ms. The strategy page sums only its own deployments (cheap) and reads them directly.
+Then /api/autopilot/status on that heavy account (a card on file, 10.7k credit rows, 3k chat lines, a
+paper deployment paused today), local MariaDB: 24 -> 8 statements and ~34-42 -> ~20-23ms of SQL a poll
+(26 -> 14 the first time), 17 -> 3 with autopilot off; 20 concurrent pollers p50 ~500 -> ~210ms, p95
+~660 -> ~330ms. Its small reads ride one statement (repo.autopilot_pulse: the positions' version, the
+deployments' strategies, the Kalshi key, the chat's version, the last review, the week's research
+counts, the sessions and review in flight, the engine's beat), the week's credit figures and the
+balance one ledger read (repo.credit_week); each book's day, the open paper count and a just-paused
+deployment's totals are kept with the other position sums, the last move against the chat's version;
+and the reads only the story uses are skipped while the story tells none of them.
 """
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -52,11 +61,12 @@ from app import server
 from app.trading import engine
 from app.adapters.stripe import billing
 from app.services import book_memo
+from app.web.routes import chat as chat_routes
 
 # A steady-state poll: the process-wide shared reads (series list, data freshness) and the run page's
 # dream line are warm, as they are for every request but one a minute. get_run's run is queued past
 # the overdue limit, so it also counts the queue ahead (5 for a run that is working normally).
-BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}  # dashboard: the trades CSV counts ride the realized-P&L pass
+BUDGET = {"autopilot_status": 9, "me": 5, "get_run": 6, "dashboard": 14}  # dashboard: the trades CSV counts ride the realized-P&L pass
 # Counted cold, as above: each page that sums the positions reads their version first (book_memo), +1
 # (not the strategy page, which sums only its own deployments).
 # The Deploy board polls /api/deployments every 10s; /api/strategies/<id> is the strategy page. Both
@@ -97,9 +107,28 @@ class CountingCursor:
         return list(self._out)
 
 
+# The autopilot panel's two merged reads: its pulse (repo.autopilot_pulse) and the week's credits with
+# the balance (repo.credit_week).
+PULSE = "AS pos_n"
+CREDITS = "SELECT 'usage' AS part"
+
+
+def _pulse_row(book=None, deps=()):
+    """The pulse with the positions at `book` and the deployments `deps` ({"id", "strategy_id"} rows)."""
+    import json
+
+    book = book or {"n": 0, "closed": 0, "top": 0}
+    return {"pos_n": book["n"], "pos_closed": book["closed"], "pos_top": book["top"], "runs_7d": 0, "tested_7d": 0,
+            "passed_7d": 0, "research_live": None, "review_live": None, "last_review_at": None, "chat_n": 3,
+            "chat_top": 88, "kalshi_key": 1, "dep_strategies": json.dumps([[d["id"], d["strategy_id"]] for d in deps]),
+            "engine_age": 20}
+
+
 def _ctx(log, balance, run_status="queued", query=None, params=(), extra=None):
     long_ago = datetime(2026, 10, 25) - timedelta(hours=2)
     rows = {
+        PULSE: [_pulse_row()],
+        CREDITS: [{"part": "balance", "run_kind": None, "brief": None, "example": None, "s": balance}],
         "FROM app_stripe_customers": [{"user_id": 7, "stripe_customer_id": "cus_1", "default_pm_id": "pm_1",
                                        "auto_reload": 0, "reload_amount": 20, "reload_threshold": 5}],
         "SELECT COALESCE(SUM(amount_usd),0) AS b FROM app_credit_ledger": [{"b": balance}],
@@ -235,8 +264,12 @@ def test_the_autopilot_panel_reads_position_totals_only_for_a_paper_deployment_p
     runs = {}
     for label, paused_at in (("today", datetime(2026, 10, 24, 20)), ("last week", datetime(2026, 10, 18))):
         log = []
+        book_memo.clear()  # each poll cold: the kept reads are the same in both but this one
+        chat_routes._LAST_ACTION.clear()
+        deps = _deps(paused_at)
         out = server.autopilot_status(_ctx(log, 10.0, extra=dict(totals, **{
-            "FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id WHERE d.user_id=%s": _deps(paused_at)})))
+            PULSE: [_pulse_row({"n": 9, "closed": 7, "top": 30}, deps)],
+            "FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id WHERE d.user_id=%s": deps})))
         assert not sorted({s for s in log if log.count(s) > 1}), label
         assert not any("LEFT JOIN app_positions" in s for s, _ in log), label
         runs[label] = (out, log)
@@ -247,6 +280,53 @@ def test_the_autopilot_panel_reads_position_totals_only_for_a_paper_deployment_p
     out, log = runs["last week"]
     assert out["paused_recent"] == [] and not any("AND status='closed' GROUP BY deployment_id" in s for s, _ in log)
     assert len(runs["today"][1]) == len(log) + 1
+
+
+LAST_MOVE = "FROM app_chat_messages WHERE user_id=%s ORDER BY id DESC"
+
+
+def test_the_autopilot_panel_reads_its_last_move_again_only_after_the_chat_moves(production):
+    """The last move is read from the newest chat rows, which are only ever added: it is kept against the
+    chat's (rows, highest id) from the pulse, and a user with no chat has no move to read."""
+    move = {"content": "Autopilot paused Rain: it hit its loss guard.", "created_at": datetime(2026, 10, 24, 20)}
+
+    def poll(n, top):
+        log = []
+        out = server.autopilot_status(_ctx(log, 10.0, extra={PULSE: [dict(_pulse_row(), chat_n=n, chat_top=top)],
+                                                              "recent JOIN app_chat_messages": [move]}))
+        return out["last_action"], sum(LAST_MOVE in s for s, _ in log)
+
+    assert poll(3, 88) == ({"text": move["content"], "at": move["created_at"]}, 1)
+    assert poll(3, 88) == ({"text": move["content"], "at": move["created_at"]}, 0)  # kept
+    assert poll(4, 91)[1] == 1 and poll(4, 91)[1] == 0  # a new line: read again, then kept
+    assert poll(5, 91)[1] == 1  # a row committed below the highest id read: its count moved
+    assert poll(0, 0) == (None, 0)  # no chat, no move
+
+
+def test_an_off_autopilot_panel_skips_the_reads_only_its_story_and_idle_line_use(production):
+    """The paused, early-exit and tournament lines feed only the story, which says one fixed line while
+    autopilot is off and nothing while billing blocks it; the paper waits and open count feed only the
+    story and the idle line. None is read then, and no other figure changes."""
+    story_only = ("AS exits", "FROM app_tournament_allocations", "AND status='closed' GROUP BY deployment_id")
+    paper_only = ("FROM app_deployment_scan_days", "AND status='open' AND mode=%s")
+    outs = {}
+    for label, autopilot, balance in (("on", 1, 10.0), ("blocked", 1, 0.0), ("off", 0, 10.0)):
+        book_memo.clear()
+        deps = _deps(datetime(2026, 10, 24, 20))
+        extra = {PULSE: [_pulse_row({"n": 9, "closed": 7, "top": 30}, deps)],
+                 "FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id WHERE d.user_id=%s": deps}
+        log = []
+        ctx = _ctx(log, balance, extra=extra)
+        ctx.user["autopilot"] = autopilot
+        outs[label] = server.autopilot_status(ctx)
+        read = [s for s, _ in log]
+        assert any(k in s for s in read for k in story_only) == (label == "on"), label
+        assert any(k in s for s in read for k in paper_only) == (label != "off"), label
+    assert outs["on"]["paused_recent"] and outs["off"]["paused_recent"] == [] and outs["off"]["story"] == [
+        server._autopilot_story({"autopilot": False})[0]]
+    assert outs["blocked"]["billing_blocked"] and outs["blocked"]["story"] == []
+    shown = ("today_live_pnl", "today_paper_pnl", "paper_progress", "research", "kalshi_connected", "paper_running")
+    assert {k: outs["off"][k] for k in shown} == {k: outs["on"][k] for k in shown}
 
 
 # The Research list polls /api/runs every 5s. A full answer, cold: the active counts, the all-time totals
@@ -470,7 +550,7 @@ def _panel_rows(strategy_of_4=8):
 
 # (cold, kept) statements with these rows and a book of positions: cold pays the version read (and, for
 # the reads grouped by strategy, the deployments' strategies once); kept drops every heavy sum.
-KEPT_BUDGET = {"dashboard": (16, 14), "list_deployments": (9, 6), "get_track_record": (3, 2), "autopilot_status": (25, 23)}
+KEPT_BUDGET = {"dashboard": (16, 14), "list_deployments": (9, 6), "get_track_record": (3, 2), "autopilot_status": (13, 8)}
 KEPT_PAGES = [("dashboard", {}, _board_rows), ("list_deployments", {}, _board_rows),
               ("get_track_record", {}, _book_rows),
               ("autopilot_status", {}, _panel_rows)]
@@ -484,7 +564,10 @@ def _poll(name, kw, rows, version):
     for cache in (server._TRACK_RECORD, server._BACKTEST_CHECKS, server._ROADS, server._FAILING):
         cache.clear()
     log = []
-    out = getattr(server, name)(_ctx(log, 10.0, extra=dict(rows(), **{VERSION: [version]}), **kw))
+    extra = dict(rows(), **{VERSION: [version]})
+    if name == "autopilot_status":  # the panel reads the version and the deployments' strategies in its pulse
+        extra[PULSE] = [_pulse_row(version, extra.get(STRATEGIES, []))]
+    out = getattr(server, name)(_ctx(log, 10.0, extra=extra, **kw))
     return [s for s, _ in log], [s for s, _ in log if any(h in s for h in HEAVY)], json.dumps(
         out, default=server._json_default, sort_keys=True)
 

@@ -67,6 +67,8 @@ def offline(monkeypatch):
     monkeypatch.setattr(requests, "post", no_kalshi)
     from app.web.routes import chat as chat_routes
     monkeypatch.setattr(chat_routes, "_engine_age", lambda cur: 5)  # the engine ticked a moment ago
+    pulse = chat_routes._pulse  # the autopilot panel reads the beat in its pulse
+    monkeypatch.setattr(chat_routes, "_pulse", lambda *a, **k: dict(pulse(*a, **k), engine_age=5))
     cash = {}
     monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: cash.get(uid))
     demo_twins._BALANCE_CACHE.clear()

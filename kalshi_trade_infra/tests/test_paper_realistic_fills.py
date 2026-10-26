@@ -305,10 +305,15 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
              "result": {"in_sample": {"trades_per_day": 0.5}}},
             {"mode": "paper", "status": "running", "strategy_id": 2, "title": "Fast"},
             {"mode": "live", "status": "running", "strategy_id": 3, "title": "Live"}]
+    from tests.autopilot_status_parts import stub_merged_reads
+    stub_merged_reads(monkeypatch)
     monkeypatch.setattr(server.repo, "list_deployments_brief", lambda *a: deps)
-    monkeypatch.setattr(server.repo, "positions_version", lambda *a: (0, 0, 0))
+    monkeypatch.setattr(server.repo, "positions_version", lambda *a: (17, 13, 40))  # a book: its sums are read
+    monkeypatch.setattr(server.repo, "deployment_strategies", lambda *a: {})
+    monkeypatch.setattr(server.repo, "engine_last_tick_age_seconds", lambda cur: 20)
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda *a: None)
-    monkeypatch.setattr(server.repo, "realized_pnl", lambda cur, uid, mode, since=None: {"live": -2.0, "paper": 1.234}[mode])
+    monkeypatch.setattr(server.repo, "realized_pnl_by_mode",
+                        lambda cur, uid, modes, since: {m: {"live": -2.0, "paper": 1.234}[m] for m in modes})
     monkeypatch.setattr(server.repo, "last_autopilot_action", lambda *a: None)
     monkeypatch.setattr(server.repo, "last_review_at", lambda *a: None)
     monkeypatch.setattr(server.repo, "active_agent_run", lambda *a: None)
@@ -345,6 +350,8 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
              "hypotheses_tried": 9, "strategies_passed": 1},
             {"market": "btc15m", "status": "succeeded", "created_at": now - timedelta(days=9),
              "hypotheses_tried": 50, "strategies_passed": 3}]
+    from tests.autopilot_status_parts import stub_merged_reads
+    stub_merged_reads(monkeypatch)
     monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
     # The week is one aggregate per model (Todd's prod week: 277 runs, the 50-run list saw 73 ideas).
     week = [{"model": "sonnet-4-5", "runs": 250, "tried": 2400, "passed": 68, "input_tokens": 10_000_000, "output_tokens": 1_000_000},
@@ -376,6 +383,8 @@ def test_research_activity_counts_only_runs_that_are_working_now(monkeypatch):
             {"market": "btc15m", "status": "running", "created_at": stale, "started_at": stale, "heartbeat_at": stale},
             {"market": "eth15m", "status": "paused", "created_at": now, "started_at": now, "heartbeat_at": now},
             {"market": "high_ny", "status": "queued", "created_at": stale, "heartbeat_at": None}]
+    from tests.autopilot_status_parts import stub_merged_reads
+    stub_merged_reads(monkeypatch)
     monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: runs)
     monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: [])
     monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 0)

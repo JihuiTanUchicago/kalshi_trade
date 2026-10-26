@@ -346,6 +346,19 @@ def realized_pnl(cur, user_id: int, mode: str, since: Optional[datetime] = None)
     return float(cur.fetchone()["p"])
 
 
+def realized_pnl_by_mode(cur, user_id: int, modes: Tuple[str, ...], since: datetime) -> Dict[str, float]:
+    """{mode: realized_pnl(mode, since)} for each of `modes`, from one read grouped by mode: each book
+    summed apart, never together. A display read (the autopilot panel's day); the gates keep calling
+    realized_pnl."""
+    cur.execute(
+        "SELECT mode, COALESCE(SUM(pnl),0) AS p FROM app_positions WHERE user_id=%s AND status='closed' "
+        "AND closed_at >= %s AND mode IN (" + ",".join(["%s"] * len(modes)) + ") GROUP BY mode",
+        (user_id, since) + tuple(modes),
+    )
+    got = {r["mode"]: float(r["p"]) for r in cur.fetchall()}
+    return {m: got.get(m, 0.0) for m in modes}
+
+
 BOOK_MODES = ("paper", "demo", "live")
 
 

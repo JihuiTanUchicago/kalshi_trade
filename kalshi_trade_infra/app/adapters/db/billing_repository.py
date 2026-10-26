@@ -1,6 +1,7 @@
 """Credits ledger and Stripe customer SQL (usage billing)."""
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
@@ -128,11 +129,50 @@ def usage_by_source(cur, user_id: int, since) -> Dict[str, float]:
     )
     out = {"research": 0.0, "autopilot_research": 0.0, "autopilot_review": 0.0, "chat": 0.0, "other": 0.0}
     for r in cur.fetchall():
-        kind = r["run_kind"]
-        key = (("autopilot_research" if int(r["brief"] or 0) else "research") if kind == "research"
-               else "autopilot_review" if kind == "review" else "chat" if kind == "chat" else "other")
-        out[key] += float(r["s"])
+        out[_usage_key(r["run_kind"], r["brief"])] += float(r["s"])
     return out
+
+
+def _usage_key(run_kind: Optional[str], brief) -> str:
+    """usage_by_source's name for what a run of `run_kind` (None: no run) spent."""
+    return (("autopilot_research" if int(brief or 0) else "research") if run_kind == "research"
+            else "autopilot_review" if run_kind == "review" else "chat" if run_kind == "chat" else "other")
+
+
+def credit_week(cur, user_id: int, since, balance: bool = False) -> Dict:
+    """The autopilot panel's credit figures in one read of the ledger: {"research": research_spent_since,
+    "by_source": usage_by_source, "spent": credit_spent_total, each over usage since `since`, and with
+    `balance` "balance": credit_balance (None without)}. The usage rows are grouped once, by their run's
+    kind, brief flag and whether it is the seeded example (research_spent_since leaves that out), and the
+    balance rides the same statement. Sums stay Decimal until each figure is made, so every figure is
+    the float its own read returned. Every part reads the ledger as it stands at this one statement."""
+    sql = ("SELECT 'usage' AS part, r.kind AS run_kind, COALESCE(r.brief, 0) AS brief, "
+           "COALESCE(r.direction = 'random_walk', 0) AS example, -SUM(l.amount_usd) AS s "
+           "FROM app_credit_ledger l LEFT JOIN app_agent_runs r ON r.id = l.run_id "
+           "WHERE l.user_id=%s AND l.kind='usage' AND l.created_at >= %s "
+           "GROUP BY r.kind, COALESCE(r.brief, 0), COALESCE(r.direction = 'random_walk', 0)")
+    params: Tuple = (user_id, since)
+    if balance:
+        sql += (" UNION ALL SELECT 'balance', NULL, NULL, NULL, COALESCE(SUM(amount_usd),0) "
+                "FROM app_credit_ledger WHERE user_id=%s")
+        params += (user_id,)
+    cur.execute(sql, params)
+    groups: Dict[Tuple, Decimal] = {}
+    research, spent, bal = Decimal(0), Decimal(0), None
+    for r in cur.fetchall():
+        s = Decimal(str(r["s"] if r["s"] is not None else 0))
+        if r["part"] == "balance":
+            bal = float(s)
+            continue
+        key = (r["run_kind"], int(r["brief"] or 0))
+        groups[key] = groups.get(key, Decimal(0)) + s
+        spent += s
+        if r["run_kind"] == "research" and not int(r["example"] or 0):
+            research += s
+    by_source = {"research": 0.0, "autopilot_research": 0.0, "autopilot_review": 0.0, "chat": 0.0, "other": 0.0}
+    for (kind, brief), s in groups.items():
+        by_source[_usage_key(kind, brief)] += float(s)
+    return {"research": float(research), "by_source": by_source, "spent": float(spent), "balance": bal}
 
 
 def forever_session_rates(cur, since, user_id: Optional[int] = None, limit: int = 500) -> List[Tuple[Optional[str], float, float]]:
