@@ -144,7 +144,8 @@ def test_the_curves_and_the_pages_that_draw_them_say_what_they_said(conn, monkey
     ctx = server.Ctx(conn, dict(user, autopilot=0), (), {}, {}, None)
     # "Since your last visit" starts from now(); pin it so two reads a second apart compare equal.
     visit = server._visit_since(None)
-    monkeypatch.setattr(server, "_visit_since", lambda raw: visit)
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_visit_since", lambda raw: visit)
     server._BACKTEST_CHECKS.clear()
     new_pages = [_payload(server.list_deployments(ctx)), _payload(server.dashboard(ctx))]
     monkeypatch.setattr(server.repo, "deployment_curves",

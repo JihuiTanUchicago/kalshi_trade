@@ -168,7 +168,8 @@ def test_paper_demo_and_live_figures_never_mix(conn, monkeypatch):
                                         - float(p["held"]["entry_fee"]))
 
     # -- the dashboard ---------------------------------------------------------------------------
-    monkeypatch.setattr(server, "_freshness", lambda c: {})
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda c: {})
     ctx = server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None)
     dash = server.dashboard(ctx)
     for mode in MODES:

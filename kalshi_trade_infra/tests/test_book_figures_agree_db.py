@@ -238,7 +238,8 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
     # Demo's reload snapshotted every demo trade closed before it: the history and the two settlements.
     before_reload = sum(float(r["pnl"]) for r in demo["closed"] if r["ticker"] not in (P, H))
 
-    monkeypatch.setattr(server, "_freshness", lambda c: {})
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda c: {})
     server._TRACK_RECORD.pop(uid, None)
     server._BACKTEST_CHECKS.clear()
     user = repo.get_user(cur, uid)
@@ -418,7 +419,8 @@ def test_a_deleted_strategys_open_position_stays_in_the_book(conn, monkeypatch):
         server.delete_strategy(ctx(sid))
     assert kept.value.status == 409
     assert repo.delete_strategy(cur, uid, sid)
-    monkeypatch.setattr(server, "_freshness", lambda c: {})
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda c: {})
     server._TRACK_RECORD.pop(uid, None)
     dash = server.dashboard(ctx())
     board = server.list_deployments(ctx())

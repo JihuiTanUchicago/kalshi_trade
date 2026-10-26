@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from app import server
+from app.web.routes import dashboard as dashboard_routes
 from app.web.routes import research as research_routes
 from app.web.routes import explore as explore_routes
 from app.web.routes import strategies as strategy_routes
@@ -273,7 +274,7 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
         "active_run_counts": lambda cur, uid, **kw: {},
     }.items():
         monkeypatch.setattr(server.repo, name, fn)
-    monkeypatch.setattr(server, "_freshness", lambda cur: {})
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda cur: {})
     monkeypatch.setattr(server.book_memo, "_LEDGER", {})
     out = server.dashboard(ctx())
     paper, demo = out["paper"], out["demo"]

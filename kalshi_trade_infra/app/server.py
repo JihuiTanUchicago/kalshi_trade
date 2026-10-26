@@ -295,6 +295,28 @@ from app.web.routes.research import (  # noqa: F401  (moved; server.py keeps the
     research_scoreboard,
     resume_run,
 )
+from app.web.routes.dashboard import (  # noqa: F401  (moved; server.py keeps the names for routing and tests)
+    _BOOK_SHAPE,
+    SINCE_FIRST,
+    SINCE_MAX,
+    TRACK_RECORD_CACHE_MIN_TRADES,
+    TRACK_RECORD_TTL,
+    _book_shape,
+    _freshness,
+    _mode_bucket,
+    _since_visit,
+    _visit_since,
+    dashboard,
+    get_track_record,
+)
+from app.web.routes.account import (  # noqa: F401  (moved; server.py keeps the names for routing and tests)
+    mark_notifications_read,
+    me,
+    notifications,
+    set_email_preferences,
+    set_ui_theme,
+    unsubscribe,
+)
 
 
 # -- read routes ---------------------------------------------------------------
@@ -348,250 +370,6 @@ def warm_deploy_boards(limit: int = WARM_BOARD_USERS, budget: float = WARM_BOARD
             conn.close()
     _log_line("[app] warmed %d Deploy board(s) in %.1fs" % (done, time.time() - t0))
     return done
-
-
-def me(ctx: Ctx):
-    _sync_ui_cookie(ctx, ctx.user.get("ui_theme") if ctx.user.get("ui_theme") in UI_THEMES else "tau")
-    reads = billing.Reads(ctx.cur, ctx.uid)  # needs_card, auto_reload and credit_balance share one read each
-    return {
-        "user": {
-            "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
-            "username": ctx.user.get("username"), "ui_theme": ctx.user.get("ui_theme") or "tau",
-            "email_opt_out": bool(ctx.user.get("email_opt_out")),  # Settings' email switch reads this
-            "picture": ctx.user["picture_url"], "autopilot": bool(ctx.user["autopilot"]),
-            "autopilot_live": bool(ctx.user.get("autopilot_live")),
-            "autopilot_daily_loss_limit": float(ctx.user.get("autopilot_daily_loss_limit") or 50),
-        },
-        "kalshi_connected": repo.get_kalshi_key(ctx.cur, ctx.uid) is not None,
-        "kalshi_dev_connected": repo.get_kalshi_dev_key(ctx.cur, ctx.uid) is not None,
-        "live_trading_available": engine.LIVE_TRADING_ENABLED,
-        # Demo (sandbox) always supports NO/either; live NO is behind the staged-rollout flag.
-        "no_side_live_enabled": engine.NO_SIDE_LIVE_ENABLED,
-        "is_admin": (ctx.user["email"] or "").lower() == ADMIN_EMAIL.lower(),
-        "billing_enabled": billing.configured(),
-        "needs_card": _needs_card(ctx, reads),
-        "auto_reload": _auto_reload_terms(ctx, reads),
-        "free_bonus": float(billing.FREE_BONUS),
-        "credit_balance": credit_exact(reads.balance()),
-        "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
-        "perps_live_available": kalshi_perps_trading.enabled(),  # hide the Funds perps box when live perps are off
-        "markets": _researchable_markets(ctx.cur),
-        "directions": [{"key": k, **v} for k, v in agent.DIRECTIONS.items()],
-        # The research form's model list (the same as GET /api/models), so /research doesn't wait on
-        # that read before it starts its own.
-        "models": models(ctx),
-    }
-
-
-def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day,
-                 realized: Optional[Tuple[float, float]] = None,
-                 closed: Optional[Dict[str, int]] = None) -> Dict:
-    """Money in one deployment-mode bucket (paper | demo | live), from that mode's own
-    positions and deployments only — so the three buckets never double-count each other.
-    `realized` is (all time, since `day`) when the caller read every book's at once.
-    `closed` is the closed-trade counts of repo.closed_book_totals (read once for all three)."""
-    if realized is None:
-        realized = (repo.realized_pnl(cur, uid, mode), repo.realized_pnl(cur, uid, mode, day))
-    total, today = realized
-    return {
-        "closed_trades": int((closed or {}).get(mode, 0)),  # > 0: the dashboard offers /api/trades.csv
-        **_open_book(open_pos, mode),
-        "running": sum(1 for d in deps if d["mode"] == mode and d["status"] == "running"),
-        "realized_pnl": round(total, 2),
-        "today_pnl": round(today, 2),
-    }
-
-
-def dashboard(ctx: Ctx):
-    cur = ctx.cur
-    day = _start_of_day_utc()
-    open_pos = _with_marks(repo.user_positions(cur, ctx.uid, "open"))
-    # Aggregate live mark-to-market unrealized P&L per deployment (from the marks just stamped), so
-    # the Deployed table can show each strategy's current open P&L, not only its realized P&L.
-    unreal_by_dep: Dict[int, float] = {}
-    for p in open_pos:
-        u = p.get("unrealized")
-        if u is not None and p.get("deployment_id") is not None:
-            unreal_by_dep[p["deployment_id"]] = round(unreal_by_dep.get(p["deployment_id"], 0.0) + u, 2)
-    # The reads summed from the positions alone are kept until the positions change (services.book_memo).
-    memo = book_memo.BookMemo(cur, ctx.uid)
-    deps = book_memo.deployments_for_display(memo)
-    # Curves only for the deployments the Deployed table shows (a stopped one's history is not drawn).
-    curves = book_memo.deployment_curves(memo, [d["id"] for d in deps])
-    ledger = book_memo.paper_ledger_summary(cur, ctx.uid)  # balance, deposits and reset: one read, kept until the ledger moves
-    balance, deposited = ledger["balance"], ledger["deposited"]
-    visit, first = _visit_since(ctx.query.get("since"))
-    # Every book's realized P&L and closed-trade count (today and since the last visit), in one read.
-    realized, closed, recent = book_memo.closed_book_totals(memo, day, visit)
-    _BOOK_SHAPE[ctx.uid] = _book_shape(closed, len(open_pos))  # the track record's cache checks it
-    # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
-    # carry an app-controlled cash layer on top of the shared fields; live carries the real
-    # Kalshi balance (money we never hold).
-    paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day, realized["paper"], closed)
-    equity = balance + paper["open_at_cost"]
-    paper.update(
-        cash=round(balance, 2),
-        equity=round(equity, 2),
-        deposited=round(deposited, 2),
-        total_pnl=round(equity - deposited, 2),
-        roi=round((equity - deposited) / deposited, 4) if deposited > 0 else None,
-        daily=book_memo.daily_pnl(memo, "paper"),
-        # total_pnl restarts at a reset (the ledger is wiped), so its label says "since reset", not
-        # "all time", while the track record still counts every closed trade.
-        reset_at=ledger["reset_at"],
-    )
-    # Demo: real fills applied to the capital WE set. Equity = capital + realized-since-reload,
-    # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).
-    demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day, realized["demo"], closed)
-    de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
-    demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
-                total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"],
-                health=_demo_health(cur, ctx.uid, deps))  # capital and P&L look fine while Kalshi refuses every order
-    live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
-    live.update(_live_balance(cur, ctx.uid))
-    paper_sids = _paper_strategy_ids(deps)
-    # The page polls every 15s with its last answer's version (?v=): an unchanged answer is sent as
-    # "same" with only the marks and data ages, which move every tick (services.page_poll).
-    return page_poll.answer({
-        "paper": paper,
-        "demo": demo,
-        "live": live,
-        "open_positions": _with_why(open_pos, deps),
-        "recent_closed": _with_why(repo.user_positions(cur, ctx.uid, "closed", 12), deps),
-        # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
-        # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
-        "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
-        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"]), paper_sids) for d in deps],
-        "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
-        "freshness": _freshness(cur),
-        "since": _since_visit(cur, ctx.uid, visit, first, recent),
-    }, ctx.query.get("v"))
-
-
-SINCE_MAX = timedelta(days=7)    # an older last visit reads as the last 7 days
-SINCE_FIRST = timedelta(hours=24)  # no last visit known (first visit on this device): the last 24h
-
-
-def _visit_since(raw) -> Tuple[datetime, bool]:
-    """The start of "since your last visit" from the dashboard's ?since= (epoch seconds, kept in a
-    cookie by the page), clamped to the last 7 days. Missing or unreadable: the last 24 hours, and
-    `first` is True so the strip says "Last 24 hours" instead."""
-    now = repo.now_utc()
-    try:
-        at = datetime.fromtimestamp(int(str(raw)), tz=timezone.utc).replace(tzinfo=None)
-    except (TypeError, ValueError, OverflowError, OSError):
-        return now - SINCE_FIRST, True
-    return min(max(at, now - SINCE_MAX), now), False
-
-
-def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict) -> Dict:
-    """The dashboard's "since your last visit" strip: each book's realized P&L and closed trades
-    since then (from the books' one pass; books are never added together), the strategies that
-    passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
-    (real money) ride apart from the books, and only while payments are on: with them off nothing
-    is billed. `milestones` are the paper forward-gate passes and live-ready strategies since then."""
-    act = repo.activity_since(cur, uid, visit)
-    return {"at": visit, "first": first,
-            "books": {m: {"pnl": round(pnl, 2), "trades": n} for m, (pnl, n) in recent.items()},
-            "passed": repo.passed_since(cur, uid, visit),
-            "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
-            "spent": {k: credit_usd(v) for k, v in act["spent"].items()} if billing.configured() and act.get("spent") else None,
-            "milestones": act.get("milestones") or {"passed": [], "live_ready": []}}
-
-
-TRACK_RECORD_TTL = 60.0  # seconds; the record moves only when a trade closes
-# A book with fewer trades than this is read fresh on every request: its grouped read is a few rows
-# through idx_pos_user, and a new user's first trade showed up only after the cached empty record
-# expired (up to a minute after the board above it showed the trade).
-TRACK_RECORD_CACHE_MIN_TRADES = 200
-# {user id: the book's shape at the dashboard's last read} (_book_shape): one closed-trade count per
-# mode and the open count. A busy book's cached record is rebuilt once the dashboard has seen a trade
-# open or close that the record predates, so the two never disagree for the rest of the minute.
-_BOOK_SHAPE: Dict[int, Tuple] = {}
-
-
-def _book_shape(closed: Dict[str, int], open_count: int) -> Tuple:
-    return tuple(sorted(closed.items())), int(open_count)
-
-
-def get_track_record(ctx: Ctx):
-    """The fund-grade track record: realized results per money bucket (live / demo / paper), from
-    the user's own closed trades. A busy book is cached per user for TRACK_RECORD_TTL (never served
-    stale past it, nor past a trade the dashboard has seen open or close, nor past the user's own
-    deploy or stop), so a page left open costs one grouped scan a minute at most; a small one is
-    read every time."""
-    hit, shape = _TRACK_RECORD.get(ctx.uid), _BOOK_SHAPE.get(ctx.uid)
-    if (hit and hit[2] >= TRACK_RECORD_CACHE_MIN_TRADES and time.time() - hit[0] < TRACK_RECORD_TTL
-            and hit[3] == shape):
-        return hit[1]
-    val = book_memo.track_record(ctx.cur, ctx.uid)  # the trades and their buckets kept until the book changes
-    n = sum(int(m.get("trades") or 0) for m in (val.get("modes") or {}).values())
-    _TRACK_RECORD[ctx.uid] = (time.time(), val, n, shape)
-    return val
-
-
-def _freshness(cur) -> Dict:
-    raw = _shared("history_freshness", 60, lambda c: repo.history_freshness(c), cur)
-    now = int(datetime.now(timezone.utc).timestamp())
-    out = {k: (now - int(v) if v else None) for k, v in raw.items()}
-    # Engine liveness: seconds since the deployment engine's last tick (None = never/dead). A stalled
-    # engine holding real positions is the worst silent failure, so it rides the same payload.
-    try:
-        out["engine"] = repo.engine_last_tick_age_seconds(cur)
-    except Exception:
-        out["engine"] = None
-    return out
-
-
-def notifications(ctx: Ctx):
-    rows = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid, limit=bell.READ_ROWS))
-    return {"unread": repo.count_unread_notifications(ctx.cur, ctx.uid), "items": bell.grouped(rows)}
-
-
-def mark_notifications_read(ctx: Ctx):
-    repo.mark_notifications_read(ctx.cur, ctx.uid)
-    return {"ok": True}
-
-
-def set_ui_theme(ctx: Ctx):
-    theme = str(ctx.body.get("theme") or "").strip()
-    if theme not in ("tau", "meridian"):
-        raise ApiError(400, "Unknown theme.")
-    repo.set_ui_theme(ctx.cur, ctx.uid, theme)
-    _sync_ui_cookie(ctx, theme)  # the reload that follows gets the new theme's shell
-    return {"ok": True, "theme": theme}
-
-
-def set_email_preferences(ctx: Ctx):
-    """Settings' email switch, for the signed-in user only: optional email (community posts, replies,
-    mentions, ready-for-live notices) off or back on. The unsubscribe link writes the same field;
-    live-money safety alerts never read it."""
-    opt_out = ctx.body.get("email_opt_out")
-    if not isinstance(opt_out, bool):
-        raise ApiError(400, "Choose whether Tau may send you optional email.")
-    if not repo.set_email_opt_out(ctx.cur, ctx.uid, opt_out):
-        raise ApiError(404, "Your account wasn't found. Sign in again.")
-    return {"ok": True, "email_opt_out": opt_out}
-
-
-def unsubscribe(ctx: Ctx):
-    """Public one-click unsubscribe from optional email (HMAC-signed link, no login needed). It sets
-    the same switch as Settings, so the page says what stopped and where to turn it back on."""
-    try:
-        uid = int(ctx.query.get("u") or 0)
-    except ValueError:
-        uid = 0
-    ok = bool(uid) and notify.unsubscribe_token_valid(uid, ctx.query.get("t") or "") and repo.set_email_opt_out(ctx.cur, uid, True)
-    msg = ("You're unsubscribed from Tau's optional email: new community posts, replies, mentions, and "
-           "notices that a paper strategy is ready for live trading. Safety alerts about a Bitcoin perps "
-           "account you trade through Tau still come, because they protect real money. You can turn "
-           "optional email back on in <a href='/settings' style='color:#1a66c9'>Settings</a>." if ok
-           else "This unsubscribe link isn't valid. If you keep getting emails, reply to one and we'll remove you.")
-    page = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-            "<title>Tau</title><body style='font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;color:#191B16'>"
-            "<h1 style='font-size:20px;letter-spacing:.02em'>Tau</h1><p style='font-size:15px;line-height:1.55'>%s</p>"
-            "<p style='font-size:13px;margin-top:20px'><a href='/' style='color:#1a66c9'>Back to Tau</a></p></body>") % msg
-    return ("html", page)
 
 
 # -- routing -----------------------------------------------------------------------

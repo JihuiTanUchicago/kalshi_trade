@@ -141,7 +141,8 @@ def test_every_paper_money_figure_agrees_to_the_cent(conn, monkeypatch):
     assert _money(cash) == _money(repo.STARTING_PAPER_BALANCE + realized - open_cost - open_fee)
 
     # -- the dashboard ---------------------------------------------------------------------------
-    monkeypatch.setattr(server, "_freshness", lambda c: {})
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda c: {})
     ctx = server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None)
     dash = server.dashboard(ctx)
     paper = dash["paper"]

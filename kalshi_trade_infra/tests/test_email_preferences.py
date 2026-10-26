@@ -9,6 +9,7 @@ import pytest
 import requests
 
 from app import server
+from app.web.routes import account as account_routes
 from app.adapters.ses import notify
 from app.research import agent
 from app.adapters.kalshi_perps import kalshi_perps_watch
@@ -102,9 +103,9 @@ def test_me_reports_the_switch(monkeypatch):
         def balance(self):
             return 0.0
     monkeypatch.setattr(server.billing, "Reads", Reads)
-    monkeypatch.setattr(server, "_needs_card", lambda c, r: False)
-    monkeypatch.setattr(server, "_auto_reload_terms", lambda c, r: None)
-    monkeypatch.setattr(server, "_researchable_markets", lambda cur: [])
+    monkeypatch.setattr(account_routes, "_needs_card", lambda c, r: False)
+    monkeypatch.setattr(account_routes, "_auto_reload_terms", lambda c, r: None)
+    monkeypatch.setattr(account_routes, "_researchable_markets", lambda cur: [])
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: None)
     monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: None)
     base = {"id": 3, "email": "a@example.invalid", "name": "A", "picture_url": None, "autopilot": 0}
