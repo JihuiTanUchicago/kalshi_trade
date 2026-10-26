@@ -1460,12 +1460,20 @@
     const next = root.querySelector(`[data-dep="${id}"]`) || document.getElementById('main');
     if (next && next.focus) next.focus({ preventScroll: true });
   }
+  // An action's error notice replaces the last one: a run page's Pause failing on each press stacked
+  // a new notice per press. #flash holds one notice; on a page without it, the last one is removed.
   function alert0(msg) {
     const host = root.querySelector('#flash') || root.querySelector('main');
     if (!host) return;
-    const el = document.createElement('div');
-    el.innerHTML = notice(msg, 'bad', true);
-    host.prepend(el.firstChild);
+    if (host.id === 'flash') host.innerHTML = notice(msg, 'bad', true);
+    else {
+      const prev = host.querySelector('[data-alert0]');
+      if (prev) prev.remove();
+      const el = document.createElement('div');
+      el.innerHTML = notice(msg, 'bad', true);
+      el.firstChild.setAttribute('data-alert0', '');
+      host.prepend(el.firstChild);
+    }
     announce(msg, true);
   }
 
@@ -2127,14 +2135,15 @@
       // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
       const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
       const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
-      const running = d.counts.research_running, queued = d.counts.research_queued;
-      const said = running
-        ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now${queued ? ` ·\u00a0<em>${queued}</em> waiting` : ''} — <em>${tried}</em> hypotheses tested, <em>${passed}</em> through every gate.`
+      // A paused session holds one of the two session slots but isn't researching: it says paused.
+      const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
+      const said = running || paused
+        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(' ·\u00a0')} — <em>${tried}</em> hypotheses tested, <em>${passed}</em> through every gate.`
         : tried
           ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
           : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
       root.querySelector('#rstatus .said').innerHTML = said;
-      root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
+      root.querySelector('#rfigs').innerHTML = fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
         fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
@@ -2155,6 +2164,12 @@
   // What a run has taken from credits (the ledger rows billed to it, `spent_usd` from the server).
   // A run still going says "so far"; a finished one states its cost.
   const runLive = (r) => r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+  // Which model a session uses and how far it goes, beside its market on the run page: it never said
+  // either. model_label is the model's customer name from the server (the run's key is NULL for the
+  // default model); run_forever is the form's "Let it run until I stop it", else its strategy count.
+  const runSetup = (r) => [r.model_label ? esc(r.model_label) : '',
+    r.run_forever ? (runLive(r) ? 'Runs until you stop it' : 'Ran until stopped')
+      : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' \u00b7\u00a0');
   const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
   function runRow(r) {
     const state = r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
@@ -2742,10 +2757,12 @@
         ? `<details class="ri-rest"${open ? ' open' : ''}><summary>Show all ${list.length}</summary><ol class="ri-list">${list.slice(SHOW).map(row).join('')}</ol></details>` : ''}</section>`;
   }
   async function viewRun(id) {
-    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><div id="runideas"></div><p class="stale-note" id="run-stale" role="status"></p>', `
+    // Pause and Cancel (and their error notice) sit beside the title, as on Meridian: at the Agent log
+    // heading they were a screen below the spend figure on a phone.
+    shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><div id="flash"></div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><div id="runideas"></div><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
-      <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div>
+      <section><div class="section-head"><h2>Agent log</h2></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div><div id="runend"></div></section>`);
     let after = 0, tried = 0;
@@ -2763,7 +2780,7 @@
       const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
-      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : ''}`);
+      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       const late = r.wait && r.wait.overdue ? r.wait : null;

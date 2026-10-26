@@ -123,8 +123,19 @@ def label_for_model_id(model_id: Optional[str]) -> str:
     mid = (model_id or "").strip()
     if mid in _LABEL_BY_MODEL_ID:
         return _LABEL_BY_MODEL_ID[mid]
-    low = mid.lower()
+    return _family_label(mid)
+
+
+def _family_label(name: str) -> str:
+    low = name.lower()
     return next((label for key, label in _FAMILY_LABELS if key in low), "AI model")
+
+
+def label_for_key(key: Optional[str]) -> str:
+    """The customer-facing name of the model a run stored by key: a NULL key ran on the default, a
+    retired key names its model family (as label_for_model_id), never the key itself."""
+    m = MODELS.get(key or DEFAULT_KEY) or next((p for p in PENDING if p.key == key), None)
+    return m.label if m else _family_label(key or "")
 
 
 def default() -> ModelChoice:

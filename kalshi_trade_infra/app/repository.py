@@ -914,10 +914,10 @@ def deployment_curves(cur, user_id: int, max_points: int = CURVE_MAX_POINTS,
 
 
 def active_run_counts(cur, user_id: int, silent_before=None) -> Dict[str, int]:
-    """Queued, running and paused runs by kind. With `silent_before`, a running run whose last beat
-    (or start) is older than it is left out: its worker died, and the reaper that would stop it runs
-    in that worker, so "1 agent researching" stayed up for hours beside an autopilot card saying it
-    was between research runs."""
+    """Queued, running and paused runs by kind, paused research apart from running. With
+    `silent_before`, a running run whose last beat (or start) is older than it is left out: its
+    worker died, and the reaper that would stop it runs in that worker, so "1 agent researching"
+    stayed up for hours beside an autopilot card saying it was between research runs."""
     silent = ("" if silent_before is None else
               " AND NOT (status='running' AND COALESCE(heartbeat_at, started_at, created_at) < %s)")
     cur.execute(
@@ -925,12 +925,13 @@ def active_run_counts(cur, user_id: int, silent_before=None) -> Dict[str, int]:
            WHERE user_id=%s AND status IN ('queued','running','paused')""" + silent + " GROUP BY kind, status",
         (user_id,) if silent_before is None else (user_id, silent_before),
     )
-    out = {"research_running": 0, "research_queued": 0, "chat_active": 0}
+    out = {"research_running": 0, "research_paused": 0, "research_queued": 0, "chat_active": 0}
     for r in cur.fetchall():
         if r["kind"] == "research":
-            # A paused research run is still working for the user (a held worker slot), so it
-            # counts under "running" for the at-a-glance busy indicator.
-            out["research_running" if r["status"] in ("running", "paused") else "research_queued"] += int(r["n"])
+            # A paused run still holds one of the user's session slots (count_runs active_only), but
+            # it isn't researching: counted under "running", one running and one paused read
+            # "Researching now 2". The pages say running and paused apart.
+            out["research_" + r["status"]] += int(r["n"])
         else:
             out["chat_active"] += int(r["n"])
     return out

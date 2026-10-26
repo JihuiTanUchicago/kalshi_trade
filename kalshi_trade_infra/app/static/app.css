@@ -687,6 +687,15 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .ell::after { content: "…"; animation: ell 1.4s steps(1) infinite; }
 @keyframes ell { 0% { content: ""; } 25% { content: "·"; } 50% { content: "··"; } 75% { content: "···"; } }
 .runact { display: inline-flex; gap: 8px; }
+/* the run page's title with Pause / Cancel beside it (under it on a phone), so they sit by the figures */
+.run-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.run-header > #runboard { min-width: 0; }
+.run-header > #runact { flex: none; padding-top: 50px; }  /* level with the title's first line */
+.run-header > #runact:empty { display: none; }
+@media (max-width: 720px) {
+  .run-header { display: block; }
+  .run-header > #runact { display: block; padding-top: 10px; }
+}
 
 /* --- live "thinking" card: the proposer's reasoning streaming in as it's written --- */
 .log.stream .lane-think .node::after { background: var(--stock-raised); border-color: var(--ink-2); animation: thinkpulse 1.5s var(--ease) infinite; }
