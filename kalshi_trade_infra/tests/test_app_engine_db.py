@@ -87,6 +87,28 @@ def test_paper_buy_then_settle_balances_to_the_cent(conn, user):
     assert float(cur.fetchone()["pnl"]) == pytest.approx(25 - 10 - 0.42)
 
 
+def test_the_dashboard_says_why_a_paper_trade_was_entered_and_why_it_exited(conn, user):
+    """The engine buys on the rule and sells at the take-profit; the dashboard's line for that trade
+    names the same rule and the same exit, from the stored row and the strategy's frozen spec."""
+    from app import engine, server
+
+    dep = _deployment(conn, user, {"sizing": {"stake": 10.0, "max_positions": 1}, "exit": {"take_profit": 0.2}})
+    ticker = "TEST-" + uuid.uuid4().hex[:8]
+    assert engine.decide(conn, dep, [_snap(ticker)], {ticker: 1000.0}, engine.Sources())["entries"] == 1
+
+    def mine(rows):
+        return [p["why"] for p in rows if p["ticker"] == ticker]
+
+    dash = server.dashboard(server.Ctx(conn, dict(user, autopilot=0), (), {}, {}, None))
+    assert mine(dash["open_positions"]) == ["Entered at 40¢: edge ≥ 10¢ after fees · Exits: +20¢ take-profit, else settlement"]
+    assert engine.decide(conn, dep, [_snap(ticker, bid=0.62, ask=0.64)], {ticker: 1000.0}, engine.Sources())["exits"] == 1
+    dash = server.dashboard(server.Ctx(conn, dict(user, autopilot=0), (), {}, {}, None))
+    assert mine(dash["recent_closed"]) == [
+        "Entered at 40¢: edge ≥ 10¢ after fees · Exited at 62¢: take-profit (+22¢ vs +20¢ target)"]
+    assert mine(server.list_deployments(server.Ctx(conn, dict(user, autopilot=0), (), {}, {}, None))["recent_closed"]) == \
+        mine(dash["recent_closed"])
+
+
 def test_no_position_settles_on_a_no_result(conn, user):
     """Settlement pays the NO side: a NO position whose market resolves NO is worth
     $1/contract. `payout = qty if result == pos["side"]` must be side-generic."""
