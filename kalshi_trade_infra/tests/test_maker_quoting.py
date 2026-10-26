@@ -80,6 +80,33 @@ def test_improves_one_tick_only_inside_a_wide_spread():
     assert maker_quotes(_inst(), Quote(YES, 0, 0.40, 0.42, 1, 1), None, 0, 600, cfg)[0].price == 0.40
 
 
+def test_policy_levers_offset_back_off_skew_band_and_horizon():
+    q = Quote(YES, 0.0, 0.40, 0.43, 500, 500)
+    behind = maker_quotes(_inst(), q, None, 0.0, 600, MakerConfig(offset_ticks=2))
+    assert [(d.instrument.outcome, d.price) for d in behind] == [("yes", 0.38), ("no", 0.55)]
+    # fair .45: the YES bid at .40 clears 2c; the NO bid needs (1 - .45) - .02 = .53 and backs off to it
+    backed = maker_quotes(_inst(), q, 0.45, 0.0, 600, MakerConfig(min_edge=0.02, back_off=True))
+    assert [(d.instrument.outcome, d.price) for d in backed] == [("yes", 0.40), ("no", 0.53)]
+    assert [d.instrument for d in maker_quotes(_inst(), q, 0.45, 0.0, 600, MakerConfig(min_edge=0.02))] == [YES]
+    long_ = maker_quotes(_inst(), q, None, 250.0, 600, MakerConfig(max_inventory=500, skew_ticks=4))
+    assert [(d.instrument.outcome, d.price) for d in long_] == [("yes", 0.38), ("no", 0.57)]   # half full: 2 ticks
+    assert maker_quotes(_inst(), Quote(YES, 0, 0.90, 0.92, 1, 1), None, 0, 600, MakerConfig(mid_band=(0.1, 0.9))) == []
+    assert maker_quotes(_inst(), q, None, 0, 7200, MakerConfig(max_secs_to_close=3600)) == []
+
+
+def test_a_spot_move_pulls_the_contract_for_the_cooldown():
+    v = _venue()
+    inst = _inst()
+    loop = QuotingLoop(v, {YES: inst, NO: inst.complement()},
+                       MakerConfig(quote_size=100, rewarded_only=False, pull_move_bp=3, pull_cooldown_s=10))
+    calm = {YES: Quote(YES, 0.0, 0.40, 0.43, 500, 300, features={"spot_move_bp": 1.0})}
+    assert len(loop.step(0.0, calm, secs_to_close={YES: 600}).posts) == 2
+    jump = {YES: Quote(YES, 1.0, 0.40, 0.43, 500, 300, features={"spot_move_bp": -4.0})}
+    assert len(loop.step(1.0, jump, secs_to_close={YES: 599}).cancels) == 2 and not v.open_orders()
+    assert not loop.step(5.0, calm, secs_to_close={YES: 595}).posts           # still cooling down
+    assert len(loop.step(11.0, calm, secs_to_close={YES: 589}).posts) == 2
+
+
 def test_reconcile_keeps_queue_place_tops_up_and_cancels_the_rest():
     resting = [RestingOrder("a", YES, Side.BUY, 0.40, 60.0), RestingOrder("b", NO, Side.BUY, 0.56, 100.0),
                RestingOrder("c", YES, Side.BUY, 0.40, 80.0)]
@@ -256,6 +283,58 @@ def test_settled_contracts_are_marked_at_their_result():
     assert res == {tk: 0.0}
     out = rep.report(res)
     assert out["trading_pnl"] == pytest.approx(-500 * 0.40) and out["settled_marks"] == 1
+
+
+def _moved_inputs():
+    pa = pytest.importorskip("pyarrow")
+    h, tk, tables, prog = _replay_inputs()
+    t0 = int(h.timestamp())
+    ns = 1_000_000_000
+    # At t0+130 the YES bid drops to .36 (mid .415 -> .395): the fill at .40 is +1.5c at 10s, -0.5c at 60s.
+    tables["kalshi_book"] = pa.concat_tables([tables["kalshi_book"], pa.table({
+        "rt": [(t0 + 130) * ns] * 3, "ticker": [tk] * 3, "kind": [3, 3, 3], "side": [None, "yes", "no"],
+        "price": [None, 0.36, 0.57], "qty": [None, 1500.0, 1200.0]})])
+    return h, tk, tables, prog
+
+
+def test_fills_are_marked_out_and_bucketed_by_hour():
+    from app.adapters.sim.maker_replay import MakerReplay
+    h, tk, tables, prog = _moved_inputs()
+    rep = MakerReplay(["KXCRYPTOLEAD15M"], MakerConfig(quote_size=500, max_inventory=500), [prog])
+    out = rep.run(_Store(tables), h, h.replace(minute=20))
+    [row] = out["hours"]
+    assert row["hour"] == int(h.timestamp()) and row["fills"] == 1 and row["qty"] == 500.0
+    assert row["m10"] == pytest.approx(500 * (0.415 - 0.40)) and row["m60"] == pytest.approx(500 * (0.395 - 0.40))
+    assert row["reward"] == pytest.approx(out["rewards"], abs=0.01)
+    assert out["markout_per_contract"]["m60"] == pytest.approx(-0.005)
+
+
+class _FeatStore(_Store):
+    def __init__(self, tables, feats):
+        super().__init__(tables)
+        self.feats = feats
+
+    def features_1s(self, start, end, tickers=None, series=None, columns=None):
+        return self.feats
+
+
+def test_spot_fair_value_from_features_keeps_the_rich_side_out():
+    from app.adapters.sim.maker_replay import MakerReplay
+    h, tk, tables, prog = _moved_inputs()
+    t0 = int(h.timestamp())
+    secs = list(range(t0 + 1, t0 + 1200))
+    # dist_sigma -0.5244 -> Phi = 0.30: a YES bid at .40 is 10c rich, so only the NO side quotes.
+    feats = {"sec": secs, "ticker": [tk] * len(secs), "strike_lo": [100.0] * len(secs),
+             "strike_hi": [float("nan")] * len(secs), "dist_sigma_comp": [-0.5244] * len(secs),
+             "dist_sigma": [float("nan")] * len(secs), "microprice": [0.4] * len(secs),
+             "spot_ret_10s": [0.0] * len(secs)}
+    rep = MakerReplay(["KXCRYPTOLEAD15M"], MakerConfig(quote_size=500, max_inventory=500, min_edge=0.02), [prog],
+                      fair_source="spot")
+    out = rep.run(_FeatStore(tables, feats), h, h.replace(minute=20))
+    assert rep.feat[(tk, t0 + 100)][0] == pytest.approx(0.30, abs=1e-3)
+    assert out["fills"] == 0
+    with pytest.raises(ValueError):
+        MakerReplay(["X"], MakerConfig(), fair_source="oracle")
 
 
 class _S3:

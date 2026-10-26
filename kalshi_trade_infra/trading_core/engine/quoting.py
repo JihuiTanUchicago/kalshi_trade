@@ -16,11 +16,19 @@ quotes only the side that unwinds its inventory).
 ``rewarded_only`` restricts it to instruments that carry a resting-liquidity reward
 (pricing.depth_rewards), the reason to quote at all on a book with no edge.
 
+The rest are the levers a researched quoting policy turns against adverse selection:
+``offset_ticks`` rests behind the touch, ``back_off`` moves a side to the best price that still
+clears ``min_edge`` instead of dropping it, ``skew_ticks`` backs off the side that would grow the
+inventory in proportion to how full it is, ``mid_band`` and ``max_secs_to_close`` choose which
+contracts to quote, and ``pull_move_bp`` pulls every quote on a contract for ``pull_cooldown_s``
+after the underlying moves that many basis points (``Quote.features["spot_move_bp"]``).
+
 No I/O: the venue (a QuotingVenue) and the book are injected; the replay simulator and a live
 adapter plug in the same way.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -46,6 +54,13 @@ class MakerConfig:
     # Skip a side whose touch already rests more than this: we would join the back of a deep queue,
     # earn a sliver of the pool and get filled only when the whole level is swept.
     max_touch_size: Optional[float] = None
+    offset_ticks: int = 0                # rest this many ticks behind the touch on both sides
+    back_off: bool = False               # a side short of min_edge rests at fair - min_edge instead
+    skew_ticks: int = 0                  # at full inventory, the side adding to it rests this much further back
+    mid_band: Tuple[float, float] = (0.0, 1.0)   # quote only while lo <= mid <= hi (fraction of payout)
+    max_secs_to_close: Optional[float] = None    # skip contracts further than this from their close
+    pull_move_bp: Optional[float] = None         # pull a contract's quotes after an underlying move this big
+    pull_cooldown_s: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -75,24 +90,40 @@ def maker_quotes(yes: Instrument, quote: Optional[Quote], fair: Optional[float],
         return []
     if secs_to_close is not None and secs_to_close < cfg.pull_before_close_s:
         return []
+    if secs_to_close is not None and cfg.max_secs_to_close is not None and secs_to_close > cfg.max_secs_to_close:
+        return []
     payout = getattr(yes.terms, "payout", 1.0) or 1.0
+    mid = (quote.bid + quote.ask) / 2
+    if not cfg.mid_band[0] * payout - _EPS <= mid <= cfg.mid_band[1] * payout + _EPS:
+        return []
     tick = yes.tick_size
     fv = quote.mid if fair is None else fair
     spread_ticks = int(round((quote.ask - quote.bid) / tick))
     step = tick if cfg.improve_min_spread_ticks >= 2 and spread_ticks >= cfg.improve_min_spread_ticks else 0.0
+    step -= cfg.offset_ticks * tick
     out: List[DesiredQuote] = []
     cap = cfg.max_touch_size
     yes_ok = cap is None or step > 0 or (quote.bid_size or 0.0) <= cap      # improving starts a fresh level
     no_ok = cap is None or step > 0 or (quote.ask_size or 0.0) <= cap
-    yes_px = yes.round_price(quote.bid + step)
+    lean = 0
+    if cfg.skew_ticks and cfg.max_inventory > _EPS:
+        lean = int(round(cfg.skew_ticks * min(1.0, abs(inventory) / cfg.max_inventory)))
+    yes_px = yes.round_price(quote.bid + step - (lean * tick if inventory > 0 else 0.0))
+    no_px = yes.round_price(payout - quote.ask + step - (lean * tick if inventory < 0 else 0.0))
+    if cfg.back_off:
+        yes_px = min(yes_px, _floor_tick(fv - cfg.min_edge, tick))
+        no_px = min(no_px, _floor_tick(payout - fv - cfg.min_edge, tick))
     room = cfg.max_inventory - inventory
-    if yes_ok and room > _EPS and fv - yes_px >= cfg.min_edge - _EPS:
+    if yes_ok and room > _EPS and yes_px >= tick - _EPS and fv - yes_px >= cfg.min_edge - _EPS:
         out.append(DesiredQuote(yes.id, yes_px, min(cfg.quote_size, room)))
-    no_px = yes.round_price(payout - quote.ask + step)
     room = cfg.max_inventory + inventory
-    if no_ok and room > _EPS and (payout - fv) - no_px >= cfg.min_edge - _EPS:
+    if no_ok and room > _EPS and no_px >= tick - _EPS and (payout - fv) - no_px >= cfg.min_edge - _EPS:
         out.append(DesiredQuote(replace(yes.id, outcome="no"), no_px, min(cfg.quote_size, room)))
     return out
+
+
+def _floor_tick(price: float, tick: float) -> float:
+    return round(math.floor(price / tick + 1e-9) * tick, 10)
 
 
 def reconcile(desired: Iterable[DesiredQuote], resting: Iterable[RestingOrder]) -> Tuple[List[str], List[DesiredQuote]]:
@@ -131,6 +162,7 @@ class QuotingLoop:
         self.book = book if book is not None else Portfolio()
         self.strategy_id = strategy_id
         self.stopped: Set[InstrumentId] = set()   # YES ids benched by contract_loss_limit (unwind only)
+        self.pulled_until: Dict[InstrumentId, float] = {}   # YES id -> time its pull_move_bp pause ends
         self._seq = 0
 
     def contract_pnl(self, yid: InstrumentId, mid: Optional[float]) -> float:
@@ -167,16 +199,21 @@ class QuotingLoop:
             if inst is None:
                 continue
             cfg = self.cfg
+            q = quotes.get(yid)
             if cfg.contract_loss_limit is not None and yid not in self.stopped:
-                q = quotes.get(yid)
                 net = self.contract_pnl(yid, q.mid if q is not None else None) + (earned or {}).get(yid, 0.0)
                 if net < -cfg.contract_loss_limit:
                     self.stopped.add(yid)
+            move = (q.features.get("spot_move_bp") if q is not None else None)
+            if cfg.pull_move_bp is not None and move is not None and abs(move) >= cfg.pull_move_bp:
+                self.pulled_until[yid] = now + cfg.pull_cooldown_s
+            if now < self.pulled_until.get(yid, float("-inf")):
+                continue
             if yid in self.stopped:
                 # Benched: only the side that works the inventory back to flat (max_inventory 0),
                 # since walking away leaves an outright bet on the outcome.
                 cfg = replace(cfg, max_inventory=0.0)
-            desired += maker_quotes(inst, quotes.get(yid), fair.get(yid), net_yes(positions, yid),
+            desired += maker_quotes(inst, q, fair.get(yid), net_yes(positions, yid),
                                     secs_to_close.get(yid), cfg,
                                     rewarded=True if rewarded is None else yid in rewarded)
         out.cancels, out.posts = reconcile(desired, self.venue.open_orders())
