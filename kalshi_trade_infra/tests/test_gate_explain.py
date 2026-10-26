@@ -277,6 +277,70 @@ def test_each_kind_of_verdict_event_is_explained_from_its_data_or_its_old_messag
     assert ge.for_event(None, None) == []
 
 
+# -- the research paper's figure tints follow the same checks ---------------------------------------------
+
+def _tinted(lines):
+    """The figures a set of lines names as missed: a figure is red exactly when one of its gates has a line."""
+    missed = {ln["gate"] for ln in lines}
+    return {k for k, gates in ge.STAT_GATES.items() if missed & set(gates)}
+
+
+@pytest.mark.parametrize("combo", list(itertools.product(
+    [True, False],              # enough trades for the pre-registered minimum
+    [True, False],              # p-value clears its recorded level
+    [None, True, False],        # Benjamini-Hochberg within the batch
+    [True, False],              # DSR clears its floor
+    [True, False],              # CI low end above zero
+    [True, False],              # placebo
+)))
+def test_a_figure_is_red_exactly_when_its_gate_line_says_it_missed(combo):
+    enough, sig, bh, dsr_ok, ci_ok, placebo_ok = combo
+    val = {"n_trades": 120 if enough else 20, "p_value": 0.01 if sig else 0.2, "fdr_alpha_i": 0.05, "fdr_reject": sig,
+           "bh_reject": bh, "dsr": 0.9 if dsr_ok else 0.2, "ci_lo": 0.002 if ci_ok else -0.002, "ci_hi": 0.02,
+           "mean_net_return": 0.01, "placebo_p": 0.01 if placebo_ok else 0.5}
+    cls = gatekeeper._classify(sig, bh, val["dsr"], val["ci_lo"], val["ci_hi"], placebo_ok).value
+    if not enough:
+        cls = gatekeeper.Classification.INCONCLUSIVE.value
+    exp = {"min_sample": 30, "validation": dict(val, classification=cls), "holdout": None, "folds": []}
+    status = "passed" if cls == gatekeeper.Classification.STAT_SUPPORTED.value else "failed"
+    lines = ge.for_strategy(status, {"classification": cls}, exp)
+    tints = ge.strategy_tints(status, exp)["validation"]
+    assert {k for k, t in tints.items() if t == "fail"} == _tinted(lines)
+    assert set(tints) == set(ge.STAT_GATES)  # every gated figure the record carries is judged, pass or fail
+
+
+def test_the_figures_use_the_gates_thresholds_not_the_old_page_cutoffs():
+    # The page used to redden a DSR under 0.95, a placebo p under 0.10 (backwards) and a p-value over
+    # 0.10; the gates need DSR >= DSR_MIN, placebo p < ALPHA and p <= the recorded FDR level.
+    val = {"classification": "inconclusive", "n_trades": 80, "p_value": 0.08, "fdr_alpha_i": 0.05, "dsr": 0.7,
+           "ci_lo": -0.001, "ci_hi": 0.02, "mean_net_return": 0.004, "placebo_p": 0.05}
+    assert gatekeeper.DSR_MIN <= 0.7 < 0.95 and 0.05 < gatekeeper.ALPHA
+    t = ge.strategy_tints("failed", {"min_sample": 30, "validation": val})["validation"]
+    assert t == {"n_trades": "pass", "p_value": "fail", "mean_net_return": "fail", "dsr": "pass", "placebo_p": "pass"}
+    assert {ln["gate"] for ln in ge.stat_checks(val, min_sample=30, classification="inconclusive")} == {"significance", "net_edge"}
+    # A figure the record can't judge has no tint (here: no trade count), so the page leaves it neutral.
+    assert "n_trades" not in ge.stat_tints(dict(val, n_trades=None), min_sample=30, classification="inconclusive")
+    assert ge.stat_tints({"n_trades": 12, "p_value": None}, min_sample=30, classification="inconclusive") == {"n_trades": "fail"}
+    assert ge.stat_tints({"n_trades": 40, "p_value": None}, min_sample=30, classification="inconclusive") == {"n_trades": "pass"}
+    assert ge.stat_tints(None) == {} and ge.strategy_tints(None, None) == {}
+
+
+def test_the_holdout_figures_follow_the_holdout_gates():
+    hold = {"classification": "rejected", "n_trades": 12, "p_value": 0.3, "ci_lo": -0.01, "ci_hi": 0.02,
+            "mean_net_return": 0.004, "dsr": 0.01, "placebo_p": 0.9}
+    exp = {"min_sample": 30, "validation": {"classification": "statistically_supported", "n_trades": 90, "p_value": 0.2,
+                                            "dsr": 0.1, "ci_lo": -0.1, "placebo_p": 0.9}, "holdout": hold}
+    t = ge.strategy_tints("passed", exp)
+    # A validation the strategy passed has no lines, so none of its figures is red, whatever the numbers.
+    assert set(t["validation"].values()) == {"pass"}
+    # DSR and the placebo don't gate a holdout, and a rejected holdout is not judged on its sample.
+    assert t["holdout"] == {"p_value": "fail", "mean_net_return": "fail"}
+    assert {ln["gate"] for ln in ge.for_strategy("passed", {}, exp)} == {"significance", "net_edge"}
+    assert ge.strategy_tints("passed", dict(exp, holdout=dict(hold, classification=None))).get("holdout") is None
+    fwd = ge.strategy_tints("passed", dict(exp, holdout=dict(hold, classification="forward_validated", n_trades=40)))["holdout"]
+    assert fwd == {"n_trades": "pass", "p_value": "pass", "mean_net_return": "pass"}
+
+
 # -- the server attaches them, with no extra read --------------------------------------------------------
 
 def _ctx(params=()):
@@ -313,7 +377,14 @@ def test_the_strategy_page_lists_what_it_missed_and_a_bad_record_never_fails_it(
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(row))
     monkeypatch.setattr(server, "_demo_health", lambda *a, **k: None)
-    why =server.get_strategy(_ctx(("4",)))["why_failed"]
+    out = server.get_strategy(_ctx(("4",)))
+    why = out["why_failed"]
     assert [ln["gate"] for ln in why] == ["sample_size"] and re.match(r"Needs about 19 more trades", why[0]["next"])
+    # The research paper's figure tints ride in the experiment block, judged by the same checks.
+    assert out["experiment"]["gate_tints"] == {"validation": {"n_trades": "fail"}}
+    assert "gate_tints" not in exp  # the block is copied, never changed in place
     monkeypatch.setattr(server, "_experiment_block", lambda *a: {"validation": "not a row", "min_sample": 30})
-    assert server.get_strategy(_ctx(("4",)))["why_failed"] == []
+    bad = server.get_strategy(_ctx(("4",)))
+    assert bad["why_failed"] == [] and bad["experiment"]["gate_tints"] == {}  # every figure neutral
+    monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
+    assert server.get_strategy(_ctx(("4",)))["experiment"] is None

@@ -745,6 +745,14 @@ def _gate_lines(fn, *args) -> List[Dict]:
         return []
 
 
+def _gate_tints(status: Optional[str], exp: Dict) -> Dict:
+    """services.gate_explain's per-figure pass/fail, or none (every figure neutral) for a record it can't read."""
+    try:
+        return gate_explain.strategy_tints(status, exp)
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return {}
+
+
 def _with_gate_lines(events: List[Dict]) -> List[Dict]:
     """Each verdict event gains `why_failed`: one plain line per gate it missed (measured, needed,
     what to try next), from the numbers the event already carries. Display only; no extra read."""
@@ -1212,6 +1220,10 @@ def get_strategy(ctx: Ctx):
     deps = repo.list_deployments_for_display(ctx.cur, ctx.uid, strategy_id=s["id"])
     held = repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")
     exp = _experiment_block(ctx.cur, s["id"], s.get("experiment_id"))
+    if exp:
+        # Which research-paper figures their gate passed or missed, by the same checks as
+        # why_failed, so a figure is red exactly when its line says it missed (display only).
+        exp = dict(exp, gate_tints=_gate_tints(s.get("status"), exp))
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),

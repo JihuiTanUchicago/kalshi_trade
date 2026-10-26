@@ -1084,20 +1084,25 @@
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
       parts.methodology += sub('The pre-registered test', `<dl class="rp-grid">${pre.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${rpText(v)}</dd></div>`).join('')}</dl>${reg}`);
     }
+    // A figure is red exactly when the gate that judges it missed: the server judges each one with
+    // the gatekeeper's own thresholds (services.gate_explain, the same checks as "What it missed"),
+    // so no cutoff is restated here. A figure no gate judges, or one the server didn't judge, stays ink.
+    const tints = exp.gate_tints || {};
+    const tint = (phase, k) => ((tints[phase] || {})[k] === 'fail' ? 'sig' : '');
     // Results — the rigorous validation-window evidence.
     const v = exp.validation;
     if (v) {
       const stat = (k, val, cls, sb) => `<div class="rp-stat"><div class="k">${esc(k)}</div><div class="val${cls ? ' ' + cls : ''}">${val}</div>${sb ? `<div class="sub">${esc(sb)}</div>` : ''}</div>`;
       const ciTxt = (v.ci_lo != null && v.ci_hi != null) ? `90% CI ${rpCent(v.ci_lo)} to ${rpCent(v.ci_hi)}` : '';
       const stats = [
-        stat('Mean net return / trade', rpCent(v.mean_net_return), (v.mean_net_return != null && v.mean_net_return > 0 ? '' : 'sig'), ciTxt),
-        stat('Bootstrap p-value', rpProb(v.p_value), (v.p_value != null && v.p_value <= 0.1 ? '' : 'sig'), 'one-sided, autocorr-robust'),
+        stat('Mean net return / trade', rpCent(v.mean_net_return), tint('validation', 'mean_net_return'), ciTxt),
+        stat('Bootstrap p-value', rpProb(v.p_value), tint('validation', 'p_value'), 'one-sided, autocorr-robust'),
         stat('PSR', rpProb(v.psr), '', 'prob. true Sharpe > 0'),
-        stat('DSR', rpProb(v.dsr), (v.dsr != null && v.dsr >= 0.95 ? '' : 'sig'), 'deflated for selection'),
+        stat('DSR', rpProb(v.dsr), tint('validation', 'dsr'), 'deflated for selection'),
         stat('Trials audited', rpInt(exp.n_trials_audited), '', 'competed for this evidence'),
         stat('FDR α spent', rpProb(v.fdr_alpha_i, 4), '', v.fdr_reject == null ? '' : (v.fdr_reject ? 'rejects the null' : 'does not reject')),
-        stat('Placebo p-value', rpProb(v.placebo_p), (v.placebo_p != null && v.placebo_p < 0.1 ? 'sig' : ''), 'label-shuffle control'),
-        stat('Trades', rpInt(v.n_trades), '', 'on the validation window'),
+        stat('Placebo p-value', rpProb(v.placebo_p), tint('validation', 'placebo_p'), 'label-shuffle control'),
+        stat('Trades', rpInt(v.n_trades), tint('validation', 'n_trades'), 'on the validation window'),
       ].join('');
       const isMean = (exp.folds && exp.folds.length) ? exp.folds.reduce((a, f) => a + (f.mean_net_return || 0), 0) / exp.folds.length : null;
       const figs = `<div class="rp-figs">
@@ -1116,10 +1121,10 @@
     parts.verdict += `<div class="paper-sub"><h4 class="paper-h">Where it reached on the ladder</h4>${rpLadder(exp.classification)}</div>`;
     const h = exp.holdout;
     const holdBody = h ? `<div class="rp-stats">
-      <div class="rp-stat"><div class="k">Mean net return / trade</div><div class="val${h.mean_net_return != null && h.mean_net_return > 0 ? '' : ' sig'}">${rpCent(h.mean_net_return)}</div><div class="sub">${h.ci_lo != null && h.ci_hi != null ? '90% CI ' + rpCent(h.ci_lo) + ' to ' + rpCent(h.ci_hi) : ''}</div></div>
-      <div class="rp-stat"><div class="k">Bootstrap p-value</div><div class="val">${rpProb(h.p_value)}</div></div>
-      <div class="rp-stat"><div class="k">Trades</div><div class="val">${rpInt(h.n_trades)}</div></div>
-      <div class="rp-stat"><div class="k">Holdout</div><div class="val${h.consumed ? ' sig' : ''}">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'spent — roll to fresh forward data' : 'evaluations remain'}</div></div>
+      <div class="rp-stat"><div class="k">Mean net return / trade</div><div class="val${tint('holdout', 'mean_net_return') ? ' sig' : ''}">${rpCent(h.mean_net_return)}</div><div class="sub">${h.ci_lo != null && h.ci_hi != null ? '90% CI ' + rpCent(h.ci_lo) + ' to ' + rpCent(h.ci_hi) : ''}</div></div>
+      <div class="rp-stat"><div class="k">Bootstrap p-value</div><div class="val${tint('holdout', 'p_value') ? ' sig' : ''}">${rpProb(h.p_value)}</div></div>
+      <div class="rp-stat"><div class="k">Trades</div><div class="val${tint('holdout', 'n_trades') ? ' sig' : ''}">${rpInt(h.n_trades)}</div></div>
+      <div class="rp-stat"><div class="k">Holdout</div><div class="val">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'spent — roll to fresh forward data' : 'evaluations remain'}</div></div>
     </div>` : `<div class="rp-empty">Not yet evaluated on the locked holdout. The holdout is spent only once, on strategies that already passed validation — so an empty holdout here is expected until then.</div>`;
     parts.verdict += sub('The one-time locked holdout', holdBody);
     const [vtone, words] = rpConclusion(exp.classification);
