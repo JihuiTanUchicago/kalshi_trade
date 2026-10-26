@@ -2257,6 +2257,8 @@ def funds(ctx: Ctx):
         from app import demo_twins
 
         kalshi_dev_key["balance"] = demo_twins.balance_cached(cur, ctx.uid)
+        if kalshi_dev_key["balance"] is not None:
+            kalshi_dev_key["balance_at"] = demo_twins.balance_read_at(ctx.uid)  # up to a minute old, like Kalshi cash
     de = repo.demo_equity(cur, ctx.uid)
     # Each book's open positions, so every figure says what it leaves out; paper's balance is cash plus
     # open at cost, the dashboard's paper figure. Books are never added together.

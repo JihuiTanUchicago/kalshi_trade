@@ -360,7 +360,9 @@ def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balanc
     monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: reads.append(uid) or 25000.0)
     demo_twins._BALANCE_CACHE.clear()
     out = server.funds(ctx())
+    at = out["kalshi_dev"].pop("balance_at")  # when that memo was filled, like the Kalshi cash line
     assert out["kalshi_dev"] == {"connected": True, "key_id": "DEVK…1234", "balance": 25000.0}
+    assert at is not None and at.tzinfo is None
     assert reads == [1]
     keys["dev"] = None
     assert server.funds(ctx())["kalshi_dev"] == {"connected": False}  # no key, no read

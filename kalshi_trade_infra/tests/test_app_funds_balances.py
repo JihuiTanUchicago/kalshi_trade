@@ -222,6 +222,35 @@ def test_live_balance_says_when_it_was_read_only_when_it_was(monkeypatch):
     assert "balance_at" not in server._live_balance(object(), 5)
 
 
+def test_funds_dates_the_demo_balance_from_its_memo_and_never_reads_kalshi_for_it(monkeypatch):
+    """The demo key line says when its balance was read, from the demo memo's own fill time; a balance
+    that couldn't be read carries no time, and dating it never makes another demo read."""
+    from datetime import datetime, timezone
+
+    from app import demo_twins, server
+
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: None)
+    monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEVKEY-1234"})
+    monkeypatch.setattr(server.repo, "demo_equity", lambda cur, uid: {"capital": 1000, "equity": 1000, "realized": 0,
+                                                                       "before_reload": 0})
+    monkeypatch.setattr(server.repo, "paper_balance", lambda cur, uid: 1000)
+    monkeypatch.setattr(server.repo, "ledger_rows", lambda cur, uid: [])
+    monkeypatch.setattr(server.repo, "user_positions", lambda cur, uid, status: [])
+    monkeypatch.setattr(demo_twins, "_read_balance", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no read")))
+
+    class Ctx:
+        cur, uid = object(), 781
+
+    demo_twins._BALANCE_CACHE[781] = (demo_twins.time.monotonic() - 40, 25.0)  # read 40s ago
+    dev = server.funds(Ctx())["kalshi_dev"]
+    age = (datetime.now(timezone.utc).replace(tzinfo=None) - dev["balance_at"]).total_seconds()
+    assert dev["balance"] == 25.0 and 38 <= age <= 45, age
+    demo_twins._BALANCE_CACHE[781] = (demo_twins.time.monotonic(), None)  # the demo API didn't answer
+    assert "balance_at" not in server.funds(Ctx())["kalshi_dev"]
+    demo_twins._BALANCE_CACHE.pop(781, None)
+    assert demo_twins.balance_read_at(781) is None  # nothing memoized: no time to show
+
+
 def test_funds_names_each_books_open_positions_and_paper_matches_the_dashboard(monkeypatch):
     """Funds' paper figure is the dashboard's (cash + open at cost), and every book reports only its own
     open positions: a live, a demo and two paper positions never land in another book's count."""

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import repository as repo
@@ -51,6 +52,13 @@ _BALANCE_CACHE: Dict[int, Tuple[float, Optional[float]]] = {}
 def forget_balance(user_id: int) -> None:
     """Drop the memo after the demo key changes, so the next read uses the new key."""
     _BALANCE_CACHE.pop(user_id, None)
+
+
+def balance_read_at(user_id: int) -> Optional[datetime]:
+    """When the memoized demo cash was read (naive UTC), or None. The memo only, never Kalshi."""
+    from app import kalshi_account
+
+    return kalshi_account.memo_read_at(_BALANCE_CACHE, user_id)
 
 
 def balance_cached(cur, user_id: int, ttl: float = BALANCE_TTL) -> Optional[float]:

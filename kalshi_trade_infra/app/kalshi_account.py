@@ -102,7 +102,13 @@ def balance_cached(user_id: int, creds: KalshiCredentials, ttl: float = _BALANCE
 def balance_read_at(user_id: int) -> Optional[datetime]:
     """When the memoized balance was read from Kalshi (naive UTC), so a page can say how old the figure
     is; None when nothing is memoized. Reads the memo only, never Kalshi."""
-    hit = _BALANCE_CACHE.get(user_id)
+    return memo_read_at(_BALANCE_CACHE, user_id)
+
+
+def memo_read_at(cache: Dict[int, Tuple[float, Optional[float]]], user_id: int) -> Optional[datetime]:
+    """When a (monotonic time, value) balance memo was filled for this user, as naive UTC; None when it
+    holds nothing. The demo balance memo (demo_twins) has the same shape and reads this too."""
+    hit = cache.get(user_id)
     if not hit:
         return None
     age = max(0.0, time.monotonic() - hit[0])
