@@ -648,7 +648,9 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   assert.doesNotMatch(html, /Test expected/);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
   assert.match(html, /\+\$10\.00<div class="sub-fig">same 5 trades<\/div>/);
-  assert.match(html, /no closed trades/);
+  // Before the first close the cell names the live paper record that has none, not the backtest.
+  assert.match(html, /<span class="sub-fig">no paper trades closed yet<\/span>/);
+  assert.doesNotMatch(html, />no closed trades</);
   assert.doesNotMatch(html, /Backtest unseen/);
 });
 
@@ -1114,6 +1116,30 @@ test('right after switching on, the card says the first review is running, not t
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<p class="ap-last">Last move <time datetime="[^"]+" title="[^"]+">just now<\/time>: Autopilot switched on\.<\/p>/);
   f.S.ap = {...f.S.ap, reviewing: false}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Last check-in<\/dt><dd>just now<\/dd>/);
+});
+
+test('while its paper strategy holds nothing, the autopilot card also says what the autopilot is doing', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = true;
+  const flat = {code: 'flat', line: 'Nothing open right now: ETH drift has closed 18 trades on paper and holds no position. It checks again at its market\'s next decision time.', action: null};
+  f.S.ap = {...apOn, idle: flat, research: {...apOn.research, active: ['btc15m', 'eth15m']}};
+  await f.viewDashboard(); await flush();
+  const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
+  assert.match(now(), /holds no position\. It checks again at its market(?:'|&#39;)s next decision time\. Meanwhile it's researching BTC 15-min and ETH 15-min\.$/);
+  f.S.ap = {...f.S.ap, research: {...apOn.research, active: ["a market it's still picking"]}}; f.paintDashAp();
+  assert.match(now(), /Meanwhile it's picking a market to research\.$/);
+  f.S.ap = {...f.S.ap, research: {...apOn.research, active: []}, reviewing: true}; f.paintDashAp();
+  assert.match(now(), /Meanwhile it's reviewing the markets to pick its next move\.$/);
+  f.S.ap = {...f.S.ap, reviewing: false}; f.paintDashAp();
+  assert.match(now(), /next decision time\.$/);  // between runs: nothing to add
+  // An idle line that already says what it is doing (nothing on paper) gets nothing added.
+  f.S.ap = {...f.S.ap, paper_running: 0, research: {...apOn.research, active: ['btc15m']},
+    idle: {code: 'researching', line: 'Nothing is on paper yet: no strategy has passed its research tests. It\'s researching BTC 15-min.', action: null}};
+  f.paintDashAp();
+  assert.doesNotMatch(now(), /Meanwhile/);
 });
 
 test('the floating autopilot pill steps aside while it would cover a primary or submit button', () => {
@@ -2554,6 +2580,40 @@ test('a returning user reads what happened since the last visit at the top of th
   for (const said of ['No trades closed.', 'Nothing new passed.', 'On. It made no changes.', 'Nothing.']) assert.ok(q.includes(said), said);
   // An older server without the block: no strip.
   assert.equal((await strip({})).root.querySelector('#dash-since'), null);
+});
+
+test('the strip splits a book\'s figure by the strategy that traded it, inside that book only', async () => {
+  const dep = (id, title, mode, status) => ({id, strategy_id: 100 + id, title, market: 'btc15m', mode, status, status_reason: null,
+    stake: 5, max_positions: 3, realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, curve: [], created_at: '2026-10-20T08:00:00Z'});
+  const deployments = [dep(3, 'ETH drift', 'paper', 'running'), dep(4, 'SOL <i>fade</i>', 'paper', 'paused'), dep(5, 'Demo copy', 'demo', 'running')];
+  const since = {at: '2026-10-19T08:00:00+00:00', first: false,
+    books: {paper: {pnl: -24.19, trades: 19}, demo: {pnl: 1.5, trades: 2}, live: {pnl: 0, trades: 0}},
+    passed: {n: 0, items: []}, autopilot: {}, runs: {},
+    by_deployment: {paper: [{deployment_id: 3, pnl: 28.89, trades: 12}, {deployment_id: 4, pnl: -53.08, trades: 7}],
+      demo: [{deployment_id: 5, pnl: 1.5, trades: 2}]}};
+  const strip = async (extra) => {
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), deployments, ...extra});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    return f.root.querySelector('#dash-since').innerHTML;
+  };
+  const text = await strip({since});
+  // Paper: the winner and the loser named, each with its own signed amount; demo (one strategy) has no split.
+  assert.match(text, /<div class="since-split" data-book="paper"><span class="since-sub">Paper:<\/span> <a href="\/strategies\/103">ETH drift<\/a> <span class="nobr"><span class="pos">\+\$28\.89<\/span> on 12<\/span><span class="sep">·<\/span><a href="\/strategies\/104">SOL &lt;i&gt;fade&lt;\/i&gt;<\/a> <span class="nobr"><span class="neg">−\$53\.08<\/span> on 7<\/span><\/div>/);
+  assert.doesNotMatch(text, /data-book="demo"><span class="since-sub">|since-split" data-book="demo"/);
+  assert.doesNotMatch(text, /\$27\.39|−\$22\.69/);  // nothing adds paper and demo together
+  // Only the paper book shown: no book label in front of its split; a deployment no longer listed is named plainly.
+  const solo = await strip({since: {...since, books: {paper: since.books.paper},
+    by_deployment: {paper: [...since.by_deployment.paper, {deployment_id: 99, pnl: -1, trades: 1}, {deployment_id: 98, pnl: -2, trades: 1}]}},
+  deployments: deployments.slice(0, 2)});
+  assert.match(solo, /<div class="since-split" data-book="paper"><a href="\/strategies\/103">ETH drift<\/a>/);
+  assert.match(solo, /a removed strategy <span class="nobr"><span class="neg">−\$1\.00<\/span> on 1<\/span><span class="sep">·<\/span><span class="since-sub">1 more<\/span><\/div>/);
+  // An older server without the split: the book's line alone.
+  assert.doesNotMatch(await strip({since: {...since, by_deployment: undefined}}), /since-split/);
 });
 
 test('the last visit lives in a cookie: one visit until 30 minutes pass, then since that visit', async () => {

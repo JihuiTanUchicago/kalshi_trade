@@ -769,6 +769,18 @@ def test_the_dashboard_and_strategy_list_reads_answer_as_the_ones_they_replace(c
     assert (again, counts2) == (realized, counts)
     assert recent == {"paper": (pytest.approx(2.85), 6), "demo": (pytest.approx(0.60), 1), "live": (0.0, 0)}
     assert repo.closed_book_totals(cur, uid, day, day)[2]["paper"] == (pytest.approx(3.20), 5)  # b's trade is older
+    # With `split`, the same pass hands back each deployment's share of its book since the visit: the
+    # same rows, so a book's shares add up to its figure, and no book's rows land in another's.
+    *same, split = repo.closed_book_totals(cur, uid, day, day - timedelta(days=3), split=True)
+    assert tuple(same) == (realized, counts, recent)
+    assert split == {("paper", a["id"]): (pytest.approx(1.20), 4), ("paper", b["id"]): (pytest.approx(-0.35), 1),
+                     ("paper", stopped["id"]): (pytest.approx(2.00), 1), ("demo", demo): (pytest.approx(0.60), 1)}
+    for m in ("paper", "demo", "live"):
+        mine = [v for (mode, _), v in split.items() if mode == m]
+        assert (sum(p for p, _ in mine), sum(n for _, n in mine)) == (pytest.approx(recent[m][0]), recent[m][1]), m
+    assert repo.closed_book_totals(cur, uid, day, day, split=True)[3] == {
+        ("paper", a["id"]): (pytest.approx(1.20), 4), ("paper", stopped["id"]): (pytest.approx(2.00), 1),
+        ("demo", demo): (pytest.approx(0.60), 1)}  # b's trade is before this visit
     # The paper ledger's balance, deposits and reset come back from one read as from the three.
     assert repo.paper_ledger_summary(cur, uid) == {"balance": repo.paper_balance(cur, uid), "deposited": repo.paper_deposits(cur, uid),
                                                    "reset_at": repo.paper_reset_at(cur, uid)}

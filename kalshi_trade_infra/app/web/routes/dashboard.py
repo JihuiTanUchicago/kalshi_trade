@@ -66,7 +66,7 @@ def dashboard(ctx: Ctx):
     balance, deposited = ledger["balance"], ledger["deposited"]
     visit, first = _visit_since(ctx.query.get("since"))
     # Every book's realized P&L and closed-trade count (today and since the last visit), in one read.
-    realized, closed, recent = book_memo.closed_book_totals(memo, day, visit)
+    realized, closed, recent, by_dep = book_memo.closed_book_totals(memo, day, visit, split=True)
     _BOOK_SHAPE[ctx.uid] = _book_shape(closed, len(open_pos))  # the track record's cache checks it
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
@@ -110,7 +110,7 @@ def dashboard(ctx: Ctx):
                                         _paper_books(deps)) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
-        "since": _since_visit(cur, ctx.uid, visit, first, recent),
+        "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep),
     }, ctx.query.get("v"))
 
 
@@ -132,19 +132,33 @@ def _visit_since(raw) -> Tuple[datetime, bool]:
     return min(max(at, now - SINCE_MAX), now), False
 
 
-def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict) -> Dict:
+def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
+                 by_dep: Optional[Dict[Tuple[str, int], Tuple[float, int]]] = None) -> Dict:
     """The dashboard's "since your last visit" strip: each book's realized P&L and closed trades
     since then (from the books' one pass; books are never added together), the strategies that
     passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
     (real money) ride apart from the books, and only while payments are on: with them off nothing
-    is billed. `milestones` are the paper forward-gate passes and live-ready strategies since then."""
+    is billed. `milestones` are the paper forward-gate passes and live-ready strategies since then.
+    `by_deployment` splits each book's figure by the deployment that traded it ({mode: [{deployment_id,
+    pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it."""
     act = repo.activity_since(cur, uid, visit)
     return {"at": visit, "first": first,
             "books": {m: {"pnl": round(pnl, 2), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": repo.passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
             "spent": {k: credit_usd(v) for k, v in act["spent"].items()} if billing.configured() and act.get("spent") else None,
-            "milestones": act.get("milestones") or {"passed": [], "live_ready": []}}
+            "milestones": act.get("milestones") or {"passed": [], "live_ready": []},
+            "by_deployment": _since_by_deployment(by_dep or {})}
+
+
+def _since_by_deployment(by_dep: Dict[Tuple[str, int], Tuple[float, int]]) -> Dict[str, List[Dict]]:
+    """{mode: [{deployment_id, pnl, trades}]} for each book, best first; a book is never mixed with another."""
+    out: Dict[str, List[Dict]] = {}
+    for (mode, dep_id), (pnl, n) in by_dep.items():
+        out.setdefault(mode, []).append({"deployment_id": dep_id, "pnl": round(pnl, 2), "trades": n})
+    for rows in out.values():
+        rows.sort(key=lambda r: (-r["pnl"], r["deployment_id"]))
+    return out
 
 
 TRACK_RECORD_TTL = 60.0  # seconds; the record moves only when a trade closes

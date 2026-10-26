@@ -329,6 +329,9 @@
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7\u00a0' + marketShort(r.market));
+  // A session's number among the user's own (the server's `seq`: 1 is their first), never the global run
+  // id, which read "Session 8" on someone's first session. The example and an answer without it get none.
+  const sessionNo = (r) => r && +r.seq > 0 ? `Session ${num(+r.seq)}` : '';
 
   // The research market picker: ONE list in the live-row style (name \u00b7 sparkline \u00b7 mid \u00b7
   // 24h volume), grouped by category, with Agent's choice leading as the default. Every row is
@@ -2558,7 +2561,7 @@
       const active = d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused');
       paint(root.querySelector('#active-research'), active ? `<section class="active-research active-${esc(active.status)}">
         <div class="active-head"><h2 class="active-prompt" title="${esc(sessionTitle(active))}">${esc(sessionTitle(active))}</h2></div>
-        <div class="active-meta"><div class="active-session"><span class="active-state">${runLate(active) ? lateLabel(runLate(active)) : active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span><b>Session ${esc(active.id)}</b>${runTag(active)}</div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
+        <div class="active-meta"><div class="active-session"><span class="active-state">${runLate(active) ? lateLabel(runLate(active)) : active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span>${sessionNo(active) ? `<b>${sessionNo(active)}</b>` : ''}${runTag(active)}</div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
         <aside class="active-aside"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${active.strategies_passed || 0}</dd></div>${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${usd(active.spent_usd)}</dd></div>` : ''}</dl></aside>
       </section>` : '');
       const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
@@ -2616,7 +2619,7 @@
     // status band: a thin color rule so passed/void/failed reads at a glance; only a real error is `fail`
     const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group"><span class="run-id">Session ${esc(r.id)}</span><span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
   }
 
@@ -5010,6 +5013,25 @@
     return state + (n('succeeded') ? ', <a href="/research">see what each idea missed</a>'
       : n('queued') || n('running') || n('paused') ? `, <a href="/research">follow ${started === 1 ? 'it' : 'them'} on Research</a>` : '');
   }
+  // Each book's since-visit figure split by the strategy that traded it (the server's by_deployment, the
+  // same rows, best first), shown for a book where two or more traded: "Paper −$24.19" alone hid that the
+  // running strategy made money and the paused one lost it. Each share stays inside its own book.
+  const SINCE_SPLIT_SHOWN = 3;
+  function sinceSplit(d, books) {
+    const by = (d.since && d.since.by_deployment) || {};
+    return books.map(([m, label]) => {
+      const rows = Array.isArray(by[m]) ? by[m] : [];
+      if (rows.length < 2) return '';
+      const item = (r) => {
+        const dep = (d.deployments || []).find((x) => +x.id === +r.deployment_id);
+        const name = dep ? `<a href="/strategies/${encodeURIComponent(dep.strategy_id)}">${esc(dep.title)}</a>` : 'a removed strategy';
+        const p = +r.pnl || 0;
+        return `${name} <span class="nobr"><span class="${p < 0 ? 'neg' : p > 0 ? 'pos' : ''}">${usd(p, true)}</span> on ${num(r.trades)}</span>`;
+      };
+      const more = rows.length - SINCE_SPLIT_SHOWN;
+      return `<div class="since-split" data-book="${m}">${books.length > 1 ? `<span class="since-sub">${label}:</span> ` : ''}${rows.slice(0, SINCE_SPLIT_SHOWN).map(item).join('<span class="sep">·</span>')}${more > 0 ? `<span class="sep">·</span><span class="since-sub">${num(more)} more</span>` : ''}</div>`;
+    }).join('');
+  }
   function sinceStrip(d, pausedHref) {
     const s = d.since;
     if (!s) return '';
@@ -5022,7 +5044,7 @@
       return `<span class="since-book" data-book="${m}">${b.trades
         ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${m === 'live' ? ' (real money)' : ''}`
         : `<b>${label}</b>: no trades closed yet`}</span>`;
-    }).join('<span class="sep">·</span>') : 'No trades closed.';
+    }).join('<span class="sep">·</span>') + sinceSplit(d, books) : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
     // A strategy that passed its paper forward test or became ready for live did so days after it was
@@ -5123,7 +5145,7 @@
     const now = d.billing_blocked
       ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.' + apStillTrading(d)
         : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`)
-      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc(apStory(d)[0] || 'Autopilot is on.');
+      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') + apMeanwhile(d) : esc(apStory(d)[0] || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${apLastHtml(d.last_action)}${Array.isArray(d.focus) ? `
@@ -5179,6 +5201,18 @@
     return contractMarket(s) || 'an unlisted market';
   }
   const apMarketNames = (d) => [...new Set(((d && d.research && d.research.active) || []).map((n) => n === AP_PICKING ? n : apMarketName(n)))];
+  // The card leads with why its paper strategies hold nothing (d.idle). The autopilot keeps working
+  // meanwhile, and the card never said so: someone back after a day read "Nothing open right now" and
+  // not that a research session was running. Paper-waiting lines only (the others already say it).
+  const AP_IDLE_PAPER = new Set(['flat', 'starting', 'waiting', 'market_closed']);
+  function apMeanwhile(d) {
+    if (!d || !d.idle || !AP_IDLE_PAPER.has(d.idle.code)) return '';
+    const all = apMarketNames(d), names = all.filter((n) => n !== AP_PICKING);
+    if (!all.length) return d.reviewing ? " Meanwhile it's reviewing the markets to pick its next move." : '';
+    if (!names.length) return " Meanwhile it's picking a market to research.";
+    const said = names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+    return ` Meanwhile it's researching ${esc(said)}.`;
+  }
   // The server's story lines with each raw key it quoted from the research list said as apMarketName does.
   function apStory(d) {
     const raw = [...new Set((d && d.research && d.research.active) || [])].filter((n) => n !== AP_PICKING && apMarketName(n) !== n);

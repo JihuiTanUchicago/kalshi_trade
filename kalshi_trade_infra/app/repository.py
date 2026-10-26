@@ -28,7 +28,7 @@ from app.adapters.db.kalshi_dev_keys_repository import (  # noqa: F401
 )
 from app.adapters.db.chat_repository import (  # noqa: F401
     active_agent_run, add_chat, chat_contains, chat_messages, create_proposal, decide_proposal, get_proposal,
-    last_autopilot_action, last_review_at, recent_chat_same,
+    last_autopilot_action, last_review_at, recent_chat_same, REVIEW_AT_SQL,
 )
 from app.adapters.db.order_intent_repository import (  # noqa: F401
     _naive_utc, claim_intent_booking, insert_order_intent, mark_order_intent, open_sent_intents,
@@ -38,7 +38,7 @@ from app.adapters.db.agent_run_repository import (  # noqa: F401
     MAX_RESUMES, OUT_OF_CREDITS_STEP, RUN_ACTIVE, _has_progress, add_event, cancel_run, claim_run, count_active_research,
     count_runs, create_run, example_run_id, fail_abandoned_runs, finish_run, get_run, heartbeat, list_runs, list_runs_version,
     load_checkpoint, pause_run, research_queue_ahead, research_week, resume_run, run_events, run_worker, save_checkpoint,
-    set_run_counts, set_run_market, update_run_progress, yield_run,
+    set_run_counts, set_run_market, update_run_progress, yield_run, count_own_research, RUNS_LISTED,
 )
 from app.adapters.db.strategy_repository import (  # noqa: F401
     DEMO_DIRECTION, NOISE_STATUSES, count_strategies, delete_strategy, get_strategy,

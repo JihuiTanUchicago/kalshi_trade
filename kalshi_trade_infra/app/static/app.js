@@ -1687,6 +1687,8 @@
     const exp = d.backtest && d.backtest.out_of_sample;
     // Realized beside what the backtest's unseen-data average per trade says the same trades should
     // have made: the comparable number, not the backtest's own total over a different trade count.
+    // Before the first close it names the book that has none ("no paper trades closed yet"): a bare
+    // "no closed trades" under "Backtest estimate" read as if the backtest itself had no trades.
     const pace = exp && +exp.trades > 0 ? (+exp.pnl || 0) / +exp.trades : null;
     const live = d.mode === 'live';
     // A paused row names its book too: "Paused" alone didn't say whether real money had stopped.
@@ -1703,7 +1705,7 @@
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
-      <td class="num" data-lab="Backtest estimate" title="${PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : '<span class="sub-fig">no closed trades</span>'}</td>
+      <td class="num" data-lab="Backtest estimate" title="${PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig">${live ? 'no live trades closed yet' : d.mode === 'demo' ? 'no demo trades closed yet' : 'no paper trades closed yet'}</span>`}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
       ${actions}
     </tr>`;
@@ -4993,6 +4995,25 @@
     return state + (n('succeeded') ? ', <a href="/research">see what each idea missed</a>'
       : n('queued') || n('running') || n('paused') ? `, <a href="/research">follow ${started === 1 ? 'it' : 'them'} on Research</a>` : '');
   }
+  // Each book's since-visit figure split by the strategy that traded it (the server's by_deployment, the
+  // same rows, best first), shown for a book where two or more traded: "Paper −$24.19" alone hid that the
+  // running strategy made money and the paused one lost it. Each share stays inside its own book.
+  const SINCE_SPLIT_SHOWN = 3;
+  function sinceSplit(d, books) {
+    const by = (d.since && d.since.by_deployment) || {};
+    return books.map(([m, label]) => {
+      const rows = Array.isArray(by[m]) ? by[m] : [];
+      if (rows.length < 2) return '';
+      const item = (r) => {
+        const dep = (d.deployments || []).find((x) => +x.id === +r.deployment_id);
+        const name = dep ? `<a href="/strategies/${encodeURIComponent(dep.strategy_id)}">${esc(dep.title)}</a>` : 'a removed strategy';
+        const p = +r.pnl || 0;
+        return `${name} <span class="nobr"><span class="${p < 0 ? 'neg' : p > 0 ? 'pos' : ''}">${usd(p, true)}</span> on ${num(r.trades)}</span>`;
+      };
+      const more = rows.length - SINCE_SPLIT_SHOWN;
+      return `<div class="since-split" data-book="${m}">${books.length > 1 ? `<span class="since-sub">${label}:</span> ` : ''}${rows.slice(0, SINCE_SPLIT_SHOWN).map(item).join('<span class="sep">·</span>')}${more > 0 ? `<span class="sep">·</span><span class="since-sub">${num(more)} more</span>` : ''}</div>`;
+    }).join('');
+  }
   function sinceStrip(d, pausedHref) {
     const s = d.since;
     if (!s) return '';
@@ -5005,7 +5026,7 @@
       return `<span class="since-book" data-book="${m}">${b.trades
         ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${m === 'live' ? ' (real money)' : ''}`
         : `<b>${label}</b>: no trades closed yet`}</span>`;
-    }).join('<span class="sep">·</span>') : 'No trades closed.';
+    }).join('<span class="sep">·</span>') + sinceSplit(d, books) : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
     // A strategy that passed its paper forward test or became ready for live did so days after it was
@@ -5106,7 +5127,7 @@
     const now = d.billing_blocked
       ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.' + apStillTrading(d)
         : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`)
-      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc(apStory(d)[0] || 'Autopilot is on.');
+      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') + apMeanwhile(d) : esc(apStory(d)[0] || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${apLastHtml(d.last_action)}${Array.isArray(d.focus) ? `
@@ -5162,6 +5183,18 @@
     return contractMarket(s) || 'an unlisted market';
   }
   const apMarketNames = (d) => [...new Set(((d && d.research && d.research.active) || []).map((n) => n === AP_PICKING ? n : apMarketName(n)))];
+  // The card leads with why its paper strategies hold nothing (d.idle). The autopilot keeps working
+  // meanwhile, and the card never said so: someone back after a day read "Nothing open right now" and
+  // not that a research session was running. Paper-waiting lines only (the others already say it).
+  const AP_IDLE_PAPER = new Set(['flat', 'starting', 'waiting', 'market_closed']);
+  function apMeanwhile(d) {
+    if (!d || !d.idle || !AP_IDLE_PAPER.has(d.idle.code)) return '';
+    const all = apMarketNames(d), names = all.filter((n) => n !== AP_PICKING);
+    if (!all.length) return d.reviewing ? " Meanwhile it's reviewing the markets to pick its next move." : '';
+    if (!names.length) return " Meanwhile it's picking a market to research.";
+    const said = names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+    return ` Meanwhile it's researching ${esc(said)}.`;
+  }
   // The server's story lines with each raw key it quoted from the research list said as apMarketName does.
   function apStory(d) {
     const raw = [...new Set((d && d.research && d.research.active) || [])].filter((n) => n !== AP_PICKING && apMarketName(n) !== n);

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
@@ -362,8 +363,7 @@ def realized_pnl_by_mode(cur, user_id: int, modes: Tuple[str, ...], since: datet
 BOOK_MODES = ("paper", "demo", "live")
 
 
-def closed_book_totals(cur, user_id: int, since: datetime, visit: Optional[datetime] = None
-                       ) -> Tuple[Dict[str, Tuple[float, float]], Dict[str, int], Dict[str, Tuple[float, int]]]:
+def closed_book_totals(cur, user_id: int, since: datetime, visit: Optional[datetime] = None, split: bool = False):
     """({mode: (realized all time, realized since `since`)}, {mode: closed position rows},
     {mode: (realized, closed trades) since `visit`}) for the three books, in one pass over the
     user's closed positions through idx_pos_user. The third is empty without `visit` (the
@@ -372,25 +372,43 @@ def closed_book_totals(cur, user_id: int, since: datetime, visit: Optional[datet
     equity), then each book's sums and its closed-trade counts as two full passes (84ms at 20k
     trades, now 34ms). These are the sums realized_pnl makes and the rows closed_trade_counts
     counts; a mode with no closed trade is left out of the counts, as there. A display read only:
-    the gates keep calling realized_pnl."""
-    cols = ", ".join(
-        "COALESCE(SUM(CASE WHEN mode='{m}' THEN pnl END),0) AS {m}_all, "
-        "COALESCE(SUM(CASE WHEN mode='{m}' AND closed_at >= %s THEN pnl END),0) AS {m}_since, "
-        "COUNT(CASE WHEN mode='{m}' THEN 1 END) AS {m}_n".format(m=m)
-        for m in BOOK_MODES)
-    params = tuple(since for _ in BOOK_MODES)
+    the gates keep calling realized_pnl.
+
+    The pass groups by book and deployment, and each book's figures are its groups' DECIMAL sums added
+    exactly (Decimal), so they are the single SUM's to the last digit. With `split` (and a `visit`) a
+    fourth item comes back: {(mode, deployment id): (realized, closed trades) since `visit`} for each
+    deployment that closed a trade since then, the same rows the book's since-visit figure sums, so the
+    strip can say which strategy made the money and which lost it."""
+    cols = ("mode, deployment_id, COALESCE(SUM(pnl),0) AS p_all, "
+            "COALESCE(SUM(CASE WHEN closed_at >= %s THEN pnl END),0) AS p_since, COUNT(*) AS n")
+    params: Tuple = (since,)
     if visit is not None:
-        cols += ", " + ", ".join(
-            "COALESCE(SUM(CASE WHEN mode='{m}' AND closed_at >= %s THEN pnl END),0) AS {m}_visit, "
-            "COUNT(CASE WHEN mode='{m}' AND closed_at >= %s THEN 1 END) AS {m}_visit_n".format(m=m)
-            for m in BOOK_MODES)
-        params += tuple(x for _ in BOOK_MODES for x in (visit, visit))
-    cur.execute("SELECT " + cols + " FROM app_positions FORCE INDEX (idx_pos_user) WHERE user_id=%s AND status='closed'",
-                params + (user_id,))
-    r = cur.fetchone() or {}
-    realized = {m: (float(r.get(m + "_all") or 0), float(r.get(m + "_since") or 0)) for m in BOOK_MODES}
-    recent = {m: (float(r.get(m + "_visit") or 0), int(r.get(m + "_visit_n") or 0)) for m in BOOK_MODES} if visit is not None else {}
-    return realized, {m: int(r[m + "_n"]) for m in BOOK_MODES if r.get(m + "_n")}, recent
+        cols += (", COALESCE(SUM(CASE WHEN closed_at >= %s THEN pnl END),0) AS p_visit, "
+                 "COUNT(CASE WHEN closed_at >= %s THEN 1 END) AS n_visit")
+        params += (visit, visit)
+    cur.execute("SELECT " + cols + " FROM app_positions FORCE INDEX (idx_pos_user) WHERE user_id=%s AND status='closed' "
+                "GROUP BY mode, deployment_id", params + (user_id,))
+    zero = Decimal(0)
+    dec = lambda v: v if isinstance(v, Decimal) else Decimal(str(v or 0))  # noqa: E731 - exact, as SQL's SUM
+    sums = {m: [zero, zero, 0, zero, 0] for m in BOOK_MODES}  # all time, since, rows, since visit, trades since visit
+    by_dep: Dict[Tuple[str, int], Tuple[float, int]] = {}
+    for r in cur.fetchall():
+        m = r.get("mode")
+        if m not in sums:
+            continue
+        b = sums[m]
+        b[0] += dec(r.get("p_all"))
+        b[1] += dec(r.get("p_since"))
+        b[2] += int(r.get("n") or 0)
+        if visit is not None:
+            b[3] += dec(r.get("p_visit"))
+            b[4] += int(r.get("n_visit") or 0)
+            if r.get("n_visit"):
+                by_dep[(m, int(r.get("deployment_id") or 0))] = (float(r.get("p_visit") or 0), int(r["n_visit"]))
+    realized = {m: (float(b[0]), float(b[1])) for m, b in sums.items()}
+    recent = {m: (float(b[3]), b[4]) for m, b in sums.items()} if visit is not None else {}
+    out = (realized, {m: b[2] for m, b in sums.items() if b[2]}, recent)
+    return out + (by_dep,) if split else out
 
 
 def positions_version(cur, user_id: int) -> Tuple[int, int, int]:

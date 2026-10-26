@@ -34,16 +34,20 @@ def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
     return {"text": r["content"], "at": r["created_at"]} if r else None
 
 
+# When the newest review ran: its start, or the time it was queued while it hasn't started yet.
+REVIEW_AT_SQL = ("SELECT COALESCE(started_at, created_at) AS at FROM app_agent_runs "
+                 "WHERE user_id=%s AND kind='review' ORDER BY id DESC LIMIT 1")
+
+
 def last_review_at(cur, user_id: int):
-    """Timestamp of the most recent autopilot REVIEW run (whether or not it acted), for the panel's
+    """When the most recent autopilot REVIEW run ran (whether or not it acted), for the panel's
     liveness readout. A quiet review takes no action and posts nothing, so without this a working
-    autopilot looks dead between actions; this shows it is alive and on cadence."""
-    cur.execute(
-        "SELECT created_at FROM app_agent_runs WHERE user_id=%s AND kind='review' ORDER BY id DESC LIMIT 1",
-        (user_id,),
-    )
+    autopilot looks dead between actions; this shows it is alive and on cadence. It is the review's
+    start (started_at): a review that waited 40 minutes for a worker read "Last check-in 40m ago" the
+    moment it ran. Until the newest review starts, the time it was queued stands in."""
+    cur.execute(REVIEW_AT_SQL, (user_id,))
     r = cur.fetchone()
-    return r["created_at"] if r else None
+    return r["at"] if r else None
 
 
 def active_agent_run(cur, user_id: int, kind: Optional[str] = None) -> Optional[Dict]:

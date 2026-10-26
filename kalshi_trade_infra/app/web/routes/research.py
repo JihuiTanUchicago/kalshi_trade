@@ -53,6 +53,7 @@ def list_runs(ctx: Ctx):
     runs = repo.list_runs(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, runs)
     _mark_example(runs)
+    _number_sessions(ctx.cur, ctx.uid, runs)
     for r in runs:  # why a finished session stopped (out of credits, by you, an error, finished): services.run_stop
         r["stop_reason"] = run_stop.stop_reason(r)
         r.pop("out_of_credits", None)
@@ -74,6 +75,17 @@ def _mark_example(runs: List[Dict]) -> None:
     it cost them nothing, so the list marks it and the headline leaves it out."""
     for r in runs:
         r["example"] = r.get("direction") == repo.DEMO_DIRECTION
+
+
+def _number_sessions(cur, uid: int, runs: List[Dict]) -> None:
+    """Stamp each of the user's own sessions with `seq`, its number among their sessions (1 = their
+    first), so the list says "Session 3" instead of the global run id ("Session 8" on a first session).
+    The seeded example gets none. `runs` is the newest first; a full page is counted once, a short one
+    already holds every session."""
+    own = [r for r in runs if not r.get("example")]
+    total = repo.count_own_research(cur, uid) if len(runs) >= repo.RUNS_LISTED else len(own)
+    for k, r in enumerate(own):
+        r["seq"] = total - k
 
 
 def _with_spent(cur, uid: int, runs: List[Dict]) -> None:

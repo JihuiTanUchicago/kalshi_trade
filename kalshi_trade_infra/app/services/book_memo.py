@@ -147,8 +147,12 @@ def removed_deployments(memo: BookMemo, strategy_id: Optional[int] = None) -> Li
     return rows
 
 
-def closed_book_totals(memo: BookMemo, day: datetime, visit: Optional[datetime] = None):
-    """repo.closed_book_totals (every book's realized P&L and closed-trade count), kept."""
+def closed_book_totals(memo: BookMemo, day: datetime, visit: Optional[datetime] = None, split: bool = False):
+    """repo.closed_book_totals (every book's realized P&L and closed-trade count, and with `split` each
+    deployment's since-visit share), kept."""
+    if split:
+        return memo.get("book_totals_split", (day, visit),
+                        lambda: repo.closed_book_totals(memo.cur, memo.uid, day, visit, split=True))
     return memo.get("book_totals", (day, visit), lambda: repo.closed_book_totals(memo.cur, memo.uid, day, visit))
 
 

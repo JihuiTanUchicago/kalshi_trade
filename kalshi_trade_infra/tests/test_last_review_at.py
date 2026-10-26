@@ -18,7 +18,22 @@ class _StubCursor:
 
 def test_last_review_at_returns_latest_review_timestamp():
     dt = datetime(2026, 10, 18, 9, 0, 0)
-    assert repo.last_review_at(_StubCursor({"created_at": dt}), 7) == dt
+    assert repo.last_review_at(_StubCursor({"at": dt}), 7) == dt
+
+
+def test_last_review_at_is_when_the_review_ran_not_when_it_was_queued():
+    """A review that waited 40 minutes for a worker ran just now: "Last check-in" reads its start,
+    and only a review that hasn't started yet falls back to the time it was queued."""
+    seen = []
+
+    class _Cur(_StubCursor):
+        def execute(self, sql, params):
+            seen.append((sql, params))
+
+    repo.last_review_at(_Cur(None), 7)
+    sql, params = seen[0]
+    assert "COALESCE(started_at, created_at)" in sql and "kind='review'" in sql
+    assert "ORDER BY id DESC LIMIT 1" in sql and params == (7,)
 
 
 def test_last_review_at_none_when_no_review_yet():
