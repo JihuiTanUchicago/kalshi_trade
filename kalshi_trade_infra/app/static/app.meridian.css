@@ -1461,6 +1461,13 @@ body.landing-body { background: #FBFBFA; }
 .theme-mark { flex: none; width: 16px; height: 16px; color: var(--ink); opacity: 0; }
 .theme-opt.on .theme-mark { opacity: 1; }
 .theme-mark svg { width: 16px; height: 16px; }
+/* Settings' email switch: the state line under it says what the switch stops, the next line what always comes. */
+.email-settings .section-head { max-width: 480px; padding-bottom: 4px; border: 0; }
+.email-pref { display: grid; gap: 8px; max-width: 480px; margin-top: 8px; }
+.email-pref .switch span { font-family: var(--f-ui); font-size: 14px; font-weight: 500; color: var(--ink); }
+.email-pref .hint { margin: 0; line-height: 1.5; }
+.email-pref .email-always b { color: var(--ink-2); font-weight: 600; }
+.email-pref #email-flash:empty { display: none; }
 .theme-mark circle { display: none; }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-form .input { min-height: 38px; }

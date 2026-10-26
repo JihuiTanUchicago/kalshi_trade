@@ -395,6 +395,7 @@ def me(ctx: Ctx):
         "user": {
             "id": ctx.user["id"], "email": ctx.user["email"], "name": ctx.user["name"],
             "username": ctx.user.get("username"), "ui_theme": ctx.user.get("ui_theme") or "tau",
+            "email_opt_out": bool(ctx.user.get("email_opt_out")),  # Settings' email switch reads this
             "picture": ctx.user["picture_url"], "autopilot": bool(ctx.user["autopilot"]),
             "autopilot_live": bool(ctx.user.get("autopilot_live")),
             "autopilot_daily_loss_limit": float(ctx.user.get("autopilot_daily_loss_limit") or 50),
@@ -1112,14 +1113,30 @@ def set_ui_theme(ctx: Ctx):
     return {"ok": True, "theme": theme}
 
 
+def set_email_preferences(ctx: Ctx):
+    """Settings' email switch, for the signed-in user only: optional email (community posts, replies,
+    mentions, ready-for-live notices) off or back on. The unsubscribe link writes the same field;
+    live-money safety alerts never read it."""
+    opt_out = ctx.body.get("email_opt_out")
+    if not isinstance(opt_out, bool):
+        raise ApiError(400, "Choose whether Tau may send you optional email.")
+    if not repo.set_email_opt_out(ctx.cur, ctx.uid, opt_out):
+        raise ApiError(404, "Your account wasn't found. Sign in again.")
+    return {"ok": True, "email_opt_out": opt_out}
+
+
 def unsubscribe(ctx: Ctx):
-    """Public one-click unsubscribe from community emails (HMAC-signed link, no login needed)."""
+    """Public one-click unsubscribe from optional email (HMAC-signed link, no login needed). It sets
+    the same switch as Settings, so the page says what stopped and where to turn it back on."""
     try:
         uid = int(ctx.query.get("u") or 0)
     except ValueError:
         uid = 0
     ok = bool(uid) and notify.unsubscribe_token_valid(uid, ctx.query.get("t") or "") and repo.set_email_opt_out(ctx.cur, uid, True)
-    msg = ("You're unsubscribed from Tau community emails." if ok
+    msg = ("You're unsubscribed from Tau's optional email: new community posts, replies, mentions, and "
+           "notices that a paper strategy is ready for live trading. Safety alerts about a Bitcoin perps "
+           "account you trade through Tau still come, because they protect real money. You can turn "
+           "optional email back on in <a href='/settings' style='color:#1a66c9'>Settings</a>." if ok
            else "This unsubscribe link isn't valid. If you keep getting emails, reply to one and we'll remove you.")
     page = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
             "<title>Tau</title><body style='font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;color:#191B16'>"
@@ -2484,7 +2501,7 @@ def _notify_mentions(cur, author_uid: int, author_name: str, body: str, link: st
             repo.add_notification(cur, u["id"], "mention", "%s mentioned you." % author_name, link)
         except Exception as e:
             print("[mention] in-app notice failed: %r" % e, flush=True)
-        if u.get("email"):
+        if u.get("email") and not u.get("email_opt_out"):  # optional email: Settings can turn it off
             try:
                 notify.mention_notice(u["email"], u.get("name"), author_name, body)
             except Exception as e:
@@ -2612,7 +2629,8 @@ def create_comment(ctx: Ctx):
                                   "%s commented on your post." % commenter, "/community")
         except Exception as e:
             print("[community] in-app notice failed for post %s: %r" % (pid, e), flush=True)
-    if author["user_id"] != ctx.uid and author.get("email"):  # don't email yourself
+    # Don't email yourself, or anyone who turned optional email off in Settings.
+    if author["user_id"] != ctx.uid and author.get("email") and not author.get("email_opt_out"):
         try:
             commenter = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "Someone"
             notify.comment_notice(author["email"], author.get("name"), commenter, author.get("preview") or "", body)
@@ -3471,6 +3489,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/notifications", notifications, True),
         ("POST", "/api/notifications/read", mark_notifications_read, True),
         ("POST", "/api/ui-theme", set_ui_theme, True),
+        ("POST", "/api/email-preferences", set_email_preferences, True),
         ("GET", "/unsubscribe", unsubscribe, False),
         ("GET", "/api/version", lambda ctx: {"v": _static_versions()["app.js"]}, False),
         ("GET", "/api/devlog", lambda ctx: devlog.as_json(), True),

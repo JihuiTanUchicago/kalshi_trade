@@ -827,6 +827,41 @@
     { key: 'tau', name: 'Tau', desc: 'The full interface — every feature, the station-timetable look.' },
     { key: 'meridian', name: 'Meridian', desc: 'A lighter redesign of the dashboard, settings and markets.' },
   ];
+  // Settings' email switch. It writes app_users.email_opt_out, the field the unsubscribe link in
+  // community emails also sets; the server checks it before every optional email. Perps safety
+  // alerts never read it, and the copy says so.
+  const emailState = (off) => off
+    ? 'Off. Tau doesn’t email you about replies to your posts, mentions of your @name, new community posts, or a paper strategy that’s ready for live trading. The bell in Tau still shows replies, mentions and ready-for-live notices.'
+    : 'On. Tau emails you about replies to your posts, mentions of your @name, new community posts (at most one email every 4 hours), and a paper strategy that’s ready for live trading.';
+  function emailSettings() {
+    const u = (S.me && S.me.user) || {};
+    const off = !!u.email_opt_out;
+    return `<section class="sect email-settings"><div class="section-head"><h2>Email</h2><p>${u.email ? 'Sent to ' + esc(u.email) : 'Sent to your sign-in address'}</p></div>
+        <div class="email-pref">
+          <label class="switch"><input type="checkbox" id="email-optional" role="switch" aria-describedby="email-state"${off ? '' : ' checked'}><span>Updates and community email</span></label>
+          <div id="email-flash"></div>
+          <p class="hint" id="email-state">${esc(emailState(off))}</p>
+          <p class="hint email-always"><b>Always sent:</b> safety alerts about a Bitcoin perps account you trade through Tau: a position that doesn’t match Tau’s orders, a position near liquidation, or heavy margin use. They protect real money, so this switch doesn’t stop them.</p>
+        </div>
+      </section>`;
+  }
+  function wireEmailSettings() {
+    const sw = root.querySelector('#email-optional');
+    if (!sw) return;
+    sw.onchange = async () => {
+      const off = !sw.checked;
+      sw.disabled = true;
+      try {
+        const r = await api('/api/email-preferences', { email_opt_out: off });
+        if (S.me && S.me.user) S.me.user.email_opt_out = !!r.email_opt_out;
+        flash('#email-flash', r.email_opt_out ? 'Optional email is off. Safety alerts still come.' : 'Optional email is on.', 'good');
+      } catch (e) { flash('#email-flash', errText(e), 'bad'); }
+      const now = !!(S.me && S.me.user && S.me.user.email_opt_out);
+      sw.disabled = false; sw.checked = !now;
+      const state = root.querySelector('#email-state');
+      if (state) state.textContent = emailState(now);
+    };
+  }
   async function viewSettings() {
     const current = window.__TAU_UI__ === 'meridian' ? 'meridian' : 'tau';
     shell('/settings', boardTitle('Settings'), `
@@ -838,7 +873,9 @@
             </button>`).join('')}
         </div>
         <div id="theme-flash" class="hint" role="status"></div>
-      </section>`);
+      </section>
+      ${emailSettings()}`);
+    wireEmailSettings();
     root.querySelectorAll('[data-theme]').forEach((b) => (b.onclick = () => {
       const key = b.dataset.theme;
       if (key === current) return;

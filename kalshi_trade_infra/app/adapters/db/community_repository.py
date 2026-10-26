@@ -111,10 +111,10 @@ def post_exists(cur, post_id: int) -> bool:
 
 
 def post_author(cur, post_id: int) -> Optional[Dict]:
-    """The post's author (user_id, email, name) plus a short body preview, for
+    """The post's author (user_id, email, email_opt_out, name) plus a short body preview, for
     reply notifications."""
     cur.execute(
-        """SELECT p.user_id, u.email, u.name, LEFT(p.body, 140) AS preview
+        """SELECT p.user_id, u.email, u.email_opt_out, u.name, LEFT(p.body, 140) AS preview
            FROM app_posts p JOIN app_users u ON u.id=p.user_id WHERE p.id=%s""",
         (post_id,),
     )

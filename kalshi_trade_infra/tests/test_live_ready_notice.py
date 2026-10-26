@@ -15,6 +15,8 @@ def _patch(monkeypatch, deps, ready=READY, already=(), candidate=True):
     monkeypatch.setattr(agent.repo, "add_chat", lambda cur, uid, role, text, pid=None: chats.append((role, text)))
     monkeypatch.setattr(agent.repo, "add_notification", lambda cur, uid, kind, body, link=None: bells.append((uid, kind, body, link)))
     monkeypatch.setattr(agent, "paper_evidence", lambda cur, uid, sid: dict(ready, ready=ready["ready"]))
+    # Optional email: the stored switch is read at send time (opted in here).
+    monkeypatch.setattr(agent.repo, "optional_email_address", lambda cur, uid: USER["email"])
     monkeypatch.setattr(notify, "live_ready_notice", lambda *a: mails.append(a) or True)
     return chats, mails, bells
 

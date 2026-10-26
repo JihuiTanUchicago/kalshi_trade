@@ -83,6 +83,9 @@ from app.adapters.db.deployment_repository import (  # noqa: F401
     set_deployment_strategy,
     track_record_rows,
 )
+from app.adapters.db.email_prefs_repository import (  # noqa: F401
+    community_email_recipients, mark_community_emailed, optional_email_address, set_email_opt_out,
+)
 from app.adapters.db.community_repository import (  # noqa: F401
     add_comment, create_post, edit_post, get_image, list_comments, list_posts, post_author, post_exists,
     reactions_for, recent_posts_count, store_image, toggle_like, toggle_reaction,
@@ -205,7 +208,7 @@ def users_by_usernames(cur, usernames: List[str]) -> List[Dict]:
     if not usernames:
         return []
     marks = ",".join(["%s"] * len(usernames))
-    cur.execute("SELECT id, username, name, email FROM app_users WHERE username IN (%s)" % marks, tuple(usernames))
+    cur.execute("SELECT id, username, name, email, email_opt_out FROM app_users WHERE username IN (%s)" % marks, tuple(usernames))
     return cur.fetchall()
 
 
@@ -288,7 +291,7 @@ def create_session(cur, user_id: int, token_hash: str, ttl: timedelta) -> None:
 def session_user(cur, token_hash: str) -> Optional[Dict]:
     cur.execute(
         """SELECT u.id, u.email, u.name, u.username, u.picture_url, u.autopilot, u.autopilot_live, u.autopilot_daily_loss_limit,
-                  u.autopilot_model, u.autopilot_focus, u.ui_theme, u.created_at
+                  u.autopilot_model, u.autopilot_focus, u.ui_theme, u.email_opt_out, u.created_at
            FROM app_sessions s JOIN app_users u ON u.id=s.user_id
            WHERE s.token_hash=%s AND s.expires_at > %s""",
         (token_hash, now_utc()),
@@ -361,36 +364,11 @@ def largest_tables(cur, limit: int = 5) -> List[Dict]:
 
 
 # -- user prefs, notifications, engine heartbeat, research policy + memory reads --------
-
-
-def community_email_recipients(cur, exclude_uid: int, cooldown_hours: int = 4) -> List[Dict]:
-    """Users to email about new community activity: opted-in, with an email, not the author,
-    and not emailed within the cooldown (so a burst of posts can't flood anyone)."""
-    cutoff = now_utc() - timedelta(hours=cooldown_hours)
-    cur.execute(
-        """SELECT id, email, name FROM app_users
-           WHERE id<>%s AND email IS NOT NULL AND email<>'' AND COALESCE(email_opt_out,0)=0
-                 AND (last_community_email_at IS NULL OR last_community_email_at < %s)""",
-        (exclude_uid, cutoff),
-    )
-    return cur.fetchall()
-
-
-def mark_community_emailed(cur, user_ids: List[int]) -> None:
-    if not user_ids:
-        return
-    placeholders = ",".join(["%s"] * len(user_ids))
-    cur.execute("UPDATE app_users SET last_community_email_at=%s WHERE id IN (%s)" % ("%s", placeholders),
-                [now_utc()] + list(user_ids))
+# (the email opt-out lives in app/adapters/db/email_prefs_repository.py, re-exported at the top)
 
 
 def set_ui_theme(cur, user_id: int, theme: str) -> None:
     cur.execute("UPDATE app_users SET ui_theme=%s WHERE id=%s", (theme, user_id))
-
-
-def set_email_opt_out(cur, user_id: int, opt_out: bool) -> bool:
-    cur.execute("UPDATE app_users SET email_opt_out=%s WHERE id=%s", (1 if opt_out else 0, user_id))
-    return cur.rowcount == 1
 
 
 def add_notification(cur, user_id: int, kind: str, body: str, link: Optional[str] = None) -> int:

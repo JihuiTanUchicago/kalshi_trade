@@ -3825,8 +3825,10 @@ def live_ready_notices(cur, user: Dict) -> List[str]:
                               "“%s” is ready for live trading. Going live is your call." % title[:120],
                               "/strategies/%d" % sid)
         out.append(line)
-        if user.get("email"):
-            notify.live_ready_notice(user["email"], user.get("name"), title, paper_evidence_line(ev),
+        # Optional email, read at send time: off when the user turned it off in Settings.
+        to = repo.optional_email_address(cur, user["id"])
+        if to:
+            notify.live_ready_notice(to, user.get("name"), title, paper_evidence_line(ev),
                                      "%s/strategies/%d" % (notify.PUBLIC_URL, sid), note)
     return out
 
