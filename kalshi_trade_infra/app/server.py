@@ -33,7 +33,7 @@ from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
 from app import spec as specmod
-from app.services import backtest_check, book_memo, gate_explain, trade_why
+from app.services import backtest_check, book_memo, gate_explain, paper_checks, trade_why
 from app import track_record
 from app import client_errors, webperf
 from app import worker
@@ -384,6 +384,41 @@ def warm_shared() -> None:
             conn.close()
 
 
+WARM_BOARD_USERS = 50  # users whose Deploy board is read at startup, most recently signed in first
+WARM_BOARD_SECONDS = 120.0  # and no more than this, all told
+
+
+def warm_deploy_boards(limit: int = WARM_BOARD_USERS, budget: float = WARM_BOARD_SECONDS) -> int:
+    """Read the Deploy board's road to live at startup, off the request path, for the users likely to
+    open it (a paper strategy running or paused, most recently signed in first), so the first board
+    after a deploy doesn't run every paper strategy's gate bootstrap cold (agent._paper_edge_p_value
+    keeps it per process; ~6s for a busy account's nine). It fills the same caches a request would
+    (paper_checks' answers, the bootstrap memo), on one connection of its own, a user at a time with a
+    pause between, and stops at `limit` users or `budget` seconds. A failure is logged and skipped;
+    the requests then read as they did. Returns the boards read."""
+    conn, done, t0 = None, 0, time.time()
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        for uid in repo.paper_board_users(cur, limit):
+            if time.time() - t0 > budget:
+                break
+            try:
+                memo = book_memo.BookMemo(cur, uid)  # its position sums are kept too
+                _deploy_roads(cur, uid, book_memo.deployments_for_display(memo), memo)
+                done += 1
+            except Exception as e:  # noqa: BLE001 - this board is read in its request instead
+                _log_line("[app] warming user %d's Deploy board failed (%s)" % (uid, type(e).__name__))
+            time.sleep(0.05)  # let requests in between
+    except Exception as e:  # noqa: BLE001 - the boards are read in their requests instead
+        _log_line("[app] warming the Deploy boards failed (%s)" % type(e).__name__)
+    finally:
+        if conn is not None:
+            conn.close()
+    _log_line("[app] warmed %d Deploy board(s) in %.1fs" % (done, time.time() - t0))
+    return done
+
+
 def _researchable_markets(cur) -> List[Dict]:
     """The research picker's markets (app.services.markets), with the shared series cache."""
     ready = _shared("series_with_candles", 120, lambda c: repo.series_with_candles(c), cur)
@@ -627,10 +662,16 @@ def _book_shape(closed: Dict[str, int], open_count: int) -> Tuple:
     return tuple(sorted(closed.items())), int(open_count)
 
 
-def _forget_track_record(uid: int) -> None:
-    """Drop the user's cached record after a change the web app made itself (a deploy, a pause, resume
-    or stop, the kill switch, a removed strategy): its by-strategy rows carry each deployment's status."""
+def _forget_own_change(uid: int, strategy_id: Optional[int] = None) -> None:
+    """Drop the user's cached reads after a change the web app made itself (a deploy, a pause, resume
+    or stop, an approved proposal, the kill switch, a removed strategy): the track record, whose
+    by-strategy rows carry each deployment's status, and the Deploy board's road to live and paper
+    checks (services.paper_checks), so the board never shows a check from before the change. A change
+    to one strategy's deployment passes `strategy_id`: only that strategy's paper evidence reads it."""
     _TRACK_RECORD.pop(uid, None)
+    paper_checks.forget(uid, strategy_id)
+    for key in [k for k in _ROADS if k[0] == uid]:
+        _ROADS.pop(key, None)
 
 
 def get_track_record(ctx: Ctx):
@@ -1113,7 +1154,7 @@ def delete_strategy(ctx: Ctx):
     if block:
         raise ApiError(409, block)
     repo.delete_strategy(ctx.cur, ctx.uid, s["id"])
-    _forget_track_record(ctx.uid)
+    _forget_own_change(ctx.uid, s["id"])
     return {"ok": True}
 
 
@@ -1486,7 +1527,7 @@ def create_deployment(ctx: Ctx):
     if sum(1 for d in repo.list_deployments(cur, ctx.uid) if d["status"] != "stopped") >= MAX_ACTIVE_DEPLOYMENTS:
         raise ApiError(429, "You can run up to %d deployments at once." % MAX_ACTIVE_DEPLOYMENTS)
     dep_id = repo.create_deployment(cur, ctx.uid, s["id"], s["market"], mode)
-    _forget_track_record(ctx.uid)
+    _forget_own_change(ctx.uid, s["id"])
     where = {"live": "LIVE money", "demo": "the demo (sandbox) exchange"}.get(mode, "paper")
     repo.add_chat(cur, ctx.uid, "system", "Deployed %s on %s." % (s["title"], where))
     return {"id": dep_id}
@@ -1523,10 +1564,8 @@ def _paper_record(trips: List[Dict]) -> Dict:
 
 ROAD_TTL = 30.0  # seconds; the Deploy board polls every 10s and a record moves only when a trade closes
 _ROADS: Dict[Tuple, Tuple[float, Dict]] = {}
-# paper_evidence runs the paper gate's bootstrap (~200ms a strategy), so the board keeps each
-# strategy's `failing` until its record changes or FAILING_TTL passes (the demo check can move alone).
-FAILING_TTL = 300.0
-_FAILING: Dict[Tuple, Tuple[float, List[str]]] = {}
+# Each strategy's `failing` is kept until its record changes (services.paper_checks).
+_FAILING = paper_checks.KEPT
 
 
 def _deploy_roads(cur, uid: int, deps: List[Dict], memo: Optional[book_memo.BookMemo] = None) -> Dict[int, Dict]:
@@ -1556,17 +1595,7 @@ def _deploy_roads(cur, uid: int, deps: List[Dict], memo: Optional[book_memo.Book
                 and rec["span_hours"] >= agent.MIN_PAPER_SPAN_HOURS):
             # Once the counts are in, the rest of the check decides: the same reads as Road to live, so
             # the board can say it clears (or which checks are left) without the user opening each page.
-            fkey = (uid, sid, rec["trades"], rec["events"], rec["span_hours"])
-            fhit = _FAILING.get(fkey)
-            if fhit and time.time() - fhit[0] < FAILING_TTL:
-                road["failing"] = list(fhit[1])
-            else:
-                ev = agent.paper_evidence(cur, uid, sid)
-                road["failing"] = ([] if agent._is_deployment_candidate(cur, sid) else ["candidate"]) + [
-                    k for k, ok in ev["checks"].items() if not ok]
-                if len(_FAILING) > 5000:
-                    _FAILING.clear()
-                _FAILING[fkey] = (time.time(), list(road["failing"]))
+            road["failing"] = paper_checks.failing(cur, uid, sid, (rec["trades"], rec["events"], rec["span_hours"]))
         out[sid] = road
     if len(_ROADS) > 5000:
         _ROADS.clear()
@@ -1612,7 +1641,7 @@ def deployment_action(ctx: Ctx):
     if action == "resume" and dep["mode"] == "live" and not engine.LIVE_TRADING_ENABLED:
         raise ApiError(409, "Live trading isn't open yet.")
     repo.set_deployment_status(ctx.cur, ctx.uid, dep_id, status, "By you")
-    _forget_track_record(ctx.uid)
+    _forget_own_change(ctx.uid, dep.get("strategy_id"))  # unknown: all of theirs
     return {"ok": True, "status": status}
 
 
@@ -1666,6 +1695,7 @@ def decide_proposal(ctx: Ctx):
         if decision == "approve":
             agent.apply_proposal(tx, ctx.uid, p)
         repo.add_chat(tx, ctx.uid, "system", "You %s the proposal." % ("approved" if decision == "approve" else "declined"))
+    _forget_own_change(ctx.uid)
     return {"ok": True}
 
 
@@ -1720,7 +1750,7 @@ def autopilot_kill(ctx: Ctx):
         if d["mode"] == "live" and d["status"] == "running":
             repo.set_deployment_status(ctx.cur, ctx.uid, d["id"], "paused", "Kill switch")
             paused += 1
-    _forget_track_record(ctx.uid)
+    _forget_own_change(ctx.uid)
     repo.add_chat(ctx.cur, ctx.uid, "system", "Kill switch: live autopilot off, %d live deployment(s) paused." % paused)
     return {"ok": True, "paused": paused}
 
@@ -4162,6 +4192,8 @@ def main() -> None:
     server.daemon_threads = True
     threading.Thread(target=warm_shared, daemon=True).start()
     threading.Thread(target=warm_static, daemon=True).start()
+    paper_checks.start()  # a lapsed paper check is read again in the background
+    threading.Thread(target=warm_deploy_boards, name="warm-deploy-boards", daemon=True).start()
     print("Tau on http://%s:%d" % (HOST, PORT), flush=True)
     server.serve_forever()
 

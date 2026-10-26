@@ -87,6 +87,7 @@ from app.adapters.db.deployment_repository import (  # noqa: F401
     set_deployment_strategy,
     track_record_deployments, track_record_join, track_record_rows, track_record_trades,
 )
+from app.adapters.db.deployment_repository import paper_board_users  # noqa: F401
 from app.adapters.db.email_prefs_repository import (  # noqa: F401
     community_email_recipients, mark_community_emailed, optional_email_address, set_email_opt_out,
 )
