@@ -340,6 +340,11 @@ def test_finished_session_costs_are_set_size_research_sessions_that_debited(conn
     repo.add_credit(cur, user["id"], "usage", Decimal("-6.137"), "Agent usage", run_id=demo)
     assert repo.finished_session_costs(cur, user["id"], 10) == [pytest.approx(2.25), pytest.approx(1.5)]
     assert repo.finished_session_costs(cur, user["id"], 1) == [pytest.approx(2.25)]
+    # The same samples with each one's model, for the hint that follows the model picked.
+    assert repo.finished_session_costs_by_model(cur, user["id"], 10) == [(None, pytest.approx(2.25)), (None, pytest.approx(1.5))]
+    rid = run(debits=("-0.040000",))
+    cur.execute("UPDATE app_agent_runs SET model='haiku-4-5' WHERE id=%s", (rid,))
+    assert repo.finished_session_costs_by_model(cur, user["id"], 10)[0] == ("haiku-4-5", pytest.approx(0.04))
     every = repo.recent_session_costs(cur, repo.now_utc() - timedelta(days=1))
     assert (None, pytest.approx(2.25)) in every and (None, pytest.approx(1.5)) in every
     assert not any(round(cost, 3) in (9.137, 8.137, 7.137, 6.137) for _, cost in every)

@@ -2378,8 +2378,11 @@
   }
   // A run-until-stopped session is one session that keeps exploring a fresh round of ideas, so its
   // figure is per round (a finished set-size session is about one round); a set-size one is per session.
+  // `own`: true for the user's own sessions on any model (an older server's "yours"), 'model' for their
+  // own sessions on the model picked (yours_by_model), false for everyone's on that model.
+  const costBasis = (own) => own === 'model' ? 'your recent sessions on this model' : own ? 'your recent sessions' : 'recent sessions on this model';
   function sessionCostLine(v, forever, own) {
-    const basis = own ? 'your recent sessions' : 'recent sessions on this model';
+    const basis = costBasis(own);
     return forever
       ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
       : `A session like this usually takes about ${usd(v)} from your credits (${basis}).`;
@@ -2388,7 +2391,7 @@
   // (/api/research/estimate per_hour, the user's own else the model's typical) and how long the
   // balance covers that. It stops by itself only when credits run out, unless auto-reload tops up.
   function foreverRateLine(hourly, own, me) {
-    let s = hourly == null ? '' : `At recent rates it costs about ${usd(hourly)} an hour (${own ? 'your recent sessions' : 'recent sessions on this model'}).`;
+    let s = hourly == null ? '' : `At recent rates it costs about ${usd(hourly)} an hour (${costBasis(own)}).`;
     if (!me || !me.billing_enabled) return s;
     const bal = +me.credit_balance || 0, h = hourly > 0 ? bal / hourly : null;
     if (h != null && bal > 0) s += ` Your ${usd(bal)} covers ${h < 1 ? 'less than an hour' : h < 48 ? `about ${Math.round(h)} hour${Math.round(h) === 1 ? '' : 's'}` : `about ${Math.round(h / 24)} days`}.`;
@@ -2503,11 +2506,15 @@
       if (!rc) return;
       let est = null;
       const sync = syncCost = () => {
-        const own = !!est && est.yours != null, key = (msel && msel.value) || mdl.default;
-        const v = !est ? null : own ? est.yours : (est.typical || {})[key];
+        // The user's own figure for the model picked (yours_by_model): "yours" pooled every model, so a
+        // history on the default model read beside the cheapest one too. An older server sends "yours" alone.
+        const key = (msel && msel.value) || mdl.default, byModel = est && est.yours_by_model;
+        const mine = !est ? null : byModel ? byModel[key] : est.yours, own = mine != null && (byModel ? 'model' : true);
+        const v = !est ? null : own ? mine : (est.typical || {})[key];
         const forever = !!(rf && rf.checked), ph = (est && est.per_hour) || {};
-        const hourly = ph.yours != null ? ph.yours : (ph.typical || {})[key];
-        const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ph.yours != null, me) : '';
+        const myRate = ph.yours_by_model ? ph.yours_by_model[key] : ph.yours, ownRate = myRate != null && (ph.yours_by_model ? 'model' : true);
+        const hourly = ownRate ? myRate : (ph.typical || {})[key];
+        const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ownRate, me) : '';
         // No ledger figure for this model (or the read failed): with payments on, still say how it
         // is billed and that it can be stopped, rather than leaving the cost blank.
         const none = v == null && !pace && me.billing_enabled ? 'No cost estimate for this model yet. It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';

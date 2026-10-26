@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from app.adapters.db.sql import _json, _loads, now_utc, transaction  # noqa: F401
 from app.adapters.db.billing_repository import (  # noqa: F401
     add_credit, credit_balance, credit_rows, credit_spent_total, credit_statement, credit_totals, get_stripe_customer,
-    finished_session_costs, forever_session_rates, recent_session_costs, research_spent_since, runs_spent,
+    finished_session_costs, finished_session_costs_by_model, forever_session_rates, recent_session_costs, research_spent_since, runs_spent,
     last_credit_at, usage_by_source, save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
     credit_week, _usage_key,
 )

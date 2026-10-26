@@ -355,8 +355,21 @@ def research_estimate(ctx: Ctx):
     each model. Read-only; what a run is charged does not change."""
     own = repo.finished_session_costs(ctx.cur, ctx.uid, 10)
     return {"yours": credit_usd(_median(own)) if len(own) >= SESSION_COST_MIN_OWN else None,
+            "yours_by_model": _own_session_costs_by_model(ctx.cur, ctx.uid),
             "sessions": len(own), "typical": _typical_session_costs(ctx.cur),
             "per_hour": _forever_hourly(ctx.cur, ctx.uid)}
+
+
+def _own_session_costs_by_model(cur, uid: int) -> Dict[str, float]:
+    """{model key: the median of the user's newest 10 finished sessions on that model}, for a model
+    with SESSION_COST_MIN_OWN of them. The form's hint follows the model picked: "yours" pooled every
+    model, so a user whose sessions ran on the default read that figure beside the cheapest model too."""
+    by_model: Dict[str, List[float]] = {}
+    for model, cost in repo.finished_session_costs_by_model(cur, uid, 50):
+        key = catalog.resolve(model).key  # a NULL model ran on the catalog default
+        if len(by_model.setdefault(key, [])) < 10:
+            by_model[key].append(cost)
+    return {k: credit_usd(_median(v)) for k, v in by_model.items() if len(v) >= SESSION_COST_MIN_OWN}
 
 
 FOREVER_RATE_MIN_HOURS = 1.0  # hours of your own run-until-stopped research before your rate is used
@@ -375,6 +388,13 @@ def _forever_hourly(cur, uid: int) -> Dict:
     mine = repo.forever_session_rates(cur, since, uid, 50)
     hours = sum(h for _m, _s, h in mine)
     yours = round(sum(s for _m, s, _h in mine) / hours, 2) if hours >= FOREVER_RATE_MIN_HOURS else None
+    # The same, per model ("yours_by_model"), so the hint follows the model picked.
+    pooled: Dict[str, List[float]] = {}
+    for model, spent, h in mine:
+        p = pooled.setdefault(catalog.resolve(model).key, [0.0, 0.0])
+        p[0] += spent
+        p[1] += h
+    yours_by_model = {k: round(s / h, 2) for k, (s, h) in pooled.items() if h >= FOREVER_RATE_MIN_HOURS}
     at, typical = _TYPICAL_FOREVER_RATE
     if time.time() - at >= SESSION_COST_TTL:
         by_model: Dict[str, List[float]] = {}
@@ -382,7 +402,7 @@ def _forever_hourly(cur, uid: int) -> Dict:
             by_model.setdefault(catalog.resolve(model).key, []).append(spent / h)
         typical = {k: round(_median(v), 2) for k, v in by_model.items() if len(v) >= SESSION_COST_MIN_TYPICAL}
         _TYPICAL_FOREVER_RATE[:] = [time.time(), typical]
-    return {"yours": yours, "typical": typical}
+    return {"yours": yours, "yours_by_model": yours_by_model, "typical": typical}
 
 
 def research_context(ctx: Ctx):

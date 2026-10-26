@@ -17,6 +17,7 @@ import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
+import {researchFormCases} from './research_form_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -202,6 +203,7 @@ runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 explorePageCases({name: 'Tau', frontend});
+researchFormCases({name: 'Tau', frontend});
 settingsCases({name: 'Tau', frontend, current: 'tau', cardWallOpts: () => ({stripe: STRIPE_STUB}),
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
