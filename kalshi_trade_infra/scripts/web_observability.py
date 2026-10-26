@@ -51,7 +51,7 @@ def static():
             "MinTTL": 0, "DefaultTTL": 86400, "MaxTTL": 31536000,
             "ParametersInCacheKeyAndForwardedToOrigin": {
                 # Both on: the viewer's Accept-Encoding, normalized to br,gzip | gzip | none, is in the
-                # cache key and forwarded, so the origin's br copy (app/webperf.py) only reaches br clients.
+                # cache key and forwarded, so the origin's br copy (app/web/webperf.py) only reaches br clients.
                 "EnableAcceptEncodingGzip": True, "EnableAcceptEncodingBrotli": True,
                 "HeadersConfig": {"HeaderBehavior": "none"}, "CookiesConfig": {"CookieBehavior": "none"},
                 "QueryStringsConfig": {"QueryStringBehavior": "whitelist", "QueryStrings": {"Quantity": 1, "Items": ["v"]}}}})["CachePolicy"]["Id"]

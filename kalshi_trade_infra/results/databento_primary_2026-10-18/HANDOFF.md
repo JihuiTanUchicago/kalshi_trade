@@ -18,7 +18,7 @@ untracked result archives belong to earlier work and are preserved.
 Owned paths: `app/research/agent_market_data.py`, a focused market-data settings/preflight
 module, related tests, `.env.example`, a production configuration template/helper,
 the agent-worker systemd unit if required, `app/README.md`, provider/deployment
-documentation, `PLAN.md`, `../mvp.md`, the planned data entries in `app/devlog.py`,
+documentation, `PLAN.md`, `../mvp.md`, the planned data entries in `app/web/devlog.py`,
 and this evidence directory. Independent coverage research is read-only.
 
 No-touch paths: private `.env*` values, existing encryption/OAuth credentials,

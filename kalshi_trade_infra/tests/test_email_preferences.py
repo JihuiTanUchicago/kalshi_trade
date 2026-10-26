@@ -8,7 +8,8 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from app import notify, server
+from app import server
+from app.adapters.ses import notify
 from app.research import agent
 from app.adapters.kalshi_perps import kalshi_perps_watch
 
@@ -234,7 +235,7 @@ def test_community_email_carries_a_link_that_flips_the_same_switch(monkeypatch):
 
 
 def test_reply_email_points_at_the_settings_switch(monkeypatch):
-    from app import notify
+    from app.adapters.ses import notify
     sent = []
     monkeypatch.setattr(notify, "_send", lambda to, subject, body, reply_to=None: sent.append(body) or True)
     assert notify.comment_notice("a@x.invalid", "Ann", "bob", "My post", "nice")

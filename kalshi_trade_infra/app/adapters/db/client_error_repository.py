@@ -1,7 +1,7 @@
 """Page error reports from browsers (app_client_errors): a bounded table and the admin readout's groups.
 
 A row holds only what locates a bug (kind, message, script file and line, page path, theme, build)
-and whether the visitor was signed in. No user id, address or request content: app/client_errors.py
+and whether the visitor was signed in. No user id, address or request content: app/web/client_errors.py
 cleans every field before it gets here.
 """
 from __future__ import annotations

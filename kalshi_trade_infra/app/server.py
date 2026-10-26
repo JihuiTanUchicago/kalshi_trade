@@ -25,7 +25,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from app import auth, backtest, billing, devlog, engine, notify
+from app import backtest, engine
+from app.adapters.ses import notify
+from app.adapters.stripe import billing
+from app.web import auth, devlog
 from app.research import agent, dreaming
 from app.adapters.kalshi import kalshi_account
 from app.adapters.kalshi import kalshi_dev
@@ -39,7 +42,7 @@ from app import research_repository as research_repo
 from app import spec as specmod
 from app.services import backtest_check, book_memo, gate_explain, paper_checks, trade_why
 from app import track_record
-from app import client_errors, webperf
+from app.web import client_errors, webperf
 from app import worker
 from app.markets import MARKETS
 from app.services import markets as market_service
@@ -3286,7 +3289,7 @@ def system_code(ctx: Ctx):
     the 'show the homework' proof the pipeline is real - so, like admin_system,
     it's open to any signed-in user. The module path is whitelisted in code_map
     so a request can never read outside the repo."""
-    from app import code_map
+    from app.web import code_map
     try:
         module = (ctx.query.get("module") or "").strip()
         func = (ctx.query.get("func") or "").strip()

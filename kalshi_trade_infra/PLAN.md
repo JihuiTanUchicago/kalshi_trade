@@ -1062,7 +1062,7 @@ All now hold a constant size so the page never reflows mid-animation:
 ## System map zoom-in (2026-10-15) — SHIPPED
 Drill from a System-map box into the real code behind it, three levels deep:
 **component → module → function** (source + call graph).
-- **`app/code_map.py` (new):** read-only static analysis with stdlib `ast`, no new deps, no DB.
+- **`app/web/code_map.py` (new):** read-only static analysis with stdlib `ast`, no new deps, no DB.
   `COMPONENTS` maps each non-external system-map node id → its source files (`app/*`,
   `data_pipeline/*`). `resolve_module()` is the security boundary — it `Path.resolve()`s the
   request-supplied path and rejects anything not a `.py` file inside `app/` or `data_pipeline/`
@@ -1623,7 +1623,7 @@ All app tests green.
 **Bedrock agent confirmed working**: a real research session ran on `us.anthropic.claude-sonnet-4-5`
 via the instance role (AWS credits), producing Claude-written strategies and metering tokens.
 
-**Credits/billing (`app/billing.py`, OpenRouter-style, LIVE Stripe)**. Credits are real USD, separate
+**Credits/billing (`app/adapters/stripe/billing.py`, OpenRouter-style, LIVE Stripe)**. Credits are real USD, separate
 from the paper balance; new users get `TAU_FREE_CREDITS` ($100). Agent usage (research+chat) is
 metered per token at Anthropic list price (`billing.PRICES`) x `billing.USAGE_MARGIN` and deducted from credits after each run
 (`agent._bill` -> `billing.charge_usage`). Top-up charges the card for credits + 5.5% fee
@@ -1654,7 +1654,7 @@ need a provider (Resend) -- still pending the user's call. notify defaults to tj
 Tests: 136 pass (added tests/test_app_billing.py for usage pricing, top-up fee, webhook signature).
 ## Email (SES) + Bedrock LLM (2026-10-13)
 
-**Waitlist email** moved from SNS to **SES** (`app/notify.py`). SNS only reached a *confirmed*
+**Waitlist email** moved from SNS to **SES** (`app/adapters/ses/notify.py`). SNS only reached a *confirmed*
 operator subscription (it was stuck PendingConfirmation = zero emails) and can never email the
 signup. SES now emails BOTH: a confirmation to the signer and a notification to the operator
 (reply-to the applicant). From/To default to `tjhprivate016@gmail.com` (env `TAU_FROM_EMAIL` /
@@ -1713,7 +1713,7 @@ Owner rejected the "Tote Slip" look. Current UI:
   (unauthenticated, rate-limited), which records the email in `app_waitlist` and notifies
   the owner via SNS topic `recursive-waitlist` (ARN in `.env.app` as
   `RECURSIVE_WAITLIST_TOPIC_ARN`; subscription for tjhprivate016@gmail.com is **pending
-  confirmation** until that address clicks the AWS confirm link). `app/notify.py` publishes
+  confirmation** until that address clicks the AWS confirm link). `app/adapters/ses/notify.py` publishes
   via the instance role (policy `RecursiveWaitlistPublish`).
 - **Authed app** reverted to the Kursbuch timetable world shared with the operator console
   (ink on stock, hairline rules, measured rows, tables not cards, one reserved signal red;

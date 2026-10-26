@@ -8,7 +8,8 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from app import client_errors, server
+from app import server
+from app.web import client_errors
 from app.adapters.db import client_error_repository as ce_repo
 
 GOOD = {"kind": "error", "message": "TypeError: x is undefined", "src": "app.js", "line": 12, "col": 5,

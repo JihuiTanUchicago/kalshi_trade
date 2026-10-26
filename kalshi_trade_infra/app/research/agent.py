@@ -35,7 +35,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
-from app import backtest, billing
+from app import backtest
+from app.adapters.stripe import billing
 from app.research import dreaming
 from app.research import exploration
 from app.research import gatekeeper
@@ -3870,7 +3871,7 @@ def live_ready_notices(cur, user: Dict) -> List[str]:
     """Once per strategy, tell the user (chat line + email) when a running paper strategy first
     clears every `paper_evidence` check. Read-only toward trading: going live stays a separate step
     (the user's promote or live autopilot, which re-run every gate). Returns the chat lines added."""
-    from app import notify
+    from app.adapters.ses import notify
     out: List[str] = []
     seen = set()
     for d in repo.list_deployments(cur, user["id"]):

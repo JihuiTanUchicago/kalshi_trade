@@ -108,7 +108,7 @@ def _persisted(row: dict) -> bool:
 
 def _email(cur, user_id: int, subject: str, body: str) -> None:
     try:
-        from app import notify
+        from app.adapters.ses import notify
         user = repo.get_user(cur, user_id) or {}
         if user.get("email"):
             notify._send(user["email"], subject, body)

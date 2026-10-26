@@ -120,7 +120,7 @@ class _IdleCur:
 def test_an_autopilot_user_with_credit_and_no_research_for_30_min_is_flagged(monkeypatch):
     """Prod 2026-10-26: no research started 06:03-07:58Z (every review asked for ltc15m) and nobody
     noticed for two hours. Users without credit are skipped: their reviews are off by design."""
-    from app import billing
+    from app.adapters.stripe import billing
     monkeypatch.setattr(billing, "is_ready", lambda cur, uid: uid != 2)
     refusal = "I can't research that market — pick one Tau supports, or let me choose."
     cur = _IdleCur({

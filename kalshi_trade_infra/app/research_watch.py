@@ -164,7 +164,7 @@ def load_idle(cur, now: datetime) -> List[Dict]:
     """Autopilot users with credit and no research queued or running whose newest research run was
     created IDLE_MIN+ minutes ago. `reason` is the newest system chat line since that run: act()'s
     refusal ("I can't research that market", "on cooldown", ...) is posted there by the review."""
-    from app import billing
+    from app.adapters.stripe import billing
     cur.execute("SELECT id FROM app_users WHERE autopilot=1 ORDER BY id")
     out: List[Dict] = []
     for row in cur.fetchall():

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # Repo root = parent of the app/ package (…/kalshi_trade_infra).
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _ALLOWED_ROOTS = (REPO_ROOT / "app", REPO_ROOT / "data_pipeline")
 
 # system-map node id -> the source module(s) that implement it. Mirrors the
@@ -38,7 +38,7 @@ COMPONENTS: Dict[str, List[str]] = {
         "data_pipeline/modeling_features.py",
     ],
     "db": ["data_pipeline/common.py", "app/schema.py", "data_pipeline/init_schema.py"],
-    "web": ["app/server.py", "app/repository.py", "app/auth.py", "app/billing.py"],
+    "web": ["app/server.py", "app/repository.py", "app/web/auth.py", "app/adapters/stripe/billing.py"],
     "agents": ["app/worker.py", "app/research/agent.py", "app/llm.py"],
     "backtest": ["app/backtest.py", "app/engine.py", "app/spec.py"],
     # Both engine boxes are app/engine.py (recursive-engine), which runs paper, demo and live

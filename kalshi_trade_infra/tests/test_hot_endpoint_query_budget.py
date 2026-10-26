@@ -48,7 +48,8 @@ import time
 
 import pytest
 
-from app import billing, engine, server
+from app import engine, server
+from app.adapters.stripe import billing
 from app.services import book_memo
 
 # A steady-state poll: the process-wide shared reads (series list, data freshness) and the run page's

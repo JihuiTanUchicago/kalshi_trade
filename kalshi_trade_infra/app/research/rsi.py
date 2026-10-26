@@ -133,7 +133,7 @@ def run_cost_usd(run: Dict, screen: Optional[Dict] = None) -> float:
     """The run's model spend as debited from credits (billing.usage_cost: list price x USAGE_MARGIN). `screen` is the run's
     `screen` verdict payload: its tokens are part of the run's totals but priced at the screen
     model's rate (services.research_screen)."""
-    from app import billing
+    from app.adapters.stripe import billing
     from app import models_catalog as catalog
     from app.services.research_screen import screen_cost_split
     try:
