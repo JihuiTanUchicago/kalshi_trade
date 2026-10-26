@@ -2663,3 +2663,15 @@ body.landing-body .apf { display: none; }
 @media (max-width: 1080px) { .bill-detail > aside { order: -1; } }
 .autorel-when { margin-top: 8px; line-height: 1.45; }
 .ledger-key { margin: 0 0 10px; }
+
+/* Keyboard focus you can see. `input:focus { outline: none }` (fields show focus with their border)
+   also took it from the switches (Options: "Let it run until I stop it") and the What-if sliders,
+   which have no border to change; and on a chosen market row the ink ring sat on the ink fill
+   (the agent's-choice row is light when chosen, so it keeps the ink ring). */
+.switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
+.mktrow.lead .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--ink); }
+/* Research: "See an example session first" gets its own full-width row. With autopilot on (no line
+   above it) it fell into the heading's second column: "Research" was squeezed to one letter a line
+   on a phone, and on a wide screen the line ran under "New session". */
+.research-page > #rexample { grid-column: 1 / -1; }

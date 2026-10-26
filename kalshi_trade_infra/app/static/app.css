@@ -1976,3 +1976,9 @@ body.landing-body .apf { display: none; }
 @media (max-width: 1080px) { .bill-detail > aside { order: -1; } }
 .autorel-when { margin-top: 8px; line-height: 1.45; }
 .ledger-key { margin: 10px 0; }
+
+/* Keyboard focus you can see. `input:focus { outline: none }` (fields show focus with their border)
+   also took it from the switches (Options: "Let it run until I stop it") and the What-if sliders,
+   which have no border to change; and on the chosen market row the ink ring sat on the ink fill. */
+.switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
