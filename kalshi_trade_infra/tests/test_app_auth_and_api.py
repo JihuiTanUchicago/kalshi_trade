@@ -359,11 +359,16 @@ def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balanc
     reads = []
     monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: reads.append(uid) or 25000.0)
     demo_twins._BALANCE_CACHE.clear()
+    monkeypatch.setattr(demo_twins, "DEMO_TWINS", True)
     out = server.funds(ctx())
     at = out["kalshi_dev"].pop("balance_at")  # when that memo was filled, like the Kalshi cash line
-    assert out["kalshi_dev"] == {"connected": True, "key_id": "DEVK…1234", "balance": 25000.0}
+    # copies_from: the demo cash the autopilot's demo copies wait for, so Funds can say why a small balance starts none.
+    assert out["kalshi_dev"] == {"connected": True, "key_id": "DEVK…1234", "balance": 25000.0,
+                                 "copies_from": demo_twins.DEMO_TWIN_MIN_BALANCE}
     assert at is not None and at.tzinfo is None
     assert reads == [1]
+    monkeypatch.setattr(demo_twins, "DEMO_TWINS", False)  # copies off (APP_DEMO_TWINS=0): no threshold to name
+    assert server.funds(ctx())["kalshi_dev"]["copies_from"] is None
     keys["dev"] = None
     assert server.funds(ctx())["kalshi_dev"] == {"connected": False}  # no key, no read
     # Saving a demo key drops the memo, so the next Funds read uses the new key.
@@ -1089,3 +1094,19 @@ def test_live_autopilot_before_autopilot_says_plainly_why_it_waits(monkeypatch):
     assert error.value.status == 400
     assert "only be turned on after autopilot (paper) is on" in error.value.message
     assert "proven itself on paper" in error.value.message and "builds on it" not in error.value.message
+
+
+def test_a_demo_deployment_of_a_strategy_on_paper_is_marked_its_demo_copy():
+    """The Deploy board and dashboard say a demo row copies its paper run when the strategy also runs
+    (or is paused) on paper; a stopped paper run, or none, leaves it a plain demo deployment."""
+    def dep(i, sid, mode, status="running"):
+        return {"id": i, "strategy_id": sid, "title": "S", "direction": None, "market": "btc15m", "mode": mode,
+                "status": status, "status_reason": None, "realized_pnl": 0, "closed_trades": 0, "wins": 0,
+                "open_positions": 0, "created_at": None, "spec": {"sizing": {"stake": 5, "max_positions": 2}}, "result": {}}
+    deps = [dep(1, 7, "paper"), dep(2, 7, "demo"), dep(3, 8, "paper", "stopped"), dep(4, 8, "demo"),
+            dep(5, 9, "paper", "paused"), dep(6, 9, "demo"), dep(7, 10, "demo"), dep(8, 10, "live")]
+    sids = server._paper_strategy_ids(deps)
+    assert sids == {7, 9}
+    assert [server._deployment_out(d, [], paper_sids=sids)["demo_copy"] for d in deps] == [
+        False, True, False, False, False, True, False, False]
+    assert server._deployment_out(deps[1], [])["demo_copy"] is False  # no paper set given: never guessed

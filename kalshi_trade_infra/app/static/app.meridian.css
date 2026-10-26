@@ -2060,6 +2060,8 @@ body.landing-body .apf { display: none; }
 .monitor-config { grid-column: 1; grid-row: 2; min-width: 0; margin: 0; padding: 0; }
 .monitor-summary, .monitor-setup, .monitor-limits { display: inline; }
 .monitor-setup, .monitor-limits { font-size: 13px; line-height: 18px; color: var(--ink-2); overflow-wrap: anywhere; }
+/* A demo monitor's line on what demo is for; on a phone the metrics stack right under it. */
+.monitor-config .demo-row { margin: 4px 0 10px; }
 .monitor-metrics { display: grid; grid-column: 2; grid-row: 1 / span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin: 0; text-align: left; }
 .monitor-metrics > div { min-width: 0; padding: 0; }
 .monitor-metrics dt { margin: 0; font: 400 13px/18px var(--f-ui); color: var(--ink-2); }

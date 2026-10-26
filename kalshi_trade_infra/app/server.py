@@ -559,6 +559,7 @@ def dashboard(ctx: Ctx):
                 health=_demo_health(cur, ctx.uid, deps))  # capital and P&L look fine while Kalshi refuses every order
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
     live.update(_live_balance(cur, ctx.uid))
+    paper_sids = _paper_strategy_ids(deps)
     return {
         "paper": paper,
         "demo": demo,
@@ -568,7 +569,7 @@ def dashboard(ctx: Ctx):
         # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
         # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
         "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
-        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"])) for d in deps],
+        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"]), paper_sids) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
         "since": _since_visit(cur, ctx.uid, visit, first, recent),
@@ -631,9 +632,17 @@ def _freshness(cur) -> Dict:
     return out
 
 
-def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None) -> Dict:
+def _paper_strategy_ids(deps: List[Dict]) -> set:
+    """The strategies with a paper deployment that isn't stopped (running, or paused with paper)."""
+    return {d["strategy_id"] for d in deps if d["mode"] == "paper" and d["status"] != "stopped"}
+
+
+def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, paper_sids: Optional[set] = None) -> Dict:
     res = d.get("result") or {}
     return {
+        # A demo deployment of a strategy that is also on paper is its demo copy (app.demo_twins makes
+        # them): the row says what it copies and why its fills differ from paper's.
+        "demo_copy": d["mode"] == "demo" and d["strategy_id"] in (paper_sids or ()),
         "id": d["id"], "strategy_id": d["strategy_id"], "title": d["title"], "direction": d["direction"],
         "market": d["market"], "mode": d["mode"], "status": d["status"], "status_reason": d["status_reason"],
         "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
@@ -1368,11 +1377,12 @@ def list_deployments(ctx: Ctx):
     curves = repo.deployment_curves(ctx.cur, ctx.uid, deployment_ids=[d["id"] for d in deps])
     checks = _backtest_checks(ctx.cur, ctx.uid, {d["strategy_id"]: d for d in deps})
     roads = _deploy_roads(ctx.cur, ctx.uid, deps)
+    paper_sids = _paper_strategy_ids(deps)
     return {
         # Each row carries its own book's backtest comparison (same strategy, same mode), and a paper
         # row its strategy's paper record toward the live check (all its paper deployments, as the
         # strategy page counts it).
-        "deployments": [{**_deployment_out(d, curves.get(d["id"], [])),
+        "deployments": [{**_deployment_out(d, curves.get(d["id"], []), paper_sids=paper_sids),
                          "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None),
                          "road": roads.get(d["strategy_id"]) if d["mode"] == "paper" else None}
                         for d in deps],
@@ -2287,6 +2297,8 @@ def funds(ctx: Ctx):
         kalshi_dev_key["balance"] = demo_twins.balance_cached(cur, ctx.uid)
         if kalshi_dev_key["balance"] is not None:
             kalshi_dev_key["balance_at"] = demo_twins.balance_read_at(ctx.uid)  # up to a minute old, like Kalshi cash
+        # The demo cash the autopilot's demo copies wait for, so Funds can say why a small balance starts none.
+        kalshi_dev_key["copies_from"] = demo_twins.DEMO_TWIN_MIN_BALANCE if demo_twins.DEMO_TWINS else None
     de = repo.demo_equity(cur, ctx.uid)
     # Each book's open positions, so every figure says what it leaves out; paper's balance is cash plus
     # open at cost, the dashboard's paper figure. Books are never added together.

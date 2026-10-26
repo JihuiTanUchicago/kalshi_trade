@@ -404,7 +404,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const d = (id, mode, closed_trades, realized_pnl, status = 'running') => ({id, mode, status, closed_trades, realized_pnl, open_positions: 0, stake: 5, created_at: '2026-10-20T08:00:00Z'});
     const readiness = {ready: false, blocking: 'it needs 30+ closed paper trades on realistic fills first (has 12)', deployment_candidate: true, live_autopilot: {ok: false},
       paper: {trades: 12, trades_needed: 30, net_pnl: 3.4, events: 12, events_needed: 20, span_hours: 50, span_needed_hours: 48,
-        p_value: 0.2, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 1, realization: null,
+        p_value: 0.2, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 1, realization: null, demo_orders: 7, demo_orders_needed: 20,
         checks: {realistic_trades: false, net_pnl: true, events: false, span: true, edge: false, recent: true}}};
     const ladder = async (overrides, road, me = {}) => {
       const f = strategyFrontend(detailStrategy(overrides), path => {
@@ -425,9 +425,12 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     // The live rung counts what is left and names the first, with its denominator (never the server's lone first refusal).
     assert.match(both, /Next rung, live: 3 checks left, first 18 more paper trades \(12 of 30\)\./);
     assert.ok(both.indexOf('Paper</span>') < both.indexOf('Demo</span>'), 'books run up the ladder in order');
+    // Right under the demo book: paper tests the edge, demo the order path, and its settled demo orders toward live.
+    assert.match(both, /Demo<\/span> running[^]*?<\/p><p class="hint rung-demo">Paper tests the edge; demo tests the order path on Kalshi’s sandbox with play money\. Its book is thin, so demo fills and P&amp;L differ from paper’s\. Live needs 20\+ settled demo orders: 7 so far\.<\/p><p class="hint">Next rung, live/);
     // Without Road to live data the live rung is left out, not guessed.
     const noRoad = await ladder({deployments: [d(1, 'paper', 12, 3.4), d(2, 'demo', 5, -1.2)]}, null);
     assert.match(noRoad, /Demo<\/span> running/); assert.doesNotMatch(noRoad, /Next rung/);
+    assert.match(noRoad, /demo tests the order path/); assert.doesNotMatch(noRoad, /settled demo orders/);  // no count until Road to live is in
     const unvalidated = await ladder({status: 'failed', deployments: [d(2, 'demo', 5, -1.2)]}, readiness);
     assert.doesNotMatch(unvalidated, /Next rung, live/);
     const clear = {...readiness, ready: false, blocking: 'autopilot is off', paper: {...readiness.paper, ready: true, why: ''}};
@@ -441,7 +444,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     // Paper only: the next rung is demo, and it names the missing demo key.
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness, {kalshi_dev_connected: false}),
       /Paper<\/span> running ·\u00a00 closed trades[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
-    assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /Next rung, demo: nothing needed/);
+    assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /Next rung, demo: nothing needed\. Deploy it on demo below\. Demo runs the same rules on Kalshi’s sandbox with play money, to prove its orders place, fill and book before live money\./);
+    assert.doesNotMatch(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /rung-demo/);  // nothing on demo yet
     // A paused book is still on its rung and says paused: deploying it there again would double its positions.
     const idle = await ladder({deployments: [d(1, 'paper', 2, 1, 'paused')]}, readiness);
     assert.doesNotMatch(idle, /running/); assert.match(idle, /Paper<\/span> paused ·\u00a02 closed trades/);
@@ -503,6 +507,19 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.ok(lines.includes('Toward live: 12/30 trades · 10/20 events · paused, so not growing'));
     assert.ok(lines.includes('Toward live: trades, events and hours are in; 2 checks left: edge, demo record'));
     assert.ok(lines.includes('Toward live: its record clears every check. Live money only if you deploy it there'));
+  });
+
+  test(`${name}: a demo row on Deploy says it is the sandbox, what it copies, and why its fills differ from paper's`, async () => {
+    const dep = (id, mode, demo_copy = false) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null, demo_copy,
+      realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});
+    const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dep(1, 'demo', true), dep(2, 'demo'), dep(3, 'paper'), dep(4, 'live')], open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const lines = f.root.querySelectorAll('.demo-row').map((el) => el.innerHTML);
+    f.clearTimers && f.clearTimers();
+    assert.deepEqual(lines, [
+      'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.',
+      'On Kalshi’s sandbox, with play money. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.',
+    ], 'demo rows only');
   });
 
   // The server's demo health: what stops the demo book, in one plain line, and the one thing to do.

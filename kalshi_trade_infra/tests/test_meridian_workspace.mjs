@@ -595,17 +595,31 @@ test('Overview demo account says what demo is and that its P&L restarts at a rel
   }
 });
 
-test('Funds demo labels say "since reload" only after a reload, and that demo fills are real', async () => {
+test('Funds demo labels say "since reload" only after a reload, and that demo proves the order path, not the edge', async () => {
   for (const before_reload of [0, 40]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
     await f.viewFunds(); await flush();
     const main = f.root.querySelector('main').innerHTML;
     assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
     assert.match(main, before_reload ? /<dt>P&amp;L since reload<\/dt>/ : /<dt>P&amp;L all time<\/dt>/);
-    assert.match(main, /fills and slippage are real; the money is simulated/);
+    assert.match(main, /to prove the order path before live money\. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job\. The money is simulated\./);
+    assert.doesNotMatch(main, /slippage are real/);
+    assert.match(main, /Demo is the step between paper and live: it proves orders place, fill and book/);
     assert.match(main, /the track record still counts every closed demo trade/);
-    assert.match(f.root.querySelector('#ffigs').innerHTML, before_reload ? /capital at last reload ·\u00a0real fills on Kalshi’s sandbox/ : /starting capital ·\u00a0real fills on Kalshi’s sandbox/);
+    assert.match(f.root.querySelector('#ffigs').innerHTML, before_reload ? /capital at last reload ·\u00a0needs a demo key ·\u00a0real fills on Kalshi’s sandbox/ : /starting capital ·\u00a0needs a demo key ·\u00a0real fills on Kalshi’s sandbox/);
   }
+});
+
+test('Overview demo monitors say they are the sandbox, what they copy, and why their fills differ from paper', async () => {
+  const deployments = [{...dashboardDeployment('demo'), demo_copy: true}, {...dashboardDeployment('demo'), id: 92, demo_copy: false},
+    {...dashboardDeployment('paper'), id: 93}];
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({deployments})); }});
+  await f.viewDashboard();
+  const monitors = f.root.querySelectorAll('#dash-deps article.dep-monitor'); assert.equal(monitors.length, 3);
+  const line = (m) => { const el = m.querySelector('.monitor-config .demo-row'); return el ? el.innerHTML : null; };
+  assert.equal(line(monitors[0]), 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.');
+  assert.match(line(monitors[1]), /^On Kalshi’s sandbox, with play money\. It proves orders place, fill and book/);
+  assert.equal(line(monitors[2]), null);  // paper says nothing of the sort
 });
 
 test('Overview live summary says it is Kalshi cash, apart from what Tau trades realized', async () => {
@@ -638,7 +652,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Real money at Kalshi, read 5m ago\. 1 open live position \(\$3\.05 at cost\) not included/);
-  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.09 at cost\) ·\u00a0real fills/);
+  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.09 at cost\) ·\u00a0needs a demo key ·\u00a0real fills/);
   assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.09 at cost\)/); assert.doesNotMatch(figs, /Paper cash/);
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);  // books are never summed
   const h = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: null, open_positions: 0, open_at_cost: 0}; return response(d); }});
