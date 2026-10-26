@@ -4642,3 +4642,37 @@ test('a Deploy row with no stake says so instead of "$ a trade, up to  open"', a
   assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open<\/div>/);
   assert.doesNotMatch(html, /\$ a trade|up to\s+open|null|NaN/);
 });
+
+test('Tau: a research session the autopilot started says so on the list and on its page', async () => {
+  const ap = {id: 15, status: 'running', market: 'btc15m', direction: null, by_autopilot: 1, example: false, prompt: 'Order-flow imbalance',
+    hypotheses_tried: 1, strategies_passed: 0, spent_usd: 1.41, created_at: '2026-10-26T17:36:00Z'};
+  const mine = {id: 9, status: 'succeeded', market: 'btc15m', direction: 'momentum', by_autopilot: 0, example: false, prompt: 'Mine',
+    hypotheses_tried: 3, strategies_passed: 1, spent_usd: 0.42, created_at: '2026-10-25T08:00:00Z'};
+  const example = {id: 1, status: 'succeeded', market: 'btc15m', direction: 'random_walk', by_autopilot: 0, example: true, prompt: 'Random walk',
+    hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/runs') return response({runs: [ap, mine, example], counts: {research_running: 1, research_queued: 0}, policy: null, totals: {tried: 4, passed: 1}});
+    if (path.startsWith('/api/research/scoreboard')) return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: true, mode: 'paper'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewResearch(); await flush(); await flush();
+  const cards = f.root.querySelector('#runs').innerHTML.split('<a class="run-card').slice(1);
+  assert.equal(cards.length, 3);
+  assert.match(cards[0], /title="The autopilot started this session\.">Autopilot<\/span>/);
+  assert.doesNotMatch(cards[1], /Autopilot<\/span>/);
+  assert.doesNotMatch(cards[2], /Autopilot<\/span>/); assert.match(cards[2], /Example<\/span>/);
+  f.clearTimers();
+  for (const [run, said, not] of [[ap, /BTC 15-min · Started by autopilot/, /· Session/],
+    [{...ap, direction: 'momentum'}, /· Momentum · Started by autopilot/, /· Session/],
+    [mine, /· Momentum/, /Started by autopilot/], [{...ap, by_autopilot: 0}, /· Session/, /Started by autopilot/]]) {
+    const g = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/' + run.id)); return response({run, events: []}); }});
+    g.S.me.directions = [{key: 'momentum', label: 'Momentum', brief: ''}];
+    await g.viewRun(run.id);
+    const head = g.root.querySelector('#runboard').innerHTML.replace(/ /g, ' ');
+    assert.match(head, said); assert.doesNotMatch(head, not);
+    g.clearTimers();
+  }
+});

@@ -507,7 +507,8 @@ _AUTOPILOT_STRATEGIES = ("SELECT strategy_id FROM app_proposals WHERE user_id=%s
 
 def activity_since(cur, user_id: int, since) -> Dict:
     """What happened since `since` besides trades, in one read: the changes the autopilot made on
-    its own ({kind: n} of its applied, never-decided proposals: deploy, pause, resume, adjust...),
+    its own ({kind: n} of its applied, never-decided proposals: deploy, pause, resume, adjust...,
+    plus `research`: the research sessions it started, its brief runs, which write no proposal),
     the research sessions started since then ({status: n}, the seeded example left out), and
     whether the user has ever run a research session of their own (`own_sessions`; a brand-new
     account's dashboard points at the example session instead). The last is a LIMIT 1 probe.
@@ -521,6 +522,8 @@ def activity_since(cur, user_id: int, since) -> Dict:
         "WHERE user_id=%s AND status='applied' AND decided_at IS NULL AND created_at>=%s GROUP BY kind "
         "UNION ALL SELECT 'run' AS src, status AS k, COUNT(*) AS n FROM app_agent_runs "
         "WHERE user_id=%s AND kind='research' AND created_at>=%s AND (direction IS NULL OR direction<>%s) GROUP BY status "
+        "UNION ALL SELECT 'ap' AS src, 'research' AS k, COUNT(*) AS n FROM app_agent_runs "
+        "WHERE user_id=%s AND kind='research' AND created_at>=%s AND brief=1 GROUP BY kind "
         "UNION ALL SELECT 'own' AS src, 'any' AS k, COUNT(*) AS n FROM (SELECT id FROM app_agent_runs "
         "WHERE user_id=%s AND kind='research' AND (direction IS NULL OR direction<>%s) LIMIT 1) o "
         "UNION ALL SELECT 'spent' AS src, 'since' AS k, COALESCE(-SUM(amount_usd),0) AS n FROM app_credit_ledger "
@@ -529,7 +532,7 @@ def activity_since(cur, user_id: int, since) -> Dict:
         "WHERE user_id=%s AND kind='usage' AND created_at>=%s "
         "UNION ALL SELECT 'note' AS src, CONCAT(kind, ' ', COALESCE(link, '')) AS k, COUNT(*) AS n FROM app_notifications "
         "WHERE user_id=%s AND kind IN ('passed','live_ready') AND created_at>=%s GROUP BY kind, link",
-        (user_id, since, user_id, since, DEMO_DIRECTION, user_id, DEMO_DIRECTION,
+        (user_id, since, user_id, since, DEMO_DIRECTION, user_id, since, user_id, DEMO_DIRECTION,
          user_id, since, user_id, week, user_id, since),
     )
     out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False,

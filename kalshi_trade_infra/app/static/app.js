@@ -1502,6 +1502,14 @@
   // `example`, leaves it out of every headline count, and the lists say the app ran it for free.
   const EXAMPLE_NOTE = 'An example Tau ran for you when you signed up. It cost you nothing.';
   const EXAMPLE_TAG = `<span class="mk quiet example-tag" title="${EXAMPLE_NOTE}">Example</span>`;
+  // A session the autopilot started (the server's by_autopilot: a brief run, Billing's "Autopilot research").
+  // Unmarked, a new user found sessions on Research they never started and could not tell they were
+  // the autopilot at work.
+  const AP_RUN_NOTE = 'The autopilot started this session.';
+  const AP_RUN_TAG = `<span class="mk quiet ap-run-tag" title="${AP_RUN_NOTE}">Autopilot</span>`;
+  const runTag = (r) => r.example ? ' ' + EXAMPLE_TAG : +r.by_autopilot ? ' ' + AP_RUN_TAG : '';
+  // The run page's kind of session: its direction, and who started it when the autopilot did.
+  const runKind = (r) => +r.by_autopilot && !r.example ? (r.direction ? dirLabel(r.direction) + ' \u00b7\u00a0' : '') + 'Started by autopilot' : dirLabel(r.direction);
   const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
@@ -2401,7 +2409,7 @@
     // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
     const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-title"><b title="${esc(sessionTitle(r))}">${esc(sessionTitle(r))}</b>${r.example ? ' ' + EXAMPLE_TAG : ''}</span>
+      <span class="run-title"><b title="${esc(sessionTitle(r))}">${esc(sessionTitle(r))}</b>${runTag(r)}</span>
       <span class="run-meta">${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}${r.error ? ' \u00b7\u00a0' + esc(r.error) : ''}</span>
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
@@ -3077,7 +3085,7 @@
       r.out_of_credits = outOfCredits && !active;
       // The 2s poll repaints only what changed: rewriting the same title and figures each time made
       // the phone lay the page out again (and the autopilot pill re-check what it covers).
-      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`));
+      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${runKind(r)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`));
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       const late = r.wait && r.wait.overdue ? r.wait : null;

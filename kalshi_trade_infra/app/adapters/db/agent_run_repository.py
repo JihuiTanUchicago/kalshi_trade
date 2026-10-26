@@ -259,13 +259,15 @@ OUT_OF_CREDITS_STEP = "Paused \u2014 out of credits"
 
 
 def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
-    """The user's newest research sessions. `out_of_credits` is 1 for a run-until-stopped session that
-    finished because the credits ran out (its log holds OUT_OF_CREDITS_STEP), so the list can say why
-    it stopped (services.run_stop). Still one statement: the log is probed only for a finished
+    """The user's newest research sessions. `by_autopilot` is 1 for a session the autopilot started
+    (a brief run, which Billing calls "Autopilot research"), so the list can say whose it is.
+    `out_of_credits` is 1 for a run-until-stopped session that finished because the credits ran out
+    (its log holds OUT_OF_CREDITS_STEP), so the list can say why it stopped (services.run_stop). Still one statement: the log is probed only for a finished
     run-until-stopped session, through idx_events_run_kind."""
     cur.execute(
         """SELECT r.id, r.market, r.direction, r.prompt, r.status, r.hypotheses_tried, r.strategies_passed,
                   r.error, r.run_forever, r.created_at, r.started_at, r.finished_at, r.heartbeat_at,
+                  r.brief AS by_autopilot,
                   CASE WHEN r.status='succeeded' AND r.run_forever=1 THEN EXISTS(
                     SELECT 1 FROM app_agent_events e WHERE e.run_id=r.id AND e.kind='step' AND e.message LIKE %s)
                   ELSE 0 END AS out_of_credits
@@ -325,7 +327,8 @@ def research_week(cur, user_id: int, since, include_demo: bool = False) -> List[
 def get_run(cur, user_id: int, run_id: int) -> Optional[Dict]:
     cur.execute(
         """SELECT id, kind, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
-                  max_hypotheses, run_forever, model, created_at, started_at, finished_at, heartbeat_at
+                  max_hypotheses, run_forever, model, created_at, started_at, finished_at, heartbeat_at,
+                  brief AS by_autopilot
            FROM app_agent_runs WHERE id=%s AND user_id=%s""",
         (run_id, user_id),
     )
