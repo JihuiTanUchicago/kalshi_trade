@@ -382,6 +382,7 @@
     [/^\/(?:dashboard)?$/, viewDashboard],
     [/^\/research$/, viewResearch],
     [/^\/research\/(\d+)$/, viewRun],
+    [/^\/example$/, viewExample],  // the seeded example session, wherever it is
     [/^\/strategies$/, viewStrategies],
     [/^\/strategies\/(\d+)$/, viewStrategy],
     [/^\/deploy$/, viewDeploy],
@@ -1527,6 +1528,7 @@
       const d = await api('/api/dashboard' + (visitAt ? '?since=' + visitAt : ''), undefined, cfg);
       if (gen !== S.gen) return;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
+      S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
@@ -1801,7 +1803,7 @@
     const mdl = await api('/api/models').catch(() => ({ models: [], default: '' }));
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (access pending)' : ''}</option>`).join('');
     shell('/research', '', `
-      <div class="research-page"><h1 class="page">Research</h1>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
+      <div class="research-page"><h1 class="page">Research</h1>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
 
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
@@ -1819,9 +1821,11 @@
         </fieldset>
         </div></details>
         <div class="dispatch-go">
-          <button type="button" class="chip ex" data-ex="${esc(DEMO_PROMPT)}" title="Todd's random walk: fills the idea without starting a session">Use demo idea</button>
+          <a class="chip ex" href="/example" data-ex-open title="Opens the finished example session; nothing runs">See the demo session</a>
+          <button type="button" class="linkish ex-run" data-ex="${esc(DEMO_PROMPT)}">or run it yourself</button>
           <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>Start session</button>
         </div>
+        <p class="hint ex-cost" id="ex-cost" hidden></p>
         <p class="hint go-cost" id="rcost" hidden></p>
         <div id="dflash"></div>
         <p class="hint" id="rf-hint">A session takes a few minutes and keeps running if you leave this page.</p>
@@ -1843,7 +1847,16 @@
     };
     form.addEventListener('change', syncOpts); syncOpts();
     const ta = form.querySelector('textarea[name=prompt]');
-    root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => { ta.value = b.dataset.ex; ta.focus(); }));
+    // "Run it yourself" fills the box with the example's idea and says plainly that it's a new, paid
+    // session (with the usual cost beside Start when there's one); the demo link opens the finished one.
+    root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => {
+      ta.value = b.dataset.ex; ta.focus();
+      const note = form.querySelector('#ex-cost'), rc = form.querySelector('#rcost');
+      if (!note) return;
+      note.hidden = false;
+      note.textContent = !me.billing_enabled ? 'This starts a new session from scratch. The example already shows how this idea ends.'
+        : `This starts a new session that uses your credits; the example already shows how this idea ends.${rc && !rc.hidden && rc.textContent ? ' ' + rc.textContent : ''}`;
+    }));
     const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
     let syncCost = () => {};  // the cost line below follows the run-forever switch too
     if (rf && mh) {
@@ -1911,6 +1924,10 @@
       const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
       // The seeded example is listed but isn't the user's: it doesn't count as a session of theirs.
       const own = history.filter((r) => !r.example).length;
+      const rex = root.querySelector('#rexample'), exHtml = exampleLine(d.runs);
+      if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
+      const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
+      if (exOpen) { exOpen.hidden = !exRun; if (exRun) exOpen.setAttribute('href', '/research/' + exRun.id); }
       root.querySelector('#rcount').textContent = own ? String(own) : '';
       root.querySelector('#runs').innerHTML = history.length ? history.map(runRow).join('')
         : `<div class="empty"><h3>${active ? 'No earlier sessions' : 'No sessions yet'}</h3></div>`;
@@ -2705,7 +2722,7 @@
             <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) : ''}</div>
             <div class="split"><div><h4>In-sample</h4>${metricRows(ins)}</div><div><h4>Out-of-sample</h4>${metricRows(oos)}</div></div>
           </div></div>`
-      + `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`;
+      + fold('Most recent unseen trades', `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`);
     let verdictBody = rp.verdict;
     if (!hasExp) {
       const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. ' + (restricted ? 'This market remains research only.' : 'Deploying it is your decision and your risk.')];
@@ -2746,7 +2763,7 @@
             <div class="paper-body">
               ${paperSec('Mechanism &amp; hypothesis', rp.mechanism)}
               ${paperSec(hasExp ? 'Results' : 'Backtest results', resultsBody)}
-              ${paperSec('Methodology', methodologyBody)}
+              ${fold('Methodology', paperSec('Methodology', methodologyBody))}
               ${hasExp ? paperSec('Verdict', verdictBody) : ''}
             </div>
           </article>
@@ -2790,13 +2807,13 @@
           </section>
           ${!restricted && s.status === 'passed' ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
-          ${!perpetual && s.status !== 'rejected' ? `<section class="panel" id="whatif"><h3>Sensitivity</h3>
+          ${!perpetual && s.status !== 'rejected' ? fold('Sensitivity', `<section class="panel" id="whatif"><h3>Sensitivity</h3>
 
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
             <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0"></div>
             <div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>
             <div id="wflash" aria-live="polite"></div>
-          </section>` : ''}
+          </section>`) : ''}
           <details class="strategy-management"><summary>Manage strategy</summary>
           <section class="panel"><h3>Remove</h3>
             <p class="hint" style="margin-bottom:8px">${activeDeps.length ? 'Stop its deployments before deleting.' : 'Permanently deletes this strategy.'}</p>
@@ -3772,9 +3789,10 @@
     }).join('<span class="sep">·</span>') : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
-    const found = (pass.n
+    // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
+    const found = s.own_sessions === false && !pass.n ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
       ? `${plural(pass.n, 'strategy', 'strategies')} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length ? `, <a href="/strategies">${num(pass.n - pass.items.length)} more</a>` : ''}`
-      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started</span>` : '') + '.';
+      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started</span>` : '') + '.');
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', num(ap[k])));
@@ -3915,8 +3933,27 @@
   // work the autopilot is already doing. It follows the switch live (syncApCopy). It says only that
   // autopilot is on: the card above says what it is doing, and "is researching" contradicted a card
   // reporting a stale check-in or a billing pause.
+  // A brand-new user (no research session of their own) gets the finished example first: one tap,
+  // free. /example finds the seeded example session in /api/runs and opens it in place.
+  const EXAMPLE_CTA = `<a class="btn primary ex-cta" href="/example" data-example>See an example session first</a>`;
+  function exampleLine(runs) {
+    const ex = (runs || []).find((r) => r.example), own = (runs || []).filter((r) => !r.example).length;
+    return ex && !own ? `<p class="research-ex"><a class="btn primary ex-cta" href="/research/${encodeURIComponent(ex.id)}" data-example>See an example session first</a> <span>A finished session Tau ran for you when you signed up, from idea to verdict. It cost you nothing.</span></p>` : '';
+  }
+  async function viewExample() {
+    shell('/research', '', loading(200));
+    const d = await api('/api/runs').catch(() => null);
+    const ex = d && (d.runs || []).find((r) => r.example);
+    go(ex ? '/research/' + ex.id : '/research', true);
+  }
+  // On a phone, a secondary section (method, raw lists, what-if, share, remove) folds behind its
+  // title, closed; wider screens render it as before. Money figures and verdicts never fold.
+  const fold = (title, html) => html ? `<details class="fold"${phone() ? '' : ' open'}><summary class="fold-h">${title}</summary>${html}</details>` : '';
   function depsEmpty(on) {
-    return on
+    const ex = S.dashNoSessions ? `<p class="hint">New here? See what a finished session looks like first. It’s free.</p>${EXAMPLE_CTA}` : '';
+    return ex ? (on
+      ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p>${ex}</div>`
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or start a session yourself.</p>${ex}</div>`) : on
       ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every gate land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
       : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every gate on data they never saw land here on their own, on paper first. Or start a session yourself.</p><a class="btn" href="/research?new=1">New session</a></div>`;
   }

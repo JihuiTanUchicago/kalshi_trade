@@ -379,18 +379,25 @@ _AUTOPILOT_STRATEGIES = ("SELECT strategy_id FROM app_proposals WHERE user_id=%s
 
 def activity_since(cur, user_id: int, since) -> Dict:
     """What happened since `since` besides trades, in one read: the changes the autopilot made on
-    its own ({kind: n} of its applied, never-decided proposals: deploy, pause, resume, adjust...)
-    and the research sessions started since then ({status: n}, the seeded example left out)."""
+    its own ({kind: n} of its applied, never-decided proposals: deploy, pause, resume, adjust...),
+    the research sessions started since then ({status: n}, the seeded example left out), and
+    whether the user has ever run a research session of their own (`own_sessions`; a brand-new
+    account's dashboard points at the example session instead). The last is a LIMIT 1 probe."""
     cur.execute(
         "SELECT 'ap' AS src, kind AS k, COUNT(*) AS n FROM app_proposals "
         "WHERE user_id=%s AND status='applied' AND decided_at IS NULL AND created_at>=%s GROUP BY kind "
         "UNION ALL SELECT 'run' AS src, status AS k, COUNT(*) AS n FROM app_agent_runs "
-        "WHERE user_id=%s AND kind='research' AND created_at>=%s AND (direction IS NULL OR direction<>%s) GROUP BY status",
-        (user_id, since, user_id, since, DEMO_DIRECTION),
+        "WHERE user_id=%s AND kind='research' AND created_at>=%s AND (direction IS NULL OR direction<>%s) GROUP BY status "
+        "UNION ALL SELECT 'own' AS src, 'any' AS k, COUNT(*) AS n FROM (SELECT id FROM app_agent_runs "
+        "WHERE user_id=%s AND kind='research' AND (direction IS NULL OR direction<>%s) LIMIT 1) o",
+        (user_id, since, user_id, since, DEMO_DIRECTION, user_id, DEMO_DIRECTION),
     )
-    out: Dict[str, Dict[str, int]] = {"autopilot": {}, "runs": {}}
+    out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False}
     for r in cur.fetchall():
-        out["autopilot" if r["src"] == "ap" else "runs"][r["k"]] = int(r["n"])
+        if r["src"] == "own":
+            out["own_sessions"] = int(r["n"]) > 0
+        else:
+            out["autopilot" if r["src"] == "ap" else "runs"][r["k"]] = int(r["n"])
     return out
 
 

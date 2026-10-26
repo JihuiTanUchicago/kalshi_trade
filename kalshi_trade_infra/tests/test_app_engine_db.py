@@ -745,6 +745,8 @@ def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(c
     act = repo.activity_since(cur, uid, since)
     assert act["autopilot"] == {"deploy": 1, "pause": 2}
     assert sum(act["runs"].values()) == 1
+    assert act["own_sessions"] is True  # it has a research session of its own
+    assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False}
 
 
 def test_the_run_pages_dream_line_reads_only_the_dream_lines(conn, user):

@@ -125,7 +125,7 @@ function frontend({fetchImpl, brokerMount, storage, matchMedia = () => ({matches
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, render};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -1820,4 +1820,98 @@ test('the last visit lives in a cookie: one visit until 30 minutes pass, then si
   assert.match(f.document.cookie, new RegExp('^tau_visit=' + left + '\\.\\d+;'));
   await f.viewDashboard(); await flush();  // reloaded a minute later: still since that visit
   assert.equal(paths.filter((p) => p.startsWith('/api/dashboard')).at(-1), '/api/dashboard?since=' + left);
+});
+
+const exRun = {id: 3, status: 'succeeded', prompt: "Todd's random walk", market: 'btc15m', direction: 'random_walk', example: true,
+  created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 2, strategies_passed: 1, spent_usd: 0};
+const ownRun = {id: 8, status: 'succeeded', prompt: 'Mine', market: 'btc15m', direction: 'momentum', example: false,
+  created_at: '2026-10-18T10:00:00Z', hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0.4};
+const exResearch = (runs, {estimate = {yours: null, sessions: 0, typical: {}}, matchMedia} = {}) => frontend({matchMedia, fetchImpl: path => {
+  if (path === '/api/models') return response({models: [{key: 'opus', label: 'Opus'}], default: 'opus'});
+  if (path === '/api/research/context') return response({markets: []});
+  if (path === '/api/research/estimate') return response(estimate);
+  if (path === '/api/runs') return response({runs, counts: {research_running: 0, research_queued: 0}, policy: null});
+  if (path.startsWith('/api/research/scoreboard')) return response({total: {runs: runs.length}});
+  if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+  throw new Error('Unexpected offline request: ' + path);
+}});
+
+test('a brand-new user sees "See an example session first" on the dashboard and near the top of Research', async () => {
+  for (const [own, shown] of [[false, true], [true, false]]) {
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: true,
+        books: {}, passed: {n: 0, items: []}, autopilot: {}, runs: {}, own_sessions: own}});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    const empty = f.root.querySelector('#deps-empty').innerHTML;
+    assert.equal(/<a class="btn primary ex-cta" href="\/example" data-example>See an example session first<\/a>/.test(empty), shown, String(own));
+    // and up top, in the strip, where a phone sees it without scrolling
+    assert.equal(/No sessions of your own yet\. <a href="\/example" data-example>See an example session first<\/a>/.test(f.root.querySelector('#dash-since').innerHTML), shown);
+  }
+  // Research: only the seeded example so far, so it leads with it (one tap, straight to the session).
+  let f = exResearch([exRun]);
+  await f.viewResearch(); await flush(); await flush();
+  const top = f.root.querySelector('#rexample').innerHTML;
+  assert.match(top, /<a class="btn primary ex-cta" href="\/research\/3" data-example>See an example session first<\/a>/);
+  assert.match(top, /It cost you nothing/);
+  const html = f.root.innerHTML;
+  assert.ok(html.indexOf('id="rexample"') < html.indexOf('id="dispatch"'));
+  // A session of their own: no nudge.
+  f = exResearch([ownRun, exRun]);
+  await f.viewResearch(); await flush(); await flush();
+  assert.equal(f.root.querySelector('#rexample').innerHTML, '');
+});
+
+test('/example opens the finished example session in place, or Research when there is none', async () => {
+  for (const [runs, to] of [[[ownRun, exRun], '/research/3'], [[ownRun], '/research']]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/runs') return response({runs, counts: {research_running: 0, research_queued: 0}, policy: null});
+      return response({});
+    }});
+    await f.viewExample(); await flush();
+    assert.equal(f.navigations.at(-1), to);
+  }
+});
+
+test('the demo opens the finished example; running it again says plainly that it uses credits', async () => {
+  let f = exResearch([exRun], {estimate: {yours: null, sessions: 0, typical: {opus: 2.25}}});
+  f.S.me.billing_enabled = true;
+  await f.viewResearch(); await flush(); await flush();
+  const form = f.root.querySelector('#dispatch'), open = form.querySelector('[data-ex-open]');
+  assert.equal(open.tag, 'a'); assert.equal(open.getAttribute('href'), '/research/3'); assert.equal(open.hidden, false);
+  assert.equal(postRequests(f).length, 0);
+  const run = form.querySelector('[data-ex]'), ta = form.querySelector('textarea[name=prompt]');
+  assert.match(run.textContent, /run it yourself/);
+  assert.equal(form.querySelector('#ex-cost').hidden, true);
+  run.onclick();
+  assert.match(ta.value, /random walk/);
+  const note = form.querySelector('#ex-cost');
+  assert.equal(note.hidden, false);
+  assert.match(note.textContent, /^This starts a new session that uses your credits; the example already shows how this idea ends\. Each round of ideas usually costs about \$2\.25/);
+  assert.equal(postRequests(f).length, 0);  // filling the box never starts anything
+  // No example on this account: the link hides and "run it yourself" stays.
+  f = exResearch([ownRun]);
+  await f.viewResearch(); await flush(); await flush();
+  assert.equal(f.root.querySelector('[data-ex-open]').hidden, true);
+  assert.ok(f.root.querySelector('[data-ex]'));
+});
+
+test('on a phone the strategy page folds its secondary sections, never money figures or verdicts', async () => {
+  for (const [phone, open] of [[true, false], [false, true]]) {
+    const f = frontend({matchMedia: () => ({matches: phone}), fetchImpl: path => {
+      if (path === '/api/strategies/42') return response(detailStrategy());
+      if (path === '/api/strategies/42/dev-curve') return response({dev_curve: [[200, 1], [300, 2]]});
+      return response({deployments: [], open_positions: []});
+    }});
+    await f.viewStrategy(42); await flush();
+    const folds = f.root.querySelectorAll('details.fold');
+    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Methodology', 'Most recent unseen trades', 'Demo &amp; live', 'What if…', 'Share', 'Remove']);
+    for (const d of folds) assert.equal('open' in d.attributes, open);
+    for (const sel of ['#dep-demo', '#dep-live', '#live-confirm', '#whatif', '#share-form', '#del-strat']) assert.ok(f.root.querySelector(sel).closest('details.fold'), sel);
+    for (const sel of ['#figs', '#dep-paper', '#gates', '#depflash']) assert.equal(f.root.querySelector(sel).closest('details.fold'), null, sel);
+    for (const label of ['Results', 'Verdict', 'Abstract']) assert.ok(!folds.some((d) => d.querySelector('summary').textContent === label), label);
+    assert.match(f.root.querySelector('#figs').innerHTML, /Unseen-data P&L/);
+  }
 });
