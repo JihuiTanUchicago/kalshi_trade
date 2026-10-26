@@ -46,9 +46,32 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
     return None
 
 
+# What a shared card shows every reader, by kind: the figures the feed prints, never a spec, rules, the
+# run behind it, or a credit balance. A stored snapshot holds no more today; this keeps it so.
+SNAPSHOT_FIELDS = {
+    "strategy": ("kind", "title", "market", "status", "pnl", "trades", "win_rate", "days"),
+    "deployment": ("kind", "title", "market", "mode", "realized_pnl", "closed_trades", "since"),
+    "pnl": ("kind", "paper_pnl", "live_pnl", "paper_trades", "live_trades"),
+}
+
+
+def _snapshot_out(snap, mine: bool) -> Optional[Dict]:
+    """A post's shared card as one reader sees it. The author's row id goes only to the author, whose
+    card links their own strategy page; anyone else's card is no link, so it needs none. A title reads
+    as the app shows a person's text (no address, no internal model id)."""
+    if not isinstance(snap, dict) or snap.get("kind") not in SNAPSHOT_FIELDS:
+        return None
+    out = {k: snap[k] for k in SNAPSHOT_FIELDS[snap["kind"]] if k in snap}
+    if out.get("title"):
+        out["title"] = customer_text.clean(out["title"], "A strategy")
+    if mine and snap.get("id") is not None:
+        out["id"] = snap["id"]
+    return out
+
+
 def _post_out(p: Dict) -> Dict:
     return {
-        "id": p["id"], "body": p["body"], "kind": p["kind"], "snapshot": p.get("snapshot"),
+        "id": p["id"], "body": p["body"], "kind": p["kind"], "snapshot": _snapshot_out(p.get("snapshot"), bool(p.get("mine"))),
         "likes": p["likes_count"], "comments": p["comments_count"], "created_at": p["created_at"],
         "author": customer_text.display_name(p.get("name"), "Trader"), "username": p.get("username"), "picture": p.get("picture_url"),
         "mine": p.get("mine", False), "liked": p.get("liked", False),
