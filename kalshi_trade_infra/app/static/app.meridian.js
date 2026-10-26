@@ -3175,8 +3175,9 @@
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div><div id="runend-log"></div></details>`);
     let after = 0, tried = 0, runActive = true, loaded = false, outOfCredits = false;
     // A long session's strategy cards (40+, a screen each on a phone) buried the agent log under
-    // them: the first few show, the rest behind "Show all".
-    const STRAT_SHOW = 8;
+    // them: the first few show, the rest behind "Show all". On a phone eight cards were still ~2,000px
+    // (a run-until-stopped session's "Research progress" and log sat four screens down), so it shows four.
+    const STRAT_SHOW = phone() ? 4 : 8;
     let showAllStrats = false;
     const whyBySid = new Map();  // strategy id -> the gates its verdict missed, kept across polls
     const stream = runFeed(root.querySelector('#runfeed'));

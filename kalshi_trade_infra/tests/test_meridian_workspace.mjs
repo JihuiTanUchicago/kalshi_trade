@@ -4351,6 +4351,12 @@ test('Meridian: a long session shows its first strategies and folds the rest beh
   assert.equal(results.querySelectorAll('tbody tr').length, 8);
   assert.equal(results.querySelector('tbody .name a').getAttribute('href'), '/strategies/109');  // the pass leads
   assert.match(results.innerHTML, /data-allstrats[^>]*>Show all 12<\/button>/);
+  // A phone shows four: eight cards were ~2,000px between the figures and the log.
+  const ph = frontend({matchMedia: () => ({matches: true}), fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events: [], strategies}) : response({})});
+  await ph.viewRun(9); await flush(); ph.clearTimers();
+  assert.equal(ph.root.querySelector('#run-artifacts').querySelectorAll('tbody tr').length, 4);
+  assert.match(ph.root.querySelector('#run-artifacts').innerHTML, /data-allstrats[^>]*>Show all 12<\/button>/);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Stopped/);
   f.clearTimers();
   // A failed session says why and how to start again, above the folded log.
   const bad = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run: {...run, status: 'failed', error: 'The model <i>timed out</i>.'}, events: [], strategies: []}) : response({})});
