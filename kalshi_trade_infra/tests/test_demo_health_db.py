@@ -58,7 +58,6 @@ class _Feed:
 def offline(monkeypatch):
     """No request may reach Kalshi; the demo cash read answers whatever the test sets."""
     import requests
-    from app import server
     from app.trading import demo_twins
 
     def no_kalshi(*a, **k):
@@ -66,7 +65,8 @@ def offline(monkeypatch):
 
     monkeypatch.setattr(requests, "get", no_kalshi)
     monkeypatch.setattr(requests, "post", no_kalshi)
-    monkeypatch.setattr(server, "_engine_age", lambda cur: 5)  # the engine ticked a moment ago
+    from app.web.routes import chat as chat_routes
+    monkeypatch.setattr(chat_routes, "_engine_age", lambda cur: 5)  # the engine ticked a moment ago
     cash = {}
     monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: cash.get(uid))
     demo_twins._BALANCE_CACHE.clear()

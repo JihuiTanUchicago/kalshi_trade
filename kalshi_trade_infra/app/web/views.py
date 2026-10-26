@@ -1,16 +1,19 @@
 """Shared presenters for the web layer: figures more than one page shows (open money, live cash,
-gate lines), so app.server and the route modules in app.web.routes compute them one way. Moved
+gate lines, the billing gate, a run's wait), so app.server and the route modules in app.web.routes compute them one way. Moved
 verbatim from app.server, which re-imports every name."""
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional
 
 from app import repository as repo
+from app import worker
 from app.adapters.kalshi import kalshi_account
 from app.adapters.stripe import billing
 from app.services import customer_text, gate_explain
+from app.web.http import ApiError, Ctx
 
 
 _LEDGER_PLACE = Decimal("0.000001")  # app_credit_ledger.amount_usd is DECIMAL(14,6)
@@ -200,3 +203,74 @@ def _pause_clause(raw: Optional[str]) -> str:
     raw = (raw or "").strip()
     return {"By you": "you paused it", "Approved agent proposal": "you approved the agent's proposal to pause it",
             "Kill switch": "you pressed Kill"}.get(raw) or _plain_pause_reason(raw)
+
+
+def _start_of_day_utc() -> datetime:
+    return repo.now_utc().replace(hour=0, minute=0, second=0)
+
+
+def _needs_card(ctx: Ctx, reads: Optional[billing.Reads] = None) -> bool:
+    """True when payments are live but the user has no card on file. Agent usage
+    is metered per token, so we require a card before any run — the free credits
+    unlock the moment one is saved."""
+    if not billing.configured():
+        return False
+    cust = (reads or billing.Reads(ctx.cur, ctx.uid)).customer()
+    return not (cust and cust.get("default_pm_id"))
+
+
+def _auto_reload_terms(ctx: Ctx, reads: Optional[billing.Reads] = None) -> Optional[Dict]:
+    """What auto-reload will charge the saved card, for the autopilot card's cost line: the credits
+    added, the card charge (credits plus the top-up fee) and the balance that triggers it. The same
+    floors billing.auto_reload applies. None when payments are off, no card is saved, or it is off."""
+    if not billing.configured():
+        return None
+    cust = (reads or billing.Reads(ctx.cur, ctx.uid)).customer()
+    if not (cust and cust.get("default_pm_id") and cust.get("auto_reload")):
+        return None
+    amount = max(billing.AUTORELOAD_AMOUNT, Decimal(str(cust.get("reload_amount") or billing.AUTORELOAD_AMOUNT)))
+    threshold = max(billing.AUTORELOAD_THRESHOLD, Decimal(str(cust.get("reload_threshold") or billing.AUTORELOAD_THRESHOLD)))
+    return {"amount": float(amount), "charge": billing.topup_charge_cents(amount) / 100, "threshold": float(threshold)}
+
+
+def _require_billing_ready(ctx: Ctx, gerund: str) -> None:
+    if _needs_card(ctx):
+        raise ApiError(402, "Add a payment method on the Billing tab before %s. Your $%d in free credits "
+                            "unlock the moment a card is on file — you won't be charged until they run out."
+                            % (gerund, int(billing.FREE_BONUS)))
+    if billing.configured() and repo.credit_balance(ctx.cur, ctx.uid) <= 0:
+        raise ApiError(402, "You're out of credits. Add credits on the Billing tab to keep %s." % gerund)
+
+
+# A queued or silent run reads as overdue once it passes the reaper's limit (worker.ABANDONED_AFTER,
+# TAU_RUN_ABANDONED_SECONDS): a running run that hasn't beaten for that long is one the reaper stops,
+# and a queued run is never reaped, so without this a backed-up or dead worker showed a spinner forever.
+RUN_OVERDUE_SECONDS = int(worker.ABANDONED_AFTER.total_seconds())
+
+
+def _silent_before() -> datetime:
+    """A running run whose last beat is older than this has gone quiet past the reaper's limit."""
+    return repo.now_utc() - timedelta(seconds=RUN_OVERDUE_SECONDS)
+
+
+def _run_wait(run: Optional[Dict]) -> Optional[Dict]:
+    """How long a run has been waiting for a worker, or silent while running: {"state": "queued" |
+    "silent", "seconds": n, "overdue": bool}. A queued run always reports its wait, measured from its
+    last re-queue (heartbeat_at) or its creation; a running one only once its heartbeat is overdue.
+    None for anything else."""
+    if not run:
+        return None
+    if run.get("status") == "queued":
+        since, state = run.get("heartbeat_at") or run.get("created_at"), "queued"
+    elif run.get("status") == "running":
+        since, state = run.get("heartbeat_at") or run.get("started_at"), "silent"
+    else:
+        return None
+    if not isinstance(since, datetime):
+        return None
+    age = (repo.now_utc() - since).total_seconds()
+    secs = max(0, int(age))
+    overdue = age > RUN_OVERDUE_SECONDS  # the same line _silent_before draws for the counts, to the second
+    if state == "silent" and not overdue:
+        return None
+    return {"state": state, "seconds": secs, "overdue": overdue}
