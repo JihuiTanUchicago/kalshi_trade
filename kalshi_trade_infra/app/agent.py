@@ -2555,7 +2555,7 @@ def run_research(
                 ready = focus_keys(cur, user_id, _researchable_keys(cur))
                 if not ready:
                     raise RuntimeError("No market inside your autopilot focus is open for research right now.")
-                keys = [k for k in ready if k not in blocked] or ready
+                keys = [k for k in ready if k not in blocked] or _least_recent_markets(cur, user_id, ready)
                 market = _pick_market(run, model, usage, log, keys, _research_history_line(cur, user_id))
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
@@ -3548,6 +3548,34 @@ def _research_blocked_markets(cur, user_id: int) -> Dict[str, str]:
         if why:
             out[m] = why
     return out
+
+
+# Prod 2026-10-26: research starts every ~10 min, so within the 6h cooldown every crypto market in
+# the focus was blocked and the pick fell back to ALL of them; the picker chose zec15m for 7 runs in
+# a row (two at once), ~$17 with nothing developed. Rotating to the stalest markets spreads the spend.
+RESEARCH_ROTATE_N = 3
+
+
+def _least_recent_markets(cur, user_id: int, ready: List[str], n: int = RESEARCH_ROTATE_N) -> List[str]:
+    """When every market in `ready` is on cooldown: the `n` researched longest ago, never one with a
+    run already going, so research rotates instead of the picker settling on one favourite."""
+    try:
+        runs = repo.list_runs(cur, user_id, limit=200)
+    except Exception:
+        return ready
+    last: Dict[str, datetime] = {}
+    busy = set()
+    for r in runs:
+        m = r.get("market")
+        if not m:
+            continue
+        if r.get("status") in ("queued", "running", "paused"):
+            busy.add(m)
+        t = r.get("finished_at") or r.get("created_at")
+        if t and (m not in last or t > last[m]):
+            last[m] = t
+    free = [k for k in ready if k not in busy] or ready
+    return sorted(free, key=lambda k: (k in last, last.get(k) or datetime.min))[:n]
 
 
 # Deterministic funnel step: paper costs nothing and the live gate needs a long realistic paper

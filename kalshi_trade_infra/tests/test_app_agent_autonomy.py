@@ -251,3 +251,20 @@ def test_research_action_allows_a_different_market(monkeypatch):
     text, pid = agent.act(None, USER, {"type": "research", "market": "eth_daily",
                           "idea": "Mean-revert ETH after a sharp daily gap."}, True)
     assert pid is None and rec["runs"] == [("eth_daily", None, "Mean-revert ETH after a sharp daily gap.")]
+
+
+def test_with_every_market_on_cooldown_research_rotates_to_the_stalest_ones(monkeypatch):
+    # Prod 2026-10-26: all focus markets on cooldown fell back to all of them and the picker chose
+    # zec15m seven runs in a row. Now: the least recently researched, never one already running.
+    now = agent.repo.now_utc()
+    runs = [{"id": 9, "market": "zec15m", "status": "running", "finished_at": None, "created_at": now},
+            {"id": 8, "market": "zec15m", "status": "succeeded", "finished_at": now - agent.timedelta(minutes=5)},
+            {"id": 7, "market": "btc15m", "status": "succeeded", "finished_at": now - agent.timedelta(minutes=20)},
+            {"id": 6, "market": "eth15m", "status": "succeeded", "finished_at": now - agent.timedelta(hours=5)},
+            {"id": 5, "market": "sol15m", "status": "failed", "finished_at": now - agent.timedelta(hours=3)},
+            {"id": 4, "market": "btc15m", "status": "succeeded", "finished_at": now - agent.timedelta(hours=9)}]
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: runs)
+    ready = ["btc15m", "eth15m", "sol15m", "xrp15m", "zec15m"]
+    assert agent._least_recent_markets(None, 1, ready) == ["xrp15m", "eth15m", "sol15m"]
+    assert agent._least_recent_markets(None, 1, ready, n=5) == ["xrp15m", "eth15m", "sol15m", "btc15m"]
+    assert agent._least_recent_markets(None, 1, ["zec15m"]) == ["zec15m"]  # only a busy one left: keep it
