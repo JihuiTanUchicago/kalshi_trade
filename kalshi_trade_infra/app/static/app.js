@@ -3009,7 +3009,7 @@
   function trackRecordPanel(m, key, th) {
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (fills real execution would not get).`);
-    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost) join the record when they close.`
+    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
       // A part-sold trade's sold slice is realized (the dashboard counts it) but waits here for the rest.
       + (m.open_realized_pnl ? ` Part of ${m.open_trades === 1 ? 'it' : 'them'} is already sold: ${usd(m.open_realized_pnl, true)} realized, not yet in these figures.` : ''));
     if (key === 'live' && m.trades) caveats.push('Live results count only the trades Tau placed, net of Kalshi fees. Your Kalshi cash also moves with deposits, withdrawals and anything you trade yourself.');
@@ -3942,7 +3942,7 @@
   // autopilot is on: the card above says what it is doing, and "is researching" contradicted a card
   // reporting a stale check-in or a billing pause.
   // A brand-new user (no research session of their own) gets the finished example first: one tap,
-  // free. /example finds the seeded example session in /api/runs and opens it in place.
+  // free. /example looks up the seeded example session (/api/runs/example) and opens it in place.
   const EXAMPLE_CTA = `<a class="btn primary ex-cta" href="/example" data-example>See an example session first</a>`;
   function exampleLine(runs) {
     const ex = (runs || []).find((r) => r.example), own = (runs || []).filter((r) => !r.example).length;
@@ -3950,9 +3950,9 @@
   }
   async function viewExample() {
     shell('/research', '', loading(200));
-    const d = await api('/api/runs').catch(() => null);
-    const ex = d && (d.runs || []).find((r) => r.example);
-    go(ex ? '/research/' + ex.id : '/research', true);
+    // Its own lookup: /api/runs lists only the newest 50 sessions, so past that the example fell off it.
+    const d = await api('/api/runs/example').catch(() => null);
+    go(d && d.id ? '/research/' + d.id : '/research', true);
   }
   // /api/deployments sends each open position's mark but not the per-deployment sum the dashboard
   // sends, so a row read "+1 open" with Unrealized "—" above a table pricing that same position. Add it

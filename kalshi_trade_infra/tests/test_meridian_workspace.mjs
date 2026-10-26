@@ -3238,13 +3238,21 @@ test('a brand-new user sees "See an example session first" on the dashboard and 
 });
 
 test('/example opens the finished example session in place, or Research when there is none', async () => {
-  for (const [runs, to] of [[[ownRun, exRun], '/research/3'], [[ownRun], '/research']]) {
+  // Past 50 sessions the runs list (the newest 50) no longer holds the example, so /example looks it
+  // up by itself, not from the list.
+  const many = Array.from({length: 50}, (_, i) => ({...ownRun, id: 100 + i}));
+  for (const [answer, to] of [[response({id: 3}), '/research/3'], [response({id: null}), '/research'],
+                              [response({error: 'Not found'}, 404), '/research']]) {
+    const seen = [];
     const f = frontend({fetchImpl: path => {
-      if (path === '/api/runs') return response({runs, counts: {research_running: 0, research_queued: 0}, policy: null});
+      seen.push(path);
+      if (path === '/api/runs/example') return answer;
+      if (path === '/api/runs') return response({runs: many, counts: {research_running: 0, research_queued: 0}, policy: null});
       return response({});
     }});
     await f.viewExample(); await flush();
     assert.equal(f.navigations.at(-1), to);
+    assert.equal(seen[0], '/api/runs/example', seen.join(' '));  // the lookup alone, before it goes anywhere
   }
 });
 

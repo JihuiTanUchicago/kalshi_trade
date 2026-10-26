@@ -364,23 +364,55 @@ def closed_trade_counts(cur, user_id: int) -> Dict[str, int]:
     return {r["mode"]: int(r["n"]) for r in cur.fetchall()}
 
 
+# The export's numbers and times, packed into one comma-joined text per row: the times as the file
+# writes them (whole seconds, then "Z"; the DATETIME columns are naive UTC with no fraction), the
+# amounts as their DECIMAL(.,4) text. A NULL is '' (CONCAT_WS skips a NULL, which would shift the
+# fields after it); none of these can hold a comma. %% because the SQL goes through pymysql's %s.
+_CSV_TIME = "'%%Y-%%m-%%dT%%H:%%i:%%sZ'"
+_EXPORT_PACKED = ("CONCAT_WS(',', COALESCE(DATE_FORMAT(p.closed_at, {t}),''), COALESCE(DATE_FORMAT(p.opened_at, {t}),''), "
+                  "p.entry_price, COALESCE(p.exit_price,''), p.entry_fee, COALESCE(p.exit_fee,''), COALESCE(p.pnl,''), "
+                  "p.qty, p.id, p.deployment_id)").format(t=_CSV_TIME)
+_EXPORT_TEXT = ("closed_at", "opened_at", "entry_price", "exit_price", "entry_fee", "exit_fee", "pnl")
+
+
 def closed_trades_for_export(cur, user_id: int, mode: str, limit: int) -> List[Dict]:
     """The user's closed trades in one mode, newest first, at most `limit`: the rows `realized_pnl`
     sums, so the downloaded file adds up to the dashboard's realized figure. Not `user_positions`:
     that one inner-joins the strategy, so a trade whose stopped strategy was since deleted would drop
     out and the file would no longer add up. Reads idx_pos_user (user_id, status, closed_at);
-    it's a rare, user-clicked read, so it adds no index to the table the order path writes."""
+    it's a rare, user-clicked read, so it adds no index to the table the order path writes.
+
+    The times and amounts come back as the file's text, not as DATETIMEs and DECIMALs pymysql parses
+    in Python (most of a 5,000-trade read): a time is ISO UTC text ending in "Z" ('' for none), an
+    amount its 4-place text ('' for NULL), which is what "%.4f" of its float printed. They ride one
+    packed column (with qty, id and the deployment); the text columns stay their own. Then each
+    deployment's strategy is read once, as the LEFT JOINs gave it: a deployment or strategy that is
+    gone leaves strategy_id or title None."""
     cur.execute(
-        """SELECT p.id, p.mode, p.ticker, p.side, p.qty, p.entry_price, p.entry_fee, p.exit_price, p.exit_fee,
-                  p.pnl, p.close_reason, p.opened_at, p.closed_at, d.strategy_id, s.title
+        "SELECT p.mode, p.ticker, p.side, p.close_reason, " + _EXPORT_PACKED + """ AS v
            FROM app_positions p
-           LEFT JOIN app_deployments d ON d.id=p.deployment_id
-           LEFT JOIN app_strategies s ON s.id=d.strategy_id
            WHERE p.user_id=%s AND p.mode=%s AND p.status='closed'
            ORDER BY p.closed_at DESC, p.id DESC LIMIT %s""",
         (user_id, mode, int(limit)),
     )
-    return cur.fetchall()
+    rows, dep_of = list(cur.fetchall()), []
+    for r in rows:
+        v = r.pop("v").split(",")
+        r.update(zip(_EXPORT_TEXT, v))
+        r["qty"], r["id"] = int(v[7]), int(v[8])
+        dep_of.append(int(v[9]))
+    if not rows:
+        return rows
+    dep_ids = sorted(set(dep_of))
+    cur.execute(
+        "SELECT d.id, d.strategy_id, s.title FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id "
+        "WHERE d.id IN (" + ",".join(["%s"] * len(dep_ids)) + ")",
+        tuple(dep_ids),
+    )
+    deps = {d["id"]: (d["strategy_id"], d["title"]) for d in cur.fetchall()}
+    for r, did in zip(rows, dep_of):
+        r["strategy_id"], r["title"] = deps.get(did, (None, None))
+    return rows
 
 
 def user_open_exposure(cur, user_id: int, mode: Optional[str] = None) -> Dict:

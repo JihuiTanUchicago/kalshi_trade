@@ -197,6 +197,33 @@ def test_research_week_leaves_out_the_seeded_demo_session(conn, user):
     assert sum(int(r["tried"]) for r in every) == 5 and sum(int(r["runs"]) for r in every) == 2
 
 
+def test_example_finds_the_seeded_session_past_the_newest_fifty(conn, user):
+    """/example looked for the example in the runs list (the newest 50), so a user with more sessions
+    landed on /research. Its own lookup finds it behind any number, for this user only."""
+    from app import repository as repo
+    from app import server
+
+    cur = conn.cursor()
+    repo.seed_demo_session(cur, user["id"])  # sign-up seeds it already; idempotent
+    cur.execute("SELECT id FROM app_agent_runs WHERE user_id=%s AND direction='random_walk'", (user["id"],))
+    example = cur.fetchone()["id"]
+    for _ in range(55):
+        repo.create_run(cur, user["id"], "research", "btc15m", "momentum")
+    repo.create_run(cur, user["id"], "chat")
+    assert not any(r["id"] == example for r in repo.list_runs(cur, user["id"]))  # off the list...
+    assert repo.example_run_id(cur, user["id"]) == example  # ...but still found
+    ctx = server.Ctx(conn, user, (), {}, {}, None)
+    assert server.example_run(ctx) == {"id": example}
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "o@example.com", "O", None)
+    theirs = server.example_run(server.Ctx(conn, other, (), {}, {}, None))["id"]
+    assert theirs not in (None, example)  # their own, never this user's
+    cur.execute("DELETE FROM app_agent_runs WHERE id=%s", (theirs,))
+    assert server.example_run(server.Ctx(conn, other, (), {}, {}, None)) == {"id": None}
+    cur.execute("EXPLAIN SELECT id FROM app_agent_runs WHERE user_id=%s AND kind='research' AND direction=%s "
+                "ORDER BY id DESC LIMIT 1", (user["id"], "random_walk"))
+    assert any("idx_runs_user" in (r.get("possible_keys") or "") for r in cur.fetchall())
+
+
 def test_research_spend_is_the_ledger_debits_of_research_runs_only(conn, user):
     """The autopilot panel's "$X spent" is what research debited this week: not chat, not
     autopilot reviews, not the seeded demo, not last week."""

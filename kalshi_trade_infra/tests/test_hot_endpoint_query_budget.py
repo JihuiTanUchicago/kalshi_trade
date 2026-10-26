@@ -22,7 +22,9 @@ and reset, 3 -> 1), and each book's since-visit sums ride the same realized-P&L 
 Measured 2026-10-26 on a seeded busy account (700 strategies, 900 runs, 9,000 positions, beside five
 smaller ones): /api/track-record 245 -> 145ms of SQL, 1 -> 2 statements (the positions grouped alone,
 then each deployment's strategy once, times read as seconds); /api/strategies 90 -> 12ms, still 3
-(idx_dep_strategy answers each strategy's active-deployment probes).
+(idx_dep_strategy answers each strategy's active-deployment probes). Then GET /api/trades.csv for a
+5,000-trade book: ~110 -> ~40ms of SQL, 1 -> 2 statements (the times and amounts read as the file's
+text in one packed column, then each deployment's strategy once instead of joined to every trade).
 """
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -42,6 +44,8 @@ BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}  # das
 BUDGET.update({"list_deployments": 6, "get_strategy": 6})
 # The track record (cached a minute per user; a returning user pays it cold) and the Strategies page.
 BUDGET.update({"get_track_record": 2, "list_strategies": 3})
+# The trades download (user-clicked, not polled): the mode's closed trades, then their strategies once.
+BUDGET.update({"trades_csv": 2})
 
 # Statements that return one aggregate row; any other SELECT answers no rows unless listed below.
 AGGREGATE = ("SELECT COALESCE(", "SELECT COUNT(", "SELECT MAX(", "SELECT st.started")
@@ -281,3 +285,29 @@ def test_the_track_record_rebuilds_its_times_and_drops_a_trade_whose_deployment_
     assert log[1][1] == (5, 8)
     log = []
     assert server.repo.track_record_rows(CountingCursor(log, {}), 7) == [] and len(log) == 1  # no trades, no 2nd read
+
+
+def test_the_trades_download_stays_in_its_query_budget_and_reads_each_strategy_once(production):
+    trade = {"mode": "paper", "ticker": "KXBTC15M-26OCT2517-T98", "side": "yes", "close_reason": "settled"}
+    rows = {"AS v FROM app_positions p": [
+                dict(trade, v="2026-10-25T13:00:00Z,2026-10-25T12:00:00Z,0.4000,1.0000,0.0700,0.0000,2.9300,5,12,5"),
+                dict(trade, v="2026-10-25T11:00:00Z,2026-10-25T10:00:00Z,0.5000,,0.0700,,,3,11,6", close_reason=None),
+                dict(trade, v="2026-10-25T09:00:00Z,2026-10-25T08:00:00Z,0.5000,0.0000,0.0700,0.0000,-1.5700,3,10,5")],
+            "SELECT d.id, d.strategy_id, s.title FROM app_deployments d": [{"id": 5, "strategy_id": 9, "title": "Fade tails"}]}
+    log = []
+    _, _, _, data = server.trades_csv(_ctx(log, 10.0, query={"mode": "paper"}, extra=rows))
+    repeats = sorted({s for s in log if log.count(s) > 1})
+    assert not repeats, "trades_csv read the same thing twice in one request: %s" % repeats
+    assert len(log) <= BUDGET["trades_csv"], "trades_csv sent %d statements (budget %d):\n  %s" % (
+        len(log), BUDGET["trades_csv"], "\n  ".join(s for s, _ in log))
+    assert not any("JOIN" in s for s, _ in log if "FROM app_positions" in s)  # the trades are read alone
+    assert [p for s, p in log if "WHERE d.id IN" in s] == [(5, 6)]  # each deployment once, not per trade
+    assert data.splitlines()[1:] == [  # oldest first; deployment 6 is gone, so no strategy
+        "2026-10-25T09:00:00Z,2026-10-25T08:00:00Z,paper,No. 00009,Fade tails,KXBTC15M-26OCT2517-T98,yes,3,"
+        "0.5000,0.0000,0.0700,0.0000,-1.5700,settled,10",
+        "2026-10-25T11:00:00Z,2026-10-25T10:00:00Z,paper,,,KXBTC15M-26OCT2517-T98,yes,3,0.5000,,0.0700,,,,11",
+        "2026-10-25T13:00:00Z,2026-10-25T12:00:00Z,paper,No. 00009,Fade tails,KXBTC15M-26OCT2517-T98,yes,5,"
+        "0.4000,1.0000,0.0700,0.0000,2.9300,settled,12"]
+    log = []
+    server.trades_csv(_ctx(log, 10.0, query={"mode": "live"}))
+    assert len(log) == 1  # no trades, no second read
