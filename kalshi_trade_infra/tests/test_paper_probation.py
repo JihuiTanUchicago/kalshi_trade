@@ -100,7 +100,7 @@ def test_autopilot_cannot_pause_a_fresh_paper_deployment(monkeypatch):
            "spec": dict(SPEC), "created_at": now - timedelta(minutes=10)}
     statuses = _pause_patch(monkeypatch, dep)
     text, pid = agent.act(None, USER, {"type": "pause", "deployment_id": 74, "reason": "zero fills"}, autopilot=True)
-    assert pid is None and statuses == [] and "only 0.2 hours" in text
+    assert pid is None and statuses == [] and "only 10 minutes" in text  # not "0.2 hours"
     statuses = _pause_patch(monkeypatch, dict(dep, created_at=now - timedelta(hours=30)))
     agent.act(None, USER, {"type": "pause", "deployment_id": 74, "reason": "idle"}, autopilot=True)
     assert statuses == ["paused"]

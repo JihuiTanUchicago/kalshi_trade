@@ -135,8 +135,42 @@ def notification_rows(items: List[Dict]) -> List[Dict]:
 
 def chat_rows(messages: List[Dict]) -> List[Dict]:
     """The autopilot panel's lines Tau wrote (role system). The user's own lines and the agent's
-    replies are as they were said."""
+    replies are as they were said. A risk or execution change an older line wrote as the setting's
+    key ("max_open_notional=200.0") reads in words, as new lines are written (control_changes)."""
     for m in messages:
         if m.get("role") == "system":
-            m["content"] = clean(m.get("content"), CHAT_FALLBACK)
+            m["content"] = plain_controls(clean(m.get("content"), CHAT_FALLBACK))
     return messages
+
+
+# -- risk and execution controls, in words ---------------------------------------------------------
+# The autopilot's risk/execution changes name a user setting by its column. A proposal read
+# "drawdown_limit_pct=20.0, max_open_notional=200.0" over Approve, so nobody could tell what it changed.
+
+def _usd(v: float) -> str:
+    return "${:,.2f}".format(v)
+
+
+CONTROL_WORDS = {
+    "drawdown_limit_pct": lambda v: "a strategy stops once it is down {:g}% of its capital".format(round(v, 2)),
+    "max_open_positions": lambda v: "at most {:d} open position{}".format(int(v), "" if int(v) == 1 else "s"),
+    "max_open_notional": lambda v: "at most {} in open positions".format(_usd(v)),
+    "exec_max_book_fraction": lambda v: "each order takes at most {:g}% of the contracts on offer".format(round(v * 100, 1)),
+    "exec_max_entry_spread": lambda v: "no entry when the spread is wider than {:g}¢".format(round(v * 100, 1)),
+    "exec_max_order_notional": lambda v: "at most {} per order".format(_usd(v)),
+}
+_CONTROL_SETTING = re.compile(r"\b(%s)=(-?\d+(?:\.\d+)?)" % "|".join(CONTROL_WORDS))
+
+
+def control_changes(changes: Dict) -> str:
+    """A risk or execution change set ({setting: value}) in words, in the order given; a setting not
+    listed above keeps its name."""
+    return ", ".join(CONTROL_WORDS[k](float(v)) if k in CONTROL_WORDS else "%s %s" % (k.replace("_", " "), v)
+                     for k, v in changes.items())
+
+
+def plain_controls(text: Optional[str]) -> Optional[str]:
+    """``text`` with every "setting=value" of a control above put in words."""
+    if not text or "=" not in text:
+        return text
+    return _CONTROL_SETTING.sub(lambda m: CONTROL_WORDS[m.group(1)](float(m.group(2))), str(text))

@@ -24,6 +24,7 @@ from app.web.routes.brokers import _paper_call, _perps_live_call
 from app.web.settings import MAX_CHAT_PER_HOUR
 from app.web.views import (
     _demo_health,
+    credit_exact,
     credit_usd,
     _needs_card,
     _pause_clause,
@@ -38,10 +39,25 @@ def get_chat(ctx: Ctx):
     after = int(ctx.query.get("after") or 0)
     run = repo.active_agent_run(ctx.cur, ctx.uid)
     wait = _run_wait(run)
+    messages = customer_text.chat_rows(repo.chat_messages(ctx.cur, ctx.uid, after))
     # agent_wait: the oldest chat/review in flight has waited or gone quiet past the reaper's limit,
     # so the panel's pulse says that instead of "working" for as long as it lasts.
-    return {"messages": customer_text.chat_rows(repo.chat_messages(ctx.cur, ctx.uid, after)), "agent_busy": run is not None,
-            "agent_wait": wait if wait and wait["overdue"] else None}
+    out = {"messages": messages, "agent_busy": run is not None, "agent_wait": wait if wait and wait["overdue"] else None}
+    # What the newest answered message cost, for the line under the composer: read on the first load
+    # and when a read brings an answer (or a failed one), not on every 3s poll in between.
+    if billing.configured() and (not after or any(_answer_line(m) for m in messages)):
+        cost = repo.last_chat_turn_cost(ctx.cur, ctx.uid)
+        # Exact, as the ledger holds it: a turn under half a cent rounded to $0.00 read as free.
+        out["turn_cost"] = credit_exact(cost) if cost is not None else None
+    return out
+
+
+def _answer_line(m: Dict) -> bool:
+    """A chat line that ends a turn: the agent's reply, or the note that it failed to answer."""
+    return m.get("role") == "agent" or (m.get("role") == "system" and str(m.get("content") or "").startswith(NO_ANSWER))
+
+
+NO_ANSWER = "The agent hit an error and didn't answer."
 
 
 def post_chat(ctx: Ctx):
@@ -80,9 +96,50 @@ def decide_proposal(ctx: Ctx):
             raise ApiError(409, "This proposal was already decided.")
         if decision == "approve":
             agent.apply_proposal(tx, ctx.uid, p)
-        repo.add_chat(tx, ctx.uid, "system", "You %s the proposal." % ("approved" if decision == "approve" else "declined"))
+        repo.add_chat(tx, ctx.uid, "system", _decision_line(tx, ctx.uid, p, decision == "approve"))
     _forget_own_change(ctx.uid)
     return {"ok": True}
+
+
+# What each kind of proposal asks, and what is true once it is approved. "You approved the proposal."
+# named neither the proposal nor the change, and with two pending there was no telling which one.
+_ASKED = {"pause": "to pause %s", "resume": "to resume %s", "adjust": "to tune %s", "deploy": "to put %s on paper",
+          "set_risk": "to change your risk limits", "set_exec": "to change your execution limits"}
+_BOOK = {"paper": "on paper, with practice money", "demo": "on demo, Kalshi’s sandbox",
+         "live": "LIVE, with real money"}
+
+
+def _decision_line(cur, uid: int, p: Dict, approved: bool) -> str:
+    """The feed's line for the user's decision: the proposal it answers, and what changed (or that
+    nothing did). Starts "You approved the proposal" / "You declined the proposal", which the panel
+    heads as Your decision. Read after apply_proposal, so the deployment is as it now stands."""
+    kind, verb = p.get("kind"), "approved" if approved else "declined"
+    asked = _ASKED.get(kind)
+    title, mode = "", None
+    try:
+        if p.get("deployment_id") and kind in ("pause", "resume", "adjust"):
+            dep = repo.get_deployment(cur, uid, p["deployment_id"]) or {}
+            title, mode = dep.get("title") or "", dep.get("mode")
+        elif p.get("strategy_id") and kind == "deploy":
+            title = (repo.get_strategy(cur, uid, p["strategy_id"]) or {}).get("title") or ""
+    except Exception:  # noqa: BLE001 - a readout; the decision itself is already made
+        title = ""
+    if not asked or ("%s" in asked and not title):
+        return "You %s the proposal." % verb
+    head = "You %s the proposal %s." % (verb, asked % title if "%s" in asked else asked)
+    if not approved:
+        return head + " Nothing changed."
+    book = _BOOK.get(mode or "", "")
+    changes = customer_text.control_changes(p.get("payload") or {}) if kind in ("set_risk", "set_exec") else ""
+    after = {
+        "pause": "It is paused, and anything it holds%s is sold." % (" in your Kalshi account" if mode == "live" else ""),
+        "resume": "It is running again%s." % (", " + book if book else ""),
+        "adjust": "It now trades the tuned version%s." % (", " + book if book else ""),
+        "deploy": "It is on paper now. Nothing trades real money.",
+        "set_risk": ("Now: %s. These apply to every strategy you run." % changes) if changes else "",
+        "set_exec": ("Now: %s. These apply to every strategy you run." % changes) if changes else "",
+    }[kind]
+    return (head + " " + after).strip()
 
 
 def settings(ctx: Ctx):

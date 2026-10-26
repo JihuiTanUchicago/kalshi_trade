@@ -54,6 +54,7 @@ from app.services import research_leads
 from app.services import research_screen
 from app.services import demo_record
 from app.services import gate_explain
+from app.services import customer_text
 from app.research.agent_market_data import AgentMarketData, DataScope
 from app.research.agent_knowledge import AgentKnowledge
 from app.research.agent_news import AgentNews
@@ -3532,7 +3533,8 @@ def _clamp_into(changes: Dict, bounds: Dict, ints: Tuple[str, ...] = ()) -> Dict
 
 
 def _fmt_changes(changes: Dict) -> str:
-    return ", ".join("%s=%s" % (k, v) for k, v in changes.items())
+    """A risk or execution change in words ("at most $200.00 in open positions"), not the setting's key."""
+    return customer_text.control_changes(changes)
 
 
 # Per-market research dedup. The autopilot review fires every few minutes; MAX_ACTIVE_RESEARCH caps
@@ -4012,10 +4014,10 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 and repo.now_utc() - dep["created_at"] < PAPER_MIN_AGE):
             # Paper risks no money, and the live gate needs a long realistic record. A review once
             # paused a probation deployment minutes after it started for "zero fills after hours".
-            age_h = (repo.now_utc() - dep["created_at"]).total_seconds() / 3600
-            return ("I left %s running: it has been on paper for only %.1f hours, and paper costs nothing "
+            return ("I left %s running: it has been on paper for only %s, and paper costs nothing "
                     "while it builds the record the live gate needs (at least %d hours before I pause it)."
-                    % (dep["title"], age_h, PAPER_MIN_AGE.total_seconds() // 3600), None)
+                    % (dep["title"], _paper_age_words(repo.now_utc() - dep["created_at"]),
+                       PAPER_MIN_AGE.total_seconds() // 3600), None)
         if autopilot and kind == "pause" and dep["mode"] == "paper":
             held = _tournament_hold(cur, user_id, dep)
             if held:
@@ -4251,6 +4253,15 @@ def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
         repo.set_user_risk_config(cur, user_id, _clamp_into(proposal.get("payload") or {}, RISK_BOUNDS, ints=("max_open_positions",)))
     elif kind == "set_exec":
         repo.set_user_execution_config(cur, user_id, _clamp_into(proposal.get("payload") or {}, EXEC_BOUNDS))
+
+
+def _paper_age_words(age: timedelta) -> str:
+    """How long a deployment has been up, as the chat says it: "4 minutes" or "3.2 hours" ("0.0 hours"
+    told a user their strategy had not been on paper at all)."""
+    mins = max(1, int(age.total_seconds() // 60))
+    if mins < 90:
+        return "%d minute%s" % (mins, "" if mins == 1 else "s")
+    return "%.1f hours" % (age.total_seconds() / 3600)
 
 
 def _deployment_age_text(d: Dict) -> str:

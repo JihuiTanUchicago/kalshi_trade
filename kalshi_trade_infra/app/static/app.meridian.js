@@ -5443,11 +5443,26 @@
   }
   // A send or a decision that failed says why just above the composer. alert0 put it at the top of the
   // page, under the panel, and a phone's full-screen sheet hid it altogether.
-  function apErr(box, msg) {
+  function apErr(box, msg, billing) {
     const el = box.querySelector('#apf-err');
     if (!el) { if (msg) alert0(msg); return; }
-    el.textContent = msg || '';
+    // Out of credits (402) says where to add them, as a link, not "the Billing tab" to go and find.
+    if (msg && billing) el.innerHTML = `${esc(msg)} <a href="/billing">Open Billing</a>`;
+    else el.textContent = msg || '';
     el.hidden = !msg;
+  }
+  // The line under the composer: what the agent may do with a message, and what one costs. The cost is
+  // the server's turn_cost (what the newest answered message debited), kept from the last read that had it.
+  let apTurnCost;
+  const AP_DRAFT = () => 'tau_ap_draft:' + ((S.me && S.me.user && S.me.user.id) || '');
+  function apCostPaint(box) {
+    const el = box.querySelector('#apf-cost'); if (!el) return;
+    const me = S.me || {}, on = S.ap ? S.ap.autopilot : !!(me.user && me.user.autopilot);
+    const what = on ? 'It may act on what you ask, within your limits.' : 'Any change it suggests waits for your Approve.';
+    const c = apTurnCost, last = c == null ? '' : c === 0 ? ' Your last one cost nothing.'
+      : c < 0.005 ? ' Your last one cost under $0.01.' : ` Your last one cost ${usd(c)}.`;
+    el.textContent = what + (me.billing_enabled ? ' Each message is paid from your credits.' + last : '');
+    el.hidden = false;
   }
   function apStopChat() { if (apChatTimer) { clearInterval(apChatTimer); apChatTimer = null; } apChatWake = null; }
   let apChatWake = null;
@@ -5473,7 +5488,9 @@
   function apApproveLine(m) {
     const k = m.proposal_kind, book = AP_BOOK[m.deployment_mode];
     const verb = { pause: 'pauses', resume: 'restarts', adjust: 'swaps the tuned version into' }[k];
-    if (verb) return book ? { text: `Approve ${verb} this strategy, which runs ${book}.`, live: m.deployment_mode === 'live' } : null;
+    // A pause sells what the strategy holds (the engine flattens a paused deployment), as Deploy's Pause says.
+    const sells = k === 'pause' ? ', and sells anything it holds' : '';
+    if (verb) return book ? { text: `Approve ${verb} this strategy, which runs ${book}${sells}.`, live: m.deployment_mode === 'live' } : null;
     if (k === 'deploy') return { text: 'Approve starts it on paper, with practice money. Nothing trades real money.' };
     if (k === 'set_risk' || k === 'set_exec') return { text: 'Approve applies these limits to every strategy you run, live ones included.' };
     return null;
@@ -5552,6 +5569,7 @@
       msgs.appendChild(li);
     });
     if (d.messages.length) apFeedFirst = false;
+    if ('turn_cost' in d) { apTurnCost = d.turn_cost; apCostPaint(box); }
     if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet.</li>';
     // The live pulse — the research session's "working" signal, scoped to the operation.
     const pulse = box.querySelector('#apf-pulse');
@@ -5673,8 +5691,9 @@
       <form class="composer apf-composer-row" id="apf-composer">
         <p class="apf-err" id="apf-err" role="alert" hidden></p>
         <label class="vh" for="apf-msg">Message the agent</label>
-        <textarea class="input" id="apf-msg" rows="1" maxlength="2000" placeholder="What should it focus on?" aria-label="Message the autopilot"></textarea>
+        <textarea class="input" id="apf-msg" rows="1" maxlength="2000" placeholder="What should it focus on?" aria-label="Message the autopilot" aria-describedby="apf-cost"></textarea>
         <button class="btn" type="submit" aria-label="Send">${ICON.send}</button>
+        <p class="apf-cost" id="apf-cost" hidden></p>
       </form>`;
     box.querySelector('.apf-x').onclick = (e) => apAction(box, 'toggle', e);
     box.querySelector('#apf-confirm').onsubmit = (e) => { e.preventDefault(); apEnableLive(box, box.querySelector('#apf-confirm').confirm.value.trim()); };
@@ -5729,7 +5748,12 @@
       await apLoadChat(box, true, undefined, 'keep');  // the stamp, or the state it was already decided to
     });
     const cf = box.querySelector('#apf-composer'), ta = box.querySelector('#apf-msg');
-    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; });
+    // A message half typed survives a reload (or the panel closing): kept in this browser, per account,
+    // until it is sent.
+    const keepDraft = (v) => { try { localStorage.setItem(AP_DRAFT(), v); } catch (e) { /* private mode */ } };
+    try { ta.value = localStorage.getItem(AP_DRAFT()) || ''; } catch (e) { /* private mode */ }
+    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; keepDraft(ta.value); });
+    apCostPaint(box);
     ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); cf.requestSubmit(); } });
     cf.onsubmit = async (e) => {
       e.preventDefault(); const content = ta.value.trim(); if (!content || cf.dataset.sending) return;
@@ -5738,7 +5762,7 @@
       cf.dataset.sending = '1';
       apErr(box, '');
       try {
-        await busy(cf.querySelector('button'), async () => { try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; await apLoadChat(box, false, undefined, 'end'); } catch (err) { apErr(box, err.message); } });
+        await busy(cf.querySelector('button'), async () => { try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; keepDraft(''); await apLoadChat(box, false, undefined, 'end'); } catch (err) { apErr(box, err.message, err.status === 402); } });
       } finally { delete cf.dataset.sending; }
     };
     apLoadChat(box, true);
@@ -5800,6 +5824,7 @@
     const on = d ? d.autopilot : (S.me.user && S.me.user.autopilot);
     const ap = box.querySelector('#apf-ap'); if (ap) ap.classList.toggle('on', !!on);
     const sw = box.querySelector('#apf-apswitch'); if (sw && document.activeElement !== sw) sw.checked = !!on;
+    apCostPaint(box);
     const copy = box.querySelector('#apf-ap-copy');
     if (copy) copy.innerHTML = on
       ? '<b>Autopilot</b>Researches, deploys and tunes paper strategies on its own, and adjusts your risk &amp; execution controls within safe bounds. It never touches live money without the step below.'
