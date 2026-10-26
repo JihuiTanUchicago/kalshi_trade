@@ -33,6 +33,11 @@ MEMORY_CAPS=${MEMORY_CAPS:-"recursive-agents=8G recursive-web=1G recursive-engin
 # bundle, copied to /etc/systemd/system when they differ, timers enabled --now. Older web-box timers
 # (tau-scout, tau-research-watch, ...) are still hand-installed and not listed here.
 UNITS=${UNITS:-"tau-lip-maker-paper.service tau-lip-maker-paper.timer tau-code-paper.service tau-code-paper.timer tau-maker-lab.service tau-maker-lab.timer"}
+# Brotli for the static bundles (app/webperf.py): the one package a deploy makes sure of, because the
+# box's venv is otherwise installed by hand. Same pin as requirements.txt, hash-locked to the CPython
+# 3.13 manylinux wheels (x86_64, aarch64); binary only. Best effort: without it static files go out
+# gzip, as before, so a failed install is a warning, never a rollback.
+BROTLI_REQ="brotli==1.2.0 --hash=sha256:67a91c5187e1eec76a61625c77a6c8c785650f5b576ca732bd33ef58b0dff49c --hash=sha256:c8565e3cdc1808b1a34714b553b262c5de5fbda202285782173ec137fd13709f"
 
 # Locally, use a named profile (the AWS CLI reads AWS_PROFILE from the env). In CI there is no
 # profile — the workflow provides env/OIDC creds — so unset it. (Env var, not a --profile flag.)
@@ -101,6 +106,11 @@ done
 for u in ${UNITS}; do
   case "\$u" in *.timer) systemctl enable --now "\$u" || echo "[box] WARN could not enable \$u" ;; esac
 done
+if ${BOX_PY} -c "import brotli" 2>/dev/null; then echo "[box] brotli present"; else
+  echo "${BROTLI_REQ}" > /tmp/tau_brotli.txt
+  ${BOX_PY} -m pip install -q --no-deps --only-binary=:all: --require-hashes --timeout 20 --retries 1 -r /tmp/tau_brotli.txt 2>&1 \
+    && echo "[box] installed brotli" || echo "[box] WARN brotli not installed; static files go out gzip only"
+fi
 for cap in ${MEMORY_CAPS}; do systemctl set-property "\${cap%%=*}.service" "MemoryMax=\${cap#*=}" || echo "[box] WARN could not set \$cap"; done
 systemctl restart ${SERVICES}
 sleep 5

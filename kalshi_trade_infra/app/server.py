@@ -3667,6 +3667,26 @@ def _static_versions() -> Dict[str, str]:
     return out
 
 
+def warm_static() -> None:
+    """Compress the bundles at startup, so the first request after a deploy (CloudFront filling its
+    cache) doesn't wait on it: brotli at its best setting takes about a second for app.js."""
+    def size(name: str) -> int:
+        try:
+            return (STATIC_DIR / name).stat().st_size
+        except OSError:
+            return 0
+    for name in sorted(_STATIC_NAMES, key=size, reverse=True):  # the theme bundles first
+        try:
+            body = (STATIC_DIR / name).read_bytes()
+            if not webperf.compressible("text/", len(body)):
+                continue
+            key = (name, hashlib.sha256(body).hexdigest()[:10])
+            for coding in webperf.static_codings():
+                webperf.compress(body, coding, key)
+        except Exception as e:  # noqa: BLE001 - a request compresses it on demand instead
+            _log_line("[app] warming %s failed (%s)" % (name, type(e).__name__))
+
+
 def _log_line(line: str) -> None:
     """One write per access line. print() writes the text and its newline separately, so two request
     threads finishing together glued their lines into one ("...404 12ms ...Z[app] GET /api/...")."""
@@ -3744,13 +3764,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _send(self, status: int, ctype: str, body: bytes, extra: Optional[List[Tuple[str, str]]] = None,
-              gz_key: Optional[Tuple[str, int, int]] = None) -> None:
-        """Write a whole response, gzipped when the client accepts it and it's worth it (JSON, HTML,
-        JS, CSS). CloudFront's cache is off for the app, so it never compresses for us."""
+              z_key: Optional[Tuple[str, str]] = None) -> None:
+        """Write a whole response, compressed when the client accepts it and it's worth it (JSON, HTML,
+        JS, CSS): gzip, or brotli for a static file (z_key = (name, content hash): compressed once per
+        version). CloudFront compresses none of it for us: its cache is off for the app, and on
+        /static/* it passes on what we compressed. Its /static/* cache key holds the normalized
+        Accept-Encoding (br,gzip | gzip | none), so a br body is only ever served to a br client."""
         req_headers = getattr(self, "headers", None)
-        if webperf.wants_gzip(req_headers.get("Accept-Encoding") if req_headers else None, ctype, len(body)):
-            body = webperf.gzip_bytes(body, gz_key)
-            extra = list(extra or []) + [("Content-Encoding", "gzip"), ("Vary", "Accept-Encoding")]
+        if webperf.compressible(ctype, len(body)):
+            coding = webperf.pick_encoding(req_headers.get("Accept-Encoding") if req_headers else None,
+                                           ctype, len(body), allow_br=z_key is not None)
+            extra = list(extra or [])
+            if coding is not None:
+                body = webperf.compress(body, coding, z_key)
+                extra.append(("Content-Encoding", coding))
+            # The uncompressed answer varies too: without it a shared cache could keep one copy for all.
+            extra.append(("Vary", "Accept-Encoding"))
         self._headers(status, ctype, len(body), extra)
         self.wfile.write(body)
 
@@ -3884,8 +3913,15 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         body = f.read_bytes()
+        # The validator, the cache lifetime and the compressed copy all go by the bytes read here, so a
+        # file replaced between the stat above and this read (a deploy extracting under a running server)
+        # can't go out under the old version's ETag, or as the old version compressed.
+        digest = hashlib.sha256(body).hexdigest()[:10]
+        if current is not None and digest != current:
+            cache = webperf.static_cache_control(f.name, query, digest)
+            tag = webperf.etag(digest)
         self._send(200, ctype + ("; charset=utf-8" if m.group(2) in ("css", "js", "svg") else ""), body,
-                   [("Cache-Control", cache), ("ETag", tag)], gz_key=(f.name, st.st_mtime_ns, st.st_size))
+                   [("Cache-Control", cache), ("ETag", tag)], z_key=(f.name, digest))
 
     def _stripe_webhook(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
@@ -4049,6 +4085,7 @@ def main() -> None:
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.daemon_threads = True
     threading.Thread(target=warm_shared, daemon=True).start()
+    threading.Thread(target=warm_static, daemon=True).start()
     print("Tau on http://%s:%d" % (HOST, PORT), flush=True)
     server.serve_forever()
 

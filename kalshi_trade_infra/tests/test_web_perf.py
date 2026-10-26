@@ -82,7 +82,7 @@ def test_session_reuse_after_a_rejected_post_reconnects_cleanly(web):
 
 def test_static_bundle_is_gzipped_when_accepted_and_identical_when_unzipped(web):
     conn = http.client.HTTPConnection("127.0.0.1", web, timeout=3)
-    conn.request("GET", "/static/app.js", headers={"Accept-Encoding": "gzip, br"})
+    conn.request("GET", "/static/app.js", headers={"Accept-Encoding": "gzip"})
     r = conn.getresponse()
     raw = r.read()
     assert r.status == 200 and r.getheader("Content-Encoding") == "gzip"
@@ -92,6 +92,7 @@ def test_static_bundle_is_gzipped_when_accepted_and_identical_when_unzipped(web)
     conn.request("GET", "/static/app.js")
     r = conn.getresponse()
     assert r.getheader("Content-Encoding") is None and r.read() == original
+    assert r.getheader("Vary") == "Accept-Encoding"  # the plain copy varies too, or a cache could keep one for all
 
 
 def test_small_and_binary_responses_are_not_gzipped():
