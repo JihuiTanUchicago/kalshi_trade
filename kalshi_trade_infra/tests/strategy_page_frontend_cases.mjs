@@ -54,4 +54,29 @@ export function strategyPageCases({name, detailStrategy, strategyFrontend, postR
     // A walk-forward slice is labelled by its own date (the gatekeeper's from_ts), not "W1".
     assert.doesNotMatch(between('Walk-forward windows', 'Backtest'), />W1</);
   });
+
+  test(`${name}: the verdict reads near the top: what passed it, or the check it missed`, async () => {
+    const top = html => html.slice(0, html.indexOf('paper-body'));
+    const lines = [{gate: 'significance', label: 'The edge could be luck on the locked holdout', measured: 'p 0.58', needed: '0.10', next: 'Try again.'},
+      {gate: 'net_edge', label: 'Loses money after fees on the locked holdout', measured: 'x', needed: 'y', next: 'Z.'}];
+    const failed = await open({status: 'failed', why_failed: lines, experiment: {classification: 'inconclusive',
+      validation: {n_trades: 58, mean_net_return: 0.022}, holdout: {n_trades: 31, mean_net_return: -0.004, consumed: true}}});
+    assert.match(top(main(failed)), /<b>Void\.<\/b> It missed 2 checks: the edge could be luck on the locked holdout, and 1 more\./);
+    const passed = await open({status: 'passed', experiment: {classification: 'deployment_candidate',
+      validation: {n_trades: 64, mean_net_return: 0.031}, holdout: {n_trades: 34, mean_net_return: 0.024, consumed: true}}});
+    assert.match(top(main(passed)), /<b>Passed\.<\/b> It cleared every check, including the one-time locked holdout: 34 trades on data it had never seen, averaging \+2\.40% of the stake per trade after fees\./);
+    const pending = await open({status: 'passed', experiment: {classification: 'statistically_supported', validation: {n_trades: 40}, holdout: null}});
+    assert.match(top(main(pending)), /<b>Passed validation\.<\/b> It cleared the checks on 40 trades it had never seen; the one-time locked holdout hasn’t run yet\./);
+    // Labels are escaped like every other server string.
+    const evil = await open({status: 'rejected', why_failed: [{...lines[0], label: '<img src=x>'}], experiment: {classification: 'rejected'}});
+    assert.doesNotMatch(main(evil), /<img src=x>/);
+  });
+
+  test(`${name}: a backtest-only strategy says it can't be deployed, as the server refuses it`, async () => {
+    const f = await open({status: 'backtest-only', experiment: null});
+    assert.doesNotMatch(main(f), /Deploying it is your decision/);
+    assert.match(main(f), /It can’t be deployed: only a strategy put through those checks can be\./);
+    assert.match(main(f), /A backtest-only strategy can’t be deployed: it never went through the held-out checks\./);
+    assert.equal(f.root.querySelector('#dep-paper'), null);
+  });
 }

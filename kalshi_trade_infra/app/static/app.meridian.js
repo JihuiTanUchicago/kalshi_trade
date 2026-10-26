@@ -3447,6 +3447,30 @@
     }
     return books.join('') + (need ? `<p class="hint">${need}</p>` : '');
   }
+  // The verdict in one line near the top of a strategy page: whether it passed and on what held-out
+  // evidence, or the check it missed. The full evidence stays in Verdict, which on a phone is many
+  // screens down; a Void strategy's page read "returned $3.10 on unseen data" up top and said why it
+  // failed only there.
+  function verdictGlance(s, missed) {
+    const exp = s.experiment, h = exp && exp.holdout, v = exp && exp.validation;
+    const lc = (t) => String(t).charAt(0).toLowerCase() + String(t).slice(1);
+    let lead, words;
+    if (missed && ['failed', 'rejected'].includes(s.status)) {
+      lead = s.status === 'failed' ? 'Void.' : 'Rejected.';
+      words = `It missed ${missed.length === 1 ? 'a check' : missed.length + ' checks'}: ${lc(missed[0].label)}${missed.length > 1 ? `, and ${missed.length - 1} more` : ''}. Verdict, below, has what was measured and what to try next.`;
+    } else if (s.status === 'passed' && h && h.n_trades != null && ['deployment_candidate', 'forward_validated'].includes(exp.classification)) {
+      lead = 'Passed.';
+      words = `It cleared every check, including the one-time locked holdout: ${num(h.n_trades)} trades on data it had never seen${h.mean_net_return != null ? `, averaging ${rpRet(h.mean_net_return)} of the stake per trade after fees` : ''}.`;
+    } else if (s.status === 'passed' && v && v.n_trades != null && !h) {
+      lead = 'Passed validation.';
+      words = `It cleared the checks on ${num(v.n_trades)} trades it had never seen; the one-time locked holdout hasn’t run yet.`;
+    } else if (s.status === 'backtest-only') {
+      lead = 'Backtest only.';
+      words = 'It never went through the held-out checks, so its only evidence is the backtest below.';
+    } else return '';
+    return `<p class="paper-ab-result verdict-glance"><b>${esc(lead)}</b> ${esc(words)}</p>`;
+  }
+
   async function viewStrategy(id) {
     shell('/strategies', boardTitle('Strategy'), loading(420));
     const s = await api('/api/strategies/' + id);
@@ -3533,7 +3557,7 @@
       + fold('Most recent unseen trades', `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`);
     let verdictBody = rp.verdict;
     if (!hasExp) {
-      const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. ' + (perpetual ? 'This market remains research only.' : restricted ? 'Agent-written code stays in research.' : 'Deploying it is your decision and your risk.')];
+      const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. ' + (perpetual ? 'This market remains research only.' : restricted ? 'Agent-written code stays in research.' : 'It can’t be deployed: only a strategy put through those checks can be.')];
       const vmap = {
         // No experiment resolved (by experiment_id OR strategy_id) means NO gatekeeper record
         // exists — so this was NOT validated, whatever the status says. Never claim it "cleared
@@ -3568,6 +3592,7 @@
             ${s.shared_from ? `<div class="paper-byline"><span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span></div>` : ''}
             <section class="paper-abstract" aria-label="Strategy hypothesis">
               <p class="paper-ab">${mdLite(s.thesis)}</p>
+              ${hasExp ? verdictGlance(s, missed) : ''}
               <details class="saved-result"><summary>Saved result</summary><p class="paper-ab-result">${abResult}</p>${s.hypotheses_tried != null ? '<p class="hint">The more ideas a session tests, the likelier one passes by luck.</p>' : ''}</details>
             </section>
             <div class="paper-body">
@@ -3612,7 +3637,7 @@
                 </form>
                 </div></details>
                 <div id="depflash"></div>
-              </div>` : restricted ? `<p class="hint">${perpetual ? 'Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.' : CODE_RESEARCH_ONLY}</p>` : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
+              </div>` : restricted ? `<p class="hint">${perpetual ? 'Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.' : CODE_RESEARCH_ONLY}</p>` : `<p class="hint">${s.status === 'backtest-only' ? 'A backtest-only strategy can’t be deployed: it never went through the held-out checks. To test this idea properly, ask for it in a new research session.' : 'This strategy isn’t ready to deploy yet.'}</p>`}
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
           </section>
           ${!restricted && s.status === 'passed' ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}
