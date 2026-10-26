@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
+from app.web.routes import chat as chat_routes
 
 
 def context(body=None, admin=False):
@@ -216,7 +217,7 @@ def test_autopilot_status_flags_billing_blocked(monkeypatch):
     # Autopilot ON but can't spend -> the panel is told WHY it's quiet (reason: credits, card on file).
     ctx = _ap_ctx(monkeypatch, autopilot=1)
     monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: False)
-    monkeypatch.setattr(server, '_needs_card', lambda c, reads=None: False)
+    monkeypatch.setattr(chat_routes, '_needs_card', lambda c, reads=None: False)
     out = server.autopilot_status(ctx)
     assert out['billing_blocked'] is True and out['billing_reason'] == 'credits'
 
