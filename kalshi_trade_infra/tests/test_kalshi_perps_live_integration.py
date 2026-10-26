@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import billing, llm, schema, server
+from app import llm, schema, server
+from app.adapters.stripe import billing
 from app.research import agent
 from app.adapters.kalshi_perps import kalshi_perps_trading as live
 

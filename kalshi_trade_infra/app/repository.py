@@ -108,7 +108,7 @@ def ensure_welcome_bonus(cur, user_id: int) -> bool:
     logins race-safe via the uq_credit_stripe unique key. Called on EVERY login, so a
     grant that silently failed at signup (or predates the feature) is repaired for free.
     """
-    from app import billing
+    from app.adapters.stripe import billing
     cur.execute("SELECT 1 FROM app_credit_ledger WHERE user_id=%s AND kind='bonus' LIMIT 1", (user_id,))
     if cur.fetchone():
         return False

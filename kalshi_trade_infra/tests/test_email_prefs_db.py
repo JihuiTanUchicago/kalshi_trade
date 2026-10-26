@@ -30,7 +30,9 @@ def _user(cur, repo, name):
 
 
 def test_settings_and_unsubscribe_share_one_switch(conn):
-    from app import auth, notify, server
+    from app import server
+    from app.adapters.ses import notify
+    from app.web import auth
     from app import repository as repo
 
     cur = conn.cursor()

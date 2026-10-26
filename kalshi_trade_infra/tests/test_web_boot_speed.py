@@ -11,7 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import server, webperf
+from app import server
+from app.web import webperf
 
 USER = {"id": 7, "email": "trader@example.invalid", "name": "Sample", "picture_url": None, "autopilot": 0,
         "ui_theme": "meridian"}

@@ -4,7 +4,8 @@ from decimal import Decimal
 
 import pytest
 
-from app import billing, server
+from app import server
+from app.adapters.stripe import billing
 from app import models_catalog as catalog
 from tests.test_app_agent import Conn, LOSER, RUN, Store, WINNER, hyps, plan, scripted
 from tests.test_app_backtest import _dataset

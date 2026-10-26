@@ -1,7 +1,7 @@
 """The Dev Logs tab is public: every signed-in user sees it."""
 import re
 
-from app import devlog
+from app.web import devlog
 
 
 def test_public_roadmap_has_no_internal_ops_notes():

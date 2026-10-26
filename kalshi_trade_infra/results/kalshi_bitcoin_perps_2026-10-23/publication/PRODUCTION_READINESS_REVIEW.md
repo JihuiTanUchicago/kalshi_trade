@@ -136,7 +136,7 @@ release candidate. Data-agent mapping to published Git history is separate.
 1. **Reconcile the actual installed variants before constructing a release.**
    Against `aa3664e…` there are 21 drifted installed files. The perps delta
    intersects seven: `app/research/agent.py`, `app/schema.py`, `app/server.py`, both
-   `app/static/app{,.meridian}.js` bundles, `app/README.md`, and `app/devlog.py`.
+   `app/static/app{,.meridian}.js` bundles, `app/README.md`, and `app/web/devlog.py`.
    Obtain exact matching bytes from verified local/history material or a bounded
    read-only recovery of the accepted server backup/current source. Review the
    perps delta applied to those bytes; a clean textual patch is not sufficient.

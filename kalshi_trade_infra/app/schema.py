@@ -587,7 +587,7 @@ DDL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     # Page error reports from browsers (POST /api/client-errors, read grouped on /admin). Only what
-    # locates a bug, cleaned by app/client_errors.py: no user id, address, query string or body.
+    # locates a bug, cleaned by app/web/client_errors.py: no user id, address, query string or body.
     # Bounded: each insert prunes rows older than 7 days and all but the newest 5000 (by id).
     """
     CREATE TABLE IF NOT EXISTS app_client_errors (

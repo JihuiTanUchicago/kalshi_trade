@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from app import billing
+from app.adapters.stripe import billing
 
 
 def test_usage_cost_applies_margin():

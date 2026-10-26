@@ -16,7 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import server, webperf
+from app import server
+from app.web import webperf
 
 MODERN = "gzip, deflate, br, zstd"  # what Chrome, Firefox and Safari send over HTTPS
 

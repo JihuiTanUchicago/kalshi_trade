@@ -1,6 +1,6 @@
 """Live-ready notice: once per strategy, the user is told (chat + email) when a running paper
 strategy first clears every paper -> live check. It never deploys, promotes or changes a gate."""
-from app import notify
+from app.adapters.ses import notify
 from app.research import agent
 
 READY = {"ready": True, "why": "", "trades": 31, "trades_needed": 30, "net_pnl": 4.2, "span_hours": 50.0,

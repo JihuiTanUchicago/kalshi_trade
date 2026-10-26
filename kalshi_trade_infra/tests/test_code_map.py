@@ -1,4 +1,4 @@
-"""Tests for the System-page code drill-down (app/code_map.py).
+"""Tests for the System-page code drill-down (app/web/code_map.py).
 
 Pure static analysis - no DB, no server. Covers the AST extraction at all
 three levels and, critically, the path whitelist that keeps a request from
@@ -6,7 +6,7 @@ reading outside the repo.
 """
 import pytest
 
-from app import code_map
+from app.web import code_map
 
 
 # -- path whitelist (the security boundary) -----------------------------------

@@ -48,7 +48,7 @@ def conn():
 
 def _billed(choice, tokens_in, tokens_out):
     """What one model call must cost, worked out here from the catalog rates, not by usage_cost."""
-    from app import billing
+    from app.adapters.stripe import billing
 
     list_usd = (Decimal(tokens_in) * choice.price_in + Decimal(tokens_out) * choice.price_out) / Decimal(1_000_000)
     return (list_usd * billing.USAGE_MARGIN).quantize(SIX, rounding=ROUND_HALF_UP), list_usd
@@ -59,7 +59,8 @@ def _cents(v):
 
 
 def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
-    from app import billing, server
+    from app import server
+    from app.adapters.stripe import billing
     from app.research import agent
     from app import models_catalog as catalog
     from app import repository as repo

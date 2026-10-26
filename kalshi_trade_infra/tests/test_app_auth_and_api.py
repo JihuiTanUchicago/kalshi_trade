@@ -6,7 +6,8 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
-from app import auth, server
+from app import server
+from app.web import auth
 from app.adapters.kalshi import kalshi_account
 
 
@@ -782,7 +783,7 @@ def test_shared_strategy_and_deployment_say_over_what_span(monkeypatch):
 
 
 def test_unsubscribe_token_is_bound_to_user():
-    from app import notify
+    from app.adapters.ses import notify
     t = notify.unsubscribe_token(42)
     assert notify.unsubscribe_token_valid(42, t)
     assert not notify.unsubscribe_token_valid(42, "bad")
@@ -790,7 +791,7 @@ def test_unsubscribe_token_is_bound_to_user():
 
 
 def test_unsubscribe_endpoint_opts_out_on_valid_token(monkeypatch):
-    from app import notify
+    from app.adapters.ses import notify
     flips = {}
     monkeypatch.setattr(server.repo, "set_email_opt_out", lambda cur, uid, val: (flips.__setitem__(uid, val), True)[1])
     kind, html = server.unsubscribe(ctx(query={"u": "7", "t": notify.unsubscribe_token(7)}))
