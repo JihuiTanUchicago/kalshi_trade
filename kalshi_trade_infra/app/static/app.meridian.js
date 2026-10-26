@@ -727,8 +727,8 @@
             // return_url is required because the config allows redirect methods; with
             // redirect:'if_required' a card never actually redirects, so we stay on-page.
             r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing', payment_method_data: { billing_details: { address: { country: 'US' } } } } });
-          } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message || 'Could not save the card.')}</p>`; return; }
-          if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(r.error.message)}</p>`; return; }
+          } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(stripeFail(err))}</p>`; return; }
+          if (r.error) { hint.innerHTML = `<p class="wl-err">${esc(stripeFail(r.error))}</p>`; return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); } catch (err) { hint.innerHTML = `<p class="wl-err">${esc(err.message)}</p>`; return; }
           // The card is saved: a failed re-read of the account must not leave the wall up over it.
           S.me = await api('/api/me', undefined, { keep: true }).catch(() => Object.assign({}, S.me, { needs_card: false }));
@@ -747,6 +747,11 @@
     }
   }
   // Why the card form isn't there: Tau's own words for something it refused, otherwise what to do.
+  // Stripe's own words reach the user only about the card itself (declined, number incomplete): Stripe
+  // writes those for the cardholder. Anything else it says (an expired form, an outage, a thrown error)
+  // names its own internals, so the user reads what to do instead.
+  const stripeFail = (e) => e && (e.type === 'card_error' || e.type === 'validation_error') && e.message ? e.message
+    : 'Your card couldn\u2019t be saved just now. Reload the page and add it again.';
   const cardFormFail = (err) => err instanceof ApiError && err.status >= 400 && err.status < 500 ? err.message
     : 'The card form didn\u2019t load. Check your connection, or allow js.stripe.com if a blocker is on, then try again.';
 
@@ -968,13 +973,31 @@
     if (b) b.onclick = () => { b.disabled = true; render(); };
   }
 
-  // arm-to-confirm: first click arms for 5s, second click fires
+  // arm-to-confirm: the first press arms for 5s, a second press fires. The second press counts only once
+  // ARM_HOLD has passed: a fast double-click armed with its first click and fired with its second, so
+  // "Remove" stopped a deployment without the confirm ever being read. Until then the button is 'wait'
+  // and a press does nothing. A held Enter's key repeats are refused too (guardArmedRepeat). Each arming
+  // has its own turn, so an earlier arming's 5s reset can't disarm a later one early.
+  const ARM_HOLD = 500;
+  const armTurns = new WeakMap();
   function armed(btn, label, fire) {
-    if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.classList.remove('armed'); return fire(); }
-    const orig = btn.innerHTML;
-    btn.dataset.armed = '1'; btn.classList.add('armed'); btn.textContent = label;
+    if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.classList.remove('armed'); armTurns.delete(btn); return fire(); }
+    if (btn.dataset.armed === 'wait') return;
+    const orig = btn.innerHTML, turn = {};
+    armTurns.set(btn, turn);
+    btn.dataset.armed = 'wait'; btn.classList.add('armed'); btn.textContent = label;
     announce(`${label}: press again within 5 seconds.`);
-    setTimeout(() => { if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.classList.remove('armed'); btn.innerHTML = orig; } }, 5000);
+    setTimeout(() => { if (armTurns.get(btn) === turn && btn.dataset.armed === 'wait') btn.dataset.armed = '1'; }, ARM_HOLD);
+    setTimeout(() => { if (armTurns.get(btn) === turn && btn.dataset.armed) { btn.dataset.armed = ''; btn.classList.remove('armed'); btn.innerHTML = orig; armTurns.delete(btn); } }, 5000);
+  }
+  // Holding Enter on a button repeats its click: the first arms, a repeat past ARM_HOLD would confirm.
+  // While any confirm is armed, a repeated Enter (not a fresh press) activates nothing.
+  function guardArmedRepeat() {
+    if (!document.addEventListener) return;
+    document.addEventListener('keydown', (e) => {
+      if (!e.repeat || e.key !== 'Enter' || (e.target && e.target.tagName === 'TEXTAREA')) return;
+      if (document.querySelector('[data-armed="1"], [data-armed="wait"]')) e.preventDefault();
+    }, true);
   }
   async function busy(btn, fn) {
     btn.classList.add('busy'); btn.disabled = true;
@@ -3876,10 +3899,12 @@
       amt.addEventListener('input', syncPaper);
       pf.onsubmit = async (e) => {
         e.preventDefault();
-        const btn = pf.querySelector(`[data-kind="${kind}"]`);
-        await busy(btn, async () => {
-          try { await api('/api/funds/paper', { kind, amount: +pf.amount.value }); if (gen !== S.gen) return; const fresh = await refreshed(load()); if (gen === S.gen) flash('#pflash', (kind === 'deposit' ? 'Added to your paper account.' : kind === 'withdraw' ? 'Withdrawn from your paper account.' : 'Paper account reset.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { if (gen === S.gen) flash('#pflash', err.message, 'bad'); }
+        // Reset wipes the paper ledger and history, so it asks first; Add and Withdraw go at once.
+        const k = kind, btn = pf.querySelector(`[data-kind="${k}"]`);
+        const run = () => busy(btn, async () => {
+          try { await api('/api/funds/paper', { kind: k, amount: +pf.amount.value }); if (gen !== S.gen) return; const fresh = await refreshed(load()); if (gen === S.gen) flash('#pflash', (k === 'deposit' ? 'Added to your paper account.' : k === 'withdraw' ? 'Withdrawn from your paper account.' : 'Paper account reset.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { if (gen === S.gen) flash('#pflash', err.message, 'bad'); }
         });
+        return k === 'reset' ? armed(btn, 'Confirm reset', run) : run();
       };
       // The downloaded .key file fills the box, so nobody has to open it in an editor (hard on a phone).
       root.querySelectorAll('[data-keyfile]').forEach((inp) => (inp.onchange = async () => {
@@ -5346,9 +5371,13 @@
       refreshAutopilot(box);
     }
     if (action === 'kill') {
-      if (e && e.target && e.target.dataset.armed !== '1') { e.target.dataset.armed = '1'; e.target.textContent = 'Confirm kill'; setTimeout(() => { if (e.target) { e.target.dataset.armed = ''; e.target.textContent = 'Kill'; } }, 4000); return; }
-      try { const r = await api('/api/autopilot/kill', {}); apFlash(box, `Killed — ${r.paused} live deployment(s) paused.`); } catch (err) { return apFlash(box, err.message, 'bad'); }
-      refreshAutopilot(box);
+      // The shared two-step confirm: its own arming here let a fast double-click kill with no confirm.
+      const btn = e && (e.currentTarget || e.target);
+      if (!btn || !btn.dataset) return;
+      return armed(btn, 'Confirm kill', async () => {
+        try { const r = await api('/api/autopilot/kill', {}); apFlash(box, `Killed — ${r.paused} live deployment(s) paused.`); } catch (err) { return apFlash(box, err.message, 'bad'); }
+        refreshAutopilot(box);
+      });
     }
   }
   async function apEnableLive(box, confirm) {
@@ -5429,10 +5458,14 @@
     const moved = me.credit_balance !== d.balance;
     me.credit_balance = d.balance;
     me.needs_card = !d.default_pm;
+    const reloadWas = JSON.stringify(me.auto_reload || null);
     me.auto_reload = d.auto_reload && d.default_pm ? { amount: Math.max(d.min_reload_amount, d.autoreload_amount),
       charge: d.autoreload_charge, threshold: Math.max(d.min_reload_threshold, d.autoreload_threshold) } : null;
     const box = document.getElementById('autopilot-float');
     if (moved && box && me.user && me.user.autopilot) refreshAutopilot(box);
+    // A changed auto-reload (the user's own save on Billing) repaints the autopilot card's line from
+    // what is already here: no status read needed.
+    else if (reloadWas !== JSON.stringify(me.auto_reload) && box && S.ap) { renderAutopilot(box, S.ap); paintDashAp(); }
   }
   // How long the balance lasts at last week's spend. Research pauses at $0, so autopilot users
   // need this more than the one-time welcome credit.
@@ -5549,8 +5582,13 @@
         arPaint(on, amount, threshold);
         [arBox, arAmt, arThr].forEach((x) => { x.disabled = true; });
         try {
-          await api('/api/billing/auto-reload', { on, amount, threshold });
+          const r = await api('/api/billing/auto-reload', { on, amount, threshold });
           arSaved = { on, amount, threshold };
+          // The autopilot card and the research form read the saved auto-reload from S.me (a Billing read
+          // refreshes it): a save refreshes it too, or they said the old amount until the next read.
+          Object.assign(d, { auto_reload: on, autoreload_amount: amount, autoreload_threshold: threshold },
+            r && r.autoreload_charge != null ? { autoreload_charge: r.autoreload_charge } : {});
+          syncMeBilling(d);
           if (gen === S.gen) flash('#autorel-flash', on ? `On ·\u00a0reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
         } catch (err) { arPaint(arSaved.on, arSaved.amount, arSaved.threshold); if (gen === S.gen) flash('#autorel-flash', err.message, 'bad'); }
         finally { [arBox, arAmt, arThr].forEach((x) => { x.disabled = false; }); }
@@ -5575,9 +5613,9 @@
           flash('#card-flash', '', '');
           let r;
           try { r = await sp.confirmSetup({ elements, redirect: 'if_required', confirmParams: { return_url: location.origin + '/billing', payment_method_data: { billing_details: { address: { country: 'US' } } } } }); }
-          catch (err) { if (gen === S.gen) flash('#card-flash', err.message || 'Could not save the card.', 'bad'); return; }
+          catch (err) { if (gen === S.gen) flash('#card-flash', stripeFail(err), 'bad'); return; }
           if (gen !== S.gen) return;
-          if (r.error) { flash('#card-flash', r.error.message, 'bad'); return; }
+          if (r.error) { flash('#card-flash', stripeFail(r.error), 'bad'); return; }
           try { await api('/api/billing/card-added', { payment_method_id: r.setupIntent.payment_method }); }
           catch (err) { if (gen === S.gen) flash('#card-flash', err.message, 'bad'); return; }
           if (gen !== S.gen) return;
@@ -5678,11 +5716,13 @@
           <td data-lab="Status">${w.status === 'approved' ? '<span class="mk on">Approved</span> <small class="hint">awaiting their sign-in</small>' : 'Requested'}</td>
           <td class="act" data-lab="">${w.status === 'approved' ? '' : `<button class="btn sm" data-wl="approve" data-email="${esc(w.email)}">Approve</button>`}<button class="btn sm danger" data-wl="remove" data-email="${esc(w.email)}">Remove</button></td></tr>`).join('')}</tbody></table></div>`
         : '<p class="hint">No waitlist requests.</p>';
-      root.querySelectorAll('#waitlist [data-wl]').forEach((b) => (b.onclick = async () => {
-        await busy(b, async () => {
+      root.querySelectorAll('#waitlist [data-wl]').forEach((b) => (b.onclick = () => {
+        const run = () => busy(b, async () => {
           try { await api('/api/admin/waitlist', { email: b.dataset.email, action: b.dataset.wl }); if (gen === S.gen) await load(); }
           catch (err) { if (gen === S.gen) alert0(err.message); }
         });
+        // Removing drops the request (and an approved email's way in), so it asks first; Approve goes at once.
+        return b.dataset.wl === 'remove' ? armed(b, 'Confirm remove', run) : run();
       }));
     };
     root.querySelector('#grant').onsubmit = async (e) => {
@@ -5708,12 +5748,14 @@
     root.querySelector('#kill').onsubmit = async (e) => {
       e.preventDefault();
       const btn = root.querySelector('#k-btn');
-      await busy(btn, async () => {
+      const run = () => busy(btn, async () => {
         try {
           const k = await api('/api/admin/kill-switch', { on: !btn.dataset.on, reason: root.querySelector('#k-reason').value.trim() });
           if (gen !== S.gen) return; killShow(k);
         } catch (err) { if (gen === S.gen) flash('#k-flash', err.message, 'bad'); }
       });
+      // Halting goes at once; resuming lets new buys flow again, so it asks first.
+      return btn.dataset.on ? armed(btn, 'Confirm resume', run) : run();
     };
     try { await load(); } catch (err) { if (gen === S.gen) throw err; }
   }
@@ -5911,6 +5953,7 @@
   }
 
   setupAnnouncer();
+  guardArmedRepeat();
   setupGlossary();
   render();
 })();

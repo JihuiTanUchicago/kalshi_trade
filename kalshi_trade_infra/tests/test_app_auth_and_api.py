@@ -1129,3 +1129,15 @@ def test_a_demo_deployment_of_a_strategy_on_paper_is_marked_its_demo_copy():
     assert [server._deployment_out(d, [], paper_sids=sids)["demo_copy"] for d in deps] == [
         False, True, False, False, False, True, False, False]
     assert server._deployment_out(deps[1], [])["demo_copy"] is False  # no paper set given: never guessed
+
+
+def test_saving_auto_reload_returns_what_one_reload_charges(monkeypatch):
+    # The Billing page copies the save onto the autopilot card's line, charge included, without a re-read.
+    saved = []
+    monkeypatch.setattr(server.repo, "get_stripe_customer", lambda cur, uid: {"default_pm_id": "pm_1"})
+    monkeypatch.setattr(server.repo, "set_auto_reload",
+                        lambda cur, uid, on, amount=None, threshold=None: saved.append((on, amount, threshold)))
+    out = server.billing_autoreload(ctx({"on": True, "amount": 50, "threshold": 8}))
+    assert out == {"ok": True, "autoreload_charge": server.billing.topup_charge_cents(saved[0][1]) / 100}
+    assert out["autoreload_charge"] > 50  # the credits plus the purchase fee
+    assert server.billing_autoreload(ctx({"on": False})) == {"ok": True, "autoreload_charge": None}

@@ -80,7 +80,38 @@ USAGE_MARGIN = Decimal(os.getenv("TAU_USAGE_MARGIN", "2"))
 
 
 class StripeError(RuntimeError):
-    pass
+    """A Stripe call that failed. The message is Stripe's own text (or the network error) and is for
+    the server log only: it can name request parameters, object ids and hosts. ``kind``, ``code`` and
+    ``decline_code`` are Stripe's error fields, which customer_message() turns into words a user reads."""
+
+    def __init__(self, message: str, kind: str = "", code: str = "", decline_code: str = ""):
+        super().__init__(message)
+        self.kind, self.code, self.decline_code = kind, code, decline_code
+
+
+# A declined card in the user's words, by Stripe's decline_code or code. Anything not listed reads as a
+# plain decline. Stripe's own message text is never shown.
+_CARD_DECLINE_COPY = {
+    "insufficient_funds": "Your card was declined for insufficient funds. Try another card.",
+    "expired_card": "That card has expired. Add a current card and try again.",
+    "incorrect_cvc": "The card's security code didn't match. Add the card again with the right code.",
+    "invalid_cvc": "The card's security code didn't match. Add the card again with the right code.",
+    "incorrect_number": "The card number isn't right. Add the card again.",
+    "invalid_number": "The card number isn't right. Add the card again.",
+    "card_velocity_exceeded": "Your card is over its spending limit for now. Try another card, or ask your bank.",
+    "authentication_required": "Your bank wants to approve this charge itself, which can't be done here. "
+                               "Try another card.",
+    "processing_error": "The card couldn't be processed just now. Try again in a minute.",
+}
+CARD_DECLINED = "Your card was declined. Try another card, or ask your bank why."
+
+
+def customer_message(e: StripeError, fallback: str) -> str:
+    """What a user reads for a failed Stripe call: a declined card in plain words, anything else (an
+    outage, a stale id, a bad request) the caller's ``fallback`` saying what to do next."""
+    if e.kind == "card_error":
+        return _CARD_DECLINE_COPY.get(e.decline_code) or _CARD_DECLINE_COPY.get(e.code) or CARD_DECLINED
+    return fallback
 
 
 def configured() -> bool:
@@ -192,7 +223,8 @@ def _stripe(method: str, path: str, params: Optional[Dict] = None, idempotency_k
     body = resp.json() if resp.content else {}
     if resp.status_code >= 400:
         err = (body.get("error") or {})
-        raise StripeError(err.get("message") or "Stripe error %s" % resp.status_code)
+        raise StripeError(err.get("message") or "Stripe error %s" % resp.status_code, kind=err.get("type") or "",
+                          code=err.get("code") or "", decline_code=err.get("decline_code") or "")
     return body
 
 

@@ -82,7 +82,9 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     await f.viewStrategy(42); await settle();
     const stop = f.root.querySelector('#stop-dep');
     assert.ok(stop, 'the strategy page offers Stop deployment');
-    stop.onclick(); stop.onclick(); await settle();  // arm, then confirm
+    stop.onclick(); stop.onclick(); await settle();  // a double-click arms; its second click does not confirm
+    assert.equal(stopped, 0); assert.equal(stop.textContent, 'Confirm stop');
+    f.elapse(500); stop.onclick(); await settle();  // a deliberate second press confirms
     assert.equal(stopped, 1);
     const main = f.root.querySelector('main').innerHTML;
     assert.match(main, /class="notice good"[\s\S]*Deployment stopped\. The page didn’t refresh, so reload to see it\./);
