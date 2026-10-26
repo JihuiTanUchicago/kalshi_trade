@@ -34,6 +34,7 @@ from urllib.parse import urlparse
 import requests
 
 from app import repository as repo
+from app.execution.refusal import OrderRefused, definite_refusal
 from data_pipeline.architecture.execution_kernel import order_wire_params
 from data_pipeline.common import KalshiCredentials, kalshi_auth_headers
 
@@ -121,7 +122,13 @@ def demo_place_limit_order(
     _t2 = time.perf_counter()
     timing = {"sign_ms": (_t1 - _t0) * 1000.0, "net_ms": (_t2 - _t1) * 1000.0, "http_status": resp.status_code}
     if resp.status_code >= 400:
-        raise RuntimeError("demo POST %s failed %d: %s" % (_ORDER_ENDPOINT, resp.status_code, resp.text[:400]))
+        message = "demo POST %s failed %d: %s" % (_ORDER_ENDPOINT, resp.status_code, resp.text[:400])
+        # A definite refusal (no order created, e.g. insufficient_balance) says so, so the engine can
+        # settle its intent as unfilled; anything else (5xx, 409, 429, ...) stays an unknown outcome.
+        refusal = definite_refusal(resp.status_code, resp.text, client_order_id)
+        if refusal is not None:
+            raise OrderRefused(message, refusal)
+        raise RuntimeError(message)
     return {"client_order_id": client_order_id, "body": body, "resp": resp.json(), "timing": timing}
 
 
@@ -246,9 +253,10 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
 
     `ws_feed` (the shared WsTickerFeed) makes pricing read the live websocket book first with REST
     as the freshness backstop (P1-1); None => REST-only, as before. Demo places REAL sandbox orders,
-    so it passes the SAME process-wide execution guards as live (P1-3) — the two must never drift."""
+    so it passes the same execution guards as live (P1-3), with the same limits and kill switch, on
+    an instance of its own: a refused demo order never opens live's circuit breaker."""
     from app import kalshi_account
-    from app.execution import guarded_submitter, timed_submitter
+    from app.execution import demo_guarded_submitter, timed_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.architecture.position_guard import position_guarded_submitter
     from data_pipeline.market_data import MarketFeed
@@ -262,7 +270,7 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
             return None
         creds = kalshi_account.credentials_from_row(user_id, row)
         return MarketableLimitKernel(
-            timed_submitter(guarded_submitter(position_guarded_submitter(
+            timed_submitter(demo_guarded_submitter(position_guarded_submitter(
                 demo_order_submitter(creds), demo_net_reader(creds))), mode="demo"), feed,
             entry_cross_ticks=int(os.getenv("KALSHI_ENTRY_CROSS_TICKS", "2")),
             exit_cross_ticks=int(os.getenv("KALSHI_EXIT_CROSS_TICKS", "2")),

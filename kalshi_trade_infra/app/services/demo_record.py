@@ -86,6 +86,18 @@ def persisted_mismatches(sweeps: List[Dict]) -> List[str]:
     return sorted(out)
 
 
+def refusal_reason(refusal: Optional[Dict]) -> str:
+    """One plain phrase for why the demo exchange refused an order (a stored refusal record)."""
+    r = refusal or {}
+    code, status = str(r.get("code") or ""), r.get("http_status")
+    if code == "insufficient_balance":
+        return "the Kalshi demo account doesn't have enough balance; add demo funds on Kalshi's demo site"
+    if status in (401, 403):
+        return "it didn't accept the demo key; check the Kalshi demo key on the Funds page"
+    said = r.get("message") or code or ("HTTP %s" % status if status else "")
+    return "Kalshi said: %s" % said if said else "no reason given"
+
+
 def demo_evidence(cur, user_id: int, strategy_id: int, now=None) -> Dict:
     """The demo check of the live gate for one strategy: `ok`, the refusal `why`, and its numbers."""
     now = now or repo.now_utc()
@@ -93,9 +105,18 @@ def demo_evidence(cur, user_id: int, strategy_id: int, now=None) -> Dict:
     sweeps = repo.demo_sweeps_since(cur, user_id, orders["first_at"]) if orders["first_at"] else []
     persisted = persisted_mismatches(sweeps)
     last = sweeps[-1]["checked_at"] if sweeps else None
-    if orders["resolved"] < DEMO_ORDERS_FOR_LIVE:
+    refused = int(orders.get("refused") or 0)
+    if refused and not orders.get("booked"):
+        # Demo never traded: every order the exchange answered was refused. Say so, and why, rather
+        # than let the refusals read as settled orders or as orders the app lost.
+        why = ("it couldn't trade on the demo exchange yet: Kalshi refused its %d demo order%s (%s)"
+               % (refused, "" if refused == 1 else "s", refusal_reason(orders.get("last_refusal"))))
+    elif orders["resolved"] < DEMO_ORDERS_FOR_LIVE:
         why = ("it needs %d+ settled orders on the demo exchange first, to prove the real order path "
                "(has %d)" % (DEMO_ORDERS_FOR_LIVE, orders["resolved"]))
+        if refused:
+            why += "; %d more %s refused by Kalshi (%s)" % (
+                refused, "was" if refused == 1 else "were", refusal_reason(orders.get("last_refusal")))
     elif orders["unresolved"]:
         why = ("%d of its demo orders were never accounted for (still unsettled an hour after sending)"
                % orders["unresolved"])
@@ -109,6 +130,6 @@ def demo_evidence(cur, user_id: int, strategy_id: int, now=None) -> Dict:
     return {
         "ok": not why, "why": why,
         "orders": orders["resolved"], "orders_needed": DEMO_ORDERS_FOR_LIVE,
-        "unresolved": orders["unresolved"], "mismatched_tickers": persisted,
+        "unresolved": orders["unresolved"], "refused": refused, "mismatched_tickers": persisted,
         "last_check_at": last.isoformat() if last else None,
     }

@@ -19,9 +19,10 @@ the kernel already handles (a missed entry costs nothing).
                     first success closes it again.
 
 All limits are env-tunable; the numeric ones are read once at construction, the kill switch
-every call. The guard is a single process-wide instance (counters/breaker are global state)
-protected by one lock — the submitter is called from the single engine tick thread, the lock
-is just belt-and-braces. ponytail: global lock, fine until the engine goes multi-threaded.
+every call. Live's guard is a single process-wide instance (counters/breaker are global state);
+demo has its own, with the same limits and the same kill switch (``demo_guarded_submitter``), so
+one venue's errors never open the other's breaker. Each is protected by one lock — the submitter
+is called from the single engine tick thread, the lock is just belt-and-braces. ponytail: global lock, fine until the engine goes multi-threaded.
 """
 from __future__ import annotations
 
@@ -174,6 +175,27 @@ _GUARD = ExecutionGuard(
 def guarded_submitter(submit: Callable[..., dict]) -> Callable[..., dict]:
     """Wrap a kernel submitter with the process-wide execution guards (P1-3)."""
     return _GUARD.wrap(submit)
+
+
+# Demo (Kalshi's sandbox) has a guard of its own with the same limits, so demo's errors never open
+# live's breaker: an empty demo account has every order refused, and those refusals used to count
+# toward the one breaker live shares, blocking every live BUY for its cooldown. Its rate limit and
+# breaker count demo orders only. The kill switch stays one switch: the same env flag and the same
+# DB switch instance (one cached read) halt BUYS on both.
+_DEMO_GUARD = ExecutionGuard(
+    max_qty=_env_int("APP_EXEC_MAX_QTY", 10000),
+    max_notional=_env_float("APP_EXEC_MAX_NOTIONAL", 5000.0),
+    rate_limit=_env_int("APP_EXEC_RATE_LIMIT", 30),
+    rate_window_s=_env_float("APP_EXEC_RATE_WINDOW_SECONDS", 10.0),
+    breaker_errors=_env_int("APP_EXEC_BREAKER_ERRORS", 5),
+    breaker_cooldown_s=_env_float("APP_EXEC_BREAKER_COOLDOWN_SECONDS", 30.0),
+    db_switch=_GUARD._db_switch,
+)
+
+
+def demo_guarded_submitter(submit: Callable[..., dict]) -> Callable[..., dict]:
+    """Wrap a DEMO kernel submitter with demo's own execution guards (live's limits, its own counters)."""
+    return _DEMO_GUARD.wrap(submit)
 
 
 if __name__ == "__main__":  # self-check: the four gates, and that sells always pass

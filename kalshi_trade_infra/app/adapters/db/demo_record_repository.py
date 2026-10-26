@@ -70,16 +70,23 @@ def demo_sweeps_since(cur, user_id: int, since: Optional[datetime]) -> List[Dict
 def demo_order_outcomes(cur, user_id: int, strategy_id: int, stale_before: datetime) -> Dict:
     """A strategy's demo orders across all its demo deployments: how many settled (booked or
     unfilled), how many were never accounted for (any other status, older than `stale_before`),
-    and when the first one was sent."""
+    and when the first one was sent. An order the demo exchange refused outright (settled
+    'unfilled' with the refusal stored, see engine._settle_refused_intent) never reached the order
+    book, so it is counted apart (`refused`, with the latest refusal) and never as a settled order."""
     cur.execute(
-        """SELECT i.status, i.created_at FROM app_order_intents i
+        """SELECT i.status, i.created_at, JSON_EXTRACT(i.raw_json, '$.refused') AS refused
+           FROM app_order_intents i
            JOIN app_deployments d ON d.id=i.deployment_id
-           WHERE i.user_id=%s AND i.mode='demo' AND d.strategy_id=%s""",
+           WHERE i.user_id=%s AND i.mode='demo' AND d.strategy_id=%s
+           ORDER BY i.created_at""",
         (user_id, strategy_id),
     )
     rows = cur.fetchall()
-    resolved = sum(1 for r in rows if r["status"] in RESOLVED_INTENT_STATUSES)
+    refusals = [_loads(r["refused"]) for r in rows if r["status"] == "unfilled" and r.get("refused") is not None]
+    resolved = sum(1 for r in rows if r["status"] in RESOLVED_INTENT_STATUSES) - len(refusals)
     unresolved = sum(1 for r in rows if r["status"] not in RESOLVED_INTENT_STATUSES
                      and r["created_at"] < stale_before)
     first = min((r["created_at"] for r in rows), default=None)
-    return {"resolved": resolved, "unresolved": unresolved, "first_at": first}
+    return {"resolved": resolved, "unresolved": unresolved, "first_at": first,
+            "booked": sum(1 for r in rows if r["status"] == "booked"),
+            "refused": len(refusals), "last_refusal": refusals[-1] if refusals else None}
