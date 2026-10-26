@@ -374,30 +374,42 @@ def paper_pace(dep: Dict, trips: int, now=None) -> Optional[Dict]:
     return {"expected": round(expected, 1), "hours": round(hours, 1), "p": round(p, 4), "behind": behind}
 
 
-def paper_eta_days(dep: Dict, trips: int, now=None, events: Optional[int] = None) -> Optional[float]:
-    """Days until this paper strategy could have the record the live gate counts (enough realistic
-    trips, separate events and hours of record) at the pace it trades: its own paper pace once it
-    has 3+ trips, else its research pace. Events count only once it has traded (research has no
-    event pace), so before that this is a lower bound. Says nothing about whether it will be up by
-    then. None without a pace."""
+def paper_trade_rate(dep: Dict, trips: int, now=None) -> Optional[Dict]:
+    """The pace `paper_eta_days` counts on: {"per_day", "source", "hours"}, its own paper trades a day
+    once it has 3+ trips ("paper"), else its research pace ("research"); `hours` since this deployment
+    was created. None without a pace."""
     from datetime import datetime, timezone
-    from app import agent
     created = dep.get("created_at")
     if not isinstance(created, datetime):
         return None
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     hours = max(0.0, (now - created.replace(tzinfo=None)).total_seconds() / 3600.0)
     if trips >= 3 and hours > 0:
-        per_day = trips / hours * 24.0
+        per_day, source = trips / hours * 24.0, "paper"
     else:
-        per_day = float(((dep.get("result") or {}).get("in_sample") or {}).get("trades_per_day") or 0)
-    if per_day <= 0:
+        per_day, source = float(((dep.get("result") or {}).get("in_sample") or {}).get("trades_per_day") or 0), "research"
+    return {"per_day": per_day, "source": source, "hours": hours} if per_day > 0 else None
+
+
+def paper_eta_days(dep: Dict, trips: int, now=None, events: Optional[int] = None,
+                   span_hours: Optional[float] = None) -> Optional[float]:
+    """Days until this paper strategy could have the record the live gate counts (enough realistic
+    trips, separate events and hours of record) at the pace it trades: its own paper pace once it
+    has 3+ trips, else its research pace. Events count only once it has traded (research has no
+    event pace), so before that this is a lower bound. Says nothing about whether it will be up by
+    then. None without a pace. `span_hours` (first trade to last, as the gate measures it) replaces
+    the deployment's age in the hours term when the caller has it."""
+    from app import agent
+    rate = paper_trade_rate(dep, trips, now)
+    if rate is None:
         return None
+    hours, per_day = rate["hours"], rate["per_day"]
     days = max(0, agent.MIN_REALISTIC_PAPER_TRADES - int(trips)) / per_day
     if trips >= 3 and hours > 0 and events:
         # Strikes of one event are one bet: Todd's rain #78 had 11 trips in 17.7h but 2 events.
         days = max(days, max(0, agent.MIN_PAPER_EVENTS - int(events)) / (events / hours * 24.0))
-    return round(max(days, max(0.0, agent.MIN_PAPER_SPAN_HOURS - hours) / 24.0), 1)
+    span = hours if span_hours is None else float(span_hours)
+    return round(max(days, max(0.0, agent.MIN_PAPER_SPAN_HOURS - span) / 24.0), 1)
 
 
 def _paper_rollup(rows: List[Dict]) -> Dict:

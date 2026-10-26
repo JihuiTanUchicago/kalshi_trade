@@ -76,12 +76,14 @@ def test_the_dashboard_and_deploy_board_carry_each_trades_reason_without_another
     import app.server as server
 
     server._BACKTEST_CHECKS.clear()
+    server._ROADS.clear()
     bare = _call(name, 10.0, extra=_board_rows())
     out = {}
     real = getattr(server, name)
     try:
         setattr(server, name, lambda ctx: out.update(real(ctx)))
         server._BACKTEST_CHECKS.clear()
+        server._ROADS.clear()
         log = _call(name, 10.0, extra=dict(_board_rows(), **_positions(5, 99)))
     finally:
         setattr(server, name, real)

@@ -240,6 +240,31 @@ def paper_progress(cur, user_id: int, strategy_ids: List[int], ref_prefix: str =
     return {int(r["strategy_id"]): (int(r["trips"] or 0), float(r["pnl"] or 0)) for r in cur.fetchall()}
 
 
+def paper_round_trips_by_strategy(cur, user_id: int, strategy_ids: List[int], ref_prefix: str = "sim:") -> Dict[int, List[Dict]]:
+    """{strategy_id: its closed realistic paper round trips}, each list exactly what
+    `paper_round_trips` returns for that strategy (one row per order_ref, still-open slices left out,
+    oldest first), for several strategies in one read through idx_pos_dep. A display readout (the
+    Deploy board's road to live); the live gate keeps calling paper_round_trips."""
+    if not strategy_ids:
+        return {}
+    marks = ",".join(["%s"] * len(strategy_ids))
+    cur.execute(
+        """SELECT d.strategy_id, p.order_ref, SUM(p.pnl) AS pnl, MIN(p.opened_at) AS opened_at,
+                  MAX(p.closed_at) AS closed_at, MAX(p.ticker) AS ticker
+           FROM """ + _PAPER_SOURCE + """
+           WHERE p.user_id=%s AND p.mode='paper' AND p.order_ref LIKE %s AND d.strategy_id IN (""" + marks + """)
+           GROUP BY d.strategy_id, p.order_ref
+           HAVING SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END)=0
+           ORDER BY d.strategy_id, MIN(p.opened_at)""",
+        (user_id, ref_prefix + "%", *strategy_ids),
+    )
+    out: Dict[int, List[Dict]] = {}
+    for r in cur.fetchall():
+        out.setdefault(int(r["strategy_id"]), []).append(
+            {"pnl": float(r["pnl"] or 0), "opened_at": r["opened_at"], "closed_at": r["closed_at"], "ticker": r.get("ticker")})
+    return out
+
+
 def book_trade_stats(cur, user_id: int, strategy_ids: List[int], ref_prefix: str = "sim:") -> Dict[int, Dict[str, Dict]]:
     """{strategy_id: {mode: {trades, pnl, pnl_sq, wins, cost}}} over each strategy's completed round
     trips, one book (mode) at a time and never summed across books, for the backtest comparison

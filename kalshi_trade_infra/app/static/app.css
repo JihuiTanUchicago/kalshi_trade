@@ -1921,9 +1921,9 @@ body.landing-body .apf { display: none; }
   .since-row dt { font-size: 12px; }
   .since-book { white-space: normal; }
 }
-/* A book's line against its backtest (btCheckLine): wraps under the deployment's name, full width
-   in a phone card, and never splits a signed amount. */
-.t-dep tbody td.name .bt-check.sub-fig, .real-record .bt-check { white-space: normal; flex: 1 0 100%; }
+/* A book's line against its backtest (btCheckLine) and a paper row's road to live (roadLine): each
+   wraps under the deployment's name, full width in a phone card, and never splits a signed amount. */
+.t-dep tbody td.name .bt-check.sub-fig, .t-dep tbody td.name .road-line.sub-fig, .real-record .bt-check { white-space: normal; flex: 1 0 100%; }
 .bt-check .amt { white-space: nowrap; }
 
 /* New users: the finished example session, one tap from the dashboard and Research. */

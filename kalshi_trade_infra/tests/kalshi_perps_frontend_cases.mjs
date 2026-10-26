@@ -387,24 +387,87 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(both, /<span class="mk ">Paper<\/span> running ·\u00a014 closed trades ·\u00a0(?:<span[^>]*>)?\+\$4\.40/);
     assert.match(both, /<span class="mk dep">Demo<\/span> running ·\u00a05 closed trades ·\u00a0(?:<span[^>]*>)?−\$1\.20/);
     assert.doesNotMatch(both, /19 closed|\$3\.20|\$5\.60/);  // what a sum across books would read
-    assert.match(both, /Next rung, live: blocked because it needs 30\+ closed paper trades on realistic fills first \(has 12\)\./);
+    // The live rung counts what is left and names the first, with its denominator (never the server's lone first refusal).
+    assert.match(both, /Next rung, live: 3 checks left, first 18 more paper trades \(12 of 30\)\./);
     assert.ok(both.indexOf('Paper</span>') < both.indexOf('Demo</span>'), 'books run up the ladder in order');
     // Without Road to live data the live rung is left out, not guessed.
     const noRoad = await ladder({deployments: [d(1, 'paper', 12, 3.4), d(2, 'demo', 5, -1.2)]}, null);
     assert.match(noRoad, /Demo<\/span> running/); assert.doesNotMatch(noRoad, /Next rung/);
     const unvalidated = await ladder({status: 'failed', deployments: [d(2, 'demo', 5, -1.2)]}, readiness);
     assert.doesNotMatch(unvalidated, /Next rung, live/);
-    assert.match(await ladder({deployments: [d(2, 'demo', 5, -1.2)]}, {...readiness, ready: true}), /Next rung, live: every gate is clear\./);
+    const clear = {...readiness, ready: false, blocking: 'autopilot is off', paper: {...readiness.paper, ready: true, why: ''}};
+    // A record that clears every check is clear whether or not live autopilot is on (the user can deploy it
+    // live by hand), and the line never says it goes live by itself.
+    for (const road of [clear, {...clear, ready: true, blocking: '', live_autopilot: {ok: true}}]) {
+      const line = await ladder({deployments: [d(2, 'demo', 5, -1.2)]}, road);
+      assert.match(line, /Next rung, live: its record clears every check\. It trades live money only once you deploy it there\./);
+      assert.doesNotMatch(line, /autopilot is off/);
+    }
     // Paper only: the next rung is demo, and it names the missing demo key.
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness, {kalshi_dev_connected: false}),
       /Paper<\/span> running ·\u00a00 closed trades[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /Next rung, demo: nothing needed/);
-    // Nothing running yet; a paused book is not running.
+    // A paused book is still on its rung and says paused: deploying it there again would double its positions.
     const idle = await ladder({deployments: [d(1, 'paper', 2, 1, 'paused')]}, readiness);
-    assert.doesNotMatch(idle, /running/); assert.match(idle, /Next rung, paper: nothing needed/);
+    assert.doesNotMatch(idle, /running/); assert.match(idle, /Paper<\/span> paused ·\u00a02 closed trades/);
+    assert.doesNotMatch(idle, /Next rung, paper/); assert.match(idle, /Next rung, demo/);
     assert.match(await ladder({deployments: [d(1, 'paper', 1, 1), d(4, 'live', 3, 0.5)]}, readiness), /Live<\/span> running ·\u00a03 closed trades[\s\S]*Top rung: it trades live money\./);
     // Research-only strategies have no ladder at all.
     assert.equal(await ladder({research_only: true, deployments: [d(1, 'paper', 1, 1)]}, readiness), null);
+  });
+
+  test(`${name}: Road to live says how many checks are left, when the counts could be in, and that live money takes the user's step`, async () => {
+    const d = (id, mode, status = 'running') => ({id, mode, status, closed_trades: 12, realized_pnl: 3, open_positions: 0, stake: 5, created_at: '2026-10-20T08:00:00Z'});
+    const paper = {ready: false, why: 'it needs 30+ closed paper trades on realistic fills first (has 12)', trades: 12, trades_needed: 30, net_pnl: 3.1,
+      events: 10, events_needed: 20, span_hours: 27.2, span_needed_hours: 48, p_value: null, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 1.8,
+      realization: null, demo_orders: 0, demo_orders_needed: 20, demo_unresolved: 0, demo_mismatched_tickers: [],
+      checks: {legacy_trades: true, legacy_pnl: true, realistic_trades: false, events: false, net_pnl: true, span: false, edge: false, recent: true, demo: false}};
+    const base = {ready: false, blocking: paper.why, deployment_candidate: true, live_autopilot: {ok: false, why: 'autopilot is off'}, paper,
+      pace: {running: true, eta_days: 1.9, trades_per_day: 9.6, rate_from: 'paper'}};
+    const road = async (r, deployments = [d(1, 'paper')]) => {
+      const f = strategyFrontend(detailStrategy({deployments}), path => path === '/api/strategies/42/live-readiness' ? response(r) : response({}));
+      await f.viewStrategy(42); await flush(); await flush();
+      const el = f.root.querySelector('#road-live-body');
+      f.clearTimers && f.clearTimers();
+      return el.innerHTML;
+    };
+    const under = await road(base);
+    assert.match(under, /<b>5 of 8 checks left<\/b> before it may trade real money: 18 more paper trades \(12 of 30\); 10 more events \(10 of 20\); 21h more of record \(27h of 48h\); the edge test[^;]*; 20 more demo orders \(0 of 20\) on a demo deployment\./);
+    assert.match(under, /At its paper pace \(about 10 trades a day\), it could have the trades, events and hours in <b>about 2 days<\/b>\. The P&amp;L, edge and demo checks are judged on that record, and it may not pass them\./);
+    assert.match(under, /10 \/ 20/); assert.match(under, /27h \/ 48h/);  // every count has its denominator
+    // Live autopilot is a way live money may be reached, not a check on the strategy; real money is never automatic.
+    assert.doesNotMatch(under, /Live autopilot<|Blocked: autopilot is off/);
+    assert.match(under, /never starts real money by itself: you deploy it with live money and type LIVE\./);
+    // A p of 0.104 never reads as the 0.10 it is measured against.
+    const near = await road({...base, paper: {...paper, trades: 40, events: 30, span_hours: 110, p_value: 0.104,
+      checks: {...paper.checks, realistic_trades: true, events: true, span: true}}});
+    assert.match(near, /2 of 8 checks left<\/b>[^<]*a clearer edge \(p 0\.104, needs 0\.10 or lower\)/); assert.doesNotMatch(near, />0\.10</);
+    assert.doesNotMatch(near, /road-eta/);  // the counts are in, so no estimate for them
+    // A paused or stopped record isn't growing, so there is no estimate; it says what to do.
+    assert.match(await road({...base, pace: {running: false}}, [d(1, 'paper', 'paused')]), /paused, so its record isn’t growing\. <a href="\/deploy">Resume it on Deploy<\/a>/);
+    assert.match(await road({...base, pace: {running: false}}, []), /isn’t running on paper[^.]*\. Its 12 earlier paper trades still count\./);
+    // Every check clear while live autopilot is off: clear, still paper, and live is the user's own step.
+    const all = Object.fromEntries(Object.keys(paper.checks).map((k) => [k, true]));
+    const clear = await road({...base, blocking: 'autopilot is off', paper: {...paper, ready: true, why: '', p_value: 0.0004, checks: all}});
+    assert.match(clear, /<b>Its record clears every check\.<\/b> It still trades paper money only\./);
+    assert.match(clear, /under 0\.001/); assert.doesNotMatch(clear, /checks? left|autopilot is off/);
+  });
+
+  test(`${name}: a paper row on Deploy says how far its strategy is toward live and when the counts could be in`, async () => {
+    const dep = (id, road, status = 'running') => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: road ? 'paper' : 'demo', status, status_reason: null,
+      realized_pnl: 0, closed_trades: 12, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}, road});
+    const r = {trades: 12, trades_needed: 30, events: 10, events_needed: 20, span_hours: 50.2, span_needed_hours: 48, running: true, eta_days: 1.9, trades_per_day: 9.6, rate_from: 'paper'};
+    const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [
+      dep(1, r), dep(2, {...r, running: false, eta_days: null}, 'paused'), dep(3, {...r, trades: 40, events: 30, failing: ['edge', 'demo']}),
+      dep(4, {...r, trades: 40, events: 30, failing: []}), dep(5, null)], open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const lines = f.root.querySelectorAll('.road-line').map((el) => el.innerHTML.replace(/ /g, ' '));
+    f.clearTimers && f.clearTimers();
+    assert.equal(lines.length, 4, 'paper rows only');
+    assert.ok(lines.includes('Toward live: 12/30 trades · 10/20 events · enough in about 2 days at its pace'), lines.join('\n'));
+    assert.ok(lines.includes('Toward live: 12/30 trades · 10/20 events · paused, so not growing'));
+    assert.ok(lines.includes('Toward live: trades, events and hours are in; 2 checks left: edge, demo record'));
+    assert.ok(lines.includes('Toward live: its record clears every check. Live money only if you deploy it there'));
   });
 
   // The server's demo health: what stops the demo book, in one plain line, and the one thing to do.

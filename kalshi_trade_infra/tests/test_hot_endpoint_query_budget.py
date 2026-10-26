@@ -45,7 +45,9 @@ from app import billing, engine, server
 BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 13}  # dashboard: the trades CSV counts ride the realized-P&L pass
 # The Deploy board polls /api/deployments every 10s; /api/strategies/<id> is the strategy page. Both
 # counted cold: the per-book backtest comparison is read once a minute, and these requests include it.
-BUDGET.update({"list_deployments": 6, "get_strategy": 6})
+# The board's 7th is each paper strategy's record toward the live check (one read for all of them,
+# cached 30s), so a paper row says how far it is and when the counts could be in.
+BUDGET.update({"list_deployments": 7, "get_strategy": 6})
 # The track record (cached a minute per user; a returning user pays it cold) and the Strategies page.
 BUDGET.update({"get_track_record": 2, "list_strategies": 3})
 # The trades download (user-clicked, not polled): the mode's closed trades, then their strategies once.
@@ -158,6 +160,7 @@ def _board_rows():
 @pytest.mark.parametrize("name,kw", [("list_deployments", {}), ("get_strategy", {"params": ("9",)})])
 def test_the_deploy_board_and_strategy_page_stay_in_their_query_budget(production, name, kw):
     server._BACKTEST_CHECKS.clear()
+    server._ROADS.clear()
     log = _call(name, 10.0, extra=_board_rows(), **kw)
     repeats = sorted({s for s in log if log.count(s) > 1})
     assert not repeats, "%s read the same thing twice in one request: %s" % (name, repeats)
