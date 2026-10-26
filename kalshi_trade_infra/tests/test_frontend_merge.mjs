@@ -8,6 +8,7 @@ import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
+import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
@@ -199,6 +200,7 @@ deployActionCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, post
 stopReasonCases({name: 'Tau', frontend});
 trustGlitchCases({name: 'Tau', frontend});
 bellCases({name: 'Tau', frontend});
+communityCases({name: 'Tau', frontend});
 researchPollCases({name: 'Tau', frontend});
 runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend});
@@ -4446,6 +4448,7 @@ test('Community: Post and Share my P&L send once while either is out, and a fail
   }});
   await f.viewCommunity(); await flush();
   const form = f.root.querySelector('#composer-post'), share = form.querySelector('[data-share="pnl"]'), postBtn = form.querySelector('[type=submit]');
+  share.onclick(); f.elapse(500);  // Share my P&L asks first (community_frontend_cases.mjs); the second press sends
   const first = share.onclick(); await flush();
   assert.deepEqual([share.disabled, postBtn.disabled], [true, true]);
   await share.onclick(); form.onsubmit({preventDefault() {}}); await flush();

@@ -1381,6 +1381,9 @@ body.landing-body { background: #FBFBFA; }
 .post-tools select { width: 100%; min-height: 34px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
 .post-tools .btn { min-height: 34px; margin: 0; padding: 6px 8px; font-size: 12px; white-space: nowrap; }
 .post-tools .btn[type="submit"] { margin-left: auto; padding-inline: 14px; }
+/* Share my P&L sits at its own width in the wide column: its armed confirm was a full-width red bar. */
+.post-tools [data-share] { justify-self: start; }
+.post-hint { margin: 0; }
 #feed { display: grid; gap: 0; margin-top: 0; padding-bottom: 6px; }
 .cmt .when { color: var(--ink-3); font-size: 13px; line-height: 18px; }
 .cmt .when { margin-left: 6px; }

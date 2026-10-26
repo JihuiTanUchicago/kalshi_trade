@@ -1391,6 +1391,10 @@ body.landing-body { background: #FBFBFA; }
 .post-tools > .post-strat-f { flex: 1 1 160px; min-width: 0; }
 .post-tools .btn { margin-left: auto; }
 .post-tools .btn + .btn { margin-left: 8px; }
+/* Who reads a post and what a share shows. On a phone the pinned composer shows it once there is a
+   post to send (a draft, an attached strategy, or Share my P&L asking), so the feed keeps its room; it
+   never comes or goes on focus, which moved the buttons between press and release. */
+.post-hint { margin: 0; }
 #feed { display: grid; gap: 0; margin-top: 18px; }
 /* Slack-style message row: avatar gutter + content column. No hover highlight; actions live
    in the bottom-left row. Grouped posts are tight continuations of the author above. */
@@ -1539,7 +1543,7 @@ a.snap:hover { border-color: var(--ink-3); }
 /* A reply or an edit that didn't send says so under its own box. */
 .form-flash:not(:empty) { margin-top: 8px; }
 .cmt-form .input { min-height: 38px; }
-@media (max-width: 680px) { .post-tools .btn { margin-left: 0; } }
+@media (max-width: 680px) { .post-tools .btn { margin-left: 0; } .composer-post:has(textarea:placeholder-shown):has(#post-strat option[value=""]:checked):not(:has(.armed)) .post-hint { display: none; } }
 
 /* ===== app fixes for Tau markup on Kursbuch ===== */
 .wordmark a { display: inline-flex; align-items: center; gap: 7px; }

@@ -526,7 +526,10 @@
   }
   // Signed out on a deep link: carry the page through Google sign-in (/auth/google?next=, checked by
   // the server) so the visitor lands back on it instead of on the dashboard.
-  const signinPath = () => /^\/(?:|signin|dashboard)$/.test(location.pathname) ? '/signin' : '/signin?next=' + encodeURIComponent(location.pathname + location.search);
+  // A post link (/community#post-<id>, from the bell or an email) carries its post as ?post=<id>: the
+  // server takes no #fragment back from sign-in, and the feed opens either one.
+  const linkedPostQuery = () => { const m = location.pathname === '/community' && /^#post-(\d+)$/.exec(location.hash || ''); return m ? '?post=' + m[1] : location.search; };
+  const signinPath = () => /^\/(?:|signin|dashboard)$/.test(location.pathname) ? '/signin' : '/signin?next=' + encodeURIComponent(location.pathname + linkedPostQuery());
   const signinNext = () => { const n = new URLSearchParams(location.search).get('next'); return n && n[0] === '/' && n[1] !== '/' ? '?next=' + encodeURIComponent(n) : ''; };
   function go(path, replace) {
     if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path);
@@ -4544,7 +4547,7 @@
       </div>
         <details class="community-compose"><summary>New post ${ICON.chev}</summary>
         <form class="panel composer-post" id="composer-post" aria-label="New post">
-          <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" placeholder="Write a post…"></textarea>
+          <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" aria-describedby="post-hint" placeholder="Write a post…"></textarea>
           <div id="photo-preview" hidden><img id="photo-img" alt="Attached photo preview"><button type="button" class="photo-x" id="photo-remove" aria-label="Remove photo">${ICON.cross}</button></div>
           <div class="post-tools">
             <button class="btn sm" type="button" id="photo-btn">${ICON.image}Photo</button>
@@ -4554,6 +4557,7 @@
             <button class="btn sm" type="button" data-share="pnl">${ICON.up}Share my P&amp;L</button>
             <button class="btn primary sm" type="submit">Post</button>
           </div>
+          <p class="hint post-hint" id="post-hint">Everyone signed in to Tau can read posts and replies. An attached strategy shows its name, market and backtest result, never its rules. Share my P&amp;L posts your paper and live (real money) totals.</p>
           <div id="post-flash"></div>
         </form>
         </details>
@@ -4606,7 +4610,9 @@
       } finally { other.disabled = false; }
     };
     form.onsubmit = (e) => { e.preventDefault(); const ref = root.querySelector('#post-strat').value; submit(ref ? 'strategy' : 'note', ref || undefined); };
-    form.querySelector('[data-share="pnl"]').onclick = () => submit('pnl');
+    // Share my P&L puts real-money figures in front of everyone: the first press asks, a second posts.
+    const shareBtn = form.querySelector('[data-share="pnl"]'), shareHtml = shareBtn.innerHTML;
+    shareBtn.onclick = () => armed(shareBtn, 'Confirm: post P&L', () => { shareBtn.innerHTML = shareHtml; return submit('pnl'); });
     const feed = root.querySelector('#feed');
     const renderReactions = (art, list) => { art.querySelector('.reactions').innerHTML = reactionChips(list); };
     // One reaction at a time per post: each send toggles, so a double tap took it straight back off.
@@ -4734,7 +4740,7 @@
     // replies open. One older than the newest page shows the feed from it, with a way back to the
     // latest; one that is gone says so, instead of a feed with no sign of what the notice meant.
     async function openLinkedPost() {
-      const m = /^#post-(\d+)$/.exec(location.hash), gen = S.gen;
+      const m = /^#post-(\d+)$/.exec(location.hash || '') || /^\?post=(\d+)$/.exec(location.search || ''), gen = S.gen;
       if (!m) return;
       const pid = m[1], find = () => feed.querySelector(`.post[data-id="${pid}"]`);
       if (!find()) {
