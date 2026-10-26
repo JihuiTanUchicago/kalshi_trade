@@ -39,7 +39,7 @@ from app.adapters.llm import models_catalog as catalog
 from app import repository as repo
 from app.research import research_repository as research_repo
 from app.trading import spec as specmod
-from app.services import backtest_check, book_memo, customer_text, gate_explain, paper_checks, research_list, run_stop, trade_why
+from app.services import backtest_check, book_memo, customer_text, gate_explain, page_poll, paper_checks, research_list, run_stop, trade_why
 from app.trading import track_record
 from app.web import client_errors, webperf
 from app import worker
@@ -384,7 +384,7 @@ def dashboard(ctx: Ctx):
     deps = book_memo.deployments_for_display(memo)
     # Curves only for the deployments the Deployed table shows (a stopped one's history is not drawn).
     curves = book_memo.deployment_curves(memo, [d["id"] for d in deps])
-    ledger = repo.paper_ledger_summary(cur, ctx.uid)  # balance, deposits and reset: one read
+    ledger = book_memo.paper_ledger_summary(cur, ctx.uid)  # balance, deposits and reset: one read, kept until the ledger moves
     balance, deposited = ledger["balance"], ledger["deposited"]
     visit, first = _visit_since(ctx.query.get("since"))
     # Every book's realized P&L and closed-trade count (today and since the last visit), in one read.
@@ -416,7 +416,9 @@ def dashboard(ctx: Ctx):
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
     live.update(_live_balance(cur, ctx.uid))
     paper_sids = _paper_strategy_ids(deps)
-    return {
+    # The page polls every 15s with its last answer's version (?v=): an unchanged answer is sent as
+    # "same" with only the marks and data ages, which move every tick (services.page_poll).
+    return page_poll.answer({
         "paper": paper,
         "demo": demo,
         "live": live,
@@ -429,7 +431,7 @@ def dashboard(ctx: Ctx):
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
         "since": _since_visit(cur, ctx.uid, visit, first, recent),
-    }
+    }, ctx.query.get("v"))
 
 
 SINCE_MAX = timedelta(days=7)    # an older last visit reads as the last 7 days

@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 from app import repository as repo
 from app.research import agent
-from app.services import book_memo, paper_checks
+from app.services import book_memo, page_poll, paper_checks
 from app.trading import engine
 from app.trading import spec as specmod
 from app.trading.markets import MARKETS
@@ -34,7 +34,8 @@ def list_deployments(ctx: Ctx):
     checks = _backtest_checks(ctx.cur, ctx.uid, {d["strategy_id"]: d for d in deps}, memo)
     roads = _deploy_roads(ctx.cur, ctx.uid, deps, memo)
     paper_sids = _paper_strategy_ids(deps)
-    return {
+    # The board polls every 10s with its last answer's version (?v=): services.page_poll.
+    return page_poll.answer({
         # Each row carries its own book's backtest comparison (same strategy, same mode), and a paper
         # row its strategy's paper record toward the live check (all its paper deployments, as the
         # strategy page counts it).
@@ -45,7 +46,7 @@ def list_deployments(ctx: Ctx):
         "demo_health": _demo_health(ctx.cur, ctx.uid, deps),
         "open_positions": _with_why(_with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")), deps),
         "recent_closed": _with_why(repo.user_positions(ctx.cur, ctx.uid, "closed", 20), deps),
-    }
+    }, ctx.query.get("v"))
 
 
 def create_deployment(ctx: Ctx):

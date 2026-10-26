@@ -456,7 +456,7 @@ def test_the_research_scoreboard_reads_the_same_for_two_paper_strategies_as_for_
 
 
 # The positions' version (services.book_memo) and the full-history sums a page keeps behind it.
-VERSION = "COALESCE(MAX(id),0) AS top"
+VERSION = "COALESCE(MAX(id),0) AS top FROM app_positions"  # repo.positions_version (the paper ledger has its own)
 HEAVY = ("SUM(pnl) OVER (PARTITION BY deployment_id", "LEFT JOIN (SELECT p.deployment_id", "AS paper_all",
          "GROUP BY DATE(closed_at)", "SELECT t.strategy_id, COUNT(*) AS trips", "COUNT(DISTINCT SUBSTRING(p.ticker",
          "TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at))", "SELECT d.strategy_id, p.order_ref, SUM(p.pnl)", "AS pnl_sq")
@@ -514,3 +514,57 @@ def test_the_autopilot_panel_sums_again_when_a_deployment_moves_to_another_strat
     _, heavy, _ = _poll("autopilot_status", {}, _panel_rows, book)
     assert _poll("autopilot_status", {}, _panel_rows, book)[1] == []
     assert _poll("autopilot_status", {}, lambda: _panel_rows(strategy_of_4=9), book)[1] == heavy
+
+
+# The dashboard (15s) and the Deploy board (10s) send back the version of their last answer
+# (services.page_poll): an unchanged answer is sent as "same" with the marks and data ages alone. The
+# version is the answer's own hash, so every read still runs; what an unchanged poll must not run is a
+# full-history sum, nor the paper ledger's sum while the ledger is unchanged (book_memo keeps it).
+# Measured 2026-10-26 on the seeded heavy account (23k positions, 40k paper-ledger rows) beside five
+# lighter ones, local MariaDB: /api/dashboard 14 statements, ~40ms of SQL and 53KB of JSON a poll ->
+# 14 statements, ~24ms and ~0.9KB while unchanged (the ledger's ~22ms sum -> its ~8ms version read);
+# /api/deployments 5 statements, ~11ms and 62KB -> 5, ~10ms and ~0.8KB.
+SAME_BUDGET = {"dashboard": 14, "list_deployments": 5}
+SAME_KEYS = {"v", "same", "marks", "unrealized", "freshness", "since_at"}
+LEDGER = "FROM app_ledger FORCE INDEX (idx_ledger_user_time)"
+LEDGER_SUM = "SELECT COALESCE(SUM(amount),0) AS b"
+
+
+def _ledger_rows(top=77, cash=980.5):
+    return {**_board_rows(), LEDGER: [{"n": 12, "top": top}],
+            LEDGER_SUM: [{"b": Decimal(str(cash)), "dep": Decimal("1000"), "reset_at": None}]}
+
+
+@pytest.fixture
+def page_caches():
+    """The pages' own minute caches, empty before and after (the board's road to live would carry over)."""
+    caches = (server._TRACK_RECORD, server._BACKTEST_CHECKS, server._ROADS, server._FAILING)
+    for cache in caches:
+        cache.clear()
+    yield
+    for cache in caches:
+        cache.clear()
+
+
+@pytest.mark.parametrize("name", ["dashboard", "list_deployments"])
+def test_an_unchanged_money_page_poll_says_same_inside_its_budget(production, page_caches, name):
+    book = {"n": 40, "closed": 38, "top": 900}
+
+    def poll(rows, v=None):
+        log = []
+        out = getattr(server, name)(_ctx(log, 10.0, query={"v": v} if v else {}, extra=dict(rows, **{VERSION: [book]})))
+        return out, [s for s, _ in log]
+
+    first, _ = poll(_ledger_rows())
+    same, sent = poll(_ledger_rows(), first["v"])
+    assert same.get("same") and same["v"] == first["v"] and set(same) <= SAME_KEYS, same
+    assert len(sent) <= SAME_BUDGET[name], "%s sent %d statements (budget %d):\n  %s" % (
+        name, len(sent), SAME_BUDGET[name], "\n  ".join(sent))
+    assert not [s for s in sent if any(h in s for h in HEAVY) or LEDGER_SUM in s], sent
+    if name != "dashboard":
+        return
+    # A ledger row added: the cash is summed again, and the answer moves only if a figure did.
+    again, sent = poll(_ledger_rows(top=78), first["v"])
+    assert again.get("same") and sum(LEDGER_SUM in s for s in sent) == 1
+    moved, _ = poll(_ledger_rows(top=79, cash=978.9), first["v"])
+    assert not moved.get("same") and moved["v"] != first["v"] and moved["paper"]["cash"] == 978.9
