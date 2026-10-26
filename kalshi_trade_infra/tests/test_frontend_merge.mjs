@@ -2319,6 +2319,53 @@ test('Tau: the strategy page lists what it missed under Verdict and names the fi
   assert.match(old.root.querySelector('main').innerHTML, /Void: it failed the unseen-data gate\./);
 });
 
+// The research paper's figures are red exactly when the gate that judges them missed. The server
+// judges each figure with the gatekeeper's own thresholds (services.gate_explain.strategy_tints, the
+// same checks that write why_failed); the page restates no cutoff. These fixtures are what the server
+// sends for these numbers (tests/test_gate_explain.py pins the server side).
+const FIGURE_GATES = {'Trades': ['sample_size'], 'Bootstrap p-value': ['significance', 'multiple_testing'],
+  'Mean net return / trade': ['net_edge'], 'DSR': ['deflated_sharpe'], 'Placebo p-value': ['placebo']};
+const tintedFigures = html => [...String(html).matchAll(/<div class="rp-stat"><div class="k">([^<]*)<\/div><div class="val( sig)?">/g)]
+  .filter(m => m[2]).map(m => m[1].replace(/&amp;/g, '&'));
+const missedFigures = lines => Object.keys(FIGURE_GATES).filter(k => lines.some(l => FIGURE_GATES[k].includes(l.gate)));
+const paperSections = html => {
+  const at = html.indexOf('The one-time locked holdout');
+  return {validation: html.slice(html.indexOf('Validation-window evidence'), at), holdout: html.slice(at)};
+};
+
+test('Tau: a research-paper figure is red exactly when its gate line says it missed', async () => {
+  // Failing: 20 trades under a minimum of 30, p 0.08 over its 0.05 level, the CI low end below zero.
+  // The DSR (0.70) and the placebo p (0.05) pass their gates (DSR_MIN 0.5, ALPHA 0.10), so they stay
+  // ink, though the old page cutoffs (DSR 0.95, placebo p under 0.10) painted both red.
+  const VAL_LINES = [{gate: 'sample_size'}, {gate: 'significance'}, {gate: 'net_edge'}].map(l => ({...l, label: l.gate, measured: 'x', needed: 'y', next: 'Z.'}));
+  const failing = {classification: 'inconclusive', min_sample: 30,
+    validation: {n_trades: 20, p_value: 0.08, fdr_alpha_i: 0.05, dsr: 0.7, psr: 0.2, placebo_p: 0.05, ci_lo: -0.001, ci_hi: 0.02, mean_net_return: 0.004},
+    holdout: null,
+    gate_tints: {validation: {n_trades: 'fail', p_value: 'fail', mean_net_return: 'fail', dsr: 'pass', placebo_p: 'pass'}}};
+  const f = strategyFrontend(detailStrategy({status: 'failed', experiment: failing, why_failed: VAL_LINES})); await f.viewStrategy(42); await flush();
+  const red = tintedFigures(paperSections(f.root.querySelector('main').innerHTML).validation);
+  assert.deepEqual(red.sort(), missedFigures(VAL_LINES).sort());
+  assert.deepEqual(red.sort(), ['Bootstrap p-value', 'Mean net return / trade', 'Trades']);
+  // Passed validation, failed holdout: the validation figures all pass (DSR 0.60 and placebo 0.02
+  // would have been red under the old cutoffs); the holdout's p-value and mean are red as its lines
+  // say, its sample is not judged, and a consumed holdout is a state, not a miss.
+  const HOLD_LINES = [{gate: 'significance'}, {gate: 'net_edge'}].map(l => ({...l, label: l.gate, measured: 'x', needed: 'y', next: 'Z.'}));
+  const held = {classification: 'rejected', min_sample: 30,
+    validation: {n_trades: 90, p_value: 0.01, fdr_alpha_i: 0.05, dsr: 0.6, placebo_p: 0.02, ci_lo: 0.001, ci_hi: 0.02, mean_net_return: 0.01},
+    holdout: {classification: 'rejected', n_trades: 12, p_value: 0.3, ci_lo: -0.01, ci_hi: 0.02, mean_net_return: 0.004, consumed: true},
+    gate_tints: {validation: {n_trades: 'pass', p_value: 'pass', mean_net_return: 'pass', dsr: 'pass', placebo_p: 'pass'},
+      holdout: {p_value: 'fail', mean_net_return: 'fail'}}};
+  const h = strategyFrontend(detailStrategy({status: 'passed', experiment: held, why_failed: HOLD_LINES})); await h.viewStrategy(42); await flush();
+  const hs = paperSections(h.root.querySelector('main').innerHTML);
+  assert.deepEqual(tintedFigures(hs.validation), []);
+  assert.deepEqual(tintedFigures(hs.holdout).sort(), missedFigures(HOLD_LINES).sort());
+  assert.match(hs.holdout, /<div class="k">Holdout<\/div><div class="val">Consumed<\/div>/);
+  // An older server without gate_tints judges nothing, so nothing is red, whatever the numbers.
+  const old = strategyFrontend(detailStrategy({status: 'failed', experiment: {...failing, holdout: held.holdout, gate_tints: undefined}}));
+  await old.viewStrategy(42); await flush();
+  assert.doesNotMatch(old.root.querySelector('main').innerHTML, /class="val sig"/);
+});
+
 test('Tau: the dashboard points a quiet stretch with sessions at what each idea missed', async () => {
   const at = async (since) => {
     const f = frontend({fetchImpl: path => {

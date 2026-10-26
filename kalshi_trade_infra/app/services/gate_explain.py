@@ -17,7 +17,7 @@ gets its humanised name and its numbers, never a raw code.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app import backtest, gatekeeper
 
@@ -100,6 +100,11 @@ def _sample(n: Any, min_sample: Any, where: str) -> Line:
         ("%s: %s." % (_cap(_more(n or 0, need)), MORE_TRADES)) if need else "Get more trades: %s." % MORE_TRADES)
 
 
+_PASSED = (gatekeeper.Classification.STAT_SUPPORTED.value,
+           gatekeeper.Classification.FORWARD_VALIDATED.value,
+           gatekeeper.Classification.DEPLOYMENT_CANDIDATE.value)
+
+
 def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_sample: Any = None,
                 classification: Optional[str] = None, folds: Optional[Iterable[Dict]] = None,
                 n_tested: Any = None) -> List[Line]:
@@ -109,12 +114,46 @@ def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_samp
     stats (alpha_i, ci {lo, hi}); keys it lacks are checks it cannot evaluate, and those are left
     out rather than guessed. A non-passing classification whose failed gate the stored numbers
     cannot name gets one line saying which checks remain."""
+    if not v or classification in _PASSED:
+        return []
+    return _judge(v, phase, min_sample, classification, folds, n_tested)[0]
+
+
+# The research paper's figures and the gates whose line names each one. A figure no gate judges
+# (PSR, Sharpe, trials audited, the FDR level itself) has no entry and is never tinted.
+STAT_GATES = {
+    "n_trades": ("sample_size",),
+    "p_value": ("significance", "multiple_testing"),
+    "mean_net_return": ("net_edge",),
+    "dsr": ("deflated_sharpe",),
+    "placebo_p": ("placebo",),
+}
+
+
+def stat_tints(v: Optional[Dict[str, Any]], phase: str = "validation", min_sample: Any = None,
+               classification: Optional[str] = None) -> Dict[str, str]:
+    """{figure: "pass" | "fail"} for each figure of one recorded verdict that a gate judged, by the
+    very checks stat_checks words: "fail" exactly when one of its gates has a line, "pass" when
+    its gates were judged and none has one, and absent when the stored numbers cannot judge it
+    (the page leaves that figure neutral). A passing classification has no lines, so every figure
+    it carries reads "pass"."""
     if not v:
-        return []
-    if classification in (gatekeeper.Classification.STAT_SUPPORTED.value,
-                          gatekeeper.Classification.FORWARD_VALIDATED.value,
-                          gatekeeper.Classification.DEPLOYMENT_CANDIDATE.value):
-        return []
+        return {}
+    judged = _judge(v, phase, min_sample, classification, None, None)[1]
+    if classification in _PASSED:
+        judged = {g: True for g in judged}
+    out: Dict[str, str] = {}
+    for stat, gates in STAT_GATES.items():
+        seen = [judged[g] for g in gates if g in judged]
+        if seen:
+            out[stat] = "pass" if all(seen) else "fail"
+    return out
+
+
+def _judge(v: Dict[str, Any], phase: str, min_sample: Any, classification: Optional[str],
+           folds: Optional[Iterable[Dict]], n_tested: Any) -> Tuple[List[Line], Dict[str, bool]]:
+    """The line of every failed gate, and {gate: passed} for every gate the numbers could judge."""
+    judged: Dict[str, bool] = {}
     holdout = phase == "holdout"
     where = "the locked holdout" if holdout else "the unseen test window"
     n = _f(v.get("n_trades"))
@@ -122,14 +161,18 @@ def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_samp
     if p is None:
         # No test ran: below the pre-registered sample (no alpha spent), the only gate it reached.
         need = _f(min_sample)
-        if n is not None and (need is None or n < need):
-            return [_sample(n, min_sample, where)]
-        return []
+        if n is None:
+            return [], judged
+        judged["sample_size"] = need is not None and n >= need
+        return ([] if judged["sample_size"] else [_sample(n, min_sample, where)]), judged
     out: List[Line] = []
     need = _f(min_sample)
-    if n is not None and need is not None and n < need and (
-            not holdout or classification == gatekeeper.Classification.INCONCLUSIVE.value):
-        out.append(_sample(n, min_sample, where))  # a perpetual holdout is judged on its sample too
+    if n is not None and need is not None:
+        if n >= need:
+            judged["sample_size"] = True
+        elif not holdout or classification == gatekeeper.Classification.INCONCLUSIVE.value:
+            judged["sample_size"] = False
+            out.append(_sample(n, min_sample, where))  # a perpetual holdout is judged on its sample too
     ci = v.get("ci") if isinstance(v.get("ci"), dict) else {}
 
     def pick(key: str, other: Any) -> Any:
@@ -145,6 +188,8 @@ def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_samp
         level = gatekeeper.VALIDATION_ALPHA
     sig_ok = (p <= level) if level is not None else v.get("fdr_reject")
     on = " on the locked holdout" if holdout else ""
+    if sig_ok is not None:
+        judged["significance"] = bool(sig_ok)
     if sig_ok is False:
         out.append(_line(
             "significance", "Edge is not luck" + on,
@@ -153,6 +198,8 @@ def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_samp
             "Its validation edge did not repeat on fresh data, a sign it was luck: try a simpler version of the idea in a new session."
             if holdout else
             "More trades or a bigger edge per trade would sharpen the test: widen the market set, or enter only on the strongest signals."))
+    if not holdout and sig_ok and v.get("bh_reject") is not None:
+        judged["multiple_testing"] = v.get("bh_reject") is not False
     if not holdout and sig_ok and v.get("bh_reject") is False:
         k = _f(n_tested)
         out.append(_line(
@@ -161,6 +208,8 @@ def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_samp
             "low enough to survive the correction for testing several ideas at once (%d%% false-discovery rate)"
             % round(100 * gatekeeper.ALPHA),
             "Send fewer, more different ideas per session, so a real edge is not diluted by near-duplicates."))
+    if lo is not None:
+        judged["net_edge"] = lo > 0
     if lo is not None and lo <= 0:
         rng = " (90%% range %s to %s)" % (_pct(lo), _pct(hi)) if hi is not None else ""
         losing = mean is not None and mean <= 0
@@ -173,6 +222,8 @@ def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_samp
             "The average is positive but too noisy: more trades (widen the market set) or a bigger edge per trade would lift the low end above zero."))
     if not holdout:
         dsr = _f(v.get("dsr"))
+        if dsr is not None:
+            judged["deflated_sharpe"] = dsr >= gatekeeper.DSR_MIN
         if dsr is not None and dsr < gatekeeper.DSR_MIN:
             trials = _f(v.get("n_trials_audited"))
             out.append(_line(
@@ -181,6 +232,8 @@ def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_samp
                 "%.2f or higher" % gatekeeper.DSR_MIN,
                 "Many ideas have been tried on this data, so the bar is higher: make this idea more distinct, or get more trades so a real edge stands out."))
         placebo = _f(v.get("placebo_p"))
+        if placebo is not None:
+            judged["placebo"] = placebo < gatekeeper.ALPHA
         if placebo is not None and placebo >= gatekeeper.ALPHA:
             out.append(_line(
                 "placebo", "Wins more often than its prices imply",
@@ -195,7 +248,7 @@ def stat_checks(v: Optional[Dict[str, Any]], phase: str = "validation", min_samp
         out.append(stress)
     if not out and classification:
         out += _unstored(v, holdout, on)
-    return out
+    return out, judged
 
 
 def _unstored(v: Dict[str, Any], holdout: bool, on: str) -> List[Line]:
@@ -450,6 +503,21 @@ def for_strategy(status: Optional[str], result: Optional[Dict[str, Any]],
     if status == "rejected" and res.get("in_sample"):
         return not_finalist(res.get("in_sample"))
     return []
+
+
+def strategy_tints(status: Optional[str], experiment: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
+    """The research paper's tint per figure, {"validation": {...}, "holdout": {...}} (stat_tints),
+    judged on the same records for_strategy words: a validation the strategy passed ("passed")
+    reads as passed, and a holdout without a recorded verdict is not judged."""
+    exp = experiment or {}
+    out: Dict[str, Dict[str, str]] = {}
+    val, hold = exp.get("validation"), exp.get("holdout")
+    if val:
+        cls = gatekeeper.Classification.STAT_SUPPORTED.value if status in _PASSING else val.get("classification")
+        out["validation"] = stat_tints(val, "validation", exp.get("min_sample"), cls)
+    if hold and hold.get("classification") is not None:
+        out["holdout"] = stat_tints(hold, "holdout", exp.get("min_sample"), hold.get("classification"))
+    return out
 
 
 _NOT_FINALIST = re.compile(r"research pnl \$(-?[\d.]+|None) over (\d+|None) trades")
