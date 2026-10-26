@@ -1,9 +1,9 @@
 """Request timing for Tau's web server: a bounded in-memory window of recent requests, the
-per-route p50/p95 and 5xx rate over it, gzip for compressible responses, and the cache headers
-and validators for static files.
+per-route p50/p95 and 5xx rate over it, gzip for compressible responses (and brotli for static
+files, when the brotli module is installed), and the cache headers and validators for static files.
 
-Stdlib only. The window lives in the web process, so it resets on a restart (a deploy); the
-on-box watchdog reads it from /internal/perf, which only answers loopback callers.
+Stdlib only, apart from the optional brotli. The window lives in the web process, so it resets on a
+restart (a deploy); the on-box watchdog reads it from /internal/perf, which only answers loopback callers.
 """
 from __future__ import annotations
 
@@ -82,29 +82,92 @@ def summary(window_s: float = 900, now: Optional[float] = None, top: int = 25) -
 
 _COMPRESSIBLE = ("application/json", "text/", "image/svg+xml")
 MIN_GZIP = 1024
-_GZ_CACHE: Dict[Tuple[str, int, int], bytes] = {}
+# Static files compress once per content version: (coding, name, content hash) -> bytes. Keyed on the
+# hash of the bytes being sent, so a compressed copy can never outlive the file it was made from.
+_Z_CACHE: Dict[Tuple[str, str, str], bytes] = {}
+_Z_LOCK = threading.Lock()
+_Z_BUSY: Dict[Tuple[str, str, str], threading.Lock] = {}
+
+# Brotli is optional: pinned in requirements.txt, but with it missing static files go out gzip, as before.
+try:
+    import brotli as _brotli
+except ImportError:  # pragma: no cover - exercised by monkeypatching _brotli to None
+    _brotli = None
+
+
+def compressible(ctype: str, length: int) -> bool:
+    """Whether this response can go out compressed, so it varies by Accept-Encoding (even when sent as is)."""
+    return length >= MIN_GZIP and ctype.startswith(_COMPRESSIBLE)
+
+
+def static_codings() -> Tuple[str, ...]:
+    """The encodings a static file can go out in, besides as is."""
+    return ("br", "gzip") if _brotli is not None else ("gzip",)
+
+
+def _accepts(accept_encoding: Optional[str], coding: str) -> float:
+    """The q the client gives a content coding by name (0 if not listed, refused, or malformed).
+    "*" is not honored: an encoding we send must be one the client named."""
+    for part in (accept_encoding or "").lower().split(","):
+        name, _, params = part.strip().partition(";")
+        if name.strip() != coding:
+            continue
+        q = 1.0
+        for p in params.split(";"):
+            k, _, v = p.replace(" ", "").partition("=")
+            if k == "q":
+                try:
+                    q = float(v)
+                except ValueError:
+                    return 0.0
+        return q if 0 < q <= 1 else 0.0
+    return 0.0
 
 
 def wants_gzip(accept_encoding: Optional[str], ctype: str, length: int) -> bool:
-    if length < MIN_GZIP or not ctype.startswith(_COMPRESSIBLE):
-        return False
-    for part in (accept_encoding or "").lower().split(","):
-        name, _, params = part.strip().partition(";")
-        if name.strip() == "gzip":
-            return params.replace(" ", "") != "q=0"
-    return False
+    return compressible(ctype, length) and _accepts(accept_encoding, "gzip") > 0
 
 
-def gzip_bytes(body: bytes, cache_key: Optional[Tuple[str, int, int]] = None) -> bytes:
-    """gzip a body. Static files pass (path, mtime_ns, size) so each version compresses once."""
-    if cache_key is not None and cache_key in _GZ_CACHE:
-        return _GZ_CACHE[cache_key]
-    out = gzip.compress(body, compresslevel=6 if cache_key is not None else 5, mtime=0)
-    if cache_key is not None:
-        if len(_GZ_CACHE) > 64:
-            _GZ_CACHE.clear()
-        _GZ_CACHE[cache_key] = out
+def pick_encoding(accept_encoding: Optional[str], ctype: str, length: int, allow_br: bool) -> Optional[str]:
+    """The content coding to send: br, gzip, or None for as is. br only where allowed (static files,
+    compressed once and cached) and only with the brotli module installed; it wins a tie with gzip."""
+    if not compressible(ctype, length):
+        return None
+    gz = _accepts(accept_encoding, "gzip")
+    br = _accepts(accept_encoding, "br") if allow_br and _brotli is not None else 0.0
+    if br > 0 and br >= gz:
+        return "br"
+    return "gzip" if gz > 0 else None
+
+
+def _compress(coding: str, body: bytes, static: bool) -> bytes:
+    if coding == "br":
+        return _brotli.compress(body, mode=_brotli.MODE_TEXT, quality=11)  # ~1s for app.js, once per version
+    return gzip.compress(body, compresslevel=6 if static else 5, mtime=0)
+
+
+def compress(body: bytes, coding: str, cache_key: Optional[Tuple[str, str]] = None) -> bytes:
+    """Encode a body as "gzip" or "br". Static files pass (name, content hash) so each version is
+    compressed once; concurrent first requests for it wait on one compression (brotli releases the GIL)."""
+    if cache_key is None:
+        return _compress(coding, body, False)
+    key = (coding,) + tuple(cache_key)
+    out = _Z_CACHE.get(key)
+    if out is not None:
+        return out
+    with _Z_LOCK:
+        busy = _Z_BUSY.setdefault(key, threading.Lock())
+    with busy:
+        out = _Z_CACHE.get(key)
+        if out is None:
+            out = _compress(coding, body, True)
+            with _Z_LOCK:
+                if len(_Z_CACHE) >= 128:  # old versions pile up only if files change under a running server
+                    _Z_CACHE.clear()
+                _Z_CACHE[key] = out
+                _Z_BUSY.pop(key, None)
     return out
+
 
 
 # -- caching for static files and the page shell ---------------------------------------------------
@@ -127,7 +190,8 @@ def static_cache_control(name: str, query: str, current: Optional[str]) -> str:
 
 
 def etag(version: str) -> str:
-    """Weak: one file goes out gzipped or not, so the validator names the content, not the bytes."""
+    """Weak: one file goes out as brotli, gzip or as is, so the validator names the content, not the
+    bytes. A 304 to any of them is right: each client's stored copy decodes to the same file."""
     return 'W/"%s"' % version
 
 
