@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import vm from 'node:vm';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
+import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -99,7 +100,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => ({matches: false}), notifications, win = {}} = {}) {
+function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia = () => ({matches: false}), notifications, win = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
   let nextId = 0;
@@ -112,6 +113,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
       ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {}), ...(stripe ? {Stripe: stripe} : {}), ...win},
     addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
     localStorage: storage || {getItem: () => null, setItem() {}},
+    ...(session ? {sessionStorage: session} : {}),
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
     clearInterval: id => intervals.delete(id),
     setTimeout: callback => { timeouts.set(++nextId, callback); return nextId; },
@@ -156,6 +158,7 @@ function strategyFrontend(detail = detailStrategy(), transport) {
 }
 const postRequests = f => f.requests.filter(({options}) => options.method === 'POST');
 perpsFrontendCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
+deployActionCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests, source});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},

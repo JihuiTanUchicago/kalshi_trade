@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import vm from 'node:vm';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
+import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -119,7 +120,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), theme = 'meridian', build, notifications, win = {}} = {}) {
+function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), session, theme = 'meridian', build, notifications, win = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body');
   const document = {body, activeElement: body, hidden: false,
     getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {},
@@ -138,6 +139,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
       ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {}), ...win},
     addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
     localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value))},
+    ...(session ? {sessionStorage: session} : {}),
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
     clearInterval: id => intervals.delete(id),
     setTimeout: callback => { timeouts.set(++nextId, callback); return nextId; },
@@ -182,6 +184,7 @@ function strategyFrontend(detail = detailStrategy(), transport) {
 }
 const postRequests = f => f.requests.filter(({options}) => options.method === 'POST');
 perpsFrontendCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
+deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests, source});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -5113,4 +5116,43 @@ test('Meridian: a session that ends mid-use says so on the sign-in page, once', 
   assert.match(f.root.querySelector('.lnotice').textContent, /You were signed out, so that last change wasn’t saved\./);
   await signin(); await flush();
   assert.equal(f.root.querySelector('.lnotice'), null);
+});
+
+test('Meridian: a brand-new account\'s empty Strategies, Deploy and Research say what each is and the one next step', async () => {
+  // Strategies: none yet, autopilot off.
+  let f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 0, passed: 0, failed: 0, rejected: 0}}) : response({}))});
+  f.S.me.user.autopilot = false;
+  await f.viewStrategies(); await flush(); await flush();
+  let empty = f.root.querySelector('#slips .empty');
+  assert.equal(empty.querySelector('h3').textContent, 'No strategies yet');
+  assert.match(empty.innerHTML, /<p>Every strategy a research session writes lands here, with its test on data it never saw\. Start a session to find your first\.<\/p>/);
+  assert.deepEqual(empty.querySelectorAll('a.btn').map(a => a.getAttribute('href')), ['/research?new=1']);
+  // A filter that matches nothing says to try another, not a bare heading.
+  f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 3, passed: 1, failed: 1, rejected: 1}}) : response({}))});
+  await f.viewStrategies(); await flush(); await flush();
+  assert.match(f.root.querySelector('#slips .empty').innerHTML, /<h3>No matching strategies<\/h3><p>Try another filter\.<\/p>/);
+
+  // Deploy: nothing deployed. With passed strategies (or before that count is in) the board says what
+  // goes on it; with none passed, that nothing has passed yet. The Realized figure points at no list.
+  for (const [passed, said, href] of [[2, /Open a passed strategy and deploy it here\. Paper first: it trades the live market with paper money\./, '/strategies?status=passed'],
+    [0, /Nothing has passed yet\. A strategy goes on the board once it passes every test in a research session, paper first\./, '/research?new=1']]) {
+    f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: []})
+      : path === '/api/strategies?status=passed' ? response({counts: {passed}}) : response({})});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); for (let i = 0; i < 6; i++) await flush();
+    empty = f.root.querySelector('#deps .empty');
+    assert.match(empty.innerHTML, said);
+    assert.deepEqual(empty.querySelectorAll('a.btn').map(a => a.getAttribute('href')), [href]);
+    assert.match(f.root.querySelector('#dfigs').innerHTML, /paper money, not real/);
+    assert.doesNotMatch(f.root.querySelector('#dfigs').innerHTML, /strategies listed below/);
+    f.clearTimers();
+  }
+
+  // Research: what a session does, under the page name.
+  f = frontend({fetchImpl: path => path === '/api/runs' ? response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: null}) : response({models: [], default: '', markets: []})});
+  f.location.pathname = '/research';
+  await f.viewResearch(); await flush(); await flush(); f.clearTimers();
+  assert.match(f.root.querySelector('.research-page').innerHTML, /<h1 class="page">Research<\/h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw\. The ones that pass can trade on paper\.<\/p>/);
 });

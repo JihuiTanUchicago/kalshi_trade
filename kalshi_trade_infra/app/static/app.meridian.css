@@ -2554,6 +2554,8 @@ body.landing-body .apf { display: none; }
 .run-artifacts:not([hidden]) + #runend > .run-end { margin-top: -14px; }
 #dep-ap .research-ap { margin: 4px 0 14px; }
 .research-page > .research-ap { grid-column: 1 / -1; }
+/* What Research is, under its name: the page otherwise opened on a button and a list. */
+.research-page > .research-lede { grid-column: 1 / -1; margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
 
 /* Strategy sidebar holdings: one block per position, figures wrap instead of clipping. */
 .holdlist { list-style: none; margin: 0; padding: 0; }
