@@ -56,13 +56,16 @@ def list_deployments_brief(cur, user_id: int) -> List[Dict]:
     return [_strategy_row(r) for r in cur.fetchall()]
 
 
-def list_deployments_for_display(cur, user_id: int) -> List[Dict]:
+def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] = None) -> List[Dict]:
     """list_deployments(cur, user_id) as the dashboard and the strategy list show it: the same rows,
     totals and order. Each deployment's positions are summed first, in a derived table read through
     idx_pos_dep, and joined to their deployment row after that. list_deployments groups the joined
     rows instead, so every one of a busy trader's 20k positions carries its strategy's spec and
     result JSON through the GROUP BY (64ms against 31ms). Display only: the engine and the gates
-    keep calling list_deployments."""
+    keep calling list_deployments. `strategy_id` keeps one strategy's deployments (the strategy
+    page), the same rows list_deployments filtered to it, without summing every other one's."""
+    one = (int(strategy_id),) if strategy_id is not None else ()
+    only_pd, only_d = (" AND pd.strategy_id=%s", " AND d.strategy_id=%s") if one else ("", "")
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
                   d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json,
@@ -75,9 +78,10 @@ def list_deployments_for_display(cur, user_id: int) -> List[Dict]:
                              COUNT(CASE WHEN p.status='closed' AND p.pnl > 0 THEN 1 END) AS wins,
                              COUNT(CASE WHEN p.status='open' THEN 1 END) AS open_positions
                       FROM app_deployments pd STRAIGHT_JOIN app_positions p FORCE INDEX (idx_pos_dep) ON p.deployment_id=pd.id
-                      WHERE pd.user_id=%s AND pd.status <> 'stopped' GROUP BY p.deployment_id) t ON t.deployment_id=d.id
-           WHERE d.user_id=%s AND d.status <> 'stopped' ORDER BY d.id DESC""",
-        (user_id, user_id),
+                      WHERE pd.user_id=%s AND pd.status <> 'stopped'""" + only_pd + """
+                      GROUP BY p.deployment_id) t ON t.deployment_id=d.id
+           WHERE d.user_id=%s AND d.status <> 'stopped'""" + only_d + """ ORDER BY d.id DESC""",
+        (user_id, *one, user_id, *one),
     )
     return [_strategy_row(r) for r in cur.fetchall()]
 

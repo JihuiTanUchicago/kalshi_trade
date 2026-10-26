@@ -32,7 +32,10 @@ from app import billing, engine, server
 # A steady-state poll: the process-wide shared reads (series list, data freshness) and the run page's
 # dream line are warm, as they are for every request but one a minute. get_run's run is queued past
 # the overdue limit, so it also counts the queue ahead (5 for a run that is working normally).
-BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}  # dashboard: the trades CSV counts ride the realized-P&L pass
+BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}
+# The Deploy board polls /api/deployments every 10s; /api/strategies/<id> is the strategy page. Both
+# counted cold: the per-book backtest comparison is read once a minute, and these requests include it.
+BUDGET.update({"list_deployments": 6, "get_strategy": 6})  # dashboard: the trades CSV counts ride the realized-P&L pass
 
 # Statements that return one aggregate row; any other SELECT answers no rows unless listed below.
 AGGREGATE = ("SELECT COALESCE(", "SELECT COUNT(", "SELECT MAX(", "SELECT st.started")
@@ -114,6 +117,46 @@ def test_a_hot_request_stays_in_its_query_budget_and_never_repeats_a_read(produc
     assert not repeats, "%s read the same thing twice in one request: %s" % (name, repeats)
     assert len(log) <= BUDGET[name], "%s sent %d statements (budget %d):\n  %s" % (
         name, len(log), BUDGET[name], "\n  ".join(s for s, _ in log))
+
+
+def _board_rows():
+    """Two running deployments of one strategy (paper and demo) with their position totals, and that
+    strategy, so the Deploy board and the strategy page run every read they make."""
+    import json
+
+    from app import spec as specmod
+
+    now = datetime(2026, 10, 25)
+    spec = json.dumps(specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}}))
+    result = json.dumps({"capital": 10.0, "out_of_sample": {"trades": 40, "pnl": 6.0, "win_rate": 0.6}})
+    dep = {"user_id": 7, "strategy_id": 9, "market": "btc15m", "status": "running", "status_reason": None,
+           "last_decision_ts": None, "created_at": now - timedelta(days=3), "updated_at": now, "last_scan_json": None,
+           "last_scan_at": None, "title": "Fade tails", "direction": None, "spec_json": spec, "result_json": result,
+           "realized_pnl": 1.5, "closed_trades": 12, "wins": 7, "open_positions": 1}
+    strategy = {"id": 9, "run_id": 3, "parent_id": None, "market": "btc15m", "direction": None, "title": "Fade tails",
+                "thesis": "t", "spec_json": spec, "status": "passed", "result_json": result, "experiment_id": None,
+                "created_at": now, "hypotheses_tried": 4, "shared_from_user_id": None, "shared_from_name": None}
+    return {"FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id LEFT JOIN": [
+                dict(dep, id=5, mode="paper"), dict(dep, id=6, mode="demo")],
+            "FROM app_strategies s LEFT JOIN app_agent_runs r": [strategy]}
+
+
+@pytest.mark.parametrize("name,kw", [("list_deployments", {}), ("get_strategy", {"params": ("9",)})])
+def test_the_deploy_board_and_strategy_page_stay_in_their_query_budget(production, name, kw):
+    server._BACKTEST_CHECKS.clear()
+    log = _call(name, 10.0, extra=_board_rows(), **kw)
+    repeats = sorted({s for s in log if log.count(s) > 1})
+    assert not repeats, "%s read the same thing twice in one request: %s" % (name, repeats)
+    assert len(log) <= BUDGET[name], "%s sent %d statements (budget %d):\n  %s" % (
+        name, len(log), BUDGET[name], "\n  ".join(s for s, _ in log))
+    # The board's curves are read for the deployments it lists, not every stopped one's history;
+    # the strategy page sums only its own strategy's deployments.
+    if name == "list_deployments":
+        curves = [p for s, p in log if "SUM(pnl) OVER (PARTITION BY deployment_id" in s]
+        assert len(curves) == 1 and curves[0][3:5] == (5, 6)
+    else:
+        assert [p for s, p in log if "LEFT JOIN (SELECT p.deployment_id" in s] == [(7, 9, 7, 9)]
+        assert not any("SUM(pnl) OVER" in s for s, _ in log)
 
 
 def _deps(paused_at):

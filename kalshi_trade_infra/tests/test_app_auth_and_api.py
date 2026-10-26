@@ -373,7 +373,7 @@ def test_strategy_detail_marks_a_seeded_example_strategy(monkeypatch):
            "created_at": None, "result": {}, "spec": {"sizing": {"stake": 5}, "side": "yes"}, "experiment_id": None}
     monkeypatch.setattr(server.specmod, "describe", lambda spec: [])
     monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
-    monkeypatch.setattr(server.repo, "list_deployments", lambda *a: [])
+    monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
     for direction, example in ((server.repo.DEMO_DIRECTION, True), ("momentum", False)):
         monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid, d=direction: {**row, "direction": d})
