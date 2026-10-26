@@ -81,6 +81,7 @@ def test_the_deploy_board_passes_the_demo_key_back_to_its_rows(monkeypatch):
     monkeypatch.setattr(dep_routes.book_memo, "BookMemo", lambda cur, uid: None)
     monkeypatch.setattr(dep_routes.book_memo, "deployments_for_display", lambda memo: [dict(paused)])
     monkeypatch.setattr(dep_routes.book_memo, "deployment_curves", lambda memo, ids: {})
+    monkeypatch.setattr(dep_routes.book_memo, "removed_deployments", lambda memo: [])
     monkeypatch.setattr(dep_routes, "_backtest_checks", lambda *a: {})
     monkeypatch.setattr(dep_routes, "_deploy_roads", lambda *a: {})
     monkeypatch.setattr(dep_routes, "_demo_health", lambda *a: None)

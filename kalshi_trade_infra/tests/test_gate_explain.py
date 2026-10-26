@@ -465,6 +465,7 @@ def test_the_strategy_page_lists_what_it_missed_and_a_bad_record_never_fails_it(
     monkeypatch.setattr(strategy_routes, "_experiment_block", lambda *a: exp)
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
+    monkeypatch.setattr(server.repo, "removed_deployments", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(row))
     monkeypatch.setattr(strategy_routes, "_demo_health", lambda *a, **k: None)
     out = server.get_strategy(_ctx(("4",)))

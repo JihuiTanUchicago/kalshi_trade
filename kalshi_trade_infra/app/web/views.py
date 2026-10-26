@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app import repository as repo
 from app import worker
@@ -162,21 +162,90 @@ def _demo_key_back(cur, uid: int, deps: List[Dict]) -> bool:
     return repo.get_kalshi_dev_key(cur, uid) is not None
 
 
+def _paper_books(deps: List[Dict]) -> Dict[int, str]:
+    """{strategy_id: "running" | "paused"} for each strategy with a paper deployment that isn't stopped
+    (running when any of them runs): what a demo copy the demo-copy sync paused is waiting on."""
+    out: Dict[int, str] = {}
+    for d in deps:
+        if d["mode"] == "paper" and d["status"] in ("running", "paused"):
+            out[d["strategy_id"]] = "running" if d["status"] == "running" or out.get(d["strategy_id"]) == "running" else "paused"
+    return out
+
+
+def _demo_copy_pause(d: Dict, paper_books: Optional[Dict[int, str]]) -> Optional[Tuple[str, Optional[str]]]:
+    """(why, resume_block) for a demo deployment the demo-copy sync paused (app.trading.demo_twins), or
+    None for any other row. The sync stores PAUSE_REASON ("... so the demo copy stopped too") and matches
+    those exact words to resume the copy once its paper deployment runs again, so the stored text stays
+    and its row says it here: paused, not stopped, and what it waits on. While the sync is on and the
+    paper deployment isn't running, Resume would only be paused again at the sync's next pass, so
+    `resume_block` says what to do first and the page offers Resume disabled. `paper_books` is
+    _paper_books of the deployments the page read (None: unknown, so nothing is claimed about paper).
+    Display only: the sync, the resume route and the stored reason are unchanged."""
+    from app.trading import demo_twins
+
+    if d["mode"] != "demo" or d["status"] != "paused" or (d.get("status_reason") or "").strip() != demo_twins.PAUSE_REASON:
+        return None
+    paper = None if paper_books is None else paper_books.get(d["strategy_id"], "none")
+    if paper is None or not demo_twins.DEMO_TWINS:
+        return "Its paper deployment wasn't running, so this demo copy paused with it", None
+    if paper == "running":
+        return "Its paper deployment wasn't running when this paused. It is now, so you can resume it", None
+    if paper == "paused":
+        return ("Waiting on its paper deployment, which is paused. Resume that one and this copy resumes with it",
+                "Resume its paper deployment first: this demo copy resumes with it.")
+    return ("Waiting to run on paper again: a demo copy runs only while its paper deployment does",
+            "Deploy it on paper first: this demo copy resumes with its paper deployment.")
+
+
 def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, paper_sids: Optional[set] = None,
-                    demo_key_back: bool = False) -> Dict:
+                    demo_key_back: bool = False, paper_books: Optional[Dict[int, str]] = None) -> Dict:
     res = d.get("result") or {}
+    copy_pause = _demo_copy_pause(d, paper_books)
     return {
         # A demo deployment of a strategy that is also on paper is its demo copy (app.trading.demo_twins makes
         # them): the row says what it copies and why its fills differ from paper's.
         "demo_copy": d["mode"] == "demo" and d["strategy_id"] in (paper_sids or ()),
         "id": d["id"], "strategy_id": d["strategy_id"], "title": d["title"], "direction": d["direction"],
         "market": d["market"], "mode": d["mode"], "status": d["status"], "status_reason": d["status_reason"],
-        "status_why": _status_why(d, demo_key_back),
+        "status_why": copy_pause[0] if copy_pause else _status_why(d, demo_key_back),
+        # Why Resume is offered disabled (a demo copy waiting on its paper deployment), or None.
+        "resume_block": copy_pause[1] if copy_pause else None,
         "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
         "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
         "stake": _spec_sizing(d).get("stake"), "max_positions": _spec_sizing(d).get("max_positions"),
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
     }
+
+
+def _realized_by_book(listed: List[Dict], removed: List[Dict]) -> Dict[str, Dict]:
+    """{book: its realized P&L as the Deploy board names it}, for each book with a deployment listed or
+    removed: `listed` (the deployments the board lists), `removed` and `removed_deployments` (the ones it
+    no longer lists; book_memo.removed_deployments), and for paper and live `all`, the two together.
+    Every closed position belongs to one deployment, so `all` is the dashboard's all-time figure for that
+    book, to the cent (summed exactly, then rounded once, as the dashboard's one SUM is). Demo's
+    dashboard figure counts from its last reload, so demo has no `all`. Books are never summed together.
+    The board's "Realized" summed only the listed rows and didn't say so, beside a larger dashboard figure."""
+    def total(rows: List[Dict]) -> Decimal:
+        return sum((Decimal(str(r.get("realized_pnl") or 0)) for r in rows), Decimal(0))
+
+    out: Dict[str, Dict] = {}
+    for mode in ("paper", "demo", "live"):
+        ls, rs = [d for d in listed if d["mode"] == mode], [r for r in removed if r["mode"] == mode]
+        if not ls and not rs:
+            continue
+        a, b = total(ls), total(rs)
+        book = {"listed": round(float(a), 2) + 0.0, "removed": round(float(b), 2) + 0.0, "removed_deployments": len(rs)}
+        if mode != "demo":
+            book["all"] = round(float(a + b), 2) + 0.0
+        out[mode] = book
+    return out
+
+
+def _past_deployment_out(r: Dict) -> Dict:
+    """A removed deployment as its strategy page lists it: book, dates and realized P&L (display only)."""
+    return {"id": r["id"], "mode": r["mode"], "created_at": r["created_at"], "removed_at": r["removed_at"],
+            "realized_pnl": round(float(r.get("realized_pnl") or 0), 2) + 0.0,
+            "closed_trades": int(r.get("closed_trades") or 0)}
 
 
 # The engine's loss guard pause (engine.loss_guard): "Lost $12.40, more than the $10.00 guard (...)".
@@ -219,7 +288,11 @@ def _gate_tints(status: Optional[str], exp: Dict) -> Dict:
 
 def _plain_pause_reason(why: str) -> str:
     """The engine's pause reason in plain words, for the phone panel."""
+    from app.trading import demo_twins
+
     why = (why or "").strip()
+    if why == demo_twins.PAUSE_REASON:  # stored as "... the demo copy stopped too", but it is paused (_demo_copy_pause)
+        return "its paper deployment wasn't running, so its demo copy paused with it"
     m = re.search(r"position down ([\d.]+)% >= stop ([\d.]+)%", why)
     if m:
         return "its safety stop sold a position that had lost %.0f%% of its cost" % float(m.group(1))

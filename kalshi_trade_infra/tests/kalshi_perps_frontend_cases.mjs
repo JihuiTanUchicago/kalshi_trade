@@ -380,7 +380,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const mixed = await board([dep(1, 'live', 2), dep(2, 'paper', 40), dep(3, 'demo', -10)]);
     assert.match(mixed, /Live realized/); assert.match(mixed, /\+\$2\.00/);
     // Live, paper and demo each get their own figure: no $30 (paper + demo) and no $32 (all three).
-    assert.match(mixed, /\+\$40\.00 on paper, counted apart/);
+    assert.match(mixed, /\+\$40\.00 on paper from the deployments listed, counted apart/);
     assert.match(mixed, /Demo realized[\s\S]*−\$10\.00[\s\S]*real fills on Kalshi’s sandbox, not real money/);
     assert.doesNotMatch(mixed, /\$30|\$32|paper and demo/);
     const practice = await board([dep(2, 'paper', 40), dep(3, 'demo', -10)]);

@@ -487,6 +487,7 @@ def test_strategy_detail_marks_a_seeded_example_strategy(monkeypatch):
     monkeypatch.setattr(strategy_routes, "_experiment_block", lambda *a: None)
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
+    monkeypatch.setattr(server.repo, "removed_deployments", lambda *a, **k: [])
     for direction, example in ((server.repo.DEMO_DIRECTION, True), ("momentum", False)):
         monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid, d=direction: {**row, "direction": d})
         assert server.get_strategy(ctx(params=("4",)))["example"] is example
@@ -502,6 +503,7 @@ def test_strategy_detail_answers_on_a_stored_spec_with_no_model_or_sizing(monkey
     monkeypatch.setattr(strategy_routes, "_demo_health", lambda *a, **k: None)
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
+    monkeypatch.setattr(server.repo, "removed_deployments", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(row))
     out = server.get_strategy(ctx(params=("4",)))
     assert out["rules"] == ["Buys YES contracts when its fair value beats the price by at least 5¢."]

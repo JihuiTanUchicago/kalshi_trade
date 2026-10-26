@@ -346,6 +346,13 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
     shown = sum(r["realized_pnl"] for r in dash["deployments"] if r["mode"] == "paper")
     stopped = _money(sum(float(r["pnl"]) for r in paper["by_dep"][p_old]))
     assert _money(shown + stopped) == dash["paper"]["realized_pnl"]
+    # The board says what its Realized leaves out: the stopped deployment's total, and the two together,
+    # which is the dashboard's figure. The strategy page lists it as a past deployment.
+    by_book = board["realized_by_book"]["paper"]
+    assert (by_book["removed"], by_book["removed_deployments"]) == (stopped, 1)
+    assert by_book["all"] == dash["paper"]["realized_pnl"] and by_book["listed"] == _money(shown)
+    assert [(p["id"], p["realized_pnl"]) for p in pages["paper"]["past_deployments"]] == [(p_old, stopped)]
+    assert pages["demo"]["past_deployments"] == pages["live"]["past_deployments"] == []
     # The backtest line counts every deployment of the strategy, the stopped one included.
     assert {x["deployment_id"] for x in paper["done"]} == {p_old, deps["paper"]}
     # The strategy list's card shows its active deployments only.

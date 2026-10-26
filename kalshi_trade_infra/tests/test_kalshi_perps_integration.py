@@ -300,6 +300,7 @@ def test_perpetual_strategy_card_and_detail_do_not_require_binary_fields(memory,
     monkeypatch.setattr(server.repo, "get_strategy", lambda *_args: deepcopy(strategy))
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *_args: [])
+    monkeypatch.setattr(server.repo, "removed_deployments", lambda *a, **k: [])
     card = server._strategy_card(strategy)
     assert card["side"] == "both" and card["kind"] == "perpetual" and card["research_only"]
     detail = server.get_strategy(_ctx(memory, params=("11",)))

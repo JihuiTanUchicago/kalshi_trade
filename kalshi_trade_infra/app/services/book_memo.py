@@ -135,6 +135,18 @@ def closed_totals(memo: BookMemo, deployment_ids: List[int]) -> Dict[int, Tuple[
     return memo.get("closed_totals", ids, lambda: repo.deployment_closed_totals(memo.cur, list(ids)))
 
 
+def removed_deployments(memo: BookMemo, strategy_id: Optional[int] = None) -> List[Dict]:
+    """repo.removed_deployments (the deployments alone, read every time: one is removed without any
+    position changing), each with its closed trades and realized P&L from closed_totals, kept for that
+    set of deployments while the positions are unchanged (a closed row's money is never rewritten)."""
+    rows = repo.removed_deployments(memo.cur, memo.uid, strategy_id)
+    totals = closed_totals(memo, [r["id"] for r in rows])
+    for r in rows:
+        n, pnl = totals.get(int(r["id"]), (0, 0))
+        r["closed_trades"], r["realized_pnl"] = int(n), pnl
+    return rows
+
+
 def closed_book_totals(memo: BookMemo, day: datetime, visit: Optional[datetime] = None):
     """repo.closed_book_totals (every book's realized P&L and closed-trade count), kept."""
     return memo.get("book_totals", (day, visit), lambda: repo.closed_book_totals(memo.cur, memo.uid, day, visit))

@@ -1654,9 +1654,13 @@
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
   const deploymentMode = (d) => d.mode === 'live' ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>';
   const deploymentRemove = (d) => `<button class="btn sm danger" data-dep="${esc(d.id)}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}</span></button>`;
+  // A demo copy the demo-copy sync paused waits on its paper deployment: Resume would be paused again
+  // at the sync's next pass, so it is offered disabled with the server's reason (resume_block), which
+  // the row's status line also says.
+  const resumeButton = (d) => `<button class="btn sm" data-dep="${d.id}" data-act="resume"${d.resume_block ? ` disabled title="${esc(d.resume_block)}"` : ''}>Resume<span class="vh"> ${esc(d.title)}${d.resume_block ? ': ' + esc(d.resume_block) : ''}</span></button>`;
   const deploymentActions = (d, remove = true) => `<div class="deployment-actions">
     ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause" data-open="${+d.open_positions || 0}">Pause<span class="vh"> ${esc(d.title)}</span></button>` : ''}
-    ${d.status === 'paused' ? `<button class="btn sm" data-dep="${d.id}" data-act="resume">Resume<span class="vh"> ${esc(d.title)}</span></button>` : ''}
+    ${d.status === 'paused' ? resumeButton(d) : ''}
     ${remove ? deploymentRemove(d) : ''}</div>`;
   // What the deployment's closed trades would have made at the unseen-data backtest's average per
   // trade: the number to hold realized P&L against (the backtest total covers a different trade count).
@@ -3484,7 +3488,12 @@
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
       return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
-    return lines ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}</section>` : '';
+    // Removed deployments leave the list (and the lines above) but keep their record: one short line,
+    // newest first, each with its own book, dates and realized P&L (books never added together).
+    const past = Array.isArray(s.past_deployments) ? s.past_deployments : [];
+    const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—');
+    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${day(p.created_at)}\u2013${day(p.removed_at)}, ${money(p.realized_pnl)} over ${num(p.closed_trades)} closed trade${p.closed_trades === 1 ? '' : 's'}`).join(' ·\u00a0')}${past.length > 3 ? ` ·\u00a0${num(past.length - 3)} earlier` : ''}</p>` : '';
+    return lines || pastLine ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}${pastLine}</section>` : '';
   }
   // Road to live in words, from the checks the server sends (live-readiness): what is left, each with
   // what it has and what it needs, and when the trades, events and hours could be in at the pace it
@@ -3957,12 +3966,22 @@
       const running = d.deployments.filter((x) => x.status === 'running');
       const depAp = root.querySelector('#dep-ap');
       paint(depAp, d.deployments.length ? apNudge('Want it to find and deploy more like this?', 'and it researches ideas and puts the ones that pass on paper by itself.') : '');
-      // Live, paper and demo results are never summed into one figure: each book gets its own. Removed
-      // deployments aren't listed, so their P&L isn't here (the dashboard and track record keep it).
+      // Live, paper and demo results are never summed into one figure: each book gets its own, and its
+      // label says it sums the deployments listed below. A removed deployment leaves the list but not the
+      // book, so the server sends each book's removed total (realized_by_book) and, for paper and live,
+      // the two together: the dashboard's all-time figure, so the two pages reconcile to the cent.
+      const books = d.realized_by_book || {};
       const sumPnl = (xs) => xs.reduce((a, x) => a + x.realized_pnl, 0);
+      const listed = (m, xs) => (books[m] ? books[m].listed : sumPnl(xs));
+      const removedNote = (m) => {
+        const b = books[m];
+        if (!b || !b.removed_deployments) return '';
+        return ` ·\u00a0${usd(b.removed, true)} from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, ${usd(b.all, true)} in all` : ''}`;
+      };
+      const listedLab = (lab, xs) => (xs.length ? `${lab}, deployments listed below` : lab);
       const byMode = (m) => d.deployments.filter((x) => x.mode === m);
       const liveDeps = byMode('live'), paperDeps = byMode('paper'), demoDeps = byMode('demo');
-      const liveRealized = sumPnl(liveDeps), paperRealized = sumPnl(paperDeps), demoRealized = sumPnl(demoDeps);
+      const liveRealized = listed('live', liveDeps), paperRealized = listed('paper', paperDeps), demoRealized = listed('demo', demoDeps);
       const live = d.deployments.filter((x) => x.mode === 'live' && x.status === 'running');
       const runDemo = running.some((x) => x.mode === 'demo'), runPaper = running.some((x) => x.mode === 'paper');
       // Open positions per book, never one count across books. A book with none is left out, except
@@ -3973,9 +3992,9 @@
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join(' ·\u00a0') || 'None';
       paint(root.querySelector('#dfigs'), fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
         (liveDeps.length
-          ? fig('Live realized', usd(liveRealized, true), { v: liveRealized, small: paperDeps.length ? `real money, strategies listed below ·\u00a0${usd(paperRealized, true)} on paper, counted apart` : 'real money, strategies listed below' })
-          : paperDeps.length || !demoDeps.length ? fig('Realized', usd(paperRealized, true), { v: paperRealized, small: paperDeps.length ? 'paper money, not real ·\u00a0strategies listed below' : 'paper money, not real' }) : '') +
-        (demoDeps.length ? fig('Demo realized', usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT} ·\u00a0strategies listed below` }) : '') +
+          ? fig(listedLab('Live realized', liveDeps), usd(liveRealized, true), { v: liveRealized, small: `real money${removedNote('live')}${paperDeps.length ? ` ·\u00a0${usd(paperRealized, true)} on paper from the deployments listed, counted apart` : ''}` })
+          : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), usd(paperRealized, true), { v: paperRealized, small: `paper money, not real${removedNote('paper')}` }) : '') +
+        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}` }) : '') +
         fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
@@ -5027,7 +5046,7 @@
     const auto = did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`;
     const needs = (ms.live_ready || []).slice(0, 3).map((sid) => `${named(sid)} is ready for live trading. Going live is your call.`);
     needs.push(...d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
-      .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_reason))}</span>` : ''}`));
+      .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_why || x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_why || x.status_reason))}</span>` : ''}`));
     const pausedN = d.deployments.filter((x) => x.status === 'paused').length;
     if (pausedN > 3) needs.push(`<a href="${pausedHref}">${num(pausedN - 3)} more paused</a>`);
     if (d.demo && d.demo.health) needs.push(d.demo.health.need ? `Demo can’t trade: it needs ${esc(d.demo.health.need)}.${actionLink(d.demo.health)}` : demoHealthLine(d.demo.health));
