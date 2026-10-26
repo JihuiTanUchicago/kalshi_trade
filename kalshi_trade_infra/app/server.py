@@ -33,7 +33,7 @@ from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
 from app import spec as specmod
-from app.services import backtest_check, trade_why
+from app.services import backtest_check, gate_explain, trade_why
 from app import track_record
 from app import webperf
 from app import worker
@@ -731,10 +731,29 @@ def get_run(ctx: Ctx):
     run["wait"] = wait
     return {
         "run": run,
-        "events": repo.run_events(ctx.cur, run["id"], after),
+        "events": _with_gate_lines(repo.run_events(ctx.cur, run["id"], after)),
         "strategies": [_strategy_card(s) for s in strategies if s["run_id"] == run["id"]],
         "rsi": _rsi_block(pol, dream),
     }
+
+
+def _gate_lines(fn, *args) -> List[Dict]:
+    """services.gate_explain's per-gate lines, or none: a record it can't read never fails the page."""
+    try:
+        return fn(*args)
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return []
+
+
+def _with_gate_lines(events: List[Dict]) -> List[Dict]:
+    """Each verdict event gains `why_failed`: one plain line per gate it missed (measured, needed,
+    what to try next), from the numbers the event already carries. Display only; no extra read."""
+    for ev in events:
+        if ev.get("kind") == "verdict":
+            data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+            data["why_failed"] = _gate_lines(gate_explain.for_event, ev.get("message"), data)
+            ev["data"] = data
+    return events
 
 
 def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:
@@ -1194,10 +1213,13 @@ def get_strategy(ctx: Ctx):
     res = s.get("result") or {}
     deps = repo.list_deployments_for_display(ctx.cur, ctx.uid, strategy_id=s["id"])
     held = repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")
+    exp = _experiment_block(ctx.cur, s["id"], s.get("experiment_id"))
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
-        experiment=_experiment_block(ctx.cur, s["id"], s.get("experiment_id")),
+        experiment=exp,
+        # One plain line per gate it missed: measured, needed, and what to try next (display only).
+        why_failed=_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
         deployments=[_deployment_out(d, []) for d in deps],
         holdings=[{
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
@@ -1550,7 +1572,8 @@ def _autopilot_story(d: Dict) -> List[str]:
         cost = float(research.get("cost_7d") or 0)
         lines.append("This week it tested %s%s and %s." % (
             _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01 else "",
-            "none has passed its tests yet. That's normal: most ideas fail" if not passed else "{:,} passed".format(passed)))
+            "none has passed its tests yet. That's normal: most ideas fail. Each session's page names the test "
+            "each idea missed and what to try next" if not passed else "{:,} passed".format(passed)))
     paper, prog = int(d.get("paper_running") or 0), d.get("paper_progress")
     if idle and (idle == "engine" or not paper):
         pass  # the idle line (shown above the story) says why nothing trades; this one would repeat or contradict it
