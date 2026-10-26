@@ -1160,11 +1160,12 @@
     const m = oos || ins;
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
+    const missed = Array.isArray(opts.missed) && opts.missed.length ? `<div class="slip-missed">${whyFailedHtml(opts.missed.slice(0, 1))}${opts.missed.length > 1 ? `<a class="sub-fig" href="/strategies/${s.id}">${opts.missed.length - 1} more check${opts.missed.length > 2 ? 's' : ''} on its page</a>` : ''}</div>` : '';
     const pickCell = opts.pick ? (bulkDeployable(s)
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
-      <td class="name" data-lab=""><span class="strategy-ref">${esc(String(s.id).padStart(4, '0'))}</span>${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : ''}</td>
+      <td class="name" data-lab=""><span class="strategy-ref">${esc(String(s.id).padStart(4, '0'))}</span>${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : ''}${missed}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7\u00a0${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
@@ -2049,6 +2050,14 @@
       ${row('Sizing', sizing)}</dl>`;
   }
 
+  // Why an idea did not pass: one row per gate it missed (server services.gate_explain), each with
+  // what was measured, what was needed and one thing to try next. The server keeps each figure with
+  // its unit (no-break spaces), so a phone wraps the words, never a number away from its label.
+  function whyFailedHtml(lines) {
+    if (!Array.isArray(lines) || !lines.length) return '';
+    return `<ul class="why-failed">${lines.map((l) => `<li><b class="wf-label">${esc(l.label)}</b><span class="wf-fig">Measured ${esc(l.measured)}; needed ${esc(l.needed)}.</span><span class="wf-next"><b>Try next:</b> ${esc(l.next)}</span></li>`).join('')}</ul>`;
+  }
+
   // The gatekeeper's numbers for the reader (their own result) — never fed back to the generator.
   function statGrid(s) {
     if (!s) return '';
@@ -2114,8 +2123,9 @@
         }
         const rest = strip(e2.message, /^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/);
         const tail = rest.indexOf(':') >= 0 ? rest.slice(rest.indexOf(':') + 1).trim() : '';
+        const why = whyFailedHtml(dd.why_failed);  // the gates it missed replace the gatekeeper's raw note
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}</div>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${why ? why : tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}</div>`);
       },
     };
   }
@@ -2232,7 +2242,8 @@
       const title = data.title || rest;
       const tail = rest.startsWith(title) ? rest.slice(title.length) : '';  // keep the ": …" explanation as text
       const titleHtml = sid ? `<a href="/strategies/${sid}">${esc(title)}</a>` : `<b>${esc(title)}</b>`;
-      inner = `${tag} ${titleHtml}${esc(tail)}`;
+      const why = whyFailedHtml(data.why_failed);
+      inner = `${tag} ${titleHtml}${why ? '' : esc(tail)}${why}`;
     } else if (ev.kind === 'challenger') {
       inner = `<span class="say-kind">Challenger</span>${esc(ev.message.replace(/^Challenger\s+/, ''))}`;
     } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
@@ -2417,7 +2428,7 @@
       const more = passed.length > 3 ? ` and <a href="/strategies?status=passed">${passed.length - 3} more</a>` : '';
       return `<p class="run-next">${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
     }
-    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. <a href="/research?new=1">Try another idea</a></p>`;
+    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each strategy below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
   async function viewRun(id) {
@@ -2429,6 +2440,7 @@
       <details class="run-history" id="run-history" open><summary class="section-head"><h2>Agent log</h2>${ICON.chev}</summary>
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div></details>`);
     let after = 0, tried = 0, runActive = true, loaded = false;
+    const whyBySid = new Map();  // strategy id -> the gates its verdict missed, kept across polls
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
     const load = async (cfg) => {
@@ -2452,10 +2464,14 @@
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', r.strategies_passed == null ? '—' : r.strategies_passed);
       const next = root.querySelector('#runnext');
       if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
+      (d.events || []).forEach((ev) => {
+        const dd = ev.data || {};
+        if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
+      });
       const artifacts = root.querySelector('#run-artifacts'), strategies = d.strategies || [];
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;
-      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2></div>${strategyTable(strategies.map(s => strategySlip(s)).join(''), false)}` : '';
+      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2></div>${strategyTable(strategies.map(s => strategySlip(s, undefined, { missed: s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false)}` : '';
       if (artifacts.innerHTML !== artifactHtml) artifacts.innerHTML = artifactHtml;
       if (focusedArtifact) Array.from(artifacts.querySelectorAll('a')).find(a => a.getAttribute('href') === focusedArtifact)?.focus({ preventScroll: true });
       if (!loaded && !active) root.querySelector('#run-history').open = false;
@@ -2743,6 +2759,8 @@
       const [vt, chip, label, words] = vmap[s.status] || ['quiet', 'quiet', rpHuman(s.status), 'Awaiting a recorded verdict.'];
       verdictBody = `<div class="rp-verdict ${vt}"><span class="mk ${chip}">${esc(label)}</span><p>${esc(words)}</p></div>`;
     }
+    const missed = Array.isArray(s.why_failed) && s.why_failed.length ? s.why_failed : null;
+    if (missed) verdictBody += `<div class="paper-sub"><h4 class="paper-h">What it missed, and what to try next</h4>${whyFailedHtml(missed)}</div>`;
     const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy });
     // On a phone the Deploy panel sits below the whole paper, screens down. A validated passed
     // strategy (one with its gatekeeper record) that isn't on paper yet gets its primary action up
@@ -2792,7 +2810,7 @@
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
             ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `#${d.id} ·\u00a0${esc(d.mode)} ·\u00a0${esc(d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
             ${canDeploy ? `<div style="display:grid;gap:10px">
-                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
+                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: it missed “${esc(missed[0].label)}”${missed.length > 1 ? ` and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''}` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn${activeDeps.length ? '' : ' primary'}" id="dep-paper">Deploy on paper</button>
                 <details class="deployment-environments"><summary>Demo &amp; live</summary><div class="deployment-environments-body">
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>
@@ -3836,7 +3854,7 @@
     // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
     const found = s.own_sessions === false && !pass.n ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
       ? `${plural(pass.n, 'strategy', 'strategies')} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length ? `, <a href="/strategies">${num(pass.n - pass.items.length)} more</a>` : ''}`
-      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started</span>` : '') + '.');
+      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started${pass.n ? '' : ', <a href="/research">see what each idea missed</a>'}</span>` : '') + '.');
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', num(ap[k])));

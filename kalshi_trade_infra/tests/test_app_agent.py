@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 
@@ -283,6 +284,8 @@ def test_adjustment_that_fails_the_gates_is_not_proposed(monkeypatch):
     text, pid = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"side": "no"}}, False,
                           lambda m: _dataset(n_contracts=60))
     assert pid is None and "didn't pass these checks" in text and '"' in text
+    # Each failed check says what it measured and needed, and the reply ends on one thing to try next.
+    assert re.search(r'"[a-z ]+" \(measured [^,]+, needed [^)]+\)', text) and "To try next: " in text
 
 
 def test_repeat_note_query_matches_exact_text_since_a_time():

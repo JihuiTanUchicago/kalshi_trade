@@ -52,6 +52,7 @@ from app.services import research_memory
 from app.services import research_leads
 from app.services import research_screen
 from app.services import demo_record
+from app.services import gate_explain
 from app.agent_market_data import AgentMarketData, DataScope
 from app.agent_knowledge import AgentKnowledge
 from app.agent_news import AgentNews
@@ -1780,9 +1781,12 @@ def _promote_if_forward_validated(cur, user_id: int, experiment_id: int, finalis
         % (t["title"], hcls, verdict.get("n_trades", 0)),
         {"title": t["title"], "phase": "holdout", "classification": hcls,
          "holdout_consumed": verdict.get("holdout_consumed"),
+         "min_sample": finalist.get("min_sample"),
          "stats": {"n_trades": verdict.get("n_trades"), "p_value": verdict.get("p_value"),
                    "dsr": verdict.get("dsr"), "psr": verdict.get("psr"),
-                   "ci": verdict.get("ci"), "mean_net_return": verdict.get("mean_net_return")}})
+                   "ci": verdict.get("ci"), "mean_net_return": verdict.get("mean_net_return"),
+                   "cost_stress_ok": verdict.get("cost_stress_ok"),
+                   "cost_stress_mean": verdict.get("cost_stress_mean")}})
     if hcls != gatekeeper.Classification.FORWARD_VALIDATED.value:
         return
     ok, why = gatekeeper.marginal_contribution_ok(cur, user_id, experiment_id, finalist)
@@ -1791,7 +1795,7 @@ def _promote_if_forward_validated(cur, user_id: int, experiment_id: int, finalis
     log("verdict", "%s: diversification gate %s — %s." % (
             t["title"], "PASSED, promoted to DEPLOYMENT_CANDIDATE" if ok
             else "blocked (stays forward-validated, not deployable)", why),
-        {"title": t["title"], "phase": "forward", "marginal_ok": ok, "classification": final})
+        {"title": t["title"], "phase": "forward", "marginal_ok": ok, "classification": final, "reason": why})
 
 
 @contextmanager
@@ -1872,7 +1876,8 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                     "rejected", _result_block(s, t, "challenger_rejected", verdict.get("reason")))
                 log("verdict", "REJECTED (challenger) - %s: %s"
                     % (t["title"], verdict.get("reason") or "no credible mechanism"),
-                    {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"]})
+                    {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"],
+                     "reason": verdict.get("reason")})
                 continue
             # Surface the challenger's APPROVE/REVISE call too (reject already logs above), so the
             # live feed shows the skeptic's verdict on every finalist, not only the kills.
@@ -1895,7 +1900,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                     log("verdict", "NOT TESTED - %s: %s. No validation budget spent."
                         % (t["title"], pw["reason"]),
                         {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"],
-                         "power": pw["power"]})
+                         "power": pw["power"], "reason": pw["reason"]})
                     continue
             # Insert the strategy row FIRST (provisional) so the immutable experiment can carry its
             # strategy_id, then pre-register the frozen hypothesis.
@@ -1944,18 +1949,30 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                     # The stats go to the FEED (the user's own results, same as the strategy page) — NOT
                     # into _result_block, which feeds strategy_memory back to the GENERATOR. The generator
                     # stays blind to the held-out numbers (closes Leak 2); the human watching does not.
+                    folds = outcome.get("folds") or []
                     log("verdict", "%s - %s: validation verdict is gatekeeper-held (classification=%s, "
                                    "%s trades); the numbers never return to the generator."
                         % (status.upper(), t["title"], cls, outcome.get("n_trades", 0)),
                         {"title": t["title"], "status": status, "classification": cls,
-                         "strategy_id": t["strategy_id"], "stats": {
+                         "strategy_id": t["strategy_id"], "n_tested": len(idxs), "stats": {
                              "n_trades": outcome.get("n_trades"), "p_value": outcome.get("p_value"),
                              "dsr": outcome.get("dsr"), "psr": outcome.get("psr"),
                              "sharpe": outcome.get("sharpe"), "ci": outcome.get("ci"),
                              "mean_net_return": outcome.get("mean_net_return"),
                              "placebo_p": outcome.get("placebo_p"),
                              "max_drawdown": outcome.get("max_drawdown"),
-                             "cross_day_ok": outcome.get("cross_day_ok")}})
+                             "cross_day_ok": outcome.get("cross_day_ok"),
+                             # What each gate needed and measured, so the feed can say which one it
+                             # missed (services.gate_explain). Display only, like the rest of stats.
+                             "min_sample": payload[i]["min_sample"], "alpha_i": outcome.get("alpha_i"),
+                             "fdr_reject": outcome.get("fdr_reject"), "bh_reject": outcome.get("bh_reject"),
+                             "n_trials_audited": outcome.get("n_trials_audited"),
+                             "cross_day_max_day_share": outcome.get("cross_day_max_day_share"),
+                             "folds_n": len(folds) if outcome.get("alpha_spent") else None,
+                             "folds_positive": sum(1 for f in folds if (f.get("net_return") or 0) > 0)
+                             if outcome.get("alpha_spent") else None,
+                             "cost_stress_ok": outcome.get("cost_stress_ok"),
+                             "cost_stress_mean": outcome.get("cost_stress_mean")}})
                     # §E.5 promotion: a validation pass earns the ONE-TIME Locked-Holdout look and,
                     # if it forward-validates, the diversification gate that mints a DEPLOYMENT_CANDIDATE.
                     # Like validation, every number stays gatekeeper-held (feed + ledger only).
@@ -1971,7 +1988,8 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 "rejected", _result_block(s, t, "not_finalist"))
             log("verdict", "REJECTED - %s: not a finalist, so never tested on unseen data "
                            "(research pnl $%s over %s trades)." % (t["title"], ins.get("pnl"), ins.get("trades")),
-                {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"]})
+                {"title": t["title"], "status": "rejected", "strategy_id": t["strategy_id"],
+                 "in_sample": {"pnl": ins.get("pnl"), "trades": ins.get("trades")}})
         # LAST statement in the transaction: advance the checkpoint past this now-fully-gated chunk.
         # Atomic with the judging above — commit together or roll back together — which is what makes
         # a resume unable to re-judge a chunk (see _gate_tx / run_research.mark_gated).
@@ -3795,10 +3813,13 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         result = backtest.evaluate(new_spec, dataset_fn(dep["market"]))
         if not result["passed"]:
             # Gate names read as goals ("Makes money on unseen data"), so a bare list after "failed"
-            # read as praise. Name them as the checks it did not pass.
-            failed = ", ".join('"%s"' % g["name"].lower() for g in result["gates"] if not g["ok"])
-            return ("I backtested a change to %s, but it didn't pass these checks: %s. I left it alone."
-                    % (dep["title"], failed)), None
+            # read as praise. Name them as the checks it did not pass, each with what it measured
+            # and needed, and the first one's next step (services.gate_explain).
+            lines = gate_explain.backtest_gates(result["gates"])
+            failed = "; ".join('"%s" (measured %s, needed %s)' % (ln["label"].lower(), ln["measured"], ln["needed"])
+                               for ln in lines)
+            return ("I backtested a change to %s, but it didn't pass these checks: %s. I left it alone.%s"
+                    % (dep["title"], failed, (" To try next: " + lines[0]["next"]) if lines else "")), None
         # NOT "passed": an adjustment is only a re-backtest — it never pre-registers, is never
         # judged by the Statistical Gatekeeper, and carries no experiment. "passed" is reserved
         # for the full-pipeline outcome (set_strategy_outcome <-> STAT_SUPPORTED <-> a linked

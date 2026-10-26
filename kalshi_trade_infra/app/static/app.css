@@ -865,6 +865,15 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .gates .ok svg { color: var(--ink); } .gates .no svg { color: var(--signal); }
 .gates small { display: block; color: var(--ink-3); }
 .gates .v { font-weight: 600; white-space: nowrap; }
+/* Why an idea did not pass (server gate_explain): per missed gate, its name, then what was measured
+   and needed, then what to try next, each on its own line so nothing runs off a 360px phone. */
+.why-failed { list-style: none; padding: 0; margin: 6px 0 0; min-width: 0; }
+.why-failed li { margin: 0 0 8px; padding: 2px 0 2px 12px; border-left: 2px solid var(--signal); font-size: 13px; line-height: 1.5; overflow-wrap: break-word; }
+.why-failed li:last-child { margin-bottom: 0; }
+.why-failed .wf-label { display: block; color: var(--ink); font-weight: 600; }
+.why-failed .wf-fig { display: block; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.why-failed .wf-next { display: block; margin-top: 2px; color: var(--ink-2); }
+.why-failed .wf-next b { color: var(--ink); font-weight: 600; }
 .dial { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
 .dial:last-of-type { border-bottom: 0; }
 .dial .top { display: flex; justify-content: space-between; align-items: baseline; }
