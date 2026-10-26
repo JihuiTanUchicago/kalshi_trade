@@ -54,7 +54,8 @@ def autopilot_pulse(cur, user_id: int, since, review: bool = False, engine: bool
                        FROM (SELECT id FROM app_agent_runs WHERE user_id=%s AND kind='research' ORDER BY id DESC LIMIT %s) n
                        JOIN app_agent_runs r ON r.id=n.id WHERE r.status IN ('queued','running')) AS research_live,
                     """ + review_sql + """ AS review_live,
-                    (SELECT created_at FROM app_agent_runs WHERE user_id=%s AND kind='review' ORDER BY id DESC LIMIT 1) AS last_review_at,
+                    (SELECT COALESCE(started_at, created_at) FROM app_agent_runs WHERE user_id=%s AND kind='review'
+                      ORDER BY id DESC LIMIT 1) AS last_review_at,
                     (SELECT COUNT(*) FROM app_chat_messages WHERE user_id=%s) AS chat_n,
                     (SELECT MAX(id) FROM app_chat_messages WHERE user_id=%s) AS chat_top,
                     EXISTS(SELECT 1 FROM app_kalshi_keys WHERE user_id=%s) AS kalshi_key,

@@ -179,9 +179,10 @@ class UserCursor:
             model, uid = params
             if uid in self.users:
                 self.users[uid]["autopilot_model"] = model
-        elif sql == "SELECT created_at FROM app_agent_runs WHERE user_id=%s AND kind='review' ORDER BY id DESC LIMIT 1":
+        elif sql == repository.REVIEW_AT_SQL:
             rows = [run for run in self.runs if run["user_id"] == params[0] and run["kind"] == "review"]
-            self.result = {"created_at": max(rows, key=lambda run: run["id"])["created_at"]} if rows else None
+            last = max(rows, key=lambda run: run["id"]) if rows else None
+            self.result = {"at": last.get("started_at") or last["created_at"]} if last else None
         else:
             raise AssertionError("unexpected repository statement")
 
@@ -210,6 +211,10 @@ def test_review_liveness_includes_quiet_reviews_without_cross_user_or_research_l
                 {"id": 4, "user_id": 2, "kind": "review", "created_at": datetime(2026, 1, 4)}]
     assert repository.last_review_at(cur, 1) == datetime(2026, 1, 2)
     assert repository.last_review_at(cur, 2) == datetime(2026, 1, 4)
+    # Queued at 09:00, ran at 09:40: the check-in is when it ran.
+    cur.runs.append({"id": 5, "user_id": 1, "kind": "review", "created_at": datetime(2026, 1, 5, 9),
+                     "started_at": datetime(2026, 1, 5, 9, 40)})
+    assert repository.last_review_at(cur, 1) == datetime(2026, 1, 5, 9, 40)
 
 
 @pytest.mark.parametrize("phase", ["research", "validation", "holdout"])

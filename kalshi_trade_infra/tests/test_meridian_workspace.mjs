@@ -880,6 +880,21 @@ test('Overview autopilot card says what switching it on costs, and a running fir
   assert.match(card().innerHTML, /Last move <time [^>]+>just now<\/time>: Autopilot switched on\./);
 });
 
+test('Meridian: while its paper strategy holds nothing, the autopilot card also says what the autopilot is doing', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData()); }});
+  f.S.me.user.autopilot = true;
+  const flat = {code: 'waiting', line: 'No trades right now: ETH drift is waiting for a contract that fits its entry rules. Its last check: no edge.', action: null};
+  f.S.ap = {autopilot: true, mode: 'paper', story: [], research: {tested_7d: 3, passed_7d: 0, active: ['btc15m']},
+    live_running: 0, demo_running: 0, paper_running: 1, reviewing: false, idle: flat, last_action: null};
+  f.S.apAt = Date.now();
+  await f.viewDashboard(); await flush();
+  const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
+  assert.match(now(), /Its last check: no edge\. Meanwhile it's researching BTC 15-min\.$/);
+  f.S.ap = {...f.S.ap, research: {tested_7d: 3, passed_7d: 0, active: []}};
+  await f.viewDashboard(); await flush();
+  assert.doesNotMatch(now(), /Meanwhile/);
+});
+
 test('Overview deployment monitors preserve every mode, status, risk field and unknown-versus-zero result', async () => {
   const deployments = Object.freeze(['paper', 'demo', 'live'].flatMap((mode, modeIndex) => ['running', 'paused', 'stopped'].map((status, index) =>
     Object.freeze({...dashboardDeployment(mode, status), id: 100 + modeIndex * 3 + index,
@@ -1930,7 +1945,8 @@ test('Research run polling keeps one current stage through unknown events, pause
   assert.equal(postRequests(f).length, 0); assert.deepEqual(f.navigations, []);
 });
 
-const researchRun = (id, status) => ({id, status, prompt: `Session ${id}`, market: 'btc15m',
+// `seq` is the session's number among the user's own (the server's per-user count), never its run id.
+const researchRun = (id, status) => ({id, seq: 10 + id, status, prompt: `Idea ${id}`, market: 'btc15m',
   created_at: '2026-10-17T10:00:00Z', hypotheses_tried: id, strategies_passed: status === 'succeeded' ? 1 : 0});
 function researchFrontend(runs = [], {policy = null, ...options} = {}) {
   return frontend({...options, fetchImpl: path => {
@@ -2083,7 +2099,7 @@ for (const [label, statuses, featured] of [
     const f = researchFrontend(runs); await f.viewResearch(); await flush();
     const active = f.root.querySelector('#active-research'), history = f.root.querySelector('#runs');
     assert.equal(active.querySelector('a.active-open').getAttribute('href'), `/research/${featured}`);
-    assert.equal(active.querySelector('.active-session b').textContent, `Session ${featured}`);
+    assert.equal(active.querySelector('.active-session b').textContent, `Session ${10 + featured}`);
     assert.equal(active.querySelector('.active-prompt').tag, 'h2');
     assert.match(active.querySelector('.active-prompt').innerHTML, /&lt;script&gt;Unsafe session title&lt;\/script&gt;/);
     assert.equal(active.querySelector('.active-prompt').getAttribute('title'), '&lt;script&gt;Unsafe session title&lt;/script&gt;');
@@ -2098,7 +2114,7 @@ for (const [label, statuses, featured] of [
       runs.filter(run => run.id !== featured).map(run => `/research/${run.id}`));
     for (const run of runs.filter(run => run.id !== featured)) {
       const card = history.querySelector(`a[href="/research/${run.id}"]`);
-      assert.equal(card.querySelector('.run-id').textContent, `Session ${run.id}`);
+      assert.equal(card.querySelector('.run-id').textContent, `Session ${run.seq}`);
       assert.ok(card.querySelector('.run-title').textContent.includes(run.prompt));
     }
     for (const run of runs.filter(run => run.status === 'paused' && run.id !== featured)) {
@@ -2108,6 +2124,23 @@ for (const [label, statuses, featured] of [
     assert.equal(postRequests(f).length, 0);
   });
 }
+
+test('Research numbers a user\'s sessions among their own, never by the global run id', async () => {
+  // A user's first session is run 8 in the whole app, and the seeded example (no number) is older.
+  const runs = [{...researchRun(9, 'running'), seq: 2}, {...researchRun(8, 'succeeded'), seq: 1},
+    {...researchRun(2, 'succeeded'), seq: undefined, example: true}];
+  const f = researchFrontend(runs); await f.viewResearch(); await flush();
+  const active = f.root.querySelector('#active-research'), history = f.root.querySelector('#runs');
+  assert.equal(active.querySelector('.active-session b').textContent, 'Session 2');
+  assert.equal(history.querySelector('a[href="/research/8"] .run-id').textContent, 'Session 1');
+  assert.equal(history.querySelector('a[href="/research/2"] .run-id'), null);
+  for (const html of [active.innerHTML, history.innerHTML]) assert.doesNotMatch(html, /Session (8|9)\b/);
+  // An answer without numbers (an older server) shows none rather than the run id.
+  const g = researchFrontend([{...researchRun(9, 'running'), seq: undefined}, {...researchRun(8, 'succeeded'), seq: undefined}]);
+  await g.viewResearch(); await flush();
+  assert.equal(g.root.querySelector('#active-research .active-session b'), null);
+  assert.equal(g.root.querySelector('#runs a[href="/research/8"] .run-id'), null);
+});
 
 test('completed and empty Research accounts keep their history and do not show an active card', async () => {
   for (const runs of [[researchRun(1, 'succeeded'), researchRun(2, 'failed'), researchRun(3, 'cancelled')], []]) {
@@ -3701,6 +3734,40 @@ test('a returning user reads what happened since the last visit at the top of th
   for (const said of ['No trades closed.', 'Nothing new passed.', 'On. It made no changes.', 'Nothing.']) assert.ok(q.includes(said), said);
   // An older server without the block: no strip.
   assert.equal((await strip({})).root.querySelector('#dash-since'), null);
+});
+
+test('Meridian: the strip splits a book\'s figure by the strategy that traded it, inside that book only', async () => {
+  const dep = (id, title, mode, status) => ({id, strategy_id: 100 + id, title, market: 'btc15m', mode, status, status_reason: null,
+    stake: 5, max_positions: 3, realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, curve: [], created_at: '2026-10-20T08:00:00Z'});
+  const deployments = [dep(3, 'ETH drift', 'paper', 'running'), dep(4, 'SOL <i>fade</i>', 'paper', 'paused'), dep(5, 'Demo copy', 'demo', 'running')];
+  const since = {at: '2026-10-19T08:00:00+00:00', first: false,
+    books: {paper: {pnl: -24.19, trades: 19}, demo: {pnl: 1.5, trades: 2}, live: {pnl: 0, trades: 0}},
+    passed: {n: 0, items: []}, autopilot: {}, runs: {},
+    by_deployment: {paper: [{deployment_id: 3, pnl: 28.89, trades: 12}, {deployment_id: 4, pnl: -53.08, trades: 7}],
+      demo: [{deployment_id: 5, pnl: 1.5, trades: 2}]}};
+  const strip = async (extra) => {
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...dashboardData(), deployments, ...extra});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    return f.root.querySelector('#dash-since').innerHTML;
+  };
+  const text = await strip({since});
+  // Paper: the winner and the loser named, each with its own signed amount; demo (one strategy) has no split.
+  assert.match(text, /<div class="since-split" data-book="paper"><span class="since-sub">Paper:<\/span> <a href="\/strategies\/103">ETH drift<\/a> <span class="nobr"><span class="pos">\+\$28\.89<\/span> on 12<\/span><span class="sep">·<\/span><a href="\/strategies\/104">SOL &lt;i&gt;fade&lt;\/i&gt;<\/a> <span class="nobr"><span class="neg">−\$53\.08<\/span> on 7<\/span><\/div>/);
+  assert.doesNotMatch(text, /data-book="demo"><span class="since-sub">|since-split" data-book="demo"/);
+  assert.doesNotMatch(text, /\$27\.39|−\$22\.69/);  // nothing adds paper and demo together
+  // Only the paper book shown: no book label in front of its split; a deployment no longer listed is named plainly.
+  const solo = await strip({since: {...since, books: {paper: since.books.paper},
+    by_deployment: {paper: [...since.by_deployment.paper, {deployment_id: 99, pnl: -1, trades: 1}, {deployment_id: 98, pnl: -2, trades: 1}]}},
+  deployments: deployments.slice(0, 2)});
+  assert.match(solo, /<div class="since-split" data-book="paper"><a href="\/strategies\/103">ETH drift<\/a>/);
+  assert.match(solo, /a removed strategy <span class="nobr"><span class="neg">−\$1\.00<\/span> on 1<\/span><span class="sep">·<\/span><span class="since-sub">1 more<\/span><\/div>/);
+  // An older server without the split: the book's line alone.
+  assert.doesNotMatch(await strip({since: {...since, by_deployment: undefined}}), /since-split/);
 });
 
 test('the last visit lives in a cookie: one visit until 30 minutes pass, then since that visit', async () => {
@@ -5668,7 +5735,7 @@ test('Meridian: a research session the autopilot started says so on the active c
   const example = {...researchRun(1, 'succeeded'), by_autopilot: 0, example: true, direction: 'random_walk'};
   const f = researchFrontend([ap, apDone, mine, example]); await f.viewResearch(); await flush();
   const active = f.root.querySelector('#active-research'), history = f.root.querySelector('#runs');
-  assert.equal(active.querySelector('.active-session b').textContent, 'Session 15');
+  assert.equal(active.querySelector('.active-session b').textContent, 'Session 25');  // its per-user number (seq), not run 15
   assert.match(active.querySelector('.active-session').innerHTML, /title="The autopilot started this session\.">Autopilot<\/span>/);
   assert.match(history.querySelector('a[href="/research/14"] .run-title').innerHTML, /Autopilot<\/span>/);
   for (const id of [9, 1]) assert.doesNotMatch(history.querySelector(`a[href="/research/${id}"] .run-title`).innerHTML, /Autopilot<\/span>/);

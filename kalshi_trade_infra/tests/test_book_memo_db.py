@@ -226,6 +226,8 @@ def test_kept_reads_answer_as_the_repository_does(conn, frozen):
         day = NOW.replace(hour=0)
         assert book_memo.closed_book_totals(memo, day, NOW - timedelta(days=2)) == repo.closed_book_totals(
             cur, uid, day, NOW - timedelta(days=2))
+        assert book_memo.closed_book_totals(memo, day, NOW - timedelta(days=2), split=True) == repo.closed_book_totals(
+            cur, uid, day, NOW - timedelta(days=2), split=True)
         assert book_memo.deployment_curves(memo, ids) == repo.deployment_curves(cur, uid, deployment_ids=ids)
         assert book_memo.deployments_for_display(memo) == repo.list_deployments_for_display(cur, uid)
         assert book_memo.deployments_for_display(memo, sids[0]) == repo.list_deployments_for_display(cur, uid, strategy_id=sids[0])

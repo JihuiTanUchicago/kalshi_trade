@@ -258,7 +258,10 @@ def add_event(cur, run_id: int, kind: str, message: str, data: Optional[Dict] = 
 OUT_OF_CREDITS_STEP = "Paused \u2014 out of credits"
 
 
-def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
+RUNS_LISTED = 50  # the newest research sessions the Research list shows
+
+
+def list_runs(cur, user_id: int, limit: int = RUNS_LISTED) -> List[Dict]:
     """The user's newest research sessions. `by_autopilot` is 1 for a session the autopilot started
     (a brief run, which Billing calls "Autopilot research"), so the list can say whose it is.
     `out_of_credits` is 1 for a run-until-stopped session that finished because the credits ran out
@@ -293,6 +296,18 @@ def list_runs_version(cur, user_id: int, limit: int = 50) -> List[Dict]:
         (user_id, user_id, user_id, limit),
     )
     return cur.fetchall()
+
+
+def count_own_research(cur, user_id: int) -> int:
+    """How many research sessions the user has, the seeded example left out: the newest one's number in
+    the Research list ("Session 3"), which counts the user's own sessions instead of showing the global
+    run id ("Session 8" on a first session). One count through idx_runs_user."""
+    cur.execute(
+        "SELECT COUNT(*) AS n FROM app_agent_runs WHERE user_id=%s AND kind='research' "
+        "AND (direction IS NULL OR direction<>%s)",
+        (user_id, DEMO_DIRECTION),
+    )
+    return int((cur.fetchone() or {}).get("n") or 0)
 
 
 def example_run_id(cur, user_id: int) -> Optional[int]:

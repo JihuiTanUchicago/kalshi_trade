@@ -264,8 +264,8 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
         "user_positions": lambda *a, **k: [], "list_deployments_for_display": lambda *a, **k: [], "deployment_curves": lambda *a, **k: {},
         "paper_ledger_summary": lambda cur, uid: {"balance": 480.0, "deposited": 500.0, "reset_at": at},
         "paper_ledger_version": lambda cur, uid: (2, 9),  # the ledger's rows and highest id (book_memo keeps the sum)
-        "closed_book_totals": lambda cur, uid, since, visit=None: ({m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"demo": 3},
-                                                                     {m: (0.0, 0) for m in ("paper", "demo", "live")}),
+        "closed_book_totals": lambda cur, uid, since, visit=None, split=False: ({m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"demo": 3},
+                                                                                  {m: (0.0, 0) for m in ("paper", "demo", "live")}) + (({},) if split else ()),
         "daily_pnl": lambda *a, **k: [],
         "activity_since": lambda cur, uid, since: {"autopilot": {}, "runs": {}},
         "passed_since": lambda cur, uid, since: {"n": 0, "items": []},
@@ -1116,7 +1116,13 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypa
     assert out == {"at": now, "first": False, "books": {"paper": {"pnl": 2.42, "trades": 3}, "demo": {"pnl": -1.0, "trades": 1},
                                                          "live": {"pnl": 0.0, "trades": 0}},
                    "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1},
-                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}}
+                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}, "by_deployment": {}}
+    # Each book's figure split by the deployment that traded it, best first, books kept apart.
+    split = server._since_visit(None, 1, now, False, {"paper": (-24.19, 19), "demo": (-1.0, 1)},
+                                {("paper", 4): (-53.0761, 7), ("paper", 3): (28.8867, 12), ("demo", 5): (-1.0, 1)})
+    assert split["by_deployment"] == {"paper": [{"deployment_id": 3, "pnl": 28.89, "trades": 12},
+                                                {"deployment_id": 4, "pnl": -53.08, "trades": 7}],
+                                      "demo": [{"deployment_id": 5, "pnl": -1.0, "trades": 1}]}
 
 
 def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monkeypatch):

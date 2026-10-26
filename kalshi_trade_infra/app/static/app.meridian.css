@@ -2699,6 +2699,7 @@ body.landing-body .apf { display: none; }
 .since-book { white-space: nowrap; }
 .since .sep { margin: 0 8px; color: var(--ink-3); }
 .since-sub { color: var(--ink-3); }
+.since-split { margin-top: 2px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
 @media (max-width: 560px) {
   .since { padding: 10px 12px 8px; }
   .since-row { grid-template-columns: minmax(0, 1fr); gap: 0; }

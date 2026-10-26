@@ -195,6 +195,18 @@ def test_the_merged_reads_answer_as_the_reads_they_replace(conn, frozen):
     assert got["passed_7d"] == 4 and got["tested_7d"] == 12 + 7 + 4 + 2  # the example and last week's left out
     week = repo.credit_week(cur, busy["uid"], since, balance=True)
     assert week["research"] == 0.48 and week["by_source"]["autopilot_review"] == 0.11
+    # "Last check-in" is when the newest review ran: one queued 40 minutes ago that a busy worker only
+    # started 2 minutes ago reads 2 minutes; a newer one still queued stands in with its queued time.
+    late = repo.create_run(cur, busy["uid"], "review")
+    cur.execute("UPDATE app_agent_runs SET created_at=%s, started_at=%s WHERE id=%s",
+                (NOW - timedelta(minutes=40), NOW - timedelta(minutes=2), late))
+    for read in (lambda: repo.autopilot_pulse(cur, busy["uid"], since)["last_review_at"],
+                 lambda: repo.last_review_at(cur, busy["uid"])):
+        assert read() == NOW - timedelta(minutes=2)
+    queued = repo.create_run(cur, busy["uid"], "review")
+    cur.execute("UPDATE app_agent_runs SET created_at=%s WHERE id=%s", (NOW - timedelta(minutes=1), queued))
+    assert repo.autopilot_pulse(cur, busy["uid"], since)["last_review_at"] == NOW - timedelta(minutes=1)
+    assert repo.last_review_at(cur, busy["uid"]) == NOW - timedelta(minutes=1)
 
 
 def _status(counting, uid):
