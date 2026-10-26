@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from app import server
 from app.web import auth
+from app.web.routes import auth as auth_routes
 from app.adapters.kalshi import kalshi_account
 
 
@@ -851,18 +852,18 @@ def test_open_signup_flag_controls_new_account_creation(monkeypatch):
     monkeypatch.setattr(server.repo, "is_waitlist_approved", lambda cur, e: False)
     monkeypatch.setattr(server.repo, "upsert_google_user",
                         lambda cur, sub, email, name, pic, allow_new: captured.update(allow_new=allow_new) or {"id": 42})
-    monkeypatch.setattr(server, "_start_session", lambda ctx, uid: None)
+    monkeypatch.setattr(auth_routes, "_start_session", lambda ctx, uid: None)
 
     class Ctx:
         cur = None
         set_cookies = []
         query = {"code": "c", "state": "st"}
 
-    monkeypatch.setattr(server, "OPEN_SIGNUP", False)   # invite-only (default)
+    monkeypatch.setattr(auth_routes, "OPEN_SIGNUP", False)   # invite-only (default)
     server.google_callback(Ctx())
     assert captured["allow_new"] is False               # a random email is waitlisted, not admitted
 
-    monkeypatch.setattr(server, "OPEN_SIGNUP", True)     # open signup
+    monkeypatch.setattr(auth_routes, "OPEN_SIGNUP", True)     # open signup
     server.google_callback(Ctx())
     assert captured["allow_new"] is True                # the same random email is now admitted
 
@@ -1036,7 +1037,7 @@ def test_google_sign_in_returns_to_the_page_the_visitor_came_from(monkeypatch):
     monkeypatch.setattr(server.auth, "exchange_code", lambda *a: {"email": "a@x.com", "sub": "s", "name": "A", "picture": None})
     monkeypatch.setattr(server.repo, "is_waitlist_approved", lambda *a: True)
     monkeypatch.setattr(server.repo, "upsert_google_user", lambda *a, **k: {"id": 7})
-    monkeypatch.setattr(server, "_start_session", lambda ctx, uid: None)
+    monkeypatch.setattr(auth_routes, "_start_session", lambda ctx, uid: None)
 
     def callback(cookie):
         class Cb:
