@@ -53,14 +53,18 @@ def market_has_open_positions(cur, market: str) -> bool:
     return cur.fetchone() is not None
 
 
+# The strategy is LEFT JOINed: a strategy can be deleted once its deployment is stopped, and stopping
+# leaves positions open. Those positions are still money in the book (paper cash paid for them), so
+# the dashboard's open positions and equity, the Deploy board and the paper reset guard keep them,
+# with no title, as the track record and the trades CSV do.
 _USER_POSITIONS = """SELECT p.*, s.title FROM app_positions p
-           JOIN app_deployments d ON d.id=p.deployment_id JOIN app_strategies s ON s.id=d.strategy_id
+           JOIN app_deployments d ON d.id=p.deployment_id LEFT JOIN app_strategies s ON s.id=d.strategy_id
            WHERE p.user_id=%s AND p.status=%s ORDER BY p.id DESC LIMIT %s"""
 
 
 def user_positions(cur, user_id: int, status: str = "open", limit: int = 100) -> List[Dict]:
-    """A user's positions with their strategy titles. Open ones come newest-opened first; closed
-    ones come most recently settled first (see _newest_closed)."""
+    """A user's positions with their strategy titles. Open ones come newest-opened first, a deleted
+    strategy's included (title None); closed ones come most recently settled first (see _newest_closed)."""
     if status == "closed":
         return _newest_closed(cur, user_id, limit)
     cur.execute(_USER_POSITIONS, (user_id, status, limit))
