@@ -24,6 +24,7 @@
 .kp-reduce { min-height: 34px; }
 .kalshi-perps-live .btn { min-height: 34px; justify-content: center; }
 .kalshi-perps-live .btn:disabled, .kalshi-perps-live fieldset:disabled .btn { background: transparent; border-color: var(--rule-2); color: var(--ink-3); cursor: not-allowed; }
+.kalshi-perps-live .btn.ghost:disabled, .kalshi-perps-live fieldset:disabled .btn.ghost { border-color: var(--ink-3); }  /* 3:1 outline, as app.css */
 .kp-field input:disabled, .kp-field select:disabled { color: var(--ink-3); opacity: .7; }
 .kp-review { border: 1px solid var(--rule-2); border-radius: var(--radius, 3px); padding: 12px; margin-top: 12px; background: var(--stock-raised); }
 .kp-review-head { align-items: flex-start; margin-bottom: 10px; }

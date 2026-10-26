@@ -383,6 +383,9 @@ def test_the_strategy_page_lists_what_it_missed_and_a_bad_record_never_fails_it(
     # The research paper's figure tints ride in the experiment block, judged by the same checks.
     assert out["experiment"]["gate_tints"] == {"validation": {"n_trades": "fail"}}
     assert "gate_tints" not in exp  # the block is copied, never changed in place
+    # The backtest's luck caution reads its bar from the server: the app's noise level, above the gate's floor.
+    assert out["sample_caution"] == {"min_trades": server.track_record.MIN_TRADES, "gate_min_oos_trades": backtest.GATES["min_oos_trades"]}
+    assert out["sample_caution"]["min_trades"] > out["sample_caution"]["gate_min_oos_trades"]
     monkeypatch.setattr(server, "_experiment_block", lambda *a: {"validation": "not a row", "min_sample": 30})
     bad = server.get_strategy(_ctx(("4",)))
     assert bad["why_failed"] == [] and bad["experiment"]["gate_tints"] == {}  # every figure neutral
