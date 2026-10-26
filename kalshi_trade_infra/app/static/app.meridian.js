@@ -4987,6 +4987,7 @@
     const saved = localStorage.getItem('tau_hotrail');
     return saved === '1';
   };
+  const hotShown = () => hotOpen();  // closed, app.meridian.css hides the rail at every width
   let hotLoop = false;
   let apLoop = false, apReq = null;
 
@@ -6120,25 +6121,39 @@
       </div>`; });
     root.querySelectorAll('[data-hot="toggle"]').forEach((b) => b.onclick = () => {
       const next = !hotOpen(); localStorage.setItem('tau_hotrail', next ? '1' : '0');
-      document.body.classList.toggle('hot-open', next); renderHotRail();
+      document.body.classList.toggle('hot-open', next); renderHotRail(); hotSoon();
       if (resizePaperChart) resizePaperChart();
     });
     rail.querySelector('.hot-ft a') && (rail.querySelector('.hot-ft a').onclick = (e) => { e.preventDefault(); go('/explore'); });
   }
   // Resolves false when the read failed. The rail is repainted anyway, so its age line counts on from
   // the last snapshot's own time instead of saying "just now" for as long as reads fail.
-  async function refreshHot() {
-    try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
+  // One read at a time: a page that paints its shell twice (the instant switch, then its content) mounts
+  // the rail twice, and Research asked for the same snapshot twice on every load.
+  let hotReq = null;
+  function refreshHot() {
+    if (!hotReq) {
+      hotReq = (async () => {
+        try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
+      })();
+      hotReq.then(() => { hotReq = null; });
+    }
+    return hotReq;
   }
+  // The rail is read only while it shows (hotShown), on mounting, each minute and when it comes into view.
+  // Hidden, nothing on the page uses the snapshot, and it was one of every page's first reads on a phone.
+  const hotSoon = () => { if (hotShown() && (!S.hot || !S.hotAt || Date.now() - S.hotAt > 55000)) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); };
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
     document.body.classList.toggle('hot-open', hotOpen());
     if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; document.body.appendChild(a); }
     renderHotRail();
-    const stale = !S.hot || !S.hotAt || Date.now() - S.hotAt > 55000;
-    if (stale) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); });
-    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail')) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
-      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && S.hotFail) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }); }
+    hotSoon();
+    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
+      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown() && S.hotFail) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); });
+      // A window widened past phone width shows the rail: it reads then.
+      const wide = window.matchMedia && window.matchMedia('(max-width: 760px)');
+      if (wide && wide.addEventListener) wide.addEventListener('change', () => { if (document.getElementById('hotrail')) hotSoon(); }); }
   }
 
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Credits from Tau support' };
