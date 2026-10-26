@@ -120,7 +120,7 @@ Research is meant to get better at finding edges from its own results:
 
 ## Markets and data
 
-- **Markets** (`app/markets.py`): curated crypto (BTC/ETH/SOL/XRP/DOGE/NEAR/ZEC/HYPE 15-minute,
+- **Markets** (`app/trading/markets.py`): curated crypto (BTC/ETH/SOL/XRP/DOGE/NEAR/ZEC/HYPE 15-minute,
   BTC/ETH/SOL/XRP daily), sports moneylines (NFL/NHL/NBA/NCAAF/MLB/EPL), NYC high temperature,
   plus every recurring catalog series in Sports or Climate and Weather. `btc15m_tick` (per-second
   replay) and `btc_perp` are research only.
@@ -134,7 +134,7 @@ Research is meant to get better at finding edges from its own results:
   (`book_1s`, `trades_1s`, `spot_1s`, `features_1s`).
 - **Side data**: weather forecasts (NBM and GFS MOS from IEM, `app/adapters/data/weather_fcst*.py`), Kalshi
   `/historical` candles back to 2021 for weather, measured execution costs
-  (`python -m app.exec_cost_model`). The sportsbook odds collector exists but has no key, so it
+  (`python -m app.trading.exec_cost_model`). The sportsbook odds collector exists but has no key, so it
   is a no-op.
 
 ## Safety layers
@@ -145,7 +145,7 @@ Research is meant to get better at finding edges from its own results:
 - **Position guard** (`architecture/position_guard.py`): every real-order path wraps its submitter
   so a SELL is checked against Kalshi's position and can never open a short. New order paths
   must use `position_guarded_submitter`.
-- **Reconciliation**: `app/reconcile.py` halts entries on a book mismatch, and the alerter
+- **Reconciliation**: `app/trading/reconcile.py` halts entries on a book mismatch, and the alerter
   (`data_pipeline/live_alerter.py`) reports mismatches that survive two passes.
 - **Loss limits**: per-position stop (default 40%), drawdown limit (default 25%), the engine's
   loss guard (pause at max(2× backtest worst drawdown, 50% of capital)), an account-equity kill

@@ -8,7 +8,7 @@ Conventions matched to the rest of the system (do not diverge):
   settles above (or below) the strike, else $0. Prices are dollars in (0, 1) and
   read as probabilities.
 - Volatility features (`vol_15m`, `vol_60m`) are the stdev of **1-minute** BTC log
-  returns (see app/markets.py). So they are a per-1-minute sigma; the horizon
+  returns (see app/trading/markets.py). So they are a per-1-minute sigma; the horizon
   scaling is sigma * sqrt(minutes), exactly as markets.py's `z_score` does
   (moneyness / (vol_60m * sqrt(tte_min))).
 - The fee is Kalshi's real taker fee, reused verbatim from data_pipeline.kalshi_fees

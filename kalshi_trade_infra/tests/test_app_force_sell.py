@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import engine
+from app.trading import engine
 
 
 # -- helpers -------------------------------------------------------------------
@@ -321,8 +321,8 @@ def test_portfolio_notional_cap_trims_a_new_entry(monkeypatch):
 
 
 def test_a_decision_records_why_it_bought_nothing(monkeypatch):
-    from app import spec as specmod
-    from app.markets import Contract, snapshot
+    from app.trading import spec as specmod
+    from app.trading.markets import Contract, snapshot
     from datetime import datetime, timezone
     scans = []
     monkeypatch.setattr(engine.repo, "open_positions", lambda cur, dep_id: [])

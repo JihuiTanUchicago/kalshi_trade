@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import engine
+from app.trading import engine
 from app import repository as repo
 
 

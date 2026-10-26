@@ -1,5 +1,5 @@
-"""Demo copies follow the user's running paper strategies (app/demo_twins.py)."""
-from app import demo_twins
+"""Demo copies follow the user's running paper strategies (app/trading/demo_twins.py)."""
+from app.trading import demo_twins
 from app import repository as repo
 
 SPEC = {"side": "yes", "entry": {"min_edge": 0.05}}

@@ -38,7 +38,7 @@ def _setup(conn):
     """A strategy whose unseen-data backtest made +$0.15 a trade and won 61%, on paper, live and a
     stopped demo deployment, plus another strategy whose trades must never count."""
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "bt@example.com", "B", None)["id"]

@@ -10,8 +10,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import engine
-from app import spec as specmod
+from app.trading import engine
+from app.trading import spec as specmod
 from data_pipeline.architecture.contracts import TradeIntent
 from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
 from data_pipeline.architecture.simulated_venue import SimulatedVenue
@@ -130,7 +130,7 @@ def tx(monkeypatch):
 
 
 def _yes_snapshot(bid=0.30, ask=0.31):
-    from app.markets import Contract, snapshot
+    from app.trading.markets import Contract, snapshot
 
     now = int(datetime.now(timezone.utc).timestamp())
     # Strike far below spot -> P(YES) ~ 1 -> YES is the high-edge side.

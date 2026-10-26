@@ -33,7 +33,7 @@ from typing import Dict, List, Optional
 import requests
 
 from app.adapters.tao import tao_repository
-from app.markets import MARKETS, TAO_USD_SYMBOL
+from app.trading.markets import MARKETS, TAO_USD_SYMBOL
 from data_pipeline.common import get_db_conn, utc_now
 
 API_BASE = os.getenv("TAOSTATS_API_BASE", "https://api.taostats.io").rstrip("/")

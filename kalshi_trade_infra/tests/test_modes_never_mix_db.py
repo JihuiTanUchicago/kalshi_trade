@@ -66,10 +66,11 @@ def _money(v):
 
 
 def test_paper_demo_and_live_figures_never_mix(conn, monkeypatch):
-    from app import engine, server
+    from app import server
+    from app.trading import engine
     from app import repository as repo
-    from app import spec as specmod
-    from app.markets import Contract, snapshot
+    from app.trading import spec as specmod
+    from app.trading.markets import Contract, snapshot
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.architecture.simulated_venue import SimulatedVenue
 
@@ -202,7 +203,7 @@ def test_paper_demo_and_live_figures_never_mix(conn, monkeypatch):
     # -- the track record, per mode --------------------------------------------------------------
     # An empty record cached a moment ago (read before these trades): a book this small is read fresh,
     # so the stale empty one is never served.
-    from app import track_record
+    from app.trading import track_record
     server._TRACK_RECORD[uid] = (time.time(), track_record.build([]), 0, server._BOOK_SHAPE.get(uid))
     record = server.get_track_record(ctx)["modes"]
     for mode in MODES:

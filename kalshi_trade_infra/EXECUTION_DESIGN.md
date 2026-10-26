@@ -4,7 +4,7 @@ How Tau turns a strategy's decision into contracts on (or off) the book, and how
 risk control is welded to that path. This documents `MarketableLimitKernel`
 (`data_pipeline/architecture/execution_kernel.py`), the live book feed
 (`data_pipeline/market_data.py`), the simulated venue
-(`data_pipeline/architecture/simulated_venue.py`), and how `app/engine.py` and
+(`data_pipeline/architecture/simulated_venue.py`), and how `app/trading/engine.py` and
 `data_pipeline/live_trading_engine.py` drive them.
 
 The guiding rule, from the 2026-09-27 incident that this whole subsystem exists
@@ -185,7 +185,7 @@ Key coupling invariants:
   exactly as before. The new knobs cannot enable trading; set empty they are a
   no-op, set non-empty they only tighten.
 
-### Risk-control matrix (app engine, `app/engine.py`)
+### Risk-control matrix (app engine, `app/trading/engine.py`)
 
 Each portfolio-layer control, what it measures, its threshold/knob, and what it
 does. All run every engine loop, each fully contained (one failure never stops

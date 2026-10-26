@@ -13,7 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import backtest, server
+from app import server
+from app.trading import backtest
 from app.research import gatekeeper
 from app.services import gate_explain as ge
 

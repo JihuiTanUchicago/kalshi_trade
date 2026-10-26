@@ -7,9 +7,9 @@ a model that re-fit inside signals() at validation time would score itself on he
 its "edge" would be fake. These tests prove the params are frozen, part of the experiment
 identity, fed to signals on a DIFFERENT window, and that no cross-fold channel (data_dir) is open.
 """
-from app import backtest
+from app.trading import backtest
 from app.research import sandbox
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.research.gatekeeper import Prereg
 
 from tests.test_code_strategy import _dataset, _code_spec, BUY_ALL, needs_confiner

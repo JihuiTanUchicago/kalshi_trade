@@ -26,7 +26,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from app.markets import FEATURES, MARKETS, MICRO_FEATURES, TICK_FEATURES
+from app.trading.markets import FEATURES, MARKETS, MICRO_FEATURES, TICK_FEATURES
 
 DDL = [
     """

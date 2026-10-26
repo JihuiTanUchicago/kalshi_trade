@@ -248,7 +248,7 @@ def test_an_autopilot_run_queued_on_an_alt_coin_repicks_among_bitcoin_markets(mo
 def test_sports_market_passes_the_universe_guard_and_runs(monkeypatch):
     """The guard must NOT reject a real curated sports market (underlying=None): nba_game is in
     MARKETS, so the run gets past the chokepoint and researches exactly like a crypto market."""
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
     assert "nba_game" in MARKETS and MARKETS["nba_game"].underlying is None
     store = Store(monkeypatch)
     model, prompts = scripted([plan(), hyps(WINNER)])
@@ -439,7 +439,7 @@ def test_run_worker_reads_the_owner():
 def test_plan_lookback_clamps_to_available_history():
     from app.research import agent
     from app.llm import Usage
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
     big = "```json\n%s\n```" % json.dumps({"lookback_days": 9999, "why": "lots"})
     model, _ = scripted([big])
     days = agent._plan_lookback({"market": "btc15m", "prompt": "x"}, "btc15m", model, Usage(), lambda *a, **k: None)

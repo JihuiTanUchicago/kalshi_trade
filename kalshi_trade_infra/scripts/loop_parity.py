@@ -21,7 +21,7 @@ def _row(t):
 
 
 def _specs(market: str, limit: int):
-    from app import spec as specmod
+    from app.trading import spec as specmod
     from data_pipeline.common import get_db_conn
     conn = get_db_conn()
     try:
@@ -54,7 +54,7 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=30)
     args = ap.parse_args(argv)
 
-    from app import backtest
+    from app.trading import backtest
     from app.adapters.kalshi.spec_strategy import simulate_on_loop
 
     backtest.ENGINE = "legacy"  # the reference side, whatever TAU_BACKTEST_ENGINE says

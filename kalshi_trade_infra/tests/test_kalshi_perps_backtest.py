@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.adapters.kalshi_perps import kalshi_perps_backtest as perps
-from app.markets import Market
+from app.trading.markets import Market
 
 
 MARKET = Market("btc_perp", "BTC_PERP", "Bitcoin perpetual research", 1, 90,
@@ -254,7 +254,7 @@ def test_scope_and_boundary_close_do_not_read_newer_bars_or_funding():
 
 
 def test_common_exclusive_last_bar_plus_one_bound_needs_no_future_coverage():
-    from app import backtest
+    from app.trading import backtest
 
     ds = perps.build_dataset(MARKET, _history())
     canonical = perps.simulate(_spec(), ds, ds.start_ts, ds.end_ts)

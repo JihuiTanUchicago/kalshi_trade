@@ -23,7 +23,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from app.markets import NEW_YORK, BtcSeries, Contract, Market, Snapshot, TICK_FEATURES  # noqa: F401 - re-exported
+from app.trading.markets import NEW_YORK, BtcSeries, Contract, Market, Snapshot, TICK_FEATURES  # noqa: F401 - re-exported
 
 MAX_BOOK_AGE_S = float(os.getenv("TAU_TICK_MAX_BOOK_AGE_S", "60"))  # older book state is not a quote
 
@@ -163,7 +163,7 @@ def load_window(market: Market, contracts: List[Dict], from_ts: int, to_ts: int,
                 read: Optional[Callable[..., Dict[str, np.ndarray]]] = None):
     """Dataset of the contracts opening in [from_ts, to_ts) (contracts: partition_contracts rows),
     replayed from features_1s. `read(start, end, series=, columns=)` defaults to TickStore."""
-    from app import backtest
+    from app.trading import backtest
     sub = [c for c in contracts if from_ts <= c["open_ts"] < to_ts and c["open_ts"] >= market.data_from_ts
            and c.get("result") in ("yes", "no")]
     if not sub:

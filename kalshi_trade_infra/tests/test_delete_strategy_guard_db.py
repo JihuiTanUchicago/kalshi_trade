@@ -35,7 +35,7 @@ def _user(cur, repo, name):
 
 
 def _strategy(cur, repo, uid, title):
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "exit": {"stop_loss": 0.1},
                              "sizing": {"stake": 10.0, "max_positions": 4}})
@@ -51,7 +51,8 @@ def _ctx(conn, user):
 
 
 def test_delete_waits_until_every_deployments_positions_close(conn, monkeypatch):
-    from app import engine, server
+    from app import server
+    from app.trading import engine
     from app import repository as repo
 
     cur = conn.cursor()

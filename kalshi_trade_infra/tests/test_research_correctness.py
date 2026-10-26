@@ -13,9 +13,9 @@ from datetime import timedelta
 
 import pytest
 
-from app import backtest
+from app.trading import backtest
 from app.research import agent, sandbox
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 
 
 # -- FIX 1: market-aware prompt --------------------------------------------------------------------
@@ -278,7 +278,7 @@ def test_code_guide_and_playbook_say_lagged_features_are_computable():
     # Prod 2026-10-24: ~1 in 8 drops in three hours said a thesis needed a lagged/derived feature
     # ("spread collapse", "mid crossing 0.50", "asymmetry ratio") the "snapshot-only" data lacked;
     # a code strategy sees the whole frame sequence and can compute all of them.
-    from app import spec
+    from app.trading import spec
     from app.research import rsi_playbook as pb
     assert "no time-series history" in spec.CODE_STRATEGY_GUIDE and "write it as code" in spec.CODE_STRATEGY_GUIDE
     assert "snapshot-only data)" not in pb.REFLECT_SYSTEM and 'Never record "snapshot-only"' in pb.REFLECT_SYSTEM

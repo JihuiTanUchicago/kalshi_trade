@@ -141,7 +141,7 @@ does not sync move only together with their unit.
 | Research loop: agent, knowledge, market data, news, gatekeeper, partitions, research eval, RSI, tournament, sandbox, dreaming, exploration | `app/research/` (one package with its imports as they were; pieces become `app/services` over ports in step 10) | done 2026-10-26 |
 | Web helpers: auth, request timing, dev log, client error reports, code map; Stripe billing and SES email as adapters | `app/web/`, `app/adapters/stripe/`, `app/adapters/ses/` | done 2026-10-26 |
 | `server.py` split into `app/web/routes/*` (the `recursive-web` unit keeps `python -m app.server` as the entry point) | `app/web/` | next |
-| Trading: engine, reconcile, demo twins, TCA, track record | `app/services/trading/` | |
+| Trading: engine, backtest, spec DSL, market catalog, reconcile, demo twins, TCA, track record, execution cost model, fair books, replay | `app/trading/` (one package with its imports as they were; the engine's decision becomes services over ports in step 8) | done 2026-10-26 |
 | Entry points run by unsynced units (`market_history`, `sports_odds_collect`, `weather_fcst_collect`, `worldmonitor_data`, `market_data_config`, `worker`) | with their unit | |
 
 ## Rules for every thread, starting now

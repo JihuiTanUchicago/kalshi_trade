@@ -39,7 +39,7 @@ Later loads remain material: sandbox, broker/Alpaca, reconciliation and executio
 modules can be imported during a run, and `agent._brief()` reads
 `research_brief.md` from disk. These paths are unchanged in the reviewed range.
 Sandbox subprocesses execute the unchanged inline `_RUNNER` with scratch files,
-not a new `-m app.backtest` or worker process. The history process eagerly imports
+not a new `-m app.trading.backtest` or worker process. The history process eagerly imports
 its market registry; it can continue its existing binary loop without restart.
 
 This is a compatibility argument, **not evidence of actual worker-loaded bytes**.

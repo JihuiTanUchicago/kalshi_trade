@@ -22,7 +22,7 @@ import time
 from dataclasses import replace
 from typing import Callable, Dict, Optional, Protocol
 
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.adapters.kalshi.convert import kalshi_order, to_domain_report
 from data_pipeline.kalshi_fees import taker_fee_dollars
 from trading_core.domain import ExecutionReport, Fill, Instrument, OrderIntent, Quote, RiskDecision, Side

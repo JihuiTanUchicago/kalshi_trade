@@ -1,6 +1,6 @@
 """Kalshi markets and contracts as domain ``Instrument``s and ``Quote``s (ARCHITECTURE.md step 7).
 
-``app.markets`` keeps its Kalshi-shaped types (Market, Contract, Snapshot) for the legacy engine
+``app.trading.markets`` keeps its Kalshi-shaped types (Market, Contract, Snapshot) for the legacy engine
 and backtest; new code takes the domain types and gets them from here. One Kalshi ticker is two
 instruments, ``kalshi:<ticker>.yes`` and ``kalshi:<ticker>.no``. The book is quoted YES-only, so the
 NO side is derived: NO bid = 1 - YES ask, NO ask = 1 - YES bid.
@@ -14,7 +14,7 @@ from app.adapters.kalshi.convert import VENUE, instrument_id
 from trading_core.domain import (BinaryTerms, Instrument, InstrumentId, InstrumentKind, PerpetualTerms,
                                  Quote)
 
-# app.markets.Market.kind -> the domain kind. "spot" markets are TAO alpha tokens priced by taostats.
+# app.trading.markets.Market.kind -> the domain kind. "spot" markets are TAO alpha tokens priced by taostats.
 KINDS = {"binary": InstrumentKind.BINARY, "perpetual": InstrumentKind.PERPETUAL, "spot": InstrumentKind.SPOT}
 
 
@@ -26,7 +26,7 @@ def market_kind(market) -> InstrumentKind:
 
 
 def binary(contract, outcome: str = "yes", market=None) -> Instrument:
-    """The domain instrument for one outcome of an ``app.markets.Contract``. A strike of 0 (or
+    """The domain instrument for one outcome of an ``app.trading.markets.Contract``. A strike of 0 (or
     below) is the legacy "no numeric threshold" marker (sports, events) and maps to None."""
     strike = float(contract.strike) if contract.strike and contract.strike > 0 else None
     series = contract.series or (market.series if market is not None else "")
@@ -46,8 +46,8 @@ def perpetual(ticker: str, underlying: Optional[str] = "BTC-USD", multiplier: fl
 
 
 def contract(instrument: Instrument):
-    """Back to ``app.markets.Contract`` for code that still speaks it (the round trip of binary)."""
-    from app.markets import Contract
+    """Back to ``app.trading.markets.Contract`` for code that still speaks it (the round trip of binary)."""
+    from app.trading.markets import Contract
     if instrument.kind is not InstrumentKind.BINARY or instrument.id.venue != VENUE:
         raise ValueError("not a Kalshi binary: %s" % instrument.id)
     strike = instrument.terms.strike
@@ -56,7 +56,7 @@ def contract(instrument: Instrument):
 
 
 def quotes(snapshot) -> Tuple[Quote, Quote]:
-    """(YES quote, NO quote) from an ``app.markets.Snapshot``. A YES bid of 0 is "no bid", so the
+    """(YES quote, NO quote) from an ``app.trading.markets.Snapshot``. A YES bid of 0 is "no bid", so the
     YES bid and the NO ask are None there. Both quotes carry the snapshot's features."""
     ticker, ts = snapshot.contract.ticker, float(snapshot.ts)
     yes_bid = snapshot.yes_bid if snapshot.yes_bid and snapshot.yes_bid > 0 else None

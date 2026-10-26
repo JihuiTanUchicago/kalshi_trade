@@ -193,7 +193,7 @@ class _RecordingKernel:
 
 
 def _no_snapshot():
-    from app.markets import Contract, snapshot
+    from app.trading.markets import Contract, snapshot
 
     now = int(datetime.now(timezone.utc).timestamp())
     # Strike far above spot -> P(YES) ~ 0 -> NO is the high-edge side.
@@ -204,8 +204,8 @@ def _no_snapshot():
 
 
 def test_decide_live_places_a_no_order_and_books_a_no_position(monkeypatch):
-    from app import engine
-    from app import spec as specmod
+    from app.trading import engine
+    from app.trading import spec as specmod
     from tests.conftest import patch_intent_passthrough
 
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
@@ -235,8 +235,8 @@ def test_decide_live_places_a_no_order_and_books_a_no_position(monkeypatch):
 def test_a_persisted_position_mismatch_halts_new_live_entries(monkeypatch):
     """The same setup that places a NO order above places nothing while the user's
     book and Kalshi account still disagree after two reconcile sweeps."""
-    from app import engine
-    from app import spec as specmod
+    from app.trading import engine
+    from app.trading import spec as specmod
     from tests.conftest import patch_intent_passthrough
 
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
@@ -259,8 +259,8 @@ def test_a_persisted_position_mismatch_halts_new_live_entries(monkeypatch):
 
 
 def test_book_sizes_keys_no_depth_off_the_yes_bid():
-    from app import engine
-    from app.markets import Contract
+    from app.trading import engine
+    from app.trading.markets import Contract
 
     q = engine.LiveQuote(Contract(TICKER, 110.0, datetime.now(timezone.utc)), 0.40, 0.42, 3.0, 900.0)
     sizes = engine.book_sizes([q])
@@ -271,8 +271,8 @@ def test_book_sizes_keys_no_depth_off_the_yes_bid():
 
 
 def test_decide_sizes_a_no_entry_by_the_yes_bid_depth(monkeypatch):
-    from app import engine
-    from app import spec as specmod
+    from app.trading import engine
+    from app.trading import spec as specmod
     from tests.conftest import patch_intent_passthrough
 
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
@@ -294,8 +294,8 @@ def test_decide_sizes_a_no_entry_by_the_yes_bid_depth(monkeypatch):
 
 
 def _live_entry_qty(monkeypatch, closed_trades):
-    from app import engine
-    from app import spec as specmod
+    from app.trading import engine
+    from app.trading import spec as specmod
     from tests.conftest import patch_intent_passthrough
 
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
@@ -314,20 +314,20 @@ def _live_entry_qty(monkeypatch, closed_trades):
 
 
 def test_a_fresh_live_deployment_trades_at_the_ramp_fraction(monkeypatch):
-    from app import engine
+    from app.trading import engine
     qty, full = _live_entry_qty(monkeypatch, closed_trades=0)
     assert full > 1
     assert qty == max(1, int(full * engine.LIVE_RAMP_FRACTION)) and qty < full
 
 
 def test_live_size_ramp_ends_after_enough_closed_trades(monkeypatch):
-    from app import engine
+    from app.trading import engine
     qty, full = _live_entry_qty(monkeypatch, closed_trades=engine.LIVE_RAMP_TRADES)
     assert qty == full
 
 
 def test_live_ramp_fraction_can_never_exceed_full_size():
-    from app import engine
+    from app.trading import engine
     assert engine._ramp_fraction("5") == 1.0
     assert engine._ramp_fraction("0") == 0.01, "a ramp never rounds a fresh deployment to zero size"
     assert engine._ramp_fraction("0.25") == 0.25

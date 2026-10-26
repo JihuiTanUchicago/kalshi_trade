@@ -88,7 +88,7 @@ def kalshi_categories() -> Dict[str, Optional[str]]:
 
 def protected_series(cur, candidates: Iterable[str]) -> Dict[str, str]:
     """series -> reason, for every series something live still depends on."""
-    from app.markets import CURATED, _market_key
+    from app.trading.markets import CURATED, _market_key
 
     out: Dict[str, str] = {m.series: "curated" for m in CURATED.values()}
     cur.execute("SELECT DISTINCT ticker FROM app_positions WHERE status='open'")
@@ -176,7 +176,7 @@ def _fill_blank_series(cur) -> None:
 def drop_old_markets(conn) -> int:
     """DROP markets__untraded_old, but only if every curated series that had rows there also has
     rows in the new markets table. Returns 0 on drop, 1 if a check fails."""
-    from app.markets import CURATED
+    from app.trading.markets import CURATED
 
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) AS n FROM information_schema.tables "

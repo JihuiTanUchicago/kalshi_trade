@@ -48,7 +48,7 @@ def test_bounded_per_review_and_in_total(monkeypatch):
 
 
 def test_research_only_markets_are_skipped(monkeypatch):
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
     research_only = next((k for k, m in MARKETS.items() if not m.deployable), None)
     if research_only is None:
         return

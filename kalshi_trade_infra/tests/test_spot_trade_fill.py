@@ -3,8 +3,8 @@ measured 2026-10-25): missing minutes are rebuilt from public trades, so the eng
 ticks the backtest takes on its complete candle history."""
 from datetime import datetime, timezone
 
-from app import engine
-from app.markets import MAX_BTC_GAP_SECONDS
+from app.trading import engine
+from app.trading.markets import MAX_BTC_GAP_SECONDS
 
 T0 = 1_790_000_040 - 1_790_000_040 % 60   # a minute boundary
 

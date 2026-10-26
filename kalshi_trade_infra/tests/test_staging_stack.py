@@ -154,7 +154,7 @@ class EntrypointTests(unittest.TestCase):
             invocation = entry.command(mode)
             self.assertEqual(invocation[:5], [entry.PYTHON, "-I", "-B", "-u", "-c"])
             self.assertNotIn("app.worker", invocation[-1])
-            self.assertNotIn("app.engine", invocation[-1])
+            self.assertNotIn("app.trading.engine", invocation[-1])
         self.assertIn("'app.schema'", entry.command("schema")[-1])
         self.assertIn("'app.server'", entry.command("web")[-1])
         self.assertIn("paper_staging_smoke.py", entry.command("verify")[-1])

@@ -294,7 +294,7 @@ class MarketableLimitKernel:
         # class docstring). Absent fair => no cap, exactly the old behaviour.
         fair = None if meta.get("fair") is None else float(meta["fair"])
         min_edge = float(meta.get("min_edge") or 0.0)
-        # Transaction-cost-analysis context carried on every report (app/tca.py reads it back from
+        # Transaction-cost-analysis context carried on every report (app/trading/tca.py reads it back from
         # the order intent): the price the decision was made at and, for an entry, the fair value
         # and required edge, so realized slippage and edge capture are measurable per fill.
         tca: Dict = {"decision_price": float(intent.limit_price_dollars)}

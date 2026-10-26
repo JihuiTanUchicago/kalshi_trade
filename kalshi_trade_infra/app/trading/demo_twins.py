@@ -15,8 +15,8 @@ from datetime import datetime
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app import repository as repo
-from app import spec as specmod
-from app.markets import MARKETS
+from app.trading import spec as specmod
+from app.trading.markets import MARKETS
 
 DEMO_TWINS = os.getenv("APP_DEMO_TWINS", "1") == "1"
 # Below this the account can't carry a few paper-sized stakes, and orders come back refused.
@@ -76,7 +76,7 @@ def balance_cached(cur, user_id: int, ttl: float = BALANCE_TTL) -> Optional[floa
 def sync(cur, user: Dict, balance: Callable[[object, int], Optional[float]] = _read_balance,
          enabled: Optional[bool] = None) -> List[str]:
     """Make the user's demo deployments mirror their running paper strategies. Returns chat lines."""
-    from app import engine  # local: engine imports agent, which calls this
+    from app.trading import engine  # local: engine imports agent, which calls this
 
     if not (DEMO_TWINS if enabled is None else enabled):
         return []

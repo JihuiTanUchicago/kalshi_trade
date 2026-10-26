@@ -10,8 +10,8 @@ from datetime import datetime
 
 import pytest
 
-from app import reconcile
-from app.reconcile import (BOOK_ONLY, SHORT, SIZE_MISMATCH, UNTRACKED, Discrepancy,
+from app.trading import reconcile
+from app.trading.reconcile import (BOOK_ONLY, SHORT, SIZE_MISMATCH, UNTRACKED, Discrepancy,
                            ExchPos, book_net_from_rows, classify)
 
 

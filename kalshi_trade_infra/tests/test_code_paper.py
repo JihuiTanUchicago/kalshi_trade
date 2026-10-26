@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import backtest
+from app.trading import backtest
 from app.services import code_paper as cp
 from tests.test_code_strategy import T0, _code_spec, _dataset
 
@@ -145,8 +145,8 @@ def test_run_walks_due_days_and_skips_dsl_specs(monkeypatch, repo):
 
 
 def test_the_engine_never_ticks_a_code_strategy(monkeypatch):
-    from app import engine
-    from app.markets import MARKETS
+    from app.trading import engine
+    from app.trading.markets import MARKETS
     deps = [{"id": 1, "user_id": 1, "mode": "paper", "last_decision_ts": 0, "spec": _code_spec()}]
     monkeypatch.setattr(engine.repo, "running_deployments", lambda cur, market: deps)
     monkeypatch.setattr(engine.repo, "market_has_open_positions", lambda cur, market: False)

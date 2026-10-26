@@ -112,8 +112,8 @@ def test_dev_key_repository_round_trip():
 # -- engine demo mode: execution routes to the DEMO kernel, never the live one ----------
 from datetime import datetime, timezone  # noqa: E402
 
-from app import engine  # noqa: E402
-from app.markets import Contract  # noqa: E402
+from app.trading import engine  # noqa: E402
+from app.trading.markets import Contract  # noqa: E402
 
 
 class _Report:

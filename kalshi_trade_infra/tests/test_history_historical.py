@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app import market_history as mh
-from app.markets import CURATED, MARKETS, Market
+from app.trading.markets import CURATED, MARKETS, Market
 
 CUTOFF = datetime(2026, 8, 25, tzinfo=timezone.utc)
 

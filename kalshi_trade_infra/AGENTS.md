@@ -72,7 +72,7 @@ backtest, or research-pipeline change, hold the bar in `RESEARCH_PIPELINE_DESIGN
 - Fees are a hard, state-dependent hurdle; net-of-fee or it doesn't count.
 
 ## Security & Safety (NON-NEGOTIABLE)
-- Real orders come from `app/engine.py` when `APP_LIVE_TRADING_ENABLED=1` (plus the user's own
+- Real orders come from `app/trading/engine.py` when `APP_LIVE_TRADING_ENABLED=1` (plus the user's own
   opt-in and the paper-evidence gate), from native perps when `TAU_KALSHI_PERPS_LIVE_ENABLED=1`,
   and from the retired `live_trading_engine.py` when `live_settings.live_enabled=true`. Never
   flip any of these on, raise a risk/position/loss limit, or make changes that could effectively

@@ -1,6 +1,6 @@
 """Dreaming keeps the best replay-validated policy and never makes it worse."""
 from app.research import dreaming
-from app.replay import Node
+from app.trading.replay import Node
 from app.llm import Usage
 from app.research.exploration import DefaultPolicy
 

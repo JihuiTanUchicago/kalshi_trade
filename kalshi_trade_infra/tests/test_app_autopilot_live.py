@@ -1,7 +1,7 @@
 """Safety gates for live autopilot: it must refuse to go live unless every gate holds,
 and must not exceed the user's caps. Side (YES or NO) is no longer gated — live execution
 now places the correct leg — but allowing NO must not weaken any other gate."""
-from app import engine
+from app.trading import engine
 from app.research import agent
 
 PASSED_YES = {"id": 7, "status": "passed", "title": "Tail fade", "market": "btc_daily",

@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from app import spec as specmod
+from app.trading import spec as specmod
 
 _OPS = {">": ">", ">=": "≥", "<": "<", "<=": "≤"}
-ADOPTED_REF = "reconcile-adopt"  # app.reconcile books an untracked Kalshi position under this order_ref
+ADOPTED_REF = "reconcile-adopt"  # app.trading.reconcile books an untracked Kalshi position under this order_ref
 
 
 def _c(x: float) -> str:

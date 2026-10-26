@@ -56,7 +56,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from app import backtest
+from app.trading import backtest
 from app import repository as repo
 from app import research_repository as rr
 from app.research.exploration import ExplorationPolicy, PolicyState

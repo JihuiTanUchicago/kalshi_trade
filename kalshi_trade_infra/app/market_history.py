@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 
 import requests
 
-from app.markets import CURATED, MARKETS, Market
+from app.trading.markets import CURATED, MARKETS, Market
 from data_pipeline.common import api_get, get_db_conn, parse_iso_to_dt, utc_now
 
 COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/%s/candles"  # %s = product, e.g. BTC-USD

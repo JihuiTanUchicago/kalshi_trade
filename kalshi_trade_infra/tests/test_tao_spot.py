@@ -9,13 +9,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import backtest
+from app.trading import backtest
 from app.research import sandbox
 from app.research import gatekeeper as gk
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.adapters.tao import tao_repository as taorepo
-from app.backtest import Trade
-from app.markets import MARKETS, TAO_USD_SYMBOL
+from app.trading.backtest import Trade
+from app.trading.markets import MARKETS, TAO_USD_SYMBOL
 
 needs_confiner = pytest.mark.skipif(not sandbox.os_sandbox_available(),
                                     reason="no OS-level sandbox (sandbox-exec/bwrap/firejail) here")

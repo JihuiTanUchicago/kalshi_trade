@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.markets import (CROSS_FEATURES, FEATURES, MARKETS, MICRO_FEATURES, TICK_FEATURES, Snapshot, compatible_cadence,
+from app.trading.markets import (CROSS_FEATURES, FEATURES, MARKETS, MICRO_FEATURES, TICK_FEATURES, Snapshot, compatible_cadence,
                          cross_feature_names)
 from data_pipeline.kalshi_fees import taker_fee_per_contract_dollars
 

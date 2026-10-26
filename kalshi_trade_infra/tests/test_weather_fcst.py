@@ -4,11 +4,11 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from app import backtest, engine
+from app.trading import backtest, engine
 from app.adapters.data import freedata
 from app.adapters.data import weather_fcst as wf
 from app import weather_fcst_collect as wfc
-from app.markets import FEATURES, MARKETS, Contract
+from app.trading.markets import FEATURES, MARKETS, Contract
 
 
 def _ts(s):

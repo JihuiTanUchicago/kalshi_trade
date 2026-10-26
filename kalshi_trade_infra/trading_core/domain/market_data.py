@@ -11,7 +11,7 @@ from trading_core.domain.instruments import InstrumentId
 class Quote:
     """Top of book plus the point-in-time features a strategy may read.
 
-    ``features`` is the generalisation of ``app.markets.Snapshot.features``: every value must be
+    ``features`` is the generalisation of ``app.trading.markets.Snapshot.features``: every value must be
     knowable at ``ts`` (no look-ahead), whichever FeatureProvider produced it.
     """
 

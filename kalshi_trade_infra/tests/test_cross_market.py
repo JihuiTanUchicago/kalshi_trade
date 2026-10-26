@@ -15,10 +15,10 @@ from datetime import datetime, timezone
 import pytest
 
 from app.research import agent
-from app import backtest
-from app import engine
-from app import spec as specmod
-from app.markets import MARKETS, BtcSeries, Contract
+from app.trading import backtest
+from app.trading import engine
+from app.trading import spec as specmod
+from app.trading.markets import MARKETS, BtcSeries, Contract
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 

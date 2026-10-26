@@ -5,11 +5,11 @@ between these layers, where unit tests of each piece could not see it."""
 import random
 from datetime import datetime, timezone
 
-from app import backtest
+from app.trading import backtest
 from app.research import gatekeeper as gk
-from app import spec as specmod
+from app.trading import spec as specmod
 from app import stats
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
 

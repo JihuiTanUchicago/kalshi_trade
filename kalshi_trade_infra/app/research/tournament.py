@@ -83,7 +83,7 @@ def _norm_cdf(x: float) -> float:
 
 def _capital(dep: Dict) -> float:
     """The entrant's own paper capital base, as the engine's loss guard defines it."""
-    from app import engine
+    from app.trading import engine
     try:
         return max(1e-9, float(engine._deployment_capital(dep)))
     except Exception:  # noqa: BLE001 - malformed spec: fall back to the default $5 x 20 book

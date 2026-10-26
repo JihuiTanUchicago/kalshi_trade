@@ -2,9 +2,9 @@
 (no future value at an earlier ts), graceful degradation, the spec request validating + surviving
 into the hash/provenance, and the enrich() join actually reaching the window's frames.
 """
-from app import backtest
+from app.trading import backtest
 from app.adapters.data import freedata
-from app import spec as specmod
+from app.trading import spec as specmod
 from app.research.gatekeeper import Prereg
 
 from tests.test_code_strategy import _dataset, _code_spec, BUY_ALL
@@ -197,8 +197,8 @@ def test_station_observations_name_the_builtin_weather_features(monkeypatch):
 def test_live_engine_sees_the_same_station_features_as_research(monkeypatch):
     """Parity: the engine's base features for a weather market are the station readings known as of
     now, the same as research joins per frame; non-weather event markets get {}."""
-    from app import engine
-    from app.markets import MARKETS
+    from app.trading import engine
+    from app.trading.markets import MARKETS
     monkeypatch.setattr(freedata, "_FETCHERS",
                         {"asos": lambda s: [(100, 70.0 if "DAILYMAX" in s.upper() else 65.0), (900, 72.0)]})
     freedata._CACHE.clear()
@@ -230,7 +230,7 @@ def test_asos_dailymin_and_one_download_per_station(monkeypatch):
 
 def test_every_weather_station_has_a_climate_day_offset():
     """A station without an LST offset would silently lose obs_high_f/obs_low_f (dailymax raises)."""
-    from app.markets import WEATHER_STATIONS
+    from app.trading.markets import WEATHER_STATIONS
     assert set(WEATHER_STATIONS.values()) <= set(freedata.ASOS_LST_OFFSET_H)
     assert WEATHER_STATIONS["KXHIGHCHI"] == "MDW" and WEATHER_STATIONS["KXLOWTNYC"] == "NYC"
 
@@ -239,7 +239,7 @@ def test_station_readings_reach_only_the_contract_settling_today():
     """A weather frame also quotes tomorrow's contracts; today's observed high must not leak onto
     them, in research and live alike. 2026-10-24 15:00Z is the 10-24 climate day in NYC (EST)."""
     from datetime import datetime, timezone
-    from app import backtest, engine, markets
+    from app.trading import backtest, engine, markets
     ts = int(datetime(2026, 10, 24, 15, tzinfo=timezone.utc).timestamp())
     today, tomorrow = "KXHIGHNY-26OCT24-T66", "KXHIGHNY-26OCT25-T66"
     assert markets.weather_target_day(today).isoformat() == "2026-10-24"
@@ -267,9 +267,9 @@ def test_gated_partition_windows_carry_the_station_features(monkeypatch):
     """Validation/holdout windows load through partitions._load_window; they must join the same
     settling-day station readings research saw, or a rule using obs_high_f is judged without it."""
     import data_pipeline.common as common
-    from app import backtest
+    from app.trading import backtest
     from app.research import partitions
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
 
     class Conn:
         def cursor(self):

@@ -873,7 +873,7 @@ iterates. Each run's results become memory for the next run on that market.
 
 ## The rule (one implementation, two callers)
 
-`app/spec.py` is the only decision logic. The backtester and the live engine both call
+`app/trading/spec.py` is the only decision logic. The backtester and the live engine both call
 `entries()` / `exit_signal()` on snapshots built by the same `markets.snapshot()`, so a
 deployed strategy trades exactly what passed.
 
@@ -886,7 +886,7 @@ enter when edge >= min_edge, price/tte/spread in range, all filters hold
 exit: take_profit / stop_loss / edge decay, else hold to settlement
 ```
 
-Markets are defined in `app/markets.py`: the curated `CURATED` dict (crypto 15-minute and
+Markets are defined in `app/trading/markets.py`: the curated `CURATED` dict (crypto 15-minute and
 daily, sports moneylines, NYC high temperature, research-only `btc15m_tick` and `btc_perp`)
 plus every recurring catalog series in Sports or Climate and Weather.
 
@@ -922,7 +922,7 @@ Agent adjustments (chat or autopilot) are re-backtested before they can be propo
   max(2 × its backtest's worst unseen drawdown, 50% of capital) is paused, and a review run is queued.
 * Live for app users is off unless `APP_LIVE_TRADING_ENABLED=1`; it needs a connected key and
   a typed `LIVE` confirmation. NO-side live orders also need `APP_NO_SIDE_LIVE_ENABLED=1`.
-* A book mismatch against Kalshi halts the user's new live entries (`app/reconcile.py`), and
+* A book mismatch against Kalshi halts the user's new live entries (`app/trading/reconcile.py`), and
   every sell is checked against Kalshi's position so it can't open a short.
 * Kalshi private keys are AES-256-GCM encrypted (`APP_SECRET_KEY`), bound to the user id.
 * Limits: 2 concurrent research runs (daily cap `APP_MAX_RESEARCH_PER_DAY`, default unlimited),

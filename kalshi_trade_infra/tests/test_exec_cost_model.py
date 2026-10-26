@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import exec_cost_model as ecm
-from app.exec_cost_model import Tick
+from app.trading import exec_cost_model as ecm
+from app.trading.exec_cost_model import Tick
 
 
 def T(t, bid, ask, bs=100.0, asz=100.0):
@@ -94,7 +94,7 @@ def test_fetch_ticks_groups_by_contract():
 
 # -- queue-aware maker fills from trade prints -----------------------------------
 
-from app.exec_cost_model import Print
+from app.trading.exec_cost_model import Print
 
 
 def P(t, price, count, side="no"):

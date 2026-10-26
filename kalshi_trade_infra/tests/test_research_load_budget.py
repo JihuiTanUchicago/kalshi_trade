@@ -6,9 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import backtest
+from app.trading import backtest
 from app.adapters.data import options_fair
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 from data_pipeline import tick_store
 
 DAYS = 90

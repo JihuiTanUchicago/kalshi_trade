@@ -44,7 +44,7 @@ def test_component_modules_lists_the_mapped_source():
 def test_engine_boxes_open_the_engine_that_trades_not_the_retired_ones():
     for node in ("sim_engine", "live_engine"):
         paths = [m["path"] for m in code_map.component_modules(node)["modules"]]
-        assert paths[0] == "app/engine.py"
+        assert paths[0] == "app/trading/engine.py"
         assert not any(p in paths for p in ("data_pipeline/live_trading_engine.py",
                                              "data_pipeline/simulated_trading_engine.py"))
     assert "data_pipeline/architecture/position_guard.py" in [
@@ -83,7 +83,7 @@ def test_function_detail_returns_source_and_callers():
     assert out["lineno"] > 0
     # The live engine wraps its real-order submitter in the position guard - name-based call graph.
     callers = {(c["module"], c["qual"]) for c in out["callers"]}
-    assert ("app/engine.py", "live_kernel_factory") in callers
+    assert ("app/trading/engine.py", "live_kernel_factory") in callers
 
 
 def test_function_detail_rejects_missing_function():
@@ -93,7 +93,7 @@ def test_function_detail_rejects_missing_function():
 
 def test_call_graph_is_bidirectional_for_a_known_edge():
     """If A is a caller of B, then A's callees include B (same name-based edge)."""
-    b = code_map.function_detail("app/engine.py", "_execution_kernel")
+    b = code_map.function_detail("app/trading/engine.py", "_execution_kernel")
     caller = next(c for c in b["callers"] if c["qual"] == "paper_kernel_factory")
     a = code_map.function_detail(caller["module"], caller["qual"])
     assert any(cal["name"] == "_execution_kernel" for cal in a["callees"])

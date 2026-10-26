@@ -34,7 +34,7 @@ def conn():
 def user(conn):
     """A user with one strategy deployed on demo and on live."""
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     u = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "t@example.com", "T", None)
@@ -73,7 +73,7 @@ class _Conn:
 @pytest.fixture
 def venues(monkeypatch):
     """Real live and demo kernels (guards, adapters) whose HTTP POST answers with ``answer``."""
-    from app import engine
+    from app.trading import engine
     from app.adapters.kalshi import kalshi_account, kalshi_dev_exec
     from app import repository as repo
     from app.execution import guard, latency
@@ -118,7 +118,7 @@ def _intent_row(conn, iid):
 
 def _buy(conn, user, venues, mode):
     """One real entry the way the engine sends it: the intent first, then the order through the kernel."""
-    from app import engine
+    from app.trading import engine
 
     dep = user["deps"][mode]
     iid = engine._log_order_intent(conn, dep, "buy", "yes", TICKER, 1, 0.40, mode)
@@ -133,7 +133,7 @@ def _buy(conn, user, venues, mode):
 # 1. The in-flight block is per mode.
 
 def test_a_demo_order_in_flight_never_holds_live_and_a_live_one_never_holds_demo(conn, user):
-    from app import engine
+    from app.trading import engine
     from app import repository as repo
 
     uid = user["id"]
@@ -149,7 +149,7 @@ def test_a_demo_order_in_flight_never_holds_live_and_a_live_one_never_holds_demo
 def test_within_live_the_block_is_exactly_as_strict_as_before(conn, user):
     """Live's own 'sent' order holds live's ticker across every live deployment for the window, then
     lets go; a settled one never holds it."""
-    from app import engine
+    from app.trading import engine
 
     uid, dep = user["id"], user["deps"]["live"]
     iid = engine._log_order_intent(conn, dep, "sell", "yes", TICKER, 1, 0.40, "live")
@@ -167,7 +167,7 @@ def test_within_live_the_block_is_exactly_as_strict_as_before(conn, user):
 # 2. A definite refusal settles a demo intent; anything else stays 'sent'.
 
 def test_a_demo_order_refused_for_insufficient_balance_settles_unfilled_with_the_refusal(conn, user, venues):
-    from app import engine
+    from app.trading import engine
     from app.execution import guard
     from app.execution.refusal import OrderRefused
 
@@ -214,7 +214,7 @@ def test_a_demo_timeout_stays_sent(conn, user, venues, monkeypatch):
 def test_live_orders_behave_exactly_as_before(conn, user, venues):
     """The same 400 insufficient_balance on LIVE raises live's own plain RuntimeError and leaves the
     intent 'sent' for recovery, holding live's ticker, exactly as before this change."""
-    from app import engine
+    from app.trading import engine
     from app.execution import guard
 
     iid, err = _buy(conn, user, venues, "live")

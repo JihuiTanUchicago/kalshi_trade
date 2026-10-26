@@ -192,7 +192,7 @@ def strategy_records(cur, user_id: int, market: str, limit: int = 500) -> List[D
     """Raw discovery-tree records for one user+market, OLDEST first: each tested
     hypothesis with its in-sample metrics, (if it was gated) its out-of-sample
     outcome, and its id/parent_id lineage (a dig-deeper strategy points back at the
-    strategy it refined). Feeds the Tau-RSI replay simulator (app/replay.py)."""
+    strategy it refined). Feeds the Tau-RSI replay simulator (app/trading/replay.py)."""
     cur.execute(
         """SELECT id, parent_id, status, result_json FROM app_strategies
            WHERE user_id=%s AND market=%s ORDER BY id ASC LIMIT %s""",

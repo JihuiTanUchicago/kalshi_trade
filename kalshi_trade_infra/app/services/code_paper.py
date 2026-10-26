@@ -31,11 +31,11 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from app import backtest
+from app.trading import backtest
 from app.research import partitions
 from app import repository as repo
-from app import spec as specmod
-from app.markets import MARKETS
+from app.trading import spec as specmod
+from app.trading.markets import MARKETS
 from data_pipeline.kalshi_fees import taker_fee_dollars
 
 ENABLED = os.getenv("APP_CODE_PAPER", "1") == "1"

@@ -35,7 +35,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
-from app import backtest
+from app.trading import backtest
 from app.adapters.stripe import billing
 from app.research import dreaming
 from app.research import exploration
@@ -44,10 +44,10 @@ from app import models_catalog as catalog
 from app.research import partitions
 from app import repository as repo
 from app import research_repository as rr
-from app import spec as specmod
+from app.trading import spec as specmod
 from app import stats
 from app.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model, public_message
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 from app.services import markets as market_service
 from app.services import research_memory
 from app.services import research_leads
@@ -931,7 +931,7 @@ def _cross_market_options(market: str) -> str:
     decision cadence (markets.compatible_cadence). Without this the proposer only knows its single
     run market, so it can propose same-market cross_strike/calendar but never a cross-MARKET pair.
     Empty when nothing shares the cadence (then cross_sectional isn't offered)."""
-    from app.markets import compatible_cadence
+    from app.trading.markets import compatible_cadence
     if MARKETS[market].kind == "perpetual":
         return ""
     peers = [k for k in MARKETS if k != market and MARKETS[k].kind != "perpetual"
@@ -974,7 +974,7 @@ logistic/calibration also work when their features are populated, but gbm does n
 
 def _tick_profile(m) -> str:
     """Extra profile for a market replayed from the per-second tick archive (tick_dataset.py)."""
-    from app.markets import TICK_FEATURES
+    from app.trading.markets import TICK_FEATURES
     return ("\nPER-SECOND DATA: this dataset is replayed from the tick archive, one decision every %ds "
             "(not 1-minute candles). Every value is as of the end of that second, from events before it; "
             "orders fill at the NEXT decision's quote (%ds later), capped by the shown size. vol_15m, "
@@ -1016,7 +1016,7 @@ mid here, so microstructure/longshot angles do NOT apply. (Execution is research
                else "A house GBM-digital fair value is available (strike vs %s spot), but treat the "
                     "Kalshi mid as the baseline to beat — an unconditional model-mispricing edge is "
                     "usually fee/noise." % coin)
-        from app.markets import CROSS_FEATURES, cross_feature_names, cross_product
+        from app.trading.markets import CROSS_FEATURES, cross_feature_names, cross_product
         xprod, xnames = cross_product(m), cross_feature_names(m)
         cross = ("\nCross-asset: every frame also carries %s's moves as of the decision (%s), so lead-lag "
                  "ideas (does %s's move lead %s's ladder?) are testable as filters, models or code."
@@ -3276,7 +3276,7 @@ def raises_risk(old: Dict, new: Dict) -> bool:
 def live_autopilot_ok(cur, user: Dict) -> Tuple[bool, str]:
     """ALL gates that must hold before autopilot may touch live money. Returns (allowed, why_not).
     Keeping this in one place means no caller can go live by skipping a check."""
-    from app import engine  # local import keeps module load order simple
+    from app.trading import engine  # local import keeps module load order simple
     if not user.get("autopilot"):
         return False, "autopilot is off"
     if not user.get("autopilot_live"):
@@ -3717,7 +3717,7 @@ def auto_paper_probation(cur, user: Dict) -> List[str]:
     running at once. Autopilot-on users only. Returns the chat lines for what it did."""
     if not (PAPER_PROBATION and user.get("autopilot")):
         return []
-    from app import engine as _engine  # local import: engine imports agent (circular)
+    from app.trading import engine as _engine  # local import: engine imports agent (circular)
     deps = repo.list_deployments(cur, user["id"], include_stopped=True)
     tried = {d["strategy_id"] for d in deps}
     # Slots count strategies, not deployments: a pooled entrant runs one deployment per leg.
@@ -4027,7 +4027,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             # code runs ONLY in the research sandbox and is never executed in the trading loop.
             return ("%s is an agent-authored code strategy; those are research-only and can't be "
                     "deployed to the trading engine." % strat["title"], None)
-        from app import engine as _engine  # local import: engine imports agent (circular)
+        from app.trading import engine as _engine  # local import: engine imports agent (circular)
         cross_block = _engine.cross_deploy_block(strat["spec"], "paper")
         if cross_block:
             return cross_block, None
@@ -4056,7 +4056,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if specmod.is_code_spec(strat["spec"]):
             return ("%s is an agent-authored code strategy; those are research-only and never "
                     "run in the live engine." % strat["title"], None)
-        from app import engine as _engine  # local import: engine imports agent (circular)
+        from app.trading import engine as _engine  # local import: engine imports agent (circular)
         cross_block = _engine.cross_deploy_block(strat["spec"], "live")
         if cross_block:
             return cross_block, None
@@ -4584,7 +4584,7 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             except Exception as e:  # best-effort, like the funnel above
                 print("[agent] tournament rebalance failed for user %s: %r" % (user["id"], e), flush=True)
             try:
-                from app import demo_twins
+                from app.trading import demo_twins
                 for line in demo_twins.sync(cur, user):
                     repo.add_chat(cur, user["id"], "system", line)
             except Exception as e:  # best-effort, like the funnel above

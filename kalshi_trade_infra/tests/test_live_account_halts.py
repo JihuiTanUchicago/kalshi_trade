@@ -188,7 +188,7 @@ class FrozenClock(datetime):
 
 
 def run_app(monkeypatch, cur, equity, now=NOW):
-    from app import engine
+    from app.trading import engine
     import app.adapters.kalshi.kalshi_account as ka
     import data_pipeline.common as common
 

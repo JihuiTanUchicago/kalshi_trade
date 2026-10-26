@@ -108,7 +108,7 @@ PRICED_KINDS = ("updown", "above", "below")
 
 MARKET_FIELDS = ("market_id", "slug", "event_slug", "question", "condition_id", "yes_token", "no_token",
                  "yes_label", "kind", "strike_lo", "strike_hi", "start_ts", "end_ts", "tick")
-# The research vocabulary for the pm_* features (app.markets.FEATURES; app/adapters/polymarket computes
+# The research vocabulary for the pm_* features (app.trading.markets.FEATURES; app/adapters/polymarket computes
 # them for candle markets and the engine, tick_features for the per-second datasets).
 FEATURE_DOCS = {
     "pm_p_yes": "Bitcoin strike markets only: Polymarket's probability for the same event (its 15-minute "

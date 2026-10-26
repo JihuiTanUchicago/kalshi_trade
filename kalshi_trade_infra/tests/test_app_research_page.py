@@ -247,7 +247,7 @@ def test_rsi_block_falls_back_to_default_policy_source():
 
 
 def test_research_context_folds_feed_to_researchable_markets():
-    from app.markets import MARKETS
+    from app.trading.markets import MARKETS
 
     btc15m = MARKETS["btc15m"].series   # KXBTC15M
     btc_daily = MARKETS["btc_daily"].series

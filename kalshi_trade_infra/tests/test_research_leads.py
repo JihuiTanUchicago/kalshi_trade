@@ -3,7 +3,7 @@ import random
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from app.markets import Contract, Snapshot
+from app.trading.markets import Contract, Snapshot
 from app.services import research_leads as rl
 
 T0 = 1_760_000_000
@@ -84,7 +84,7 @@ def test_power_line_reads_validation_power():
 
 
 def test_a_leads_arm_run_shows_the_table_the_counterparty_rule_and_power(monkeypatch):
-    from app import backtest
+    from app.trading import backtest
     from app.research import agent
     from tests.test_app_backtest import _dataset
     ds = _dataset()

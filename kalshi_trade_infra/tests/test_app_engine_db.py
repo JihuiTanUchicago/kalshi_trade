@@ -39,7 +39,7 @@ def user(conn):
 
 def _deployment(conn, user, spec_over=None):
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     spec = specmod.validate(dict({"side": "yes", "entry": {"min_edge": 0.1}}, **(spec_over or {})))
     sid = repo.insert_strategy(conn.cursor(), user["id"], None, None, "btc15m", "volatility", "T", "t", spec, "passed",
@@ -49,7 +49,7 @@ def _deployment(conn, user, spec_over=None):
 
 
 def _snap(ticker, close_in_min=5, bid=0.38, ask=0.40):
-    from app.markets import Contract, snapshot
+    from app.trading.markets import Contract, snapshot
 
     now = int(datetime.now(timezone.utc).timestamp())
     contract = Contract(ticker, 98.0, datetime.fromtimestamp(now + close_in_min * 60, tz=timezone.utc))
@@ -64,7 +64,7 @@ def test_starting_balance(conn, user):
 
 
 def test_paper_buy_then_settle_balances_to_the_cent(conn, user):
-    from app import engine
+    from app.trading import engine
     from app import repository as repo
 
     dep = _deployment(conn, user, {"sizing": {"stake": 10.0, "max_positions": 20}})  # $10 / 40c = 25 contracts
@@ -90,7 +90,8 @@ def test_paper_buy_then_settle_balances_to_the_cent(conn, user):
 def test_the_dashboard_says_why_a_paper_trade_was_entered_and_why_it_exited(conn, user):
     """The engine buys on the rule and sells at the take-profit; the dashboard's line for that trade
     names the same rule and the same exit, from the stored row and the strategy's frozen spec."""
-    from app import engine, server
+    from app import server
+    from app.trading import engine
 
     dep = _deployment(conn, user, {"sizing": {"stake": 10.0, "max_positions": 1}, "exit": {"take_profit": 0.2}})
     ticker = "TEST-" + uuid.uuid4().hex[:8]
@@ -112,7 +113,7 @@ def test_the_dashboard_says_why_a_paper_trade_was_entered_and_why_it_exited(conn
 def test_no_position_settles_on_a_no_result(conn, user):
     """Settlement pays the NO side: a NO position whose market resolves NO is worth
     $1/contract. `payout = qty if result == pos["side"]` must be side-generic."""
-    from app import engine
+    from app.trading import engine
     from app import repository as repo
 
     dep = _deployment(conn, user)
@@ -137,7 +138,7 @@ def test_no_position_settles_on_a_no_result(conn, user):
 
 
 def test_paper_buy_respects_cash_and_book_size(conn, user):
-    from app import engine
+    from app.trading import engine
     from app import repository as repo
 
     dep = _deployment(conn, user)
@@ -273,7 +274,7 @@ def test_autopilot_paper_week_counts_only_what_the_autopilot_put_on_paper(conn, 
     """The scorecard's paper figures: strategies the autopilot deployed itself (an 'applied' deploy
     proposal it never asked about), not ones the user approved or deployed by hand, nor demo."""
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     now = repo.now_utc()
@@ -360,7 +361,7 @@ def test_weekly_passed_count_only_counts_this_weeks_research_runs(conn, user):
     # The panel says "this week it tested N ideas and M passed": M must come from the same runs as
     # N, never from chat adjustments or shared copies (no research run) or a review run.
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     cur.execute("UPDATE app_agent_runs SET status='cancelled' WHERE status='queued'")
@@ -387,7 +388,7 @@ def test_strategy_counts_include_how_many_are_deployed(conn, user):
 
 
 def test_loss_guard_pauses_and_asks_for_review(conn, user):
-    from app import engine
+    from app.trading import engine
     from app import repository as repo
 
     dep = _deployment(conn, user)
@@ -414,7 +415,7 @@ def test_paper_withdrawal_cannot_overdraw(conn, user):
 
 
 def test_a_stopped_out_position_is_scored_against_holding_once_it_settles(conn, user):
-    from app import engine
+    from app.trading import engine
     from app import repository as repo
 
     dep = _deployment(conn, user)
@@ -455,7 +456,7 @@ def test_underpowered_verdict_pnl_reaches_probation_but_not_replay(conn, user):
     learns from no more than it did before the P&L was recorded."""
     from app import repository as repo
     from app import research_repository as rr
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     cur = conn.cursor()
     spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.1}})
@@ -501,7 +502,7 @@ def test_code_paper_rows_keep_their_replayed_times_and_count_for_the_gate(conn, 
     """The code paper replay's reads and writes: only running paper code strategies are listed, a
     replayed trip keeps its own open/close times, and the forward gate reads it as a sim: fill."""
     from app import repository as repo
-    from app import spec as specmod
+    from app.trading import spec as specmod
 
     spec = specmod.validate({"market": "btc15m", "code": "def signals(window):\n    return []\n",
                              "sizing": {"stake": 5, "max_positions": 1}})

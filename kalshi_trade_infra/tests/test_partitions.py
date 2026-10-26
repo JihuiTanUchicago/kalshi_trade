@@ -9,7 +9,7 @@ from datetime import timedelta
 import pytest
 
 from app.research import partitions
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 from app.repository import now_utc
 from tests.test_research_repository import LedgerCursor
 

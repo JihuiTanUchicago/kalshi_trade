@@ -276,12 +276,12 @@ def test_backfill_writes_versioned_day_files(tmp_path, monkeypatch):
 
 from types import SimpleNamespace  # noqa: E402
 
-from app import backtest, engine  # noqa: E402
+from app.trading import backtest, engine  # noqa: E402
 from app.adapters.polymarket import features as pmf  # noqa: E402
 from app.adapters.polymarket import store as pms  # noqa: E402
 from app.adapters.polymarket.feed import SnapshotFeed  # noqa: E402
 from app.adapters.polymarket.instruments import instrument  # noqa: E402
-from app.markets import FEATURES, MARKETS  # noqa: E402
+from app.trading.markets import FEATURES, MARKETS  # noqa: E402
 from trading_core.domain.instruments import BinaryTerms, Instrument, InstrumentId, InstrumentKind  # noqa: E402
 from trading_core.ports import FeatureProvider, MarketDataFeed  # noqa: E402
 

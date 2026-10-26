@@ -3,7 +3,7 @@ one: a refused demo order's intent settles 'unfilled' with the refusal stored; e
 every live order, is left exactly as before. No network, no DB."""
 import pytest
 
-from app import engine
+from app.trading import engine
 from app.execution.refusal import OrderRefused, definite_refusal
 from app.services import demo_record
 

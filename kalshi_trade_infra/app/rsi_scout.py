@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional
 
-from app.markets import MARKETS
+from app.trading.markets import MARKETS
 
 _LOG = logging.getLogger(__name__)
 

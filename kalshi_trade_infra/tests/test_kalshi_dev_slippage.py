@@ -7,9 +7,9 @@ model, and graceful degradation when the demo host is down.
 from datetime import datetime, timezone
 
 from app.adapters.kalshi import kalshi_dev
-from app import spec as specmod
-from app.backtest import Dataset, Trade
-from app.markets import MARKETS, snapshot
+from app.trading import spec as specmod
+from app.trading.backtest import Dataset, Trade
+from app.trading.markets import MARKETS, snapshot
 
 
 def _trade(ticker, entry_ts, entry, exit_ts, exit_price, reason, side="yes"):
@@ -55,7 +55,7 @@ def _oos_dataset():
     feats = {"spot": 100000.0, "ret_1m": 0.0, "ret_5m": 0.0, "ret_15m": 0.0,
              "ret_60m": 0.0, "vol_15m": 0.001, "vol_60m": 0.001}
     close = datetime.fromtimestamp(5600, tz=timezone.utc)
-    from app.markets import Contract
+    from app.trading.markets import Contract
     sn = snapshot(feats, Contract("A", 100000.0, close), 2000, 0.40, 0.42)
     assert sn is not None
     # start=1000, end=2000 -> cutoff=1700, so the ts=2000 frame is out-of-sample.

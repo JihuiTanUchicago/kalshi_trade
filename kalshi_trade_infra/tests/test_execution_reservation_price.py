@@ -143,7 +143,7 @@ def test_without_fair_behaviour_is_unchanged():
 
 
 def test_engine_entry_passes_fair_and_min_edge_to_the_kernel():
-    from app import engine
+    from app.trading import engine
 
     seen = {}
 

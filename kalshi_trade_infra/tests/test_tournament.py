@@ -2,7 +2,7 @@
 statistical retirement, forward-only book curve, the wider probation funnel, and paper-only caps."""
 from datetime import datetime, timedelta
 
-from app import engine
+from app.trading import engine
 from app.research import agent, tournament
 
 NOW = datetime(2026, 10, 25, 12, 0, 0)

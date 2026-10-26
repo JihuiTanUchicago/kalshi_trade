@@ -25,7 +25,7 @@ class _Conn:
 def venues(monkeypatch):
     """Live and demo submitters exactly as the engine builds them, with the exchange stubbed, on the
     real module guards (their counters reset for the test and restored after)."""
-    from app import engine
+    from app.trading import engine
     from app.adapters.kalshi import kalshi_account, kalshi_dev_exec
     from app import repository as repo
     from app.execution import latency

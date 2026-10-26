@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import engine
+from app.trading import engine
 from data_pipeline.architecture.execution_kernel import child_client_order_id
 
 

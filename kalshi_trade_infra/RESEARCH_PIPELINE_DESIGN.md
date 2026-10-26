@@ -4,9 +4,9 @@
 
 Single source of truth for the Wave-2 implementation agents. This document specifies
 *what to build* (signatures, schema, file ownership, prompts). It contains no production
-code. Ground truth was read from `app/research/agent.py`, `app/backtest.py`, `app/research/exploration.py`,
-`app/research/dreaming.py`, `app/replay.py`, `app/research/sandbox.py`, `app/quant.py`, `app/spec.py`,
-`app/markets.py`, `app/schema.py`, `app/repository.py`, `app/server.py`, and the
+code. Ground truth was read from `app/research/agent.py`, `app/trading/backtest.py`, `app/research/exploration.py`,
+`app/research/dreaming.py`, `app/trading/replay.py`, `app/research/sandbox.py`, `app/quant.py`, `app/trading/spec.py`,
+`app/trading/markets.py`, `app/schema.py`, `app/repository.py`, `app/server.py`, and the
 `data_pipeline/` collectors, at the state of the repo on 2026-10-16.
 
 ---
@@ -72,7 +72,7 @@ Three properties make this hard and specific to this venue:
 
 3. **The sample is tiny and fixed.** Kalshi settled-market history begins 2026-08-12; as
    of today that is ~65 calendar days. `MARKETS["btc15m"].history_days = 30`,
-   `btc_daily = 60` (`app/markets.py:55`). Thirty days of 15-minute bars is ~2,880
+   `btc_daily = 60` (`app/trading/markets.py:55`). Thirty days of 15-minute bars is ~2,880
    contracts — but overlapping vol regimes mean the *effective* sample is far smaller. On a
    fixed sample, every look costs statistical power. This is the binding constraint, and it
    is why **more/longer data is the highest-leverage expansion** (§E.6).
@@ -83,11 +83,11 @@ Read against the code, the pipeline has six concrete leaks. Each is a place wher
 probability of crowning a fluke rises without any accounting for it.
 
 **Leak 1 — One fixed split, reused on every hypothesis forever, with no correction.**
-`backtest.Dataset.cutoff_ts` (`app/backtest.py:47`) is a single 70/30 time split
+`backtest.Dataset.cutoff_ts` (`app/trading/backtest.py:47`) is a single 70/30 time split
 (`IN_SAMPLE_FRACTION = 0.7`). `_gate_and_save` (`app/research/agent.py:274`) calls
 `backtest.evaluate(t["spec"], ds)` on that **same** out-of-sample slice for every finalist
 of every chunk. In a `run_forever` session the identical OOS window is queried against
-hundreds or thousands of finalists. The `gates()` function (`app/backtest.py:294`) applies
+hundreds or thousands of finalists. The `gates()` function (`app/trading/backtest.py:294`) applies
 fixed thresholds — `pnl>0`, `oos trades ≥ 10`, `profit_factor ≥ 1.1`,
 `max_drawdown ≤ 0.5·capital` — with **no multiple-testing correction whatsoever**. With a
 per-test false-positive rate near 50% (one-sided `pnl>0` on a noisy 10-trade sample),
@@ -101,7 +101,7 @@ the next run's prompt. The generator is explicitly told to "learn from it; do no
 failures" against OOS numbers. That is textbook holdout contamination: the thing that is
 supposed to be unseen steers future generation. Generation and validation are coupled.
 
-**Leak 3 — No purge, no embargo.** `simulate` (`app/backtest.py:141`) opens positions
+**Leak 3 — No purge, no embargo.** `simulate` (`app/trading/backtest.py:141`) opens positions
 strictly before `end_ts` but lets them **settle after it** (the loop at `:155-160` settles
 any open position whose `close_ts` has passed, and the function settles all remaining open
 positions at `:207`). So in-sample positions routinely settle inside the out-of-sample
@@ -112,14 +112,14 @@ across window edges). PLAN itself flags this matters "MORE than any split ratio 
 15-minute BTC bars."
 
 **Leak 4 — The gate is point-estimate thresholds, not tests.** `profit_factor` returns
-`99.0` when there are zero losing trades (`app/backtest.py:250`), so a 10-win/0-loss fluke
+`99.0` when there are zero losing trades (`app/trading/backtest.py:250`), so a 10-win/0-loss fluke
 passes the "wins outweigh losses" gate outright. `sharpe` is computed (`:238-243`) but
 **never gated and never deflated** for the number of trials. There is no confidence
 interval, no null distribution, no p-value anywhere in the stack. `score()`
 (`:320`) promotes on in-sample pnl with a 5-trade floor.
 
 **Leak 5 — The self-evolving policy optimizes *to* the reused OOS outcomes.** `dreaming`
-(`app/research/dreaming.py`) + `replay` (`app/replay.py`) tune each user's exploration policy to
+(`app/research/dreaming.py`) + `replay` (`app/trading/replay.py`) tune each user's exploration policy to
 maximize `best_unseen_pnl` over their recorded discovery tree, where `oos_pnl` is the very
 same reused OOS. `replay_generalization` shuffles *orderings* but the OOS *outcomes* are
 fixed and reused across every policy candidate and every dreaming round. This is a second
@@ -583,17 +583,17 @@ set its `max_evaluations = 3`.
    the strategy's experiment to be `DEPLOYMENT_CANDIDATE` (holdout-forward-validated +
    marginal-contribution OK). This is additive; it can only make deploy *harder*.
 
-**`app/backtest.py`:** add partition clipping to `build_dataset`/`dataset` (a `clip_ts`
+**`app/trading/backtest.py`:** add partition clipping to `build_dataset`/`dataset` (a `clip_ts`
 range), and expose per-trade net-return extraction (`trades -> [pnl_i/cost_i]` ordered by
 `entry_ts`) that the gatekeeper's bootstrap consumes. Keep `evaluate`/`gates` for the
 research-fold path and the existing what-if UI; the **production gate** no longer calls
 `gates()`. `GATES`/`IN_SAMPLE_FRACTION` stay for the in-research fold and backward compat.
 
-**`app/research/exploration.py` / `app/research/dreaming.py` / `app/replay.py`:** small, surgical.
-- `replay.build_tree` (`app/replay.py:75`) reads `strategy_records` whose `oos_pnl` is now
+**`app/research/exploration.py` / `app/research/dreaming.py` / `app/trading/replay.py`:** small, surgical.
+- `replay.build_tree` (`app/trading/replay.py:75`) reads `strategy_records` whose `oos_pnl` is now
   the **validation** pnl recorded by the gatekeeper (via `research_repository`, not the old
   reused OOS). No signature change.
-- Dreaming keeps its finalist-count penalty (`DEFAULT_FINALIST_PENALTY`, `app/replay.py:50`)
+- Dreaming keeps its finalist-count penalty (`DEFAULT_FINALIST_PENALTY`, `app/trading/replay.py:50`)
   — a multiple-testing proxy that now *aligns* with the FDR budget. **Add a hard rule:**
   dreaming is scored on a **rotating validation fold** and must **never** read holdout;
   assert in `dreaming.evolve_policy` that the tree carries no holdout outcomes. Flag in a
@@ -737,7 +737,7 @@ no prose is free-floating.
 
 1. **Equity curve, IS vs OOS vs holdout** — three colored segments on one time axis.
    Source: `app_experiment_results.equity_curve_json` per phase (reuse the existing
-   downsampled curve shape from `backtest.evaluate`'s `equity`, `app/backtest.py:280`).
+   downsampled curve shape from `backtest.evaluate`'s `equity`, `app/trading/backtest.py:280`).
 2. **Out-of-sample vs in-sample scatter / bar** — validation mean-return vs research
    mean-return, to show shrinkage. Source: research-fold metrics + validation result.
 3. **Drawdown underwater plot** — from the equity curve (reuse `quant.max_drawdown` for the
@@ -772,7 +772,7 @@ one owner.
 | **A — stats core** | `app/stats.py`, `tests/test_stats.py` | nothing (pure math, reuses `quant.py`) | 1st |
 | **B — ledger & data layer** | `app/schema.py` (the 4-table DDL block + `_add_column_if_missing` calls), `app/research_repository.py`, `app/research/partitions.py`, `tests/test_research_repository.py` | A (none at runtime) | 2nd |
 | **C — gatekeeper** | `app/research/gatekeeper.py`, `tests/test_gatekeeper.py` (FakeCursor per `tests/conftest.py`) | A, B | 3rd |
-| **D — generator wiring + prompt + 3-role** | edits to `app/research/agent.py`, `app/backtest.py`, `app/research/exploration.py`, `app/research/dreaming.py`, `app/replay.py`, `tests/test_agent_gatekeeper.py` | C | 4th |
+| **D — generator wiring + prompt + 3-role** | edits to `app/research/agent.py`, `app/trading/backtest.py`, `app/research/exploration.py`, `app/research/dreaming.py`, `app/trading/replay.py`, `tests/test_agent_gatekeeper.py` | C | 4th |
 | **E — API + research-paper page** | `app/server.py` (field additions), `app/static/*`, `tests/test_app_research_page.py` | B, C (data shapes frozen) | parallel to D after shapes freeze |
 
 **Safest sequencing:** A → B → C → D, with E starting once C's response shapes are frozen.
@@ -798,7 +798,7 @@ flips `_gate_and_save` over to the gatekeeper.
 **Cross-contract / cross-market trading — YES, but sequenced after the gatekeeper.**
 The infrastructure is already there: the snapshot collector gives synchronized per-minute
 quotes for ~41k markets (PLAN "Phase 2 snapshot collector SHIPPED"), and the backtester
-already runs on ETH/SOL/XRP ladders (research-only, `deployable=False`, `app/markets.py:63`).
+already runs on ETH/SOL/XRP ladders (research-only, `deployable=False`, `app/trading/markets.py:63`).
 Cross-sectional structure (BTC-vs-ETH basis, cross-strike ladder shape for the daily market)
 is a genuine source of *uncorrelated* edge, which is exactly what the marginal-contribution
 gate rewards. **Caveat:** more markets = more hypotheses = faster alpha-wealth burn, so each
@@ -813,7 +813,7 @@ the mid. In priority order:
    `model_features_1m` (`data_pipeline/init_schema.py:142`) already stores
    `orderbook_imbalance`, `yes_bid_size_fp`/`yes_ask_size_fp`, `trades_last_60s_*`,
    `quote_change_events_60s`, `mid_ret_1m/3m`. But the `FEATURES` snapshot the spec can
-   filter on (`app/markets.py:76`) exposes only BTC price/vol features — **none of the
+   filter on (`app/trading/markets.py:76`) exposes only BTC price/vol features — **none of the
    microstructure**. Plumbing these into `Snapshot.features` is the cheapest real new signal
    in the whole system and directly enables the microstructure angles in the prompt.
 2. **Longer settled history via Kalshi `/historical`** (PLAN already flags the live API only

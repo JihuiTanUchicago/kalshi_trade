@@ -10,10 +10,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app import backtest
+from app.trading import backtest
 from app.research import sandbox
-from app import spec as specmod
-from app.markets import MARKETS
+from app.trading import spec as specmod
+from app.trading.markets import MARKETS
 
 # Code strategies (the research vehicle for sports) need an OS sandbox; skip the real-trade
 # test where none exists (mirrors tests/test_code_strategy.py).
@@ -105,14 +105,14 @@ def test_btc_snapshot_still_carries_strike_features():
 def test_fetch_spot_series_none_for_sports():
     """A sports market has no underlying price product, so the live engine fetches NO spot
     series for it (and never hits Coinbase) - the snapshot trades on the book alone."""
-    from app import engine
+    from app.trading import engine
     assert engine.fetch_spot_series(MARKETS["nba_game"]) is None
 
 
 def test_fetch_quotes_keeps_strikeless_sports_contracts(monkeypatch):
     """fetch_quotes must keep a sports contract that has no floor_strike (0.0 sentinel), but
     still skip a strikeless contract on an UNDERLYING market (there a strike is required)."""
-    from app import engine
+    from app.trading import engine
     payload = {"markets": [
         {"ticker": "KXNBAGAME-G1-TEAM", "floor_strike": None, "close_time": "2030-01-01T00:00:00Z",
          "yes_bid_dollars": 0.58, "yes_ask_dollars": 0.60,
@@ -133,7 +133,7 @@ def test_fetch_quotes_keeps_strikeless_sports_contracts(monkeypatch):
 def test_sports_snapshot_tradeable_without_spot():
     """The live tick builds a sports snapshot from feats={} (no spot). It must be tradeable and
     carry only book features - the same shape the backtest produces."""
-    from app.markets import Contract, snapshot
+    from app.trading.markets import Contract, snapshot
     c = Contract("KXNBAGAME-G1-TEAM", 0.0, datetime.fromtimestamp(T0 + 600, tz=timezone.utc), "KXNBAGAME")
     snap = snapshot({}, c, T0, 0.58, 0.60)          # feats={} is what tick_market passes for sports
     assert snap is not None

@@ -191,7 +191,7 @@ def paper_fills_for_gate(cur, user_id: int, strategy_id: int, ref_prefix: str = 
 
 
 def track_record_rows(cur, user_id: int) -> List[Dict]:
-    """Every trade in the user's book for the track record page (app/track_record.py): one row per
+    """Every trade in the user's book for the track record page (app/trading/track_record.py): one row per
     (mode, deployment, entry fill). Partial-exit slices share the entry's order_ref and are summed;
     `open_slices` > 0 marks a trade not yet fully closed; its `pnl` is what the sold slices already
     realized and `open_cost` what is still held at cost. A row with no order_ref is its own trade.

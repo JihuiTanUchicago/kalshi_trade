@@ -449,7 +449,7 @@ def main() -> None:
             ("forward_quotes", "no_bid_dollars", "ALTER TABLE forward_quotes ADD COLUMN no_bid_dollars DECIMAL(10,4) NULL AFTER open_interest_fp"),
             ("forward_quotes", "no_ask_dollars", "ALTER TABLE forward_quotes ADD COLUMN no_ask_dollars DECIMAL(10,4) NULL AFTER no_bid_dollars"),
             # Catalog-driven universe: recurrence class per series, used to generate deployable
-            # outcome-settled markets (app/markets.load_catalog_markets). NULL on legacy rows until
+            # outcome-settled markets (app/trading/markets.load_catalog_markets). NULL on legacy rows until
             # catalog_collector's next enrichment pass fills it.
             ("kalshi_series", "frequency", "ALTER TABLE kalshi_series ADD COLUMN frequency VARCHAR(16) NULL AFTER category"),
             # Signed order flow from market_trades prints (model_features_1m_builder.trade_flow).

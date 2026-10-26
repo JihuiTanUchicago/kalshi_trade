@@ -17,7 +17,7 @@ sandbox. There is NO code path from here to the production host or to the house
     so signing never falls back to the env house key (that fallback is what
     ``credentials=None`` would trigger, and ``_require_creds`` forbids it).
 
-It mirrors the live kernel path (``app.engine.live_kernel_factory`` ->
+It mirrors the live kernel path (``app.trading.engine.live_kernel_factory`` ->
 ``MarketableLimitKernel``): ``demo_order_submitter`` is the demo twin of
 ``kalshi_account.order_submitter`` and ``demo_kernel_factory`` the twin of
 ``live_kernel_factory``, so the engine's demo-mode tick can consume a kernel
@@ -247,7 +247,7 @@ def demo_order_submitter(credentials: KalshiCredentials, base_url: Optional[str]
 
 def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     """user_id -> MarketableLimitKernel that places DEMO orders signed with that
-    user's own dev key. Demo twin of app.engine.live_kernel_factory; reuses the
+    user's own dev key. Demo twin of app.trading.engine.live_kernel_factory; reuses the
     same kernel class and the same AES-GCM-per-user decryption (credentials_from_row),
     so the only thing that changes is the key (dev) and the host (demo).
 
