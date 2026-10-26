@@ -930,9 +930,10 @@ test('the floating autopilot pill steps aside while it would cover a primary or 
   f.apYield(); assert.equal(box.classes.has('yield'), true);
   go.getBoundingClientRect = rect(0, 0, 0, 0);            // not laid out (hidden): nothing to yield to
   f.apYield(); assert.equal(box.classes.has('yield'), false);
-  // A plain link under the pill doesn't count, and the open panel (no pill) never yields.
-  f.root.querySelector('a.btn').getBoundingClientRect = rect(1249, 848, 1384, 884);
-  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  // Any link counts too (walks found the pill on Billing's Add credits link), and the open panel
+  // (no pill) never yields.
+  f.root.querySelector('a.btn').getBoundingClientRect = rect(250, 800, 370, 830);
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
   box.classList.add('yield'); box.innerHTML = '<div class="apf-head"></div>';
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
@@ -1716,6 +1717,59 @@ test('the floating autopilot pill also steps aside from a figure under it', () =
   f.apYield(); assert.equal(box.classes.has('yield'), false);
   cell.getBoundingClientRect = rect(263, 790, 374, 830);    // a deployment card's number
   f.apYield(); assert.equal(box.classes.has('yield'), true);
+});
+
+test('the floating autopilot pill steps aside from any control or value under it, only where it shows through, and never while focused', () => {
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><form><input class="input" name="amt"><textarea class="input"></textarea></form><details><summary>More</summary></details><dl><div><dt>Balance</dt><dd>$1,000.00</dd></div></dl><p>Plain text</p></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const pill = box.querySelector('.apf-pill'), main = f.root.querySelector('main');
+  pill.getBoundingClientRect = rect(245, 794, 380, 834);   // 390x844 phone
+  const els = ['input', 'textarea', 'summary', 'dd'].map((s) => f.root.querySelector(s));
+  els.forEach((el) => { el.getBoundingClientRect = rect(0, 0, 0, 0); });
+  let shows = main;  // what elementsFromPoint finds under the pill (the pill itself on top)
+  f.document.elementsFromPoint = () => [pill, box, shows];
+  for (const el of els) {  // Funds' fields, a disclosure, a dl's figure: each one sends the pill aside
+    el.getBoundingClientRect = rect(30, 790, 360, 830); shows = el;
+    f.apYield(); assert.equal(box.classes.has('yield'), true, el.tag);
+    el.getBoundingClientRect = rect(30, 300, 360, 340);
+    f.apYield(); assert.equal(box.classes.has('yield'), false, el.tag);
+  }
+  // A value its panel clips out of view (laid out under the pill, but the panel is what shows) doesn't count.
+  els[3].getBoundingClientRect = rect(288, 802, 317, 820); shows = main;
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  shows = els[3];
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  // Tabbing onto the stepped-aside pill brings it back, so a keyboard user can always open it.
+  f.document.activeElement = pill;
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  // Plain text under the pill isn't a control or a figure; and the page's foot always clears it.
+  f.document.activeElement = null; els[3].getBoundingClientRect = rect(0, 0, 0, 0);
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  assert.match(css, /body:not\(\.landing-body\) \{ padding-bottom: 72px; \}/);
+  assert.match(css, /@media \(max-width: 600px\) \{ \.apf \{ right: 10px; bottom: 10px; \}/);  // 10 + 40 + 8 < 72
+});
+
+test('the autopilot says the market it researches by its label, never a raw key or series', () => {
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}, {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
+  const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
+  f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi']}};
+  assert.equal(f.apIdleLine(), 'Researching BTC 15-min · BTC 5pm · Chicago high temp');
+  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it's still picking"]}};
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
+  // The story quotes the same list; the panel, the card and the pill's tooltip say it the same way.
+  const d = {...ap, research: {active: ['btc15m', 'KXBTCD'], tested_7d: 3, passed_7d: 0}, story: ["Right now it's researching btc15m and KXBTCD."]};
+  const box = new Element('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
+  f.apUpdate(box, d);
+  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching BTC 15-min and BTC 5pm\.<\/p>/);
+  assert.doesNotMatch(box.querySelector('#apf-story').innerHTML, /btc15m|KXBTCD/);
+  f.apUpdate(box, {...d, story: []});
+  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching BTC 15-min · BTC 5pm/);
+  assert.doesNotMatch(source, /esc\(\(d\.story && d\.story\[0\]\)|\(d\.story \|\| \[\]\)\.map|\[\.\.\.new Set\(d\.research\.active\)\]/);
 });
 
 test('Tau: a finished session says what to do next: your own idea after the example, the passed strategy after yours', async () => {

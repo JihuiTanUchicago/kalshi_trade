@@ -1553,9 +1553,11 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 
 /* ---------- Floating autopilot window (bottom-right) ---------- */
 .apf { position: fixed; right: 16px; bottom: 16px; z-index: 60; font-family: var(--f-ui); }
-.apf.yield { opacity: 0; pointer-events: none; }  /* stepping aside from a primary button (apYield) */
+.apf.yield { opacity: 0; pointer-events: none; }  /* stepping aside from a control or figure under it (apYield) */
 .apf:not(.open) { transition: opacity .15s; }
-/* Room under the page so the pinned autopilot pill never sits on the last row's buttons. */
+/* Room under the page so the pinned autopilot pill never sits on the last row's buttons: deeper than
+   the pill's offset, height and apYield's 8px margin (16+36+8 desktop, 10+40+8 phone), so at the foot
+   of any page it always shows again. */
 body:not(.landing-body) { padding-bottom: 72px; }
 body.landing-body .apf { display: none; }
 .apf-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.14); font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }

@@ -4068,6 +4068,8 @@
       const yieldSoon = () => { if (yieldQueued) return; yieldQueued = true; requestAnimationFrame(() => { yieldQueued = false; apYield(); }); };
       addEventListener('scroll', yieldSoon, { passive: true }); addEventListener('resize', yieldSoon);
       document.addEventListener('toggle', yieldSoon, true); document.addEventListener('input', yieldSoon, true);
+      // Tabbing onto a stepped-aside pill brings it back (apYield keeps a focused pill shown).
+      document.addEventListener('focusin', yieldSoon, true); document.addEventListener('focusout', yieldSoon, true);
       // The page also moves under a still pill when it paints (the dashboard's figures land after the shell).
       if (typeof MutationObserver === 'function') new MutationObserver(yieldSoon).observe(document.body, { childList: true, subtree: true });
     }
@@ -4221,7 +4223,7 @@
     const now = d.billing_blocked
       ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.'
         : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.`)
-      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc((d.story && d.story[0]) || 'Autopilot is on.');
+      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') : esc(apStory(d)[0] || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${apLastHtml(d.last_action)}${Array.isArray(d.focus) ? `
@@ -4244,7 +4246,7 @@
     let t = raw.replace(/^Autopilot:?\s+(?=[a-z])/, '').split(/(?<=[.!?])\s| — /)[0].replace(/[.!?]$/, '');
     // agent.act names a research session's market by its key ("on btc15m"); say it the way the app does.
     const keys = new Set(((S.me && S.me.markets) || []).map((m) => m.key));
-    t = t.replace(/\bon ([a-z0-9_]+)$/, (all, k) => keys.has(k) ? 'on ' + marketShort(k) : all);
+    t = t.replace(/\bon ([a-z0-9_]+)$/, (all, k) => keys.has(k) || MKT_SHORT[k] ? 'on ' + marketShort(k) : all);
     if (t.length > 90 && t.indexOf(': ') > 10) t = t.slice(0, t.indexOf(': '));
     if (t.length > 90) t = t.slice(0, 90).replace(/\s+\S*$/, '') + '\u2026';
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
@@ -4256,6 +4258,27 @@
   }
   // What it is doing right now in a word or two, for the pill on every page: "researching",
   // "reviewing", "2 on paper", or "paused" while billing stops it. '' when there's nothing to add.
+  // A market the autopilot names (the status read's research list, and its story, which quotes that
+  // list): the app's own label. The server sends a market's label, or the run's raw key when the
+  // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a key reads as the short label,
+  // a series as its market's, and a key nothing knows as "an unlisted market", never the raw key.
+  const AP_PICKING = "a market it's still picking";
+  function apMarketName(n) {
+    const s = String(n || '');
+    if (MKT_SHORT[s]) return MKT_SHORT[s];
+    const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
+    if (m) return marketShort(m.key);
+    // A label has a space or mixed case ("Bitcoin daily close, 5pm EDT"); a key is one case, no spaces.
+    if (!/^[\w.-]+$/.test(s) || (s !== s.toLowerCase() && s !== s.toUpperCase())) return s;
+    return contractMarket(s) || 'an unlisted market';
+  }
+  const apMarketNames = (d) => [...new Set(((d && d.research && d.research.active) || []).map((n) => n === AP_PICKING ? n : apMarketName(n)))];
+  // The server's story lines with each raw key it quoted from the research list said as apMarketName does.
+  function apStory(d) {
+    const raw = [...new Set((d && d.research && d.research.active) || [])].filter((n) => n !== AP_PICKING && apMarketName(n) !== n);
+    return ((d && d.story) || []).map((line) => raw.reduce((t, n) =>
+      t.replace(new RegExp('(^|[^\\w-])' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])', 'g'), (all, pre) => pre + apMarketName(n)), String(line)));
+  }
   function apDoing(d) {
     if (!d || !d.autopilot) return '';
     if (d.billing_blocked) return 'paused';
@@ -4561,7 +4584,7 @@
   function apNowWord(d) {
     if (!d) return 'Idle';
     if (d.billing_blocked) return 'Paused until it can pay for research';
-    const names = [...new Set((d.research && d.research.active) || [])], picked = names.filter((n) => n !== "a market it's still picking");
+    const names = apMarketNames(d), picked = names.filter((n) => n !== AP_PICKING);
     if (names.length) return picked.length ? 'Researching ' + picked.join(' ·\u00a0') : 'Picking a market to research';
     if (d.reviewing) return 'Reviewing the markets';
     // Between reviews with strategies on paper is not idle: they trade on their own between its moves.
@@ -4575,7 +4598,7 @@
       const m = d ? (AP_MODE[d.mode] || AP_MODE.off) : (S.me && S.me.user && S.me.user.autopilot ? AP_PENDING_ON : AP_MODE.off);
       box.className = 'apf' + (m.cls ? ' ' + m.cls : '');
       box.dataset.shell = '';
-      const tip = d && d.autopilot ? ((d.story && d.story[0]) || '') : '';
+      const tip = d && d.autopilot ? (apStory(d)[0] || '') : '';
       const pill = `<button type="button" class="apf-pill" data-ap="toggle" aria-expanded="false"${tip ? ` title="${esc(tip)}"` : ''}>
         <span class="apf-dot" aria-hidden="true"></span><span class="apf-pill-label">${esc(apPillLabel(d, m))}</span>${ICON.chev || ''}</button>`;
       // The 20s status read repaints the pill only when it changed (a screen reader re-read a focused pill
@@ -4594,24 +4617,39 @@
     if (box.dataset.shell !== 'expanded') apBuildShell(box);
     apUpdate(box, d);
   }
-  // The collapsed pill floats over the bottom-right corner, which is where pages put their primary
-  // action: on Research it sat on the Start session row (desktop) and covered the button (phone).
-  // While it would cover a primary or submit button, or a figure (a balance, a P&L, a stacked card's
-  // number), or the dashboard's autopilot card (which already says what the pill would), on screen it
-  // fades and lets clicks through, and comes back once that scrolls away.
-  // The run page's Agent log header counts too: its Pause and Cancel sit at the right edge, under the
-  // pill once that header scrolls to the foot of the screen.
+  // The collapsed pill floats over the bottom-right corner, which is where pages put their actions:
+  // on Research it sat on the Start session row (desktop) and covered the button (phone), and walks
+  // found it on Billing's Add credits note, the run page's Pause and Cancel, and Funds' fields.
+  // While it would cover anything you can press or type in, or a figure (a balance, a P&L, a stacked
+  // card's number, a list's value), or the dashboard's autopilot card (which already says what the
+  // pill would), it fades and lets clicks through, and comes back once that scrolls away. The body's
+  // bottom padding (app.css) leaves a clear strip under every page's last row, so scrolling to the
+  // foot of any page brings it back. Only what shows through counts: a figure clipped out of view by
+  // its panel, or under the masthead, is not covered. Focus on the pill (keyboard) keeps it shown.
   // The open panel is left alone: the user opened it.
+  const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
+    '.figures .m', '.fig', 'td.num', 'dd', '#dash-ap'];
   function apYield() {
     const box = document.getElementById('autopilot-float'), pill = box && box.querySelector('.apf-pill');
     if (!pill || !pill.getBoundingClientRect) { if (box) box.classList.remove('yield'); return; }
+    const a = document.activeElement;
+    if (a && a !== document.body && box.contains(a)) { box.classList.remove('yield'); return; }
     const p = pill.getBoundingClientRect(), pad = 8;
-    const q = (sel) => [...document.body.querySelectorAll(sel)];
-    const under = ['main button[type="submit"]', 'main .btn.primary', 'main #runact .btn', '.figures .m', '.fig', '.stack tbody td.num', '#dash-ap'];
-    const covers = under.flatMap(q).some((el) => {
+    const L = p.left - pad, R = p.right + pad, T = p.top - pad, B = p.bottom + pad;
+    // Is the element what shows at any of five points of its overlap with the pill (the pill aside)?
+    const shows = (el, r) => {
+      if (typeof document.elementsFromPoint !== 'function') return true;
+      const x0 = Math.max(r.left, L), x1 = Math.min(r.right, R), y0 = Math.max(r.top, T), y1 = Math.min(r.bottom, B);
+      return [[(x0 + x1) / 2, (y0 + y1) / 2], [x0 + 1, y0 + 1], [x1 - 1, y0 + 1], [x0 + 1, y1 - 1], [x1 - 1, y1 - 1]].some(([x, y]) => {
+        const top = document.elementsFromPoint(x, y).find((n) => !box.contains(n));
+        return !!top && el.contains(top);
+      });
+    };
+    const covers = AP_UNDER.some((sel) => [...document.body.querySelectorAll(sel)].some((el) => {
+      if (box.contains(el)) return false;
       const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-      return !!(r && r.width && r.right > p.left - pad && r.left < p.right + pad && r.bottom > p.top - pad && r.top < p.bottom + pad);
-    });
+      return !!(r && r.width && r.right > L && r.left < R && r.bottom > T && r.top < B) && shows(el, r);
+    }));
     box.classList.toggle('yield', covers);
   }
   function apBuildShell(box) {
@@ -4754,7 +4792,7 @@
     if (story) {
       // The billing pause has its own line under the switch, so the idle line skips it.
       story.innerHTML = (d.idle && !d.billing_blocked ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"')}</p>` : '')
-        + (d.story || []).map((line) => `<p>${esc(line)}</p>`).join('');
+        + apStory(d).map((line) => `<p>${esc(line)}</p>`).join('');
       const idleFocus = story.querySelector('[data-ap="idle-focus"]');
       if (idleFocus) idleFocus.onclick = () => apShowFocus(box);
     }
@@ -4786,7 +4824,7 @@
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${liveInPlay ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
-      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc([...new Set(d.research.active)].join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
+      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
