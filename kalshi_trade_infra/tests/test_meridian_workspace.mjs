@@ -3325,3 +3325,64 @@ test('connecting a Kalshi key confirms it with the balance: "Connected ✓ (bala
   await g.viewFunds();
   assert.equal((g.root.querySelector('main').innerHTML.match(/<b>Connected ✓<\/b> \(couldn’t read the balance just now\)/g) || []).length, 2);
 });
+
+const cardedBilling = (o = {}) => ({configured: true, publishable_key: 'synthetic-only', balance: 7.4213, spent: 47.5787, spent_7d: 9.8, runway_days: 5.3,
+  free_bonus: 20, topup_fee_pct: 5.5, autoreload_threshold: 8, autoreload_amount: 25, min_reload_amount: 20, min_reload_threshold: 5,
+  min_topup: 5, max_topup: 1000, default_pm: 'pm_1', auto_reload: true,
+  cards: [{id: 'pm_2', brand: 'mastercard', last4: '4444', exp_month: 11, exp_year: 2027}, {id: 'pm_1', brand: 'visa', last4: '4242', exp_month: 4, exp_year: 2029}],
+  ledger: [
+    {kind: 'usage', amount: -0.2104, memo: 'Agent usage · claude-opus-4-6', created_at: '2026-10-25T17:00:00Z'},
+    {kind: 'autoreload', amount: 25, memo: 'Auto-reload $25', created_at: '2026-10-25T16:00:00Z'},
+    {kind: 'usage', amount: -0.91, memo: 'Research run (seed)', created_at: '2026-10-25T15:00:00Z'},
+    {kind: 'topup', amount: 10, memo: 'Added $10 credits', created_at: '2026-10-25T14:00:00Z'},
+    {kind: 'bonus', amount: 20, memo: 'Welcome credits', created_at: '2026-10-24T14:00:00Z'},
+  ], ...o});
+const STRIPE_STUB = () => ({confirmSetup: async () => ({error: {message: 'stub'}}), elements: () => ({create: () => ({mount() {}})})});
+const billingPage = (data, posts = []) => frontend({stripeLoader: async () => STRIPE_STUB, fetchImpl: (path, options = {}) => {
+  if (path === '/api/billing') return response(data);
+  if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+  if (path === '/api/billing/auto-reload') { posts.push(JSON.parse(options.body)); return response({ok: true}); }
+  throw new Error('Unexpected offline request: ' + path);
+}});
+
+test('Billing says what auto-reload does and when it fires, in the server\'s own figures', async () => {
+  const posts = [], f = billingPage(cardedBilling(), posts);
+  await f.viewBilling(); await flush();
+  const when = f.root.querySelector('#autorel-when');
+  assert.equal(when.innerHTML, '<b>On.</b> When a research or chat charge takes your balance to $8.00 or less, we charge your VISA •••• 4242 for $25.00 of credits plus the 5.5% purchase fee.');
+  const box = f.root.querySelector('#autoreload'); box.checked = false;
+  await box.onchange(); await flush();
+  assert.match(when.innerHTML, /^<b>Off\.<\/b> When your credits run low, new research sessions won’t start until you add more\.$/);
+  assert.deepEqual(posts, [{on: false, amount: 25, threshold: 8}]);  // what is saved is unchanged
+  assert.equal(f.root.querySelector('#autorel-sum').textContent, 'Reload $25 at $8');
+});
+
+test('Billing ledger says why each line was charged and where the receipt is; amounts stay the server\'s', async () => {
+  const f = billingPage(cardedBilling());
+  await f.viewBilling(); await flush();
+  const main = f.root.querySelector('main').innerHTML;
+  assert.match(main, /<a class="btn sm" href="\/api\/billing\/receipt" download>Download receipt \(CSV\)<\/a>/);
+  assert.match(main, /<p class="hint ledger-key">Newest first\. Research and chat bill one line per model call, named by its model\. The receipt has every line, with exact amounts\.<\/p>/);
+  const rows = f.root.querySelectorAll('.t-ledger tbody tr').map((r) => r.innerHTML);
+  assert.equal(rows.length, 5);
+  assert.match(rows[0], /Agent usage<div class="sub-fig">claude-opus-4-6<\/div>[\s\S]*−\$0\.21/);
+  assert.doesNotMatch(rows[0], /Agent usage · /);  // the memo's prefix isn't said twice
+  assert.match(rows[1], /Auto-reload<div class="sub-fig">Card charged for these credits plus the 5\.5% purchase fee<\/div>[\s\S]*\+\$25\.00/);
+  assert.match(rows[2], /Agent usage<div class="sub-fig">Research run \(seed\)<\/div>[\s\S]*−\$0\.91/);
+  assert.match(rows[3], /Added credits<div class="sub-fig">Card charged for these credits plus the 5\.5% purchase fee<\/div>[\s\S]*\+\$10\.00/);
+  assert.match(rows[4], /Welcome credits<\/td>[\s\S]*\+\$20\.00/);  // free credits: no card line
+  assert.doesNotMatch(main, /list price/);
+  // The figures up top are unchanged: what the server sent, formatted as before.
+  assert.match(f.root.querySelector('#bfigs').innerHTML, /\$7\.42/);
+  assert.match(f.root.querySelector('#bfigs').innerHTML, /\$47\.58/);
+});
+
+test('Billing puts Add credits right under the balance in one column, and says where a session\'s cost is shown', async () => {
+  const f = billingPage(cardedBilling());
+  await f.viewBilling(); await flush();
+  const detail = f.root.querySelector('.bill-detail');
+  assert.ok(detail && detail.querySelector('aside #topup-btn'));
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /@media \(max-width: 1080px\) \{ \.bill-detail > aside \{ order: -1; \} \}/);
+  assert.match(f.root.innerHTML, /The <a href="\/research">research form<\/a> shows what a session usually costs before you start\./);
+});

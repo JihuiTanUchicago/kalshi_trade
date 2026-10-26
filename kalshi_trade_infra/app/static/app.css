@@ -1955,3 +1955,8 @@ body.landing-body .apf { display: none; }
 .key-ok b { color: var(--gain-ink); font-weight: 600; }
 .key-steps { font-size: 13.5px; gap: 6px; }
 .key-diff { margin: -4px 0 14px; font-size: 13px; line-height: 1.45; }
+
+/* Billing: in one column (phones, narrow windows), Add credits sits right under the balance, not below every ledger line. */
+@media (max-width: 1080px) { .bill-detail > aside { order: -1; } }
+.autorel-when { margin-top: 8px; line-height: 1.45; }
+.ledger-key { margin: 10px 0; }
