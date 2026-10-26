@@ -312,8 +312,9 @@
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
   // "Bitcoin daily close, 5pm EDT"), so an open position never shows only the raw ticker. Unknown: ''.
+  const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-'));
   const contractMarket = (ticker) => {
-    const m = ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-'));
+    const m = contractMkt(ticker);
     return m ? (m.label || marketShort(m.key)) : '';
   };
   // A contract ticker that opens its market page (price, settlement rules, your positions in it).
@@ -700,7 +701,7 @@
     if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
     dlg.addEventListener('cancel', (e) => e.preventDefault());  // Esc can't dismiss
     dlg.querySelector('[data-signout]').onclick = async () => {
-      await api('/api/logout', {}).catch(() => {}); S.me = null; closePay(); go('/signin');
+      if (await signOut(dlg.querySelector('#pay-hint'))) { closePay(); go('/signin'); }
     };
     // Animated showcase reel on the left.
     const stage = dlg.querySelector('#pay-stage'), cap = dlg.querySelector('#pay-cap'), dots = dlg.querySelector('#pay-dots');
@@ -875,7 +876,13 @@
     const tabs = root.querySelector('.services-in'), here0 = tabs && tabs.querySelector('[aria-current="page"]');
     if (here0 && here0.offsetLeft + here0.offsetWidth > tabs.clientWidth) tabs.scrollLeft = here0.offsetLeft - 16;
     if (tabs) tabEdges(tabs);
-    root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => { await api('/api/logout', {}).catch(() => {}); S.me = null; go('/signin'); }));
+    root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => {
+      if (await signOut(signOutNote())) return go('/signin');
+      // The menu closes so the note under it shows, and keyboard focus goes back to the menu's button.
+      const menu = root.querySelector('.profile-menu'), trig = root.querySelector('.profile-trig');
+      if (menu) menu.hidden = true;
+      if (trig) { trig.setAttribute('aria-expanded', 'false'); trig.focus(); }
+    }));
     const prof = root.querySelector('.profile');
     if (prof) {
       const trig = prof.querySelector('.profile-trig'), menu = prof.querySelector('.profile-menu');
@@ -935,6 +942,9 @@
     { key: 'tau', name: 'Tau', desc: 'The full interface — every feature, the station-timetable look.' },
     { key: 'meridian', name: 'Meridian', desc: 'A lighter redesign of the dashboard, settings and markets.' },
   ];
+  const themeName = (key) => (THEMES.find((t) => t.key === key) || THEMES[0]).name;
+  // Set for the one reload after a saved switch, so the new theme's Settings says the switch took.
+  const THEME_SAVED = 'tau_theme_saved';
   // Settings' email switch. It writes app_users.email_opt_out, the field the unsubscribe link in
   // community emails also sets; the server checks it before every optional email. Perps safety
   // alerts and the failed auto-reload email never read it, and the copy says so.
@@ -975,12 +985,13 @@
     shell('/settings', boardTitle('Settings'), `
       <section class="sect theme-settings"><div class="section-head"><h2>Theme</h2></div>
         <div class="theme-pick" role="radiogroup" aria-label="Theme">
-          ${THEMES.map((t) => `<button type="button" class="theme-opt${t.key === current ? ' on' : ''}" role="radio" aria-checked="${t.key === current}" data-theme="${t.key}">
+          ${THEMES.map((t) => `<button type="button" class="theme-opt${t.key === current ? ' on' : ''}" role="radio" aria-checked="${t.key === current}" tabindex="${t.key === current ? 0 : -1}" data-theme="${t.key}">
               <span class="theme-meta"><b>${esc(t.name)}</b></span>
               <span class="theme-mark" aria-hidden="true">${ICON.check}</span>
             </button>`).join('')}
         </div>
-        <div id="theme-flash" class="hint" role="status"></div>
+        <p class="hint" style="margin-top:12px;max-width:420px">Changes how every page looks, wherever you sign in. Switching reloads Tau; you can switch back here anytime.</p>
+        <div id="theme-flash"></div>
       </section>
       ${emailSettings()}`);
     wireEmailSettings();
@@ -988,13 +999,28 @@
       const key = b.dataset.theme;
       if (key === current) return;
       busy(b, async () => {
-        try { localStorage.setItem('tau_ui', key); } catch (e) { /* private mode */ }
-        // The shell links the theme from this cookie (the server sets it too, on the save below).
+        // The account's theme is saved first: a signed-in page is served in the account's theme, so a
+        // switch whose save failed reloaded straight back into this one, with no word why.
+        try { await api('/api/ui-theme', { theme: key }); } catch (e) {
+          flash('#theme-flash', `Your theme is still ${themeName(current)}: Tau didn’t confirm the switch. Try again in a moment.`, 'bad');
+          return;
+        }
+        try { localStorage.setItem('tau_ui', key); sessionStorage.setItem(THEME_SAVED, key); } catch (e) { /* private mode */ }
+        // The shell links the theme from this cookie (the server set it too, on the save above).
         document.cookie = `tau_ui=${key}; Path=/; Max-Age=34560000; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
-        try { await api('/api/ui-theme', { theme: key }); } catch (e) { /* local still applies */ }
         location.reload();
       });
     }));
+    const opts = root.querySelectorAll('[data-theme]');
+    opts.forEach((b, i) => (b.onkeydown = (e) => {
+      const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      opts[(i + step + opts.length) % opts.length].focus();
+    }));
+    let saved = null;
+    try { saved = sessionStorage.getItem(THEME_SAVED); sessionStorage.removeItem(THEME_SAVED); } catch (e) { /* private mode */ }
+    if (saved === current) flash('#theme-flash', `Theme set to ${themeName(current)}. It’s saved to your account, so it applies wherever you sign in.`, 'good');
   }
   // One measured cell. Money direction rides a tint field behind the figure
   // (opts.v), never a colour on the digits and never the reserved signal red.
@@ -1136,6 +1162,25 @@
       el.id = id; el.className = 'vh'; el.setAttribute('aria-live', level); el.setAttribute('aria-atomic', 'true');
       document.body.appendChild(el);
     });
+  }
+  // Sign out. A sign-out Tau didn't confirm (no reply, or its 5xx) left the session in place, yet the page
+  // went to sign-in, which sent the still-signed-in reader straight back to the dashboard with no word why:
+  // it says so where it was pressed and stays. A 401 means the session had already ended.
+  const SIGNOUT_FAIL = 'You’re still signed in: Tau didn’t confirm the sign-out. Check your connection and try again.';
+  async function signOut(where) {
+    try { await api('/api/logout', {}); }
+    catch (e) { if (e.status !== 401) { flash(where, SIGNOUT_FAIL, 'bad'); return false; } }
+    S.me = null;
+    return true;
+  }
+  // The profile menu's sign-out note, at the top of the page.
+  function signOutNote() {
+    const m = root.querySelector('#main');
+    if (!m) return null;
+    let n = m.querySelector('#signout-flash');
+    if (!n) { n = document.createElement('div'); n.id = 'signout-flash'; if (m.prepend) m.prepend(n); else m.appendChild(n); }
+    if (n.scrollIntoView) n.scrollIntoView({ block: 'nearest' });
+    return n;
   }
   function announce(msg, urgent) {
     if (!msg) return;
@@ -2396,6 +2441,13 @@
         <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section></div>`);
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
+    const wantMkt = new URLSearchParams(location.search).get('market');
+    const pickMkt = wantMkt && [...form.querySelectorAll('input[name=market]')].find((r) => r.value === wantMkt);
+    if (pickMkt) {
+      pickMkt.checked = true;
+      const grp = pickMkt.closest('details'); if (grp) grp.open = true;
+      const opts = form.querySelector('#ropts'); if (opts) opts.open = true;
+    }
     // Model, depth and market fold behind "Options" on a phone (closed while at their defaults), so
     // Start session sits right under the idea. The summary line says what will run.
     const optsSum = form.querySelector('#ropts-sum');
@@ -4681,6 +4733,14 @@
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
   }
+  // What to do next from a market page: research it (the market picked in the form) or open your
+  // strategies on it, when it's one Tau researches; otherwise say so, rather than leave a dead end.
+  function marketNext(ticker) {
+    const m = contractMkt(ticker);
+    if (!m) return '<p class="hint mk-next">Tau doesn’t research this market, so your strategies can’t trade it. <a href="/research?new=1">See the markets it researches</a></p>';
+    const k = encodeURIComponent(m.key);
+    return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a><a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a></p>`;
+  }
   async function viewMarketDetail(ticker) {
     shell('/explore', boardTitle('Market'), loading(300));
     let d;
@@ -4701,11 +4761,11 @@
       d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as of ${settleAt(d.as_of)}`) : ''].filter(Boolean).join(' ·\u00a0');
     const settled = d.result === 'yes' || d.result === 'no';
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
-    shell('/explore', boardTitle(label, esc(`${contractMarket(d.ticker) || d.series} ·\u00a0${MKT_STATUS[d.status] || d.status || 'market'} ·\u00a0${d.ticker}`)) +
+    shell('/explore', boardTitle(label, esc([contractMarket(d.ticker), MKT_STATUS[d.status] || d.status || 'Market', d.ticker].filter(Boolean).join(' ·\u00a0'))) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>', `
+        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker), `
       <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
       <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(d.rules)}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(d.rules_more)}</p>` : ''}`
@@ -4722,7 +4782,7 @@
     const retry = root.querySelector('#mk-retry');
     if (retry) retry.onclick = () => viewMarketDetail(ticker);
     const pts = d.points.slice().reverse();  // newest first
-    const PER = 100; let pg = 0;
+    const PER = 25; let pg = 0;
     const rawEl = root.querySelector('#rawsect');
     const renderRaw = () => {
       if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'Waiting on Kalshi for the candles.' : 'No candles recorded for this market yet.'}</p></div>`; return; }
@@ -4798,7 +4858,7 @@
       const pages = Math.max(1, Math.ceil(d.matched / d.per));
       const sortHead = (key, label, criterion = label, rowspan = 1) => `<th scope="col"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} class="num${key === 'last' ? ' quote-head' : ''}" aria-sort="${f.sort === key ? 'descending' : 'none'}"><button type="button" data-sort="${key}" title="Sort by ${criterion.toLowerCase()}" aria-label="Sort by ${criterion.toLowerCase()}">${label}${f.sort === key ? ' <span aria-hidden="true">↓</span>' : ''}</button></th>`;
       const sortFocused = body.querySelector('[data-sort]:focus')?.dataset.sort;
-      body.innerHTML = `<div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num" aria-label="Link"></th></tr><tr>${sortHead('last', 'Price', 'last trade price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody>${rows}</tbody></table></div>
+      body.innerHTML = `<div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num" aria-label="Link"></th></tr><tr>${sortHead('last', 'Price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody>${rows}</tbody></table></div>
         ${pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : ''}`;
       body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: smooth() }); load(); });
       body.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; sync(); load(); });

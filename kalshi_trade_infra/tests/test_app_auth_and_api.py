@@ -936,6 +936,21 @@ def test_runs_list_marks_the_seeded_example_session(monkeypatch):
     assert runs[1]["example"] is True and runs[2]["example"] is False
 
 
+def test_explore_price_sort_follows_the_price_the_list_shows(monkeypatch):
+    # The Price column shows the bid/ask midpoint (else the last trade); sorting on the last trade alone
+    # put a market quoted at 77/78 that hadn't traded below one at 31.
+    feed = {"at": "2026-10-26T10:55:00Z", "total": 4, "shown": 4, "markets": [
+        {"t": "A", "bid": "0.30", "ask": "0.32", "last": "0.31", "v24": "9"},
+        {"t": "B", "bid": "0.77", "ask": "0.78", "last": "0", "v24": "5"},
+        {"t": "C", "bid": "0", "ask": "0", "last": "0.50", "v24": "7"},
+        {"t": "D", "bid": "0", "ask": "0", "last": "0", "v24": "8"}]}
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
+    order = lambda sort: [m["t"] for m in server.explore_list(server.Ctx(FakeConn(), {"id": 1}, (), {"sort": sort}, {}, None))["markets"]]
+    assert order("last") == ["B", "C", "A", "D"]
+    assert order("v24") == ["A", "D", "C", "B"]  # the other sorts are unchanged
+    assert order("bogus") == ["A", "D", "C", "B"]
+
+
 def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys):
     import data_pipeline.common as common
     c = server.Ctx(FakeConn(), {"id": 1}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)
