@@ -29,7 +29,7 @@ def test_me_supplies_frontend_billing_readiness(monkeypatch, customer, needs_car
     data = server.me(context())
     assert data['needs_card'] is needs_card
     assert data['billing_enabled'] is True
-    assert data['credit_balance'] == 98.4322
+    assert data['credit_balance'] == 98.432156  # as the ledger holds it: the page rounds half up to the cent
     assert data['user']['id'] == 7 and data['user']['autopilot'] is False
     assert data['free_bonus'] > 0 and data['markets'] and data['directions']
 
@@ -413,7 +413,7 @@ def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     monkeypatch.setattr(server.repo, 'run_events', lambda *a: [])
     ctx = context()
     ctx.params = ('9',)
-    assert server.get_run(ctx)['run']['spent_usd'] == 1.8373
+    assert server.get_run(ctx)['run']['spent_usd'] == 1.84  # to the cent, half up, as Billing rounds
     assert calls == [(7, [9])]
     calls.clear()
     monkeypatch.setattr(server.repo, 'list_runs', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
@@ -421,7 +421,7 @@ def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     monkeypatch.setattr(server.repo, 'list_runs_version', lambda cur, uid: [{'id': 9}, {'id': 4}, {'id': 2}])
     monkeypatch.setattr(server, '_research_totals', lambda *a: {})
     runs = server.list_runs(context())['runs']
-    assert [r['spent_usd'] for r in runs] == [1.8373, 0.0, 0.0]  # a run with no debit cost nothing
+    assert [r['spent_usd'] for r in runs] == [1.84, 0.0, 0.0]  # a run with no debit cost nothing
     assert calls == [(7, [9, 4, 2])]
 
 

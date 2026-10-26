@@ -12,6 +12,7 @@ from app.adapters.llm import models_catalog as catalog
 from app.adapters.stripe import billing
 from app.services import customer_text
 from app.web.http import ApiError, Ctx, _num
+from app.web.views import credit_cents, credit_exact, credit_usd
 
 
 def _stripe_failed(ctx: Ctx, e: "billing.StripeError", status: int, doing: str, fallback: str) -> ApiError:
@@ -100,9 +101,9 @@ def billing_state(ctx: Ctx):
     return {
         "configured": billing.configured(),
         "publishable_key": billing.STRIPE_PUBLISHABLE_KEY,
-        "balance": round(balance, 4),
-        "spent": round(-(totals.get("usage") or {}).get("all", 0.0), 4) + 0.0,
-        "spent_7d": round(spent_7d, 4),
+        "balance": credit_exact(balance),
+        "spent": credit_usd(-(totals.get("usage") or {}).get("all", 0.0)),
+        "spent_7d": credit_usd(spent_7d),
         "runway_days": runway,
         "free_bonus": float(billing.FREE_BONUS),
         "topup_fee_pct": float(billing.TOPUP_FEE) * 100,
@@ -120,8 +121,8 @@ def billing_state(ctx: Ctx):
         "reload_failed": reload_failed,
         # Read-only spend pace: the last day, and the week split by what spent it (the parts add up
         # to spent_7d). The research floor tells the page when new research can't start.
-        "spent_24h": round(repo.credit_spent_total(cur, ctx.uid, repo.now_utc() - timedelta(days=1)), 4),
-        "spent_7d_by": {k: round(v, 4) for k, v in
+        "spent_24h": credit_usd(repo.credit_spent_total(cur, ctx.uid, repo.now_utc() - timedelta(days=1))),
+        "spent_7d_by": {k: credit_usd(v) for k, v in
                         repo.usage_by_source(cur, ctx.uid, repo.now_utc() - timedelta(days=7)).items()},
         "min_run_balance": float(billing.MIN_RUN_BALANCE),
         **_statement(cur, ctx.uid, since, _tz_minutes(ctx), totals, balance),
@@ -143,8 +144,7 @@ def _tz_minutes(ctx: Ctx) -> int:
     return tz if -840 <= tz <= 840 else 0
 
 
-def _cents(v) -> Decimal:
-    return Decimal(str(v)).quantize(billing.CENT, rounding=ROUND_HALF_UP)
+_cents = credit_cents  # every credits figure rounds one way (app.web.views.credit_cents)
 
 
 def _statement(cur, uid: int, since, tz: int, totals: Dict, balance: float) -> Dict:
@@ -384,7 +384,7 @@ def billing_topup(ctx: Ctx):
                             "balance before you try another card.")
     with repo.transaction(ctx.conn) as tx:
         repo.add_credit(tx, ctx.uid, "topup", credits, "Added $%s credits" % credits, stripe_ref=pi["id"])
-    return {"ok": True, "balance": round(repo.credit_balance(ctx.cur, ctx.uid), 4)}
+    return {"ok": True, "balance": credit_exact(repo.credit_balance(ctx.cur, ctx.uid))}
 
 
 def billing_autoreload(ctx: Ctx):

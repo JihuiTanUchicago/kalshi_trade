@@ -78,3 +78,49 @@ def test_the_runs_list_carries_stop_reason_not_the_raw_flag(monkeypatch):
 ])
 def test_a_deployment_says_why_it_is_not_running_in_plain_words(status, raw, want):
     assert server._status_why({"status": status, "status_reason": raw}) == want
+
+
+def test_a_silent_session_is_counted_out_of_running_and_its_row_says_so(monkeypatch):
+    """Meridian read "Running 0" beside a session still marked Researching: the counts leave out a
+    running session whose heartbeat is older than _silent_before, and the row had no way to know.
+    Each listed session now carries the run page's wait, drawn at the same line, to the second."""
+    now = repo.now_utc()
+    quiet, beating, queued = (now - server.timedelta(seconds=server.RUN_OVERDUE_SECONDS + 60),
+                              now - server.timedelta(seconds=30), now - server.timedelta(seconds=10))
+    rows = [{"id": 3, "status": "running", "heartbeat_at": quiet, "started_at": quiet, "direction": "momentum"},
+            {"id": 2, "status": "running", "heartbeat_at": beating, "started_at": quiet, "direction": "momentum"},
+            {"id": 1, "status": "queued", "heartbeat_at": None, "created_at": queued, "direction": "momentum"}]
+    seen = {}
+    monkeypatch.setattr(server.repo, "get_policy", lambda cur, uid: None)
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: [dict(r) for r in rows])
+    monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
+    monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, silent_before=None: seen.update(cut=silent_before) or {})
+    monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)
+    monkeypatch.setattr(server, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
+    ctx = server.Ctx(SimpleNamespace(cursor=lambda: None), {"id": 7}, (), {}, {}, None)
+    out = {r["id"]: r["wait"] for r in server.list_runs(ctx)["runs"]}
+    assert out[3]["state"] == "silent" and out[3]["overdue"] is True and out[3]["seconds"] >= server.RUN_OVERDUE_SECONDS
+    assert out[2] is None  # beating: counted, and the row says Researching
+    assert out[1]["state"] == "queued" and out[1]["overdue"] is False
+    assert quiet < seen["cut"] < beating  # the counts drew the same line the rows did
+    # One second past the limit is overdue for the row and for the count alike.
+    edge = now - server.timedelta(seconds=server.RUN_OVERDUE_SECONDS + 1)
+    assert server._run_wait({"status": "running", "heartbeat_at": edge})["overdue"] is True
+    assert edge < server._silent_before()
+
+
+def test_the_run_page_carries_why_the_session_stopped(monkeypatch):
+    """A session that stopped with no strategies read "Each strategy below says which check it missed";
+    the page now says why it stopped, from the same services.run_stop the list uses."""
+    run = {"id": 9, "kind": "research", "status": "stopped", "run_forever": 0,
+           "error": "Explored 0 hypotheses, then the session was interrupted and stopped."}
+    monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: dict(run))
+    monkeypatch.setattr(server.repo, "runs_spent", lambda *a: {})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "get_policy", lambda *a: None)
+    monkeypatch.setattr(server.repo, "latest_dream_event", lambda *a: None)
+    monkeypatch.setattr(server.repo, "run_events", lambda *a: [])
+    ctx = server.Ctx(SimpleNamespace(cursor=lambda: None), {"id": 7}, ("9",), {}, {}, None)
+    assert server.get_run(ctx)["run"]["stop_reason"] == "interrupted"
+    run.update(status="running")
+    assert server.get_run(ctx)["run"]["stop_reason"] is None

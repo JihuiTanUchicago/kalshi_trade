@@ -541,7 +541,7 @@ def activity_since(cur, user_id: int, since) -> Dict:
         if r["src"] == "own":
             out["own_sessions"] = int(r["n"]) > 0
         elif r["src"] == "spent":
-            out["spent"][r["k"]] = round(float(r["n"] or 0), 2)
+            out["spent"][r["k"]] = float(r["n"] or 0)  # exact: the page rounds credits half up (credit_cents)
         elif r["src"] == "note":
             kind, _, link = str(r["k"]).partition(" ")
             m = re.match(r"^/strategies/(\d+)$", link)

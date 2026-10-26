@@ -4,11 +4,37 @@ verbatim from app.server, which re-imports every name."""
 from __future__ import annotations
 
 import re
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional
 
 from app import repository as repo
 from app.adapters.kalshi import kalshi_account
+from app.adapters.stripe import billing
 from app.services import customer_text, gate_explain
+
+
+_LEDGER_PLACE = Decimal("0.000001")  # app_credit_ledger.amount_usd is DECIMAL(14,6)
+
+
+def credit_cents(v) -> Decimal:
+    """A credits figure to the cent, rounded half up from its exact decimal: the one rounding every
+    page that shows credits uses (Billing, the autopilot panel, the dashboard, a session's cost), so
+    one $0.105 charge reads $0.11 everywhere. Python's round() works on the binary float and said
+    $0.10. A float summed in Python carries noise past the ledger's six places (0.10499999999999998),
+    so it is first put back on those places. Never applied to a stored amount."""
+    return Decimal(str(v or 0)).quantize(_LEDGER_PLACE, rounding=ROUND_HALF_UP).quantize(billing.CENT, rounding=ROUND_HALF_UP)
+
+
+def credit_usd(v) -> float:
+    """credit_cents as the float a JSON answer carries (never -0.0)."""
+    return float(credit_cents(v)) + 0.0
+
+
+def credit_exact(v) -> float:
+    """A balance as the ledger holds it (six places, no float noise), for a figure the page compares
+    as well as shows: the page rounds it half up to the cent, as credit_cents does. Rounding it to
+    four places first could round twice (0.10496 -> 0.105 -> $0.11 beside Billing's $0.10)."""
+    return float(Decimal(str(v or 0)).quantize(_LEDGER_PLACE, rounding=ROUND_HALF_UP)) + 0.0
 
 
 def _open_book(open_pos: List[Dict], mode: str) -> Dict:

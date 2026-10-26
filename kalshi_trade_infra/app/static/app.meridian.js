@@ -216,10 +216,18 @@
   };
   const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmt0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+  // An amount to `places` decimals, rounded half up from the decimal the server sent, as Billing rounds
+  // (Decimal, half up): 0.105 is 0.10499999… as a float, so toFixed(2) said $0.10 beside Billing's $0.11.
+  const halfUp = (v, places = 2) => {
+    const a = Math.abs(+v), s = String(a);
+    if (!Number.isFinite(a)) return +v;
+    const r = /e/i.test(s) ? Math.round(a * 10 ** places) : Math.round(Number(s + 'e' + places));
+    return Math.sign(+v) * r / 10 ** places;
+  };
   const usd = (v, signed = false) => {
     if (v == null || Number.isNaN(+v)) return '—';
     const n = +v;
-    const s = '$' + (Math.abs(n) >= 100000 ? fmt0.format(Math.abs(n)) : fmt2.format(Math.abs(n)));
+    const s = '$' + (Math.abs(n) >= 100000 ? fmt0.format(Math.abs(n)) : fmt2.format(Math.abs(halfUp(n))));
     if (n < 0) return '−' + s;
     return signed && n > 0 ? '+' + s : s;
   };
@@ -2424,7 +2432,7 @@
       const active = d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused');
       paint(root.querySelector('#active-research'), active ? `<section class="active-research active-${esc(active.status)}">
         <div class="active-head"><h2 class="active-prompt" title="${esc(sessionTitle(active))}">${esc(sessionTitle(active))}</h2></div>
-        <div class="active-meta"><div class="active-session"><span class="active-state">${active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span><b>Session ${esc(active.id)}</b>${runTag(active)}</div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
+        <div class="active-meta"><div class="active-session"><span class="active-state">${runLate(active) ? lateLabel(runLate(active)) : active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span><b>Session ${esc(active.id)}</b>${runTag(active)}</div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
         <aside class="active-aside"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${active.strategies_passed || 0}</dd></div>${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${usd(active.spent_usd)}</dd></div>` : ''}</dl></aside>
       </section>` : '');
       const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
@@ -2453,6 +2461,16 @@
     r.run_forever ? (runLive(r) ? 'Runs until you stop it' : 'Ran until stopped')
       : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' \u00b7\u00a0');
   const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
+  // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
+  // the time since that answer: the list counts a silent session out of "Running", so its row says
+  // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
+  const runLate = (r) => {
+    const w = r.wait;
+    if (!w || !w.overdue || (r.status !== 'running' && r.status !== 'queued')) return null;
+    if (w.got == null) w.got = Date.now();
+    return { ...w, seconds: (+w.seconds || 0) + Math.round((Date.now() - w.got) / 1000) };
+  };
+  const lateLabel = (w) => (w.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(w.seconds);
   // Why a finished session stopped, from the server (services.run_stop). A run-until-stopped session
   // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
   // one said "Cancelled" or "Failed" without who or what stopped it.
@@ -2463,7 +2481,8 @@
     const why = RUN_STOP[r.stop_reason] || '';
     // A `stopped` session (interrupted, or a market with nothing to research yet) reads like a
     // finished one: it fell through to a red "Failed".
-    const state = r.status === 'running' ? 'Researching'
+    const late = runLate(r);
+    const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching'
       : r.status === 'queued' ? 'Waiting'
       : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${r.strategies_passed ? 'gain' : ''}"><span class="run-ratio" aria-label="${esc(r.strategies_passed)} of ${esc(r.hypotheses_tried)}"><b class="run-passed">${r.strategies_passed}</b><span aria-hidden="true">/</span><b class="run-tested">${r.hypotheses_tried}</b></span> <span class="run-denominator">passed</span></span>${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : ''}`
       : r.status === 'paused' ? 'Paused'
@@ -3029,6 +3048,15 @@
     const passed = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
     return fig('Hypotheses', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
   }
+  // A session that ended with no strategy to list says why it stopped (the server's stop_reason,
+  // services.run_stop): "Each strategy below says which check it missed" sat over an empty list.
+  const RUN_EMPTY = {
+    interrupted: 'It was interrupted before any strategy reached the checks, and it couldn’t be resumed.',
+    no_data: 'This market has nothing to research yet, so the session stopped before testing anything.',
+    complete: 'It ran out of new ideas to try before any strategy reached the checks.',
+    limit: 'No strategy from this session reached the checks, so there are none to list.',
+  };
+  const runEmpty = (r) => (r.stop_reason === 'no_data' && r.error ? esc(r.error) : RUN_EMPTY[r.stop_reason] || 'This session ended before any strategy reached the checks.');
   // What to do once a session ends. The example's log ended on "now describe a real idea" with no way
   // to do it, and a session that passed something left it two screens down on a phone, under the log.
   function runNext(r, strategies) {
@@ -3045,7 +3073,9 @@
     // stands alone ("…stopped on an error. …so the session stopped.").
     if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`} <a href="/research?new=1">Start a new session</a></p>`;
     if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
-    if (credits) return `<p class="run-next">${credits}Nothing passed before then; each strategy below says which check it missed.</p>`;
+    const none = !(strategies || []).length;
+    if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : 'Nothing passed before then; each strategy below says which check it missed.'}</p>`;
+    if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)} <a href="/research?new=1">Try another idea</a></p>`;
     if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each strategy below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
@@ -5491,7 +5521,7 @@
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${liveInPlay ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
-      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', $' + Number(d.research.cost_7d).toFixed(2) + ' spent' : ''}</dd></div>` : ''}
+      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', ' + usd(d.research.cost_7d) + ' spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
@@ -5838,7 +5868,7 @@
   // What a ledger line is, under its name: usage is one model call (the memo names the model), and credits
   // bought show the credits, while the card paid those plus the purchase fee. Amounts are the server's.
   // A charge under a cent (one short model call) shows three decimals instead of a misleading −$0.00.
-  const ledgerAmount = (v) => { const n = +v; return n && Math.abs(n) < 0.005 ? (n < 0 ? '−' : '+') + '$' + Math.abs(n).toFixed(3) : usd(v, true); };
+  const ledgerAmount = (v) => { const n = +v; return n && Math.abs(n) < 0.005 ? (n < 0 ? '−' : '+') + '$' + Math.abs(halfUp(n, 3)).toFixed(3) : usd(v, true); };
   const USAGE_PREFIX = /^Agent usage\s\u00b7\s/;  // the server's memo, "Agent usage" then a middle dot
   // A usage line: what it was for (`item`: research session, autopilot research or check-in, chat)
   // over the model's name (`model`). The server sends both and never the model's internal id.
@@ -5901,8 +5931,10 @@
       <td class="name" data-lab="Item">${esc((r.kind === 'usage' && r.item) || KIND_LABEL[r.kind] || r.kind)}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
       <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${ledgerAmount(r.amount)}</span></td></tr>`;
     const head = (g) => {
-      const used = g.rows.filter((r) => r.kind === 'usage').reduce((s, r) => s - r.amount, 0);
-      const added = g.rows.filter((r) => r.kind !== 'usage').reduce((s, r) => s + r.amount, 0);
+      // Summed in millionths (the ledger's six places): a float sum can land a hair under a half cent.
+      const micros = (rows) => rows.reduce((s, r) => s + Math.round(r.amount * 1e6), 0) / 1e6;
+      const used = -micros(g.rows.filter((r) => r.kind === 'usage'));
+      const added = micros(g.rows.filter((r) => r.kind !== 'usage'));
       return `<tr class="ledger-day"><td colspan="3" data-lab="Day"><b>${ledgerDay(g.day)}</b><span class="day-sum">${[used >= 0.005 ? `${usd(used)} used` : '', added ? `${usd(added, true)} credits` : ''].filter(Boolean).join(' · ')}</span></td></tr>`;
     };
     const key = d.math ? `Last ${d.math.days} days, newest first. Each research line is one session's model calls that day; open it to see the session. The receipt has every call and every card charge.`
