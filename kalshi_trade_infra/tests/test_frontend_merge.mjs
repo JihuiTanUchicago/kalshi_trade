@@ -1590,6 +1590,42 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   assert.match(css, /\.rsidisc \.pipechev \{ position: absolute; right: 14px;/);
 });
 
+test('Tau phone polish: a glossary marker keeps its last word, one rule where boxes meet, touch controls 40px or more', async () => {
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 3, passed: 1, failed: 1, rejected: 1}}) : response({}))});
+  await f.viewStrategies(); await flush(); await flush();
+  const figs = f.root.querySelector('#sfigs').innerHTML;
+  // The marker shares a no-wrap span with the label's last word, so it never wraps onto a line of its own.
+  assert.match(figs, /Void on unseen <span class="nobr">data<button type="button" class="info" data-glo="void"/);
+  assert.match(figs, /Rejected in <span class="nobr">testing<button type="button" class="info" data-glo="rejected"/);
+  assert.match(figs, /<span class="nobr">Passed<button type="button" class="info" data-glo="passed"/);
+  assert.doesNotMatch(source, /fig\('[^']*' \+ glo\(/, 'figure labels go through gl(), not label + glo()');
+  assert.match(css, /\.nobr \{ white-space: nowrap; \}/);
+  // Phone: the RSI tag sits under the title instead of wrapping to the far left under the badge,
+  // and the system map scrolls sideways at a readable size.
+  const phone = css.slice(css.lastIndexOf('@media (max-width: 760px)'));
+  assert.match(phone, /\.rsi-head > \.rsi-tag \{ grid-column: 2;/);
+  assert.match(phone, /\.rsidisc-cap > \.rsi-tag, \.rsidisc-cap > \.rsidisc-delta \{ grid-column: 3;/);
+  assert.match(phone, /\.sys-wrap \{ overflow-x: auto;/);
+  // One rule where two boxes meet.
+  assert.match(css, /\.rengine:has\(\.rsidisc\.loop\) \+ \.pipefig \{ border-top: 0; \}/);
+  assert.match(css, /\.pipefig:not\(\[open\]\) > \.pipecap \{ border-bottom: 0; \}/);
+  // The composer's strategy picker keeps a usable width (it was squeezed to ~20px at 390px).
+  assert.match(source, /<label class="field post-strat-f">/);
+  assert.match(css, /\.post-tools > \.post-strat-f \{ flex: 1 1 160px; min-width: 0; \}/);
+  // Touch: every field, summary, slider and small link that measured under 40px at 360px.
+  const touch = css.slice(css.lastIndexOf('@media (pointer: coarse)'));
+  const block = touch.slice(0, touch.indexOf('\n}\n'));
+  assert.match(block, /\.input, select, input\[type=text\][^{]*\{ min-height: 44px; \}/);
+  assert.match(block, /input\[type=range\] \{ height: 40px; \}/);
+  assert.match(block, /details > summary \{ padding-block: 11px; min-height: 40px; \}/);
+  assert.match(block, /td\.name > a:not\(\.btn\) \{ padding-block: 10px; margin-block: -10px; \}/);
+  assert.match(block, /\.legal-nav a, \.legal-foot a, \.lfoot-links a, \.linkish \{ padding: 10px 4px; margin: -10px -4px; \}/);
+  // The onboarding controls (Deploy, Start session, the quick deploy) keep their own sizes.
+  assert.doesNotMatch(block, /#dep-(paper|demo|live)|\.go\b|strat-quick/);
+});
+
 test('Tau: separators wrap with the item after them, the phone tabs show which edge has more, stacked cells are named', () => {
   const f = frontend();
   // Every " · " in the bundle binds to the next item (" · "), so a wrapped line never ends on a dot.

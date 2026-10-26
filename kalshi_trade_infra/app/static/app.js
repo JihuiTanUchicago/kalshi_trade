@@ -63,6 +63,8 @@
   };
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
+  // A label with its marker: the last word and the marker never break apart, so the marker can't wrap onto a line of its own.
+  const gl = (label, key) => { const i = label.lastIndexOf(' '); return `${label.slice(0, i + 1)}<span class="nobr">${label.slice(i + 1)}${glo(key)}</span>`; };
   function setupGlossary() {
     const pop = document.createElement('div');
     pop.className = 'glossary-pop'; pop.setAttribute('role', 'tooltip'); pop.id = 'glossary-pop'; pop.hidden = true;
@@ -1874,7 +1876,7 @@
           : `<a href="#dispatch">Describe an idea below</a> — the engine turns it into strategies and tests each on data it never saw.`;
       root.querySelector('#rstatus .said').innerHTML = said;
       root.querySelector('#rfigs').innerHTML = fig('Researching now', running) + fig('Waiting', queued) +
-        fig('Hypotheses tested', tried) + fig('Passed every gate' + glo('gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
+        fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' });
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
       const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
@@ -2511,7 +2513,7 @@
         return;
       }
       const counts = d.counts || {}, total = counts.total || 0, c = (st) => counts[st] || 0;
-      root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), c('passed')) + fig('Void on unseen data' + glo('void'), c('failed')) + fig('Rejected in testing' + glo('rejected'), c('rejected')) +
+      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed')) + fig(gl('Void on unseen data', 'void'), c('failed')) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
         fig('Pass rate', total ? pct(c('passed') / total, false) : '—');
       const kept = total - c('failed') - c('rejected');
       root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; });
@@ -3350,7 +3352,7 @@
           <div class="post-tools">
             <button class="btn sm" type="button" id="photo-btn">${ICON.image}Photo</button>
             <input type="file" id="photo-input" accept="image/png,image/jpeg,image/webp,image/gif" class="vh">
-            <label class="field" style="min-width:0;flex:1"><span class="vh">Attach a strategy</span>
+            <label class="field post-strat-f"><span class="vh">Attach a strategy</span>
               <select id="post-strat"><option value="">Attach a strategy… (optional)</option></select></label>
             <button class="btn sm" type="button" data-share="pnl">${ICON.up}Share my P&amp;L</button>
             <button class="btn primary sm" type="submit">Post</button>
