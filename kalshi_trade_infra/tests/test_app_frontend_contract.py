@@ -345,7 +345,8 @@ def test_autopilot_status_warns_before_credits_run_out(monkeypatch):
     assert server.autopilot_status(ctx)['credits_low_days'] is None  # no usage this week
     monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 2.0)
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: 7.0)
-    assert server.autopilot_status(ctx)['credits_low_days'] == 2.0  # $2 at $1 a day
+    # $2 at $1 a day: research pauses under the $1.00 floor in a day, not at $0 in two.
+    assert server.autopilot_status(ctx)['credits_low_days'] == 1.0
     monkeypatch.setattr(server.repo, 'get_stripe_customer',
                         lambda *a: {'auto_reload': 1, 'default_pm_id': 'pm_synthetic'})
     assert server.autopilot_status(ctx)['credits_low_days'] is None  # auto-reload tops it up
@@ -443,14 +444,16 @@ def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apar
     week = server.autopilot_status(ctx)['week']
     assert week == {'research_credits': 7.26, 'tested': 41, 'passed': 2, 'paper_started': 1,
                     'paper_pnl': -3.46, 'paper_trades': 4,
-                    'checkin_credits': 0.0, 'credits_left': 10.0, 'runway_days': None, 'pace_days': 7.0}
+                    'checkin_credits': 0.0, 'credits_left': 10.0, 'runway_days': None, 'reload_days': None,
+                    'pace_days': 7.0}
     assert seen[0][0] == 7 and abs((server.repo.now_utc() - seen[0][1]).total_seconds() - 7 * 86400) < 5
     off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
     assert 'week' not in off and len(seen) == 1  # an off autopilot reads nothing extra
-    # Its check-ins bill too, and the balance lasts as long as the Billing page says at the week's pace.
+    # Its check-ins bill too, and research pauses when the Billing page says at the week's pace: $9 above
+    # the $1.00 floor at $7.004 a week.
     monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a, **k: dict(_NO_USAGE, research=6.58, autopilot_review=0.424))
     week = server.autopilot_status(ctx)['week']
-    assert week['checkin_credits'] == 0.42 and week['credits_left'] == 10.0 and week['runway_days'] == 10.0
+    assert week['checkin_credits'] == 0.42 and week['credits_left'] == 10.0 and week['runway_days'] == 9.0
 
 
 def test_research_estimate_uses_own_median_then_the_typical_one_per_model(monkeypatch):

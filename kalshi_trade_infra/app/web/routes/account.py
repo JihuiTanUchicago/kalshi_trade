@@ -11,6 +11,7 @@ from app.services import bell, customer_text
 from app.trading import engine
 from app.web.http import ApiError, Ctx
 from app.web.routes.auth import UI_THEMES, _sync_ui_cookie
+from app.web.routes.billing import reload_failed_now
 from app.web.routes.research import _researchable_markets, models
 from app.web.settings import ADMIN_EMAIL
 from app.web.views import _auto_reload_terms, _needs_card, credit_exact
@@ -37,6 +38,9 @@ def me(ctx: Ctx):
         "billing_enabled": billing.configured(),
         "needs_card": _needs_card(ctx, reads),
         "auto_reload": _auto_reload_terms(ctx, reads),
+        # The last auto-reload was declined and that is why credits are short (Billing's banner text), so
+        # the dashboard and the research form say to update the card rather than "add credits" alone.
+        "reload_failed": reload_failed_now(ctx.cur, ctx.uid, reads) if billing.configured() else None,
         "free_bonus": float(billing.FREE_BONUS),
         "credit_balance": credit_exact(reads.balance()),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start

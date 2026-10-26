@@ -16,6 +16,7 @@ import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
+import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -2867,7 +2868,8 @@ const cardedBilling = (o = {}) => ({configured: true, publishable_key: 'syntheti
     {kind: 'bonus', amount: 20, memo: 'Welcome credits', created_at: '2026-10-24T14:00:00Z'},
   ], ...o});
 const STRIPE_STUB = () => ({confirmSetup: async () => ({error: {message: 'stub'}}), elements: () => ({create: () => ({mount() {}})})});
-const billingPage = (data, posts = []) => frontend({stripe: STRIPE_STUB, fetchImpl: (path, options = {}) => {
+const billingPage = (data, posts = [], routes = {}) => frontend({stripe: STRIPE_STUB, fetchImpl: (path, options = {}) => {
+  if (routes[path]) return routes[path](options);
   if (/^\/api\/billing(\?|$)/.test(path)) return response(data);
   if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
   if (path === '/api/billing/auto-reload') { posts.push(JSON.parse(options.body)); return response({ok: true}); }
@@ -3814,7 +3816,7 @@ test('run-until-stopped says what an hour costs at recent rates, how long the ba
   f = research({yours: null, sessions: 0, typical: {}, per_hour: {yours: null, typical: {opus: 3}}});
   f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 100, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
   await f.viewResearch(); await flush(); await flush();
-  assert.equal(cost().textContent, 'At recent rates it costs about $3.00 an hour (recent sessions on this model). Your $100.00 covers about 33 hours. Auto-reload adds $20.00 when your balance falls to $5.00.');
+  assert.equal(cost().textContent, 'At recent rates it costs about $3.00 an hour (recent sessions on this model). Your $100.00 covers about 33 hours. Auto-reload adds $20.00 when your balance falls to $5.00, charging your card $21.10.');
   const model = f.root.querySelector('#rmodel'); model.value = 'haiku'; model.dispatchEvent({type: 'change'});
   // Nothing known for this model: with payments on it says how it is billed instead of going blank.
   assert.match(cost().textContent, /^No cost estimate for this model yet\. It’s charged to your credits as it runs/);
@@ -4303,13 +4305,14 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.doesNotMatch(text, /Nothing new passed/);
   // Live-ready is the week's next step, first under Needs you; the runway warns before the pause.
   assert.match(text, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> is ready for live trading\. Going live is your call\./);
-  assert.match(text, /Credits run out in about 2 days at this week’s pace, then research pauses\. <a href="\/billing">Add credits or turn on auto-reload<\/a>/);
+  // Counted to the pause, not to $0: $6.15 above the $1.00 floor at $27.45 a week.
+  assert.match(text, /Research pauses in about 2 days at this week’s pace, when credits fall under \$1\.00\. <a href="\/billing">Add credits or turn on auto-reload<\/a>/);
   // Auto-reload on: no runway warning. A plenty balance: none either.
-  assert.doesNotMatch(await strip({}, {auto_reload: {amount: 20, charge: 21.1, threshold: 5}}), /Credits run out/);
-  assert.doesNotMatch(await strip({}, {credit_balance: 80}), /Credits run out/);
+  assert.doesNotMatch(await strip({}, {auto_reload: {amount: 20, charge: 21.1, threshold: 5}}), /Research pauses/);
+  assert.doesNotMatch(await strip({}, {credit_balance: 80}), /Research pauses/);
   // Under the research floor the floor line says it, not both.
   const floor = await strip({}, {credit_balance: 0.42});
-  assert.match(floor, /Credits are at \$0\.42/); assert.doesNotMatch(floor, /Credits run out/);
+  assert.match(floor, /Credits are at \$0\.42/); assert.doesNotMatch(floor, /Research pauses/);
   // Payments off (the server sends no spend): no Cost row. Nothing spent: says so.
   assert.doesNotMatch(await strip({since: {...since, spent: null}}), /<dt>Cost<\/dt>/);
   assert.match(await strip({since: {...since, spent: {since: 0, week: 0}}}), /<dt>Cost<\/dt><dd>No credits spent/);
@@ -4853,3 +4856,5 @@ test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, 
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
+declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});

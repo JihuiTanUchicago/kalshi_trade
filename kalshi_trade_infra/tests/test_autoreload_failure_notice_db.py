@@ -104,6 +104,9 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
 
     state = server.billing_state(ctx())
     assert state["reload_failed"]["text"] == "It couldn't add $25.00 in credits. That card has expired. Add a current card and try again."
+    # The balance is at the trigger because of it, so /api/me carries it too (the dashboard's Needs you and
+    # the research form name the card), and the autopilot poll reads the same text.
+    assert server.me(ctx())["reload_failed"] == state["reload_failed"]["text"]
     # The bell read: Billing still says it (it is about the card), and no second notice inside 6 hours.
     server.mark_notifications_read(ctx())
     billing.charge_usage(conn, uid, "sonnet-4-6", 1000, 100, run_b + 1)
@@ -137,6 +140,7 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
     billing.charge_usage(conn, uid, "sonnet-4-6", 1000, 100, run_b + 4)
     assert ledger()[-1] == ("autoreload", Decimal("25"), "pi_reload-%s-run%s" % (uid, run_b + 4))
     assert server.billing_state(ctx())["reload_failed"] is None and len(emails) == 2
+    assert server.me(ctx())["reload_failed"] is None
 
     # -- it fails again, then a new card is saved: the notice is answered, so it goes --------------
     outcome["error"] = billing.StripeError("boom", kind="card_error", code="card_declined", decline_code="do_not_honor")
@@ -148,4 +152,5 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
     assert billing.CARD_DECLINED in server.billing_state(ctx())["reload_failed"]["text"]
     assert server.billing_card_added(ctx({"payment_method_id": "pm_new"})) == {"ok": True}
     assert not notices() and server.billing_state(ctx())["reload_failed"] is None
+    assert server.me(ctx())["reload_failed"] is None
     assert repo.get_stripe_customer(cur, uid)["default_pm_id"] == "pm_new"
