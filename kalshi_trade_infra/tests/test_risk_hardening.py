@@ -294,3 +294,29 @@ def test_ws_mark_returns_bid_and_ask_from_one_fresh_quote():
 
     assert engine._ws_mark(_Feed(now.timestamp()), "T", now) == (0.30, 0.40)
     assert engine._ws_mark(_Feed(now.timestamp() - 60), "T", now) is None  # stale: REST quote instead
+
+
+def test_breacher_only_sells_just_the_breaching_position_and_keeps_running(monkeypatch):
+    # APP_STOP_BREACHER_ONLY: position 2 is down 50% (past the 40% stop), 1 and 3 are healthy. Only 2
+    # is sold and the deployment is not paused, which is the rule the backtest validates.
+    monkeypatch.setattr(engine, "STOP_BREACHER_ONLY", True)
+    rec = _wire_stop(monkeypatch, [_pos(1, mark=0.48), _pos(2, mark=0.25), _pos(3, mark=0.55)], realized=[])
+    assert engine.force_sell_if_drawn_down(_Conn(), _dep(mode="paper", capital=1000.0), engine.Sources()) is False
+    assert rec["closed"] == [(2, "stop")] and rec["paused"] is None and rec["chats"] == 1
+
+
+def test_breacher_only_still_flattens_and_pauses_on_the_drawdown_limit(monkeypatch):
+    # The whole-deployment drawdown limit keeps its flatten-and-pause: realized [+10, -40] is a 40%
+    # drawdown on $100, so every position goes, the healthy one too.
+    monkeypatch.setattr(engine, "STOP_BREACHER_ONLY", True)
+    rec = _wire_stop(monkeypatch, [_pos(1, mark=0.48), _pos(2, mark=0.25)], realized=[10.0, -40.0])
+    assert engine.force_sell_if_drawn_down(_Conn(), _dep(mode="paper"), engine.Sources()) is True
+    assert rec["closed"] == [(1, "drawdown"), (2, "drawdown")]
+    assert rec["paused"][1].startswith("force-closed: drawdown")
+
+
+def test_default_stop_still_flattens_the_whole_deployment(monkeypatch):
+    rec = _wire_stop(monkeypatch, [_pos(1, mark=0.48), _pos(2, mark=0.25)], realized=[])
+    assert engine.STOP_BREACHER_ONLY is False
+    assert engine.force_sell_if_drawn_down(_Conn(), _dep(mode="paper", capital=1000.0), engine.Sources()) is True
+    assert rec["closed"] == [(1, "stop"), (2, "stop")] and rec["paused"][0] == "paused"

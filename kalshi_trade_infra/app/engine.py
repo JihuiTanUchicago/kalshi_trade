@@ -1331,6 +1331,9 @@ DRAWDOWN_LIMIT_PCT_DEFAULT = 25.0
 # range, and on a 79c entry triggers near 47c (a clearly broken position, not BTC-market noise).
 # A limit of 0 disables it for a user. Fallback if the column is unexpectedly NULL.
 POSITION_STOP_PCT_DEFAULT = 40.0
+# Off (default): one position past the stop force-closes and pauses its whole deployment. On: only
+# that position is sold, as the backtest models it; the drawdown limit still flattens and pauses.
+STOP_BREACHER_ONLY = os.getenv("APP_STOP_BREACHER_ONLY", "0") == "1"
 
 
 # Separate books (Todd, 2026-10-25, "Separate paper and live books"): a new entry is capped against
@@ -1447,24 +1450,29 @@ def deployment_drawdown_pct(cur, dep: Dict) -> float:
     return 100.0 * drawdown / capital if capital > 0 else 0.0
 
 
+def _position_loss_pct(pos: Dict) -> Optional[float]:
+    """This open position's CURRENT loss as a percent of its own cost (qty*entry + entry_fee), side-
+    aware via `_liquidation_price`. None when it is unmarked or its mark is stale (P1-2): priced and
+    retried next tick, never stopped off stale data."""
+    price = _liquidation_price(pos)
+    if price is None or not _mark_is_fresh(pos):
+        return None
+    qty = int(pos["qty"])
+    cost = qty * float(pos["entry_price"]) + float(pos["entry_fee"])
+    if cost <= 0:
+        return None
+    return 100.0 * (cost - qty * price) / cost
+
+
 def worst_position_loss_pct(cur, dep: Dict) -> float:
     """The worst open position's CURRENT loss as a percent of its own cost (qty*entry + entry_fee).
 
-    Loss = cost - liquidation value, side-aware via `_liquidation_price` (YES ~yes_bid, NO ~1-yes_bid).
+    Loss = cost - liquidation value, side-aware via `_liquidation_price` (YES ~yes_bid, NO ~1-yes_ask).
     Returns 0 when no position is marked yet or none is at a loss. A single position that craters
     drives this past the stop even when the deployment's whole-capital drawdown is still small.
     """
-    worst = 0.0
-    for pos in repo.open_positions(cur, dep["id"]):
-        price = _liquidation_price(pos)
-        if price is None or not _mark_is_fresh(pos):
-            continue  # unmarked or stale (P1-2): priced/retried next tick, never stopped off stale data
-        qty = int(pos["qty"])
-        cost = qty * float(pos["entry_price"]) + float(pos["entry_fee"])
-        if cost <= 0:
-            continue
-        worst = max(worst, 100.0 * (cost - qty * price) / cost)
-    return worst
+    losses = [_position_loss_pct(pos) for pos in repo.open_positions(cur, dep["id"])]
+    return max([0.0] + [x for x in losses if x is not None])
 
 
 def _force_close_kernel(dep: Dict, sources: Sources):
@@ -1508,6 +1516,9 @@ def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
     if stop_limit > 0:
         loss_pct = worst_position_loss_pct(cur, dep)
         if loss_pct >= stop_limit:
+            if STOP_BREACHER_ONLY and not reasons:
+                _close_breachers(conn, cur, dep, sources, stop_limit)
+                return False  # the deployment keeps running; only the drawdown limit pauses it
             reasons.append("position down %.1f%% >= stop %.1f%% of cost" % (loss_pct, stop_limit))
     if not reasons:
         return False
@@ -1538,6 +1549,34 @@ def force_sell_if_drawn_down(conn, dep: Dict, sources: Sources) -> bool:
         repo.create_run(cur, dep["user_id"], "review", dep["market"], None,
                         "Deployment #%d was force-closed and paused: %s" % (dep["id"], why), dep["id"])
     return True
+
+
+def _close_breachers(conn, cur, dep: Dict, sources: Sources, stop_limit: float) -> int:
+    """APP_STOP_BREACHER_ONLY: sell only the positions past the stop, through the mode's own exit path,
+    and leave the rest of the deployment running. This is the rule the backtest validates
+    (backtest._stop_hit): each position carries its own stop, and the ticker can be entered again.
+    Returns how many closed."""
+    via_kernel = dep["mode"] in ("live", "demo")
+    kernel = _force_close_kernel(dep, sources)
+    closed = 0
+    for pos in repo.open_positions(cur, dep["id"]):
+        loss = _position_loss_pct(pos)
+        if loss is None or loss < stop_limit:
+            continue
+        if via_kernel and kernel is None:
+            break  # no execution path; the position settles at expiry
+        if via_kernel and not repo.claim_position_close(cur, pos["id"], _ENGINE_ID):
+            continue  # another engine is already closing this position (P0-3)
+        try:
+            if _close_position_at(conn, cur, dep, pos, kernel, via_kernel, _liquidation_price(pos), "stop"):
+                closed += 1
+                repo.add_chat(cur, dep["user_id"], "system", "Deployment #%d sold %s %s: down %.1f%% >= stop "
+                              "%.1f%% of cost. The rest of the deployment keeps trading."
+                              % (dep["id"], pos["side"].upper(), pos["ticker"], loss, stop_limit))
+        except Exception as e:  # one failing close must not abort the others
+            print("[engine] stop close failed pos %d dep %d: %r (retry next tick)" % (pos["id"], dep["id"], e),
+                  flush=True)
+    return closed
 
 
 def enforce_drawdown_limits(conn, sources: Sources) -> int:
