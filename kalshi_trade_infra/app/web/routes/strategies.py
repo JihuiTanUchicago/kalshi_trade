@@ -361,13 +361,20 @@ def what_if(ctx: Ctx):
     # measured cost rather than 0. The frontend still sends the dial's value.
     measured = kalshi_dev.measured_slippage_cents(s["market"])
     default_slip = 0.0 if measured is None else max(0.0, min(5.0, measured))
+    # An older or seeded spec stored without sizing is sized as validation sizes a new one: the
+    # $5 x 20 default its strategy page's spec already shows (the page sends no stake for it). It
+    # used to answer "stake must be a number", or fail in the backtest and say the data was
+    # unavailable. A spec with its sizing set is passed on untouched.
+    spec, sizing = s["spec"], _spec_sizing(s)
+    if not all(k in sizing for k in specmod.DEFAULT_SPEC["sizing"]):
+        spec = {**spec, "sizing": {**specmod.DEFAULT_SPEC["sizing"], **sizing}}
     w = backtest.WhatIf(
         fee_multiplier=_num(ctx.body, "fee_multiplier", 0.0, 3.0, 1.0),
         slippage_cents=_num(ctx.body, "slippage_cents", 0.0, 5.0, default_slip),
-        stake=_num(ctx.body, "stake", 1.0, 500.0, _spec_sizing(s).get("stake")),
+        stake=_num(ctx.body, "stake", 1.0, 500.0, spec["sizing"]["stake"]),
     )
     try:
-        res = backtest.evaluate(s["spec"], backtest.dataset(s["market"]), w)
+        res = backtest.evaluate(spec, backtest.dataset(s["market"]), w)
     except Exception:
         raise ApiError(503, "Backtest data is not available right now.")
     return {k: res[k] for k in ("in_sample", "out_of_sample", "equity", "gates", "passed", "capital")}
