@@ -2155,6 +2155,69 @@ test('Tau: a finished session says what to do next: your own idea after the exam
     /This session was cancelled before it finished\. The ideas it tested are listed below\. <a href="\/research\?new=1">Try another idea<\/a>/);
 });
 
+const OUT_OF_CREDITS_STEP = {id: 7, kind: 'step', message: 'Paused — out of credits. Add more (or turn on auto-reload) and start a new session to keep researching.', created_at: '2026-10-25T11:00:00Z'};
+const RUN_AT = async (run, events = [], strategies = []) => {
+  const f = frontend({fetchImpl: () => response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: '2026-10-25T10:00:00Z', ...run}, events, strategies})});
+  await f.viewRun(9); f.clearTimers();
+  return f;
+};
+
+test('Tau: a session that ran out of credits says so and offers Add credits, not "Done" and another idea', async () => {
+  let f = await RUN_AT({status: 'succeeded', run_forever: 1, hypotheses_tried: 4, strategies_passed: 0, spent_usd: 19.95}, [OUT_OF_CREDITS_STEP], [{id: 43, title: 'Fade', status: 'failed'}]);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Out of credits/);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').innerHTML, />Done</);
+  const next = f.root.querySelector('#runnext').innerHTML;
+  assert.match(next, /It stopped when your credits ran out\. <a href="\/billing">Add credits<\/a>, then start a new session to keep researching\. Nothing passed before then/);
+  assert.doesNotMatch(next, /Try another idea/);
+  assert.equal(f.root.querySelector('#runend').innerHTML, '<div class="run-end"><a class="btn" href="/billing">Add credits</a></div>');
+  // Something passed before the credits ran out: both, the credits first.
+  f = await RUN_AT({status: 'succeeded', run_forever: 1}, [OUT_OF_CREDITS_STEP], [{id: 42, title: 'Late', status: 'passed'}]);
+  assert.match(f.root.querySelector('#runnext').innerHTML, /credits ran out\. <a href="\/billing">Add credits<\/a>.*Passed: <a href="\/strategies\/42">Late<\/a>\. Open it to deploy it on paper\./);
+  // Without the step it is an ordinary finish.
+  f = await RUN_AT({status: 'succeeded'}, [], [{id: 43, title: 'Fade', status: 'failed'}]);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Done/);
+  assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, /billing/);
+});
+
+test('Tau: a running session counts its ideas and passes live, and a set-size one says how many it will test', async () => {
+  const hyp = (id) => ({id, kind: 'hypothesis', message: 'Idea ' + id, data: {}, created_at: '2026-10-25T10:00:00Z'});
+  // The run's counters lag a round behind its log; "Passed …" sat beside a passed idea.
+  let f = await RUN_AT({status: 'running', run_forever: 1, hypotheses_tried: 3, strategies_passed: 0}, [1, 2, 3, 4, 5].map(hyp), [{id: 42, title: 'Late', status: 'passed'}, {id: 43, title: 'Fade', status: 'failed'}]);
+  let figs = f.root.querySelector('#runfigs').innerHTML;
+  assert.match(figs, /Hypotheses<\/dt><dd><span class="fig ">5</); assert.match(figs, /Passed<\/dt><dd><span class="fig ">1</);
+  assert.doesNotMatch(figs, /…|of up to/);
+  f = await RUN_AT({status: 'running', max_hypotheses: 10, hypotheses_tried: 2}, [hyp(1)], []);
+  figs = f.root.querySelector('#runfigs').innerHTML;
+  assert.match(figs, /Hypotheses<\/dt><dd><span class="fig ">2<.*of up to 10/s); assert.match(figs, /Passed<\/dt><dd><span class="fig ">0</);
+  // A long session's time reads in hours, not "299 min".
+  f = await RUN_AT({status: 'succeeded', hypotheses_tried: 4, strategies_passed: 0, started_at: '2026-10-25T10:00:00Z', finished_at: '2026-10-25T14:59:00Z'});
+  assert.match(f.root.querySelector('#runfigs').innerHTML, />5 hr</);
+});
+
+test('Tau: a stopped session leaves no idea spinning on "Testing", and a provider failure is said once', async () => {
+  const error = 'The research models are at capacity right now, so the session stopped. Start it again in a little while.';
+  const f = await RUN_AT({status: 'failed', error}, [{id: 1, kind: 'hypothesis', message: 'Vol', data: {}, created_at: '2026-10-25T10:00:00Z'}]);
+  const stamp = f.root.querySelector('#log').querySelector('[data-stamp]');
+  assert.equal(stamp.textContent, 'Not finished'); assert.equal(stamp.classList.contains('pending'), false);
+  assert.match(f.root.querySelector('#runnext').innerHTML, /^<p class="run-next">The research models are at capacity right now, so the session stopped\. Start it again in a little while\. <a href="\/research\?new=1">Start a new session<\/a><\/p>$/);
+  // Still running: the idea is still being tested.
+  const live = await RUN_AT({status: 'running'}, [{id: 1, kind: 'hypothesis', message: 'Vol', data: {}, created_at: '2026-10-25T10:00:00Z'}]);
+  assert.equal(live.root.querySelector('#log').querySelector('[data-stamp]').classList.contains('pending'), true);
+});
+
+test('Tau: a past thought is still: no pulse once sealed, and no "0s" clock on one replayed from the log', () => {
+  const f = frontend(), section = new Element();
+  section.innerHTML = '<ol class="log"></ol><button class="jumplatest"></button><div class="runpulse"></div>';
+  const stream = f.runFeed(section), log = section.querySelector('.log');
+  stream.push([{id: 1, kind: 'thinking', message: 'Looking at the book.', data: {block: 1}, created_at: '2026-10-25T10:00:00Z'},
+    {id: 2, kind: 'thinking', message: '', data: {block: 1, end: true}, created_at: '2026-10-25T10:00:00Z'}]);
+  assert.equal(log.children[0].classes.has('sealed'), true);
+  assert.equal(log.children[0].querySelector('[data-el]').hidden, true);
+  f.clearTimers();
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  assert.match(css, /\.log\.stream \.think\.sealed \.node::after \{ animation: none; \}/);
+});
+
 test('Tau: a finished session ends under its last log line with the way on: your own idea after the example, another idea or autopilot after nothing passed', async () => {
   const at = async (run, strategies, autopilot = false) => {
     const f = frontend({fetchImpl: () => response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: '2026-10-25T10:00:00Z', ...run}, events: [], strategies})});

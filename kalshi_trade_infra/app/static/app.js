@@ -2565,8 +2565,17 @@
         draft.hidden = cut < 0;
         caret.hidden = cut >= 0;
       },
-      seal() { clearInterval(tick); caret.remove(); draft.hidden = true; li.classList.add('sealed'); if (!raw.trim()) li.remove(); },
+      // A thought replayed from the log (opened after it was written) never ticked: it said "0s".
+      seal() { clearInterval(tick); caret.remove(); draft.hidden = true; li.classList.add('sealed'); if (elEl.textContent === '0s') elEl.hidden = true; if (!raw.trim()) li.remove(); },
     };
+  }
+  // An idea still "Testing" when its session ended (failed, cancelled, out of credits) kept its
+  // spinner for good, as if the stopped session were still on it. It gets no verdict now.
+  function settlePending(log) {
+    log.querySelectorAll('[data-stamp]').forEach((s) => {
+      if (!s.classList.contains('pending')) return;
+      s.className = 'hx-stamp void'; s.textContent = 'Not finished';
+    });
   }
 
   // Controller over a .runfeed section: streams the thinking card, grafts challenger/verdict onto
@@ -2635,7 +2644,7 @@
         first = false;
       },
       state(st, wait) {  // 'queued' | 'running' | 'paused' | 'done'; wait = the server's run.wait
-        if (st === 'done') { pulseSt = st; sealThink(); pulse.hidden = true; return; }
+        if (st === 'done') { pulseSt = st; sealThink(); settlePending(log); pulse.hidden = true; return; }
         const stick = atBottom();
         pulse.hidden = false;
         // Count the queue from the server's clock: "Queued · 19s" restarted on every reload.
@@ -2869,29 +2878,49 @@
     cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
   }
 
+  // A run-until-stopped session that used up the credits ends as a finished one (agent.run_research
+  // logs this step, then wraps up): the page said "Done" and "Try another idea", and the reason sat
+  // in the log. The step's own words mark it, so sessions that ended this way before say so too.
+  const runOutOfCredits = (ev) => !!ev && ev.kind === 'step' && /^Paused — out of credits\b/.test(ev.message || '');
+  // How far along and what it found, live. The run's own counters move once per round of ideas (a
+  // run-until-stopped round is several ideas), so a running session read "3 hypotheses" while its
+  // log showed nine, and "Passed …" beside a passed idea listed under it. Its log and its strategy
+  // rows are current; a set-size session also says how many it will test.
+  function runCountFigs(r, active, tried, strategies) {
+    const n = Math.max(+r.hypotheses_tried || 0, tried || 0);
+    const cap = active && !r.run_forever && +r.max_hypotheses ? `of up to ${num(r.max_hypotheses)}` : '';
+    const passed = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
+    return fig('Hypotheses', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
+  }
   // What to do once a session ends. The example's log ended on "now describe a real idea" with no way
   // to do it, and a session that passed something left it two screens down on a phone, under the log.
   function runNext(r, strategies) {
     if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
     const passed = (strategies || []).filter((s) => s.status === 'passed');
+    const credits = r.out_of_credits ? 'It stopped when your credits ran out. <a href="/billing">Add credits</a>, then start a new session to keep researching. ' : '';
     if (passed.length) {
       const links = passed.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
       const more = passed.length > 3 ? ` and <a href="/strategies?status=passed">${passed.length - 3} more</a>` : '';
-      return `<p class="run-next">${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
+      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
     }
     // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
-    if (r.status === 'failed') return `<p class="run-next">This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''} <a href="/research?new=1">Start a new session</a></p>`;
+    // The server's reason is written for the customer; one that already says the session stopped
+    // stands alone ("…stopped on an error. …so the session stopped.").
+    if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`} <a href="/research?new=1">Start a new session</a></p>`;
     if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
+    if (credits) return `<p class="run-next">${credits}Nothing passed before then; each idea below says which check it missed.</p>`;
     if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each idea below says which check it missed; tap one for what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
   // The foot of a finished session, under the log's last line. The way on sat only above the log, a
   // phone's length of scrolling back up: the example's last line said to describe a real idea, and a
   // session where nothing passed ended on its last missed idea. Plain buttons: the line above keeps
-  // the page's one primary action.
+  // the page's one primary action. One that ran out of credits ends on adding them (autopilot would
+  // wait on credits too).
   function runEnd(r, strategies) {
     if (r.example) return `<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>`;
     if (r.status !== 'succeeded' && r.status !== 'stopped') return '';
+    if (r.out_of_credits) return '<div class="run-end"><a class="btn" href="/billing">Add credits</a></div>';
     if ((strategies || []).some((s) => s.status === 'passed')) return '';
     return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
   }
@@ -2923,7 +2952,7 @@
       <section><div class="section-head"><h2>Agent log</h2></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div><div id="runend"></div></section>`);
-    let after = 0, tried = 0;
+    let after = 0, tried = 0, outOfCredits = false;
     const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
     const ideasEl = root.querySelector('#runideas');
     ideasEl.addEventListener('click', (e) => {
@@ -2938,6 +2967,13 @@
       const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+      d.events.forEach((ev) => {
+        after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
+        if (runOutOfCredits(ev)) outOfCredits = true;
+        const dd = ev.data || {};
+        if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
+      });
+      r.out_of_credits = outOfCredits && !active;
       root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
@@ -2946,13 +2982,14 @@
         : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
+        : r.out_of_credits ? 'Out of credits'
         : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped'
         : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
       root.querySelector('#runfigs').innerHTML =
         fig('Status', statusText) +
-        fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
+        fig('Time', started ? waitSpan((end - started) / 1000) : '—') +
         (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
-        fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
+        runCountFigs(r, active, tried, d.strategies) +
         fig('How it searches', d.rsi && d.rsi.evolved ? 'Improved' : 'Self\u2011tuning',  // a no-break hyphen: never "Self-" over "tuning"
             { small: d.rsi && d.rsi.evolved ? `it found a better way to pick ideas (score ${d.rsi.score})` : 'it gets better at picking ideas after each session' });
       const next = root.querySelector('#runnext');
@@ -2984,11 +3021,6 @@
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
-      d.events.forEach((ev) => {
-        after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
-        const dd = ev.data || {};
-        if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
-      });
       // Painted only when it changes, so a poll never closes "Show all" or drops a focused title.
       const ideasKey = runIdeas(d.strategies, whyBySid, false);
       if (ideasEl.dataset.h !== ideasKey) { ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]')); }

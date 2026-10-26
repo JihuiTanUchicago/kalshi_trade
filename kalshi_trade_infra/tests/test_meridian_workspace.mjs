@@ -4191,6 +4191,43 @@ test('Meridian: a run says its ledger lines in plain words, with the zone of its
   f.clearTimers();
 });
 
+const M_RUN_AT = async (run, events = [], strategies = []) => {
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: '2026-10-25T10:00:00Z', ...run}, events, strategies}) : response({})});
+  await f.viewRun(9); await flush(); f.clearTimers();
+  return f;
+};
+const M_FIG = (html, label) => (html.split(label)[1] || '').replace(/<[^>]*>/g, ' ').trim().split(/\s+/)[0];
+
+test('Meridian: a session that ran out of credits says so and offers Add credits, not "Done" and another idea', async () => {
+  const step = {id: 7, kind: 'step', message: 'Paused — out of credits. Add more (or turn on auto-reload) and start a new session to keep researching.', created_at: '2026-10-25T11:00:00Z'};
+  let f = await M_RUN_AT({status: 'succeeded', run_forever: 1, hypotheses_tried: 4, strategies_passed: 0}, [step], [{id: 43, title: 'Fade', status: 'failed', market: 'btc15m', direction: 'momentum'}]);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Out of credits/);
+  const next = f.root.querySelector('#runnext').innerHTML;
+  assert.match(next, /It stopped when your credits ran out\. <a href="\/billing">Add credits<\/a>, then start a new session to keep researching\. Nothing passed before then/);
+  assert.doesNotMatch(next, /Try another idea/);
+  assert.equal(f.root.querySelector('#runend').innerHTML, '<div class="run-end"><a class="btn" href="/billing">Add credits</a></div>');
+  f = await M_RUN_AT({status: 'succeeded'}, [], []);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Done/);
+  assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, /billing/);
+});
+
+test('Meridian: a running session counts its ideas and passes live; a stopped one leaves no idea "Testing" and says a provider failure once', async () => {
+  const hyp = (id) => ({id, kind: 'hypothesis', message: 'Idea ' + id, data: {}, created_at: '2026-10-25T10:00:00Z'});
+  let f = await M_RUN_AT({status: 'running', run_forever: 1, hypotheses_tried: 3, strategies_passed: 0}, [1, 2, 3, 4, 5].map(hyp), [{id: 42, title: 'Late', status: 'passed', market: 'btc15m', direction: 'momentum'}]);
+  let figs = f.root.querySelector('#runfigs').innerHTML;
+  assert.equal(M_FIG(figs, 'Hypotheses'), '5'); assert.equal(M_FIG(figs, 'Passed'), '1');
+  f = await M_RUN_AT({status: 'running', max_hypotheses: 10, hypotheses_tried: 2}, [hyp(1)], []);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /of up to 10/);
+  f = await M_RUN_AT({status: 'succeeded', started_at: '2026-10-25T10:00:00Z', finished_at: '2026-10-25T14:59:00Z'});
+  assert.equal(M_FIG(f.root.querySelector('#runfigs').innerHTML, 'Time'), '5');
+  const error = 'The research models are at capacity right now, so the session stopped. Start it again in a little while.';
+  f = await M_RUN_AT({status: 'failed', error}, [{id: 1, kind: 'hypothesis', message: 'Vol', data: {}, created_at: '2026-10-25T10:00:00Z'}]);
+  const stamp = f.root.querySelector('#log').querySelector('[data-stamp]');
+  assert.equal(stamp.textContent, 'Not finished'); assert.equal(stamp.classList.contains('pending'), false);
+  assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, /stopped on an error/);
+  assert.match(f.root.querySelector('#runnext').innerHTML, /so the session stopped\. Start it again in a little while\. <a href="\/research\?new=1">Start a new session<\/a>/);
+});
+
 test('Meridian: a long session shows its first strategies and folds the rest behind Show all', async () => {
   const strategies = Array.from({length: 12}, (_, i) => ({id: 100 + i, title: 'Idea ' + i, status: i === 9 ? 'passed' : 'failed', market: 'btc15m', direction: 'momentum'}));
   const run = {id: 9, status: 'stopped', prompt: 'Session 9', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 12, strategies_passed: 1};
