@@ -174,7 +174,7 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     for run_id in (first, second):
         rows = sum(-Decimal(r["amount_usd"]) for r in usage if r["run_id"] == run_id)
         assert rows == per_run[run_id]
-        assert runs[run_id]["spent_usd"] == float(rows.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+        assert runs[run_id]["spent_usd"] == float(_cents(rows))  # to the cent, half up, as Billing rounds
         assert server.get_run(ctx(params=(run_id,)))["run"]["spent_usd"] == runs[run_id]["spent_usd"]
     [example] = [r for r in runs.values() if r["example"]]
     assert example["spent_usd"] == 0 and example["status"] == "succeeded"  # the seeded session cost nothing
@@ -201,8 +201,8 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     # -- the Billing page ------------------------------------------------------------------------
     state = server.billing_state(ctx())
     assert state["configured"] is True and state["default_pm"] == "pm_credits" and state["auto_reload"] is True
-    assert state["balance"] == float(balance.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
-    assert state["spent"] == state["spent_7d"] == float(spent_total.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+    assert state["balance"] == float(balance.quantize(SIX))  # as the ledger holds it; the page rounds half up
+    assert state["spent"] == state["spent_7d"] == float(_cents(spent_total))
     # The statement: every row is inside its 30 days. A run's calls on one day with one model are one
     # line whose calls and amount are those rows'; every other row is its own line.
     lines = state["ledger"]
@@ -227,7 +227,7 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert abs(math.pop("start")) <= 0.01
     assert math == {"days": 30, "bought": 35.0, "purchases": 2, "other": 20.0,
                     "usage": float(_cents(spent_total)), "end": float(_cents(balance))}
-    assert state["runway_days"] == round(state["balance"] / (state["spent_7d"] / 7), 1)
+    assert state["runway_days"] == round(float(balance) / (float(spent_total) / 7), 1)
     # The week split by what spent it adds up to the week, and the chat turn is its own part.
     by = state["spent_7d_by"]
     assert _cents(sum(Decimal(str(v)) for v in by.values())) == _cents(state["spent_7d"])
@@ -238,7 +238,7 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert {r["item"] for r in used} == {"Research session", "Chat"}
     assert all(r["model"] and "anthropic" not in r["memo"] and "us." not in r["model"] for r in used)
     week = server._autopilot_week(cur, uid, status["research"])
-    assert week["credits_left"] == round(state["balance"], 2) and week["checkin_credits"] == 0.0
+    assert week["credits_left"] == float(_cents(balance)) and week["checkin_credits"] == 0.0
 
     # -- the receipt CSV -------------------------------------------------------------------------
     kind, fname, ctype, data = server.billing_receipt(ctx())

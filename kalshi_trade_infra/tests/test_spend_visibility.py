@@ -6,6 +6,8 @@ import io
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
 from app import server
 from app.web.routes import billing as billing_routes
 from app.adapters.llm import models_catalog
@@ -127,7 +129,9 @@ def test_the_balance_sum_closes_to_the_cent(monkeypatch):
     _billing(monkeypatch, [], totals)
     data = server.billing_state(_ctx())
     m = data["math"]
-    assert data["balance"] == 24.995 and data["spent"] == 100.005
+    # The balance as the ledger holds it (the page rounds it half up: $25.00, the math's end); the
+    # spend to the cent from its exact decimal. Through four places it read 100.005, then $100.01.
+    assert data["balance"] == 24.995001 and data["spent"] == 100.0
     assert m == {"days": 30, "start": 16.12, "bought": 65.0, "purchases": 2, "other": 5.0, "usage": 61.12, "end": 25.0}
     cents = lambda v: round(v * 100)
     assert cents(m["start"]) + cents(m["bought"]) + cents(m["other"]) - cents(m["usage"]) == cents(m["end"])
@@ -279,3 +283,88 @@ def test_forever_rates_read_only_sessions_that_billed_for_half_an_hour():
     assert billing_repository.forever_session_rates(cur, "since", 7) == [("opus-4-6", 3.0, 1.5)]
     sql, params = cur.sql[0]
     assert "r.run_forever=1" in sql and "secs >= 1800" in sql and params == ("since", 7, 500)
+
+
+@pytest.mark.parametrize("charge,cents", [("0.105000", 0.11), ("0.104999", 0.10), ("1.005000", 1.01), ("0.115000", 0.12)])
+def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
+    """A $0.105 research charge read $0.10 on the autopilot panel (float round()) and -$0.11 on Billing
+    (Decimal, half up). Every figure that shows it is now the same cents, half up from the exact
+    decimal; Billing's line keeps the ledger's exact amount, which the page rounds the same way.
+    Credits only: no P&L is read or added here."""
+    from decimal import Decimal
+    from app.web import views
+
+    usd = float(Decimal(charge))
+    at = datetime(2026, 10, 25, 9)
+    rows = [_line("usage", -Decimal(charge), at, "Agent usage · us.anthropic.claude-opus-4-6-v1", run_id=42,
+                  run_kind="research", brief=1, prompt="Idea", market="btc15m", direction="momentum")]
+    _billing(monkeypatch, rows, _totals(bonus=20.0, usage=-usd), configured=True)
+    monkeypatch.setattr(server.repo, "credit_spent_total", lambda *a: usd)
+    by_source = {"research": 0.0, "autopilot_research": usd, "autopilot_review": usd, "chat": 0.0, "other": 0.0}
+    monkeypatch.setattr(server.repo, "usage_by_source", lambda *a: dict(by_source))
+    run = {"id": 42, "kind": "research", "status": "succeeded", "run_forever": 0, "direction": "momentum", "market": "btc15m"}
+    monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {42: usd})
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: [dict(run)])
+    monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: dict(run))
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "get_policy", lambda *a: None)
+    monkeypatch.setattr(server.repo, "latest_dream_event", lambda *a: None)
+    monkeypatch.setattr(server.repo, "run_events", lambda *a: [])
+    monkeypatch.setattr(server.repo, "active_run_counts", lambda *a, **k: {})
+    monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: [dict(run)])
+    monkeypatch.setattr(server, "_research_totals", lambda *a: {})
+    monkeypatch.setattr(server.repo, "research_week", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda *a: 0)
+    monkeypatch.setattr(server.repo, "research_spent_since", lambda *a: usd)
+    monkeypatch.setattr(server.repo, "autopilot_paper_week", lambda *a: {"started": 0, "pnl": 0.0, "trades": 0})
+    monkeypatch.setattr(server.repo, "activity_since", lambda *a: {"autopilot": {}, "runs": {}, "spent": {"since": usd, "week": usd}})
+    monkeypatch.setattr(server.repo, "passed_since", lambda *a, **k: {})
+    monkeypatch.setattr(server.repo, "finished_session_costs", lambda *a: [usd] * server.SESSION_COST_MIN_OWN)
+    monkeypatch.setattr(server, "_TYPICAL_SESSION_COST", [0.0, {}])
+    monkeypatch.setattr(server.repo, "recent_session_costs", lambda *a: [("m", usd)] * server.SESSION_COST_MIN_TYPICAL)
+    monkeypatch.setattr(server, "_forever_hourly", lambda *a: {"yours": None, "typical": {}})
+    balance = 20 - usd
+    reads = SimpleNamespace(balance=lambda: balance, customer=lambda: None)
+
+    state = server.billing_state(_ctx())
+    research = server._research_activity(None, 7)
+    week = server._autopilot_week(None, 7, research, reads)
+    ctx = _ctx()
+    ctx.params = ("42",)
+    estimate = server.research_estimate(_ctx())
+    seen = {
+        "Billing: agent usage": state["math"]["usage"],
+        "Billing: spent, last 7 days": state["spent_7d"],
+        "Billing: last 24 hours": state["spent_24h"],
+        "Billing: all time": state["spent"],
+        "Billing: autopilot research this week": state["spent_7d_by"]["autopilot_research"],
+        "Autopilot panel: research spent": research["cost_7d"],
+        "Autopilot scorecard: credits spent on research": week["research_credits"],
+        "Autopilot scorecard: check-ins": week["checkin_credits"],
+        "Dashboard: spent since your last visit": server._since_visit(None, 7, at, False, {})["spent"]["since"],
+        "Research list: session cost": server.list_runs(_ctx())["runs"][0]["spent_usd"],
+        "Run page: session cost": server.get_run(ctx)["run"]["spent_usd"],
+        "Research form: what your sessions usually cost": estimate["yours"],
+        "Research form: what a session usually costs": estimate["typical"][models_catalog.resolve("m").key],
+    }
+    assert seen == {k: cents for k in seen}
+    # Billing's line is the ledger's exact amount; the page rounds it half up to the same cents.
+    [line] = state["ledger"]
+    assert line["amount"] == -usd and float(views.credit_cents(-line["amount"])) == cents
+    # A balance is sent as the ledger holds it, for the page to round the same way.
+    assert week["credits_left"] == float(views.credit_cents(balance)) == state["math"]["end"]
+
+
+def test_credit_rounding_is_half_up_from_the_ledgers_decimal():
+    from decimal import Decimal
+    from app.web import views
+
+    assert round(0.105, 2) == 0.1  # what the panel did
+    assert views.credit_usd(0.105) == 0.11 and views.credit_usd(-0.105) == -0.11
+    assert views.credit_usd(0.035 + 0.07) == 0.11  # 0.10500000000000001
+    assert views.credit_usd(0.10499999999999998) == 0.11  # float noise past the ledger's six places
+    assert views.credit_usd(0.104999) == 0.1 and views.credit_usd(None) == 0.0
+    assert str(views.credit_usd(-0.001)) == "0.0"  # never "-0.0" in the JSON
+    assert views.credit_exact(24.995001) == 24.995001 and views.credit_exact(0.1 + 0.2) == 0.3
+    assert billing_routes._cents is views.credit_cents  # Billing's sum rounds the one way too
+    assert views.credit_cents(Decimal("-100.004999")) == Decimal("-100.00")

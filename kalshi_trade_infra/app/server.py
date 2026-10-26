@@ -85,6 +85,8 @@ from app.web.views import (  # noqa: F401  (shared presenters)
     _status_why,
     _usd,
     _with_gate_lines,
+    credit_exact,
+    credit_usd,
 )
 from app.web.settings import (  # noqa: F401  (server.py keeps the names for routing and tests)
     ADMIN_EMAIL,
@@ -322,7 +324,7 @@ def me(ctx: Ctx):
         "needs_card": _needs_card(ctx, reads),
         "auto_reload": _auto_reload_terms(ctx, reads),
         "free_bonus": float(billing.FREE_BONUS),
-        "credit_balance": round(reads.balance(), 4),
+        "credit_balance": credit_exact(reads.balance()),
         "min_run_balance": float(billing.MIN_RUN_BALANCE),  # the headroom a research run needs to start
         "perps_live_available": kalshi_perps_trading.enabled(),  # hide the Funds perps box when live perps are off
         "markets": _researchable_markets(ctx.cur),
@@ -447,7 +449,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict) -> D
             "books": {m: {"pnl": round(pnl, 2), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": repo.passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
-            "spent": act.get("spent") if billing.configured() else None,
+            "spent": {k: credit_usd(v) for k, v in act["spent"].items()} if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []}}
 
 
@@ -528,6 +530,9 @@ def list_runs(ctx: Ctx):
     for r in runs:  # why a finished session stopped (out of credits, by you, an error, finished): services.run_stop
         r["stop_reason"] = run_stop.stop_reason(r)
         r.pop("out_of_credits", None)
+        # A running session silent past the reaper's limit is left out of counts["research_running"]
+        # (_silent_before): its row says "Silent", as the run page does, not "Researching" beside "Running 0".
+        r["wait"] = _run_wait(r)
     customer_text.run_rows(runs)
     return {"runs": runs, "counts": counts, "policy": policy, "totals": totals, "v": v}
 
@@ -550,7 +555,7 @@ def _with_spent(cur, uid: int, runs: List[Dict]) -> None:
     rows billed to that run), so a run-until-stopped session shows its running cost."""
     spent = repo.runs_spent(cur, uid, [r["id"] for r in runs])
     for r in runs:
-        r["spent_usd"] = round(spent.get(r["id"], 0.0), 4)
+        r["spent_usd"] = credit_usd(spent.get(r["id"], 0.0))
 
 
 RUN_TOTALS_TTL = 30.0  # seconds; the Research page polls /api/runs every 5s
@@ -610,6 +615,7 @@ def get_run(ctx: Ctx):
     if wait and wait["overdue"] and wait["state"] == "queued":
         wait["ahead"] = repo.research_queue_ahead(ctx.cur, run["id"])
     run["wait"] = wait
+    run["stop_reason"] = run_stop.stop_reason(run)  # why it stopped, for a session that ended with nothing to list
     # The run stores the model's key, NULL for the default: the page names the model a customer picked.
     run["model_label"] = catalog.label_for_key(run.get("model"))
     customer_text.run_rows([run])
@@ -1158,7 +1164,7 @@ def _research_activity(cur, uid: int) -> Dict:
             "runs_7d": sum(int(r.get("runs") or 0) for r in week),
             # What research actually debited this week (the credit ledger), not tokens re-priced:
             # re-pricing billed a screen-arm run's screen tokens at the developer model's rate.
-            "cost_7d": round(repo.research_spent_since(cur, uid, since), 2)}
+            "cost_7d": credit_usd(repo.research_spent_since(cur, uid, since))}
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
@@ -1416,8 +1422,9 @@ def _run_wait(run: Optional[Dict]) -> Optional[Dict]:
         return None
     if not isinstance(since, datetime):
         return None
-    secs = max(0, int((repo.now_utc() - since).total_seconds()))
-    overdue = secs > RUN_OVERDUE_SECONDS
+    age = (repo.now_utc() - since).total_seconds()
+    secs = max(0, int(age))
+    overdue = age > RUN_OVERDUE_SECONDS  # the same line _silent_before draws for the counts, to the second
     if state == "silent" and not overdue:
         return None
     return {"state": state, "seconds": secs, "overdue": overdue}
@@ -1695,7 +1702,7 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
         used = repo.usage_by_source(cur, uid, since)
         spent_7d = sum(used.values())
         balance = (reads or billing.Reads(cur, uid)).balance()
-        out.update(checkin_credits=round(used["autopilot_review"], 2), credits_left=round(balance, 2),
+        out.update(checkin_credits=credit_usd(used["autopilot_review"]), credits_left=credit_usd(balance),
                    runway_days=round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None)
     return out
 
@@ -1874,7 +1881,7 @@ def _typical_session_costs(cur) -> Dict[str, float]:
         key = catalog.resolve(model).key  # a NULL model ran on the catalog default
         if len(by_model.setdefault(key, [])) < 200:  # the newest 200 per model
             by_model[key].append(cost)
-    val = {k: round(_median(v), 2) for k, v in by_model.items() if len(v) >= SESSION_COST_MIN_TYPICAL}
+    val = {k: credit_usd(_median(v)) for k, v in by_model.items() if len(v) >= SESSION_COST_MIN_TYPICAL}
     _TYPICAL_SESSION_COST[:] = [time.time(), val]
     return val
 
@@ -1884,7 +1891,7 @@ def research_estimate(ctx: Ctx):
     of the user's own last 10 finished sessions, or (with fewer than 3) the server-wide median for
     each model. Read-only; what a run is charged does not change."""
     own = repo.finished_session_costs(ctx.cur, ctx.uid, 10)
-    return {"yours": round(_median(own), 2) if len(own) >= SESSION_COST_MIN_OWN else None,
+    return {"yours": credit_usd(_median(own)) if len(own) >= SESSION_COST_MIN_OWN else None,
             "sessions": len(own), "typical": _typical_session_costs(ctx.cur),
             "per_hour": _forever_hourly(ctx.cur, ctx.uid)}
 
