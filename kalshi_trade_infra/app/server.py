@@ -70,7 +70,22 @@ CSP = (
 
 
 from app.web.http import ApiError, Ctx, _int_param, _json_default, _num  # noqa: F401  (request types)
-from app.web.views import _gate_lines, _live_balance, _open_book, _with_gate_lines  # noqa: F401  (shared presenters)
+from app.web.caches import _ROADS, _TRACK_RECORD, _forget_own_change  # noqa: F401  (shared read caches)
+from app.web.views import (  # noqa: F401  (shared presenters)
+    _DEMO_KEY_PAUSE,
+    _demo_health,
+    _deployment_out,
+    _gate_lines,
+    _gate_tints,
+    _live_balance,
+    _open_book,
+    _pause_clause,
+    _plain_pause_reason,
+    _spec_sizing,
+    _status_why,
+    _usd,
+    _with_gate_lines,
+)
 from app.web.settings import (  # noqa: F401  (server.py keeps the names for routing and tests)
     ADMIN_EMAIL,
     DEV_LOGIN,
@@ -165,6 +180,23 @@ from app.web.routes.admin import (  # noqa: F401  (moved; server.py keeps the na
     system_code,
     _require_admin,
     _system_event,
+)
+from app.web.routes.strategies import (  # noqa: F401  (moved; server.py keeps the names for routing and tests)
+    _BACKTEST_CHECKS,
+    _backtest_checks,
+    _delete_block,
+    _experiment_block,
+    _mark_fields,
+    _owned_strategy,
+    _strategy_card,
+    _with_marks,
+    _with_why,
+    delete_strategy,
+    get_strategy,
+    list_strategies,
+    share_strategy,
+    strategy_dev_curve,
+    what_if,
 )
 
 
@@ -324,59 +356,6 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
     }
 
 
-# The engine pauses a demo deployment with this in its reason when the user has no demo key.
-_DEMO_KEY_PAUSE = "demo (sandbox) key"
-
-
-def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None) -> Optional[Dict]:
-    """Why the demo book can't trade, as one plain line and the one thing to do, or None when nothing
-    known stops it. A demo deployment looks healthy (running, capital, a P&L) while every order it
-    sends is refused, so the pages that show demo say this instead:
-      - demo_key: a demo deployment is on (or the engine paused it for the key) and no demo key is saved;
-      - demo_funds: the Kalshi demo account holds less than one stake, so Kalshi refuses its orders.
-    `deps` are deployment rows (with spec). `stake` asks about a strategy that could go on demo but
-    isn't there yet (the strategy page's next rung), so funds are checked even with nothing running.
-    The balance read is the cached demo GET (demo_twins.balance_cached); unknown is never a problem."""
-    from app.trading import demo_twins
-
-    demo = [d for d in deps if d["mode"] == "demo"]
-    active = [d for d in demo if d["status"] == "running"
-              or (d["status"] == "paused" and _DEMO_KEY_PAUSE in (d.get("status_reason") or ""))]
-    if not active and stake is None:
-        return None
-    if repo.get_kalshi_dev_key(cur, uid) is None:
-        if not active:
-            return None  # nothing on demo; the deploy button already says to add the key
-        return {"code": "demo_key", "need": "your Kalshi demo key",
-                "line": "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page.",
-                "action": {"label": "Add demo key", "href": "/funds"}}
-    stakes = [float(_spec_sizing(d)["stake"]) for d in active
-              if d["status"] == "running" and _spec_sizing(d).get("stake") is not None]
-    if stake is not None:
-        stakes.append(float(stake))
-    if not stakes:
-        return None
-    cash = demo_twins.balance_cached(cur, uid)
-    least = min(stakes)
-    if cash is None or cash >= least:
-        return None
-    has = "has $0.00" if cash < 0.005 else "has %s, less than one %s stake" % (_usd(cash), _usd(least))
-    return {"code": "demo_funds", "need": "demo funds: your Kalshi demo account %s" % has,
-            "line": "Demo isn't trading: your Kalshi demo account %s. Add demo funds on Kalshi's demo site." % has,
-            "action": {"label": "Open Kalshi demo", "href": demo_twins.KALSHI_DEMO_SITE}}
-
-
-def _spec_sizing(row: Dict) -> Dict:
-    """A strategy or deployment row's spec sizing, {} when an older or seeded spec has none (display only)."""
-    spec = row.get("spec")
-    sizing = spec.get("sizing") if isinstance(spec, dict) else None
-    return sizing if isinstance(sizing, dict) else {}
-
-
-def _usd(v: float) -> str:
-    return "$%s" % format(round(float(v), 2), ",.2f")
-
-
 def dashboard(ctx: Ctx):
     cur = ctx.cur
     day = _start_of_day_utc()
@@ -477,8 +456,6 @@ TRACK_RECORD_TTL = 60.0  # seconds; the record moves only when a trade closes
 # through idx_pos_user, and a new user's first trade showed up only after the cached empty record
 # expired (up to a minute after the board above it showed the trade).
 TRACK_RECORD_CACHE_MIN_TRADES = 200
-# (built at, payload, trades read, the book's shape the dashboard had seen when it was built)
-_TRACK_RECORD: Dict[int, Tuple[float, Dict, int, Optional[Tuple]]] = {}
 # {user id: the book's shape at the dashboard's last read} (_book_shape): one closed-trade count per
 # mode and the open count. A busy book's cached record is rebuilt once the dashboard has seen a trade
 # open or close that the record predates, so the two never disagree for the rest of the minute.
@@ -487,18 +464,6 @@ _BOOK_SHAPE: Dict[int, Tuple] = {}
 
 def _book_shape(closed: Dict[str, int], open_count: int) -> Tuple:
     return tuple(sorted(closed.items())), int(open_count)
-
-
-def _forget_own_change(uid: int, strategy_id: Optional[int] = None) -> None:
-    """Drop the user's cached reads after a change the web app made itself (a deploy, a pause, resume
-    or stop, an approved proposal, the kill switch, a removed strategy): the track record, whose
-    by-strategy rows carry each deployment's status, and the Deploy board's road to live and paper
-    checks (services.paper_checks), so the board never shows a check from before the change. A change
-    to one strategy's deployment passes `strategy_id`: only that strategy's paper evidence reads it."""
-    _TRACK_RECORD.pop(uid, None)
-    paper_checks.forget(uid, strategy_id)
-    for key in [k for k in _ROADS if k[0] == uid]:
-        _ROADS.pop(key, None)
 
 
 def get_track_record(ctx: Ctx):
@@ -533,38 +498,6 @@ def _freshness(cur) -> Dict:
 def _paper_strategy_ids(deps: List[Dict]) -> set:
     """The strategies with a paper deployment that isn't stopped (running, or paused with paper)."""
     return {d["strategy_id"] for d in deps if d["mode"] == "paper" and d["status"] != "stopped"}
-
-
-def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, paper_sids: Optional[set] = None) -> Dict:
-    res = d.get("result") or {}
-    return {
-        # A demo deployment of a strategy that is also on paper is its demo copy (app.trading.demo_twins makes
-        # them): the row says what it copies and why its fills differ from paper's.
-        "demo_copy": d["mode"] == "demo" and d["strategy_id"] in (paper_sids or ()),
-        "id": d["id"], "strategy_id": d["strategy_id"], "title": d["title"], "direction": d["direction"],
-        "market": d["market"], "mode": d["mode"], "status": d["status"], "status_reason": d["status_reason"],
-        "status_why": _status_why(d),
-        "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
-        "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
-        "stake": _spec_sizing(d).get("stake"), "max_positions": _spec_sizing(d).get("max_positions"),
-        "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
-    }
-
-
-def _status_why(d: Dict) -> Optional[str]:
-    """Why a deployment isn't running, in plain words, for its row and its strategy page. The stored
-    reason read "By you", "Kill switch" or an engine line ("force-closed: position down 33.0% >= stop
-    30.0%") after the stake, and "By you" didn't say whether you paused it or removed it. A reason
-    that is already a sentence is kept as written."""
-    raw = (d.get("status_reason") or "").strip()
-    if d.get("status") == "running" or not raw:
-        return None
-    if raw == "By you" and d.get("status") == "stopped":
-        return "You removed it"
-    if raw not in ("By you", "Approved agent proposal", "Kill switch") and not re.search(r"% >= (?:stop|limit) ", raw):
-        return customer_text.clean(raw, "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")
-    clause = _pause_clause(raw)
-    return clause[:1].upper() + clause[1:]
 
 
 def models(ctx: Ctx):
@@ -686,14 +619,6 @@ def get_run(ctx: Ctx):
         "strategies": [_strategy_card(s) for s in strategies if s["run_id"] == run["id"]],
         "rsi": _rsi_block(pol, dream),
     }
-
-
-def _gate_tints(status: Optional[str], exp: Dict) -> Dict:
-    """services.gate_explain's per-figure pass/fail, or none (every figure neutral) for a record it can't read."""
-    try:
-        return gate_explain.strategy_tints(status, exp)
-    except (TypeError, ValueError, KeyError, AttributeError):
-        return {}
 
 
 def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:
@@ -846,168 +771,6 @@ def resume_run(ctx: Ctx):
     return {"ok": True}
 
 
-def _strategy_card(s: Dict) -> Dict:
-    res = s.get("result") or {}
-    return {
-        "id": s["id"], "run_id": s["run_id"], "parent_id": s["parent_id"], "market": s["market"],
-        "direction": s["direction"], "title": s["title"], "thesis": s["thesis"], "status": s["status"],
-        "created_at": s["created_at"], "hypotheses_tried": s.get("hypotheses_tried"),
-        "in_sample": res.get("in_sample"), "out_of_sample": res.get("out_of_sample"),
-        "equity": res.get("equity"), "capital": res.get("capital"),
-        "stake": _spec_sizing(s).get("stake"),
-        "side": (s["spec"].get("perpetual") or {}).get("side") if specmod.is_perpetual_spec(s["spec"]) else s["spec"].get("side"),
-        **({"kind": "perpetual", "research_only": True} if specmod.is_perpetual_spec(s["spec"]) else {}),
-        "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
-        "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
-        "example": s.get("direction") == repo.DEMO_DIRECTION,  # from the seeded example session
-    }
-
-
-def _mark_fields(p: Dict) -> Dict:
-    """Live mark-to-market for one open position from the engine-stamped mark_price (the YES bid
-    on a YES position, the YES ask on a NO one). None until the engine's first mark after entry."""
-    qty = int(p["qty"])
-    cost = qty * float(p["entry_price"]) + float(p.get("entry_fee") or 0)
-    mark = p.get("mark_price")
-    if mark is None:
-        return {"mark": None, "value": None, "unrealized": None, "mark_ts": None}
-    mark = float(mark)
-    # A YES contract sells at the YES bid (mark); a NO contract at its own bid, 1 - yes_ask (1 - mark).
-    value = round(qty * (mark if p["side"] == "yes" else 1.0 - mark), 2)
-    return {"mark": mark, "value": value, "unrealized": round(value - cost, 2), "mark_ts": p.get("mark_ts")}
-
-
-def _with_marks(rows: List[Dict]) -> List[Dict]:
-    for p in rows:
-        p.update(_mark_fields(p))
-    return rows
-
-
-def _with_why(rows: List[Dict], deps: List[Dict]) -> List[Dict]:
-    """Each position's one-line entry/exit reason (app.services.trade_why), from the strategy specs
-    of the deployments the request already read: no extra statement. A position of a stopped
-    deployment (not in `deps`) gets its exit reason only."""
-    specs = {d["id"]: d.get("spec") for d in deps}
-    for p in rows:
-        p["why"] = trade_why.trade_why(p, specs.get(p.get("deployment_id")))
-    return rows
-
-
-def list_strategies(ctx: Ctx):
-    q = ctx.query
-    direction, status, market = q.get("direction") or None, q.get("status") or None, q.get("market") or None
-    search = (q.get("q") or "").strip()[:80] or None  # cap: a search box, not a query language
-    deployed = q.get("deployed") in ("1", "true")
-    try:
-        page = max(0, int(q.get("page") or 0))
-    except ValueError:
-        page = 0
-    per = 50
-    counts = repo.count_strategies(ctx.cur, ctx.uid, direction, market, search, deployed)  # true per-status totals, not a capped page
-    # Default ("Kept") view hides rejected/void — the big-run noise — but keeps every row in the
-    # DB (the ledger counts them for DSR/FDR). An explicit status chip overrides and shows it.
-    hide_noise = status is None
-    noise = sum(counts.get(s, 0) for s in repo.NOISE_STATUSES)
-    # The seeded example's strategies are out of the counts but still listed (marked "example").
-    ex = counts.get("examples") or {}
-    shown_ex = ex.get(status, 0) if status else sum(n for s, n in ex.items() if s not in repo.NOISE_STATUSES)
-    matched = (counts.get(status, 0) if status else counts["total"] - noise) + shown_ex
-    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per,
-                                q=search, deployed=deployed, hide_noise=hide_noise)
-    cards = [_strategy_card(s) for s in rows]
-    _attach_real_records(ctx.cur, ctx.uid, cards)
-    return {"strategies": cards, "counts": counts,
-            "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
-
-
-def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
-    """Stamp each deployed card with what it has actually done since deploying (realized P&L and
-    closed trades across its active deployments), so the list shows reality next to the backtest.
-    Money books are never summed: a strategy with a live deployment reports its live deployments
-    only (beside its Live badge), otherwise its paper ones, with its demo (sandbox) book beside them
-    under "demo" rather than added in. One query, and only when the page has a deployed strategy."""
-    if not any(c.get("deployed") for c in cards):
-        return
-    real: Dict[int, Dict[str, Dict]] = {}
-    for d in book_memo.deployments_for_display(book_memo.BookMemo(cur, uid)):
-        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"], {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
-        r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
-        r["pnl"] += float(d["realized_pnl"] or 0)
-        r["trades"] += int(d["closed_trades"] or 0)
-        r["open"] += int(d["open_positions"] or 0)
-    for c in cards:
-        books = real.get(c["id"]) if c.get("deployed") else None
-        if books:
-            mode = next((m for m in ("live", "paper", "demo") if m in books), None)
-            if mode is None:  # only a mode this list doesn't show
-                continue
-            r = books[mode]
-            c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": mode == "live", "mode": mode}
-            if mode == "paper" and "demo" in books:
-                dm = books["demo"]
-                c["real"]["demo"] = {"pnl": round(dm["pnl"], 2), "trades": dm["trades"], "open": dm["open"]}
-
-
-def _owned_strategy(ctx: Ctx) -> Dict:
-    s = repo.get_strategy(ctx.cur, ctx.uid, _int_param(ctx))
-    if s is None:
-        raise ApiError(404, "No such strategy.")
-    return s
-
-
-DELETE_MODES = ("paper", "demo", "live")
-
-
-def _delete_block(open_positions: List[Dict]) -> Optional[str]:
-    """Why a strategy can't be deleted yet, from its open positions (every deployment, stopped ones
-    included, any mode), or None. Stopping a deployment leaves its positions open, and the engine
-    settles and flattens positions through their strategy row: deleting the strategy first would
-    leave them open for good, with paper cash already paid for them."""
-    if not open_positions:
-        return None
-    n = len(open_positions)
-    by_mode = {m: sum(1 for p in open_positions if p["mode"] == m) for m in DELETE_MODES}
-    parts = ", ".join("%s: %d" % (m, k) for m, k in by_mode.items() if k)
-    return ("This strategy still holds %d open position%s (%s). They'll close at settlement; delete it after that."
-            % (n, "" if n == 1 else "s", parts))
-
-
-def delete_strategy(ctx: Ctx):
-    """Remove a strategy from the user's inventory. Blocked while it's deployed (stop the deployment
-    first) and while any of its deployments, in any mode, still holds an open position."""
-    s = _owned_strategy(ctx)
-    if any(d["strategy_id"] == s["id"] for d in repo.list_deployments(ctx.cur, ctx.uid, include_stopped=False)):
-        raise ApiError(409, "Stop this strategy's deployment before deleting it.")
-    block = _delete_block(repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open"))
-    if block:
-        raise ApiError(409, block)
-    repo.delete_strategy(ctx.cur, ctx.uid, s["id"])
-    _forget_own_change(ctx.uid, s["id"])
-    return {"ok": True}
-
-
-def share_strategy(ctx: Ctx):
-    """Share a strategy with another Tau user by email. Copies it into their inventory
-    (not revocable) and notifies them. The recipient must already have an account."""
-    s = _owned_strategy(ctx)
-    email = str(ctx.body.get("email") or "").strip().lower()
-    if not email or "@" not in email:
-        raise ApiError(400, "Enter the email your friend signs in with.")
-    recipient = repo.user_by_email(ctx.cur, email)
-    if not recipient:
-        raise ApiError(404, "No Tau account uses that email yet — they need to sign in first.")
-    if recipient["id"] == ctx.uid:
-        raise ApiError(400, "That's your own account.")
-    new_id = repo.share_strategy(ctx.cur, s["id"], ctx.uid, recipient["id"])
-    if new_id is None:
-        return {"ok": True, "already": True}  # idempotent: they already have this one
-    sender = (repo.get_user(ctx.cur, ctx.uid) or {}).get("name") or "A friend"
-    repo.add_notification(ctx.cur, recipient["id"], "share",
-                          "%s shared the strategy “%s” with you." % (sender, s["title"]),
-                          "/strategies/%d" % new_id)
-    return {"ok": True}
-
-
 def notifications(ctx: Ctx):
     rows = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid))
     return {
@@ -1061,213 +824,6 @@ def unsubscribe(ctx: Ctx):
             "<h1 style='font-size:20px;letter-spacing:.02em'>Tau</h1><p style='font-size:15px;line-height:1.55'>%s</p>"
             "<p style='font-size:13px;margin-top:20px'><a href='/' style='color:#1a66c9'>Back to Tau</a></p></body>") % msg
     return ("html", page)
-
-
-def _exp_num(row: Dict, key: str) -> Optional[float]:
-    v = row.get(key)
-    return None if v is None else float(v)
-
-
-def _exp_bool(row: Dict, key: str) -> Optional[bool]:
-    v = row.get(key)
-    return None if v is None else bool(v)
-
-
-def _exp_int(row: Dict, key: str) -> Optional[int]:
-    v = row.get(key)
-    return None if v is None else int(v)
-
-
-def _phase_block(row: Optional[Dict], holdout: bool = False) -> Optional[Dict]:
-    """Shape one app_experiment_results row (validation or holdout) into the §D block."""
-    if not row:
-        return None
-    out = {
-        "classification": row.get("classification"),
-        "n_trades": _exp_int(row, "n_trades"),
-        "mean_net_return": _exp_num(row, "mean_net_return"),
-        "ci_lo": _exp_num(row, "ci_lo"),
-        "ci_hi": _exp_num(row, "ci_hi"),
-        "p_value": _exp_num(row, "p_value"),
-        "psr": _exp_num(row, "psr"),
-        "dsr": _exp_num(row, "dsr"),
-        "sharpe": _exp_num(row, "sharpe"),
-        "net_pnl": _exp_num(row, "net_pnl"),
-        "fdr_alpha_i": _exp_num(row, "fdr_alpha_i"),
-        "fdr_reject": _exp_bool(row, "fdr_reject"),
-        "bh_reject": _exp_bool(row, "bh_reject"),
-        "placebo_p": _exp_num(row, "placebo_p"),
-        "n_trials_audited": _exp_int(row, "n_trials_audited"),
-        "equity_curve": row.get("equity_curve"),
-    }
-    if holdout:
-        out["consumed"] = bool(row.get("holdout_consumed"))
-    return out
-
-
-def _rationale(raw) -> Dict:
-    """economic_rationale is a TEXT column the gatekeeper stores as structured JSON (§D:
-    mechanism / negative_control / competing_explanations / folds). Fall back to treating
-    it as a plain mechanism string for anything older or free-form."""
-    try:
-        d = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, dict) else None)
-    except (ValueError, TypeError):
-        d = None
-    if not isinstance(d, dict):
-        return {"mechanism": raw or None, "negative_control": None,
-                "competing_explanations": None, "folds": []}
-    return {
-        "mechanism": d.get("mechanism") or raw,
-        "negative_control": d.get("negative_control"),
-        "competing_explanations": d.get("competing_explanations") or d.get("challenger"),
-        "folds": d.get("folds") or [],
-    }
-
-
-def _experiment_block(cur, strategy_id: int, experiment_id: Optional[int] = None) -> Optional[Dict]:
-    """The §D research-paper `experiment` block for a strategy, or None when the strategy
-    predates the rigorous-research pipeline (no ledger row). Resolves by the strategy's stored
-    experiment_id first (robust link), falling back to the legacy strategy_id lookup. Additive by
-    design: a None here leaves the rest of the detail page intact — never a regression."""
-    rec = research_repo.experiments_for_strategy(cur, strategy_id, experiment_id)
-    if not rec:
-        return None
-    exp = rec["experiment"]
-    results = rec["results"] or []
-    latest = lambda phase: next((r for r in reversed(results) if r.get("phase") == phase), None)
-    val_row = latest("validation")
-    val = _phase_block(val_row)
-    hold = _phase_block(latest("holdout"), holdout=True)
-    rat = _rationale(exp.get("economic_rationale"))
-    overall = results[-1]["classification"] if results else None
-    return {
-        "classification": overall,
-        "registered_at": exp.get("registered_at"),
-        "mechanism": rat["mechanism"],
-        "negative_control": rat["negative_control"],
-        "competing_explanations": rat["competing_explanations"],
-        "falsification_criteria": exp.get("falsification_criteria"),
-        "null_hypothesis": exp.get("null_hypothesis"),
-        "alt_hypothesis": exp.get("alt_hypothesis"),
-        "primary_metric": exp.get("primary_metric"),
-        "planned_test": exp.get("planned_test"),
-        "min_sample": _exp_int(exp, "min_sample"),
-        "cost_assumptions": exp.get("cost_assumptions"),
-        "planned_n_tests": _exp_int(exp, "planned_n_tests"),
-        "correction_method": exp.get("correction_method"),
-        "n_trials_audited": (val or {}).get("n_trials_audited"),
-        "validation": val,
-        "holdout": hold,
-        # Prefer the gatekeeper's recorded cross-day folds (validation phase); fall back to any
-        # folds embedded in the older rationale JSON so pre-pipeline experiments still render.
-        "folds": (val_row or {}).get("folds") or rat["folds"],
-    }
-
-
-def get_strategy(ctx: Ctx):
-    s = _owned_strategy(ctx)
-    out = _strategy_card(s)
-    res = s.get("result") or {}
-    deps = repo.list_deployments_for_display(ctx.cur, ctx.uid, strategy_id=s["id"])
-    held = repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")
-    exp = _experiment_block(ctx.cur, s["id"], s.get("experiment_id"))
-    if exp:
-        # Which research-paper figures their gate passed or missed, by the same checks as
-        # why_failed, so a figure is red exactly when its line says it missed (display only).
-        exp = dict(exp, gate_tints=_gate_tints(s.get("status"), exp))
-    out.update(
-        spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
-        recent_trades=res.get("recent_trades"),
-        # The backtest columns' "too few trades to tell skill from luck" caution (display only): the app's
-        # one noise level for a trade count, deliberately stricter than the gate's floor, which it names.
-        sample_caution={"min_trades": track_record.MIN_TRADES, "gate_min_oos_trades": backtest.GATES["min_oos_trades"]},
-        experiment=exp,
-        # One plain line per gate it missed: measured, needed, and what to try next (display only).
-        why_failed=_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
-        deployments=[_deployment_out(d, []) for d in deps],
-        holdings=[{
-            "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
-            "entry_price": float(p["entry_price"]),
-            "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p["entry_fee"] or 0), 2),
-            "market_close_time": p["market_close_time"], **_mark_fields(p), "why": trade_why.trade_why(p, s["spec"]),
-        } for p in held],
-        # The Remove button's reason while any deployment of it still holds a position (delete_strategy's guard).
-        delete_block=_delete_block(held),
-        # The ladder's demo rung: why its demo book can't trade, or (not on demo yet) what demo needs.
-        demo_health=None if specmod.has_perpetual_market(s["spec"], s.get("market")) else
-        _demo_health(ctx.cur, ctx.uid, deps, stake=(s["spec"].get("sizing") or {}).get("stake")),
-        # Each book's realized per-trade P&L against the backtest's, one line per book (display only).
-        # The page shows them under its current deployments, so with none there is nothing to read.
-        backtest_checks=_backtest_checks(ctx.cur, ctx.uid, {s["id"]: s}).get(s["id"], []) if deps else [],
-    )
-    return out
-
-
-BACKTEST_CHECK_TTL = 60.0  # seconds; a book's figures move only when one of its trades closes
-_BACKTEST_CHECKS: Dict[Tuple[int, Tuple[int, ...]], Tuple[float, Dict[int, List[Dict]]]] = {}
-
-
-def _backtest_checks(cur, uid: int, strategies: Dict[int, Dict],
-                     memo: Optional[book_memo.BookMemo] = None) -> Dict[int, List[Dict]]:
-    """{strategy_id: [one comparison per book]} (services.backtest_check) for {strategy_id: a row with
-    the strategy's spec and result}: each book's realized per-trade P&L and win rate against the
-    strategy's backtest, never summed across books. A per-user TTL cache, since the Deploy board
-    polls; display only."""
-    if not strategies:
-        return {}
-    key = (uid, tuple(sorted(strategies)))
-    hit = _BACKTEST_CHECKS.get(key)
-    if hit and time.time() - hit[0] < BACKTEST_CHECK_TTL:
-        return hit[1]
-    # The Deploy board's sums for every strategy it lists are kept (book_memo); one strategy's are cheap.
-    stats = (book_memo.book_trade_stats(memo, list(strategies)) if memo is not None
-             else repo.book_trade_stats(cur, uid, list(strategies)))
-    val = {sid: backtest_check.checks(stats.get(sid, {}), s.get("result"),
-                                      ((s.get("spec") or {}).get("sizing") or {}).get("stake"))
-           for sid, s in strategies.items()}
-    if len(_BACKTEST_CHECKS) > 5000:
-        _BACKTEST_CHECKS.clear()
-    _BACKTEST_CHECKS[key] = (time.time(), val)
-    return val
-
-
-def what_if(ctx: Ctx):
-    s = _owned_strategy(ctx)
-    if specmod.has_perpetual_market(s["spec"], s.get("market")):
-        raise ApiError(409, "Bitcoin perpetual research uses fixed scenario costs; binary slippage controls do not apply.")
-    if s["status"] == "rejected":
-        raise ApiError(409, "This hypothesis was rejected in-sample; there is no full backtest to vary.")
-    # Default the slippage knob to the real demo-book slippage measured for this
-    # market (clamped to the knob's bounds), so omitting it scores against the
-    # measured cost rather than 0. The frontend still sends the dial's value.
-    measured = kalshi_dev.measured_slippage_cents(s["market"])
-    default_slip = 0.0 if measured is None else max(0.0, min(5.0, measured))
-    w = backtest.WhatIf(
-        fee_multiplier=_num(ctx.body, "fee_multiplier", 0.0, 3.0, 1.0),
-        slippage_cents=_num(ctx.body, "slippage_cents", 0.0, 5.0, default_slip),
-        stake=_num(ctx.body, "stake", 1.0, 500.0, _spec_sizing(s).get("stake")),
-    )
-    try:
-        res = backtest.evaluate(s["spec"], backtest.dataset(s["market"]), w)
-    except Exception:
-        raise ApiError(503, "Backtest data is not available right now.")
-    return {k: res[k] for k in ("in_sample", "out_of_sample", "equity", "gates", "passed", "capital")}
-
-
-def strategy_dev_curve(ctx: Ctx):
-    """Realized out-of-sample curve replayed READ-ONLY against the Kalshi DEMO
-    (dev) environment, for the sim-vs-real second line on the equity chart.
-    Degrades to {"dev_curve": None} (no second line) when dev replay is
-    unconfigured or the demo host/data is unavailable - it never errors the page."""
-    s = _owned_strategy(ctx)
-    if specmod.has_perpetual_market(s["spec"], s.get("market")):
-        return {"dev_curve": None, "reason": "Bitcoin perpetuals are research-only; event-contract demo replay is unavailable."}
-    if not (s.get("result") or {}).get("out_of_sample"):
-        return {"dev_curve": None, "reason": "This hypothesis has no out-of-sample backtest to replay."}
-    out = kalshi_dev.dev_curve_for_strategy(s["id"], s["spec"], s["market"])
-    if out is None:
-        return {"dev_curve": None, "reason": kalshi_dev.unavailable_reason()}
-    return out
 
 
 # -- deployments ---------------------------------------------------------------
@@ -1391,7 +947,6 @@ def _paper_record(trips: List[Dict]) -> Dict:
 
 
 ROAD_TTL = 30.0  # seconds; the Deploy board polls every 10s and a record moves only when a trade closes
-_ROADS: Dict[Tuple, Tuple[float, Dict]] = {}
 # Each strategy's `failing` is kept until its record changes (services.paper_checks).
 _FAILING = paper_checks.KEPT
 
@@ -1767,20 +1322,6 @@ def _money(x: float) -> str:
     return ("up $%.2f" % x) if x >= 0 else ("down $%.2f" % -x)
 
 
-def _plain_pause_reason(why: str) -> str:
-    """The engine's pause reason in plain words, for the phone panel."""
-    why = (why or "").strip()
-    m = re.search(r"position down ([\d.]+)% >= stop ([\d.]+)%", why)
-    if m:
-        return "its safety stop sold a position that had lost %.0f%% of its cost" % float(m.group(1))
-    m = re.search(r"drawdown ([\d.]+)% >= limit ([\d.]+)%", why)
-    if m:
-        return "it lost %.0f%% of its money, past its %.0f%% limit" % (float(m.group(1)), float(m.group(2)))
-    if why.lower().startswith("lost $"):
-        return "it hit its loss guard"
-    return (customer_text.clean(why, "") or "").rstrip(".")[:120] or "it was paused"
-
-
 def _tournament_summary(cur, uid: int, deps: List[Dict]) -> Optional[Dict]:
     from app.research import tournament
     try:
@@ -1928,13 +1469,6 @@ def _passed_undeployed(cur, uid: int, focus: List[str]) -> List[Dict]:
         except Exception:  # noqa: BLE001 - a readout
             pass
     return out
-
-
-def _pause_clause(raw: Optional[str]) -> str:
-    """Why a deployment is paused, as the end of a sentence."""
-    raw = (raw or "").strip()
-    return {"By you": "you paused it", "Approved agent proposal": "you approved the agent's proposal to pause it",
-            "Kill switch": "you pressed Kill"}.get(raw) or _plain_pause_reason(raw)
 
 
 def _idle(code: str, line: str, action: Optional[Dict] = None) -> Dict:

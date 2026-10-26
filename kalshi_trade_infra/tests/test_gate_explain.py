@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
+from app.web.routes import strategies as strategy_routes
 from app.trading import backtest
 from app.research import gatekeeper
 from app.services import gate_explain as ge
@@ -461,11 +462,11 @@ def test_the_strategy_page_lists_what_it_missed_and_a_bad_record_never_fails_it(
            "experiment_id": 3, "direction": "momentum"}
     exp = {"min_sample": 30, "validation": {"classification": "inconclusive", "n_trades": 11, "p_value": None}, "holdout": None, "folds": []}
     monkeypatch.setattr(server.specmod, "describe", lambda spec: [])
-    monkeypatch.setattr(server, "_experiment_block", lambda *a: exp)
+    monkeypatch.setattr(strategy_routes, "_experiment_block", lambda *a: exp)
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(row))
-    monkeypatch.setattr(server, "_demo_health", lambda *a, **k: None)
+    monkeypatch.setattr(strategy_routes, "_demo_health", lambda *a, **k: None)
     out = server.get_strategy(_ctx(("4",)))
     why = out["why_failed"]
     assert [ln["gate"] for ln in why] == ["sample_size"] and re.match(r"Needs about 19 more trades", why[0]["next"])
@@ -475,10 +476,10 @@ def test_the_strategy_page_lists_what_it_missed_and_a_bad_record_never_fails_it(
     # The backtest's luck caution reads its bar from the server: the app's noise level, above the gate's floor.
     assert out["sample_caution"] == {"min_trades": server.track_record.MIN_TRADES, "gate_min_oos_trades": backtest.GATES["min_oos_trades"]}
     assert out["sample_caution"]["min_trades"] > out["sample_caution"]["gate_min_oos_trades"]
-    monkeypatch.setattr(server, "_experiment_block", lambda *a: {"validation": "not a row", "min_sample": 30})
+    monkeypatch.setattr(strategy_routes, "_experiment_block", lambda *a: {"validation": "not a row", "min_sample": 30})
     bad = server.get_strategy(_ctx(("4",)))
     assert bad["why_failed"] == [] and bad["experiment"]["gate_tints"] == {}  # every figure neutral
-    monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
+    monkeypatch.setattr(strategy_routes, "_experiment_block", lambda *a: None)
     assert server.get_strategy(_ctx(("4",)))["experiment"] is None
 
 

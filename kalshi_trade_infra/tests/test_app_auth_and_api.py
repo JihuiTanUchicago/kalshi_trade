@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from app import server
+from app.web.routes import strategies as strategy_routes
 from app.web import auth
 from app.web.routes import admin as admin_routes
 from app.web.routes import auth as auth_routes
@@ -462,7 +463,7 @@ def test_strategies_list_still_shows_the_example_rows_and_marks_them(monkeypatch
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: dict(counts))
     rows = [{"id": 1, "direction": "random_walk"}, {"id": 2, "direction": "random_walk"}]
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: rows)
-    monkeypatch.setattr(server, "_strategy_card", lambda s: {**s, "example": s["direction"] == server.repo.DEMO_DIRECTION})
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: {**s, "example": s["direction"] == server.repo.DEMO_DIRECTION})
     # The default (Kept) view hides rejected rows, examples included; the Rejected chip lists them.
     assert server.list_strategies(ctx(query={}))["matched"] == 0
     out = server.list_strategies(ctx(query={"status": "rejected"}))
@@ -475,7 +476,7 @@ def test_strategy_detail_marks_a_seeded_example_strategy(monkeypatch):
     row = {"id": 4, "run_id": 1, "parent_id": None, "market": "btc15m", "title": "Walk", "thesis": "t", "status": "rejected",
            "created_at": None, "result": {}, "spec": {"sizing": {"stake": 5}, "side": "yes"}, "experiment_id": None}
     monkeypatch.setattr(server.specmod, "describe", lambda spec: [])
-    monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
+    monkeypatch.setattr(strategy_routes, "_experiment_block", lambda *a: None)
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
     for direction, example in ((server.repo.DEMO_DIRECTION, True), ("momentum", False)):
@@ -489,8 +490,8 @@ def test_strategy_detail_answers_on_a_stored_spec_with_no_model_or_sizing(monkey
     row = {"id": 4, "run_id": 1, "parent_id": None, "market": "btc15m", "title": "Seeded", "thesis": "t",
            "status": "passed", "created_at": None, "result": {}, "direction": "momentum", "experiment_id": None,
            "spec": {"side": "yes", "entry": {"min_edge": 0.05}}}
-    monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
-    monkeypatch.setattr(server, "_demo_health", lambda *a, **k: None)
+    monkeypatch.setattr(strategy_routes, "_experiment_block", lambda *a: None)
+    monkeypatch.setattr(strategy_routes, "_demo_health", lambda *a, **k: None)
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(row))
@@ -510,7 +511,7 @@ def test_strategies_figures_come_from_count_not_the_page(monkeypatch):
     monkeypatch.setattr(server.repo, "count_strategies",
                         lambda cur, uid, d, m, *a, **k: {"passed": 600, "failed": 400, "rejected": 233, "total": 1233})
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": i} for i in range(50)])
-    monkeypatch.setattr(server, "_strategy_card", lambda s: s)
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: s)
     out = server.list_strategies(ctx(query={}))
     assert out["counts"]["total"] == 1233 and len(out["strategies"]) == 50
     # Default "Kept" view hides rejected/void, so matched = total - (failed + rejected) = 600.
@@ -524,7 +525,7 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 3, "total": 3})
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [
         {"id": 1, "deployed": True}, {"id": 2, "deployed": False}, {"id": 3, "deployed": True}])
-    monkeypatch.setattr(server, "_strategy_card", lambda s: dict(s))
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: dict(s))
     deps = [{"strategy_id": 1, "mode": "paper", "realized_pnl": 1.004, "closed_trades": 3, "open_positions": 1},
             {"strategy_id": 1, "mode": "demo", "realized_pnl": "-0.5", "closed_trades": 2, "open_positions": 0},
             {"strategy_id": 2, "mode": "paper", "realized_pnl": 9, "closed_trades": 9, "open_positions": 0}]
@@ -551,7 +552,7 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
 def test_strategies_list_skips_deployment_query_without_deployed_cards(monkeypatch):
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 1, "total": 1})
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": 1, "deployed": False}])
-    monkeypatch.setattr(server, "_strategy_card", lambda s: dict(s))
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: dict(s))
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: pytest.fail("no deployed card, no query"))
     assert "real" not in server.list_strategies(ctx(query={}))["strategies"][0]
 
@@ -565,7 +566,7 @@ def test_strategies_page_param_maps_to_offset(monkeypatch):
         return []
 
     monkeypatch.setattr(server.repo, "list_strategies", fake_list)
-    monkeypatch.setattr(server, "_strategy_card", lambda s: s)
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: s)
     out = server.list_strategies(ctx(query={"page": "2"}))
     assert seen == {"limit": 50, "offset": 100}
     assert out["page"] == 2 and out["per"] == 50 and out["pages"] == 3
@@ -577,7 +578,7 @@ def test_strategies_search_and_deployed_thread_to_repo(monkeypatch):
                         lambda cur, uid, d, m, q=None, deployed=False: seen.update(cq=q, cdep=deployed) or {"total": 0})
     monkeypatch.setattr(server.repo, "list_strategies",
                         lambda *a, q=None, deployed=False, **k: seen.update(lq=q, ldep=deployed) or [])
-    monkeypatch.setattr(server, "_strategy_card", lambda s: s)
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: s)
     server.list_strategies(ctx(query={"q": "  tails  ", "deployed": "1"}))
     assert seen["lq"] == "tails" and seen["cq"] == "tails"  # trimmed
     assert seen["ldep"] is True and seen["cdep"] is True
@@ -601,7 +602,7 @@ def test_mark_fields_unrealized_pnl():
 def test_strategies_bad_page_defaults_to_zero(monkeypatch):
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"total": 0})
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [])
-    monkeypatch.setattr(server, "_strategy_card", lambda s: s)
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: s)
     out = server.list_strategies(ctx(query={"page": "not-a-number"}))
     assert out["page"] == 0 and out["matched"] == 0 and out["pages"] == 0 and out["strategies"] == []
 
@@ -658,7 +659,7 @@ def test_admin_waitlist_approve_and_errors(monkeypatch):
 
 
 def test_delete_strategy_blocks_when_deployed(monkeypatch):
-    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "status": "passed"})
+    monkeypatch.setattr(strategy_routes, "_owned_strategy", lambda c: {"id": 5, "status": "passed"})
     monkeypatch.setattr(server.repo, "delete_strategy", lambda cur, uid, sid: True)
     # deployed -> refused
     monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid, include_stopped=False: [{"strategy_id": 5}])
@@ -718,7 +719,7 @@ def test_dig_deeper_is_rate_limited(monkeypatch):
 
 def test_share_strategy_copies_and_notifies(monkeypatch):
     calls = {}
-    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "title": "Tail fade"})
+    monkeypatch.setattr(strategy_routes, "_owned_strategy", lambda c: {"id": 5, "title": "Tail fade"})
     monkeypatch.setattr(server.repo, "user_by_email", lambda cur, e: {"id": 2, "name": "Bob", "email": e})
     monkeypatch.setattr(server.repo, "share_strategy", lambda cur, src, frm, to: (calls.__setitem__("share", (src, frm, to)), 99)[1])
     monkeypatch.setattr(server.repo, "get_user", lambda cur, uid: {"name": "Alice"})
@@ -729,7 +730,7 @@ def test_share_strategy_copies_and_notifies(monkeypatch):
 
 
 def test_share_strategy_rejects_unknown_self_and_bad_email(monkeypatch):
-    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "title": "X"})
+    monkeypatch.setattr(strategy_routes, "_owned_strategy", lambda c: {"id": 5, "title": "X"})
     with pytest.raises(server.ApiError, match="email your friend"):
         server.share_strategy(ctx({"email": "notanemail"}))
     monkeypatch.setattr(server.repo, "user_by_email", lambda cur, e: None)
@@ -742,7 +743,7 @@ def test_share_strategy_rejects_unknown_self_and_bad_email(monkeypatch):
 
 def test_share_strategy_idempotent(monkeypatch):
     notified = []
-    monkeypatch.setattr(server, "_owned_strategy", lambda c: {"id": 5, "title": "X"})
+    monkeypatch.setattr(strategy_routes, "_owned_strategy", lambda c: {"id": 5, "title": "X"})
     monkeypatch.setattr(server.repo, "user_by_email", lambda cur, e: {"id": 2, "name": "Bob"})
     monkeypatch.setattr(server.repo, "share_strategy", lambda *a: None)  # recipient already has it
     monkeypatch.setattr(server.repo, "add_notification", lambda *a, **k: notified.append(1))
