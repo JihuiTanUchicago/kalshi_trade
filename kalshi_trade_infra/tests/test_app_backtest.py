@@ -437,6 +437,16 @@ def test_hourly_weather_series_can_pool_with_each_other_but_not_with_1min_sports
     assert specmod.max_pool(markets.MARKETS["btc15m"]) == specmod.MAX_POOL_MARKETS == 3
 
 
+def test_pool_cap_counts_extra_markets_after_dropping_the_primary_and_duplicates():
+    """Run 3271 (doge15m) lost a pooled idea to "pool must be a list of 1..3": listing the spec's
+    own market (or a duplicate) in the pool counted against the cap of 3 EXTRA markets."""
+    import pytest
+    s = specmod.validate({"market": "xrp15m", "pool": ["btc15m", "eth15m", "sol15m", "xrp15m", "eth15m"]})
+    assert s["pool"] == ["btc15m", "eth15m", "sol15m"]
+    with pytest.raises(specmod.SpecError, match="at most 3 extra markets besides xrp15m; got 4"):
+        specmod.validate({"market": "xrp15m", "pool": ["btc15m", "eth15m", "sol15m", "doge15m"]})
+
+
 def test_frame_series_reach_each_frame_only_once_known():
     """Weather-station readings are joined per frame point-in-time: a frame before a reading is
     known lacks the feature, and every later frame carries the newest known value."""
