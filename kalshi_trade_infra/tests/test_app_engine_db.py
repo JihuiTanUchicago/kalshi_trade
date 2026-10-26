@@ -941,3 +941,22 @@ def test_last_autopilot_action_looks_back_a_bounded_window_of_chat(conn, user, m
     assert repo.last_autopilot_action(cur, uid)["text"].startswith("Kill switch")  # 21 rows back: inside
     monkeypatch.setattr(chat_repository, "LAST_ACTION_WINDOW", 20)
     assert repo.last_autopilot_action(cur, uid) is None  # outside the window
+
+
+def test_chat_lines_name_the_book_a_proposal_would_change(conn, user):
+    """The agent panel says whether Approve touches real money: a proposal's chat line carries its
+    deployment's book; a line with no deployment (a risk change, plain chat) carries none."""
+    from app import repository as repo
+
+    cur = conn.cursor()
+    dep = _deployment(conn, user)
+    cur.execute("UPDATE app_deployments SET mode='live' WHERE id=%s", (dep["id"],))
+    pause = repo.create_proposal(cur, user["id"], "pause", "Drawdown.", dep["id"], None, "pending")
+    risk = repo.create_proposal(cur, user["id"], "set_risk", "Tighter.", None, None, "pending",
+                                payload={"max_open_positions": 2})
+    repo.add_chat(cur, user["id"], "system", "Proposed to pause T.", pause)
+    repo.add_chat(cur, user["id"], "system", "Proposed a risk-control change.", risk)
+    repo.add_chat(cur, user["id"], "user", "Why?")
+    lines = repo.chat_messages(cur, user["id"])[-3:]
+    assert [(m["proposal_kind"], m["deployment_mode"]) for m in lines] == [
+        ("pause", "live"), ("set_risk", None), (None, None)]

@@ -1624,6 +1624,10 @@ body.landing-body .apf { display: none; }
 .apf-x:hover { color: var(--ink); }
 .apf-x svg { width: 18px; height: 18px; }
 .apf-top { flex: none; padding: 14px 16px; border-bottom: 1px solid var(--rule); background: var(--stock); }
+/* At a laptop's height the controls took the whole panel: the feed was left one line (74px) tall and the
+   composer ran off the bottom. The controls give way and scroll on their own; the feed keeps its room. */
+@media (min-width: 601px) { .apf.open .apf-top { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .apf.open .apf-session { min-height: min(320px, 45vh); } }
 .apf-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 0; border: 1px solid var(--rule); background: var(--rule); }
 .apf-stats[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }  /* paper-only: no live loss budget */
 .apf-stats[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -1675,6 +1679,15 @@ body.landing-body .apf { display: none; }
 .apf-act .say-title { flex: 1 1 auto; min-width: 0; }
 .apf-act .hx-stamp { margin-left: auto; }
 .apf-act .proposal { margin-top: 9px; }
+.apf-act .apf-ask { margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink); }
+.apf-act .apf-ask.live { color: var(--signal); font-weight: 600; }
+.apf-err { grid-column: 1 / -1; margin: 0; font-size: 13px; line-height: 1.45; color: var(--signal); }
+.apf-err[hidden] { display: none; }
+/* A markdown table in the agent's answer: its own sideways scroll, so a wide one never widens the panel. */
+.md-table { max-width: 100%; overflow-x: auto; margin: 4px 0 8px; }
+.md-table table { border-collapse: collapse; font-size: 12.5px; line-height: 1.45; }
+.md-table th, .md-table td { border: 1px solid var(--rule); padding: 4px 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: normal; word-break: normal; min-width: 7ch; }
+.md-table th { font-weight: 600; color: var(--ink); background: var(--stock); text-transform: none; letter-spacing: 0; }
 .apf-you .say-kind { color: var(--ink); }
 .apf-pulse-row { flex: none; }
 .apf-idle-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--rule-2); }

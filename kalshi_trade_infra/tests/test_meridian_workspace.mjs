@@ -4329,3 +4329,83 @@ test('Settings email switch saves off and on, and a failed save puts the switch 
   assert.match(f.root.querySelector('#email-state').textContent, /^On\./);
   assert.match(f.root.querySelector('#email-flash').innerHTML, /Synthetic preference outage/);
 });
+
+// The agent's answers often carry a table: it renders as one (cells escaped, in a box that scrolls
+// sideways on a phone), and a half-streamed one with no |---| rule yet stays literal text.
+test('feed markdown renders a table and leaves an unfinished one literal', () => {
+  const f = frontend();
+  const table = f.feedMd('Here.\n\n| Strategy | Book |\n|---|:---:|\n| <b>BTC</b> fade | **paper** |\n| ETH | demo |\nAfter');
+  assert.match(table, /<div class="md-table"><table><thead><tr><th>Strategy<\/th><th>Book<\/th><\/tr><\/thead><tbody><tr><td>&lt;b&gt;BTC&lt;\/b&gt; fade<\/td><td><b>paper<\/b><\/td><\/tr><tr><td>ETH<\/td><td>demo<\/td><\/tr><\/tbody><\/table><\/div><p>After<\/p>/);
+  assert.doesNotMatch(f.feedMd('| Strategy | Book |'), /<table/);
+});
+
+// The panel's chat, opened, with a scripted server. `chat` answers each feed read.
+function agentPanel(fetchImpl, chat) {
+  const f = frontend({storage: new Map([['tau_ap_open', '1']]), fetchImpl: (path, options) => {
+    if (path.startsWith('/api/chat?')) return response({messages: chat(), agent_busy: false});
+    if (path === '/api/models') return response({models: [], default: ''});
+    return fetchImpl(path, options);
+  }});
+  f.S.me = {...f.S.me, user: {...(f.S.me && f.S.me.user), autopilot: false}};
+  const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+  f.renderAutopilot(box, null);
+  return {f, box};
+}
+
+test('the agent chat sends a message once while it is in flight, and says a failed send above the composer', async () => {
+  const pending = deferred(); let posts = 0, refuse = false;
+  const {box} = agentPanel((path, options) => {
+    assert.equal(path, '/api/chat'); assert.equal(options.method, 'POST'); posts++;
+    return refuse ? response({error: "That's a lot of messages this hour. Give the agent a minute."}, 429) : pending.promise;
+  }, () => []);
+  await flush();
+  const form = box.querySelector('#apf-composer'), ta = box.querySelector('#apf-msg'), err = box.querySelector('#apf-err');
+  ta.value = 'What is going on?';
+  form.onsubmit({preventDefault() {}}); form.onsubmit({preventDefault() {}}); form.onsubmit({preventDefault() {}});
+  await flush();
+  assert.equal(posts, 1);  // Enter pressed again during a slow send no longer sends it again
+  pending.resolve(response({id: 7})); await flush(); await flush();
+  assert.equal(ta.value, ''); assert.equal(err.hidden, true);
+  refuse = true; ta.value = 'Again';
+  await form.onsubmit({preventDefault() {}}); await flush();
+  assert.equal(posts, 2);
+  assert.equal(err.hidden, false);  // in the panel, by the composer, not at the top of the page under it
+  assert.equal(err.textContent, "That's a lot of messages this hour. Give the agent a minute.");
+  assert.equal(ta.value, 'Again');  // kept, to send again
+});
+
+test('a proposal says what Approve does and in which book, and one decision locks both buttons', async () => {
+  const at = '2026-10-17T10:00:00Z';
+  let lines = [
+    {id: 1, role: 'system', content: 'Proposed to pause BTC daily close range.', created_at: at, proposal_id: 4, proposal_kind: 'pause', proposal_status: 'pending', deployment_mode: 'live'},
+    {id: 2, role: 'system', content: 'Proposed deploying ETH drift on paper.', created_at: at, proposal_id: 5, proposal_kind: 'deploy', proposal_status: 'pending'},
+    {id: 3, role: 'system', content: 'Autopilot paused BTC 15m fade.', created_at: at, proposal_id: 6, proposal_kind: 'pause', proposal_status: 'applied', deployment_mode: 'paper'},
+    {id: 4, role: 'system', content: "The agent hit an error and didn't answer. Send your message again, or try in a minute.", created_at: at},
+  ];
+  const pending = deferred(), decided = [];
+  const {f, box} = agentPanel((path) => { decided.push(path); return path === '/api/proposals/9/approve' ? response({review_required: true, review_url: '/funds?perps_proposal=9'}) : pending.promise; }, () => lines);
+  await flush(); await flush();
+  const msgs = box.querySelector('#apf-messages'), [live, paper, done, failed] = msgs.children.filter(li => li.classes.has('apf-act'));
+  assert.match(live.innerHTML, /Asks to pause/);
+  assert.match(live.querySelector('.apf-ask').textContent, /pauses this strategy, which runs LIVE, with real money in your Kalshi account/);
+  assert.ok(live.querySelector('.apf-ask').classes.has('live'));
+  assert.match(paper.innerHTML, /Asks to put on paper/); assert.match(paper.innerHTML, /Nothing trades real money/);
+  assert.match(done.innerHTML, /Paused/); assert.equal(done.querySelector('.apf-ask'), null); assert.equal(done.querySelector('[data-decide]'), null);
+  assert.match(failed.innerHTML, /No answer/); assert.doesNotMatch(failed.innerHTML, /Reviewed/);
+  const click = msgs.listeners.get('click');
+  const [approve, decline] = live.querySelectorAll('button');
+  const sent = click({target: approve}); await flush();
+  assert.equal(approve.disabled, true); assert.equal(decline.disabled, true);  // the other one can't be sent too
+  await click({target: decline});
+  assert.deepEqual(decided, ['/api/proposals/4/approve']);
+  lines = lines.map(m => m.id === 1 ? {...m, proposal_status: 'applied'} : m);
+  pending.resolve(response({ok: true})); await sent; await flush();
+  assert.equal(msgs.children.filter(li => li.classes.has('apf-act'))[0].querySelector('[data-decide]'), null);
+  // A Bitcoin perps live order still goes to its exact-ticket review on Approve.
+  lines = [{id: 9, role: 'system', content: 'Proposed a perps order.', created_at: at, proposal_id: 9, proposal_kind: 'kalshi_perps_live', proposal_status: 'pending'}];
+  await f.apLoadChat(box, true);
+  const review = msgs.querySelector('[data-decide]');
+  assert.equal(review.textContent, 'Review live order');
+  await click({target: review}); await flush();
+  assert.ok(f.navigations.includes('/funds?perps_proposal=9'), f.navigations.join());
+});
