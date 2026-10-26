@@ -2,6 +2,7 @@
 // - the composer says, before anything is posted, who reads a post and what an attached strategy and
 //   Share my P&L show (its rules never; paper and live totals, each named);
 // - Share my P&L asks once before it posts real-money figures for everyone, and a second press posts;
+// - the author can delete their own post (asks once); no one else sees Delete on it;
 // - a signed-out link to a post (/community#post-<id>, from the bell or an email) carries the post
 //   through sign-in as ?post=<id>, and the feed opens that post from either form.
 import assert from 'node:assert/strict';
@@ -49,6 +50,29 @@ export function communityCases({name, frontend}) {
     assert.equal(posted[0].path, '/api/community');
     assert.equal(JSON.parse(posted[0].options.body).kind, 'pnl');
     assert.equal(share.innerHTML, label, 'the button reads Share my P&L again after it posts');
+  });
+
+  test(`${name}: the author can delete their own post, after a second press, and the feed reads again without it`, async () => {
+    let feed = [post(12, {mine: true}), post(11)];
+    const f = frontend({fetchImpl: (path, options) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path === '/api/community/12/delete') { feed = feed.filter(p => p.id !== 12); return response({ok: true}); }
+      if (path.startsWith('/api/community')) return response({posts: feed});
+      return response({});
+    }});
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    assert.equal(f.root.querySelector('.post[data-id="11"] [data-act="delete"]'), null, 'no Delete on another trader’s post');
+    const del = f.root.querySelector('.post[data-id="12"] [data-act="delete"]');
+    assert.match(del.textContent, /Delete/);
+    const click = () => f.root.querySelector('#feed').listeners.get('click')({target: del});
+    await click(); await settle();
+    assert.equal(sent(f).length, 0, 'the first press only asks');
+    assert.match(del.textContent, /Confirm delete/);
+    f.elapse(500); await click(); await settle();
+    assert.deepEqual(sent(f).map(({path}) => path), ['/api/community/12/delete']);
+    assert.equal(f.root.querySelector('.post[data-id="12"]'), null);
+    assert.ok(f.root.querySelector('.post[data-id="11"]'));
   });
 
   test(`${name}: a signed-out link to a post signs in back to that post, and the feed opens it from ?post=`, async () => {

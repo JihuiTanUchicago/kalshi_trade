@@ -195,6 +195,14 @@ def edit_community_post(ctx: Ctx):
     return {"ok": True}
 
 
+def delete_community_post(ctx: Ctx):
+    """The author takes their post down, with its replies and photo. A notice that still links it
+    opens the feed saying the post is gone."""
+    if not repo.delete_post(ctx.cur, _int_param(ctx), ctx.uid):
+        raise ApiError(403, "You can only delete your own posts.")
+    return {"ok": True}
+
+
 def community_image(ctx: Ctx):
     img = repo.get_image(ctx.cur, _int_param(ctx))
     if not img:

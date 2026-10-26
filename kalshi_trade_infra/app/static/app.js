@@ -4512,7 +4512,7 @@
         <div class="reactions">${reactionChips(p.reactions)}</div>
         <div class="post-actions">
           <button class="thread-link" data-act="comments">${ICON.comment}<span>${replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : 'Reply'}</span></button>
-          ${p.mine ? `<button class="thread-link" data-act="edit">${ICON.pencil}<span>Edit</span></button>` : ''}
+          ${p.mine ? `<button class="thread-link" data-act="edit">${ICON.pencil}<span>Edit</span></button><button class="thread-link" data-act="delete"><span>Delete</span></button>` : ''}
         </div>
         <div class="comments" hidden></div>
       </div>
@@ -4627,6 +4627,14 @@
       if (chip) { const art = chip.closest('.post'); react(art.dataset.id, art, chip.dataset.emoji); return; }
       const act = e.target.closest('[data-act]'); if (!act) return;
       const art = act.closest('.post'); const pid = art.dataset.id;
+      // Delete asks once, then takes the post down with its replies; the feed reads again without it.
+      if (act.dataset.act === 'delete') {
+        armed(act, 'Confirm delete', async () => {
+          try { await api(`/api/community/${pid}/delete`, {}); art.remove(); bodies.delete(pid); lastFeed = ''; await refreshed(load(true)); }
+          catch (err) { alert0(err.message); }
+        });
+        return;
+      }
       if (act.dataset.act === 'edit') {
         const main = art.querySelector('.post-main'); const bodyEl = main.querySelector('.post-body');
         if (main.querySelector('.edit-form')) return;

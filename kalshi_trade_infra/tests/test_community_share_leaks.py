@@ -92,3 +92,23 @@ def test_an_older_stored_snapshot_with_more_in_it_is_cut_to_the_card(share):
     snap = _as_read(stored, mine=False)["snapshot"]
     assert snap == {"kind": "strategy", "title": "Edge via the AI model", "market": "btc15m", "status": "passed", "pnl": 1.0}
     assert _as_read({"body": "x", "kind": "note", "snapshot": {"kind": "secret", "api_key": SECRET}}, mine=True)["snapshot"] is None
+
+
+# -- a share can be taken down by its author, and only by them -----------------------------------------
+
+def test_the_author_can_take_a_post_down_and_no_one_else_can(monkeypatch):
+    from app import server
+    from app.web.http import ApiError
+
+    calls = []
+    monkeypatch.setattr(community.repo, "delete_post", lambda cur, pid, uid: calls.append((pid, uid)) or uid == 7)
+
+    def ctx(uid):
+        return SimpleNamespace(cur=None, uid=uid, body={}, query={}, params=("77",))
+    assert community.delete_community_post(ctx(7)) == {"ok": True}
+    with pytest.raises(ApiError) as refused:
+        community.delete_community_post(ctx(8))
+    assert refused.value.status == 403 and "your own posts" in str(refused.value)
+    assert calls == [(77, 7), (77, 8)]
+    rows = [r for r in server.ROUTES if r[1].pattern == r"^/api/community/(\d+)/delete$"]
+    assert [(r[0], r[2], r[3]) for r in rows] == [("POST", server.delete_community_post, True)]  # signed in, a POST
