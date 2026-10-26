@@ -2285,15 +2285,21 @@
   const loopFamily = (f) => LOOP_FAMILY[f] || (f ? f.charAt(0).toUpperCase() + f.slice(1).replace(/-/g, ' ') : '');
   const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', spec_invalid: 'spec rejected', missing_context: 'needs data we lack', thin_sample: 'too few examples', no_signal: 'no signal', wrong_fit: 'wrong for this market', other: 'other' };
   const loopRate = (r) => (r == null ? '—' : Math.round(r * 100) + '%');
-  const rsiLoop = { board: null, at: 0, inflight: false };
+  const rsiLoop = { board: null, at: 0, req: null };
+  // The board's read, at most once a minute and one at a time. The Research page starts it as it opens,
+  // beside the session list: asked from the list's first paint, it waited a whole round trip for the list.
+  function rsiLoopRead() {
+    if (!rsiLoop.req && Date.now() - rsiLoop.at > 60000) {
+      rsiLoop.req = api('/api/research/scoreboard?days=14', undefined, { keep: true })
+        .then((b) => { rsiLoop.board = b; }, () => { /* keep the last board; the old card still renders */ })
+        .finally(() => { rsiLoop.at = Date.now(); rsiLoop.req = null; });
+    }
+    return rsiLoop.req;
+  }
   async function renderResearchLoop(host, pol, tried) {
     if (!host) return;
-    if (!rsiLoop.inflight && Date.now() - rsiLoop.at > 60000) {
-      rsiLoop.inflight = true;
-      try { rsiLoop.board = await api('/api/research/scoreboard?days=14', undefined, { keep: true }); rsiLoop.at = Date.now(); }
-      catch (e) { rsiLoop.at = Date.now(); /* keep the last board; the old card still renders */ }
-      finally { rsiLoop.inflight = false; }
-    }
+    const reading = rsiLoopRead();
+    if (reading) await reading;
     const b = rsiLoop.board;
     if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }
     const t = b.total, tr = b.trend;
@@ -2445,6 +2451,7 @@
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
+    rsiLoopRead();  // the loop card's board, read beside the session list below
     // /api/me carries the model list, so the page's own reads below don't wait a round trip on it.
     const mdl = (me && me.models) || await api('/api/models').catch(() => ({ models: [], default: '' }));
     // Arriving with ?market= (Explore's "Research <market>") for a market the picker doesn't offer right now
