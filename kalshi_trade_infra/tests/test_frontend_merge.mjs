@@ -9,6 +9,7 @@ import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
+import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 
@@ -192,6 +193,7 @@ stopReasonCases({name: 'Tau', frontend});
 trustGlitchCases({name: 'Tau', frontend});
 bellCases({name: 'Tau', frontend});
 researchPollCases({name: 'Tau', frontend});
+runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
@@ -2250,7 +2252,7 @@ test('Tau: a session that ran out of credits says so and offers Add credits, not
   assert.match(f.root.querySelector('#runnext').innerHTML, /credits ran out\. <a href="\/billing">Add credits<\/a>.*Passed: <a href="\/strategies\/42">Late<\/a>\. Open it to deploy it on paper\./);
   // Without the step it is an ordinary finish.
   f = await RUN_AT({status: 'succeeded'}, [], [{id: 43, title: 'Fade', status: 'failed'}]);
-  assert.match(f.root.querySelector('#runfigs').innerHTML, /Done/);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Finished/);
   assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, /billing/);
 });
 
@@ -2259,14 +2261,24 @@ test('Tau: a running session counts its ideas and passes live, and a set-size on
   // The run's counters lag a round behind its log; "Passed …" sat beside a passed idea.
   let f = await RUN_AT({status: 'running', run_forever: 1, hypotheses_tried: 3, strategies_passed: 0}, [1, 2, 3, 4, 5].map(hyp), [{id: 42, title: 'Late', status: 'passed'}, {id: 43, title: 'Fade', status: 'failed'}]);
   let figs = f.root.querySelector('#runfigs').innerHTML;
-  assert.match(figs, /Hypotheses<\/dt><dd><span class="fig ">5</); assert.match(figs, /Passed<\/dt><dd><span class="fig ">1</);
+  assert.match(figs, /Tested<\/dt><dd><span class="fig ">5</); assert.match(figs, /Passed<\/dt><dd><span class="fig ">1</);
   assert.doesNotMatch(figs, /…|of up to/);
   f = await RUN_AT({status: 'running', max_hypotheses: 10, hypotheses_tried: 2}, [hyp(1)], []);
   figs = f.root.querySelector('#runfigs').innerHTML;
-  assert.match(figs, /Hypotheses<\/dt><dd><span class="fig ">2<.*of up to 10/s); assert.match(figs, /Passed<\/dt><dd><span class="fig ">0</);
+  assert.match(figs, /Tested<\/dt><dd><span class="fig ">2<.*of up to 10/s); assert.match(figs, /Passed<\/dt><dd><span class="fig ">0</);
   // A long session's time reads in hours, not "299 min".
   f = await RUN_AT({status: 'succeeded', hypotheses_tried: 4, strategies_passed: 0, started_at: '2026-10-25T10:00:00Z', finished_at: '2026-10-25T14:59:00Z'});
   assert.match(f.root.querySelector('#runfigs').innerHTML, />5 hr</);
+});
+
+test('Tau: a running session quiet for hours reads its age in minutes and hours, not raw seconds', async () => {
+  const ago = (s) => new Date(Date.now() - s * 1000).toISOString();
+  for (const [secs, said] of [[3 * 3600 + 40, 'Last step 3 hr ago ·\u00a0still working'], [5 * 60 + 2, 'Last step 5 min ago ·\u00a0still working'], [20, 'active 20s ago']]) {
+    const f = await RUN_AT({status: 'running', started_at: ago(secs + 60)}, [{id: 1, kind: 'step', message: 'Loading data…', created_at: ago(secs)}]);
+    const said0 = f.root.querySelector('#rsiobs [data-livetext]').textContent;
+    assert.equal(said0, said);
+    assert.doesNotMatch(said0, /\d{3,}s|likely a long model call/);
+  }
 });
 
 test('Tau: a stopped session leaves no idea spinning on "Testing", and a provider failure is said once', async () => {
