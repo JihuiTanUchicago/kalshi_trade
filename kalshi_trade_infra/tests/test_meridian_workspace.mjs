@@ -8,6 +8,7 @@ import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
+import {bellCases} from './bell_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 
@@ -213,6 +214,7 @@ perpsFrontendCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend
 deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests, source});
 stopReasonCases({name: 'Meridian', frontend});
 trustGlitchCases({name: 'Meridian', frontend});
+bellCases({name: 'Meridian', frontend});
 researchPollCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},

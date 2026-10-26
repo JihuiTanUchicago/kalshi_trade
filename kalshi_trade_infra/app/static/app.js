@@ -803,7 +803,15 @@
   // they can see what a normal user sees. Default: admin view on.
   const isAdmin = () => !!(S.me && S.me.is_admin);
   const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
-  let bellReq = null, bellReqAt = 0;
+  let bellReq = null, bellReqAt = 0, bellFresh = null;
+  // The autopilot panel's status read (every 20s, on every signed-in page) keeps the bell current too:
+  // at most once a minute it re-reads the list, with no timer of its own.
+  const BELL_EVERY_MS = 60000;
+  function bellTick() {
+    if (!bellFresh || Date.now() - bellReqAt < BELL_EVERY_MS) return;
+    bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now();
+    bellReq.then((d) => bellFresh && bellFresh(d)).catch(() => {});  // best-effort, like the first read
+  }
   async function wireBell() {
     const wrap = root.querySelector('.bell-wrap');
     if (!wrap) return;
@@ -819,22 +827,32 @@
       const c = head.querySelector('.bell-new'); if (c) c.remove();
     };
     const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
+    // A notice the server grouped (the same kind about the same page, in a row) says how many more it
+    // stands for. One without a page to open is plain text, not a link to nowhere.
+    const item = (n) => {
+      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.more ? `<span class="notif-more">and ${n.more} more like this</span>` : ''}${bellTime(n.created_at)}`;
+      return /^\/(?!\/)/.test(n.link || '') ? `<a class="notif ${n.read ? '' : 'unread'}" href="${esc(n.link)}">${inner}</a>` : `<p class="notif ${n.read ? '' : 'unread'}">${inner}</p>`;
+    };
     const paint = (d) => {
       dot.hidden = !d.unread;
       trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
       head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${d.unread} new</span>` : '');
-      list.innerHTML = d.items.length
-        ? d.items.map((n) => `<a class="notif ${n.read ? '' : 'unread'}" href="${n.link || '#'}">${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${bellTime(n.created_at)}</a>`).join('')
-        : '<p class="bell-empty">No notifications yet.</p>';
+      list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet.</p>';
     };
     let data = { unread: 0, items: [] };
     // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
     if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
     try { data = await bellReq; paint(data); } catch (e) { return; }  // bell is best-effort
+    // Autopilot pauses or readies a strategy while the page sits open: the dot shows it within a minute,
+    // without a reload (bellTick). An open list is left as the reader sees it.
+    bellFresh = (d) => { if (menu.hidden) { data = d; paint(d); } };
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
+      // Focus goes into the list (its first notice, or the list itself when it is empty), so Tab and a
+      // screen reader carry on from what just opened; Esc brings it back to the bell.
+      (list.querySelector('a.notif') || menu).focus({ preventScroll: true });
       if (data.unread) {
         // Read from here on, also for a repaint that reuses this reply; the marks clear on close.
         data.unread = 0; data.items.forEach((n) => { n.read = true; }); dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
@@ -846,6 +864,8 @@
     // Tabbing past the last notification left the list open behind the page, where Esc (bound here) no
     // longer reached it: focus leaving the bell closes the list, as a click outside already does.
     wrap.addEventListener('focusout', (e) => { if (!menu.hidden && !wrap.contains(e.relatedTarget)) close(); });
+    // Opening a notice closes the list first, so its click-outside listener doesn't outlive the page.
+    list.addEventListener('click', (e) => { if (e.target.closest('a.notif')) close(); });
   }
 
   function shell(active, board, main) {
@@ -860,7 +880,7 @@
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <div class="wrap">
@@ -4652,7 +4672,7 @@
       // The status read is the switch's truth (another tab or device may have flipped it); copy that
       // reads S.me.user.autopilot, like the empty paper track record, follows it through syncApCopy.
       if (S.me && S.me.user && typeof S.ap.autopilot === 'boolean') S.me.user.autopilot = S.ap.autopilot;
-      renderAutopilot(box, S.ap); paintDashAp();
+      renderAutopilot(box, S.ap); paintDashAp(); bellTick();
     }
     catch (e) { S.apFailing = true; apPaintStale(); return false; }  // best-effort: never block the app
     return true;
