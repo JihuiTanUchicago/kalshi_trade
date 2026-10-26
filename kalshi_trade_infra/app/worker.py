@@ -192,6 +192,44 @@ def enqueue_review_on_switch_on(cur, user_id: int) -> bool:
     return False
 
 
+# Research floor: an autopilot user with credit always has research going. Research stalled twice on
+# 2026-10-26 (06:03-07:58Z, 15:27-16:45Z) because reviews kept deciding not to start any (an
+# unsupported market, then every allowed market on cooldown), and each new picker rule can do that
+# again. When nothing has started for this long, start a delegated run without a market: the
+# specialist picks inside the focus and scope, rotating to the market researched longest ago. Same
+# caps as act() (active, daily, global) and the same billing bar. 0 disables it.
+RESEARCH_FLOOR_MINUTES = float(os.getenv("APP_RESEARCH_FLOOR_MINUTES", "30"))
+RESEARCH_FLOOR_IDEA = ("Research floor: no research started for a while, so pick the most promising angle not "
+                       "yet tested on the chosen market, building on the playbook and earlier results.")
+
+
+def research_floor_due(cur, uid: int) -> bool:
+    if RESEARCH_FLOOR_MINUTES <= 0 or not billing.is_ready(cur, uid):
+        return False
+    if repo.count_runs(cur, uid, "research", active_only=True):
+        return False
+    now = repo.now_utc()
+    if agent.MAX_RESEARCH_PER_DAY and repo.count_runs(
+            cur, uid, "research", since=now - timedelta(days=1)) >= agent.MAX_RESEARCH_PER_DAY:
+        return False
+    if agent.MAX_GLOBAL_ACTIVE_RESEARCH and repo.count_active_research(cur) >= agent.MAX_GLOBAL_ACTIVE_RESEARCH:
+        return False
+    last = repo.list_runs(cur, uid, limit=1)
+    return not last or now - last[0]["created_at"] >= timedelta(minutes=RESEARCH_FLOOR_MINUTES)
+
+
+def start_research_floor(cur) -> list:
+    """Start one delegated research run for each autopilot user the floor finds idle; returns their ids."""
+    started = []
+    for uid in repo.autopilot_user_ids(cur):
+        if research_floor_due(cur, uid):
+            user = repo.get_user(cur, uid) or {}
+            repo.create_run(cur, uid, "research", None, None, RESEARCH_FLOOR_IDEA, brief=True,
+                            model=user.get("autopilot_model"))
+            started.append(uid)
+    return started
+
+
 def autopilot_scheduler() -> None:
     """The autopilot heartbeat — now a FALLBACK floor, not the driver. The event hook
     (enqueue_review_after_research) keeps an active user moving continuously; this catches idle
@@ -208,6 +246,8 @@ def autopilot_scheduler() -> None:
                 for uid in due_autopilot_users(cur):
                     repo.create_run(cur, uid, "review", prompt="scheduled autopilot review")
                     print("[agents] scheduled autopilot review for user %s" % uid, flush=True)
+                for uid in start_research_floor(cur):
+                    print("[agents] research floor: started research for idle user %s" % uid, flush=True)
                 conn.commit()
             finally:
                 conn.close()
