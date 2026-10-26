@@ -3419,12 +3419,13 @@
   // ---------- strategies ----------
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
-    const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '', q: q.get('q') || '', deployed: q.get('deployed') === '1' ? '1' : '' };
+    const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '', q: q.get('q') || '', deployed: q.get('deployed') === '1' ? '1' : '', sort: q.get('sort') === 'best' ? 'best' : '' };
     shell('/strategies', `<div class="board-title strategy-heading"><h1 class="page">Strategies</h1><details class="strategy-summary"><summary><span id="strategy-passrate">Research results</span> ${ICON.chev}</summary><dl class="figures measure" id="sfigs"></dl></details></div>`, `
       <div class="section-head filters stratfilters">
         <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}"${v ? '' : ' title="Passed and backtest-only strategies"'} aria-pressed="${f.status === v}">${l}</button>`).join('')}
           <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
         ${(() => { const by = {}; S.me.markets.forEach((m) => (by[m.category] || (by[m.category] = [])).push(m)); const cs = Object.keys(by).sort(catOrder); return `<label class="vh" for="strat-market">Market</label><select class="input strat-mkt" id="strat-market" aria-label="Filter by market"><option value="">All markets</option>${cs.map((c) => `<optgroup label="${esc(c)}">${by[c].map((m) => `<option value="${esc(m.key)}"${f.market === m.key ? ' selected' : ''}>${esc(marketShort(m.key))}</option>`).join('')}</optgroup>`).join('')}</select>`; })()}
+        <label class="vh" for="strat-sort">Sort</label><select class="input strat-mkt strat-sort" id="strat-sort" aria-label="Sort strategies">${[['', 'Newest first'], ['best', 'Best on unseen data']].map(([v, l]) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
         <div class="searchwrap"><input class="input" id="strat-q" type="search" placeholder="Search name or thesis…" value="${esc(f.q)}" aria-label="Search strategies"></div>
       </div>
       <div id="bulkbar" class="bulkbar" hidden></div>
@@ -3437,6 +3438,10 @@
     root.querySelectorAll('[data-f]').forEach((b) => { b.onclick = () => { f[b.dataset.f] = b.dataset.v; applyFilters(); }; });
     const marketSel = root.querySelector('#strat-market');
     if (marketSel) marketSel.onchange = () => { f.market = marketSel.value; applyFilters(); };
+    // "Best on unseen data" orders the whole list server-side (it is paged), and rides in the URL like
+    // the filters, so a reload or a shared link keeps it.
+    const sortSel = root.querySelector('#strat-sort');
+    if (sortSel) sortSel.onchange = () => { f.sort = sortSel.value === 'best' ? 'best' : ''; applyFilters(); };
     const depToggle = root.querySelector('[data-toggle="deployed"]');
     if (depToggle) depToggle.onclick = () => { f.deployed = f.deployed === '1' ? '' : '1'; applyFilters(); };
     const sq = root.querySelector('#strat-q');
@@ -3445,7 +3450,7 @@
     // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
     const CLABEL = { passed: 'Passed', 'backtest-only': 'Backtest only', failed: 'Void', rejected: 'Rejected' };
     const slipsEl = root.querySelector('#slips');
-    let sp = 0;
+    let sp = Math.max(0, (parseInt(q.get('page'), 10) || 1) - 1);
     const load = async () => {
       slipsEl.innerHTML = loading(240);
       const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== ''));
@@ -3457,6 +3462,8 @@
         slipsEl.querySelector('[data-retry]').onclick = () => load();
         return;
       }
+      // A remembered page past the end (the list shrank since) starts again at the first.
+      if (sp > 0 && d.matched && !(d.strategies || []).length) { sp = 0; history.replaceState(null, '', location.pathname + location.search.replace(/([?&])page=\d+&?/, '$1').replace(/[?&]$/, '')); return load(); }
       const counts = d.counts || {}, total = counts.total || 0, c = (st) => counts[st] || 0;
       root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed')) + fig(gl('Void on unseen data', 'void'), c('failed')) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
         fig('Pass rate', total ? pct(c('passed') / total, false) : '—');
@@ -3477,7 +3484,13 @@
       const anyPassed = list.some(bulkDeployable);
       slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed })).join(''), anyPassed)
         + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} ·\u00a0${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
-      slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { sp = +b.dataset.sp; load(); window.scrollTo({ top: 0, behavior: smooth() }); });
+      slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => {
+        sp = +b.dataset.sp;
+        const u = new URLSearchParams(location.search);
+        if (sp) u.set('page', sp + 1); else u.delete('page');
+        history.replaceState(null, '', '/strategies' + (u.toString() ? '?' + u.toString() : ''));
+        load(); window.scrollTo({ top: 0, behavior: smooth() });
+      });
       wireBulk();
     };
     // Multi-select deploy (paper only; live stays per-strategy behind the typed-LIVE gate).

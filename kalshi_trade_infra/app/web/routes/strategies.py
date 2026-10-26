@@ -110,8 +110,10 @@ def list_strategies(ctx: Ctx):
     ex = counts.get("examples") or {}
     shown_ex = ex.get(status, 0) if status else sum(n for s, n in ex.items() if s not in repo.NOISE_STATUSES)
     matched = (counts.get(status, 0) if status else counts["total"] - noise) + shown_ex
+    # "best": best unseen-data backtest P&L first, across every page (the list is paged server-side).
+    sort = "best" if q.get("sort") == "best" else None
     rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per,
-                                q=search, deployed=deployed, hide_noise=hide_noise)
+                                q=search, deployed=deployed, hide_noise=hide_noise, sort=sort)
     cards = [_strategy_card(s) for s in rows]
     _attach_real_records(ctx.cur, ctx.uid, cards)
     _attach_past_records(ctx.cur, ctx.uid, cards, [s["id"] for s in rows if s.get("removed_deps")])

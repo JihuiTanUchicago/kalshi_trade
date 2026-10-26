@@ -73,6 +73,10 @@ def _strategy_row(r: Dict) -> Dict:
 
 NOISE_STATUSES = ("rejected", "failed")  # the un-kept outcomes the default list view hides
 
+# A strategy's unseen-data backtest P&L, read from its stored result for the list's "best first" order.
+_UNSEEN_PNL_JSON = "JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl')"
+_UNSEEN_PNL = "CAST(JSON_UNQUOTE(%s) AS DECIMAL(16,4))" % _UNSEEN_PNL_JSON
+
 
 def _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise=False) -> tuple:
     """Shared WHERE clause for list/count so the headline figures and the page agree.
@@ -99,8 +103,10 @@ def _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_no
 def list_strategies(
     cur, user_id: int, direction: Optional[str] = None, status: Optional[str] = None, market: Optional[str] = None,
     run_id: Optional[int] = None, limit: int = 500, offset: int = 0, q: Optional[str] = None, deployed: bool = False,
-    hide_noise: bool = False,
+    hide_noise: bool = False, sort: Optional[str] = None,
 ) -> List[Dict]:
+    """The user's strategies, filtered as count_strategies counts them. `sort` "best" orders by the
+    unseen-data (out-of-sample) backtest P&L, best first; otherwise newest first, rejected last."""
     where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
                     s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
@@ -111,9 +117,14 @@ def list_strategies(
              FROM app_strategies s LEFT JOIN app_agent_runs r ON r.id=s.run_id
                   LEFT JOIN app_users su ON su.id=s.shared_from_user_id""" + where)
     params: List[Any] = [user_id] + fparams
-    # Non-rejected (passed/void) first, then newest: in a big run the passed finalists are
-    # found early (oldest ids), so a plain id-DESC fetch past the limit would drop them.
-    sql += " ORDER BY (s.status='rejected'), s.id DESC LIMIT %s OFFSET %s"
+    if sort == "best":
+        # Best on unseen data first: the out-of-sample backtest P&L the list's Unseen P&L column shows.
+        # One with no unseen test (rejected, tested only) goes last; ties and the rest newest first.
+        sql += " ORDER BY (%s IS NULL), %s DESC, s.id DESC LIMIT %%s OFFSET %%s" % (_UNSEEN_PNL_JSON, _UNSEEN_PNL)
+    else:
+        # Non-rejected (passed/void) first, then newest: in a big run the passed finalists are
+        # found early (oldest ids), so a plain id-DESC fetch past the limit would drop them.
+        sql += " ORDER BY (s.status='rejected'), s.id DESC LIMIT %s OFFSET %s"
     params.extend((limit, offset))
     cur.execute(sql, params)
     return [_strategy_row(r) for r in cur.fetchall()]

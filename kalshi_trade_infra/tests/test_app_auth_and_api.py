@@ -615,7 +615,8 @@ def test_strategies_page_param_maps_to_offset(monkeypatch):
     seen = {}
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 10, "total": 120})
 
-    def fake_list(cur, uid, direction=None, status=None, market=None, run_id=None, limit=500, offset=0, q=None, deployed=False, hide_noise=False):
+    def fake_list(cur, uid, direction=None, status=None, market=None, run_id=None, limit=500, offset=0, q=None, deployed=False, hide_noise=False,
+                  sort=None):
         seen.update(limit=limit, offset=offset)
         return []
 
@@ -624,6 +625,25 @@ def test_strategies_page_param_maps_to_offset(monkeypatch):
     out = server.list_strategies(ctx(query={"page": "2"}))
     assert seen == {"limit": 50, "offset": 100}
     assert out["page"] == 2 and out["per"] == 50 and out["pages"] == 3
+
+
+def test_strategies_sort_best_threads_to_repo_and_orders_by_unseen_pnl(monkeypatch):
+    # "Can I find my best strategy?": the list is paged server-side, so "best first" has to be the
+    # read's own order, not a sort of one page.
+    seen = []
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"total": 0})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, sort=None, **k: seen.append(sort) or [])
+    for query, want in (({"sort": "best"}, "best"), ({}, None), ({"sort": "DROP TABLE"}, None)):
+        server.list_strategies(ctx(query=query))
+        assert seen[-1] == want
+    from app.adapters.db import strategy_repository  # the read itself (repo's name is patched above)
+    cur = StratCur()
+    strategy_repository.list_strategies(cur, 1, sort="best", limit=50, offset=50)
+    assert ("ORDER BY (JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl') IS NULL), "
+            "CAST(JSON_UNQUOTE(JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl')) AS DECIMAL(16,4)) DESC, s.id DESC") in cur.sql
+    assert cur.params[-2:] == [50, 50]
+    strategy_repository.list_strategies(cur, 1)
+    assert "ORDER BY (s.status='rejected'), s.id DESC" in cur.sql  # the default order is unchanged
 
 
 def test_strategies_search_and_deployed_thread_to_repo(monkeypatch):

@@ -1849,7 +1849,7 @@ body.landing-body .apf { display: none; }
 .stratfilters .chip { border: 0; border-radius: 3px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; padding: 6px 8px; }
 .stratfilters .chip[aria-pressed="true"] { background: var(--stock-sunk); color: var(--ink); font-weight: 600; }
 .stratfilters .chips { gap: 2px; }
-.stratfilters .searchwrap { flex: 0 1 240px; margin-left: auto; }
+.stratfilters .searchwrap { flex: 0 1 220px; margin-left: auto; }  /* 220: chips, market, sort and search share one row at 1440 */
 .stratfilters .strat-mkt { flex-basis: 175px; max-width: 175px; }
 .t-strat .mk.on { padding: 0; border: 0; background: none; color: #365D3B; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .t-strat td.name a { text-decoration: none; }
