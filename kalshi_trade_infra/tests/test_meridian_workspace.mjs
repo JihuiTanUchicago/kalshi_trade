@@ -1814,7 +1814,7 @@ test('Research results keep every returned status and source value with escaped 
   assert.equal(results.hidden, false); assert.equal(results.querySelector('.section-count').textContent, '5');
   const rows = results.querySelectorAll('tbody tr'); assert.equal(rows.length, 5);
   assert.deepEqual(rows.map(row => row.querySelector('.act .mk').textContent), ['Passed', 'Void', 'Rejected', 'Backtest only', 'Testing']);
-  assert.deepEqual(rows.map(row => row.querySelector('.num').textContent), ['+$12.00', '−$4.25', '−$7.50tested only', '$0.00tested only', '—tested only']);
+  assert.deepEqual(rows.map(row => row.querySelector('.num').textContent), ['+$12.00', '−$4.25did not pass', '−$7.50tested only ·\u00a0did not pass', '$0.00tested only', '—tested only']);
   assert.deepEqual(rows.map(row => row.querySelector('.num').getAttribute('data-lab')), ['Backtest P&amp;L (unseen)', 'Backtest P&amp;L (unseen)', 'Backtest P&amp;L (tested)', 'Backtest P&amp;L (tested)', 'Backtest P&amp;L (tested)']);
   assert.match(results.innerHTML, /Kept &lt;script&gt;unsafe&lt;\/script&gt;/); assert.match(results.innerHTML, /&lt;img src=x&gt;/);
   assert.doesNotMatch(results.innerHTML, /<script>|<img|data-dep|class="pick"/);
@@ -5685,4 +5685,10 @@ test('Meridian: a research start that moved off a cooldown market is the autopil
   const f = frontend();
   const line = 'Started a fresh research session on a market the research specialist picks. Bitcoin 15-minute was researched in the last few hours, so this angle goes to one that isn\'t on cooldown. Follow it on the Research page.';
   assert.equal(f.apMoveText({text: line, at: new Date().toISOString()}), 'Started a fresh research session on a market the research specialist picks');
+});
+
+test('Meridian: a strategy that did not pass shows its backtest P&L muted, at the size of the others, never in the gain green', () => {
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\n\.t-strat \.pnl-nopass \{ color: var\(--ink-3\);/);
+  assert.match(css, /\.t-strat td\.num \.loss, \.t-strat td\.num \.pnl-nopass \{ font-size: 16px; font-weight: 500; \}/);
 });

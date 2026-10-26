@@ -1853,7 +1853,7 @@ body.landing-body .apf { display: none; }
 .t-strat td { padding-top: 10px; padding-bottom: 10px; }
 .t-strat td.name a { font-size: 14px; font-weight: 500; }
 .strategy-ref { display: inline-block; min-width: 36px; margin-right: 10px; font-size: 12px; font-weight: 400; color: var(--ink-3); }
-.t-strat td.num:first-of-type, .t-strat td.num .gain, .t-strat td.num .loss { font-size: 16px; font-weight: 500; }
+.t-strat td.num:first-of-type, .t-strat td.num .gain, .t-strat td.num .loss, .t-strat td.num .pnl-nopass { font-size: 16px; font-weight: 500; }
 .strategy-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 24px; }
 .strategy-summary { position: relative; }
 .strategy-summary > summary { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
@@ -1874,6 +1874,8 @@ body.landing-body .apf { display: none; }
 .research-activity:hover { text-decoration: underline; }
 .t-strat .gain { color: #365D3B; }
 .t-strat .loss { color: var(--signal); }
+/* A void or rejected strategy's backtest P&L (strategySlip): muted, never the gain green. */
+.t-strat .pnl-nopass { color: var(--ink-3); white-space: nowrap; }
 .apf-pill { border-color: transparent; background: transparent; }
 .t-dep th { padding: 12px 8px; }
 .t-dep td { padding: 10px 8px; }
