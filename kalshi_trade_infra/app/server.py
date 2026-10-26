@@ -2052,6 +2052,11 @@ def funds(ctx: Ctx):
     kalshi_dev_key = {"connected": dev is not None}
     if dev is not None:
         kalshi_dev_key["key_id"] = dev["key_id"][:4] + "…" + dev["key_id"][-4:]
+        # The demo account's cash at Kalshi (the same cached read demo health makes), so Funds can
+        # say "Connected ✓ (balance $X)". None when it can't be read just now.
+        from app import demo_twins
+
+        kalshi_dev_key["balance"] = demo_twins.balance_cached(cur, ctx.uid)
     de = repo.demo_equity(cur, ctx.uid)
     return {
         "paper": {"cash": round(repo.paper_balance(cur, ctx.uid), 2), "ledger": repo.ledger_rows(cur, ctx.uid)},
@@ -2111,6 +2116,7 @@ def save_kalshi_key(ctx: Ctx):
     with repo.transaction(ctx.conn) as tx:
         _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "production")
         repo.save_kalshi_key(tx, ctx.uid, key_id.strip(), blob)
+    kalshi_account.remember_balance(ctx.uid, cash)
     return {"ok": True, "balance": cash}
 
 
@@ -2132,7 +2138,8 @@ def save_kalshi_dev_key(ctx: Ctx):
     key_id = str(ctx.body.get("key_id") or "").strip()
     pem = str(ctx.body.get("private_key") or "")
     if not key_id or len(key_id) > 128:
-        raise ApiError(400, "Enter the API key ID from your Kalshi demo account settings.")
+        raise ApiError(400, "Paste the Key ID from the API keys page on demo.kalshi.co: the short code shown next "
+                            "to the key, like a952bcbe-ec3b-4b5b-….")
     try:
         creds = (key_id, kalshi_account.parse_private_key(pem))
     except kalshi_account.KalshiKeyError as e:
@@ -2142,8 +2149,9 @@ def save_kalshi_dev_key(ctx: Ctx):
     except kalshi_dev_exec.DemoHostError:
         raise ApiError(503, "The demo (sandbox) exchange isn't configured on this server yet.")
     except Exception:
-        raise ApiError(400, "Kalshi's demo exchange rejected this key. Check the key ID matches the private key, "
-                            "and that it's a DEMO key from demo.kalshi.co — not your live key.")
+        raise ApiError(400, "Kalshi's demo exchange didn't accept this key, or couldn't be reached just now. Check "
+                            "that the Key ID and the private key come from the same key, and that you made it on "
+                            "demo.kalshi.co: a key from kalshi.com is a live key and goes in the Kalshi account box.")
     try:
         blob = kalshi_account.encrypt_private_key(ctx.uid, pem.strip())
     except RuntimeError:
@@ -2151,6 +2159,9 @@ def save_kalshi_dev_key(ctx: Ctx):
     with repo.transaction(ctx.conn) as tx:
         _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
         repo.set_kalshi_dev_key(tx, ctx.uid, key_id, blob)
+    from app import demo_twins
+
+    demo_twins.forget_balance(ctx.uid)  # Funds reads the new key's demo cash, not the old memo
     return {"ok": True}
 
 

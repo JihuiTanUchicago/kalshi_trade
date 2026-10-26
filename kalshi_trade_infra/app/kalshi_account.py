@@ -23,7 +23,13 @@ KALSHI_FUNDING_URL = "https://kalshi.com/account/funding"
 
 
 class KalshiKeyError(ValueError):
-    """User-facing problem with a submitted key."""
+    """User-facing problem with a submitted key. Messages are fixed text: never the key itself."""
+
+
+# What the user sees for anything that isn't a readable private key (garbage, a public key, a key cut
+# off mid-copy, the key ID pasted in the wrong box).
+PRIVATE_KEY_FORMAT = ("That isn't a private key Kalshi can use. Paste the whole .key file Kalshi downloaded, "
+                      "from its -----BEGIN line to its -----END line, or choose the file.")
 
 
 def _cipher() -> AESGCM:
@@ -50,9 +56,10 @@ def parse_private_key(pem: str):
     try:
         key = serialization.load_pem_private_key(pem.strip().encode("utf-8"), password=None)
     except Exception:
-        raise KalshiKeyError("That doesn't look like the private key file Kalshi gave you (PEM, starts with -----BEGIN).")
+        raise KalshiKeyError(PRIVATE_KEY_FORMAT)
     if not isinstance(key, RSAPrivateKey):
-        raise KalshiKeyError("Kalshi API keys are RSA keys; this one isn't.")
+        raise KalshiKeyError("That isn't an RSA key, and Kalshi API keys always are. Choose the .key file "
+                             "Kalshi downloaded when you created the key.")
     return key
 
 
@@ -68,6 +75,12 @@ def balance(creds: KalshiCredentials) -> Optional[float]:
 # Kalshi round-trip every tick. Values only (never the key or creds) are cached.
 _BALANCE_CACHE: Dict[int, Tuple[float, Optional[float]]] = {}
 _BALANCE_TTL = 60.0
+
+
+def remember_balance(user_id: int, value: Optional[float]) -> None:
+    """Seed the memo with a balance just read (a key was verified), so Funds shows the new key's cash
+    rather than a value cached for the key it replaced."""
+    _BALANCE_CACHE[user_id] = (time.monotonic(), value)
 
 
 def balance_cached(user_id: int, creds: KalshiCredentials, ttl: float = _BALANCE_TTL) -> Optional[float]:
@@ -89,10 +102,13 @@ def verify(key_id: str, pem: str) -> float:
     """Prove the key works before storing it. Returns the cash balance."""
     key_id = (key_id or "").strip()
     if not key_id or len(key_id) > 128:
-        raise KalshiKeyError("Enter the API key ID from your Kalshi account settings.")
+        raise KalshiKeyError("Paste the Key ID from the API keys page on kalshi.com: the short code shown next to "
+                             "the key, like a952bcbe-ec3b-4b5b-….")
     cash = balance((key_id, parse_private_key(pem)))
     if cash is None:
-        raise KalshiKeyError("Kalshi rejected this key. Check the key ID matches the private key and that it is active.")
+        raise KalshiKeyError("Kalshi didn't accept this key, or couldn't be reached just now. Check that the Key ID "
+                             "and the private key come from the same key, and that the key is still listed on "
+                             "kalshi.com. A key made on demo.kalshi.co is a demo key: add it under Demo key instead.")
     return cash
 
 

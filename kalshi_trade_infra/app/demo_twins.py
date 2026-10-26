@@ -48,6 +48,11 @@ BALANCE_PAGE_TIMEOUT = 3
 _BALANCE_CACHE: Dict[int, Tuple[float, Optional[float]]] = {}
 
 
+def forget_balance(user_id: int) -> None:
+    """Drop the memo after the demo key changes, so the next read uses the new key."""
+    _BALANCE_CACHE.pop(user_id, None)
+
+
 def balance_cached(cur, user_id: int, ttl: float = BALANCE_TTL) -> Optional[float]:
     """The user's demo cash in dollars, at most `ttl` seconds old, or None when it can't be read.
     Read-only: one GET of the demo account's balance, the same read sync makes."""

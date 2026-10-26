@@ -316,6 +316,72 @@ def test_save_kalshi_dev_key_encrypts_and_never_echoes_raw(monkeypatch):
     assert stored == {}
 
 
+
+def test_key_errors_say_plainly_what_is_wrong_and_never_echo_the_key(monkeypatch):
+    """A bad key gets a reason a new user can act on (which box, which site), in fixed text only."""
+    secret = "MIIEsecretBODY"
+    for bad in ("hello " + secret, "-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----" % secret,
+                "-----BEGIN RSA PRIVATE KEY-----\n" + secret):
+        with pytest.raises(kalshi_account.KalshiKeyError) as e:
+            kalshi_account.parse_private_key(bad)
+        assert str(e.value) == kalshi_account.PRIVATE_KEY_FORMAT and secret not in str(e.value)
+        assert "-----BEGIN line to its -----END line" in str(e.value)
+    with pytest.raises(kalshi_account.KalshiKeyError, match="Key ID from the API keys page on kalshi.com"):
+        kalshi_account.verify("", "x")
+    pem = _pem(rsa.generate_private_key(public_exponent=65537, key_size=2048))
+    monkeypatch.setattr(kalshi_account, "balance", lambda creds: None)  # Kalshi says no (or can't be reached)
+    with pytest.raises(kalshi_account.KalshiKeyError) as e:
+        kalshi_account.verify("a952bcbe-ec3b-4b5b-b8f9-11dae589608c", pem)
+    msg = str(e.value)
+    assert "couldn't be reached just now" in msg and "demo.kalshi.co is a demo key" in msg and pem not in msg
+    # The demo box points a live key back to the live box.
+    monkeypatch.setattr(server.kalshi_dev_exec, "demo_fills", lambda creds: (_ for _ in ()).throw(RuntimeError("401")))
+    with pytest.raises(server.ApiError) as e:
+        server.save_kalshi_dev_key(ctx({"key_id": "DEV-1", "private_key": pem}))
+    assert "a key from kalshi.com is a live key and goes in the Kalshi account box" in str(e.value)
+    assert pem not in str(e.value)
+
+
+def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balance(monkeypatch):
+    """Funds says "Connected ✓ (balance $X)" for both keys from the existing cached reads; saving a key
+    replaces what those caches hold, so the line never shows the previous key's cash."""
+    from contextlib import nullcontext
+
+    from app import demo_twins
+
+    keys = {"live": None, "dev": {"key_id": "DEVKEY-1234"}}
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: keys["live"])
+    monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: keys["dev"])
+    monkeypatch.setattr(server.repo, "demo_equity", lambda cur, uid: {"capital": 1000, "equity": 1000, "realized": 0, "before_reload": False})
+    monkeypatch.setattr(server.repo, "paper_balance", lambda cur, uid: 1000)
+    monkeypatch.setattr(server.repo, "ledger_rows", lambda cur, uid: [])
+    reads = []
+    monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: reads.append(uid) or 25000.0)
+    demo_twins._BALANCE_CACHE.clear()
+    out = server.funds(ctx())
+    assert out["kalshi_dev"] == {"connected": True, "key_id": "DEVK…1234", "balance": 25000.0}
+    assert reads == [1]
+    keys["dev"] = None
+    assert server.funds(ctx())["kalshi_dev"] == {"connected": False}  # no key, no read
+    # Saving a demo key drops the memo, so the next Funds read uses the new key.
+    pem = _pem(rsa.generate_private_key(public_exponent=65537, key_size=2048))
+    monkeypatch.setattr(server.repo, "transaction", lambda conn: nullcontext(FakeCur()))
+    monkeypatch.setattr(server.kalshi_perps_trading, "guard_key_change", lambda *args: None)
+    monkeypatch.setattr(server.kalshi_dev_exec, "demo_fills", lambda creds: {"fills": []})
+    monkeypatch.setattr(server.kalshi_account, "encrypt_private_key", lambda uid, p: b"ENC")
+    monkeypatch.setattr(server.repo, "set_kalshi_dev_key", lambda cur, uid, kid, blob: None)
+    assert 1 in demo_twins._BALANCE_CACHE
+    server.save_kalshi_dev_key(ctx({"key_id": "DEV-1", "private_key": pem}))
+    assert 1 not in demo_twins._BALANCE_CACHE
+    # Saving a live key seeds the memo with the balance Kalshi just returned while verifying it.
+    kalshi_account._BALANCE_CACHE[1] = (0.0, 5.0)  # what the previous key held
+    monkeypatch.setattr(kalshi_account, "balance", lambda creds: 1234.5)
+    monkeypatch.setattr(server.repo, "save_kalshi_key", lambda cur, uid, kid, blob: None)
+    assert server.save_kalshi_key(ctx({"key_id": "a952bcbe", "private_key": pem})) == {"ok": True, "balance": 1234.5}
+    monkeypatch.setattr(kalshi_account, "balance", lambda creds: (_ for _ in ()).throw(AssertionError("no re-read")))
+    assert kalshi_account.balance_cached(1, None) == 1234.5
+    kalshi_account._BALANCE_CACHE.pop(1, None)
+
 # -- Strategies listing: pagination + true COUNT(*) figures --------------------------
 
 

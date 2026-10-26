@@ -173,13 +173,26 @@ class AppCur(Cur):
             super().execute(sql, params)
 
 
-TODAY = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+# The engine reads the UTC day from its own clock. Freeze it, so a run that crosses midnight UTC
+# reads the same day the fixtures were written for (it used to fail when a run spanned 00:00 UTC).
+NOW = datetime(2026, 10, 24, 23, 59, 59, tzinfo=timezone.utc)
+TODAY = NOW.strftime("%Y-%m-%d")
 
 
-def run_app(monkeypatch, cur, equity):
+class FrozenClock(datetime):
+    now_value = NOW
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls.now_value.astimezone(tz) if tz else cls.now_value.replace(tzinfo=None)
+
+
+def run_app(monkeypatch, cur, equity, now=NOW):
     from app import engine
     import app.kalshi_account as ka
     import data_pipeline.common as common
+
+    monkeypatch.setattr(engine, "datetime", type("Clock", (FrozenClock,), {"now_value": now}))
 
     monkeypatch.setattr(engine.repo, "get_kalshi_key", lambda c, uid: {"key_id": "k"})
     monkeypatch.setattr(engine.repo, "list_deployments",
@@ -216,3 +229,15 @@ def test_app_first_reading_of_the_day_only_sets_the_baseline(monkeypatch):
     cur = AppCur(users=[{"id": 1, "autopilot_live": 1, "lim": 20}], deployments=[])
     assert run_app(monkeypatch, cur, {1: 50.0}) == 0
     assert json.loads(cur.state["app_equity_day_start:1"]) == {"date": TODAY, "value": 50.0}
+
+
+def test_app_day_rolls_over_at_midnight_utc_on_the_engine_clock(monkeypatch):
+    """One second before midnight the day's baseline holds and the limit trips; just after, the new
+    UTC day's first reading becomes the baseline and nothing trips."""
+    deps = [{"id": 9, "user_id": 1, "mode": "live", "status": "running"}]
+    cur = AppCur(users=[{"id": 1, "autopilot_live": 1, "lim": 20}], deployments=deps, day_start={1: 100.0})
+    assert run_app(monkeypatch, cur, {1: 79.0}) == 1
+    cur = AppCur(users=[{"id": 1, "autopilot_live": 1, "lim": 20}], deployments=deps, day_start={1: 100.0})
+    assert run_app(monkeypatch, cur, {1: 79.0}, now=NOW + timedelta(seconds=2)) == 0
+    assert json.loads(cur.state["app_equity_day_start:1"]) == {"date": "2026-10-25", "value": 79.0}
+    assert cur.calls == []

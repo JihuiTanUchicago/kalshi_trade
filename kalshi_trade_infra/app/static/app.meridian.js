@@ -3136,6 +3136,39 @@
   }
 
   // ---------- funds ----------
+  // ---------- Kalshi keys (Funds) ----------
+  // Where each key comes from. Kalshi's demo is its own site, with its own login and play money, and a
+  // key only works on the site that made it, so each box names its site and links its key page.
+  const KALSHI_KEYS = {
+    live: { site: 'kalshi.com', keys: 'https://kalshi.com/account/profile' },
+    demo: { site: 'demo.kalshi.co', keys: 'https://demo.kalshi.co/account/profile', join: 'https://demo.kalshi.co/' },
+    guide: 'https://docs.kalshi.com/getting_started/api_keys',
+  };
+  const extLink = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+  function keySteps(kind) {
+    const k = KALSHI_KEYS[kind], demo = kind === 'demo';
+    const open = demo
+      ? `<li>Kalshi’s demo is a separate site with its own login and play money. ${extLink(k.join, 'Sign up or sign in at demo.kalshi.co')} (free).</li><li>There, open ${extLink(k.keys, 'your demo profile')}, find API Keys and click Create New API Key.</li>`
+      : `<li>On Kalshi, open ${extLink(k.keys, 'your profile')}, find API Keys and click Create New API Key.</li>`;
+    return `<ol class="steps key-steps">${open}<li>Kalshi shows a <b>Key ID</b> (like a952bcbe-ec3b-…) and downloads a <b>private key</b> file (.key), once. Keep the file; if it’s lost, make a new key.</li><li>Paste the Key ID below and choose the .key file (or paste its text). We check it with ${demo ? 'the demo exchange' : 'Kalshi'}, then store it encrypted; it is never shown again.</li></ol>
+      <p class="hint key-diff">${demo ? 'A demo key trades play money on Kalshi’s sandbox. A real-money key from kalshi.com won’t work here.' : 'A live key trades your real money. A key made on demo.kalshi.co won’t work here: add it under Demo key.'} ${extLink(KALSHI_KEYS.guide, 'Kalshi’s guide to API keys')}</p>`;
+  }
+  // Plain words for the usual mix-ups, before anything is sent. Fixed text only: it never echoes the key.
+  function keyProblem(kid, pem, kind) {
+    kid = String(kid || '').trim(); pem = String(pem || '').trim();
+    const where = kind === 'demo' ? 'the API keys page on demo.kalshi.co' : 'the API keys page on kalshi.com';
+    if (/PRIVATE KEY|PUBLIC KEY/.test(kid) || kid.length > 128) return 'That’s the key file’s text; it goes in the Private key box. The Key ID is the short code shown next to the key on Kalshi, like a952bcbe-ec3b-….';
+    if (!kid) return `Paste the Key ID: the short code shown next to the key on ${where}.`;
+    if (!pem) return 'Paste the private key, or choose the .key file Kalshi downloaded.';
+    if (/^[0-9a-f]{8}-[0-9a-f-]{8,}$/i.test(pem)) return 'That looks like the Key ID; it goes in the Key ID box. The private key is the .key file Kalshi downloaded.';
+    if (/PUBLIC KEY/.test(pem)) return 'That’s a public key. Tau needs the private key: the .key file Kalshi downloaded when you created the key.';
+    if (!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(pem)) return 'That isn’t a private key. Paste the whole .key file Kalshi downloaded, from its -----BEGIN line to its -----END line, or choose the file.';
+    if (!/-----END [A-Z ]*PRIVATE KEY-----/.test(pem)) return 'That private key is cut off: it should end with an -----END … PRIVATE KEY----- line. Choose the .key file instead of copying it.';
+    return '';
+  }
+  // How you know it worked: the existing balance read, right under the panel title.
+  const keyOk = (bal, kind) => `<p class="key-ok"><b>Connected ✓</b> ${bal == null ? '(couldn’t read the balance just now)' : `(balance ${usd(bal)})`}${kind === 'demo' && bal != null ? ' <span class="hint">in your Kalshi demo account</span>' : ''}</p>`;
+
   async function viewFunds() {
     const gen = S.gen;
     shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
@@ -3154,16 +3187,16 @@
         <section class="panel">
           <h3>Kalshi account (live money)</h3>
           ${k.connected ? `
-            <dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
+            ${keyOk(k.balance)}<dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">Funds stay in your Kalshi account. Manage deposits and withdrawals at Kalshi.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Deposit or withdraw at Kalshi ${ICON.ext}</a>
               <button class="btn danger" id="disconnect">Disconnect</button>
             </div>` : `
             <p class="lede" style="margin-bottom:12px">Connect your Kalshi account for live trading. Funds stay at Kalshi.</p>
-            <details class="connection-help"><summary>Key setup</summary><ol class="steps"><li>On Kalshi, open <a href="https://kalshi.com/account/profile" target="_blank" rel="noopener">your profile</a>, find API Keys and click Create New API Key.</li><li>Copy the key ID and download the private key file.</li><li>Paste the key ID below and choose the key file (or paste its text). We encrypt the private key and check it with Kalshi before saving.</li></ol></details>
+            <details class="connection-help" open><summary>Key setup</summary>${keySteps('live')}</details>
             <form id="kalshi" style="display:grid;gap:12px">
-              <label class="field"><span>Key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required></label>
+              <label class="field"><span>Key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required placeholder="like a952bcbe-ec3b-4b5b-…"></label>
               <label class="field"><span>Private key</span><textarea class="input" name="private_key" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
               <label class="key-file"><span>Or choose the downloaded key file</span><input type="file" accept=".key,.pem,.txt,text/plain" data-keyfile></label>
               <button class="btn" type="submit">Verify and connect</button>
@@ -3181,13 +3214,13 @@
           <div id="dmflash" style="margin-top:10px"></div>
           <h3 style="margin-top:24px">Demo key</h3>
           ${kd.connected ? `
-            <dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
+            ${keyOk(kd.balance, 'demo')}<dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">Sandbox orders only. Demo and live keys are stored separately.</p>
             <button class="btn danger" id="dev-disconnect">Remove demo key</button>` : `
             <p class="lede" style="margin-bottom:12px">Connect a Kalshi <b>demo</b> key for sandbox orders. No real money.</p>
-            <details class="connection-help"><summary>Key setup</summary><ol class="steps"><li>Sign in at demo.kalshi.co and open Account → API keys.</li><li>Copy the key ID and download the private key file.</li><li>Paste the key ID below and choose the key file (or paste its text). We encrypt the private key and check it against the demo exchange before saving.</li></ol></details>
+            <details class="connection-help" open><summary>Key setup</summary>${keySteps('demo')}</details>
             <form id="kalshi-dev" style="display:grid;gap:12px">
-              <label class="field"><span>Demo key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required></label>
+              <label class="field"><span>Demo key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required placeholder="like a952bcbe-ec3b-4b5b-…"></label>
               <label class="field"><span>Demo private key</span><textarea class="input" name="private_key" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
               <label class="key-file"><span>Or choose the downloaded key file</span><input type="file" accept=".key,.pem,.txt,text/plain" data-keyfile></label>
               <button class="btn" type="submit">Verify and connect demo</button>
@@ -3256,8 +3289,10 @@
       const kf = root.querySelector('#kalshi');
       if (kf) kf.onsubmit = async (e) => {
         e.preventDefault();
+        const bad = keyProblem(kf.key_id.value, kf.private_key.value, 'live');
+        if (bad) { flash('#kflash', bad, 'bad'); return; }
         await busy(kf.querySelector('button'), async () => {
-          try { await api('/api/kalshi-key', { key_id: kf.key_id.value, private_key: kf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_connected = true; await load(); if (gen === S.gen) flash('#kflash', 'Connected. Kalshi confirmed the key.', 'good'); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
+          try { const r = await api('/api/kalshi-key', { key_id: kf.key_id.value, private_key: kf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_connected = true; await load(); if (gen === S.gen) flash('#kflash', r && r.balance != null ? `Connected ✓ (balance ${usd(r.balance)}). Kalshi confirmed the key.` : 'Connected ✓. Kalshi confirmed the key.', 'good'); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
         });
       };
       const dc = root.querySelector('#disconnect');
@@ -3267,14 +3302,17 @@
       const kdf = root.querySelector('#kalshi-dev');
       if (kdf) kdf.onsubmit = async (e) => {
         e.preventDefault();
+        const bad = keyProblem(kdf.key_id.value, kdf.private_key.value, 'demo');
+        if (bad) { flash('#kdflash', bad, 'bad'); return; }
         await busy(kdf.querySelector('button'), async () => {
-          try { await api('/api/kalshi-dev-key', { key_id: kdf.key_id.value, private_key: kdf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_dev_connected = true; await load(); if (gen === S.gen) flash('#kdflash', 'Connected. Kalshi’s demo exchange confirmed the key.', 'good'); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
+          try { await api('/api/kalshi-dev-key', { key_id: kdf.key_id.value, private_key: kdf.private_key.value }); if (gen !== S.gen) return; S.me.kalshi_dev_connected = true; const now = await load(); const bal = now && now.kalshi_dev && now.kalshi_dev.balance; if (gen === S.gen) flash('#kdflash', bal != null ? `Connected ✓ (balance ${usd(bal)}). Kalshi’s demo exchange confirmed the key.` : 'Connected ✓. Kalshi’s demo exchange confirmed the key.', 'good'); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
         });
       };
       const dvc = root.querySelector('#dev-disconnect');
       if (dvc) dvc.onclick = () => armed(dvc, 'Confirm remove', () => busy(dvc, async () => {
         try { await api('/api/kalshi-dev-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_dev_connected = false; await load(); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
       }));
+      return d;
     };
     try { await load(); } catch (err) { if (gen === S.gen) throw err; }
   }
