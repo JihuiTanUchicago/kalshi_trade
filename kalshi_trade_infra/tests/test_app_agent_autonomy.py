@@ -204,6 +204,12 @@ def test_research_action_skips_a_market_on_cooldown(monkeypatch):
     # run_research picks from markets off cooldown (prod 2026-10-24: an hour of reviews started nothing).
     assert pid is None and rec["runs"] == [(None, None, "Another angle on BTC overreaction.")]
     assert "cooldown" in text.lower()
+    # The line is the autopilot panel's "Last move" and the customer reads it: it starts the way every
+    # research start does (chat_repository.last_autopilot_action looks for that), names the market as
+    # the app does, and carries no market key or run id.
+    assert text.startswith("Started a fresh research session on a market the research specialist picks. ")
+    assert "Bitcoin 15-minute was researched in the last few hours" in text
+    assert "btc15m" not in text and "run #" not in text and "(" not in text
 
 
 def test_research_action_on_cooldown_still_refuses_when_not_autopilot(monkeypatch):

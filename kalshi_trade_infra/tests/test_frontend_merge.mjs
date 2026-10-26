@@ -4676,3 +4676,9 @@ test('Tau: a research session the autopilot started says so on the list and on i
     g.clearTimers();
   }
 });
+
+test('Tau: a research start that moved off a cooldown market is the autopilot\'s last move, in customer words', () => {
+  const f = frontend();
+  const line = 'Started a fresh research session on a market the research specialist picks. Bitcoin 15-minute was researched in the last few hours, so this angle goes to one that isn\'t on cooldown. Follow it on the Research page.';
+  assert.equal(f.apMoveText({text: line, at: new Date().toISOString()}), 'Started a fresh research session on a market the research specialist picks');
+});

@@ -4188,8 +4188,13 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 # excludes blocked markets from its pick). The active/daily caps above still apply.
                 repo.create_run(cur, user_id, "research", None, None, idea, brief=True,
                                 model=user.get("autopilot_model"))
-                return ("%s is on cooldown (%s), so I started this angle on a market the research "
-                        "specialist picks from the ones off cooldown." % (market, why)), None
+                # Customer words: this line is the autopilot panel's "Last move" (chat_repository reads
+                # lines that start "Started a fresh research session"); `why` names the market key and
+                # run id, which the review's context keeps but the customer never needs.
+                return ("Started a fresh research session on a market the research specialist picks. %s %s, "
+                        "so this angle goes to one that isn't on cooldown. Follow it on the Research page."
+                        % (MARKETS[market].label if market in MARKETS else market,
+                           "keeps failing today" if "backed off" in why else "was researched in the last few hours")), None
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
         # brief=True: the co-pilot is DELEGATING, not authoring. `idea` is a high-level angle/lens,
         # and the proposer turns it into the actual hypotheses (see _research_prompt's brief branch).
