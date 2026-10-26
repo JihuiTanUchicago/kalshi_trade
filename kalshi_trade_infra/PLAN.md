@@ -1,5 +1,12 @@
 # PLAN
 
+- The daily check-in reads cash from Kalshi (2026-10-26): Todd saw "Cash: $56.58 (kalshi_api)" on
+  2026-10-26. That was the last live_portfolio_20s row, frozen since the legacy live engine stopped.
+  `live_alerter._cash` now asks Kalshi for the balance each run (one call per 5 min). If that fails,
+  it falls back to the snapshot and prints its as-of time. Real balance at 00:58Z was $50.74, with no
+  open positions. Still legacy-only in the email: Live, Open positions and Realised read the
+  live_* tables, not app_positions. Next: read those from the app book too.
+
 ## Deribit options-implied fair value for Kalshi BTC (2026-10-25)
 
 - Idea (coordinator proposal 1, Todd approved 00:56Z): Deribit's BTC options are the deepest market for

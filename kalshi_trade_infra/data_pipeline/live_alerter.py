@@ -25,7 +25,7 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-from data_pipeline.common import api_get_auth, get_db_conn, utc_now
+from data_pipeline.common import api_get_auth, get_db_conn, get_kalshi_cash_balance_dollars, utc_now
 
 SNS_TOPIC_ARN = os.getenv("SNS_TOPIC_ARN", "")
 STATE_PATH = os.getenv("ALERTER_STATE_PATH", "/opt/kalshi/.alerter_state.json")
@@ -116,6 +116,34 @@ def _writer_ages(cur) -> Dict[str, Optional[float]]:
     return out
 
 
+def _cash(cur) -> Tuple[Optional[float], str, Optional[str]]:
+    """(cash, source, as_of): the balance read from Kalshi now, else the last live_portfolio_20s
+    snapshot and when it was taken. The snapshot's writer was the legacy live engine, stopped on
+    2026-10-24, so on its own it froze; the as-of time keeps an old figure from passing as today's."""
+    try:
+        live = get_kalshi_cash_balance_dollars()
+    except Exception:
+        live = None
+    if live is not None:
+        return float(live), "kalshi_api", None
+    cur.execute(
+        "SELECT snapshot_time_utc, equity_dollars, raw_json FROM live_portfolio_20s "
+        "ORDER BY snapshot_time_utc DESC LIMIT 1"
+    )
+    row = cur.fetchone() or {}
+    cash = float(row["equity_dollars"]) if row.get("equity_dollars") is not None else None
+    source = "unknown"
+    try:
+        raw = row.get("raw_json")
+        raw = raw if isinstance(raw, dict) else json.loads(raw or "{}")
+        source = "snapshot, " + raw.get("cash_source", "unknown")
+    except Exception:
+        pass
+    ts = row.get("snapshot_time_utc")
+    as_of = ts.strftime("%Y-%m-%d %H:%MZ") if isinstance(ts, datetime) else None
+    return cash, source, as_of
+
+
 def collect(cur) -> Dict:
     """Everything the alert rules need, in one pass."""
     cur.execute("SELECT settings_key, settings_json FROM live_settings")
@@ -150,18 +178,7 @@ def collect(cur) -> Dict:
     )
     daily = {r["model_name"]: float(r["p"]) for r in cur.fetchall()}
 
-    cur.execute(
-        "SELECT equity_dollars, raw_json FROM live_portfolio_20s ORDER BY snapshot_time_utc DESC LIMIT 1"
-    )
-    row = cur.fetchone() or {}
-    cash = float(row["equity_dollars"]) if row.get("equity_dollars") is not None else None
-    cash_source = "unknown"
-    try:
-        raw = row.get("raw_json")
-        raw = raw if isinstance(raw, dict) else json.loads(raw or "{}")
-        cash_source = raw.get("cash_source", "unknown")
-    except Exception:
-        pass
+    cash, cash_source, cash_as_of = _cash(cur)
 
     return {
         "enabled": enabled,
@@ -171,6 +188,7 @@ def collect(cur) -> Dict:
         "daily": daily,
         "cash": cash,
         "cash_source": cash_source,
+        "cash_as_of": cash_as_of,
         "writers": _writer_ages(cur),
     }
 
@@ -462,7 +480,8 @@ def heartbeat_body(now: Dict) -> str:
     today = sum((now["daily"] or {}).values())
     return (
         f"Daily check-in. Nothing needed your attention.\n\n"
-        f"Cash: {cash} ({now['cash_source']})\n"
+        f"Cash: {cash} ({now['cash_source']}"
+        f"{', as of ' + now['cash_as_of'] if now.get('cash_as_of') else ''})\n"
         f"Live: {', '.join(live)}\n"
         f"Open positions: {len(now['positions'])}\n"
         f"Realised so far this UTC day: ${today:.2f}\n"
