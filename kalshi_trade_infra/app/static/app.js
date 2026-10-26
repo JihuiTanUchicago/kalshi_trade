@@ -231,6 +231,11 @@
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
   const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in.
+  const tzName = () => { try { return (new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName') || {}).value || ''; } catch (e) { return ''; } };
+  // A run log line's time: the bare clock fits the rail; the date and zone ride on hover and to a
+  // screen reader (a run-until-stopped session spans days, and "06:07" named neither).
+  const logTime = (iso) => `<time datetime="${esc(iso || '')}" title="${esc(new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }))}">${clock(iso)}</time>`;
   // When an open contract settles: the time alone today, the date too on any other day, and always the
   // zone. A bare "21:17" read as today in no stated zone, and a daily close settling tomorrow looked due.
   const settleAt = (iso) => {
@@ -2205,7 +2210,7 @@
     const home = [mechHtml(d.mechanism), specHtml(d.spec),
       d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
       d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
-    li.innerHTML = `<time>${clock(ev.created_at)}</time><span class="node" aria-hidden="true"></span><div class="say">
+    li.innerHTML = `${logTime(ev.created_at)}<span class="node" aria-hidden="true"></span><div class="say">
       <div class="hx-head"><span class="say-kind">Hypothesis</span><b class="say-title">${esc(title)}</b><span class="hx-stamp pending" data-stamp>Testing<span class="working" aria-hidden="true"></span></span></div>
       ${d.thesis ? `<span class="say-sub">${esc(d.thesis)}</span>` : ''}${stat}
       ${home ? `<details class="hx-more"><summary>Show the homework</summary><div class="hx-body">${home}</div></details>` : ''}
@@ -2223,8 +2228,8 @@
       },
       verdict(e2) {
         const dd = e2.data || {};
-        const cls = dd.status === 'passed' ? 'pass' : dd.status === 'rejected' ? 'rej' : 'void';
-        const label = dd.status === 'passed' ? 'PASSED' : dd.status === 'rejected' ? 'REJECTED' : 'VOID';
+        const cls = dd.status === 'passed' ? 'pass' : (dd.status === 'rejected' || dd.status === 'abandoned') ? 'rej' : 'void';
+        const label = dd.status === 'passed' ? 'PASSED' : dd.status === 'rejected' ? 'REJECTED' : dd.status === 'abandoned' ? 'DROPPED' : 'VOID';
         li.classList.remove('lane-action'); li.classList.add('lane-' + cls);
         stampEl.className = 'hx-stamp ' + cls;
         // A PASSED hypothesis has a strategy page: link both its title and an explicit "View
@@ -2238,10 +2243,23 @@
         const rest = strip(e2.message, /^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/);
         const tail = rest.indexOf(':') >= 0 ? rest.slice(rest.indexOf(':') + 1).trim() : '';
         const why = whyFailedHtml(dd.why_failed);  // the gates it missed replace the gatekeeper's raw note
+        // The server's plain sentence stands in for a message written for the ledger ("validation
+        // verdict is gatekeeper-held (classification=...)"); a dropped idea says why it was dropped.
+        const said = dd.note || (dd.status === 'abandoned' && dd.why) || tail;
+        if (dd.strategy_id != null) li.dataset.sid = dd.strategy_id;  // "Ideas tested" jumps here
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict ·\u00a0${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict ·\u00a0${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
       },
+      // A passed idea's later checks (the one-time locked holdout, then whether it adds something new
+      // to what the user runs) land on its own card; they were loose lines stamped VOID.
+      stage(e2) { reviewEl.hidden = false; reviewEl.insertAdjacentHTML('beforeend', stageHtml(e2.data || {})); },
     };
+  }
+  // One later check of a passed idea in plain words: which check, whether it held, and why not.
+  function stageHtml(dd) {
+    const why = whyFailedHtml(dd.why_failed), ok = !why && !dd.skipped;
+    const name = dd.phase === 'holdout' ? 'Locked holdout' : 'Adds something new';
+    return `<div class="hx-verdict"><span class="hx-tag ${ok ? 'pass' : 'void'}">${name} ·\u00a0${ok ? 'held' : dd.skipped ? 'not run' : 'missed'}</span>${why || (dd.note ? `<span class="hx-vtext">${esc(dd.note)}</span>` : '')}</div>`;
   }
 
   // A live "thinking" card: the proposer's reasoning streams in as the agent writes it, with a
@@ -2251,7 +2269,7 @@
   function thinkController(block, at) {
     const li = document.createElement('li');
     li.className = 'ln lane-think think';
-    li.innerHTML = `<time>${clock(at)}</time><span class="node" aria-hidden="true"></span><div class="say">
+    li.innerHTML = `${logTime(at)}<span class="node" aria-hidden="true"></span><div class="say">
       <div class="hx-head"><span class="say-kind">Thinking</span><span class="think-el" data-el>0s</span></div>
       <div class="think-body" data-body></div>
       <div class="think-draft" data-draft hidden>drafting the strategy spec<span class="ell" aria-hidden="true"></span></div>
@@ -2289,6 +2307,7 @@
     const pulse = section.querySelector('.runpulse');
     let unseen = 0, first = true, appended = 0, pulseSt = null, pulseKey = '', lastAt = Date.now(), queuedAt = null;
     const cards = new Map();   // hypothesis title -> card controller (most recent wins on a title clash)
+    const settled = new Map(); // title -> card whose verdict is in: its holdout / diversification checks land on it
     let think = null;          // the currently-open thinking card, if any
     const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
     const toLatest = () => { log.scrollTop = log.scrollHeight; unseen = 0; jump.hidden = true; };
@@ -2314,7 +2333,9 @@
         const card = cards.get((ev.data || {}).title); card ? card.challenger(ev) : add(runEventEl(ev));
       } else if (ev.kind === 'verdict') {
         const card = cards.get((ev.data || {}).title);
-        if (card) { card.verdict(ev); cards.delete(card.title); } else add(runEventEl(ev));
+        const later = /^(holdout|forward)$/.test((ev.data || {}).phase || '') && settled.get((ev.data || {}).title);
+        if (later) later.stage(ev);
+        else if (card) { card.verdict(ev); cards.delete(card.title); settled.set(card.title, card); } else add(runEventEl(ev));
       } else {
         add(runEventEl(ev));
       }
@@ -2371,15 +2392,23 @@
     const data = ev.data || {};
     let lane = RUN_LANE[ev.kind] || 'thought';
     let inner;
-    if (ev.kind === 'verdict') {
+    if (ev.kind === 'verdict' && !data.title) {
+      inner = esc(data.note || ev.message);  // a note on the session (the data scan, the model tiering), not an idea's verdict
+      lane = 'thought';
+    } else if (ev.kind === 'verdict' && /^(holdout|forward)$/.test(data.phase || '')) {
+      lane = (data.why_failed && data.why_failed.length) || data.skipped ? 'void' : 'pass';
+      inner = `<b>${esc(data.title)}</b>${stageHtml(data)}`;
+    } else if (ev.kind === 'verdict') {
       const st = data.status, sid = data.strategy_id;
-      lane = st === 'passed' ? 'pass' : st === 'rejected' ? 'rej' : 'void';
+      lane = st === 'passed' ? 'pass' : (st === 'rejected' || st === 'abandoned') ? 'rej' : 'void';
       const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
         : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
+        : st === 'abandoned' ? '<b class="verdict rej">DROPPED</b>'
         : '<b class="verdict void">VOID</b>';
-      const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/, '');
+      const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED|NOT TESTED)(\s*\(challenger\))?\s*[-–]\s*/, '');
       const title = data.title || rest;
-      const tail = rest.startsWith(title) ? rest.slice(title.length) : '';  // keep the ": …" explanation as text
+      const tail = data.note ? ': ' + data.note : st === 'abandoned' && data.why ? ' — ' + data.why
+        : rest.startsWith(title) ? rest.slice(title.length) : '';  // keep the ": …" explanation as text
       const titleHtml = sid ? `<a href="/strategies/${sid}">${esc(title)}</a>` : `<b>${esc(title)}</b>`;
       const why = whyFailedHtml(data.why_failed);
       inner = `${tag} ${titleHtml}${why ? '' : esc(tail)}${why}`;
@@ -2394,7 +2423,7 @@
       inner = mdLite(ev.message);   // step notes: inline markdown (bold/code/italic/links), escaped
     }
     li.className = 'ln lane-' + lane + (lane === 'rsi' ? ' rsi-event' : '');
-    li.innerHTML = `<time>${clock(ev.created_at)}</time><span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
+    li.innerHTML = `${logTime(ev.created_at)}<span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
     return li;
   }
 
@@ -2572,7 +2601,10 @@
       const more = passed.length > 3 ? ` and <a href="/strategies?status=passed">${passed.length - 3} more</a>` : '';
       return `<p class="run-next">${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
     }
-    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each idea in the log below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
+    // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
+    if (r.status === 'failed') return `<p class="run-next">This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''} <a href="/research?new=1">Start a new session</a></p>`;
+    if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
+    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each idea below says which check it missed; tap one for what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
   // The foot of a finished session, under the log's last line. The way on sat only above the log, a
@@ -2585,14 +2617,41 @@
     if ((strategies || []).some((s) => s.status === 'passed')) return '';
     return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
   }
+  // What the session tried, one row per idea: its outcome and, for a miss, the first check it missed
+  // in plain words. Each idea's outcome sat only in the log, a scroll box that held 200+ lines on a
+  // long session; a title jumps to its card there. Passed ideas lead; past six, the rest fold.
+  const IDEA_STAMP = { passed: ['pass', 'Passed'], failed: ['void', 'Void'], rejected: ['rej', 'Rejected'], 'backtest-only': ['rej', 'Backtest only'] };
+  function runIdeas(strategies, whyBySid, open) {
+    const list = (strategies || []).slice().sort((a, b) => (b.status === 'passed') - (a.status === 'passed'));
+    if (!list.length) return '';
+    const row = (s) => {
+      const [cls, label] = IDEA_STAMP[s.status] || ['', 'Testing'];
+      const why = whyBySid.get(s.id) || [];
+      const said = s.status === 'passed' ? `<a href="/strategies/${s.id}">Open it to deploy on paper</a>`
+        : why.length ? `Missed: ${esc(why[0].label)}${why.length > 1 ? ` ·\u00a0${why.length - 1} more check${why.length > 2 ? 's' : ''}` : ''}` : '';
+      return `<li><span class="hx-stamp ${cls}">${label}</span><button type="button" class="ri-title" data-goto="${s.id}">${esc(s.title)}</button>${said ? `<span class="ri-why">${said}</span>` : ''}</li>`;
+    };
+    const SHOW = 6;
+    return `<section class="run-ideas"><div class="section-head"><h2>Ideas tested</h2><p>${list.length} ·\u00a0tap one for its story</p></div>
+      <ol class="ri-list">${list.slice(0, SHOW).map(row).join('')}</ol>${list.length > SHOW
+        ? `<details class="ri-rest"${open ? ' open' : ''}><summary>Show all ${list.length}</summary><ol class="ri-list">${list.slice(SHOW).map(row).join('')}</ol></details>` : ''}</section>`;
+  }
   async function viewRun(id) {
-    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><p class="stale-note" id="run-stale" role="status"></p>', `
+    shell('/research', '<div id="runboard">' + boardTitle('Research run') + '</div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><div id="runideas"></div><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
       <section><div class="section-head"><h2>Agent log</h2><span id="runact"></span></div><div id="flash"></div>
-        <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.</p>
+        <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div><div id="runend"></div></section>`);
     let after = 0, tried = 0;
+    const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
+    const ideasEl = root.querySelector('#runideas');
+    ideasEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-goto]');
+      if (!b) return;
+      const card = root.querySelector(`#log li[data-sid="${b.dataset.goto}"]`);
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }); else go('/strategies/' + b.dataset.goto);
+    });
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
     const load = async (cfg) => {
@@ -2645,7 +2704,14 @@
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
-      d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });
+      d.events.forEach((ev) => {
+        after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
+        const dd = ev.data || {};
+        if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
+      });
+      // Painted only when it changes, so a poll never closes "Show all" or drops a focused title.
+      const ideasKey = runIdeas(d.strategies, whyBySid, false);
+      if (ideasEl.dataset.h !== ideasKey) { ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]')); }
       stream.push(d.events);
       stream.state(active ? r.status : 'done', r.wait);
       obs.push(d.events, r.status, r);

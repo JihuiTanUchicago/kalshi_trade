@@ -755,11 +755,19 @@ def _gate_tints(status: Optional[str], exp: Dict) -> Dict:
 
 def _with_gate_lines(events: List[Dict]) -> List[Dict]:
     """Each verdict event gains `why_failed`: one plain line per gate it missed (measured, needed,
-    what to try next), from the numbers the event already carries. Display only; no extra read."""
+    what to try next), from the numbers the event already carries, and `note`: a plain sentence
+    the page shows in place of a message written for the ledger ("gatekeeper-held
+    (classification=...)", "Lead scan: control arm"). The model tiering line's internal model id
+    is dropped: the page never shows one. Display only; no extra read."""
     for ev in events:
         if ev.get("kind") == "verdict":
             data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+            data.pop("screen_model_id", None)
             data["why_failed"] = _gate_lines(gate_explain.for_event, ev.get("message"), data)
+            try:
+                data["note"] = gate_explain.event_note(ev.get("message"), data)
+            except (TypeError, ValueError, KeyError, AttributeError):
+                data["note"] = None
             ev["data"] = data
     return events
 

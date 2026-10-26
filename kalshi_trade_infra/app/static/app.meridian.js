@@ -231,6 +231,11 @@
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
   const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in.
+  const tzName = () => { try { return (new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName') || {}).value || ''; } catch (e) { return ''; } };
+  // A run log line's time: the bare clock fits the rail; the date and zone ride on hover and to a
+  // screen reader (a run-until-stopped session spans days, and "06:07" named neither).
+  const logTime = (iso) => `<time datetime="${esc(iso || '')}" title="${esc(new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }))}">${clock(iso)}</time>`;
   // When an open contract settles: the time alone today, the date too on any other day, and always the
   // zone. A bare "21:17" read as today in no stated zone, and a daily close settling tomorrow looked due.
   const settleAt = (iso) => {
@@ -2268,7 +2273,7 @@
     const home = [mechHtml(d.mechanism), specHtml(d.spec),
       d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
       d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
-    li.innerHTML = `<time>${clock(ev.created_at)}</time><span class="node" aria-hidden="true"></span><div class="say">
+    li.innerHTML = `${logTime(ev.created_at)}<span class="node" aria-hidden="true"></span><div class="say">
       <div class="hx-head"><b class="say-title">${esc(title)}</b><span class="hx-stamp pending" data-stamp>Testing</span></div>
       ${d.thesis ? `<span class="say-sub">${esc(d.thesis)}</span>` : ''}${stat}
       ${home ? `<details class="hx-more"><summary>Method &amp; specification</summary><div class="hx-body">${home}</div></details>` : ''}
@@ -2286,8 +2291,8 @@
       },
       verdict(e2) {
         const dd = e2.data || {};
-        const cls = dd.status === 'passed' ? 'pass' : dd.status === 'rejected' ? 'rej' : 'void';
-        const label = dd.status === 'passed' ? 'Passed' : dd.status === 'rejected' ? 'Rejected' : 'Void';
+        const cls = dd.status === 'passed' ? 'pass' : (dd.status === 'rejected' || dd.status === 'abandoned') ? 'rej' : 'void';
+        const label = dd.status === 'passed' ? 'Passed' : dd.status === 'rejected' ? 'Rejected' : dd.status === 'abandoned' ? 'Dropped' : 'Void';
         li.classList.remove('lane-action'); li.classList.add('lane-' + cls);
         stampEl.className = 'hx-stamp ' + cls;
         // A passed hypothesis opens its strategy through the title. The verdict is
@@ -2301,10 +2306,22 @@
         const rest = strip(e2.message, /^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/);
         const tail = rest.indexOf(':') >= 0 ? rest.slice(rest.indexOf(':') + 1).trim() : '';
         const why = whyFailedHtml(dd.why_failed);  // the gates it missed replace the gatekeeper's raw note
+        // The server's plain sentence stands in for a message written for the ledger ("validation
+        // verdict is gatekeeper-held (classification=...)"); a dropped idea says why it was dropped.
+        const said = dd.note || (dd.status === 'abandoned' && dd.why) || tail;
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${why ? why : tail ? `<span class="hx-vtext">${esc(tail)}</span>` : ''}${statGrid(dd.stats)}</div>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}</div>`);
       },
+      // A passed idea's later checks (the one-time locked holdout, then whether it adds something new
+      // to what the user runs) land on its own card; they were loose lines stamped VOID.
+      stage(e2) { reviewEl.hidden = false; reviewEl.insertAdjacentHTML('beforeend', stageHtml(e2.data || {})); },
     };
+  }
+  // One later check of a passed idea in plain words: which check, whether it held, and why not.
+  function stageHtml(dd) {
+    const why = whyFailedHtml(dd.why_failed), ok = !why && !dd.skipped;
+    const name = dd.phase === 'holdout' ? 'Locked holdout' : 'Adds something new';
+    return `<div class="hx-verdict"><span class="hx-tag ${ok ? 'pass' : 'void'}">${name} ·\u00a0${ok ? 'held' : dd.skipped ? 'not run' : 'missed'}</span>${why || (dd.note ? `<span class="hx-vtext">${esc(dd.note)}</span>` : '')}</div>`;
   }
 
   // A live "thinking" card: the proposer's reasoning streams in as the agent writes it, with a
@@ -2314,7 +2331,7 @@
   function thinkController(block, at) {
     const li = document.createElement('li');
     li.className = 'ln lane-think think';
-    li.innerHTML = `<time>${clock(at)}</time><span class="node" aria-hidden="true"></span><div class="say">
+    li.innerHTML = `${logTime(at)}<span class="node" aria-hidden="true"></span><div class="say">
       <div class="hx-head"><span class="say-kind">Thinking</span><span class="think-el" data-el>0s</span></div>
       <div class="think-body" data-body></div>
       <div class="think-draft" data-draft hidden>drafting the strategy spec<span class="ell" aria-hidden="true"></span></div>
@@ -2351,6 +2368,7 @@
     const jump = section.querySelector('.jumplatest');
     let unseen = 0, first = true, appended = 0, stateSeen = false;
     const cards = new Map();   // hypothesis title -> card controller (most recent wins on a title clash)
+    const settled = new Map(); // title -> card whose verdict is in: its holdout / diversification checks land on it
     let think = null;          // the currently-open thinking card, if any
     const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
     const toLatest = () => { log.scrollTop = log.scrollHeight; unseen = 0; jump.hidden = true; };
@@ -2375,7 +2393,9 @@
         const card = cards.get((ev.data || {}).title); card ? card.challenger(ev) : add(runEventEl(ev));
       } else if (ev.kind === 'verdict') {
         const card = cards.get((ev.data || {}).title);
-        if (card) { card.verdict(ev); cards.delete(card.title); } else add(runEventEl(ev));
+        const later = /^(holdout|forward)$/.test((ev.data || {}).phase || '') && settled.get((ev.data || {}).title);
+        if (later) later.stage(ev);
+        else if (card) { card.verdict(ev); cards.delete(card.title); settled.set(card.title, card); } else add(runEventEl(ev));
       } else {
         add(runEventEl(ev));
       }
@@ -2409,15 +2429,23 @@
     const data = ev.data || {};
     let lane = RUN_LANE[ev.kind] || 'thought';
     let inner;
-    if (ev.kind === 'verdict') {
+    if (ev.kind === 'verdict' && !data.title) {
+      inner = esc(data.note || ev.message);  // a note on the session (the data scan, the model tiering), not an idea's verdict
+      lane = 'thought';
+    } else if (ev.kind === 'verdict' && /^(holdout|forward)$/.test(data.phase || '')) {
+      lane = (data.why_failed && data.why_failed.length) || data.skipped ? 'void' : 'pass';
+      inner = `<b>${esc(data.title)}</b>${stageHtml(data)}`;
+    } else if (ev.kind === 'verdict') {
       const st = data.status, sid = data.strategy_id;
-      lane = st === 'passed' ? 'pass' : st === 'rejected' ? 'rej' : 'void';
+      lane = st === 'passed' ? 'pass' : (st === 'rejected' || st === 'abandoned') ? 'rej' : 'void';
       const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
         : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
+        : st === 'abandoned' ? '<b class="verdict rej">DROPPED</b>'
         : '<b class="verdict void">VOID</b>';
-      const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/, '');
+      const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED|NOT TESTED)(\s*\(challenger\))?\s*[-–]\s*/, '');
       const title = data.title || rest;
-      const tail = rest.startsWith(title) ? rest.slice(title.length) : '';  // keep the ": …" explanation as text
+      const tail = data.note ? ': ' + data.note : st === 'abandoned' && data.why ? ' — ' + data.why
+        : rest.startsWith(title) ? rest.slice(title.length) : '';  // keep the ": …" explanation as text
       const titleHtml = sid ? `<a href="/strategies/${sid}">${esc(title)}</a>` : `<b>${esc(title)}</b>`;
       const why = whyFailedHtml(data.why_failed);
       inner = `${tag} ${titleHtml}${why ? '' : esc(tail)}${why}`;
@@ -2432,7 +2460,7 @@
       inner = mdLite(ev.message);   // step notes: inline markdown (bold/code/italic/links), escaped
     }
     li.className = 'ln lane-' + lane + (lane === 'rsi' ? ' rsi-event' : '');
-    li.innerHTML = `<time>${clock(ev.created_at)}</time><span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
+    li.innerHTML = `${logTime(ev.created_at)}<span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
     return li;
   }
 
@@ -2605,6 +2633,9 @@
       const more = passed.length > 3 ? ` and <a href="/strategies?status=passed">${passed.length - 3} more</a>` : '';
       return `<p class="run-next">${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
     }
+    // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
+    if (r.status === 'failed') return `<p class="run-next">This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''} <a href="/research?new=1">Start a new session</a></p>`;
+    if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
     if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each strategy below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
@@ -2624,12 +2655,17 @@
       <section class="run-artifacts" id="run-artifacts" hidden></section><div id="runend"></div>
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
-      <details class="run-history" id="run-history" open><summary class="section-head"><h2>Agent log</h2>${ICON.chev}</summary>
+      <details class="run-history" id="run-history" open><summary class="section-head"><h2>Agent log</h2>${ICON.chev}</summary>${tzName() ? `<p class="hint" style="margin:0 0 8px">Times are ${esc(tzName())}.</p>` : ''}
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div><div id="runend-log"></div></details>`);
     let after = 0, tried = 0, runActive = true, loaded = false;
+    // A long session's strategy cards (40+, a screen each on a phone) buried the agent log under
+    // them: the first few show, the rest behind "Show all".
+    const STRAT_SHOW = 8;
+    let showAllStrats = false;
     const whyBySid = new Map();  // strategy id -> the gates its verdict missed, kept across polls
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
+    root.querySelector('#run-artifacts').addEventListener('click', (e) => { if (e.target.closest('[data-allstrats]')) { showAllStrats = true; load(); } });
     const load = async (cfg) => {
       const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
@@ -2643,7 +2679,7 @@
         : r.status === 'queued' ? 'Waiting'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching'
-        : r.status === 'succeeded' ? 'Done' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
+        : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
       root.querySelector('#runfigs').innerHTML =
         fig('Status', statusText) +
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
@@ -2661,10 +2697,11 @@
         const dd = ev.data || {};
         if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
       });
-      const artifacts = root.querySelector('#run-artifacts'), strategies = d.strategies || [];
+      // Passed ideas lead the list: a long session's one pass sat mid-way down 40 cards on a phone.
+      const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => (b.status === 'passed') - (a.status === 'passed'));
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;
-      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2></div>${strategyTable(strategies.map(s => strategySlip(s, undefined, { missed: s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false)}` : '';
+      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2></div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { missed: s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${strategies.length}</button>` : ''}` : '';
       if (artifacts.innerHTML !== artifactHtml) artifacts.innerHTML = artifactHtml;
       if (focusedArtifact) Array.from(artifacts.querySelectorAll('a')).find(a => a.getAttribute('href') === focusedArtifact)?.focus({ preventScroll: true });
       if (!loaded && !active) root.querySelector('#run-history').open = false;

@@ -364,6 +364,53 @@ def test_the_run_page_gives_each_verdict_event_its_lines(monkeypatch):
     assert "why_failed" not in (out[0]["data"] or {})
     assert [ln["gate"] for ln in out[1]["data"]["why_failed"]] == ["sample_size"]
     assert out[2]["data"]["why_failed"] == [] and out[3]["data"]["why_failed"] == []
+    # Each verdict also carries the plain sentence the page shows over a message written for the ledger.
+    assert out[1]["data"]["note"] == "Did not pass on data it never saw (9" + NB + "trades)."
+    assert out[2]["data"]["note"] == "Passed every check on data it never saw." and out[3]["data"]["note"] is None
+
+
+def test_ledger_verdict_lines_read_as_plain_sentences():
+    note = ge.event_note
+    assert note("Lead scan: control arm, hypotheses first.", {"phase": "leads", "arm": "control"}) == \
+        "Went straight to ideas, with no scan of the data first."
+    assert note("Lead scan: control arm, hypotheses first.", None) == "Went straight to ideas, with no scan of the data first."
+    assert note("Lead scan: 3 of 1200 cells survive the false-discovery control.",
+                {"phase": "leads", "arm": "leads", "tests": 1200, "n_leads": 3}) == \
+        "Scanned the research data for mispriced setups first: 3 of 1,200 held up after correcting for testing so many at once."
+    assert note("Model tiering: control arm, one model for every step.", {"phase": "screen", "arm": "control"}) == \
+        "One model did every step of this session."
+    assert note("Model tiering: X proposed and screened.", {"phase": "screen", "arm": "screen", "screened_out": 3,
+                                                           "handed_over": 6, "rescued": 1}) == \
+        "A quicker model screened the ideas first: 3 set aside, 6 passed on to be developed, and a second look brought back 1."
+    hold = "T: one-time holdout verdict is gatekeeper-held (classification=%s, 31 trades)"
+    assert note(hold % "forward_validated", {"title": "T", "phase": "holdout", "classification": "forward_validated",
+                                            "stats": {"n_trades": 31}}) == \
+        "Held up on the locked holdout, a final test it gets only once (31" + NB + "trades)."
+    assert note(hold % "inconclusive", {"title": "T", "phase": "holdout", "classification": "inconclusive",
+                                       "stats": {"n_trades": 31}}).startswith("Did not hold up on the locked holdout")
+    assert note("T: the one-time holdout was not evaluated (consumed).", {"title": "T", "phase": "holdout", "skipped": True}) == \
+        "The one-time final test on the locked holdout did not run."
+    assert note("T: diversification gate PASSED", {"title": "T", "phase": "forward", "marginal_ok": True}) == \
+        "Adds something new to what you already run."
+    assert note("T: diversification gate blocked", {"title": "T", "phase": "forward", "marginal_ok": False}) is None
+    assert note("REJECTED (challenger) - T: no mechanism", {"title": "T", "status": "rejected"}) is None
+    for n in (note(hold % "x", {"phase": "holdout", "stats": {"n_trades": "bad"}}), note("PASSED - T", {"status": "passed", "stats": "x"})):
+        assert n and "=" not in n and "_" not in n
+
+
+def test_the_run_page_never_carries_an_internal_model_id(monkeypatch):
+    run = {"id": 9, "kind": "research", "status": "succeeded", "created_at": None, "heartbeat_at": None, "finished_at": None}
+    ev = {"id": 1, "kind": "verdict", "message": "Model tiering: Haiku proposed and screened.", "data": {
+        "phase": "screen", "arm": "screen", "screen_model": "haiku", "screen_model_id": "us.anthropic.claude-haiku", "screened_out": 1}}
+    monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: dict(run))
+    monkeypatch.setattr(server.repo, "runs_spent", lambda *a: {})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "get_policy", lambda *a: None)
+    monkeypatch.setattr(server.repo, "latest_dream_event", lambda *a: None)
+    monkeypatch.setattr(server.repo, "run_events", lambda *a: [dict(ev, data=dict(ev["data"]))])
+    out = server.get_run(_ctx(("9",)))["events"][0]["data"]
+    assert "screen_model_id" not in out and "anthropic" not in str(out)
+    assert out["note"].startswith("A quicker model screened the ideas first: 1 set aside")
 
 
 def test_the_strategy_page_lists_what_it_missed_and_a_bad_record_never_fails_it(monkeypatch):
