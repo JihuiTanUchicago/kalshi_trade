@@ -4015,6 +4015,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         # is rejected without consuming the capacity check.
         sid = int(action.get("strategy_id") or 0)
         market = action.get("market") or None
+        unsupported = None  # a market the review named that Tau doesn't have (autopilot only)
         idea = str(action.get("idea") or action.get("reason") or "").strip()[:1000]
         if sid:
             strat = repo.get_strategy(cur, user_id, sid)
@@ -4022,7 +4023,12 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 return "I can only dig deeper on a strategy that already passed its backtest.", None
         else:
             if market is not None and market not in MARKETS:
-                return "I can't research that market — pick one Tau supports, or let me choose.", None
+                if not autopilot:
+                    return "I can't research that market — pick one Tau supports, or let me choose.", None
+                # Prod 2026-10-26 06:10-07:40Z: every review proposed "z-score on LTC 15m"; ltc15m
+                # isn't a Tau market, so nothing started for 90 minutes. Keep the angle and let the
+                # research specialist pick a supported, in-focus market, as the cooldown path does.
+                unsupported, market = market, None
             if len(idea) < 8:
                 return "Tell me the idea to research in a sentence or two.", None
         refusal = focus_refusal(user, strat["market"] if sid else market)
@@ -4067,6 +4073,9 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         # Stamp the user's autopilot model so the run uses it (NULL = catalog default).
         repo.create_run(cur, user_id, "research", market, direction, idea, brief=True,
                         model=user.get("autopilot_model"))
+        if not sid and unsupported:
+            return ("%s isn't a market Tau supports, so I started this angle on a supported market the "
+                    "research specialist picks. Follow it on the Research page." % unsupported), None
         return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
                 "holdout, diversification). Follow it on the Research page."
                 % (market or "a market I'll choose"), None)
@@ -4179,9 +4188,10 @@ def _copilot_context(cur, user: Dict) -> str:
     for d in deps:
         oos = ((d.get("result") or {}).get("out_of_sample") or {})
         lines.append(
-            "- deployment_id=%s \"%s\" market=%s mode=%s status=%s live: %s closed trades, %s wins, realized $%.2f, %s open; "
+            # "<mode> record:", not "live:": reviews read the old wording and called paper legs Live.
+            "- deployment_id=%s \"%s\" market=%s mode=%s status=%s %s record: %s closed trades, %s wins, realized $%.2f, %s open; "
             "backtest unseen-data: pnl $%s over %s trades, max drawdown $%s; %sspec=%s"
-            % (d["id"], d["title"], d["market"], d["mode"], d["status"], d["closed_trades"], d["wins"],
+            % (d["id"], d["title"], d["market"], d["mode"], d["status"], d["mode"], d["closed_trades"], d["wins"],
                float(d["realized_pnl"]), d["open_positions"], oos.get("pnl"), oos.get("trades"), oos.get("max_drawdown"),
                _deployment_age_text(d), json.dumps(d["spec"], separators=(",", ":")))
         )
