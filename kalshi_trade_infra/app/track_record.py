@@ -42,6 +42,7 @@ METHOD = [
     "Every figure comes from closed trades in your own book. Nothing here is a backtest.",
     "A trade is one entry fill, round trip. Partial exits are summed into it, and a trade that is still partly open is left out until it closes.",
     "P&L is net of all Kalshi fees.",
+    "Stopped strategies, and strategies you removed, keep their trades in every figure: nothing is dropped for doing badly.",
     "Paper trades that filled instantly, without the simulated order book, are left out, because real execution would not get those fills.",
     "Capital is what the record needed: the most money ever at risk at once plus the worst drawdown, so the smallest bankroll that could have taken every trade. Return and drawdown percentages use it.",
     "Sharpe and Sortino use daily P&L from the first closed trade to today, with flat days counted, a 0% risk-free rate and a 365-day year. They are hidden under 14 days.",
@@ -221,7 +222,9 @@ def edge_read(avg_ci: Optional[List[float]]) -> str:
 
 
 def sample_read(n: int, span_days: float, avg_ci: Optional[List[float]]) -> Dict:
-    """Plain-language verdict on how much this record can say. `level` drives the page badge."""
+    """Plain-language verdict on how much this record can say. `level` drives the page badge.
+    Under MIN_TRADES it makes no claim about the average trade (edge 'thin', as by_strategy reads a
+    strategy): a normal range on 5 trades that all won said "above zero at 95% confidence"."""
     if n == 0:
         return {"level": "none", "edge": "none", "text": "No closed trades yet."}
     days = max(1, round(span_days))
@@ -232,8 +235,8 @@ def sample_read(n: int, span_days: float, avg_ci: Optional[List[float]]) -> Dict
         level, lead = "early", "Early read: %s. Treat the numbers as a direction, not proof." % size
     else:
         level, lead = "solid", "Meaningful sample: %s." % size
-    edge = edge_read(avg_ci)
-    tail = {"positive": " The average trade is above zero at 95% confidence.",
+    edge = edge_read(avg_ci) if n >= MIN_TRADES else "thin"
+    tail = {"thin": "", "positive": " The average trade is above zero at 95% confidence.",
             "negative": " The average trade is below zero at 95% confidence.",
             "unclear": " The average trade is not yet distinguishable from zero." if avg_ci else ""}[edge]
     return {"level": level, "edge": edge, "text": lead + tail}
@@ -334,15 +337,27 @@ def monthly(trades: List[Dict]) -> List[Dict]:
     return rows
 
 
+# A strategy deployed more than once in a bucket reads as its most active deployment.
+_STATUS_RANK = {"running": 3, "paused": 2, "stopped": 1}
+
+
 def by_strategy(trades: List[Dict], open_trades: List[Dict]) -> List[Dict]:
-    """One row per strategy in this bucket, best net P&L first."""
+    """One row per strategy in this bucket, best net P&L first. `status` is its deployment's status
+    now (running, paused or stopped; None when unknown) and `removed` marks a strategy the user
+    deleted after stopping it: both stay in, so the table shows nothing was dropped."""
     groups: Dict[int, Dict] = {}
+
+    def group(t):
+        g = groups.setdefault(t["strategy_id"], {"title": t["title"], "market": t["market"], "removed": t["removed"],
+                                                 "trades": [], "open": 0, "status": None})
+        if _STATUS_RANK.get(t["dep_status"], 0) > _STATUS_RANK.get(g["status"], 0):
+            g["status"] = t["dep_status"]
+        return g
+
     for t in trades:
-        g = groups.setdefault(t["strategy_id"], {"title": t["title"], "market": t["market"], "trades": [], "open": 0})
-        g["trades"].append(t)
+        group(t)["trades"].append(t)
     for t in open_trades:
-        g = groups.setdefault(t["strategy_id"], {"title": t["title"], "market": t["market"], "trades": [], "open": 0})
-        g["open"] += 1
+        group(t)["open"] += 1
     rows = []
     for sid, g in groups.items():
         ts = sorted(g["trades"], key=lambda t: t["closed_ts"])
@@ -355,6 +370,7 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict]) -> List[Dict]:
         ci = mean_ci(pnls)
         rows.append({
             "strategy_id": sid, "title": g["title"], "market": g["market"], "trades": n,
+            "status": g["status"], "removed": g["removed"],
             "open_trades": g["open"], "net_pnl": round(sum(pnls), 2),
             "win_rate": _r(sum(1 for p in pnls if p > 0) / n, 4) if n else None,
             "avg_trade": _r(sum(pnls) / n, 4) if n else None, "avg_trade_ci": ci,
@@ -378,7 +394,9 @@ def build(rows: List[Dict], now: Optional[datetime] = None) -> Dict:
         if mode not in closed:
             continue
         t = {
-            "strategy_id": int(r.get("strategy_id") or 0), "title": r.get("title") or "Untitled strategy",
+            # The strategy row is gone when the user removed it after stopping it; its trades stay.
+            "strategy_id": int(r.get("strategy_id") or 0), "title": r.get("title") or "Removed strategy",
+            "removed": r.get("title") is None, "dep_status": r.get("dep_status"),
             "market": r.get("market") or "", "pnl": float(r.get("pnl") or 0), "fees": float(r.get("fees") or 0),
             "cost": float(r.get("cost") or 0), "opened_ts": _ts(r.get("opened_at")), "closed_ts": _ts(r.get("closed_at")),
             "open_cost": float(r.get("open_cost") if r.get("open_cost") is not None else r.get("cost") or 0),

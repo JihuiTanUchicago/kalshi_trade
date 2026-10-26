@@ -41,16 +41,18 @@ COMPONENTS: Dict[str, List[str]] = {
     "web": ["app/server.py", "app/repository.py", "app/auth.py", "app/billing.py"],
     "agents": ["app/worker.py", "app/agent.py", "app/llm.py"],
     "backtest": ["app/backtest.py", "app/engine.py", "app/spec.py"],
+    # Both engine boxes are app/engine.py (recursive-engine), which runs paper, demo and live
+    # deployments; the legacy data_pipeline engines are retired and no longer trade.
     "sim_engine": [
-        "data_pipeline/simulated_trading_engine.py",
-        "data_pipeline/sim_repository.py",
-        "data_pipeline/sim_config.py",
-        "data_pipeline/sim_portfolio_20s_updater.py",
+        "app/engine.py",
+        "data_pipeline/architecture/simulated_venue.py",
+        "data_pipeline/architecture/execution_kernel.py",
     ],
     "live_engine": [
-        "data_pipeline/live_trading_engine.py",
-        "data_pipeline/live_portfolio_20s_updater.py",
-        "data_pipeline/live_alerter.py",
+        "app/engine.py",
+        "data_pipeline/architecture/execution_kernel.py",
+        "data_pipeline/architecture/position_guard.py",
+        "app/execution/kill_switch.py",
     ],
 }
 

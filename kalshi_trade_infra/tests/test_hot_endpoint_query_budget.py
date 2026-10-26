@@ -262,8 +262,8 @@ def _book_rows():
             dict(trade, deployment_id=5), dict(trade, deployment_id=5, order_ref="sim:2", pnl=-0.5),
             dict(trade, deployment_id=6, mode="demo", order_ref="demo:3", open_slices=1, closed_s=None, open_cost=2.0)],
         "FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id WHERE d.id IN": [
-            {"id": 5, "strategy_id": 9, "title": "Fade tails", "market": "btc15m"},
-            {"id": 6, "strategy_id": 9, "title": "Fade tails", "market": "btc15m"}],
+            {"id": 5, "strategy_id": 9, "status": "running", "title": "Fade tails", "market": "btc15m"},
+            {"id": 6, "strategy_id": 9, "status": "running", "title": "Fade tails", "market": "btc15m"}],
         "AS ex FROM app_strategies s WHERE s.user_id=%s": [{"status": "passed", "n": 1, "dep": 1, "ex": 0}],
     })
     rows["FROM app_strategies s LEFT JOIN app_agent_runs r"][0].update(active_deps=1, live_deps=0)
@@ -297,10 +297,10 @@ def test_the_track_record_rebuilds_its_times_and_drops_a_trade_whose_deployment_
                  "cost": 4.0, "open_cost": 4.0, "opened_s": 1761390061, "closed_s": None},
                 {"mode": "live", "deployment_id": 8, "order_ref": "live:2", "open_slices": 0, "pnl": 1, "fees": 0.07,
                  "cost": 4.0, "open_cost": 0, "opened_s": 1761390000, "closed_s": 1761390900}],
-            "WHERE d.id IN": [{"id": 5, "strategy_id": 9, "title": None, "market": None}]}
+            "WHERE d.id IN": [{"id": 5, "strategy_id": 9, "status": "stopped", "title": None, "market": None}]}
     log = []
     assert server.repo.track_record_rows(CountingCursor(log, rows), 7) == [
-        {"mode": "live", "strategy_id": 9, "title": None, "market": None, "order_ref": "live:1", "open_slices": 1,
+        {"mode": "live", "strategy_id": 9, "title": None, "market": None, "dep_status": "stopped", "order_ref": "live:1", "open_slices": 1,
          "pnl": 0, "fees": 0.07, "cost": 4.0, "open_cost": 4.0, "opened_at": datetime(2025, 10, 25, 11, 1, 1),
          "closed_at": None}]
     assert log[1][1] == (5, 8)

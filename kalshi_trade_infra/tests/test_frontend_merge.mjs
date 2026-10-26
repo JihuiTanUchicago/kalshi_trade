@@ -3384,3 +3384,26 @@ test('a proposal says what Approve does and in which book, and one decision lock
   await click({target: review}); await flush();
   assert.ok(f.navigations.includes('/funds?perps_proposal=9'), f.navigations.join());
 });
+
+test('track record: stopped and removed strategies stay in the table and say so; profit factor and Sharpe read after fees, with a true minus', () => {
+  const f = frontend();
+  const th = {min_sharpe_days: 14, min_trades: 30};
+  const row = (o) => ({strategy_id: 4, title: 'Fade', market: 'btc15m', trades: 12, open_trades: 0, net_pnl: -3, win_rate: 0.4,
+    avg_trade: -0.25, max_drawdown: 4, last_trade_at: 1790000000, edge: 'thin', status: 'running', removed: false, ...o});
+  const m = {trades: 40, wins: 16, losses: 24, label: 'Paper', net_pnl: -9, fees: 3, monthly: [], curve: [], days: 20,
+    sharpe: -1.25, sortino: -2.5, psr: 0.2, profit_factor: 0.6,
+    sample: {level: 'early', edge: 'unclear', text: 'Early read.'},
+    strategies: [row({}), row({strategy_id: 5, title: 'Reversal', status: 'stopped'}), row({strategy_id: 6, status: 'paused'}),
+      row({strategy_id: 7, title: 'Removed strategy', market: 'high_ny', status: 'stopped', removed: true})]};
+  const html = f.trackRecordPanel(m, 'paper', th);
+  assert.match(html, /<h2>By strategy<\/h2><p>Stopped ones included/);
+  assert.match(html, /<a href="\/strategies\/5">Reversal<\/a><div class="sub-fig">Stopped<\/div>/);
+  assert.match(html, /<a href="\/strategies\/6">Fade<\/a><div class="sub-fig">Paused<\/div>/);
+  assert.match(html, /<a href="\/strategies\/4">Fade<\/a><\/td>/);  // a running one needs no label
+  // A removed strategy has no page left: no dead link, and its market says which one it was.
+  assert.doesNotMatch(html, /\/strategies\/7/);
+  assert.match(html, /Removed strategy<div class="sub-fig">NYC high temp · stopped, then removed<\/div>/);
+  // Every trade's P&L is net of fees, so the ratio isn't "gross" beside the gross-before-fees line.
+  assert.match(html, /winning trades ÷ losing trades, after fees/); assert.doesNotMatch(html, /gross wins/);
+  assert.match(html, /−1\.25/); assert.match(html, /Sortino −2\.50/); assert.doesNotMatch(html, />-1\.25</);
+});
