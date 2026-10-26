@@ -229,3 +229,11 @@ def test_community_email_carries_a_link_that_flips_the_same_switch(monkeypatch):
     monkeypatch.setattr(notify, "_send", lambda to, subject, body, reply_to=None: sent.append(body) or True)
     notify.community_post_notice("a@x.invalid", "A", "B", "hello", notify.unsubscribe_url(7))
     assert notify.unsubscribe_url(7) in sent[0] and "/unsubscribe?u=7&t=" in sent[0]
+
+
+def test_reply_email_points_at_the_settings_switch(monkeypatch):
+    from app import notify
+    sent = []
+    monkeypatch.setattr(notify, "_send", lambda to, subject, body, reply_to=None: sent.append(body) or True)
+    assert notify.comment_notice("a@x.invalid", "Ann", "bob", "My post", "nice")
+    assert "Email in Settings: %s/settings" % notify.PUBLIC_URL in sent[0] and "let us know" not in sent[0]

@@ -1470,6 +1470,7 @@ body.landing-body { background: #FBFBFA; }
 .email-pref #email-flash:empty { display: none; }
 .theme-mark circle { display: none; }
 .cmt-form { display: flex; gap: 8px; }
+.cmt-err { display: grid; justify-items: start; gap: 8px; }
 .cmt-form .input { min-height: 38px; }
 @media (max-width: 680px) { .post-tools .btn { margin-left: 0; } }
 
@@ -2139,6 +2140,8 @@ body.landing-body .apf { display: none; }
 .feedwrap .snap-metrics dt { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 16px; }
 .feedwrap .snap-metrics dd { margin: 2px 0 0; font: 500 20px/24px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; overflow-wrap: anywhere; }
 .feedwrap .snap-evidence-metrics .snap-secondary dd { font-size: 14px; line-height: 20px; }
+.feedwrap .snap-metrics .snap-n { display: block; color: var(--ink-2); font-size: 12px; line-height: 16px; font-weight: 400; }
+.feedwrap .snap-note { margin: 8px 0 0; color: var(--ink-2); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 
 /* Research: active work is distinct from the explicitly scoped archive totals. */
 .research-page { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; min-width: 0; padding-top: 16px; container: research-work / inline-size; }

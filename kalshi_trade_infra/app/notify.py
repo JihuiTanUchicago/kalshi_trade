@@ -99,8 +99,8 @@ def comment_notice(to_email: str, author_name: Optional[str], commenter: str,
         "  Their reply: “%s”\n\n"
         "Open the Community tab to read the full thread and reply back.\n\n"
         "— Tau\n\n"
-        "(You can turn these off anytime — just let us know.)"
-    ) % (author_name or "there", commenter, (post_preview or "").strip(), comment_body.strip())
+        "(Turn these off anytime under Email in Settings: %s/settings)"
+    ) % (author_name or "there", commenter, (post_preview or "").strip(), comment_body.strip(), PUBLIC_URL)
     return _send(to_email, "%s replied to your Tau post" % commenter, body)
 
 

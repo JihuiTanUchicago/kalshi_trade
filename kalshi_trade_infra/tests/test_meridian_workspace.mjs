@@ -1868,7 +1868,7 @@ test('Community snapshots retain source financial values, missing versus zero, e
   for (const snapshot of [undefined, null, {kind: 'unknown'}]) assert.deepEqual(render(snapshot), []);
   assert.deepEqual(render({kind: 'pnl', paper_pnl: null, live_pnl: 0}), ['—', '$0.00']);
   assert.deepEqual(render({kind: 'pnl', paper_pnl: -9.25, live_pnl: 12.5}), ['−$9.25', '+$12.50']);
-  assert.deepEqual(host.querySelectorAll('dt').map(dt => dt.textContent), ['Paper', 'Live']);
+  assert.deepEqual(host.querySelectorAll('dt').map(dt => dt.textContent), ['Paper', 'Live (real money)']);
   assert.equal(host.querySelector('.snap-pnl .snap-head b').textContent, 'Realized P&amp;L');
   assert.equal(host.querySelector('dd.loss').textContent, '−$9.25'); assert.equal(host.querySelector('dd.gain').textContent, '+$12.50');
   for (const [pnl, trades, win_rate, values] of [
@@ -1896,6 +1896,76 @@ test('Community snapshots retain source financial values, missing versus zero, e
     assert.equal(host.querySelector('a'), null);
   }
   assert.deepEqual(f.requests, []); assert.deepEqual(f.navigations, []); assert.equal(f.intervals.size, 0);
+});
+
+test('Community: another trader’s strategy card says whose it is instead of a dead link; figures name the book, span and trade count', () => {
+  const f = frontend(), host = new Element();
+  const strat = {kind: 'strategy', id: 42, title: 'Fade', market: 'btc15m', status: 'passed', pnl: 42.17, trades: 23, win_rate: .61, days: 9.4};
+  host.innerHTML = f.postSnapshot(strat, '@bob');
+  assert.equal(host.querySelector('a'), null, 'their strategy page is theirs alone');
+  assert.match(host.querySelector('.snap-note').textContent, /^Backtest on data the agent never saw over 9 days, not paper or live trading\. Only @bob can open this strategy; ask them to share a copy from its page\.$/);
+  host.innerHTML = f.postSnapshot(strat, '');
+  assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42');
+  assert.doesNotMatch(host.querySelector('.snap-note').textContent, /Only/);
+  host.innerHTML = f.postSnapshot({...strat, days: undefined}, '<b>x</b>');
+  assert.match(host.querySelector('.snap-note').textContent, /never saw, not paper/); assert.doesNotMatch(host.innerHTML, /<b>x/);
+  // Each book on its own line with its trades; a book with none says so rather than $0.00. Never one sum.
+  host.innerHTML = f.postSnapshot({kind: 'pnl', paper_pnl: 120.5, live_pnl: 0, paper_trades: 12, live_trades: 0});
+  assert.deepEqual(host.querySelectorAll('dd').map(dd => dd.textContent), ['+$120.50on 12 trades', 'No trades yet']);
+  assert.match(host.querySelector('.snap-kind').textContent, /All time/);
+  host.innerHTML = f.postSnapshot({kind: 'pnl', paper_pnl: -2, live_pnl: 5, paper_trades: 1, live_trades: 3});
+  assert.deepEqual(host.querySelectorAll('dd').map(dd => dd.textContent), ['−$2.00on 1 trade', '+$5.00on 3 trades']);
+  host.innerHTML = f.postSnapshot({kind: 'deployment', id: 7, title: 'Fade', market: 'btc15m', mode: 'demo', realized_pnl: 7.2, closed_trades: 4, since: '2026-10-03T12:00:00Z'});
+  assert.equal(host.querySelector('.snap-head .mk').textContent, 'Demo'); assert.match(host.querySelector('.snap-since').textContent, /^since Oct 3, 2026$/);
+});
+
+test('Community: replies that fail to load say so with Try again, never an empty thread', async () => {
+  let failing = true;
+  const post = {id: 11, body: 'Hi', author: 'Bob', username: 'bob', created_at: '2026-10-17T10:00:00Z', mine: false, comments: 2, reactions: []};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/strategies') return response({strategies: []});
+    if (path === '/api/community') return response({posts: [post]});
+    if (path === '/api/community/11/comments') return failing ? response({error: 'Server error.'}, 500) : response({comments: [{body: 'First', author: 'Ana', created_at: '2026-10-17T10:00:00Z'}]});
+    throw new Error('unexpected ' + path);
+  }});
+  await f.viewCommunity(); await flush();
+  const feed = f.root.querySelector('#feed'), click = target => feed.listeners.get('click')({target});
+  const thread = feed.querySelector('[data-act="comments"]');
+  thread.click = () => click(thread);
+  await click(thread); await flush();
+  const box = feed.querySelector('.comments');
+  assert.equal(box.hidden, false); assert.match(box.querySelector('.notice').textContent, /Replies didn’t load/);
+  assert.equal(box.querySelector('.cmt-list'), null); assert.equal(box.querySelector('.cmt-form'), null);
+  failing = false;
+  await click(box.querySelector('[data-replies-retry]')); await flush();
+  assert.equal(box.hidden, false); assert.match(box.querySelector('.cmt-list').textContent, /First/);
+  assert.equal(postRequests(f).length, 0);
+});
+
+test('Community: editing a post starts from the text as written and keeps its formatting after Save', async () => {
+  const source = '**Bold** and [docs](https://example.com/a)';
+  const post = {id: 11, body: source, author: 'Me', username: 'me', created_at: '2026-10-17T10:00:00Z', mine: true, comments: 0, reactions: []};
+  const f = frontend({fetchImpl: (path, options) => {
+    if (path === '/api/strategies') return response({strategies: []});
+    if (path === '/api/community') return response({posts: [post]});
+    if (path === '/api/community/11/edit') return response({ok: true});
+    throw new Error('unexpected ' + path);
+  }});
+  await f.viewCommunity(); await flush();
+  const feed = f.root.querySelector('#feed'), bodyEl = feed.querySelector('.post-body');
+  let form = null;
+  bodyEl.insertAdjacentElement = (_where, el) => { form = el; };
+  const proto = Object.getPrototypeOf(bodyEl), had = 'setSelectionRange' in proto;
+  if (!had) proto.setSelectionRange = () => {};
+  try {
+    await feed.listeners.get('click')({target: feed.querySelector('[data-act="edit"]')}); await flush();
+    const ta = form.querySelector('textarea');
+    assert.equal(ta.textContent, source, 'the edit box holds the markdown, not the rendered text');
+    ta.value = '**Bolder** now';
+    await form.onsubmit({preventDefault() {}}); await flush();
+    assert.match(bodyEl.innerHTML, /<b>Bolder<\/b> now/);
+    assert.equal(JSON.parse(postRequests(f).at(-1).options.body).body, '**Bolder** now');
+  } finally { if (!had) delete proto.setSelectionRange; }
 });
 
 test('Community feed refreshes preserve the native composer choice, unsent draft, strategy selection and focus', async () => {
@@ -1932,6 +2002,23 @@ test('Community feed refreshes preserve the native composer choice, unsent draft
   assert.equal(draft.value, 'Keep my unsent @idea'); assert.equal(select.value, '42'); assert.equal(f.document.activeElement, summary);
   assert.equal(reads, 3); assert.equal(postRequests(f).length, 0); assert.deepEqual(f.navigations, []);
   assert.deepEqual([...new Set(f.requests.map(request => request.path))].sort(), ['/api/community', '/api/notifications', '/api/strategies']);
+});
+
+test('Explore: an empty feed says the list has not arrived (not that a blank search missed) and a failed read offers Try again', async () => {
+  let reply = () => response({total: 0, shown: 0, matched: 0, per: 40, page: 0, markets: []});
+  const f = frontend({fetchImpl: () => reply()});
+  await f.viewExplore();
+  const body = f.root.querySelector('#xbody');
+  assert.equal(body.querySelector('.empty h3').textContent, 'No markets to show yet');
+  assert.doesNotMatch(body.innerHTML, /No markets match/);
+  reply = () => response({error: 'Tau is taking too long to respond.'}, 503);
+  await body.querySelector('[data-xretry]').onclick(); await flush();
+  assert.equal(body.querySelector('.empty h3').textContent, 'Markets didn’t load');
+  assert.match(body.querySelector('.empty p').textContent, /taking too long/);
+  const searched = frontend({search: '?q=zzz', fetchImpl: () => response({total: 3, shown: 3, matched: 0, per: 40, page: 0, markets: []})});
+  await searched.viewExplore();
+  assert.equal(searched.root.querySelector('#xbody .empty h3').textContent, 'No markets match “zzz”');
+  assert.equal(searched.root.querySelector('#xbody [data-xretry]'), null);
 });
 
 test('Explore preserves distinct source counts and search zeroes while omitting duplicates and reporting source snapshot age', async () => {
