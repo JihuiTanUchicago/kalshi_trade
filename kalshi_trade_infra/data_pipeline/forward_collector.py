@@ -293,8 +293,14 @@ def trade_row(msg: Dict) -> Optional[tuple]:
         count = float(count) if count is not None else (None if msg.get("count") is None else float(msg["count"]))
     except (TypeError, ValueError):
         return None
+    extra = {k: msg[k] for k in TRADE_RAW_KEYS if k in msg}
     return (str(trade_id), ticker, created.replace(tzinfo=None), yes, no, count, msg.get("taker_side"),
-            utc_now().replace(tzinfo=None), json.dumps(msg))
+            utc_now().replace(tzinfo=None), json.dumps(extra))
+
+
+# raw_json keeps only what the typed columns don't: the full message repeated every column at ~320B
+# of a ~1KB row, on ~190k crypto prints an hour (market_trades was ~6 GiB/day on 2026-10-26).
+TRADE_RAW_KEYS = ("ts_ms", "taker_outcome_side", "taker_book_side", "is_block_trade")
 
 
 def insert_trade_row(cur, row: tuple) -> None:

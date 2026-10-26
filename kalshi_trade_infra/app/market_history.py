@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import random
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -67,6 +68,10 @@ PRIORITY_PREFIXES = tuple(t for t in os.getenv("HISTORY_PRIORITY_PREFIXES", "KXH
 # for each of ~1,000 series every pass was a third of the budget for lists that change daily.
 SETTLED_MIN_INTERVAL_SECONDS = int(os.getenv("HISTORY_SETTLED_MIN_INTERVAL_SECONDS", "3600"))
 _last_settled: Dict[str, float] = {}
+# Catalog series that get history at all (curated, research-requested and PRIORITY_* always do).
+# Head-to-head lines are what the sports research uses; the long tail of props/futures (fantasy weekly
+# leaders, chess, surfing, "next team") was ~15 GiB/day of settled-market candles on 10-26.
+HISTORY_SERIES_PATTERN = re.compile(os.getenv("HISTORY_SERIES_PATTERN", r"GAME|MATCH|SPREAD|TOTAL"), re.I)
 # Where the catalog rotation resumes. Starts at a random point so the hourly web deploys, which
 # restart this process, don't send every pass back to the same first ~100 series.
 _candle_rotation: Optional[int] = None
@@ -404,8 +409,10 @@ def refresh(cur) -> Dict[str, int]:
             stats["spot_backfill_" + symbol] = backfill_spot(cur, symbol, history_days, now)
         except Exception as e:
             print("[market_history] %s spot backfill failed: %r (retry next pass)" % (symbol, e), flush=True)
-    binary = [m for m in MARKETS.values() if m.kind == "binary" and m.source == "candles"]  # never perpetuals
-    stats["deferred"] = sync_all_markets(cur, binary, now, deadline, stats, requested=_requested(cur))
+    requested = _requested(cur)
+    binary = [m for m in MARKETS.values() if m.kind == "binary" and m.source == "candles"  # never perpetuals
+              and _history_wanted(m, requested)]
+    stats["deferred"] = sync_all_markets(cur, binary, now, deadline, stats, requested=requested)
     return stats
 
 
@@ -416,6 +423,11 @@ def _sync_settled(cur, market: Market, now: datetime, stats: Dict[str, int]) -> 
     since = max(last_close.replace(tzinfo=timezone.utc) - timedelta(hours=2), floor) if last_close else floor
     stats[market.key + "_markets"] = sync_settled_markets(cur, market, since)
     stats[market.key + "_backfill"] = backfill_settled_markets(cur, market, now)
+
+
+def _history_wanted(market: Market, requested: List[str]) -> bool:
+    return (market.key in CURATED or market.key in requested or _priority_rank(market.series) is not None
+            or bool(HISTORY_SERIES_PATTERN.search(market.series)))
 
 
 def _priority_rank(series: str) -> Optional[int]:
