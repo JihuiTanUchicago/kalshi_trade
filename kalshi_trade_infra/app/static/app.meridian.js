@@ -3228,7 +3228,13 @@
     if (passed.length) {
       const links = passed.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
       const more = passed.length > 3 ? ` and <a href="/strategies?status=passed">${passed.length - 3} more</a>` : '';
-      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
+      // The autopilot deploys what it finds on paper itself, and its finished session still said "Open it
+      // to deploy it on paper": the strategy page then warned that a second copy doubles the positions.
+      const deployed = passed.filter((s) => s.deployed).length;
+      const way = deployed === passed.length ? ` ${passed.length === 1 ? 'It is' : 'They are'} already deployed. <a href="/deploy">See ${passed.length === 1 ? 'it' : 'them'} on Deploy</a>.`
+        : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
+        : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
+      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}</p>`;
     }
     // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
     // The server's reason is written for the customer; one that already says the session stopped
@@ -4996,7 +5002,7 @@
       // The book's name and its signed amount never break apart (a phone wraps the rest of the line).
       return `<span class="since-book" data-book="${m}">${b.trades
         ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${m === 'live' ? ' (real money)' : ''}`
-        : `<b>${label}</b> no trades closed`}</span>`;
+        : `<b>${label}</b>: no trades closed yet`}</span>`;
     }).join('<span class="sep">·</span>') : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
     const started = Object.values(runs).reduce((a, n) => a + n, 0), failed = runs.failed || 0;
@@ -5242,7 +5248,10 @@
         : me.min_run_balance != null ? `until you add credits: a session needs ${usd(me.min_run_balance)} to start` : 'until you add credits';
       return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>. Research is paused ${why}. <a href="/billing">Billing</a> lists every charge.</p>`;
     }
-    const pace = w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at this week’s pace` : '';
+    // A first-day account has no pace yet, and one under a week old reads its pace per day so far
+    // (the server's pace_days): its first minutes' spend over 7 days read "over 3 months".
+    const pace = w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at ${w.pace_days != null && w.pace_days < 7 ? 'its pace so far' : 'this week’s pace'}`
+      : paceTooSoon(w.pace_days, (+w.research_credits || 0) + (+w.checkin_credits || 0)) ? ', too soon to say how long they last: its first day sets the pace' : '';
     const floor = me.min_run_balance != null ? ` until your balance is under ${usd(me.min_run_balance)}, then pauses` : '';
     return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}. It has no daily spending cap: it uses credits${floor}${me.auto_reload ? ` (auto-reload adds ${usd(me.auto_reload.amount)} at ${usd(me.auto_reload.threshold)})` : ''}. <a href="/billing">Billing</a> lists every charge.</p>`;
   }
@@ -5774,8 +5783,9 @@
       `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
     ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
-      .concat(d.review_wait ? [`<dt>Review</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
-        : d.reviewing ? ['<dt>Review</dt><dd>In progress</dd>'] : d.last_review_at ? [`<dt>Last reviewed</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+      // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.
+      .concat(d.review_wait ? [`<dt>Check-in</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
+        : d.reviewing ? ['<dt>Last check-in</dt><dd>Reviewing now</dd>'] : d.last_review_at ? [`<dt>Last check-in</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
@@ -5961,6 +5971,12 @@
   // How long the balance lasts at last week's spend. Research pauses at $0, so autopilot users
   // need this more than the one-time welcome credit.
   const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
+  // The spend a runway is read at. The server's pace_days is how many days the week's spend covers: the
+  // account's age, at most 7. Under a day there is no pace yet (a first session's minutes, divided by
+  // 7, read "over 3 months"); under a week it is per day so far. An older server sends none: the week.
+  const paceTooSoon = (days, spent) => days != null && days < 1 && +spent > 0;
+  const paceDay = (spent, days) => +spent > 0 && !(days != null && days < 1) ? +spent / (days != null ? Math.min(7, days) : 7) : null;
+  const paceWords = (spent, days) => days != null && days < 7 ? `${usd(paceDay(spent, days))} a day so far` : `${usd(spent)} a week`;
   async function viewBilling() {
     const gen = S.gen;
     shell('/billing', boardTitle('Billing') + '<details class="billing-pricing"><summary>Credit pricing</summary><p>Credits pay for research and chat, billed per token for the model you pick. Paper and live trading are free. The <a href="/research">research form</a> shows what a session usually costs before you start.</p></details>' +
@@ -5976,7 +5992,8 @@
         fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0 }) +
         fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(' \u00b7\u00a0') }) +
         (d.runway_days != null
-          ? fig('Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${usd(d.spent_7d)} a week` })
+          ? fig('Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}` })
+          : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? fig('Credits last', 'Too soon to tell', { small: 'your first day of research sets the pace' })
           : fig('Welcome credit', usd(d.free_bonus)));
       const split = spendSplit(d.spent_7d_by);
       root.querySelector('#bsplit').innerHTML = split ? `Last 7 days: ${split}.` : '';
@@ -6039,7 +6056,8 @@
       const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');
       const fee = d.topup_fee_pct / 100;
       // At the user's own pace, how long the amount being bought would last: picks the amount for them.
-      const lasts = (v) => (+d.spent_7d > 0 && v > 0) ? ` At your pace (${usd(d.spent_7d)} a week) that's ${runwayLabel(v / (d.spent_7d / 7)).toLowerCase()} of research.` : '';
+      const perDay = paceDay(d.spent_7d, d.pace_days);
+      const lasts = (v) => (perDay && v > 0) ? ` At your pace (${paceWords(d.spent_7d, d.pace_days)}) that's ${runwayLabel(v / perDay).toLowerCase()} of research.` : '';
       const upd = () => { const v = +amt.value || 0; note.textContent = `You'll pay ${usd(v * (1 + fee))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).${lasts(v)}`; };
       amt.oninput = upd; upd();
       root.querySelector('#topup-btn').onclick = (e) => {

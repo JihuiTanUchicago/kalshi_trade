@@ -14,6 +14,7 @@ import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
+import {firstHourCases} from './first_hour_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -2992,7 +2993,7 @@ test('the since strip says what demo needs in a sentence, and a book with nothin
     action: {label: 'Add demo key', href: '/funds'}});
   assert.match(key, /Demo can’t trade: it needs your Kalshi demo key\. <a href="\/funds">Add demo key<\/a>/);
   assert.doesNotMatch(key, /Demo can’t trade: your/);
-  assert.match(key, /<span class="since-book" data-book="demo"><b>Demo<\/b> no trades closed<\/span>/);
+  assert.match(key, /<span class="since-book" data-book="demo"><b>Demo<\/b>: no trades closed yet<\/span>/);
   // No `need` from an older server: its whole line, not an empty "Demo can't trade: ."
   const old = await strip({line: "Demo isn't trading: your Kalshi demo key isn't connected."});
   assert.match(old, /Demo isn.+t trading: your Kalshi demo key isn.+t connected\./); assert.doesNotMatch(old, /trade: \./);
@@ -4787,3 +4788,6 @@ test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, 
   assert.match(css, /\n\.run-ideas \{ margin: 24px 0; \}/);
   assert.match(css, /\n\.t-strat \.pnl-nopass \{ color: var\(--ink-3\);/);
 });
+
+// After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
+firstHourCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});

@@ -178,6 +178,11 @@ def test_research_action_launches_when_global_queue_has_room(monkeypatch):
     text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
                           "idea": "Fade the overreaction after a large 1-minute BTC move."}, True)
     assert pid is None and rec["runs"] == [("btc15m", None, "Fade the overreaction after a large 1-minute BTC move.")]
+    # A new user's first line in the autopilot feed: the market as the app names it, in plain words,
+    # and still the start the panel's "Last move" looks for.
+    assert text == ("Started a fresh research session on Bitcoin 15-minute. Anything it finds has to pass the "
+                    "same tests as any session before it trades, even on paper. Follow it on the Research page.")
+    assert "btc15m" not in text and "pre-registration" not in text and "holdout" not in text
 
 
 # -- per-market dedup/cooldown: don't re-spam a market that's running or just finished -------------

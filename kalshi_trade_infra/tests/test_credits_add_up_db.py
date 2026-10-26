@@ -229,7 +229,12 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert abs(math.pop("start")) <= 0.01
     assert math == {"days": 30, "bought": 35.0, "purchases": 2, "other": 20.0,
                     "usage": float(_cents(spent_total)), "end": float(_cents(balance))}
-    assert state["runway_days"] == round(float(balance) / (float(spent_total) / 7), 1)
+    # A minutes-old account has no pace yet; a week-old one's runway is the balance over a week's spend.
+    assert state["pace_days"] < 1 and state["runway_days"] is None
+    cur.execute("UPDATE app_users SET created_at = created_at - INTERVAL 8 DAY WHERE id=%s", (uid,))
+    aged = server.billing_state(ctx())
+    assert aged["pace_days"] == 7.0 and aged["balance"] == state["balance"]
+    assert aged["runway_days"] == round(float(balance) / (float(spent_total) / 7), 1)
     # The week split by what spent it adds up to the week, and the chat turn is its own part.
     by = state["spent_7d_by"]
     assert _cents(sum(Decimal(str(v)) for v in by.values())) == _cents(state["spent_7d"])

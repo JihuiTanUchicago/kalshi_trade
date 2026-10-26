@@ -213,7 +213,7 @@ test('status updates show last review and synchronize the model only when it is 
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   const select = f.box.querySelector('#apf-model');
   f.apUpdate(f.box, status({model: 'opus', last_review_at: new Date(Date.now() - 5 * 60000).toISOString()}));
-  assert.match(f.box.querySelector('#apf-stats').innerHTML, /Last reviewed/);
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /Last check-in/);
   assert.match(f.box.querySelector('#apf-stats').innerHTML, /5m ago/);
   assert.equal(select.value, 'opus');
   f.document.activeElement = select;
@@ -221,7 +221,7 @@ test('status updates show last review and synchronize the model only when it is 
   f.document.activeElement = null; select.disabled = true;
   f.apUpdate(f.box, status({model: 'sonnet'})); assert.equal(select.value, 'opus');
   select.disabled = false; f.apUpdate(f.box, status({model: 'sonnet'})); assert.equal(select.value, 'sonnet');
-  assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /Last reviewed/);
+  assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /Last check-in/);
   assert.match(f.box.querySelector('#apf-gates').textContent, /Live trading isn’t available on this server yet\./);
   assert.equal(posts(f).length, 0);
 });
@@ -230,10 +230,10 @@ test('a queued or running review reads as in progress, not as a review that alre
   const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
   const at = new Date().toISOString();
   f.apUpdate(f.box, status({reviewing: true, last_review_at: at}));
-  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Review<\/dt><dd>In progress<\/dd>/);
-  assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /Last reviewed/);
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last check-in<\/dt><dd>Reviewing now<\/dd>/);
+  assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /Last check-in<\/dt><dd>just now/);
   f.apUpdate(f.box, status({reviewing: false, last_review_at: at}));
-  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last reviewed<\/dt><dd>just now<\/dd>/);
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last check-in<\/dt><dd>just now<\/dd>/);
   assert.doesNotMatch(source, /Working the operation/);
 });
 
@@ -252,9 +252,9 @@ test('the autopilot pulse and Review figure say how long a run has waited once p
     assert.match(f.box.querySelector('#apf-pulse').innerHTML, /No word from it for 89 min, longer than usual/);
     const at = new Date().toISOString();
     f.apUpdate(f.box, status({reviewing: false, review_wait: {state: 'queued', seconds: 300, overdue: true}, last_review_at: at}));
-    assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Review<\/dt><dd>Waiting 5 min<\/dd>/);
+    assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Check-in<\/dt><dd>Waiting 5 min<\/dd>/);
     f.apUpdate(f.box, status({reviewing: false, review_wait: {state: 'silent', seconds: 7200, overdue: true}, last_review_at: at}));
-    assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Review<\/dt><dd>Silent 2 hr<\/dd>/);
+    assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Check-in<\/dt><dd>Silent 2 hr<\/dd>/);
     assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /In progress/);
   } finally { chatReply = {messages: [], agent_busy: false}; }
 });

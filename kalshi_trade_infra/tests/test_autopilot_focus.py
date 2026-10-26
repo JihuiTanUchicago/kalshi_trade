@@ -136,7 +136,7 @@ def test_story_says_when_the_last_check_in_is_late(monkeypatch):
     assert "last check-in was 57 minutes ago" in late[0]
     hours = server._autopilot_story({"autopilot": True, "last_review_at": now - timedelta(hours=5, minutes=10)})
     assert "last check-in was 5 hours ago" in hours[0]
-    # 99 minutes reads "2h ago" in the Last reviewed figure beside it, so the line says 2 hours too.
+    # 99 minutes reads "2h ago" in the Last check-in figure beside it, so the line says 2 hours too.
     assert "last check-in was 2 hours ago" in server._autopilot_story({"autopilot": True, "last_review_at": now - timedelta(minutes=99)})[0]
     assert "last check-in was 3 days ago" in server._autopilot_story({"autopilot": True, "last_review_at": now - timedelta(days=3)})[0]
     # Researching right now is its own answer, and no review yet means it's just starting.

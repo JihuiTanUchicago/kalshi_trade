@@ -443,7 +443,7 @@ def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apar
     week = server.autopilot_status(ctx)['week']
     assert week == {'research_credits': 7.26, 'tested': 41, 'passed': 2, 'paper_started': 1,
                     'paper_pnl': -3.46, 'paper_trades': 4,
-                    'checkin_credits': 0.0, 'credits_left': 10.0, 'runway_days': None}
+                    'checkin_credits': 0.0, 'credits_left': 10.0, 'runway_days': None, 'pace_days': 7.0}
     assert seen[0][0] == 7 and abs((server.repo.now_utc() - seen[0][1]).total_seconds() - 7 * 86400) < 5
     off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
     assert 'week' not in off and len(seen) == 1  # an off autopilot reads nothing extra

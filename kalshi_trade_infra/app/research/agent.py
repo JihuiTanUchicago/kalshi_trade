@@ -4210,9 +4210,12 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if not sid and unsupported:
             return ("%s isn't a market Tau supports, so I started this angle on a supported market the "
                     "research specialist picks. Follow it on the Research page." % unsupported), None
-        return ("Started a fresh research session on %s — same gates as any run (pre-registration, "
-                "holdout, diversification). Follow it on the Research page."
-                % (market or "a market I'll choose"), None)
+        # Customer words: the autopilot panel's feed shows this line as written, and a new user's first one
+        # read "on btc15m — same gates as any run (pre-registration, holdout, diversification)": a market
+        # key and three terms of art. It keeps its first words (chat_repository.last_autopilot_action).
+        return ("Started a fresh research session on %s. Anything it finds has to pass the same tests as "
+                "any session before it trades, even on paper. Follow it on the Research page."
+                % (MARKETS[market].label if market in MARKETS else (market or "a market I'll choose")), None)
     # Should be unreachable for a well-formed action. Log the raw dict so a genuinely new/malformed
     # action kind is diagnosable from the agents journal instead of only this opaque chat line.
     print("[agents] copilot emitted an unhandled action: %r" % (action,), flush=True)

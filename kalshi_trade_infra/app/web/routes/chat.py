@@ -19,7 +19,7 @@ from app.trading import engine
 from app.trading.markets import MARKETS
 from app.web.caches import _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param
-from app.web.routes.billing import _credits_running_low
+from app.web.routes.billing import _credits_running_low, pace_days, runway_days
 from app.web.routes.brokers import _paper_call, _perps_live_call
 from app.web.settings import MAX_CHAT_PER_HOUR
 from app.web.views import (
@@ -679,7 +679,7 @@ def autopilot_status(ctx: Ctx):
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx, reads) else "credits") if billing_blocked else None),
         # Warn before the pause, not after: days of credit left when that's under three.
-        "credits_low_days": (_credits_running_low(cur, ctx.uid, reads, spent_7d=credits["spent"])
+        "credits_low_days": (_credits_running_low(cur, ctx.uid, reads, spent_7d=credits["spent"], created_at=u.get("created_at"))
                              if on and payments and not billing_blocked else None),
         "paper_progress": paper_progress,
         # Read by the story and the idle line, both of which say nothing of paper while autopilot is off.
@@ -690,7 +690,7 @@ def autopilot_status(ctx: Ctx):
         "tournament": _tournament_summary(cur, ctx.uid, deps) if story else None,
     }
     if on:
-        out["week"] = _autopilot_week(cur, ctx.uid, out["research"], reads, credits)
+        out["week"] = _autopilot_week(cur, ctx.uid, out["research"], reads, credits, u.get("created_at"))
         # Why nothing is trading right now (None while something is). Each read is skipped unless
         # its state can be the answer, since this endpoint polls.
         paused = sorted((d for d in deps if d["mode"] == "paper" and d["status"] == "paused"),
@@ -721,18 +721,19 @@ def _pulse(cur, uid: int, since, review: bool, engine: bool) -> Dict:
 
 
 def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads] = None,
-                    credits: Optional[Dict] = None) -> Dict:
+                    credits: Optional[Dict] = None, created_at=None) -> Dict:
     """The autopilot's last 7 days, for its scorecard. Research reuses the panel's week (every
     research session, the user's and the autopilot's; credits are what the ledger debited). Paper
     covers only the strategies the autopilot put on paper itself. Credits are real money and paper
     P&L is not, so they are separate fields the page shows apart and never adds up. `credits` is the
-    panel's repo.credit_week, when it has read it."""
+    panel's repo.credit_week, when it has read it. The runway is per day of the account's age while
+    it is under a week old (`created_at`), as on Billing, and `pace_days` says how many days it covers."""
     since = repo.now_utc() - timedelta(days=7)
     paper = repo.autopilot_paper_week(cur, uid, since)
     out = {"research_credits": research.get("cost_7d", 0.0), "tested": research.get("tested_7d", 0),
            "passed": research.get("passed_7d", 0), "paper_started": paper["started"],
            "paper_pnl": round(paper["pnl"], 2), "paper_trades": paper["trades"],
-           "checkin_credits": None, "credits_left": None, "runway_days": None}
+           "checkin_credits": None, "credits_left": None, "runway_days": None, "pace_days": None}
     if billing.configured():
         # What else the week cost and how long the balance lasts at that pace, read-only: the
         # autopilot's check-ins bill too, and the runway is the Billing page's (every usage debit of
@@ -740,8 +741,9 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
         used = credits["by_source"] if credits is not None else repo.usage_by_source(cur, uid, since)
         spent_7d = sum(used.values())
         balance = (reads or billing.Reads(cur, uid)).balance()
+        days = pace_days(created_at)
         out.update(checkin_credits=credit_usd(used["autopilot_review"]), credits_left=credit_usd(balance),
-                   runway_days=round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None)
+                   runway_days=runway_days(balance, spent_7d, days), pace_days=days)
     return out
 
 
