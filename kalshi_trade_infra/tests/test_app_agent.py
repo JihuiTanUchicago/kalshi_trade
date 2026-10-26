@@ -756,6 +756,17 @@ def test_load_passes_through_a_normal_result():
     assert agent._load("ok", lambda a, b: (a, b), sentinel, 2) == (sentinel, 2)
 
 
+def test_a_merged_load_gets_the_load_budget_per_leg(monkeypatch):
+    # Run 3274: a 4-market pooled research load built its legs one after another and ran out of a
+    # single leg's 300s budget while 4 research lanes shared the CPU.
+    seen = []
+    monkeypatch.setattr(agent, "_call_with_timeout",
+                        lambda label, seconds, fn, *a, beat=None: seen.append(seconds) or fn(*a))
+    agent._load("one", lambda: 1)
+    agent._load("pooled", lambda: 1, legs=4)
+    assert seen == [agent.DATA_LOAD_TIMEOUT, 4 * agent.DATA_LOAD_TIMEOUT]
+
+
 def test_load_classifies_no_settled_contracts():
     # A sports/un-settled market's "no settled contracts" ValueError surfaces as a specific,
     # market-naming LLMError (not the generic "unexpected error").

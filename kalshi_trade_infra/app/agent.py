@@ -1934,7 +1934,7 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
                 if specmod.is_multi_market(spec0):
                     legs = partitions.merged_partitions(cur, specmod.involved_markets(spec0))
                     val_ds = _load("Loading validation data", partitions.merged_dataset_from, legs,
-                                   "validation", beat=lambda: repo.heartbeat(cur, run_id))
+                                   "validation", beat=lambda: repo.heartbeat(cur, run_id), legs=len(legs))
                 else:
                     val_ds = _load("Loading validation data", backtest.partition_dataset, market,
                                    partition, "validation", beat=lambda: repo.heartbeat(cur, run_id))
@@ -2191,14 +2191,16 @@ def _call_with_timeout(label: str, seconds: float, fn, *args, beat=None, beat_ev
     return box.get("v")
 
 
-def _load(label: str, fn, *args, beat=None):
+def _load(label: str, fn, *args, beat=None, legs: int = 1):
     """Run a data load under the fail-fast DATA_LOAD_TIMEOUT (heartbeat beaten throughout), then
     relabel a RECOGNIZED load failure into a clean, specific LLMError (see _classify_load_error):
     a no-settled-contracts market or a transient RDS drop. An unrecognized error — a genuine bug —
-    propagates unchanged, so this only ever classifies the two known cases."""
+    propagates unchanged, so this only ever classifies the two known cases. A merged load builds
+    `legs` markets one after another, so it gets DATA_LOAD_TIMEOUT per leg (run 3274: a 4-market
+    pooled research load ran out of a single leg's 300s while 4 research lanes shared the CPU)."""
     for attempt in range(LOAD_RETRIES + 1):
         try:
-            return _call_with_timeout(label, DATA_LOAD_TIMEOUT, fn, *args, beat=beat)
+            return _call_with_timeout(label, DATA_LOAD_TIMEOUT * max(1, legs), fn, *args, beat=beat)
         except Exception as e:
             # A transient RDS drop is retryable in place (the load holds its own connection and is
             # read-only): back off briefly and try again before surfacing "data store was busy".
@@ -2778,7 +2780,7 @@ def _test_in_sample_inner(h: Dict, ds: backtest.Dataset, partition: Dict, log, r
                 legs = partitions.merged_partitions(cur, inv)
                 beat = (lambda: repo.heartbeat(cur, run_id)) if run_id is not None else None
                 rds = _load("Loading %s research data" % key, partitions.merged_dataset_from, legs,
-                            "research", beat=beat)
+                            "research", beat=beat, legs=len(legs))
             except NoData as e:
                 rds = e  # cached too, so a re-proposal of the same set doesn't re-query
             except ValueError as e:

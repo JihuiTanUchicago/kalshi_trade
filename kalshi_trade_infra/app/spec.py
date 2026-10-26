@@ -635,7 +635,7 @@ def _validate_pool(spec: Dict, pool: Any, errors: List[str]) -> None:
     if pool is None:
         return
     cap = max_pool(MARKETS.get(spec.get("market")))
-    if not isinstance(pool, list) or not pool or len(pool) > cap:
+    if not isinstance(pool, list) or not pool:
         errors.append("pool must be a list of 1..%d extra market keys" % cap)
         return
     clean = set()
@@ -661,6 +661,9 @@ def _validate_pool(spec: Dict, pool: Any, errors: List[str]) -> None:
                       "the same candle_minutes and close schedule" % ", ".join(sorted(involved)))
     if not clean and not errors:
         errors.append("pool needs at least one market other than %s" % spec.get("market"))
+    if len(clean) > cap:  # counted after dedup and without spec["market"], which a pool may repeat
+        errors.append("pool holds at most %d extra markets besides %s; got %d (%s): keep the %d most "
+                      "relevant" % (cap, spec.get("market"), len(clean), ", ".join(sorted(clean)), cap))
     if not errors:
         spec["pool"] = sorted(clean)
 
