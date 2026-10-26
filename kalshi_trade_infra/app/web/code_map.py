@@ -38,7 +38,7 @@ COMPONENTS: Dict[str, List[str]] = {
         "data_pipeline/modeling_features.py",
     ],
     "db": ["data_pipeline/common.py", "app/schema.py", "data_pipeline/init_schema.py"],
-    "web": ["app/server.py", "app/web/http.py", "app/web/settings.py", "app/web/views.py", "app/web/caches.py", "app/web/routes/auth.py", "app/web/routes/strategies.py", "app/web/routes/funds.py", "app/web/routes/admin.py", "app/web/routes/brokers.py", "app/web/routes/billing.py", "app/web/routes/community.py", "app/repository.py", "app/web/auth.py", "app/adapters/stripe/billing.py"],
+    "web": ["app/server.py", "app/web/http.py", "app/web/settings.py", "app/web/views.py", "app/web/caches.py", "app/web/routes/auth.py", "app/web/routes/strategies.py", "app/web/routes/deployments.py", "app/web/routes/funds.py", "app/web/routes/admin.py", "app/web/routes/brokers.py", "app/web/routes/billing.py", "app/web/routes/community.py", "app/repository.py", "app/web/auth.py", "app/adapters/stripe/billing.py"],
     "agents": ["app/worker.py", "app/research/agent.py", "app/adapters/llm/llm.py"],
     "backtest": ["app/trading/backtest.py", "app/trading/engine.py", "app/trading/spec.py"],
     # Both engine boxes are app/trading/engine.py (recursive-engine), which runs paper, demo and live
