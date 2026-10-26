@@ -988,6 +988,28 @@ def test_last_autopilot_action_looks_back_a_bounded_window_of_chat(conn, user, m
     assert repo.last_autopilot_action(cur, uid) is None  # outside the window
 
 
+def test_the_engines_own_pause_is_the_last_move_with_its_strategy(conn, user):
+    """The engine's "Paused deployment #N automatically." names neither the autopilot nor the strategy,
+    so the card's last move stayed on an older deploy. It is the last move now, with the paused
+    deployment's strategy title and book for the panel to say it by name; another user's deployment
+    number never reads a title."""
+    from app import repository as repo
+
+    cur, uid = conn.cursor(), user["id"]
+    dep = _deployment(conn, user)
+    repo.add_chat(cur, uid, "system", "Autopilot deployed Lean into it on paper.")
+    line = "Paused deployment #%d automatically. Lost $12.00, more than the $10.00 guard (2x its worst backtest drawdown)." % dep["id"]
+    repo.add_chat(cur, uid, "system", line)
+    got = repo.last_autopilot_action(cur, uid)
+    assert got["text"] == line  # the engine's text as written
+    assert got["deployment"] == {"id": dep["id"], "title": "T", "mode": "paper"}
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "o@example.com", "O", None)
+    repo.add_chat(cur, other["id"], "system", line)
+    assert repo.last_autopilot_action(cur, other["id"])["deployment"] == {"id": dep["id"], "title": None, "mode": None}
+    repo.add_chat(cur, uid, "system", "Autopilot paused Rain: it hit its loss guard.")
+    assert "deployment" not in repo.last_autopilot_action(cur, uid)
+
+
 def test_chat_lines_name_the_book_a_proposal_would_change(conn, user):
     """The agent panel says whether Approve touches real money: a proposal's chat line carries its
     deployment's book; a line with no deployment (a risk change, plain chat) carries none."""
