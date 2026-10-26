@@ -2480,6 +2480,9 @@
         nm ? nm.textContent.trim() : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
     };
     form.addEventListener('change', syncOpts); syncOpts();
+    // A field the browser won't accept (0 or 5,000 strategies) inside folded Options: it can't show its
+    // message on a hidden field, so Start did nothing. Unfold Options so the browser points at it.
+    form.addEventListener('invalid', () => { const o = form.querySelector('#ropts'); if (o && !o.open) o.open = true; }, true);
     const ta = form.querySelector('textarea[name=prompt]');
     const draft = keepDraft(ta);
     // "Run it yourself" fills the box with the example's idea and says plainly that it's a new, paid
@@ -2540,7 +2543,13 @@
           });
           draft.drop();
           go('/research/' + r.id);
-        } catch (err) { flash('#dflash', err.message, 'bad'); }
+        } catch (err) {
+          flash('#dflash', err.message, 'bad');
+          // The error sits under the cost lines: on a phone that is below the fold, so Start looked
+          // like it did nothing (out of credits, two sessions already going). Bring it into view.
+          const said = form.querySelector('#dflash');
+          if (said && said.scrollIntoView) said.scrollIntoView({ block: 'nearest' });
+        }
       });
     };
     // Live market context: fold the shared book onto each picker row (read-only). Rows with no
