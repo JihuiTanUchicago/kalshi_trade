@@ -32,13 +32,15 @@ def _customer_id(ctx: Ctx) -> str:
     return cid
 
 
-def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None, balance: Optional[float] = None):
+def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None, balance: Optional[float] = None,
+                   spent_7d: Optional[float] = None):
     """(balance, last-7-day usage spend, days the balance lasts at that pace). Research pauses at
     zero, so this is how long autopilot keeps working; None when there is no recent usage. A caller
-    that already summed the ledger passes its `balance`."""
+    that already summed the ledger passes its `balance` and its week's usage (`spent_7d`)."""
     if balance is None:
         balance = (reads or billing.Reads(cur, uid)).balance()
-    spent_7d = repo.credit_spent_total(cur, uid, repo.now_utc() - timedelta(days=7))
+    if spent_7d is None:
+        spent_7d = repo.credit_spent_total(cur, uid, repo.now_utc() - timedelta(days=7))
     runway = round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None
     return balance, spent_7d, runway
 
@@ -46,14 +48,14 @@ def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None, balance
 CREDIT_RUNWAY_WARN_DAYS = 3
 
 
-def _credits_running_low(cur, uid: int, reads: Optional[billing.Reads] = None):
+def _credits_running_low(cur, uid: int, reads: Optional[billing.Reads] = None, spent_7d: Optional[float] = None):
     """Days of credit left when autopilot will pause within CREDIT_RUNWAY_WARN_DAYS and auto-reload
-    won't top it up; None otherwise. A readout for the panel, never a gate."""
+    won't top it up; None otherwise. A readout for the panel, never a gate. `spent_7d` as _credit_runway."""
     reads = reads or billing.Reads(cur, uid)
     cust = reads.customer()
     if cust and cust.get("auto_reload") and cust.get("default_pm_id"):
         return None
-    runway = _credit_runway(cur, uid, reads)[2]
+    runway = _credit_runway(cur, uid, reads, spent_7d=spent_7d)[2]
     return runway if runway is not None and runway < CREDIT_RUNWAY_WARN_DAYS else None
 
 

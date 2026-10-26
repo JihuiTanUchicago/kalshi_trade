@@ -177,4 +177,7 @@ def _fresh_server_shared_cache():
     book_memo = sys.modules.get("app.services.book_memo")
     if book_memo is not None:
         book_memo.clear()
+    chat_routes = sys.modules.get("app.web.routes.chat")  # the autopilot's last move, kept per user id
+    if chat_routes is not None:
+        chat_routes._LAST_ACTION.clear()
     yield

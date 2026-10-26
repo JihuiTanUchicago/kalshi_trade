@@ -44,10 +44,13 @@ def clear() -> None:
 class BookMemo:
     """One request's view of the user's kept reads: the positions' version is read once, on first use."""
 
-    def __init__(self, cur, uid: int):
+    def __init__(self, cur, uid: int, version: Optional[Tuple[int, int, int]] = None,
+                 strategies: Optional[Dict[int, int]] = None):
+        """`version` and `strategies`, when given, are repo.positions_version and repo.deployment_strategies
+        as a read made before any kept read already returned them (the autopilot panel's pulse)."""
         self.cur, self.uid = cur, int(uid)
-        self._version: Optional[Tuple[int, int, int]] = None
-        self._strategies: Optional[Dict[int, int]] = None
+        self._version: Optional[Tuple[int, int, int]] = version
+        self._strategies: Optional[Dict[int, int]] = strategies
 
     def version(self) -> Tuple[int, int, int]:
         if self._version is None:
@@ -104,6 +107,32 @@ def paper_ledger_summary(cur, uid: int) -> Dict:
                 _LEDGER.clear()
         hit = _LEDGER[int(uid)] = (v, repo.paper_ledger_summary(cur, uid))
     return dict(hit[1])
+
+
+def realized_since(memo: BookMemo, modes: Tuple[str, ...], since: datetime) -> Dict[str, float]:
+    """repo.realized_pnl_by_mode (each book's realized P&L of the trades closed since `since`), kept: a
+    closed row's pnl and closed_at are never written again, so the sum moves only with a position (or a
+    new `since`, part of the key). No position, nothing realized: no read."""
+    if not memo.version()[0]:
+        return {m: 0.0 for m in modes}
+    return dict(memo.get("realized_since", (tuple(modes), since),
+                         lambda: repo.realized_pnl_by_mode(memo.cur, memo.uid, tuple(modes), since)))
+
+
+def open_count(memo: BookMemo, mode: str) -> int:
+    """repo.user_open_exposure(mode)["n"] (the user's open positions in one book), kept: a position opens
+    as a new row and closes from open to closed, both of which move the version."""
+    if not memo.version()[0]:
+        return 0
+    return memo.get("open_n", mode, lambda: int(repo.user_open_exposure(memo.cur, memo.uid, mode)["n"]))
+
+
+def closed_totals(memo: BookMemo, deployment_ids: List[int]) -> Dict[int, Tuple[int, Any]]:
+    """repo.deployment_closed_totals for the listed deployments (their own closed positions), kept."""
+    ids = tuple(sorted({int(i) for i in deployment_ids}))
+    if not ids or not memo.version()[0]:
+        return {}
+    return memo.get("closed_totals", ids, lambda: repo.deployment_closed_totals(memo.cur, list(ids)))
 
 
 def closed_book_totals(memo: BookMemo, day: datetime, visit: Optional[datetime] = None):

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app import repository as repo
 from app import worker
@@ -141,27 +141,29 @@ def autopilot_kill(ctx: Ctx):
     return {"ok": True, "paused": paused}
 
 
-def _research_activity(cur, uid: int) -> Dict:
+def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optional[float] = None) -> Dict:
     """What research is doing for the autopilot float: the markets being researched now and the
-    last 7 days' tested/passed counts, so a quiet panel reads as working, not stuck. One bounded read."""
+    last 7 days' tested/passed counts, so a quiet panel reads as working, not stuck. Made from the
+    panel's pulse (repo.autopilot_pulse) and its credit read (repo.credit_week); each is read here
+    when the caller has none."""
     since = repo.now_utc() - timedelta(days=7)
-    # Researching now means a run queued for a worker or one that is beating. A run the user paused
-    # isn't researching, and a running run silent past the reaper's limit (its worker died) left
-    # "Right now it's researching Bitcoin" on every page for hours after the work stopped.
-    active = [r for r in repo.list_runs(cur, uid, limit=50) if r.get("status") == "queued"
+    pulse = pulse if pulse is not None else repo.autopilot_pulse(cur, uid, since)
+    # Researching now means a run queued for a worker or one that is beating, among the 50 newest. A
+    # run the user paused isn't researching, and a running run silent past the reaper's limit (its
+    # worker died) left "Right now it's researching Bitcoin" on every page for hours after it stopped.
+    active = [r for r in pulse["research_live"] if r.get("status") == "queued"
               or (r.get("status") == "running" and not (_run_wait(r) or {}).get("overdue"))]
     # The week's totals come from one aggregate, not the 50 newest runs: a busy autopilot starts
     # 250+ runs a week, and the capped list told Todd it had tested 73 ideas when it was hundreds.
     # Passed counts strategies that cleared every gate: an old run's counter held 68 backtest-only.
-    week = repo.research_week(cur, uid, since)
     return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "a market it's still picking")
                        for r in active],
-            "tested_7d": sum(int(r.get("tried") or 0) for r in week),
-            "passed_7d": repo.strategies_passed_since(cur, uid, since),
-            "runs_7d": sum(int(r.get("runs") or 0) for r in week),
+            "tested_7d": pulse["tested_7d"],
+            "passed_7d": pulse["passed_7d"],
+            "runs_7d": pulse["runs_7d"],
             # What research actually debited this week (the credit ledger), not tokens re-priced:
             # re-pricing billed a screen-arm run's screen tokens at the developer model's rate.
-            "cost_7d": credit_usd(repo.research_spent_since(cur, uid, since))}
+            "cost_7d": credit_usd(spent if spent is not None else repo.credit_week(cur, uid, since)["research"])}
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
@@ -348,16 +350,21 @@ def _tournament_line(t: Optional[Dict]) -> str:
         _plural(t["entrants"], "strategy", "strategies"), t["trips"], t["target"], where))
 
 
-def _paused_recent(deps: List[Dict], hours: int = 24, cur=None) -> List[Dict]:
+def _paused_recent(deps: List[Dict], hours: int = 24, cur=None, memo: Optional[book_memo.BookMemo] = None) -> List[Dict]:
     """Paper deployments paused in the last `hours`: they leave the 'running' count, so without
     this a stopped-out strategy simply vanishes from the panel. Deployments listed without their
-    position totals (list_deployments_brief) get them from one read of just these, through `cur`."""
+    position totals (list_deployments_brief) get them from one read of just these, through `cur`,
+    or through `memo`, which keeps them while the positions are unchanged."""
     since = repo.now_utc() - timedelta(hours=hours)
     picked = [d for d in deps if d["mode"] == "paper" and d["status"] == "paused"
               and d.get("updated_at") is not None and d["updated_at"] >= since][:3]
     totals = {}
-    if cur is not None and any("closed_trades" not in d for d in picked):
-        totals = repo.deployment_closed_totals(cur, [d["id"] for d in picked])
+    if any("closed_trades" not in d for d in picked):
+        ids = [d["id"] for d in picked]
+        if memo is not None:
+            totals = book_memo.closed_totals(memo, ids)
+        elif cur is not None:
+            totals = repo.deployment_closed_totals(cur, ids)
     out = []
     for d in picked:
         trades, pnl = ((d.get("closed_trades"), d.get("realized_pnl")) if "closed_trades" in d
@@ -425,13 +432,49 @@ def _engine_age(cur):
         return _UNKNOWN
 
 
-def _passed_undeployed(cur, uid: int, focus: List[str]) -> List[Dict]:
+# The autopilot's last move, kept per user against their chat's version (rows, highest id) from the
+# panel's pulse. The line is read from the newest chat rows, and chat rows are only ever added (none is
+# rewritten or removed), so the same version means the same rows and the same line. The row count
+# catches a row committed after a higher id was already read.
+_LAST_ACTION: Dict[int, Tuple[Tuple[int, int], Optional[Dict]]] = {}
+_LAST_ACTION_MAX = 4096
+
+
+def _last_action(cur, uid: int, chat: Optional[Tuple[int, int]]) -> Optional[Dict]:
+    """repo.last_autopilot_action, read again only after the user's chat moved. No chat, no line."""
+    if chat is None:
+        return repo.last_autopilot_action(cur, uid)
+    if not chat[0]:
+        return None
+    hit = _LAST_ACTION.get(uid)
+    if hit is None or hit[0] != chat:
+        if len(_LAST_ACTION) >= _LAST_ACTION_MAX:
+            _LAST_ACTION.clear()
+        hit = _LAST_ACTION[uid] = (chat, repo.last_autopilot_action(cur, uid))
+    return dict(hit[1]) if hit[1] is not None else None
+
+
+class _PanelReads(billing.Reads):
+    """billing.Reads whose balance came with the panel's credit read (repo.credit_week, the same SUM)."""
+
+    def __init__(self, cur, uid: int, balance: Optional[float]):
+        super().__init__(cur, uid)
+        self._known = balance
+
+    def balance(self) -> float:
+        return self._known if self._known is not None else super().balance()
+
+
+def _passed_undeployed(cur, uid: int, focus: List[str], deployed: Optional[Dict[int, int]] = None) -> List[Dict]:
     """The user's passed strategies that never ran on paper (the example left out), each with whether
     it is inside the focus and, for the first few inside it, whether the gatekeeper made it a
-    deployment candidate: the same tests agent.auto_paper_candidates applies before it deploys one."""
+    deployment candidate: the same tests agent.auto_paper_candidates applies before it deploys one.
+    `deployed` is {deployment_id: strategy_id} for every deployment, stopped ones too, when the caller
+    has it (the panel's pulse); without it the deployments are listed here."""
     try:
         rows = repo.list_strategies(cur, uid, status="passed", limit=100)
-        tried = {d["strategy_id"] for d in repo.list_deployments(cur, uid, include_stopped=True)}
+        tried = (set(deployed.values()) if deployed is not None
+                 else {d["strategy_id"] for d in repo.list_deployments(cur, uid, include_stopped=True)})
     except Exception:  # noqa: BLE001 - a readout
         return []
     out = [{"id": r["id"], "market": r.get("market"), "title": _short_title(r.get("title")),
@@ -556,31 +599,46 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
 def autopilot_status(ctx: Ctx):
     """Lightweight status for the floating autopilot window."""
     cur, u = ctx.cur, ctx.user
+    on = bool(u.get("autopilot"))
     # Without the per-deployment position totals: this polls, and only _paused_recent needs them.
     deps = repo.list_deployments_brief(cur, ctx.uid)
     live_run = [d for d in deps if d["mode"] == "live" and d["status"] == "running"]
     paper_run = [d for d in deps if d["mode"] == "paper" and d["status"] == "running"]
     demo_run = [d for d in deps if d["mode"] == "demo" and d["status"] == "running"]
-    kalshi_connected = repo.get_kalshi_key(cur, ctx.uid) is not None  # read once: the live gate and the badge
+    running = len(paper_run) + len(demo_run) + len(live_run)
+    since = repo.now_utc() - timedelta(days=7)
+    # The small reads in one statement (repo.autopilot_pulse), the positions' version among them, so it
+    # is read before any read kept against it. The engine's beat only when the idle line can use it.
+    pulse = _pulse(cur, ctx.uid, since, review=on, engine=on and running > 0)
+    memo = book_memo.BookMemo(cur, ctx.uid, version=pulse["positions"], strategies=pulse["dep_strategies"])
+    kalshi_connected = pulse["kalshi_key"]  # read once: the live gate and the badge
     gates_ok = bool(engine.LIVE_TRADING_ENABLED and kalshi_connected)
-    live_on = bool(u.get("autopilot_live")) and gates_ok and bool(u.get("autopilot"))
-    mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if u.get("autopilot") else "off"))
-    today_live = round(repo.realized_pnl(cur, ctx.uid, "live", _start_of_day_utc()), 2)
+    live_on = bool(u.get("autopilot_live")) and gates_ok and on
+    mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if on else "off"))
+    # Each book's day, summed apart (never together) and kept until a position moves.
+    today = book_memo.realized_since(memo, ("live", "paper"), _start_of_day_utc())
+    today_live = round(today["live"], 2)
     limit = float(u.get("autopilot_daily_loss_limit") or 50)
+    # The week's credit figures and, when a figure below needs it, the balance: one read of the ledger.
+    payments = billing.configured()
+    credits = repo.credit_week(cur, ctx.uid, since, balance=on and payments)
     # When autopilot is ON but can't spend (no card, or balance below the per-run floor), the worker
     # silently skips the user via billing.is_ready — the SAME gate, read here only to surface WHY the
     # panel is quiet so it doesn't look broken. Never changes the gate; purely a status readout.
-    reads = billing.Reads(cur, ctx.uid)  # the readout below reuses the gate's card and balance reads
-    billing_blocked = bool(u.get("autopilot")) and billing.configured() and not billing.is_ready(cur, ctx.uid, reads)
-    review = repo.active_agent_run(cur, ctx.uid, "review") if u.get("autopilot") else None
+    reads = _PanelReads(cur, ctx.uid, credits["balance"])  # the readout below reuses the gate's card and balance reads
+    billing_blocked = on and payments and not billing.is_ready(cur, ctx.uid, reads)
+    review = pulse["review"] if on else None
     review_wait = _run_wait(review) or {"overdue": False}
+    # The story is the only reader of the paused, early-exit and tournament lines, and it says one fixed
+    # line while autopilot is off and nothing while billing blocks it: read them only when it tells them.
+    story = on and not billing_blocked
     # Paper -> live progress: the running paper strategy closest to the realistic-trade gate, so a
     # user on autopilot can see the funnel moving. Counts only (no bootstrap): this endpoint polls.
     paper_progress = None
     if paper_run:
         sids = sorted({int(d["strategy_id"]) for d in paper_run})
         # Both readouts are kept until the positions (or which deployments count toward them) change.
-        prog, events = book_memo.paper_readouts(book_memo.BookMemo(cur, ctx.uid), sids)
+        prog, events = book_memo.paper_readouts(memo, sids)
         titles = {int(d["strategy_id"]): d.get("title") or "" for d in paper_run}
         best = max(sids, key=lambda s: (prog.get(s, (0, 0.0))[0], prog.get(s, (0, 0.0))[1]))
         trades, net = prog.get(best, (0, 0.0))
@@ -596,8 +654,8 @@ def autopilot_status(ctx: Ctx):
             soon = min(etas, key=etas.get)
             paper_progress.update(soonest_days=etas[soon], soonest_title=titles[soon])
     out = {
-        "research": _research_activity(cur, ctx.uid),
-        "autopilot": bool(u.get("autopilot")),
+        "research": _research_activity(cur, ctx.uid, pulse, credits["research"]),
+        "autopilot": on,
         "autopilot_live": bool(u.get("autopilot_live")),
         "live_enabled": bool(engine.LIVE_TRADING_ENABLED),
         "kalshi_connected": kalshi_connected,
@@ -605,11 +663,11 @@ def autopilot_status(ctx: Ctx):
         "live_running": len(live_run), "paper_running": len(paper_run), "demo_running": len(demo_run),
         "today_live_pnl": today_live,
         # The paper book's day, so a paper-only panel shows its own money instead of a live $0.00.
-        "today_paper_pnl": round(repo.realized_pnl(cur, ctx.uid, "paper", _start_of_day_utc()), 2),
+        "today_paper_pnl": round(today["paper"], 2),
         "daily_loss_limit": limit,
         "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
-        "last_action": repo.last_autopilot_action(cur, ctx.uid),
-        "last_review_at": repo.last_review_at(cur, ctx.uid),  # liveness: a quiet review posts nothing, this still shows it ran
+        "last_action": _last_action(cur, ctx.uid, pulse["chat"]),
+        "last_review_at": pulse["last_review_at"],  # liveness: a quiet review posts nothing, this still shows it ran
         # A review queued or running now. Switching on queues the first one at once, and the panel said
         # "between research runs, checks in every 10 minutes" over a "Working" pulse while it waited.
         "reviewing": bool(review) and not review_wait["overdue"],
@@ -621,24 +679,24 @@ def autopilot_status(ctx: Ctx):
         "billing_blocked": billing_blocked,
         "billing_reason": (("card" if _needs_card(ctx, reads) else "credits") if billing_blocked else None),
         # Warn before the pause, not after: days of credit left when that's under three.
-        "credits_low_days": (_credits_running_low(cur, ctx.uid, reads)
-                             if u.get("autopilot") and billing.configured() and not billing_blocked else None),
+        "credits_low_days": (_credits_running_low(cur, ctx.uid, reads, spent_7d=credits["spent"])
+                             if on and payments and not billing_blocked else None),
         "paper_progress": paper_progress,
-        "paper_open": int(repo.user_open_exposure(cur, ctx.uid, "paper")["n"]) if paper_run else 0,
-        "paper_waiting": _paper_waiting(paper_run, _scan_tally(cur, paper_run)),
-        "paused_recent": _paused_recent(deps, cur=cur),
-        "early_exits_7d": _early_exits(cur, ctx.uid),
-        "tournament": _tournament_summary(cur, ctx.uid, deps),
+        # Read by the story and the idle line, both of which say nothing of paper while autopilot is off.
+        "paper_open": book_memo.open_count(memo, "paper") if paper_run and on else 0,
+        "paper_waiting": _paper_waiting(paper_run, _scan_tally(cur, paper_run)) if on else [],
+        "paused_recent": _paused_recent(deps, memo=memo) if story else [],
+        "early_exits_7d": _early_exits(cur, ctx.uid) if story else {},
+        "tournament": _tournament_summary(cur, ctx.uid, deps) if story else None,
     }
-    if u.get("autopilot"):
-        out["week"] = _autopilot_week(cur, ctx.uid, out["research"], reads)
+    if on:
+        out["week"] = _autopilot_week(cur, ctx.uid, out["research"], reads, credits)
         # Why nothing is trading right now (None while something is). Each read is skipped unless
         # its state can be the answer, since this endpoint polls.
-        running = len(paper_run) + len(demo_run) + len(live_run)
         paused = sorted((d for d in deps if d["mode"] == "paper" and d["status"] == "paused"),
                         key=lambda d: d.get("updated_at") or datetime.min, reverse=True)
-        out["idle"] = _idle_reason(out, paper_run, paused, _engine_age(cur) if running else _UNKNOWN,
-                                   _passed_undeployed(cur, ctx.uid, out["focus"]) if not running and not paused
+        out["idle"] = _idle_reason(out, paper_run, paused, pulse["engine_age"] if running else _UNKNOWN,
+                                   _passed_undeployed(cur, ctx.uid, out["focus"], pulse["dep_strategies"]) if not running and not paused
                                    and not billing_blocked else [])
         # A demo copy whose every order Kalshi refuses is what isn't trading when paper is fine, and
         # the truer line when nothing is on paper (only the engine or billing outrank it there).
@@ -651,11 +709,24 @@ def autopilot_status(ctx: Ctx):
     return out
 
 
-def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads] = None) -> Dict:
+def _pulse(cur, uid: int, since, review: bool, engine: bool) -> Dict:
+    """repo.autopilot_pulse; when the engine's beat can't be read (its table isn't there before the
+    first schema run), everything else is read without it and the beat is unknown."""
+    try:
+        return repo.autopilot_pulse(cur, uid, since, review=review, engine=engine)
+    except Exception:  # noqa: BLE001 - only the engine's beat may fail; anything else fails again below
+        if not engine:
+            raise
+    return dict(repo.autopilot_pulse(cur, uid, since, review=review), engine_age=_UNKNOWN)
+
+
+def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads] = None,
+                    credits: Optional[Dict] = None) -> Dict:
     """The autopilot's last 7 days, for its scorecard. Research reuses the panel's week (every
     research session, the user's and the autopilot's; credits are what the ledger debited). Paper
     covers only the strategies the autopilot put on paper itself. Credits are real money and paper
-    P&L is not, so they are separate fields the page shows apart and never adds up."""
+    P&L is not, so they are separate fields the page shows apart and never adds up. `credits` is the
+    panel's repo.credit_week, when it has read it."""
     since = repo.now_utc() - timedelta(days=7)
     paper = repo.autopilot_paper_week(cur, uid, since)
     out = {"research_credits": research.get("cost_7d", 0.0), "tested": research.get("tested_7d", 0),
@@ -666,7 +737,7 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
         # What else the week cost and how long the balance lasts at that pace, read-only: the
         # autopilot's check-ins bill too, and the runway is the Billing page's (every usage debit of
         # the week). With payments off nothing pauses it, so there is no limit to show.
-        used = repo.usage_by_source(cur, uid, since)
+        used = credits["by_source"] if credits is not None else repo.usage_by_source(cur, uid, since)
         spent_7d = sum(used.values())
         balance = (reads or billing.Reads(cur, uid)).balance()
         out.update(checkin_credits=credit_usd(used["autopilot_review"]), credits_left=credit_usd(balance),
