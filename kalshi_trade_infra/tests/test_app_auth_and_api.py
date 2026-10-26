@@ -382,6 +382,30 @@ def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balanc
     assert kalshi_account.balance_cached(1, None) == 1234.5
     kalshi_account._BALANCE_CACHE.pop(1, None)
 
+
+def test_replacing_the_live_key_is_refused_while_live_deployments_run(monkeypatch):
+    """Their open positions sit on the account the current key trades; a new key would send their
+    exits to another account. Same rule as disconnecting; a first key, or none running, saves."""
+    from contextlib import nullcontext
+
+    pem = _pem(rsa.generate_private_key(public_exponent=65537, key_size=2048))
+    saved = []
+    deps = [{"mode": "live", "status": "running"}, {"mode": "paper", "status": "running"}]
+    monkeypatch.setattr(server.repo, "transaction", lambda conn: nullcontext(FakeCur()))
+    monkeypatch.setattr(server.repo, "list_deployments", lambda cur, uid: deps)
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: {"key_id": "OLD-KEY-1"})
+    monkeypatch.setattr(server.repo, "save_kalshi_key", lambda cur, uid, kid, blob: saved.append(kid))
+    monkeypatch.setattr(server.kalshi_perps_trading, "guard_key_change", lambda *args: None)
+    monkeypatch.setattr(server.kalshi_account, "encrypt_private_key", lambda uid, p: b"ENC")
+    monkeypatch.setattr(kalshi_account, "balance", lambda creds: 10.0)
+    with pytest.raises(server.ApiError) as e:
+        server.save_kalshi_key(ctx({"key_id": "NEW-KEY-2", "private_key": pem}))
+    assert e.value.status == 409 and "replacing your Kalshi key" in str(e.value) and saved == []
+    deps[0]["status"] = "paused"
+    assert server.save_kalshi_key(ctx({"key_id": "NEW-KEY-2", "private_key": pem}))["ok"] is True
+    assert saved == ["NEW-KEY-2"]
+    kalshi_account._BALANCE_CACHE.pop(1, None)
+
 # -- Strategies listing: pagination + true COUNT(*) figures --------------------------
 
 
