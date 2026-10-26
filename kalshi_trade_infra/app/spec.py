@@ -184,7 +184,7 @@ CODE_SPEC_KEYS = {"market", "sizing", "code", "datasets"}
 CODE_SPEC_IGNORED = ("side", "model", "entry", "exit", "cross")
 MAX_CODE_CHARS = 20_000
 # Free external datasets a code spec may request (Pillar 3). Resolved + as-of joined on the host
-# into frame["external"] within the research fold; see app/freedata.py. These are the sources that
+# into frame["external"] within the research fold; see app/adapters/data/freedata.py. These are the sources that
 # resolve with no key/entitlement; an unknown source is a spec error.
 DATASET_SOURCES = ("fred", "asos")
 MAX_DATASETS = 8
@@ -465,7 +465,7 @@ def _validate_code_spec(raw: Dict) -> Dict[str, Any]:
 def _validate_datasets(raw, errors: List[str]) -> List[Dict[str, Any]]:
     """Normalise spec['datasets'] (free external data requests) or append errors. Each becomes a
     canonical {name, source, series, lag_days} dict sorted by name, so the request hashes stably
-    and pins the trial. Resolution/joining happens on the host (app/freedata.py), never here."""
+    and pins the trial. Resolution/joining happens on the host (app/adapters/data/freedata.py), never here."""
     if raw is None:
         return []
     if not isinstance(raw, list):

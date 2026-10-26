@@ -27,10 +27,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
-from app import freedata
+from app.adapters.data import freedata
 from app import spec as specmod
 from app.track_record import thin_min_max
-from app import options_fair, sports_odds, weather_fcst
+from app.adapters.data import options_fair, sports_odds, weather_fcst
 from app.markets import (MARKETS, NEW_YORK, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot, snapshot,
                          cross_features, cross_product,
                          weather_obs_applies)
@@ -1193,7 +1193,7 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
         with conn.cursor() as cur:
             if market.source == "ticks":
                 from app import research_repository as rr
-                from app import tick_dataset
+                from app.adapters.data import tick_dataset
                 contracts = rr.partition_contracts(cur, market, since)
                 return tick_dataset.load_window(market, contracts, 0, 2 ** 62)
             if market.kind == "perpetual":

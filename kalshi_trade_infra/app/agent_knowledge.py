@@ -7,9 +7,9 @@ import json
 import os
 from urllib.parse import quote
 
-from app.exa_data import Config, ExaDataClient, ExaError
+from app.adapters.data.exa_data import Config, ExaDataClient, ExaError
 from app.llm import LLMError, Usage, extract_json
-from app.market_data_common import iso, utc_now
+from app.adapters.data.market_data_common import iso, utc_now
 
 MAX_CONTEXT_CHARS = 24000
 

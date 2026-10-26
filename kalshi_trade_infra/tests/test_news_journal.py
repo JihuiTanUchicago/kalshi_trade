@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from app.news_journal import NewsJournal
+from app.adapters.data.news_journal import NewsJournal
 from app import worldmonitor_data as data
 from tests.test_worldmonitor_data import NOW, digest, item
 

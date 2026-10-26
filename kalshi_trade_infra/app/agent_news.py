@@ -12,8 +12,8 @@ import os
 from urllib.parse import quote
 
 from app.llm import LLMError, Usage, extract_json
-from app.market_data_common import iso, utc_now
-from app.news_journal import NewsJournal
+from app.adapters.data.market_data_common import iso, utc_now
+from app.adapters.data.news_journal import NewsJournal
 from app.worldmonitor_data import Config, NewsError, WorldMonitorClient, VARIANTS
 
 MAX_CONTEXT_CHARS = 16000

@@ -1,8 +1,8 @@
 """Bounded Databento historical OHLCV context; no live feed or trading endpoints.
 
-    python -m app.databento_data status
-    python -m app.databento_data estimate SPY --dataset EQUS.MINI --start 2026-10-01 --end 2026-10-16
-    python -m app.databento_data bars ESZ6 --dataset GLBX.MDP3 --start 2026-10-01 --end 2026-10-16
+    python -m app.adapters.data.databento_data status
+    python -m app.adapters.data.databento_data estimate SPY --dataset EQUS.MINI --start 2026-10-01 --end 2026-10-16
+    python -m app.adapters.data.databento_data bars ESZ6 --dataset GLBX.MDP3 --start 2026-10-01 --end 2026-10-16
 
 The process must explicitly load its environment. Downloads first check a cost
 estimate against a local budget (zero by default). This is not a vendor billing cap.
@@ -22,7 +22,7 @@ from typing import Callable, Dict, Mapping, Optional, Sequence
 
 import requests
 
-from app.market_data_common import MarketDataError, iso, timestamp, utc_now
+from app.adapters.data.market_data_common import MarketDataError, iso, timestamp, utc_now
 
 DATA_URL = "https://hist.databento.com/v0"
 TIMEFRAMES = {"1Min": ("ohlcv-1m", 60, 33), "1Hour": ("ohlcv-1h", 3600, 34), "1Day": ("ohlcv-1d", 86400, 35)}

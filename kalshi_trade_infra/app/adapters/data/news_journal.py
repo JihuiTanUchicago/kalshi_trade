@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 import sqlite3
 
-from app.market_data_common import iso, timestamp
+from app.adapters.data.market_data_common import iso, timestamp
 from app.worldmonitor_data import NewsError
 
 

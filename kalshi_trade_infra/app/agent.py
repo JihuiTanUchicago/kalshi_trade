@@ -809,7 +809,7 @@ def research_unavailable_reason(market: Optional[str]) -> Optional[str]:
         return MARKETS[market].tick_history_short()
     if market in MARKETS and MARKETS[market].kind == "perpetual":
         from app.kalshi_perps_data import Config
-        from app.market_data_common import MarketDataError
+        from app.adapters.data.market_data_common import MarketDataError
         try:
             Config.from_env().require_enabled()
         except MarketDataError as exc:
@@ -852,7 +852,7 @@ def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: Optional[Li
     data-ready `keys` only. One cheap call before the research loop."""
     idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
     from app.kalshi_perps_data import Config as PerpsConfig
-    from app.market_data_common import MarketDataError
+    from app.adapters.data.market_data_common import MarketDataError
     try:
         perps_enabled = PerpsConfig.from_env().enabled
     except (ValueError, MarketDataError):

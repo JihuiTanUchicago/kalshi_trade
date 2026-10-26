@@ -1,8 +1,8 @@
 """Read-only Alpaca US stock/ETF data. No brokerage or order endpoints.
 
-    python -m app.alpaca_data status
-    python -m app.alpaca_data snapshots SPY AAPL
-    python -m app.alpaca_data bars SPY --start 2026-09-01 --end 2026-10-01
+    python -m app.adapters.data.alpaca_data status
+    python -m app.adapters.data.alpaca_data snapshots SPY AAPL
+    python -m app.adapters.data.alpaca_data bars SPY --start 2026-09-01 --end 2026-10-01
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from app.market_data_common import MarketDataError, TIMEFRAMES, equity_symbols as symbols_checked, get_json, iso, number as _number, timestamp, utc_now
+from app.adapters.data.market_data_common import MarketDataError, TIMEFRAMES, equity_symbols as symbols_checked, get_json, iso, number as _number, timestamp, utc_now
 
 DATA_URL = "https://data.alpaca.markets"
 MAX_SYMBOLS = 8

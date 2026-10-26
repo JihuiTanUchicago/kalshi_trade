@@ -96,7 +96,7 @@ set -a; . ${BOX_DIR}/.env.aws; . ${BOX_DIR}/.env.app; set +a; unset AWS_PROFILE
 # 2>&1 on these two: their failure detail (a py_compile SyntaxError, an app.schema DB traceback)
 # goes to STDERR, which SSM stores in a separate stream the poller didn't fetch — so a failure read
 # as a bare "SCHEMA FAILED" with no cause. Fold stderr into stdout so the real error is in the log.
-${BOX_PY} -m py_compile app/*.py data_pipeline/*.py trading_core/*.py trading_core/*/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
+${BOX_PY} -m py_compile app/*.py app/*/*.py app/*/*/*.py data_pipeline/*.py trading_core/*.py trading_core/*/*.py 2>&1 || { rollback; echo "COMPILE FAILED"; exit 1; }
 ${BOX_PY} -m app.schema 2>&1 || { rollback; echo "SCHEMA FAILED"; exit 1; }
 RELOAD=0
 for u in ${UNITS}; do

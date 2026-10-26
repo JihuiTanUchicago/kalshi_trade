@@ -1,10 +1,11 @@
-"""Research datasets replayed from the per-second tick archive (app/tick_dataset.py)."""
+"""Research datasets replayed from the per-second tick archive (app/adapters/data/tick_dataset.py)."""
 import math
 
 import numpy as np
 import pytest
 
-from app import backtest, spec as specmod, tick_dataset
+from app import backtest, spec as specmod
+from app.adapters.data import tick_dataset
 from app.markets import MARKETS
 
 M = MARKETS["btc15m_tick"]

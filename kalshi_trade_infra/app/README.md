@@ -144,7 +144,7 @@ TAU_EXA_HISTORICAL_ENABLED=0
 
 ```bash
 # Configuration check only, using the already-loaded worker environment:
-python -m app.exa_data status
+python -m app.adapters.data.exa_data status
 # Set TAU_EXA_ENABLED=1 in that environment to enable current-time web research.
 # Historical retrieval additionally needs Snapshot entitlement and
 # TAU_EXA_HISTORICAL_ENABLED=1.
@@ -295,7 +295,7 @@ canary remain acceptance gates. [Implementation evidence](../results/databento_p
 
 ## Databento historical data for agents — October 17, 2026
 
-`app/databento_data.py` connects on-demand historical OHLCV reads to the same
+`app/adapters/data/databento_data.py` connects on-demand historical OHLCV reads to the same
 research/copilot request loop as Alpaca and Massive. The implementation supports
 both stock/ETF raw symbols and individual futures contracts. It is **implemented,
 offline tested and locally verified with authenticated provider data**. It remains
@@ -348,9 +348,9 @@ raw response bodies never enter model prompts, run events or browser settings.
 From `kalshi_trade_infra`, after loading `.env` into the process environment:
 
 ```bash
-.venv/bin/python -m app.databento_data status
-.venv/bin/python -m app.databento_data estimate SPY --dataset EQUS.MINI --start 2026-10-01 --end 2026-10-16 --timeframe 1Hour
-.venv/bin/python -m app.databento_data estimate ESZ6 --dataset GLBX.MDP3 --start 2026-10-01 --end 2026-10-16 --timeframe 1Hour
+.venv/bin/python -m app.adapters.data.databento_data status
+.venv/bin/python -m app.adapters.data.databento_data estimate SPY --dataset EQUS.MINI --start 2026-10-01 --end 2026-10-16 --timeframe 1Hour
+.venv/bin/python -m app.adapters.data.databento_data estimate ESZ6 --dataset GLBX.MDP3 --start 2026-10-01 --end 2026-10-16 --timeframe 1Hour
 ```
 
 `status` is local and makes no network request. `estimate` reads availability and
@@ -415,7 +415,7 @@ Provider contracts: [Historical HTTP API](https://databento.com/docs/api-referen
 
 ## Massive FX, rates and options for agents — October 17, 2026
 
-`app/massive_data.py` supplies read-only REST data to the existing agent loop in
+`app/adapters/data/massive_data.py` supplies read-only REST data to the existing agent loop in
 `app/agent_market_data.py`. Alpaca continues to supply stock/ETF data independently.
 Both integrations are disabled by default and use the existing model metering,
 run events and research cancellation path. There are no new dependencies or tables.
@@ -444,11 +444,11 @@ filling the key locally:
 set -a
 . ./.env
 set +a
-.venv/bin/python -m app.massive_data status
-.venv/bin/python -m app.massive_data fx-bars EURUSD --start 2026-10-01 --end 2026-10-15 --timeframe 1Hour
-.venv/bin/python -m app.massive_data macro treasury_yields --start 2026-10-01 --end 2026-10-15
-.venv/bin/python -m app.massive_data macro funding_conditions --start 2026-10-01 --end 2026-10-15
-.venv/bin/python -m app.massive_data options-chain SPY --expiration-date 2026-10-23 --contract-type call --strike-min 550 --strike-max 650
+.venv/bin/python -m app.adapters.data.massive_data status
+.venv/bin/python -m app.adapters.data.massive_data fx-bars EURUSD --start 2026-10-01 --end 2026-10-15 --timeframe 1Hour
+.venv/bin/python -m app.adapters.data.massive_data macro treasury_yields --start 2026-10-01 --end 2026-10-15
+.venv/bin/python -m app.adapters.data.massive_data macro funding_conditions --start 2026-10-01 --end 2026-10-15
+.venv/bin/python -m app.adapters.data.massive_data options-chain SPY --expiration-date 2026-10-23 --contract-type call --strike-min 550 --strike-max 650
 ```
 
 The dates/strikes above are examples; choose a current valid expiry and relevant
@@ -458,7 +458,7 @@ actual agent worker environment. Adding a key alone does not activate agent read
 
 - `TAU_MASSIVE_FX_FEED=end_of_day` is the default. It queries completed prior UTC
   days. Use `realtime` only with matching Currencies access; then
-  `python -m app.massive_data fx-quotes EURUSD USDJPY` reads current BBO quotes.
+  `python -m app.adapters.data.massive_data fx-quotes EURUSD USDJPY` reads current BBO quotes.
   A denied entitlement is returned as unavailable, with no silent fallback.
 - `TAU_MASSIVE_FX_SYMBOLS=EURUSD,USDJPY,GBPUSD` controls the automatic FX context.
   At most three pairs are accepted. FX candles derive from quotes, so consolidated
@@ -523,7 +523,7 @@ availability. Verification and handoff (local archive: `../results/massive_integ
 
 ## Alpaca stock/ETF data for agents — October 16, 2026
 
-`app/alpaca_data.py` reads US stock/ETF snapshots and historical OHLCV bars from
+`app/adapters/data/alpaca_data.py` reads US stock/ETF snapshots and historical OHLCV bars from
 Alpaca. `app/agent_market_data.py` connects those reads to the actual research and
 copilot worker functions. No new dependency, database table or browser credential
 is required. This is market-data context; the Kalshi strategy language, backtester
@@ -538,9 +538,9 @@ Use the existing Alpaca key pair as `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`,
 export TAU_ALPACA_ENABLED=1
 export TAU_ALPACA_FEED=iex
 export TAU_ALPACA_SYMBOLS=SPY,QQQ,IWM,TLT,GLD,USO
-python -m app.alpaca_data status
-python -m app.alpaca_data snapshots SPY AAPL
-python -m app.alpaca_data bars SPY --start 2026-09-01 --end 2026-10-01 --timeframe 1Hour
+python -m app.adapters.data.alpaca_data status
+python -m app.adapters.data.alpaca_data snapshots SPY AAPL
+python -m app.adapters.data.alpaca_data bars SPY --start 2026-09-01 --end 2026-10-01 --timeframe 1Hour
 python -m app.worker agents
 ```
 

@@ -1,11 +1,12 @@
 """Forecast fair-value features for daily-high/low contracts: point-in-time, and identical in
-research datasets and live engine snapshots (app/weather_fcst.py, app/weather_fcst_collect.py)."""
+research datasets and live engine snapshots (app/adapters/data/weather_fcst.py, app/weather_fcst_collect.py)."""
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from app import backtest, engine, freedata
-from app import weather_fcst as wf
+from app import backtest, engine
+from app.adapters.data import freedata
+from app.adapters.data import weather_fcst as wf
 from app import weather_fcst_collect as wfc
 from app.markets import FEATURES, MARKETS, Contract
 

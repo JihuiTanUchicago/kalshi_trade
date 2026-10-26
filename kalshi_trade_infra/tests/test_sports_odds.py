@@ -1,11 +1,11 @@
 """Sportsbook consensus features for NBA/NHL game contracts: point-in-time, and identical in
-research datasets and live engine snapshots (app/sports_odds.py, app/sports_odds_collect.py)."""
+research datasets and live engine snapshots (app/adapters/data/sports_odds.py, app/sports_odds_collect.py)."""
 from datetime import datetime, timezone
 
 import pytest
 
 from app import backtest, engine
-from app import sports_odds as so
+from app.adapters.data import sports_odds as so
 from app import sports_odds_collect as soc
 from app.markets import FEATURES, MARKETS, Contract
 

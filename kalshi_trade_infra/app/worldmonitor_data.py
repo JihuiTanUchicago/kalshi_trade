@@ -24,7 +24,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
-from app.market_data_common import MarketDataError, iso, timestamp, utc_now
+from app.adapters.data.market_data_common import MarketDataError, iso, timestamp, utc_now
 
 API_URL = "https://api.worldmonitor.app"
 DIGEST_PATH = "/api/news/v1/list-feed-digest"
@@ -268,7 +268,7 @@ class WorldMonitorClient:
 
 
 def poll_once(config: Config, variant: str, *, client_factory=WorldMonitorClient, checkpoint=lambda: None) -> dict:
-    from app.news_journal import NewsJournal
+    from app.adapters.data.news_journal import NewsJournal
     with client_factory(config, checkpoint=checkpoint) as client:
         packet = client.digest(variant)
     checkpoint()

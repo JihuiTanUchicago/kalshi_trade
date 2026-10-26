@@ -6,7 +6,7 @@ import json
 import pytest
 import requests
 
-from app import exa_data as data
+from app.adapters.data import exa_data as data
 
 NOW = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)
 CUTOFF = NOW - timedelta(days=7)

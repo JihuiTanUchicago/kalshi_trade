@@ -734,7 +734,7 @@ def latest_micro(cur, tickers, as_of_ts: int, max_age_seconds: int = 120) -> Dic
 def load_weather_forecasts(cur, station: str, kind: str, since_day,
                            as_of_ts: Optional[int] = None) -> List[Tuple[int, Any, str, float, Optional[float]]]:
     """Issued forecasts for one station's daily max/min with target_day >= since_day, as the
-    (known_at_ts, target_day, model, value_f, sd_f) rows app/weather_fcst.ForecastBook takes.
+    (known_at_ts, target_day, model, value_f, sd_f) rows app/adapters/data/weather_fcst.ForecastBook takes.
     as_of_ts (live) also drops rows not yet known, though the book's as-of lookup does that too."""
     sql = ("SELECT known_at_utc, target_day, model, value_f, sd_f FROM weather_forecasts "
            "WHERE station=%s AND kind=%s AND target_day >= %s")
@@ -753,11 +753,11 @@ WEATHER_ACTUAL_LAG_S = 2 * 3600
 
 def load_weather_actuals(cur, series: str, since: datetime) -> List[Tuple[int, Any, float]]:
     """Settled daily values of a weather series since `since`, as (known_at_ts, day, value_f) for
-    app/weather_fcst's trailing bias: one per event, known WEATHER_ACTUAL_LAG_S after it closed.
+    app/adapters/data/weather_fcst's trailing bias: one per event, known WEATHER_ACTUAL_LAG_S after it closed.
     An event is kept only when its value lies in the contract that settled YES: Kalshi's
     historical endpoint returns 0.0 for some older events' expiration_value, which would
     otherwise read as a 60F forecast bias."""
-    from app.weather_fcst import parse_contract
+    from app.adapters.data.weather_fcst import parse_contract
     cur.execute(
         "SELECT event_ticker, ticker, strike, close_time, result, expiration_value FROM hist_markets "
         "WHERE series_ticker=%s AND close_time >= %s AND expiration_value IS NOT NULL",
@@ -795,7 +795,7 @@ def latest_options_surface(cur, as_of_ts: int) -> Optional[List[Dict[str, Any]]]
 def load_sports_odds(cur, sport: str, since: datetime,
                      as_of_ts: Optional[int] = None) -> List[Tuple[int, int, str, str, str, float]]:
     """Collected sportsbook snapshots for one league since `since` (UTC naive), as the
-    (collected_ts, commence_ts, home_code, away_code, book, p_home) rows app/sports_odds.OddsBook
+    (collected_ts, commence_ts, home_code, away_code, book, p_home) rows app/adapters/data/sports_odds.OddsBook
     takes. as_of_ts (live) also drops snapshots collected after it."""
     sql = ("SELECT collected_at_utc, commence_utc, home_code, away_code, book, p_home FROM sports_odds "
            "WHERE sport=%s AND collected_at_utc >= %s")

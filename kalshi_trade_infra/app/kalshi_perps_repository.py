@@ -17,7 +17,7 @@ from app.kalshi_perps_data import (
     SOURCE_SCHEMA, Config, candle_coverage, canonical_json, epoch, fingerprint,
     funding_coverage, normalize_instrument, requested_range, ticker_checked,
 )
-from app.market_data_common import MarketDataError
+from app.adapters.data.market_data_common import MarketDataError
 
 MAX_READ_BATCHES = 2000
 MAX_READ_BYTES = 64 * 1024 * 1024

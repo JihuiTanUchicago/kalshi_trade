@@ -16,10 +16,10 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from app.options_fair import FEATURE_DOCS as _OPTIONS_DOCS
+from app.adapters.data.options_fair import FEATURE_DOCS as _OPTIONS_DOCS
 from data_pipeline.polymarket import FEATURE_DOCS as _POLYMARKET_DOCS
-from app.sports_odds import FEATURE_DOCS as _SPORTS_ODDS_DOCS
-from app.weather_fcst import FEATURE_DOCS as _WEATHER_FCST_DOCS
+from app.adapters.data.sports_odds import FEATURE_DOCS as _SPORTS_ODDS_DOCS
+from app.adapters.data.weather_fcst import FEATURE_DOCS as _WEATHER_FCST_DOCS
 
 try:
     from zoneinfo import ZoneInfo
@@ -65,7 +65,7 @@ class Market:
     # series category. Purely a display/grouping field - no engine logic reads it.
     category: str = ""
     # "candles" (default): Kalshi candlesticks from the DB. "ticks": the per-second feature table
-    # built from the tick archive (app/tick_dataset.py), decided every decision_secs seconds.
+    # built from the tick archive (app/adapters/data/tick_dataset.py), decided every decision_secs seconds.
     source: str = "candles"
     decision_secs: int = 0           # ticks only: decision cadence in seconds (0 = candle_minutes)
     data_from_ts: int = 0            # ticks only: no contract opening before this has tick data
@@ -433,7 +433,7 @@ MICRO_FEATURES: Dict[str, Tuple[str, str]] = {
 FEATURES.update({name: desc for name, (_col, desc) in MICRO_FEATURES.items()})
 
 # Daily-high temperature series -> the ASOS station Kalshi settles them on. Their datasets carry the
-# station's observations as built-in features (app/freedata.station_observations, as-of joined).
+# station's observations as built-in features (app/adapters/data/freedata.station_observations, as-of joined).
 # Station = the NWS CLI code each series' market rules name ("Chicago (CLIMDW)"), probed 2026-10-24.
 WEATHER_STATIONS: Dict[str, str] = {
     "KXHIGHAUS": "AUS", "KXHIGHCHI": "MDW", "KXHIGHDEN": "DEN", "KXHIGHHOU": "HOU", "KXHIGHLAX": "LAX",
@@ -465,7 +465,7 @@ def weather_target_day(ticker: str) -> Optional[date]:
 
 def climate_day(station: str, ts: int) -> Optional[date]:
     """The NWS climate day (local STANDARD time, never DST-shifted) a station is in at ts."""
-    from app.freedata import ASOS_LST_OFFSET_H
+    from app.adapters.data.freedata import ASOS_LST_OFFSET_H
     off = ASOS_LST_OFFSET_H.get(station)
     if off is None:
         return None
@@ -487,7 +487,7 @@ FEATURES.update({
                  "station (NWS climate day, local standard time); the day's low can only fall from here",
     "obs_temp_f": "weather markets only: latest temperature (F) reading at the settlement station",
 })
-# Features only the per-second tick datasets carry (app/tick_dataset.py, markets with source="ticks").
+# Features only the per-second tick datasets carry (app/adapters/data/tick_dataset.py, markets with source="ticks").
 TICK_FEATURES: Dict[str, str] = {
     "ret_1s": "per-second data only: BTC log return over the last 1 second",
     "ret_10s": "per-second data only: BTC log return over the last 10 seconds",
@@ -513,11 +513,11 @@ TICK_FEATURES: Dict[str, str] = {
     "settle_z": "per-second data only: (nowcast settlement average - strike) / settle_sd",
 }
 FEATURES.update(TICK_FEATURES)
-# Per-contract forecast fair value (app/weather_fcst.snapshot_features, research and live alike).
+# Per-contract forecast fair value (app/adapters/data/weather_fcst.snapshot_features, research and live alike).
 FEATURES.update(_WEATHER_FCST_DOCS)
-# Per-contract sportsbook consensus (app/sports_odds.snapshot_features, research and live alike).
+# Per-contract sportsbook consensus (app/adapters/data/sports_odds.snapshot_features, research and live alike).
 FEATURES.update(_SPORTS_ODDS_DOCS)
-# Per-contract Deribit options-implied fair value (app/options_fair.snapshot_features; the per-second
+# Per-contract Deribit options-implied fair value (app/adapters/data/options_fair.snapshot_features; the per-second
 # datasets carry opt_p_yes / opt_iv / opt_edge from features_1s instead).
 FEATURES.update(_OPTIONS_DOCS)
 # Per-contract Polymarket price for the same event (app/adapters/polymarket/features.py; the

@@ -15,7 +15,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
-from app.market_data_common import MarketDataError, iso, timestamp, utc_now
+from app.adapters.data.market_data_common import MarketDataError, iso, timestamp, utc_now
 
 API_URL = "https://api.exa.ai"
 MAX_RESPONSE_BYTES = 1024 * 1024

@@ -8,7 +8,7 @@ markets.WEATHER_STATIONS:
 Each run's max (the 00Z column, the daytime high of the previous local day) and min (the 12Z
 column, that morning's low) becomes one row per settlement day. known_at = runtime + LAG_S, a
 conservative publication delay, so research never sees a forecast before the NWS released it;
-the live engine reads the same rows with the same known_at <= now rule (app/weather_fcst).
+the live engine reads the same rows with the same known_at <= now rule (app/adapters/data/weather_fcst).
 
 Usage (web box, hourly timer: scripts/systemd/kalshi-weather-fcst.timer):
   python -m app.weather_fcst_collect                     # incremental: runs from the last 2 days

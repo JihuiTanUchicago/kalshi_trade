@@ -6,7 +6,7 @@ import json
 import pytest
 import requests
 
-from app import databento_data as data
+from app.adapters.data import databento_data as data
 
 NOW = datetime(2026, 10, 17, 15, tzinfo=timezone.utc)
 START = data.timestamp("2026-10-15T00:00:00Z")

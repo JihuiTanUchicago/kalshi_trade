@@ -17,7 +17,7 @@ from app.kalshi_perps_data import (
     KalshiPerpsDataClient, epoch, fingerprint, funding_coverage, iso_time,
     requested_range,
 )
-from app.market_data_common import MarketDataError
+from app.adapters.data.market_data_common import MarketDataError
 
 
 def collect(client: KalshiPerpsDataClient, start_ts: int, end_ts: int, *,

@@ -27,10 +27,10 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import requests
 
-from app import freedata
+from app.adapters.data import freedata
 from app import repository as repo
 from app import spec as specmod
-from app import options_fair, sports_odds, weather_fcst
+from app.adapters.data import options_fair, sports_odds, weather_fcst
 from app.markets import (MARKETS, WEATHER_OBS_FEATURES, WEATHER_STATIONS, BtcSeries, Contract, Market, Snapshot,
                          cross_features, cross_product,
                          compatible_cadence, snapshot, weather_obs_applies)
