@@ -544,11 +544,13 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
     # Paper is the book shown; the demo (sandbox) book rides beside it, never added in (1.004 - 0.5).
     assert cards[1]["real"] == {"pnl": 1.0, "trades": 3, "open": 1, "live": False, "paused": False, "mode": "paper",
                                 "demo": {"pnl": -0.5, "trades": 2, "open": 0}}
+    assert cards[1]["books"] == ["paper", "demo"]  # the badge names both books it runs in
     assert "real" not in cards[2] and "real" not in cards[3]  # not deployed / no active deployment rows
     # A live deployment reports live money only; the paper dollars are never added in.
     deps.append({"strategy_id": 1, "mode": "live", "realized_pnl": 0.25, "closed_trades": 1, "open_positions": 0})
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
     assert cards[1]["real"] == {"pnl": 0.25, "trades": 1, "open": 0, "live": True, "paused": False, "mode": "live"}
+    assert cards[1]["books"] == ["live", "paper", "demo"]
     # An auto-paused deployment flags its book, so the list can say it stopped.
     deps[-1]["status"] = "paused"
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
@@ -557,6 +559,48 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
     deps[:] = [{"strategy_id": 1, "mode": "demo", "realized_pnl": 2, "closed_trades": 1, "open_positions": 0}]
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
     assert cards[1]["real"] == {"pnl": 2.0, "trades": 1, "open": 0, "live": False, "paused": False, "mode": "demo"}
+    assert cards[1]["books"] == ["demo"]
+
+
+def test_strategies_list_says_what_removed_deployments_made_per_book(monkeypatch):
+    # A strategy whose deployment was removed read as if it never traded on the list, while the track
+    # record's strategy row and its own page's "Past deployments" still counted those trades.
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 3, "total": 3})
+    rows = [{"id": 1, "deployed": False, "removed_deps": 3}, {"id": 2, "deployed": True, "removed_deps": 1},
+            {"id": 3, "deployed": False, "removed_deps": 0}]
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [dict(r) for r in rows])
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: {k: v for k, v in s.items() if k != "removed_deps"})
+    monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda cur, uid, **k: [
+        {"strategy_id": 2, "mode": "paper", "realized_pnl": 4, "closed_trades": 2, "open_positions": 0}])
+    asked = []
+    totals = [{"strategy_id": 1, "mode": "demo", "deployments": 1, "trades": 2, "pnl": 7},
+              {"strategy_id": 1, "mode": "paper", "deployments": 2, "trades": 4, "pnl": "-0.504"},
+              {"strategy_id": 2, "mode": "paper", "deployments": 1, "trades": 4, "pnl": 2.25}]
+    monkeypatch.setattr(server.repo, "removed_totals_by_strategy",
+                        lambda cur, uid, ids: asked.append(sorted(ids)) or [t for t in totals if t["strategy_id"] in ids])
+    cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
+    assert asked == [[1, 2]]  # only the strategies on this page that have a removed deployment
+    # Each book on its own line, paper first; demo is never added to paper.
+    assert list(cards[1]["past"]) == ["paper", "demo"]
+    assert cards[1]["past"] == {"paper": {"pnl": -0.5, "trades": 4, "deployments": 2},
+                                "demo": {"pnl": 7.0, "trades": 2, "deployments": 1}}
+    # A deployed strategy keeps its active record and its removed one apart.
+    assert cards[2]["real"]["pnl"] == 4 and cards[2]["past"] == {"paper": {"pnl": 2.25, "trades": 4, "deployments": 1}}
+    assert "past" not in cards[3]
+    # No removed deployment on the page: no extra read.
+    rows[:] = [{"id": 3, "deployed": False, "removed_deps": 0}]
+    asked.clear()
+    assert not any("past" in c for c in server.list_strategies(ctx(query={}))["strategies"]) and asked == []
+
+
+def test_removed_totals_by_strategy_sums_each_book_apart():
+    cur = StratCur()
+    assert server.repo.removed_totals_by_strategy(cur, 1, []) == [] and cur.sql is None  # nothing asked, no read
+    server.repo.removed_totals_by_strategy(cur, 7, [3, 2, 3])
+    assert "d.status='stopped'" in cur.sql and "GROUP BY d.strategy_id, d.mode" in cur.sql
+    assert "p.status='closed'" in cur.sql and "FORCE INDEX (idx_pos_dep)" in cur.sql
+    assert cur.params == [7, 2, 3]
+
 
 
 def test_strategies_list_skips_deployment_query_without_deployed_cards(monkeypatch):

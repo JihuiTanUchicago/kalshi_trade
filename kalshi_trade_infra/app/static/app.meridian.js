@@ -1628,6 +1628,20 @@
   // The run page's kind of session: its direction, and who started it when the autopilot did.
   const runKind = (r) => +r.by_autopilot && !r.example ? (r.direction ? dirLabel(r.direction) + ' \u00b7\u00a0' : '') + 'Started by autopilot' : dirLabel(r.direction);
   const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
+  // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
+  // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
+  const bookBadge = (s) => {
+    const books = Array.isArray(s.books) ? s.books : [], live = s.deploy_live || books.includes('live');
+    const rest = books.filter((m) => m === 'paper' || m === 'demo');
+    const text = live ? ['Live', ...rest].join(' + ') : rest.length ? 'On ' + rest.join(' + ') : 'Deployed';
+    return `<span class="mk ${live ? 'live' : 'dep'}">${text}</span>`;
+  };
+  // What its removed deployments made, one line per book (the server's `past`), never added to the
+  // book it runs in now: a removed strategy read as if it had never traded.
+  const pastFig = (past) => past && typeof past === 'object' ? ['live', 'paper', 'demo'].filter((m) => past[m]).map((m) => {
+    const p = past[m], n = +p.trades || 0;
+    return `<div class="sub-fig real-fig past-fig">Removed from ${m}: ${n ? `${money(+p.pnl || 0)} \u00b7\u00a0${realTrades(n)}` : 'no closed trades'}</div>`;
+  }).join('') : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
@@ -1648,7 +1662,7 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       ${opts.inRun ? '' : `<td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>`}
-      <td class="act st" data-lab="Status">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
+      <td class="act st" data-lab="Status">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">Realized P&amp;L</th><th class="num">Unrealized</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;

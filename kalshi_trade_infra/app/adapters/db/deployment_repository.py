@@ -132,6 +132,26 @@ def removed_deployments(cur, user_id: int, strategy_id: Optional[int] = None) ->
     return list(cur.fetchall())
 
 
+def removed_totals_by_strategy(cur, user_id: int, strategy_ids: List[int]) -> List[Dict]:
+    """For the given strategies, their removed (stopped) deployments summed per strategy and book:
+    rows of strategy_id, mode, deployments, trades (closed positions) and pnl (their summed P&L), as
+    deployment_closed_totals counts each deployment. One read: the deployments through
+    idx_dep_strategy, their closed positions through idx_pos_dep. Books stay apart (one row per
+    mode). Display only: the strategies list's "Removed from paper" line."""
+    ids = sorted({int(i) for i in strategy_ids})
+    if not ids:
+        return []
+    cur.execute(
+        "SELECT d.strategy_id, d.mode, COUNT(DISTINCT d.id) AS deployments, COUNT(p.id) AS trades,"
+        " COALESCE(SUM(p.pnl),0) AS pnl FROM app_deployments d"
+        " LEFT JOIN app_positions p FORCE INDEX (idx_pos_dep) ON p.deployment_id=d.id AND p.status='closed'"
+        " WHERE d.user_id=%s AND d.status='stopped' AND d.strategy_id IN (" + ",".join(["%s"] * len(ids)) + ")"
+        " GROUP BY d.strategy_id, d.mode",
+        (int(user_id), *ids),
+    )
+    return list(cur.fetchall())
+
+
 def deployment_closed_totals(cur, deployment_ids: List[int]) -> Dict[int, Tuple[int, Any]]:
     """{deployment_id: (closed positions, their summed P&L)}, as list_deployments counts closed_trades
     and realized_pnl, for the given deployments in one read over idx_pos_dep (deployment_id, status).

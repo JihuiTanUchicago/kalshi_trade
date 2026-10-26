@@ -86,7 +86,7 @@ from app.adapters.db.deployment_repository import (  # noqa: F401
     deployment_closed_totals, deployment_order_refs, deployments_with_open_positions, get_deployment, list_deployments,
     deployment_rows_for_display, deployment_strategies, list_deployments_brief, list_deployments_for_display, paper_event_counts,
     book_trade_stats, paper_fills_for_gate, paper_progress, paper_round_trips, paper_round_trips_by_strategy, paused_deployments_with_open_positions,
-    removed_deployments, running_code_paper_deployments, running_deployments, scan_outcome, scan_tally, set_deployment_scan, set_deployment_status,
+    removed_deployments, removed_totals_by_strategy, running_code_paper_deployments, running_deployments, scan_outcome, scan_tally, set_deployment_scan, set_deployment_status,
     set_deployment_strategy,
     track_record_deployments, track_record_join, track_record_rows, track_record_trades,
 )

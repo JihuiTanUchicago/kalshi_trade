@@ -12,6 +12,7 @@ import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
+import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
@@ -202,6 +203,7 @@ researchPollCases({name: 'Tau', frontend});
 runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
+strategyListCases({name: 'Tau', frontend, detailStrategy});
 explorePageCases({name: 'Tau', frontend});
 researchFormCases({name: 'Tau', frontend});
 settingsCases({name: 'Tau', frontend, current: 'tau', cardWallOpts: () => ({stripe: STRIPE_STUB}),

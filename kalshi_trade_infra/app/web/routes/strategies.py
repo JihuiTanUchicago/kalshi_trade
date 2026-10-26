@@ -112,6 +112,7 @@ def list_strategies(ctx: Ctx):
                                 q=search, deployed=deployed, hide_noise=hide_noise)
     cards = [_strategy_card(s) for s in rows]
     _attach_real_records(ctx.cur, ctx.uid, cards)
+    _attach_past_records(ctx.cur, ctx.uid, cards, [s["id"] for s in rows if s.get("removed_deps")])
     return {"strategies": cards, "counts": counts,
             "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
 
@@ -138,10 +139,34 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
             if mode is None:  # only a mode this list doesn't show
                 continue
             r = books[mode]
+            # Every book it runs in now, so the row's badge names them ("On paper + demo"), not "Deployed".
+            c["books"] = [m for m in BOOK_ORDER if m in books]
             c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": mode == "live", "mode": mode}
             if mode == "paper" and "demo" in books:
                 dm = books["demo"]
                 c["real"]["demo"] = {"pnl": round(dm["pnl"], 2), "trades": dm["trades"], "open": dm["open"]}
+
+
+BOOK_ORDER = ("live", "paper", "demo")
+
+
+def _attach_past_records(cur, uid: int, cards: List[Dict], removed_ids: List[int]) -> None:
+    """Stamp each card whose strategy has removed deployments (`removed_ids`, from the list read's
+    removed_deps) with what they made, per book: {mode: {"pnl", "trades", "deployments"}} under
+    "past". A removed deployment leaves the card's "since deploying" line (active ones only), so a
+    strategy that traded for a week and was removed read as if it never traded, while the track
+    record's strategy row and the strategy page's "Past deployments" line still counted its trades.
+    Books are never added together. One read, and only when the page has such a strategy."""
+    if not removed_ids:
+        return
+    past: Dict[int, Dict[str, Dict]] = {}
+    for r in repo.removed_totals_by_strategy(cur, uid, removed_ids):
+        past.setdefault(int(r["strategy_id"]), {})[r["mode"]] = {
+            "pnl": round(float(r["pnl"] or 0), 2), "trades": int(r["trades"] or 0), "deployments": int(r["deployments"] or 0)}
+    for c in cards:
+        books = past.get(c["id"])
+        if books:
+            c["past"] = {m: books[m] for m in BOOK_ORDER if m in books}
 
 
 def _owned_strategy(ctx: Ctx) -> Dict:
