@@ -73,3 +73,29 @@ def test_no_finalist_when_nothing_makes_money_in_research():
     out = lab.run_lab("KXBTC15M", research, holdout, model, Usage(), lab.MemoryLedger(),
                       lambda p, h, workers=1: _rows(h, lambda i: -3.0), rounds=1, per_round=1, log=lambda m: None)
     assert out["finalist"] is None and out["verdict"] is None
+
+
+def test_each_run_sees_the_summary_of_earlier_runs():
+    research = [H0 + timedelta(hours=k) for k in range(12)]
+    holdout = [H0 + timedelta(hours=k) for k in range(12, 24)]
+    prompts = []
+
+    def model(system, messages, on_delta=None):
+        prompts.append(messages[-1]["content"])
+        return json.dumps({"policies": [{"name": "a", "fair_source": "spot", "min_edge": 0.04}]}), {}
+
+    first = lab.run_lab("KXBTCD", research, holdout, model, Usage(), lab.MemoryLedger(),
+                        lambda p, h, workers=1: _rows(h, lambda i: 4.0 + i % 2), rounds=1, per_round=1,
+                        log=lambda m: None)
+    lines = lab.summary_lines(json.loads(json.dumps(first)))
+    assert lines[0].startswith("- run held out from 2026-10-25 12:00Z") and "finalist" in lines[-1]
+    lab.run_lab("KXBTCD", research, holdout, model, Usage(), lab.MemoryLedger(),
+                lambda p, h, workers=1: _rows(h, lambda i: 4.0), rounds=1, per_round=1, log=lambda m: None,
+                prior=lines)
+    assert "Earlier lab runs" not in prompts[0] and "Earlier lab runs" in prompts[1] and lines[-1] in prompts[1]
+
+
+def test_the_timer_rotates_series_so_each_holdout_window_is_used_once():
+    from app.maker_lab_run import auto_series
+    picks = [auto_series(H0 + timedelta(hours=h)) for h in range(0, 24, 4)]
+    assert picks == ["KXBTCD", "KXBTC15M", "KXBTC"] * 2

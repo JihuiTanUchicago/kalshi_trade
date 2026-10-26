@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Sequence
 
 from app import stats
@@ -104,8 +104,11 @@ def _check(series: str, n: int) -> Callable[[Dict], List[Dict]]:
     return check
 
 
-def propose(model: ModelFn, usage: Usage, series: str, history: List[str], n: int) -> List[Dict]:
-    prompt = ("Research results so far (research hours only):\n%s\n\nPropose %d new policies for %s that "
+def propose(model: ModelFn, usage: Usage, series: str, history: List[str], n: int,
+            prior: Sequence[str] = ()) -> List[Dict]:
+    earlier = ("Earlier lab runs on other hours (what was tried, how it did, and how its finalist fared "
+               "on held-out hours):\n%s\n\n" % "\n".join(prior)) if prior else ""
+    prompt = (earlier + "Research results so far (research hours only):\n%s\n\nPropose %d new policies for %s that "
               "should beat these. Each one changes something for a stated reason. Reply with JSON only: "
               '{"policies": [{"name": "...", "why": "one sentence", ...levers}]}' % (
                   "\n".join(history) or "(none yet)", n, series))
@@ -179,8 +182,9 @@ class S3Ledger(MemoryLedger):
 
 def run_lab(series: str, research: Sequence[datetime], holdout: Sequence[datetime], model: ModelFn, usage: Usage,
             ledger: MemoryLedger, evaluate: Callable[..., List[Dict]], rounds: int = 3, per_round: int = 4,
-            workers: int = 1, log: Callable[[str], None] = print) -> Dict:
-    """``evaluate(policy, hours, workers=)`` -> one row per hour (app.adapters.sim.maker_eval.evaluate)."""
+            workers: int = 1, log: Callable[[str], None] = print, prior: Sequence[str] = ()) -> Dict:
+    """``evaluate(policy, hours, workers=)`` -> one row per hour (app.adapters.sim.maker_eval.evaluate).
+    ``prior``: summary lines of earlier runs (prior_lines), so each run builds on the last."""
     t0 = time.monotonic()
     results: Dict[str, Dict] = {}
     history: List[str] = []
@@ -199,7 +203,7 @@ def run_lab(series: str, research: Sequence[datetime], holdout: Sequence[datetim
     for name in ROUND0:
         score(name, mr.validate_policy(dict(mr.BASELINES[name], series=series)))
     for rnd in range(1, rounds + 1):
-        for i, p in enumerate(propose(model, usage, series, history, per_round)):
+        for i, p in enumerate(propose(model, usage, series, history, per_round, prior)):
             name = "r%d.%d %s" % (rnd, i + 1, (p.get("name") or "policy")[:40])
             score(name, p)
     fin = pick_finalist(results)
@@ -221,6 +225,20 @@ def run_lab(series: str, research: Sequence[datetime], holdout: Sequence[datetim
                        "passed": v["passed"], "at": int(time.time())})
         log("finalist %s on %d held-out hours: %s" % (fin, len(holdout), v["reason"]))
     out["seconds"] = round(time.monotonic() - t0, 1)
+    return out
+
+
+def summary_lines(run: Dict, top: int = 3) -> List[str]:
+    """A finished run in a few lines for later runs' prompts: its best research policies and the verdict."""
+    res = run.get("results") or {}
+    ranked = sorted(res.items(), key=lambda kv: -(kv[1]["stats"].get("t") or -99))[:top]
+    when = datetime.fromtimestamp(run["holdout_hours"][0], timezone.utc).strftime("%Y-%m-%d %H:00Z") if run.get("holdout_hours") else "?"
+    out = ["- run held out from %s:" % when]
+    out += ["  " + research_line(name, r["policy"], r["stats"]) for name, r in ranked]
+    v = run.get("verdict")
+    out.append("  finalist %s: %s" % (run.get("finalist"), (v or {}).get("reason", "none judged")) +
+               ("" if not v else " (held-out mean/hour $%s, markout/contract %s)" % (
+                   (v.get("stats") or {}).get("mean"), (v.get("stats") or {}).get("markout_per_contract"))))
     return out
 
 
