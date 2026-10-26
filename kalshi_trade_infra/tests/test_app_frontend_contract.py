@@ -1,4 +1,5 @@
 """Readiness fields and gates consumed by the Research workspace frontend."""
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -461,6 +462,7 @@ def test_research_estimate_uses_own_median_then_the_typical_one_per_model(monkey
     # a server-wide median per model that only exists with 5+ sessions behind it. Cached.
     own = [[1.0, 3.0], [2.0, 9.0, 1.0, 4.0]]
     monkeypatch.setattr(server.repo, 'finished_session_costs', lambda cur, uid, limit: own[0])
+    monkeypatch.setattr(server.repo, 'finished_session_costs_by_model', lambda cur, uid, limit: [(None, c) for c in own[0]])
     reads = []
     rows = [(None, 1.0), ('opus-4-6', 3.0), (None, 2.0), (None, 5.0), (None, 4.0),
             ('haiku-4-5', 0.2), ('haiku-4-5', 0.3)]
@@ -470,12 +472,31 @@ def test_research_estimate_uses_own_median_then_the_typical_one_per_model(monkey
     monkeypatch.setattr(research_routes, '_TYPICAL_FOREVER_RATE', [0.0, {}])
     out = server.research_estimate(context())
     # The default model's NULL runs count as that model; Haiku has too few sessions to show.
-    assert out == {'yours': None, 'sessions': 2, 'typical': {server.catalog.DEFAULT_KEY: 3.0},
-                   'per_hour': {'yours': None, 'typical': {}}}
+    assert out == {'yours': None, 'yours_by_model': {}, 'sessions': 2, 'typical': {server.catalog.DEFAULT_KEY: 3.0},
+                   'per_hour': {'yours': None, 'yours_by_model': {}, 'typical': {}}}
     own[0] = own[1]
     assert server.research_estimate(context())['yours'] == 3.0  # median of 1, 2, 4, 9
     assert len(reads) == 1  # the server-wide medians are cached
     assert server._median([5.0, 1.0, 3.0]) == 3.0
+
+
+def test_research_estimate_says_your_own_cost_for_each_model_you_used(monkeypatch):
+    # Walked 2026-10-26: four sessions on the default model, then Amazon Nova Micro picked, and the hint
+    # still read "about $1.26 (your recent sessions)". Your own figure is per model now: the median of
+    # your newest 10 sessions on it, once there are 3; a model you used less has none (the form then
+    # shows everyone's typical figure for it).
+    rows = [('nova-micro', 0.02), (None, 1.2), ('opus-4-6', 1.4), ('nova-micro', 0.04), (None, 1.3), ('haiku-4-5', 0.2)]
+    monkeypatch.setattr(server.repo, 'finished_session_costs', lambda cur, uid, limit: [c for _m, c in rows][:limit])
+    monkeypatch.setattr(server.repo, 'finished_session_costs_by_model', lambda cur, uid, limit: rows[:limit])
+    monkeypatch.setattr(research_routes, '_TYPICAL_SESSION_COST', [time.time(), {}])
+    mine = [('nova-micro', 0.06, 2.0), (None, 2.0, 0.5), ('opus-4-6', 1.0, 1.0), ('haiku-4-5', 0.1, 0.5)]
+    monkeypatch.setattr(server.repo, 'forever_session_rates', lambda cur, since, user_id=None, limit=500: mine if user_id else [])
+    monkeypatch.setattr(research_routes, '_TYPICAL_FOREVER_RATE', [time.time(), {}])
+    out = server.research_estimate(context())
+    assert out['yours'] == 0.7  # every model pooled, as before (for an older page): neither model's cost
+    assert out['yours_by_model'] == {server.catalog.DEFAULT_KEY: 1.3}  # NULL is the default model; 2 Nova Micro are too few
+    # Run-until-stopped: your own hourly rate per model once it adds up to an hour (Opus: $3.00 over 1.5 h).
+    assert out['per_hour']['yours_by_model'] == {'nova-micro': 0.03, server.catalog.DEFAULT_KEY: 2.0}
 
 
 # -- idle: why the autopilot places no paper trades right now ---------------------------------------

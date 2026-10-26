@@ -53,6 +53,18 @@ def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
     return out
 
 
+def deployment_names(cur, user_id: int, deployment_ids: List[int]) -> Dict[int, Dict]:
+    """{deployment id: {"title", "mode"}} for the user's own deployments among ``deployment_ids``, for
+    the chat feed's automatic-pause lines (customer_text.chat_rows). Another user's id, or one that is
+    gone, is left out. One read by primary key."""
+    ids = sorted({int(i) for i in deployment_ids})
+    if not ids:
+        return {}
+    cur.execute("SELECT d.id, s.title, d.mode FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id "
+                "WHERE d.user_id=%s AND d.id IN (" + ",".join(["%s"] * len(ids)) + ")", (user_id, *ids))
+    return {int(r["id"]): {"title": r["title"], "mode": r["mode"]} for r in cur.fetchall()}
+
+
 def last_chat_turn_cost(cur, user_id: int) -> Optional[float]:
     """What the user's newest finished chat turn (one message answered, or one that failed) debited
     from their credits, in dollars; None when they have no finished turn. A turn that debited nothing

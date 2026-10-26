@@ -110,6 +110,16 @@ test('Meridian: a deployment monitor keeps each figure on one line in its own co
   assert.equal(decl(all, '.monitor-metrics dd', 'overflow-wrap'), undefined);
 });
 
+test('Meridian: the research form\'s Options are one column, so the market picker and the model name have room', () => {
+  // Walked 2026-10-26: `.research-compose .dispatch-tune` (the form's second column) also applied inside
+  // Options and made a second column there: the market picker was ~90px wide ("Filter" cut, "Agent's
+  // choice" on two lines) and the model select read "Claude" on a desktop, the same squeeze on a phone.
+  const all = rules(read('app.meridian.css'));
+  assert.equal(decl(all, '.research-compose .dispatch-tune', 'grid-column'), '2');  // the form's own layout, unchanged
+  assert.equal(decl(all, '.research-compose .dispatch-opts-body > .dispatch-tune', 'grid-column'), '1');
+  assert.equal(decl(all, '.research-compose .dispatch-opts-body > .dispatch-tune', 'grid-row'), 'auto');
+});
+
 test('Tau: the dashboard paper line keeps its all-time figure whole, and a clamped session title has a tooltip', () => {
   const js = read('app.js');
   assert.match(js, /<span class="amt">\$\{usd\(p\.realized_pnl, true\)\}<\/span> realized all time/);

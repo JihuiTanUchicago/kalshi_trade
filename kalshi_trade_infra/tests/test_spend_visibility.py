@@ -274,9 +274,10 @@ def test_run_until_stopped_costs_an_hour_at_recent_rates(monkeypatch):
     monkeypatch.setattr(server.repo, "forever_session_rates", rates)
     monkeypatch.setattr(research_routes, "_TYPICAL_FOREVER_RATE", [0.0, {}])
     out = server._forever_hourly(object(), 7)
-    assert out == {"yours": None, "typical": {server.catalog.DEFAULT_KEY: 3.0}}  # half an hour of your own is too little
+    assert out == {"yours": None, "yours_by_model": {}, "typical": {server.catalog.DEFAULT_KEY: 3.0}}  # half an hour of your own is too little
     mine[0] = mine[1]
     assert server._forever_hourly(object(), 7)["yours"] == 1.8  # $4.50 over 2.5 hours
+    assert server._forever_hourly(object(), 7)["yours_by_model"] == {server.catalog.DEFAULT_KEY: 1.8}  # NULL ran on the default
     assert len(reads) == 1
 
 
@@ -323,6 +324,7 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
     monkeypatch.setattr(server.repo, "activity_since", lambda *a: {"autopilot": {}, "runs": {}, "spent": {"since": usd, "week": usd}})
     monkeypatch.setattr(server.repo, "passed_since", lambda *a, **k: {})
     monkeypatch.setattr(server.repo, "finished_session_costs", lambda *a: [usd] * server.SESSION_COST_MIN_OWN)
+    monkeypatch.setattr(server.repo, "finished_session_costs_by_model", lambda *a: [(None, usd)] * server.SESSION_COST_MIN_OWN)
     monkeypatch.setattr(research_routes, "_TYPICAL_SESSION_COST", [0.0, {}])
     monkeypatch.setattr(server.repo, "recent_session_costs", lambda *a: [("m", usd)] * server.SESSION_COST_MIN_TYPICAL)
     monkeypatch.setattr(research_routes, "_forever_hourly", lambda *a: {"yours": None, "typical": {}})
@@ -348,6 +350,7 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
         "Research list: session cost": server.list_runs(_ctx())["runs"][0]["spent_usd"],
         "Run page: session cost": server.get_run(ctx)["run"]["spent_usd"],
         "Research form: what your sessions usually cost": estimate["yours"],
+        "Research form: what your sessions on this model usually cost": estimate["yours_by_model"][models_catalog.DEFAULT_KEY],
         "Research form: what a session usually costs": estimate["typical"][models_catalog.resolve("m").key],
     }
     assert seen == {k: cents for k in seen}

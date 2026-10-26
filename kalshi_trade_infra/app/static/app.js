@@ -2307,8 +2307,11 @@
   }
   // A run-until-stopped session is one session that keeps exploring a fresh round of ideas, so its
   // figure is per round (a finished set-size session is about one round); a set-size one is per session.
+  // `own`: true for the user's own sessions on any model (an older server's "yours"), 'model' for their
+  // own sessions on the model picked (yours_by_model), false for everyone's on that model.
+  const costBasis = (own) => own === 'model' ? 'your recent sessions on this model' : own ? 'your recent sessions' : 'recent sessions on this model';
   function sessionCostLine(v, forever, own) {
-    const basis = own ? 'your recent sessions' : 'recent sessions on this model';
+    const basis = costBasis(own);
     return forever
       ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
       : `A session like this usually takes about ${usd(v)} from your credits (${basis}).`;
@@ -2317,7 +2320,7 @@
   // (/api/research/estimate per_hour, the user's own else the model's typical) and how long the
   // balance covers that. It stops by itself only when credits run out, unless auto-reload tops up.
   function foreverRateLine(hourly, own, me) {
-    let s = hourly == null ? '' : `At recent rates it costs about ${usd(hourly)} an hour (${own ? 'your recent sessions' : 'recent sessions on this model'}).`;
+    let s = hourly == null ? '' : `At recent rates it costs about ${usd(hourly)} an hour (${costBasis(own)}).`;
     if (!me || !me.billing_enabled) return s;
     const bal = +me.credit_balance || 0, h = hourly > 0 ? bal / hourly : null;
     if (h != null && bal > 0) s += ` Your ${usd(bal)} covers ${h < 1 ? 'less than an hour' : h < 48 ? `about ${Math.round(h)} hour${Math.round(h) === 1 ? '' : 's'}` : `about ${Math.round(h / 24)} days`}.`;
@@ -2353,7 +2356,17 @@
     shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
     // /api/me carries the model list, so the page's own reads below don't wait a round trip on it.
     const mdl = (me && me.models) || await api('/api/models').catch(() => ({ models: [], default: '' }));
-    const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (access pending)' : ''}</option>`).join('');
+    // Arriving with ?market= (Explore's "Research <market>") for a market the picker doesn't offer right now
+    // (perpetuals switched off, a venue with no data yet) left Agent's choice picked and said nothing, so the
+    // session ran on whatever market the agent chose. It says so, where the market is picked and in the
+    // Options line. A key it doesn't know is never shown as typed.
+    const wantMkt = new URLSearchParams(location.search).get('market');
+    const wantRow = wantMkt ? (me.markets || []).find((m) => m.key === wantMkt) : null;
+    const notOpen = wantMkt && !wantRow ? `${MKT_SHORT[wantMkt] || 'The market you picked'} isn\u2019t open for research right now` : '';
+    // Models you can't pick yet go after the ones you can, and say "coming soon": they led the list as
+    // "(access pending)", four greyed-out rows above the default.
+    const modelOpts = (mdl.models || []).filter((m) => m.available !== false).concat((mdl.models || []).filter((m) => m.available === false))
+      .map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (coming soon)' : ''}</option>`).join('');
     shell('/research', boardTitle('Research', 'A self-improving research engine for Kalshi markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
       ${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}
       <div id="rexample"></div>
@@ -2372,6 +2385,7 @@
           <label class="switch tune-sw"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
         </div>
         <fieldset class="field mkt-field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:8px">Market</legend>
+          ${notOpen ? `<p class="hint mkt-missing" role="status">${esc(notOpen)}, so the agent picks the market unless you choose one here.</p>` : ''}
           ${marketPicker(me.markets)}
         </fieldset>
         </div></details>
@@ -2395,13 +2409,12 @@
         <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
-    const wantMkt = new URLSearchParams(location.search).get('market');
-    const pickMkt = wantMkt && [...form.querySelectorAll('input[name=market]')].find((r) => r.value === wantMkt);
+    const pickMkt = wantRow && [...form.querySelectorAll('input[name=market]')].find((r) => r.value === wantMkt);
     if (pickMkt) {
       pickMkt.checked = true;
       const grp = pickMkt.closest('details'); if (grp) grp.open = true;
-      const opts = form.querySelector('#ropts'); if (opts) opts.open = true;
     }
+    if (pickMkt || notOpen) { const opts = form.querySelector('#ropts'); if (opts) opts.open = true; }
     // Model, depth and market fold behind "Options" on a phone (closed while at their defaults), so
     // Start session sits right under the idea. The summary line says what will run.
     const optsSum = form.querySelector('#ropts-sum');
@@ -2412,9 +2425,12 @@
       const pick = [...form.querySelectorAll('input[name=market]')].find((r) => r.checked);
       const row = pick && pick.value ? pick.closest('.mktrow') : null, nm = row && row.querySelector('.mktrow-name');
       optsSum.textContent = [mo ? mo.textContent.trim() : '', rfx && rfx.checked ? 'runs until you stop it' : `${(mhx && mhx.value) || 10} strategies`,
-        nm ? nm.textContent.trim() : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
+        nm ? nm.textContent.trim() : notOpen ? `agent\u2019s choice of market (${notOpen})` : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
     };
     form.addEventListener('change', syncOpts); syncOpts();
+    // A field the browser won't accept (0 or 5,000 strategies) inside folded Options: it can't show its
+    // message on a hidden field, so Start did nothing. Unfold Options so the browser points at it.
+    form.addEventListener('invalid', () => { const o = form.querySelector('#ropts'); if (o && !o.open) o.open = true; }, true);
     const ta = form.querySelector('textarea[name=prompt]');
     const draft = keepDraft(ta);
     // "Run it yourself" fills the box with the example's idea and says plainly that it's a new, paid
@@ -2441,11 +2457,15 @@
       if (!rc) return;
       let est = null;
       const sync = syncCost = () => {
-        const own = !!est && est.yours != null, key = (msel && msel.value) || mdl.default;
-        const v = !est ? null : own ? est.yours : (est.typical || {})[key];
+        // The user's own figure for the model picked (yours_by_model): "yours" pooled every model, so a
+        // history on the default model read beside the cheapest one too. An older server sends "yours" alone.
+        const key = (msel && msel.value) || mdl.default, byModel = est && est.yours_by_model;
+        const mine = !est ? null : byModel ? byModel[key] : est.yours, own = mine != null && (byModel ? 'model' : true);
+        const v = !est ? null : own ? mine : (est.typical || {})[key];
         const forever = !!(rf && rf.checked), ph = (est && est.per_hour) || {};
-        const hourly = ph.yours != null ? ph.yours : (ph.typical || {})[key];
-        const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ph.yours != null, me) : '';
+        const myRate = ph.yours_by_model ? ph.yours_by_model[key] : ph.yours, ownRate = myRate != null && (ph.yours_by_model ? 'model' : true);
+        const hourly = ownRate ? myRate : (ph.typical || {})[key];
+        const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ownRate, me) : '';
         // No ledger figure for this model (or the read failed): with payments on, still say how it
         // is billed and that it can be stopped, rather than leaving the cost blank.
         const none = v == null && !pace && me.billing_enabled ? 'No cost estimate for this model yet. It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
@@ -2471,7 +2491,13 @@
           });
           draft.drop();
           go('/research/' + r.id);
-        } catch (err) { flash('#dflash', err.message, 'bad'); }
+        } catch (err) {
+          flash('#dflash', err.message, 'bad');
+          // The error sits under the cost lines: on a phone that is below the fold, so Start looked
+          // like it did nothing (out of credits, two sessions already going). Bring it into view.
+          const said = form.querySelector('#dflash');
+          if (said && said.scrollIntoView) said.scrollIntoView({ block: 'nearest' });
+        }
       });
     };
     // Live market context: fold the shared book onto each picker row (read-only). Rows with no
@@ -2510,6 +2536,10 @@
       if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
       const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
       if (exOpen) { const hide = !exRun || !!exHtml; if (exOpen.hidden !== hide) exOpen.hidden = hide; if (exRun && exOpen.getAttribute('href') !== '/research/' + exRun.id) exOpen.setAttribute('href', '/research/' + exRun.id); }
+      // "or run it yourself" follows the demo link; with the link hidden (no example, or the example's own
+      // line is up top) it stood alone beside Start and read as a fragment.
+      const exRunBtn = root.querySelector('button[data-ex]');
+      if (exRunBtn) { const t = exOpen && !exOpen.hidden ? 'or run it yourself' : 'Run the demo idea yourself'; if (exRunBtn.textContent !== t) exRunBtn.textContent = t; }
       // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
       const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
       paint(root.querySelector('#rcount'), esc([own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0')));
@@ -5540,9 +5570,12 @@
     // the same voice taking it back. It is the autopilot's own rule (agent.act), so it is headed as
     // that, and says that your own Pause on Deploy still stops it.
     const rule = !m.proposal_kind && /^I left .+ running: it (?:has been on paper for only|is a paper tournament entrant)/.test(m.content || '');
+    // The engine's own loss guard or drawdown limit paused a strategy (the server says it by name,
+    // customer_text.auto_pause_line): no review ran, so it isn't headed "Reviewed".
+    const guard = !m.proposal_kind && /^Paused (?:your (?:paper|demo|live) strategy .+|one of your strategies) automatically\b/.test(m.content || '');
     const kind = (st === 'pending' && AP_ASK[m.proposal_kind]) || AP_ACT[m.proposal_kind]
       || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off')
-        : said || (rule ? 'Autopilot’s rule: kept running' : 'Reviewed'));
+        : said || (rule ? 'Autopilot’s rule: kept running' : guard ? 'Paused automatically' : 'Reviewed'));
     const own = rule ? '<p class="apf-ask apf-rule">To stop it anyway, pause it yourself on <a href="/deploy">Deploy</a>.</p>' : '';
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
     const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`
@@ -5884,7 +5917,8 @@
       const mdl = await api('/api/models', undefined, { keep: true }).catch(() => ({ models: [], default: '' }));
       if (!current()) return;
       const cur = (S.ap && S.ap.model) || mdl.default;
-      sel.innerHTML = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === cur ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (access pending)' : ''}</option>`).join('');
+      sel.innerHTML = (mdl.models || []).filter((m) => m.available !== false).concat((mdl.models || []).filter((m) => m.available === false))
+        .map((m) => `<option value="${esc(m.key)}"${m.key === cur ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (coming soon)' : ''}</option>`).join('');
       sel.onchange = async () => {
         if (!current() || sel.disabled) return;
         sel.disabled = true;

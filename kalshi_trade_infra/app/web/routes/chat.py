@@ -47,7 +47,10 @@ def get_chat(ctx: Ctx):
     after = int(ctx.query.get("after") or 0)
     run = repo.active_agent_run(ctx.cur, ctx.uid)
     wait = _run_wait(run)
-    messages = customer_text.chat_rows(repo.chat_messages(ctx.cur, ctx.uid, after))
+    rows = repo.chat_messages(ctx.cur, ctx.uid, after)
+    # The engine's automatic pause names a deployment by its row number: the feed says it by name.
+    paused_ids = customer_text.auto_paused_ids(rows)
+    messages = customer_text.chat_rows(rows, repo.deployment_names(ctx.cur, ctx.uid, paused_ids) if paused_ids else None)
     # agent_wait: the oldest chat/review in flight has waited or gone quiet past the reaper's limit,
     # so the panel's pulse says that instead of "working" for as long as it lasts.
     out = {"messages": messages, "agent_busy": run is not None, "agent_wait": wait if wait and wait["overdue"] else None}

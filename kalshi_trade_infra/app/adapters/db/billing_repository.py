@@ -228,6 +228,18 @@ def finished_session_costs(cur, user_id: int, limit: int = 10) -> List[float]:
     return [float(r["s"]) for r in cur.fetchall() if r["s"] is not None and float(r["s"]) > 0]
 
 
+def finished_session_costs_by_model(cur, user_id: int, limit: int = 50) -> List[Tuple[Optional[str], float]]:
+    """(model, cost) for the user's newest finished research sessions, newest first, as
+    finished_session_costs reads them, so the cost hint can follow the model picked (the run's model
+    key; NULL ran on the default)."""
+    cur.execute(
+        "SELECT r.id, r.model, " + _RUN_DEBITS + " AS s FROM app_agent_runs r "
+        "WHERE r.user_id=%s AND " + _FINISHED_SESSION + " ORDER BY r.created_at DESC, r.id DESC LIMIT %s",
+        (user_id, int(limit)),
+    )
+    return [(r["model"], float(r["s"])) for r in cur.fetchall() if r["s"] is not None and float(r["s"]) > 0]
+
+
 def recent_session_costs(cur, since, limit: int = 2000) -> List[Tuple[Optional[str], float]]:
     """(model, cost) for every user's finished research sessions created since `since`, newest
     first, for the server-wide typical cost per model. Callers keep only the aggregate."""

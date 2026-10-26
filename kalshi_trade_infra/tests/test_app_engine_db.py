@@ -340,6 +340,11 @@ def test_finished_session_costs_are_set_size_research_sessions_that_debited(conn
     repo.add_credit(cur, user["id"], "usage", Decimal("-6.137"), "Agent usage", run_id=demo)
     assert repo.finished_session_costs(cur, user["id"], 10) == [pytest.approx(2.25), pytest.approx(1.5)]
     assert repo.finished_session_costs(cur, user["id"], 1) == [pytest.approx(2.25)]
+    # The same samples with each one's model, for the hint that follows the model picked.
+    assert repo.finished_session_costs_by_model(cur, user["id"], 10) == [(None, pytest.approx(2.25)), (None, pytest.approx(1.5))]
+    rid = run(debits=("-0.040000",))
+    cur.execute("UPDATE app_agent_runs SET model='haiku-4-5' WHERE id=%s", (rid,))
+    assert repo.finished_session_costs_by_model(cur, user["id"], 10)[0] == ("haiku-4-5", pytest.approx(0.04))
     every = repo.recent_session_costs(cur, repo.now_utc() - timedelta(days=1))
     assert (None, pytest.approx(2.25)) in every and (None, pytest.approx(1.5)) in every
     assert not any(round(cost, 3) in (9.137, 8.137, 7.137, 6.137) for _, cost in every)
@@ -1008,6 +1013,34 @@ def test_the_engines_own_pause_is_the_last_move_with_its_strategy(conn, user):
     assert repo.last_autopilot_action(cur, other["id"])["deployment"] == {"id": dep["id"], "title": None, "mode": None}
     repo.add_chat(cur, uid, "system", "Autopilot paused Rain: it hit its loss guard.")
     assert "deployment" not in repo.last_autopilot_action(cur, uid)
+
+
+def test_the_chat_feed_says_the_engines_pause_by_name_and_keeps_the_stored_line(conn, user):
+    """The chat feed read the engine's "Paused deployment #N automatically." as stored. It says the
+    strategy by name now (GET /api/chat), the stored row keeps the engine's words, and another user's
+    deployment number reads no title."""
+    from types import SimpleNamespace
+
+    from app import repository as repo
+    from app.web.routes import chat as chat_routes
+
+    cur, uid = conn.cursor(), user["id"]
+    dep = _deployment(conn, user)
+    line = "Paused deployment #%d automatically. Lost $12.00, more than the $10.00 guard (2x its worst backtest drawdown)." % dep["id"]
+    repo.add_chat(cur, uid, "system", line)
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "o@example.com", "O", None)
+    assert repo.deployment_names(cur, uid, [dep["id"], dep["id"] + 999]) == {dep["id"]: {"title": "T", "mode": "paper"}}
+    assert repo.deployment_names(cur, other["id"], [dep["id"]]) == {}
+    assert repo.deployment_names(cur, uid, []) == {}
+
+    def feed(user_id):
+        out = chat_routes.get_chat(SimpleNamespace(cur=cur, uid=user_id, query={}))
+        return [m["content"] for m in out["messages"] if m["role"] == "system"]
+
+    assert feed(uid) == ["Paused your paper strategy T automatically: it lost $12.00, more than its $10.00 loss guard."]
+    repo.add_chat(cur, other["id"], "system", line)
+    assert feed(other["id"]) == ["Paused one of your strategies automatically: it lost $12.00, more than its $10.00 loss guard."]
+    assert [m["content"] for m in repo.chat_messages(cur, uid)] == [line]  # the engine's words, as written
 
 
 def test_chat_lines_name_the_book_a_proposal_would_change(conn, user):

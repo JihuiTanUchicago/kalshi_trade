@@ -133,14 +133,29 @@ def notification_rows(items: List[Dict]) -> List[Dict]:
     return items
 
 
-def chat_rows(messages: List[Dict]) -> List[Dict]:
+def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None) -> List[Dict]:
     """The autopilot panel's lines Tau wrote (role system). The user's own lines and the agent's
     replies are as they were said. A risk or execution change an older line wrote as the setting's
-    key ("max_open_notional=200.0") reads in words, as new lines are written (control_changes)."""
+    key ("max_open_notional=200.0") reads in words, as new lines are written (control_changes).
+    The engine's "Paused deployment #N automatically. <why>" reads as the "Last move" line does
+    (auto_pause_line), by the strategy's name from ``paused`` ({deployment id: {"title", "mode"}}
+    for the ids auto_paused_ids lists); the row number never reaches the page, and the stored line
+    is unchanged."""
     for m in messages:
         if m.get("role") == "system":
-            m["content"] = plain_controls(clean(m.get("content"), CHAT_FALLBACK))
+            text = m.get("content")
+            dep = auto_paused_id(text)
+            if dep is not None:
+                text = auto_pause_line(text, (paused or {}).get(dep))
+            m["content"] = plain_controls(clean(text, CHAT_FALLBACK))
     return messages
+
+
+def auto_paused_ids(messages: List[Dict]) -> List[int]:
+    """The deployments the engine's automatic-pause lines among ``messages`` name, for one read of
+    their names before chat_rows."""
+    ids = (auto_paused_id(m.get("content")) for m in messages if m.get("role") == "system")
+    return sorted({i for i in ids if i is not None})
 
 
 # -- risk and execution controls, in words ---------------------------------------------------------
@@ -182,6 +197,13 @@ def plain_controls(text: Optional[str]) -> Optional[str]:
 # sees, so the autopilot card's "Last move" says it by the strategy's name instead.
 
 _AUTO_PAUSE = re.compile(r"^Paused deployment #\d+ automatically\.?\s*(.*)$", re.S)
+_AUTO_PAUSE_ID = re.compile(r"^Paused deployment #(\d+) automatically\b")
+
+
+def auto_paused_id(text: Optional[str]) -> Optional[int]:
+    """The deployment the engine's "Paused deployment #N automatically" line names, else None."""
+    m = _AUTO_PAUSE_ID.match(str(text or ""))
+    return int(m.group(1)) if m else None
 _NUM = r"(\d+(?:\.\d+)?)"
 _MONEY = r"\$([\d,]+(?:\.\d+)?)"
 _PAUSE_WHY = (

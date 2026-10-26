@@ -146,4 +146,20 @@ export function chatPanelCases({name, frontend, storageFor}) {
       `I left ${TAILS} running: it is a paper tournament entrant with 3 of 20 independent events (net $1.20), and the tournament retires it on its own once the data can judge it.`}]});
     assert.deepEqual(q.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent), ['Autopilot’s rule: kept running']);
   });
+
+  test(`${name}: the engine's pause in the feed reads by the strategy's name, headed as a pause, not a review`, async () => {
+    // The server says the line by name (customer_text.chat_rows); before, the feed showed "Paused deployment
+    // #12 automatically. Lost $12.00, more than the $10.00 guard (...)" under "Reviewed".
+    const said = `Paused your paper strategy ${TAILS} automatically: it lost $12.00, more than its $10.00 loss guard.`;
+    const p = await panel({autopilot: true, chat: () => [
+      {id: 1, role: 'system', content: said, created_at: AT},
+      {id: 2, role: 'system', content: 'Paused one of your strategies automatically.', created_at: AT},
+      {id: 3, role: 'system', content: 'Autopilot paused Rain: it hit its loss guard.', created_at: AT},
+    ]});
+    const feed = p.box.querySelector('#apf-messages');
+    assert.deepEqual(feed.querySelectorAll('.say-kind').map((el) => el.textContent), ['Paused automatically', 'Paused automatically', 'Reviewed']);
+    const html = feed.querySelectorAll('.apf-md').map((el) => el.innerHTML).join('\n');
+    assert.ok(html.includes(TAILS) && html.includes('more than its $10.00 loss guard'), html);
+    assert.doesNotMatch(html, /deployment #|#\d/);
+  });
 }
