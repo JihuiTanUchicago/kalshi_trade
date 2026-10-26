@@ -87,7 +87,7 @@ def test_missing_required_entry_rejects_prefix_decoys(tmp_path, missing):
 
 def test_core_package_ships_with_its_own_backup_and_rollback(tmp_path):
     out = _dry_run(tmp_path).stdout
-    assert "py_compile app/*.py data_pipeline/*.py trading_core/*.py" in out
+    assert "py_compile app/*.py app/*/*.py app/*/*/*.py data_pipeline/*.py trading_core/*.py" in out
     assert "mkdir -p trading_core" in out and "trading_core.bak." in out
     assert "mv trading_core.bak." in out  # rollback restores it with app/ and data_pipeline/
 

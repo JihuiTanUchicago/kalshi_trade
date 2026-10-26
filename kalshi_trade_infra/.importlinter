@@ -61,6 +61,15 @@ ignore_imports =
     app.backtest -> app.adapters.polymarket.features
     app.engine -> app.adapters.polymarket.features
     app.engine -> app.adapters.polymarket.store
+    ; The external data clients (sports odds, weather forecasts, options, free data, tick datasets,
+    ; market-data helpers) moved into app.adapters.data on 2026-10-26. The flat legacy modules already
+    ; imported them, so this records existing dependencies, not new ones. `*` is one segment: it
+    ; covers app.<legacy module> only, never app.services.* or app.web.*. Narrow it as those modules
+    ; move under app.services with the providers injected (step 5).
+    app.* -> app.adapters.data.*
+    ; services.markets catches the perps config error type (MarketDataError) next to its legacy perps
+    ; imports; goes when perps moves behind the Venue port (step 11).
+    app.services.markets -> app.adapters.data.market_data_common
 ; Add when app.web exists: a forbidden contract app.web -> app.adapters (web reaches adapters only
 ; through services and the bootstrap wiring).
 

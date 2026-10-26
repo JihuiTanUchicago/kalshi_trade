@@ -132,7 +132,7 @@ Research is meant to get better at finding edges from its own results:
   Coinbase BTC-USD prints) is recorded on the collector box and archived hourly to S3 Parquet under
   `ticks/v1/` in the datalake bucket; read it with `data_pipeline/tick_store.py`
   (`book_1s`, `trades_1s`, `spot_1s`, `features_1s`).
-- **Side data**: weather forecasts (NBM and GFS MOS from IEM, `app/weather_fcst*.py`), Kalshi
+- **Side data**: weather forecasts (NBM and GFS MOS from IEM, `app/adapters/data/weather_fcst*.py`), Kalshi
   `/historical` candles back to 2021 for weather, measured execution costs
   (`python -m app.exec_cost_model`). The sportsbook odds collector exists but has no key, so it
   is a no-op.

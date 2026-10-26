@@ -398,7 +398,7 @@ def _load_window(market: str, from_ts: int, to_ts: int, history_days: Optional[i
     finally:
         conn.close()
     if m.source == "ticks":
-        from app import tick_dataset
+        from app.adapters.data import tick_dataset
         return tick_dataset.load_window(m, contracts, from_ts, to_ts)
     sub = [mk for mk in rows["markets"]
            if mk.get("open_ts") is not None and from_ts <= mk["open_ts"] < to_ts]

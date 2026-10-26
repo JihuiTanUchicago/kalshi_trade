@@ -328,7 +328,7 @@ def book_for_series(series: str, load_rows, load_actuals=None) -> Optional[Forec
     standard time is unknown). load_rows(station, kind) returns repository.load_weather_forecasts
     rows: research passes a window-wide loader, the live engine a recent-days one.
     load_actuals(series), if given, returns repository.load_weather_actuals rows for the bias."""
-    from app import freedata
+    from app.adapters.data import freedata
     from app.markets import WEATHER_STATIONS
     station = WEATHER_STATIONS.get(series)
     offset = freedata.ASOS_LST_OFFSET_H.get(station) if station else None

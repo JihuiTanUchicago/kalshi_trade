@@ -603,7 +603,7 @@ DDL = [
     """,
     # Issued NWS station forecasts of the daily max/min (app/weather_fcst_collect.py), one row per
     # (model run, settlement day). known_at_utc = runtime + the model's publication lag: research
-    # and the live engine both read only rows with known_at_utc <= the frame (app/weather_fcst).
+    # and the live engine both read only rows with known_at_utc <= the frame (app/adapters/data/weather_fcst).
     """
     CREATE TABLE IF NOT EXISTS weather_forecasts (
       station VARCHAR(8) NOT NULL,         -- NWS climate station as in markets.WEATHER_STATIONS
@@ -626,7 +626,7 @@ DDL = [
       sport VARCHAR(32) NOT NULL,          -- The Odds API sport key, e.g. basketball_nba
       event_id VARCHAR(64) NOT NULL,
       commence_utc DATETIME NOT NULL,
-      home_code VARCHAR(8) NOT NULL,       -- Kalshi team codes (app/sports_odds.TEAMS)
+      home_code VARCHAR(8) NOT NULL,       -- Kalshi team codes (app/adapters/data/sports_odds.TEAMS)
       away_code VARCHAR(8) NOT NULL,
       book VARCHAR(32) NOT NULL,
       book_update_utc DATETIME NULL,

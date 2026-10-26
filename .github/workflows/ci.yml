@@ -42,7 +42,7 @@ jobs:
 
       - name: Byte-compile Python
         working-directory: kalshi_trade_infra
-        run: python -m py_compile app/*.py data_pipeline/*.py trading_core/*.py trading_core/*/*.py
+        run: python -m py_compile app/*.py app/*/*.py app/*/*/*.py data_pipeline/*.py trading_core/*.py trading_core/*/*.py
 
       - name: Check import boundaries (ARCHITECTURE.md)
         working-directory: kalshi_trade_infra

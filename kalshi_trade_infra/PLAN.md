@@ -84,7 +84,7 @@
   `python -m data_pipeline.settle_nowcast --start ... --end ...` scores nowcast vs book mid (Brier),
   calibration z-scores, and a 1-contract taker sim (fill at the ask 1s later, Kalshi taker fee).
 - Research features (btc15m_tick): `p_settle`, `settle_sd`, `settle_z`, computed in
-  app/tick_dataset.py from the frame's spot_comp, so they exist for every archived hour with the
+  app/adapters/data/tick_dataset.py from the frame's spot_comp, so they exist for every archived hour with the
   composite (from 2026-10-24 21:52Z).
 - First look, 22:00Z-01:00Z 2026-10-24 (12 closes, too few to trust): nowcast calibration z sd
   0.7-1.0 at 10-60s; in the last 60s it beats the mid on Brier for the hourly KXBTC/KXBTCD
@@ -951,7 +951,7 @@ Verification: 336 passed / 7 skipped; live-gate tests green; `/security-review` 
 ## Alpaca market data for agents — October 16, 2026, Asia/Shanghai
 
 Implemented for PR review; disabled by default. Agents previously received only
-Kalshi-specific data summaries. `app/alpaca_data.py` now reads stock/ETF snapshots
+Kalshi-specific data summaries. `app/adapters/data/alpaca_data.py` now reads stock/ETF snapshots
 and raw OHLCV history, and `app/agent_market_data.py` supplies watchlist context and
 bounded on-demand reads to the actual research/copilot call sites. Research reads
 stay within its training window; current snapshots are restricted to copilot.
@@ -992,7 +992,7 @@ Publication handoff (local archive: `results/alpaca_pr_2026-10-16/HANDOFF.md`).
 ## Alpaca market data for agents — October 16, 2026, Asia/Shanghai
 
 Implemented locally; focused/full tests and read-only live IEX checks pass. New
-`app/alpaca_data.py` supplies snapshots and paginated raw OHLCV bars;
+`app/adapters/data/alpaca_data.py` supplies snapshots and paginated raw OHLCV bars;
 `app/agent_market_data.py` supplies watchlist context and bounded on-demand symbol
 reads to actual research/copilot calls. Provider/feed/time provenance, stale-data
 handling, fixed data-only endpoints, retries/cache/request bounds and historical

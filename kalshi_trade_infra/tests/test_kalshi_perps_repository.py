@@ -7,7 +7,7 @@ import pytest
 
 from app import kalshi_perps_data as data
 from app import kalshi_perps_repository as repo
-from app.market_data_common import MarketDataError
+from app.adapters.data.market_data_common import MarketDataError
 from tests.test_kalshi_perps_data import END, NOW, instrument_row
 
 MARKET = SimpleNamespace(key="btc_perp", kind="perpetual", underlying="BTC-USD", series="BTC_PERP")

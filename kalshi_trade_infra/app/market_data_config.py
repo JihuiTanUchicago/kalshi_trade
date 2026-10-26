@@ -11,10 +11,10 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Mapping, Optional
 
-from app.alpaca_data import Config as AlpacaConfig, symbols_checked
-from app.databento_data import Config as DatabentoConfig, dataset_checked
-from app.market_data_common import MarketDataError
-from app.massive_data import Config as MassiveConfig, pairs_checked
+from app.adapters.data.alpaca_data import Config as AlpacaConfig, symbols_checked
+from app.adapters.data.databento_data import Config as DatabentoConfig, dataset_checked
+from app.adapters.data.market_data_common import MarketDataError
+from app.adapters.data.massive_data import Config as MassiveConfig, pairs_checked
 
 DEFAULT_EQUITIES = "SPY,QQQ,IWM,TLT,GLD,USO"
 DEFAULT_FX = "EURUSD,USDJPY,GBPUSD"

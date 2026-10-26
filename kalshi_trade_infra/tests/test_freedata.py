@@ -2,7 +2,8 @@
 (no future value at an earlier ts), graceful degradation, the spec request validating + surviving
 into the hash/provenance, and the enrich() join actually reaching the window's frames.
 """
-from app import backtest, freedata
+from app import backtest
+from app.adapters.data import freedata
 from app import spec as specmod
 from app.gatekeeper import Prereg
 

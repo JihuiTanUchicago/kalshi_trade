@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from app.market_data_common import MarketDataError
+from app.adapters.data.market_data_common import MarketDataError
 
 BASE_URLS = {
     "production": "https://external-api.kalshi.com/trade-api/v2",

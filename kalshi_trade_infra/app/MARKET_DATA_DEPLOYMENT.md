@@ -161,12 +161,12 @@ unset AWS_PROFILE
 .venv/bin/python -m app.market_data_config check
 ```
 
-Then use `app.databento_data estimate` against a small, known completed window,
+Then use `app.adapters.data.databento_data estimate` against a small, known completed window,
 the selected dataset and a symbol in that dataset. For example (replace the dates
 with an entitled completed window):
 
 ```bash
-.venv/bin/python -m app.databento_data estimate SPY --dataset EQUS.MINI \
+.venv/bin/python -m app.adapters.data.databento_data estimate SPY --dataset EQUS.MINI \
   --start 2026-10-16T14:00:00Z --end 2026-10-16T14:10:00Z --timeframe 1Min
 ```
 

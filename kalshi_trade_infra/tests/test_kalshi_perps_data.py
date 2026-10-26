@@ -7,7 +7,7 @@ import requests
 from decimal import Decimal
 
 from app import kalshi_perps_data as data
-from app.market_data_common import MarketDataError
+from app.adapters.data.market_data_common import MarketDataError
 
 NOW = datetime(2026, 10, 23, 12, 0, 0, tzinfo=timezone.utc)
 END = int(NOW.timestamp()) - 60

@@ -21,7 +21,7 @@ import requests
 
 from app.kalshi_perps_collector import collect, summary
 from app.kalshi_perps_data import Config, KalshiPerpsDataClient
-from app.market_data_common import MarketDataError
+from app.adapters.data.market_data_common import MarketDataError
 
 
 class CheckedSession(requests.Session):

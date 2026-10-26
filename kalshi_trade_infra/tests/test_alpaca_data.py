@@ -5,7 +5,7 @@ import json
 import pytest
 import requests
 
-from app import alpaca_data as data
+from app.adapters.data import alpaca_data as data
 
 NOW = datetime(2026, 10, 16, 15, 0, tzinfo=timezone.utc)
 CONFIG = data.Config("test-key-private", "test-secret-private", "iex")

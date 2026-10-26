@@ -1,7 +1,7 @@
 """Snapshot every US sportsbook's NBA/NHL moneyline from The Odds API into sports_odds.
 
 Each run stores one row per (game, book) stamped with this run's collected_at, the time we
-knew the price; app/sports_odds as-of joins on it for research and live alike. Historical odds
+knew the price; app/adapters/data/sports_odds as-of joins on it for research and live alike. Historical odds
 are a paid add-on, so the history is whatever this collects going forward.
 
 Key: ODDS_API_KEY in the environment, else the AWS Secrets Manager secret kalshi/odds_api_key.
@@ -18,7 +18,7 @@ import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from app.sports_odds import SPORTS, american_to_prob, devig, team_code
+from app.adapters.data.sports_odds import SPORTS, american_to_prob, devig, team_code
 
 ODDS_URL = "https://api.the-odds-api.com/v4/sports/%s/odds"
 SECRET_ID = "kalshi/odds_api_key"

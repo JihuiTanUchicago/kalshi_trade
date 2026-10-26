@@ -6,7 +6,7 @@ import sys
 import pytest
 import requests
 
-from app import massive_data as data
+from app.adapters.data import massive_data as data
 from tests.test_alpaca_data import Response, Session
 
 NOW = datetime(2026, 10, 17, 15, 0, tzinfo=timezone.utc)

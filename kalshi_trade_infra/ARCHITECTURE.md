@@ -127,6 +127,22 @@ Each step is one or a few small PRs. "Proof" is what shows behaviour did not cha
 | 10 | Split `agent.py` into `app/services/research/` (prompts, market picker, runner, focus, scorecard) | the research loop becomes evolvable | medium | agent tests |
 | 11 | Perps and Alpaca behind `Venue`; their manual approval flows stay app services | proves the fit test in production | low (both flag-off) | their suites |
 
+## `app/` folder layout (Todd, 2026-10-26: "still a lot of unorganized files under app")
+
+Flat `app/*.py` modules move into their layer, one group per PR, with every import rewritten (no
+re-export shims at the old path, so the top level really shrinks). Behaviour is unchanged; the suite
+and `lint-imports` prove it. Modules run as `python -m app.<name>` by a systemd unit that the deploy
+does not sync move only together with their unit.
+
+| Group | Target | Status |
+|---|---|---|
+| External data clients: Databento, Exa, Massive, Alpaca data, market-data helpers, sports odds, weather forecasts, options fair value, free data, news journal, tick datasets | `app/adapters/data/` | done 2026-10-26 |
+| Brokers and venues: Alpaca paper, IBKR, Robinhood, broker OAuth/vault, Kalshi account/demo, Kalshi perps | `app/adapters/<venue>/` | next |
+| Research loop: agent, knowledge, market data, gatekeeper, partitions, RSI, tournament, sandbox, dreaming | `app/services/research/` | |
+| Web: `server.py` split into routes, auth, billing, notify | `app/web/` | |
+| Trading: engine, reconcile, demo twins, TCA, track record | `app/services/trading/` | |
+| Entry points run by unsynced units (`market_history`, `sports_odds_collect`, `weather_fcst_collect`, `worldmonitor_data`, `market_data_config`, `worker`) | with their unit | |
+
 ## Rules for every thread, starting now
 
 - New venue or data-source code goes in `app/adapters/<venue>/`, implementing a `trading_core.ports`

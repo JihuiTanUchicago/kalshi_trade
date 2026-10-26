@@ -4,7 +4,8 @@ import json
 
 import pytest
 
-from app import agent, agent_market_data as market, massive_data
+from app import agent, agent_market_data as market
+from app.adapters.data import massive_data
 from app.llm import Usage
 from tests.test_agent_market_data import final_check, provider as alpaca_provider, scripted
 from tests.test_app_agent import Conn, RUN, Store, WINNER, hyps, plan

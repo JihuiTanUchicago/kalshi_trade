@@ -6,9 +6,9 @@ import pytest
 import pymysql
 
 from app import agent, agent_knowledge as knowledge, agent_market_data as market, agent_news as news
-from app.exa_data import ExaDataClient
+from app.adapters.data.exa_data import ExaDataClient
 from app.llm import LLMError, Usage
-from app.market_data_common import iso
+from app.adapters.data.market_data_common import iso
 from tests.test_agent_knowledge import scripted, tool_request
 from tests.test_agent_market_data import provider as alpaca_provider
 from tests.test_app_agent import Conn, RUN, Store, WINNER, hyps, plan

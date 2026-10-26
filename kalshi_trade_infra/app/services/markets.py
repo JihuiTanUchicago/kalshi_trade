@@ -31,7 +31,7 @@ def researchable_markets(cur, ready_series: Optional[Set[str]] = None) -> List[D
         ready_series = repo.series_with_candles(cur)
     from app import kalshi_perps_repository as perps_repo
     from app.kalshi_perps_data import Config as PerpsConfig
-    from app.market_data_common import MarketDataError
+    from app.adapters.data.market_data_common import MarketDataError
     try:
         perps_enabled = PerpsConfig.from_env().enabled
     except (ValueError, MarketDataError):

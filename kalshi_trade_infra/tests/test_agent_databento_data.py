@@ -5,7 +5,8 @@ import json
 
 import pytest
 
-from app import agent, agent_market_data as market, databento_data as data
+from app import agent, agent_market_data as market
+from app.adapters.data import databento_data as data
 from app.llm import Usage
 from tests.test_agent_market_data import final_check, provider as alpaca_provider, scripted
 from tests.test_agent_massive_data import provider as massive_provider

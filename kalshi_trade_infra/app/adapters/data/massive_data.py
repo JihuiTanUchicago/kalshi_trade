@@ -1,9 +1,9 @@
 """Read-only Massive FX, rates and option chains. No trading/account endpoints.
 
-    python -m app.massive_data status
-    python -m app.massive_data fx-bars EURUSD --start 2026-10-01 --end 2026-10-15
-    python -m app.massive_data macro treasury_yields --start 2026-10-01 --end 2026-10-15
-    python -m app.massive_data options-chain SPY --expiration-date 2026-10-23
+    python -m app.adapters.data.massive_data status
+    python -m app.adapters.data.massive_data fx-bars EURUSD --start 2026-10-01 --end 2026-10-15
+    python -m app.adapters.data.massive_data macro treasury_yields --start 2026-10-01 --end 2026-10-15
+    python -m app.adapters.data.massive_data options-chain SPY --expiration-date 2026-10-23
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import requests
 
-from app.market_data_common import MarketDataError, TIMEFRAMES, equity_symbols as symbols_checked, get_json, iso, number, timestamp, utc_now
+from app.adapters.data.market_data_common import MarketDataError, TIMEFRAMES, equity_symbols as symbols_checked, get_json, iso, number, timestamp, utc_now
 
 DATA_URL = "https://api.massive.com"
 MAX_SYMBOLS = 3
