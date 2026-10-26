@@ -230,6 +230,15 @@
     if (s < 86400) return Math.floor(s / 3600) + 'h ago';
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
+  // A bell item's time: relative within the day, then the day and clock ("Oct 24, 14:05"), not a bare
+  // date; the full stamp with its zone rides on hover.
+  const bellTime = (iso) => {
+    const d = new Date(iso || NaN);
+    if (!Number.isFinite(d.getTime())) return '';
+    const day = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : d.toLocaleString(undefined, day);
+    return `<time datetime="${esc(iso)}" title="${esc(d.toLocaleString(undefined, { ...day, timeZoneName: 'short' }))}">${esc(shown)}</time>`;
+  };
   const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in.
   const tzName = () => { try { return (new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName') || {}).value || ''; } catch (e) { return ''; } };
@@ -720,13 +729,22 @@
     if (!wrap) return;
     const trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
     const dot = wrap.querySelector('.bell-dot'), list = wrap.querySelector('#bell-list');
-    const close = () => { menu.hidden = true; trig.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', onDoc, true); };
+    const head = wrap.querySelector('.bell-head');
+    // The new items stay marked while the list is open (they are read on the server as it opens), so
+    // the reader can see what came in since last time; closing it clears the marks.
+    const close = () => {
+      menu.hidden = true; trig.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', onDoc, true);
+      list.querySelectorAll('.notif.unread').forEach((n) => n.classList.remove('unread'));
+      list.querySelectorAll('.notif-new').forEach((n) => n.remove());
+      const c = head.querySelector('.bell-new'); if (c) c.remove();
+    };
     const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
     const paint = (d) => {
       dot.hidden = !d.unread;
       trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
+      head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${d.unread} new</span>` : '');
       list.innerHTML = d.items.length
-        ? d.items.map((n) => `<a class="notif ${n.read ? '' : 'unread'}" href="${n.link || '#'}">${esc(n.body)}<time>${when(n.created_at)}</time></a>`).join('')
+        ? d.items.map((n) => `<a class="notif ${n.read ? '' : 'unread'}" href="${n.link || '#'}">${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${bellTime(n.created_at)}</a>`).join('')
         : '<p class="bell-empty">No notifications yet.</p>';
     };
     let data = { unread: 0, items: [] };
@@ -738,8 +756,8 @@
       if (!menu.hidden) { close(); return; }
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
       if (data.unread) {
-        data.unread = 0; dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
-        list.querySelectorAll('.notif.unread').forEach((n) => n.classList.remove('unread'));
+        // Read from here on, also for a repaint that reuses this reply; the marks clear on close.
+        data.unread = 0; data.items.forEach((n) => { n.read = true; }); dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
         api('/api/notifications/read', {}).catch(() => {});
       }
     };
@@ -1354,6 +1372,7 @@
     // have made: the comparable number, not the backtest's own total over a different trade count.
     const pace = exp && +exp.trades > 0 ? (+exp.pnl || 0) / +exp.trades : null;
     const live = d.mode === 'live';
+    // A paused row names its book too: "Paused" alone didn't say whether real money had stopped.
     const modeTag = live ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">DEMO</span>' : '<span class="mk">PAPER</span>';
     const actions = controls ? `<td class="act" data-lab="">
         ${d.status === 'running' ? `<button class="btn sm" data-dep="${d.id}" data-act="pause">Pause<span class="vh"> ${esc(d.title)}</span></button>` : ''}
@@ -1363,7 +1382,7 @@
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
         <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && d.status_reason ? ' \u00b7\u00a0' + esc(d.status_reason) : ''}</div>${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
-      <td data-lab="Status">${d.status === 'running' ? modeTag : mark(d.status, live)}</td>
+      <td data-lab="Status">${d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
@@ -1706,6 +1725,8 @@
       // The figure above it is Kalshi's cash for the whole account; this line is Tau's own trades.
       const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${b.open_positions} open${b.open_positions ? ' (not in cash)' : ''} ·\u00a0${usd(b.realized_pnl, true)} realized all time ·\u00a0${usd(b.today_pnl, true)} realized today (UTC)` : zero;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
+      // A new account's paper book has never been used: say so instead of "$0.00 at cost · $0.00 all time".
+      const paperUsed = p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper');
       // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
       // every user something was wrong that they couldn't act on).
       const stale = adminViewOn() && (d.freshness.btc == null || d.freshness.btc > 2700);
@@ -1729,8 +1750,8 @@
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (d.live.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : (d.live.balance_at ? `Read from Kalshi ${when(d.live.balance_at)} \u00b7\u00a0` : '') + mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
-          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0${usd(p.total_pnl, true)} ${paperSpan(p)}${tradesCsv('paper', p)}` })}
-        </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? `\u26a0 ${d.reconcile.length} live position${d.reconcile.length === 1 ? '' : 's'} disagree with Kalshi \u2014 check your Portfolio` : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
+          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0${usd(p.total_pnl, true)} ${paperSpan(p)}${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
+        </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
       // The dashboard is a summary: the first few deployments (paused ones, which need the user, then
       // real money, demo, paper) and a link to Deploy for the rest. Six phone cards ran ~1,400px.
@@ -1752,7 +1773,7 @@
             <section class="sect"><div class="sect-head"><h2>Deployed</h2></div><div id="dash-deps">${deps}</div></section>
           </div>
           <aside>
-            <section class="panel"><h3>Open positions</h3>${stubs(d.open_positions.slice(0, DASH_ROWS), false)}${more(d.open_positions.length, 'open positions')}</section>
+            <section class="panel" id="dash-open"><h3>Open positions</h3>${stubs(d.open_positions.slice(0, DASH_ROWS), false)}${more(d.open_positions.length, 'open positions')}</section>
             <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed.slice(0, DASH_ROWS), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
           </aside>
         </div></div>`;
@@ -3510,9 +3531,10 @@
   }
   // How you know it worked: the existing balance read, right under the panel title. No balance means Kalshi
   // didn't answer for this key just now (Kalshi down, or the key deleted there), so it gets no check mark.
-  const keyOk = (bal, kind) => bal == null
+  // `at` is when the balance memo was read (the server's balance_at), so the line says how old it is.
+  const keyOk = (bal, kind, at) => bal == null
     ? `<p class="key-ok key-unread"><b>Key saved</b> (Kalshi didn’t send a balance for it just now)</p><p class="hint key-diff">If this lasts, the key may have been deleted on ${KALSHI_KEYS[kind === 'demo' ? 'demo' : 'live'].site}: ${kind === 'demo' ? 'remove it' : 'disconnect it'} and connect a new one.</p>`
-    : `<p class="key-ok"><b>Connected ✓</b> (balance ${usd(bal)})${kind === 'demo' ? ' <span class="hint">in your Kalshi demo account</span>' : ''}</p>`;
+    : `<p class="key-ok"><b>Connected ✓</b> (balance ${usd(bal)}${at ? ', read ' + when(at) : ''})${kind === 'demo' ? ' <span class="hint">in your Kalshi demo account</span>' : ''}</p>`;
   // Kalshi refuses orders from a demo account with no cash, and a new one starts empty. Tau's demo balance is
   // Tau's own figure, so a $0.00 here would otherwise read as harmless.
   const demoEmpty = (bal) => bal != null && bal < 0.005 ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has $0.00, so Kalshi refuses demo orders. Add demo funds in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (play money, not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>` : '';
@@ -3541,7 +3563,7 @@
         <section class="panel">
           <h3>Kalshi account (live money)</h3>
           ${k.connected ? `
-            ${keyOk(k.balance)}<dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
+            ${keyOk(k.balance, 'live', k.balance_at)}<dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">This is your real Kalshi balance. Deposits and withdrawals happen at Kalshi, in your own account — we never hold your money. Tau only places trades for strategies you deploy live. To use a different key, disconnect this one and connect the new one.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Deposit or withdraw at Kalshi ${ICON.ext}</a>
@@ -3568,7 +3590,7 @@
           <div id="dmflash" style="margin-top:10px"></div>
           <h3 style="margin-top:24px">Demo key</h3>
           ${kd.connected ? `
-            ${keyOk(kd.balance, 'demo')}${demoEmpty(kd.balance)}<dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
+            ${keyOk(kd.balance, 'demo', kd.balance_at)}${demoEmpty(kd.balance)}<dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">Demo deployments trade Kalshi’s sandbox exchange with this key — real order-book fills, no real money. Your demo key is stored separately from your live key and is never used for live trading. To use a different demo key, remove this one and connect the new one.</p>
             <button class="btn danger" id="dev-disconnect">Remove demo key</button>` : `
             <p class="lede" style="margin-bottom:12px">Connect a Kalshi <b>demo</b> API key to deploy strategies on the sandbox exchange — real market fills, no real money. It’s kept separate from your live key.</p>
@@ -4197,6 +4219,13 @@
       <dl class="since-list">${row('Money', money)}${row('New results', found)}${row('Autopilot', auto)}${row('Needs you', needs.length ? needs.join('<br>') : 'Nothing.', needs.length ? 'needs' : '')}</dl></section>`;
   }
   function demoHealthLine(h) { return h ? `<span class="demo-health">${esc(h.line)}${actionLink(h)}</span>` : ''; }
+  // The reconciler found live positions Tau's book and Kalshi disagree on. Tau has no portfolio page:
+  // name the contracts and point at the two lists to compare, Tau's open positions and Kalshi's own.
+  function reconWarn(rows) {
+    const ticks = [...new Set(rows.map((r) => r.ticker))];
+    const named = ticks.slice(0, 3).map(esc).join(', ') + (ticks.length > 3 ? ` and ${ticks.length - 3} more` : '');
+    return `\u26a0 <span>${rows.length} live position${rows.length === 1 ? '' : 's'} disagree${rows.length === 1 ? 's' : ''} with Kalshi (${named}). Compare <a href="#dash-open">Tau\u2019s open positions</a> with the positions in your Kalshi account.</span>`;
+  }
   // One mode's closed trades as a CSV, offered only where that mode has some, so the reader can
   // check its P&L line by line. The server never mixes modes in one file.
   function tradesCsv(mode, b) {

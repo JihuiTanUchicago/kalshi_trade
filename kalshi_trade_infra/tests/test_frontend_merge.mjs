@@ -99,7 +99,7 @@ class Element {
   remove() { this.removed = true; }
 }
 
-function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => ({matches: false})} = {}) {
+function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => ({matches: false}), notifications} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [];
   let nextId = 0;
@@ -118,7 +118,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
     clearTimeout: id => timeouts.delete(id),
     fetch: async (path, options) => {
       requests.push({path, options});
-      if (path === '/api/notifications') return response({unread: 0, items: []});
+      if (path === '/api/notifications') return response(notifications || {unread: 0, items: []});
       if (fetchImpl) return fetchImpl(path, options);
       throw new Error('Unexpected offline request: ' + path);
     },
@@ -3055,4 +3055,104 @@ test('the autopilot card puts credits left and the only limit beside its spend, 
   f.S.ap = {...apOn, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
   f.clearTimers();
+});
+
+// The bell, the reconciliation warning and the demo key line: what a once-a-day reader needs to trust.
+const bellNotes = () => ({unread: 1, items: [
+  {id: 3, kind: 'paused', body: '“A” was paused automatically.', link: '/strategies/3', created_at: new Date(Date.now() - 2 * 3600e3).toISOString(), read: false},
+  {id: 2, kind: 'comment', body: 'Ana commented on your post.', link: '/community', created_at: new Date(Date.now() - 3 * 86400e3).toISOString(), read: true},
+]});
+const bellFrontend = (notifications) => frontend({notifications, fetchImpl: path => {
+  if (path === '/api/dashboard') return response(emptyDashboard());
+  if (path === '/api/notifications/read') return response({ok: true});
+  throw new Error('Unexpected offline request: ' + path);
+}});
+
+test('the bell keeps new items marked while it is open, says how many, and clears them on close', async () => {
+  const f = bellFrontend(bellNotes());
+  await f.viewDashboard(); await flush(); await flush();
+  const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig');
+  assert.equal(wrap.querySelector('.bell-head .bell-new').textContent, '1 new');
+  assert.equal(wrap.querySelectorAll('.notif.unread').length, 1);
+  await trig.onclick({stopPropagation() {}});
+  // Opening reads them on the server and drops the dot, but the reader still sees which ones are new.
+  assert.equal(postRequests(f).filter(({path}) => path === '/api/notifications/read').length, 1);
+  assert.equal(wrap.querySelector('.bell-dot').hidden, true);
+  assert.equal(wrap.querySelectorAll('.notif.unread').length, 1);
+  assert.match(wrap.querySelector('.notif.unread').innerHTML, /^<span class="vh notif-new">New: <\/span>“A” was paused/);  // not colour alone
+  await trig.onclick({stopPropagation() {}});  // close
+  assert.equal(wrap.querySelectorAll('.notif.unread').length, 0);
+  assert.ok(wrap.querySelectorAll('.bell-new').every((e) => e.removed));
+  assert.ok(wrap.querySelectorAll('.notif-new').every((e) => e.removed));
+});
+
+test('a bell item older than a day shows its day and clock, and every item its full time on hover', async () => {
+  const f = bellFrontend(bellNotes());
+  await f.viewDashboard(); await flush(); await flush();
+  const [recent, older] = f.root.querySelectorAll('#bell-list time');
+  assert.equal(recent.textContent, '2h ago');
+  assert.match(older.textContent, /^[A-Z][a-z]{2} \d{1,2}, \d\d:\d\d$/);  // "Oct 23, 14:05", not a bare "Oct 23"
+  for (const t of [recent, older]) { assert.ok(t.getAttribute('datetime')); assert.match(t.getAttribute('title'), /\d\d:\d\d/); }
+  // Nothing new: no count, no marks.
+  const g = bellFrontend({unread: 0, items: bellNotes().items.map((n) => ({...n, read: true}))});
+  await g.viewDashboard(); await flush(); await flush();
+  assert.equal(g.root.querySelector('.bell-new'), null); assert.equal(g.root.querySelectorAll('.notif.unread').length, 0);
+});
+
+test('the reconciliation warning names the contracts and where to compare them; Tau has no Portfolio page', async () => {
+  for (const [rows, said] of [
+    [[{ticker: 'KXBTCD-26OCT2617-T100000', kind: 'untracked'}], /1 live position disagrees with Kalshi \(KXBTCD-26OCT2617-T100000\)\./],
+    [['A', 'B', 'C', 'D'].map((x) => ({ticker: 'KX-' + x, kind: 'size_mismatch'})), /4 live positions disagree with Kalshi \(KX-A, KX-B, KX-C and 1 more\)\./],
+  ]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response({...emptyDashboard(), reconcile: rows,
+        live: {connected: true, balance: 50, open_positions: 2, running: 1, realized_pnl: 0, today_pnl: 0}});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    const board = f.root.querySelector('#boardbody').innerHTML;
+    assert.match(board, said);
+    assert.match(board, /Compare <a href="#dash-open">Tau’s open positions<\/a> with the positions in your Kalshi account\./);
+    assert.doesNotMatch(board, /Portfolio/);
+    assert.ok(f.root.querySelector('#dash-open'), 'the link lands on the open positions list');
+  }
+});
+
+test('a new account\'s paper card says nothing is on paper yet instead of "$0.00 at cost"', async () => {
+  const fresh = {...emptyDashboard(), paper: {equity: 1000, cash: 1000, open_at_cost: 0, total_pnl: 0, open_positions: 0, closed_trades: 0}};
+  const dep = {id: 1, strategy_id: 1, title: 'S', market: 'btc15m', mode: 'paper', status: 'running', stake: 5, max_positions: 2,
+    realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, created_at: '2026-10-25T08:00:00Z'};
+  for (const [d, empty] of [[fresh, true], [{...fresh, deployments: [dep]}, false]]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(d);
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    const board = f.root.querySelector('#boardbody').innerHTML;
+    if (empty) { assert.match(board, /\$1,000\.00 of practice money ·\u00a0no paper strategies yet/); assert.doesNotMatch(board, /at cost/); }
+    else assert.match(board, /\$1,000\.00 cash ·\u00a0\$0\.00 at cost ·\u00a0\$0\.00 all time/);  // a strategy on paper: its book, zeros and all
+  }
+});
+
+test('a paused deployment row names its book beside "Paused"', async () => {
+  for (const [mode, tag] of [['paper', '<span class="mk">PAPER</span>'], ['live', '<span class="mk live">LIVE</span>'], ['demo', '<span class="mk dep">DEMO</span>']]) {
+    const dep = {id: 1, strategy_id: 1, title: 'S', market: 'btc15m', mode, status: 'paused', status_reason: 'loss guard', stake: 5, max_positions: 2,
+      realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, created_at: '2026-10-25T08:00:00Z'};
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response({...emptyDashboard(), deployments: [dep]});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    assert.equal(f.root.querySelector('#dash-deps td[data-lab="Status"]').innerHTML, `<span class="mk armed">Paused</span> ${tag}`);
+  }
+});
+
+test('Funds says when the demo key\'s balance was read, as it does for Kalshi cash', async () => {
+  const read = new Date(Date.now() - 5 * 60000).toISOString();
+  for (const [at, said] of [[read, /\(balance \$25\.00, read 5m ago\) <span class="hint">in your Kalshi demo account/], [undefined, /\(balance \$25\.00\) <span class="hint">in your Kalshi demo account/]]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds');
+      return response({...funds(), kalshi_dev: {connected: true, key_id: 'DEVK…1234', balance: 25, balance_at: at}}); }});
+    await f.viewFunds();
+    assert.match(f.root.querySelector('main').innerHTML, said);
+  }
 });

@@ -240,11 +240,12 @@ th .info { vertical-align: 0; }
 /* Phones: the bell sits mid-header, so a 300px panel hung off its right edge ran off the left of the
    screen. Hang it from the header row instead, inset by the page gutter. */
 @media (max-width: 560px) { .masthead-in { position: relative; } .bell-wrap { position: static; } .bell-menu { left: var(--gut); right: var(--gut); width: auto; max-width: none; top: calc(100% + 4px); } }
-.bell-head { padding: 7px 9px 5px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--rule); }
+.bell-head { display: flex; justify-content: space-between; gap: 8px; padding: 7px 9px 5px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--rule); }
 .bell-list .notif { display: block; padding: 9px; font-size: 13px; line-height: 1.4; color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; white-space: normal; overflow-wrap: anywhere; }  /* the header row is nowrap; a notice must wrap to be read */
 .bell-list .notif:last-child { border-bottom: 0; }
 .bell-list .notif:hover { background: var(--stock-sunk); color: var(--ink); }
 .bell-list .notif.unread { background: var(--signal-wash); }
+.bell-head .bell-new { color: var(--ink-2); }
 .bell-list .notif time { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-3); }
 .bell-empty { padding: 14px 9px; font-size: 12.5px; color: var(--ink-3); text-transform: none; letter-spacing: normal; white-space: normal; }
 .mk.shared { display: inline-flex; align-items: center; gap: 4px; border-color: var(--rule-2); color: var(--ink-2); text-transform: none; letter-spacing: normal; }
