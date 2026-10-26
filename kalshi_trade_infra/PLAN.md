@@ -1,6 +1,6 @@
 # PLAN
 
-- Stop closes only the breacher, behind APP_STOP_BREACHER_ONLY (2026-10-26, flag OFF, card to Todd):
+- Stop closes only the breacher, behind APP_STOP_BREACHER_ONLY (2026-10-26; Todd chose it 05:59Z, ON on the box since 06:00Z):
   one position past position_stop_pct now force-sells and pauses the whole deployment, but the
   backtest the gates validate (backtest._stop_hit) stops each position on its own and keeps
   trading. Scored at 04:10Z: 21 settled collateral exits lost $54.55 vs holding (NFL #81 alone:
