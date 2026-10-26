@@ -2622,9 +2622,19 @@
         draft.hidden = cut < 0;
         caret.hidden = cut >= 0;
       },
-      seal() { clearInterval(tick); caret.remove(); draft.hidden = true; li.classList.add('sealed'); if (!raw.trim()) li.remove(); },
+      // A thought replayed from the log (opened after it was written) never ticked: it said "0s".
+      seal() { clearInterval(tick); caret.remove(); draft.hidden = true; li.classList.add('sealed'); if (elEl.textContent === '0s') elEl.hidden = true; if (!raw.trim()) li.remove(); },
     };
   }
+  // An idea still "Testing" when its session ended (failed, cancelled, out of credits) kept its
+  // spinner for good, as if the stopped session were still on it. It gets no verdict now.
+  function settlePending(log) {
+    log.querySelectorAll('[data-stamp]').forEach((s) => {
+      if (!s.classList.contains('pending')) return;
+      s.className = 'hx-stamp void'; s.textContent = 'Not finished';
+    });
+  }
+
 
   // Controller over a .runfeed section: streams the thinking card, grafts challenger/verdict onto
   // their hypothesis card, appends everything else newest-at-bottom with an enter animation, sticks
@@ -2684,7 +2694,7 @@
         // existing scroll viewport on completion so reading/jump state survives.
         if (!stateSeen) section.classList.toggle('is-complete', st === 'done');
         stateSeen = true;
-        if (st === 'done') sealThink();
+        if (st === 'done') { sealThink(); settlePending(log); }
       },
     };
   }
@@ -2896,19 +2906,37 @@
     cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
   }
 
+  // A run-until-stopped session that used up the credits ends as a finished one (agent.run_research
+  // logs this step, then wraps up): the page said "Done" and "Try another idea", and the reason sat
+  // in the log. The step's own words mark it, so sessions that ended this way before say so too.
+  const runOutOfCredits = (ev) => !!ev && ev.kind === 'step' && /^Paused — out of credits\b/.test(ev.message || '');
+  // How far along and what it found, live. The run's own counters move once per round of ideas (a
+  // run-until-stopped round is several ideas), so a running session read "3 hypotheses" while its
+  // log showed nine, and "Passed …" beside a passed idea listed under it. Its log and its strategy
+  // rows are current; a set-size session also says how many it will test.
+  function runCountFigs(r, active, tried, strategies) {
+    const n = Math.max(+r.hypotheses_tried || 0, tried || 0);
+    const cap = active && !r.run_forever && +r.max_hypotheses ? `of up to ${num(r.max_hypotheses)}` : '';
+    const passed = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
+    return fig('Hypotheses', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
+  }
   // What to do once a session ends. The example's log ended on "now describe a real idea" with no way
   // to do it, and a session that passed something left it two screens down on a phone, under the log.
   function runNext(r, strategies) {
     if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
     const passed = (strategies || []).filter((s) => s.status === 'passed');
+    const credits = r.out_of_credits ? 'It stopped when your credits ran out. <a href="/billing">Add credits</a>, then start a new session to keep researching. ' : '';
     if (passed.length) {
       const links = passed.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
       const more = passed.length > 3 ? ` and <a href="/strategies?status=passed">${passed.length - 3} more</a>` : '';
-      return `<p class="run-next">${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
+      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}. Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.</p>`;
     }
     // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
-    if (r.status === 'failed') return `<p class="run-next">This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''} <a href="/research?new=1">Start a new session</a></p>`;
+    // The server's reason is written for the customer; one that already says the session stopped
+    // stands alone ("…stopped on an error. …so the session stopped.").
+    if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`} <a href="/research?new=1">Start a new session</a></p>`;
     if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
+    if (credits) return `<p class="run-next">${credits}Nothing passed before then; each strategy below says which check it missed.</p>`;
     if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each strategy below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
@@ -2919,6 +2947,7 @@
   function runEnd(r, strategies) {
     if (r.example) return `<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>`;
     if (r.status !== 'succeeded' && r.status !== 'stopped') return '';
+    if (r.out_of_credits) return '<div class="run-end"><a class="btn" href="/billing">Add credits</a></div>';
     if ((strategies || []).some((s) => s.status === 'passed')) return '';
     return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
   }
@@ -2930,7 +2959,7 @@
       <div id="rsiobs" class="rsiobs"></div>
       <details class="run-history" id="run-history" open><summary class="section-head"><h2>Agent log</h2>${ICON.chev}</summary>${tzName() ? `<p class="hint" style="margin:0 0 8px">Times are ${esc(tzName())}.</p>` : ''}
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div><div id="runend-log"></div></details>`);
-    let after = 0, tried = 0, runActive = true, loaded = false;
+    let after = 0, tried = 0, runActive = true, loaded = false, outOfCredits = false;
     // A long session's strategy cards (40+, a screen each on a phone) buried the agent log under
     // them: the first few show, the rest behind "Show all".
     const STRAT_SHOW = 8;
@@ -2944,6 +2973,13 @@
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
       runActive = active;
+      (d.events || []).forEach((ev) => {
+        after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
+        if (runOutOfCredits(ev)) outOfCredits = true;
+        const dd = ev.data || {};
+        if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
+      });
+      r.out_of_credits = outOfCredits && !active;
       root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`);
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
@@ -2952,12 +2988,13 @@
         : r.status === 'queued' ? 'Waiting'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching'
+        : r.out_of_credits ? 'Out of credits'
         : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
       root.querySelector('#runfigs').innerHTML =
         fig('Status', statusText) +
-        fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
+        fig('Time', started ? waitSpan((end - started) / 1000) : '—') +
         (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
-        fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', r.strategies_passed == null ? '—' : r.strategies_passed);
+        runCountFigs(r, active, tried, d.strategies);
       const next = root.querySelector('#runnext');
       if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
       // Painted only when it changes, so a repaint never undoes the autopilot line's "on" note.
@@ -2965,10 +3002,6 @@
       [['#runend', r.example ? '' : endHtml], ['#runend-log', r.example ? endHtml : '']].forEach(([sel, html]) => {
         const el = root.querySelector(sel);
         if (el && el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
-      });
-      (d.events || []).forEach((ev) => {
-        const dd = ev.data || {};
-        if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
       });
       // Passed ideas lead the list: a long session's one pass sat mid-way down 40 cards on a phone.
       const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => (b.status === 'passed') - (a.status === 'passed'));
@@ -2999,7 +3032,6 @@
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
-      d.events.forEach((ev) => { after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++; });
       stream.push(d.events);
       stream.state(active ? r.status : 'done');
       obs.push(d.events, r.status, r);

@@ -721,6 +721,8 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 /* --- live "thinking" card: the proposer's reasoning streaming in as it's written --- */
 .log.stream .lane-think .node::after { background: var(--stock-raised); border-color: var(--ink-2); animation: thinkpulse 1.5s var(--ease) infinite; }
 @keyframes thinkpulse { 50% { box-shadow: 0 0 0 4px rgba(68, 72, 65, .14); } }
+/* A finished thought is still: every past thought pulsing kept a long log repainting (a phone's main thread busy between polls). */
+.log.stream .think.sealed .node::after { animation: none; }
 .think .hx-head { display: flex; align-items: baseline; gap: 8px; }
 .think-el { margin-left: auto; font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .think-body { overflow-wrap: anywhere; color: var(--ink-2); line-height: 1.55; margin-top: 2px; }
