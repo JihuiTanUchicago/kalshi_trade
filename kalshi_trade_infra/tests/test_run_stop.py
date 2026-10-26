@@ -53,6 +53,7 @@ def test_the_runs_list_carries_stop_reason_not_the_raw_flag(monkeypatch):
     monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: rows)
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, silent_before=None: {})
+    monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)
     monkeypatch.setattr(server, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
     ctx = server.Ctx(SimpleNamespace(cursor=lambda: None), {"id": 7}, (), {}, {}, None)
     out = server.list_runs(ctx)["runs"]

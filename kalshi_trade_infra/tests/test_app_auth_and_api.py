@@ -904,6 +904,7 @@ def test_runs_list_marks_the_seeded_example_session(monkeypatch):
     monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid: [{"id": 2, "direction": "momentum"}, {"id": 1, "direction": "random_walk"}])
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, **kw: {})
+    monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: [{"id": 2}, {"id": 1}])
     monkeypatch.setattr(server, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
     runs = {r["id"]: r for r in server.list_runs(ctx())["runs"]}
     assert runs[1]["example"] is True and runs[2]["example"] is False

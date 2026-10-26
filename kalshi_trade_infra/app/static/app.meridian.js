@@ -1060,6 +1060,21 @@
     painted.set(el, html);
     el.innerHTML = html;
   }
+  // A list repaints row by row: while its rows are the same ones in the same order, only a row whose
+  // markup changed is rewritten (a running session's spend moved, and the other 49 sessions stay as they
+  // are). `rows` is [[key, markup]], each markup one element. Any other change rewrites the whole list.
+  const paintedRows = new WeakMap();
+  function paintRows(el, rows, empty) {
+    if (!el) return;
+    const keys = rows.map(([k]) => k).join(' '), was = paintedRows.get(el);
+    if (!rows.length || !was || was.keys !== keys || el.children.length !== rows.length) {
+      paintedRows.set(el, rows.length ? { keys, html: rows.map(([, h]) => h) } : null);
+      paint(el, rows.length ? rows.map(([, h]) => h).join('') : empty);
+      return;
+    }
+    rows.forEach(([, h], i) => { if (was.html[i] !== h) { was.html[i] = h; el.children[i].outerHTML = h; } });
+    painted.set(el, was.html.join(''));
+  }
   function flash(where, msg, kind) {
     const el = typeof where === 'string' ? root.querySelector(where) : where;
     if (el) { el.innerHTML = notice(msg, kind, true); announce(msg, kind === 'bad'); }
@@ -1556,6 +1571,10 @@
   // A demo row says what it is: Kalshi's sandbox with play money, a copy of its paper run when it has
   // one, there to prove the order path before live. Its fills differ from paper's because the demo
   // book is thin, which is also why its P&L is no evidence of the edge (paper keeps that job).
+  // A deployment's sizing on its Deploy row and monitor card. A spec stored without sizing sends stake and
+  // max_positions as null: it says the stake is not set and leaves out the cap, instead of "$ / trade".
+  const depStake = (d) => d.stake != null ? `$${esc(d.stake)} / trade` : 'Stake not set';
+  const depCap = (d) => d.max_positions != null ? `Max ${esc(d.max_positions)} open` : '';
   const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   function deploymentSlip(d, controls, regs) {
     const live = d.mode === 'live';
@@ -1563,7 +1582,7 @@
     const actions = controls ? `<td class="act" data-lab="">${deploymentActions(d)}</td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="dep-meta"><span class="sub-fig">${esc(marketShort(d.market))} ·\u00a0$${esc(d.stake)} / trade ·\u00a0Max ${esc(d.max_positions)} open${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</span>
+        <div class="dep-meta"><span class="sub-fig">${[esc(marketShort(d.market)), depStake(d), depCap(d)].filter(Boolean).join(' \u00b7\u00a0')}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</span>
         ${deploymentEvidence(d)}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Status">${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}<div class="sub-fig">${modeTag}</div></td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -1576,7 +1595,7 @@
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}</span></header>
-      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} ·\u00a0$${esc(d.stake)} / trade</p><div class="monitor-limits"><span> ·\u00a0Max ${esc(d.max_positions)} open${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + esc(d.status_why || d.status_reason) : ''}</span></div></div>${demoRowLine(d)}</div>
+      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} ·\u00a0${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? ' \u00b7\u00a0' + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + esc(d.status_why || d.status_reason) : ''}</span></div></div>${demoRowLine(d)}</div>
       <dl class="monitor-metrics">
         <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd></div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}</dd></div>
@@ -2082,7 +2101,7 @@
   // page. Hidden on a brand-new account (no history to evolve from yet).
   function renderRsiMomentum(host, pol, tried) {
     if (!host) return;
-    if (!pol || (!pol.evolved && !tried)) { host.innerHTML = ''; return; }
+    if (!pol || (!pol.evolved && !tried)) { paint(host, ''); return; }
     const delta = (pol.base_score != null && pol.score != null)
       ? `<span class="rsi-score">${pol.base_score} <span class="rsi-arrow">→</span> ${pol.score}</span>` : '';
     const tag = pol.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>';
@@ -2094,10 +2113,10 @@
     // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
     const expanded = !!host.querySelector('details[open]');
     const focused = !!host.querySelector('details > summary:focus');
-    host.innerHTML = `<details class="rsidisc"${expanded ? ' open' : ''}>
+    paint(host, `<details class="rsidisc"${expanded ? ' open' : ''}>
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research engine</span>${tag}${pol.evolved && delta ? `<span class="rsidisc-delta">${delta}</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="rsidisc-body">${body}</div>
-    </details>`;
+    </details>`);
     if (focused) host.querySelector('summary').focus({ preventScroll: true });
   }
   // The research loop's own report card (GET /api/research/scoreboard, app/research/rsi.py): is research
@@ -2163,11 +2182,12 @@
     const open = !!host.querySelector('details.rsidisc[open]');
     const focused = !!host.querySelector('details.rsidisc > summary:focus');
     const inner = [...host.querySelectorAll('details.loop-pb')].map((d) => d.open);
-    host.innerHTML = `<details class="rsidisc loop"${open ? ' open' : ''}>
+    // The 5s poll re-renders from the kept board: the card is rebuilt only when its markup changed.
+    paint(host, `<details class="rsidisc loop"${open ? ' open' : ''}>
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Is research getting better?</span>${tag}${delta ? `<span class="rsidisc-delta">${delta} reach the gate</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="rsidisc-body">${body}</div>
-    </details>`;
-    host.querySelectorAll('details.loop-pb').forEach((d, i) => { if (inner[i]) d.open = true; });
+    </details>`);
+    host.querySelectorAll('details.loop-pb').forEach((d, i) => { if (inner[i] && !d.open) d.open = true; });
     if (focused) host.querySelector('details.rsidisc > summary').focus({ preventScroll: true });
   }
   // Figure 1 -- the real Tau research pipeline, drawn as a styled node-and-connector flow (no
@@ -2376,35 +2396,41 @@
       } catch (e) { /* no feed yet -> the picker still works blind */ }
       markQuietRows(form);
     })();
+    // The poll sends back the version of its last full answer; while nothing the list shows has moved the
+    // server answers {same: true} from two reads, and the page repaints from the answer it kept (its
+    // relative times still move). Each region is rewritten only when its markup changed.
+    let kept = null;
     const load = async () => {
-      const d = await api('/api/runs');
+      const got = await api('/api/runs' + (kept && kept.v ? '?since=' + encodeURIComponent(kept.v) : ''));
+      const d = got.same && kept ? kept : (kept = got);
       // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
       const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
       const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       // A paused session holds one of the two session slots but isn't running: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
-      root.querySelector('#research-status').innerHTML = fig('Running', running) + (paused ? fig('Paused', paused) : '') + fig('Queued', queued);
-      root.querySelector('#rfigs').innerHTML = fig(gl('Passed', 'gate'), passed) + fig('Tested', tried);
-      root.querySelector('#rfigs').setAttribute('title', tried ? `${pct(passed / tried, false)} of ${num(tried)} tested` : 'No strategies tested');
+      paint(root.querySelector('#research-status'), fig('Running', running) + (paused ? fig('Paused', paused) : '') + fig('Queued', queued));
+      const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested` : 'No strategies tested';
+      paint(rfigs, fig(gl('Passed', 'gate'), passed) + fig('Tested', tried));
+      if (rfigs.getAttribute('title') !== rtitle) rfigs.setAttribute('title', rtitle);
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       const active = d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused');
-      root.querySelector('#active-research').innerHTML = active ? `<section class="active-research active-${esc(active.status)}">
+      paint(root.querySelector('#active-research'), active ? `<section class="active-research active-${esc(active.status)}">
         <div class="active-head"><h2 class="active-prompt" title="${esc(sessionTitle(active))}">${esc(sessionTitle(active))}</h2></div>
         <div class="active-meta"><div class="active-session"><span class="active-state">${active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span><b>Session ${esc(active.id)}</b></div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
         <aside class="active-aside"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${active.strategies_passed || 0}</dd></div>${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${usd(active.spent_usd)}</dd></div>` : ''}</dl></aside>
-      </section>` : '';
+      </section>` : '');
       const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
       // The seeded example is listed but isn't the user's: it doesn't count as a session of theirs.
       const own = history.filter((r) => !r.example).length;
       const rex = root.querySelector('#rexample'), exHtml = exampleLine(d.runs);
       if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
       const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
-      if (exOpen) { exOpen.hidden = !exRun || !!exHtml; if (exRun) exOpen.setAttribute('href', '/research/' + exRun.id); }
-      root.querySelector('#rcount').textContent = own ? String(own) : '';
+      if (exOpen) { const hide = !exRun || !!exHtml; if (exOpen.hidden !== hide) exOpen.hidden = hide; if (exRun && exOpen.getAttribute('href') !== '/research/' + exRun.id) exOpen.setAttribute('href', '/research/' + exRun.id); }
+      paint(root.querySelector('#rcount'), own ? String(own) : '');
       // The newest of all (the active one when one runs: then no older row offers Add credits).
       const newest = d.runs.find((r) => !r.example);
-      root.querySelector('#runs').innerHTML = history.length ? history.map((r) => runRow(r, r === newest)).join('')
-        : `<div class="empty"><h3>${active ? 'No earlier sessions' : 'No sessions yet'}</h3></div>`;
+      paintRows(root.querySelector('#runs'), history.map((r) => [r.id, runRow(r, r === newest)]),
+        `<div class="empty"><h3>${active ? 'No earlier sessions' : 'No sessions yet'}</h3></div>`);
     };
     await load();
     poll(load, 5000, 'runs-stale');
@@ -3507,7 +3533,7 @@
 
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
             <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0"></div>
-            <div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>
+            ${s.stake != null ? `<div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>` : ''}
             <div id="wflash" aria-live="polite"></div>
           </section>`) : ''}
           <details class="strategy-management"><summary>Manage strategy</summary>
@@ -3635,16 +3661,18 @@
     if (wi) {
       let t = null, seq = 0;
       const update = () => {
-        const fee = +wi.querySelector('#wf').value, slip = +wi.querySelector('#ws').value, stake = +wi.querySelector('#wk').value;
+        // A strategy stored without sizing (stake null) has no stake dial: the re-run keeps its own sizing.
+        const wk = wi.querySelector('#wk');
+        const fee = +wi.querySelector('#wf').value, slip = +wi.querySelector('#ws').value, stake = wk ? +wk.value : s.stake;
         wi.querySelector('#wfo').textContent = fee.toFixed(2).replace(/0$/, '') + '×';
         wi.querySelector('#wso').textContent = slip.toFixed(1) + '¢';
-        wi.querySelector('#wko').textContent = '$' + stake;
+        if (wk) wi.querySelector('#wko').textContent = '$' + stake;
         clearTimeout(t);
         t = setTimeout(async () => {
           const mine = ++seq;
           root.querySelector('#sheet-results').style.opacity = '.55';
           try {
-            const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, stake });
+            const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, ...(wk ? { stake } : {}) });
             if (mine !== seq) return;
             root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) +
               `<div class="split"><div><h4>In-sample</h4>${metricRows(r.in_sample)}</div><div><h4>Out-of-sample</h4>${metricRows(r.out_of_sample)}</div></div>`;

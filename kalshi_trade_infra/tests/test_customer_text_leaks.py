@@ -236,6 +236,7 @@ def test_the_research_list_never_shows_a_raw_error(monkeypatch):
          "direction": "x", "run_forever": 0}])
     monkeypatch.setattr(repo, "runs_spent", lambda *a: {})
     monkeypatch.setattr(repo, "active_run_counts", lambda *a, **k: {})
+    monkeypatch.setattr(repo, "list_runs_version", lambda *a, **k: [])
     monkeypatch.setattr(server, "_research_totals", lambda cur, uid: {})
     out = server.list_runs(_ctx())
     assert [r["error"] for r in out["runs"]][0] is None

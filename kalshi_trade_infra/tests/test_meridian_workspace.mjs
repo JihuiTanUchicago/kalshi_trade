@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
+import {researchPollCases} from './research_poll_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -127,6 +128,16 @@ class Element {
   removeAttribute(key) { delete this.attributes[key]; }
   focus(options) { this.focusOptions = options; if (this.ownerDocument) this.ownerDocument.activeElement = this; }
   remove() { this.removed = true; }
+  // Puts the markup's one element in this one's place in its parent, as the DOM does; either one reads
+  // back the markup it was given.
+  get outerHTML() { return this.outer; }
+  set outerHTML(value) {
+    this.outer = value;
+    const holder = new Element('div'); holder.innerHTML = value;
+    const fresh = holder.children[0], parent = this.parent;
+    if (!fresh || !parent) return;
+    fresh.outer = value; fresh.parent = parent; parent.children[parent.children.indexOf(this)] = fresh; this.removed = true;
+  }
 }
 
 function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), session, theme = 'meridian', build, notifications, win = {}, globals = {}} = {}) {
@@ -166,7 +177,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, armed, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord, apUpdate, paymentGate};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, deploymentMonitor, armed, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord, apUpdate, paymentGate};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -199,6 +210,7 @@ const postRequests = f => f.requests.filter(({options}) => options.method === 'P
 perpsFrontendCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests, source});
 stopReasonCases({name: 'Meridian', frontend});
+researchPollCases({name: 'Meridian', frontend});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -5515,4 +5527,62 @@ test('Meridian: the Show earlier row has its own style, and the live pill pulses
   assert.match(css, /\.log > li\.log-earlier \{ display: block; text-align: center;/);
   assert.match(css, /@keyframes apf-pulse \{ 0%,100% \{ opacity: 1; transform: scale\(1\); \} 50% \{ opacity: 0; transform: scale\(2\.25\); \} \}/);
   assert.match(css, /prefers-reduced-motion: no-preference\) \{ \.apf\.live \.apf-dot::after \{ animation: apf-pulse/);
+});
+
+// A spec stored without sizing reaches the client as stake: null and max_positions: null (the server
+// reads old rows only as far as they go). Nothing reads "$ a trade", "null" or NaN.
+const nullStakeDep = (over) => ({id: 1, strategy_id: 42, title: 'Old spec', market: 'btc15m', mode: 'paper', status: 'running',
+  realized_pnl: 1, closed_trades: 4, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [],
+  stake: null, max_positions: null, backtest: {out_of_sample: null}, ...over});
+const deployBoard = async (deps) => {
+  const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: deps, open_positions: []}) : response({})});
+  f.location.pathname = '/deploy';
+  await f.viewDeploy(); for (let i = 0; i < 6; i++) await flush();
+  const html = f.root.querySelector('#deps').innerHTML;
+  f.clearTimers();
+  return html;
+};
+
+test('a strategy page with no stake drops the stake dial and the pace line, and sends no stake', async () => {
+  const deps = [nullStakeDep({stake: 5})];
+  const detail = detailStrategy({stake: null, max_positions: null, deployments: deps});
+  const bodies = [];
+  const f = strategyFrontend(detail, (path, options) => {
+    if (path === '/api/strategies/42/whatif') { bodies.push(JSON.parse(options.body)); return response({in_sample: metrics(1), out_of_sample: metrics(2), equity: [[100, 0]], gates: [], passed: true}); }
+    return response({});
+  });
+  await f.viewStrategy(42); await flush();
+  const main = f.root.querySelector('main').innerHTML;
+  assert.match(main, /Since deploying/);
+  assert.doesNotMatch(main, /NaN|null|undefined|\$ a trade|unseen-data pace/);
+  const whatif = f.root.querySelector('#whatif');
+  assert.equal(whatif.querySelector('#wk'), null);
+  whatif.querySelector('#wf').value = '2';
+  whatif.querySelector('#wf').oninput();
+  await [...f.timeouts.values()].at(-1)();
+  assert.deepEqual(bodies, [{fee_multiplier: 2, slippage_cents: 0}]);
+  assert.match(whatif.querySelector('#wflash').innerHTML, /under these conditions/);
+  f.clearTimers();
+  // With a stake, a deployment that has none is scaled at the strategy's own: 4 trades at +$2 each.
+  const g = strategyFrontend(detailStrategy({deployments: deps.map((d) => ({...d, stake: null}))}), () => response({}));
+  await g.viewStrategy(42); await flush();
+  const real = g.root.querySelector('main').innerHTML;
+  assert.match(real, /unseen-data pace, 4 trades would have made \+\$8\.00/);
+  assert.doesNotMatch(real, /NaN/);
+  assert.ok(g.root.querySelector('#whatif #wk'), 'a strategy with a stake keeps its dial');
+  g.clearTimers();
+});
+
+test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / trade"', async () => {
+  const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
+    nullStakeDep({id: 3, title: 'Both', stake: 5, max_positions: 3})]);
+  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*· Stake not set<\/span>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*Stake not set · Max 3 open<\/span>/);
+  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\$5 \/ trade · Max 3 open<\/span>/);
+  assert.doesNotMatch(html, /\$ \/ trade|Max\s+open|null|NaN/);
+  const f = frontend();
+  const none = f.deploymentMonitor(nullStakeDep({status: 'paused', status_why: 'You paused it'}));
+  assert.match(none, /<p class="monitor-setup">[^<]*· Stake not set<\/p><div class="monitor-limits"><span> · You paused it<\/span>/);
+  assert.doesNotMatch(none, /\$ \/ trade|Max\s+open|null|NaN/);
+  assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/p><div class="monitor-limits"><span> · Max 3 open<\/span>/);
 });
