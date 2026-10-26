@@ -1254,6 +1254,34 @@ def pair_entries(spec: Dict, snaps: List[Snapshot]) -> List[PairEntry]:
 _UNREADABLE = (KeyError, TypeError, ValueError, AttributeError, IndexError)
 
 
+_OP_WORDS = {">": "is above", ">=": "is at least", "<": "is below", "<=": "is at most"}
+_PCT_FEATURE = re.compile(r"(?:[a-z]+_)?(ret|vol)_\d+m")
+
+
+def _plain_filter(flt: Dict) -> str:
+    """One entry filter as a sentence ('ret_5m > 0.004' -> 'Only when the 5-minute return is above
+    +0.40%.'). A return or volatility reads as a percent (they are log returns, so near enough); any
+    other feature is named by plain_feature, else by its documented description without the formula.
+    Display only: the exact feature, operator and value stay in the spec."""
+    name, value = flt["feature"], float(flt["value"])
+    words = plain_feature(name)
+    if words == name and FEATURES.get(name):
+        doc = FEATURES[name].split(": ", 1)[-1]  # "BTC markets only: ETH log return ..." -> the rest
+        # Drop the formula ("(a - b)/(a + b)") and keep the first clause: "signed taker flow over
+        # the last 60 seconds", not its range, caveats or a paragraph of method.
+        words = re.split(r"[,.;]", re.sub(r"\s*\([^)]*\)(?:/\([^)]*\))?", "", doc))[0].strip()
+        if not re.fullmatch(r"[A-Za-z][\w '’-]{2,88}", words):  # a formula or a paragraph: keep the name
+            words = name
+    pct = _PCT_FEATURE.fullmatch(name)
+    if pct and value == 0:
+        shown = "0%"
+    elif pct:
+        shown = ("%+.2f%%" if pct.group(1) == "ret" else "%.2f%%") % (value * 100)
+    else:
+        shown = "%g" % value
+    return "Only when %s %s %s." % (words, _OP_WORDS.get(flt["op"], flt["op"]), shown)
+
+
 def describe(spec: Dict) -> List[str]:
     """Plain-language reading of a spec, for people who do not read JSON. Display only: a stored spec
     older or thinner than this code (a seeded row with no `model`, a field stored as null) loses just
@@ -1314,7 +1342,7 @@ def describe(spec: Dict) -> List[str]:
         round(e["min_price"] * 100), round(e["max_price"] * 100), e["min_tte_min"], e["max_tte_min"],
         round(e["max_spread"] * 100)))
     for flt in e.get("filters") or []:
-        say(lambda: "Only when %s %s %g." % (flt["feature"], flt["op"], flt["value"]))
+        say(lambda: _plain_filter(flt))
 
     def exits() -> str:
         x = spec["exit"]

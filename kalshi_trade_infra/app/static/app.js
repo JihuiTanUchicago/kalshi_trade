@@ -3535,10 +3535,11 @@
             <div><dt>Unseen (held out) from</dt><dd>${esc((s.dataset.out_of_sample_from || '').slice(0, 10)) || '—'}</dd></div>
           </dl>
           <p class="rp-sub" style="margin-top:8px">${perpetual ? 'The agent only saw the research partition. ' + PERPS_SCENARIO : "The agent only ever saw data before the held-out date. Every simulated fill pays the ask or bid plus Kalshi's taker fee — results are net of fees or they do not count."}</p></div>` : '';
-    const ruleBlock = `<div class="paper-sub"><h4 class="paper-h">The decision rule, in plain words</h4>
-          <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
-          <details class="raw"><summary>Exact machine spec (JSON)</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details></div>`;
-    const methodologyBody = rp.methodology + ruleBlock + dataBlock + (perpetual && !s.dataset ? `<p class="hint">${PERPS_SCENARIO}</p>` : '');
+    // What it does, in plain words: the paper's first section. It sat inside the Methodology fold,
+    // which a phone opens closed, under the pre-registration, so the rule took digging to find.
+    const ruleBlock = `${(s.rules || []).length ? `<ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+          <details class="raw"><summary>Exact machine spec (JSON)</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details>`;
+    const methodologyBody = rp.methodology + dataBlock + (perpetual && !s.dataset ? `<p class="hint">${PERPS_SCENARIO}</p>` : '');
     const resultsBody = rp.results
       + `<div class="paper-sub"><h4 class="paper-h">${perpetual ? 'Perpetual research scenario' : hasExp ? 'Backtest &amp; Kalshi demo replay' : 'Backtest'}</h4>
           ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent\'s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
@@ -3591,6 +3592,7 @@
             </section>
             ${restricted ? '' : realRecord(s)}
             <div class="paper-body">
+              ${paperSec('What it does, in plain words', ruleBlock)}
               ${paperSec('Mechanism &amp; hypothesis', rp.mechanism)}
               ${fold('Methodology', paperSec('Methodology', methodologyBody))}
               ${paperSec('Results', resultsBody)}

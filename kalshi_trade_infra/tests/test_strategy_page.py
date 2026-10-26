@@ -37,3 +37,23 @@ def test_the_deploy_route_refuses_a_code_strategy_in_every_mode(monkeypatch):
         with pytest.raises(ApiError) as err:
             deployment_routes.create_deployment(c)
         assert err.value.status == 409 and "research-only" in str(err.value)
+
+
+def test_the_rules_read_entry_filters_in_plain_words():
+    spec = specmod.validate({"market": "btc15m", "entry": {"filters": [
+        {"feature": "ret_5m", "op": ">", "value": 0.004}, {"feature": "ob_imbalance", "op": "<", "value": -0.2},
+        {"feature": "vol_60m", "op": "<=", "value": 0.0012}, {"feature": "z_score", "op": ">=", "value": 1.5}]}})
+    lines = specmod.describe(spec)
+    assert "Only when the 5-minute return is above +0.40%." in lines
+    assert "Only when order-book imbalance is below -0.2." in lines
+    assert "Only when the 60-minute volatility is at most 0.12%." in lines
+    assert "Only when the z-score is at least 1.5." in lines
+    assert not any("ret_5m" in line or "ob_imbalance" in line for line in lines)
+
+
+def test_every_known_feature_reads_as_a_short_phrase_or_its_own_name():
+    # A feature documented with a formula or a paragraph keeps its name rather than printing either.
+    for name in specmod.FEATURES:
+        line = specmod._plain_filter({"feature": name, "op": ">", "value": 1})
+        assert line.startswith("Only when ") and " is above " in line and line.endswith(".")
+        assert "(" not in line.replace("(ET)", "") and "/" not in line and len(line) < 130, line

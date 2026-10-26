@@ -79,4 +79,17 @@ export function strategyPageCases({name, detailStrategy, strategyFrontend, postR
     assert.match(main(f), /A backtest-only strategy can’t be deployed: it never went through the held-out checks\./);
     assert.equal(f.root.querySelector('#dep-paper'), null);
   });
+
+  test(`${name}: what it does, in plain words, is the paper's first section, outside the Methodology fold`, async () => {
+    const f = await open({status: 'passed', rules: ['Buys YES contracts when its fair value beats the price by at least 6¢.', 'Only when the 5-minute return is above +0.40%.'],
+      experiment: {classification: 'deployment_candidate', mechanism: 'Late chasers overpay.', planned_test: 'bootstrap'},
+      dataset: {start: '2026-09-24T00:00Z', end: '2026-10-24T00:00Z', out_of_sample_from: '2026-10-15T00:00Z'}});
+    const html = main(f), body = html.slice(html.indexOf('paper-body'));
+    const first = body.indexOf('<section class="paper-sec">');
+    assert.match(body.slice(first, first + 160), /What it does, in plain words/);
+    assert.ok(body.indexOf('Only when the 5-minute return is above +0.40%.') < body.indexOf('Mechanism &amp; hypothesis'));
+    const methodology = html.slice(html.indexOf('<summary class="fold-h">Methodology'));
+    assert.ok(methodology.length > 0 && methodology.includes('Data &amp; partitioning'));
+    assert.doesNotMatch(methodology.slice(0, methodology.indexOf('</details>', methodology.indexOf('Data &amp; partitioning'))), /class="rules"/);
+  });
 }
