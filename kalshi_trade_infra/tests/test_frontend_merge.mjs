@@ -952,6 +952,29 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   assert.match(h.root.querySelector('#ffigs').innerHTML, /Unavailable[\s\S]*Kalshi didn’t answer just now\. Reload in a minute to try again\./);
 });
 
+test('Funds says what each book has made, realized, never summed, and when a new book’s P&L will show', async () => {
+  // Each book's realized P&L from its closed trades: the dashboard's, Deploy's and the track record's figure.
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
+    d.kalshi = {connected: true, key_id: 'k', balance: 1234.56, open_positions: 1, open_at_cost: 4, realized_pnl: 3.11, closed_trades: 5};
+    d.demo = {...d.demo, realized: 9.77, before_reload: 40, closed_trades: 5};
+    d.paper = {...d.paper, cash: 995.19, equity: 1005.19, open_positions: 1, open_at_cost: 10, realized_pnl: 5.61, closed_trades: 5}; return response(d); }});
+  await f.viewFunds();
+  const figs = f.root.querySelector('#ffigs').innerHTML;
+  assert.match(figs, /Your real cash at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time\. 1 open live position/);
+  assert.match(figs, /1 open \(\$10\.00 at cost\) ·\u00a0\+\$5\.61 realized all time ·\u00a0practice money/);
+  assert.match(figs, /\+\$9\.77 realized since reload ·\u00a0needs a demo key/);  // demo's P&L restarts at a reload
+  assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
+  // A book with no closed trade says when its P&L shows, instead of a $0.00 that reads as flat.
+  const g = frontend({fetchImpl: () => { const d = funds();
+    d.kalshi = {connected: true, key_id: 'k', balance: 50, open_positions: 0, open_at_cost: 0, realized_pnl: 0, closed_trades: 0};
+    d.demo = {...d.demo, closed_trades: 0}; d.paper = {...d.paper, realized_pnl: 0, closed_trades: 0}; return response(d); }});
+  await g.viewFunds();
+  const empty = g.root.querySelector('#ffigs').innerHTML;
+  assert.match(empty, /Tau’s live P&amp;L shows once a live trade closes\./);
+  assert.match(empty, /P&amp;L shows once a demo trade closes/); assert.match(empty, /P&amp;L shows once a paper trade closes ·\u00a0practice money/);
+  assert.doesNotMatch(empty, /realized all time/);
+});
+
 test('dashboard: Kalshi cash says when it was read, keeps Tau\'s own trades when Kalshi is down, and an open position says what it is worth', async () => {
   const live = {connected: true, balance: 250, balance_at: new Date().toISOString(), open_positions: 2, running: 1, realized_pnl: 17, today_pnl: -2, open_at_cost: 1.2};
   const pos = {title: 'Drift', ticker: 'KXBTCD-1', side: 'yes', qty: 12, entry_price: .42, entry_fee: .12, mark: .47, value: 5.64, unrealized: .48, mode: 'live', opened_at: '2026-10-25T08:00:00Z'};

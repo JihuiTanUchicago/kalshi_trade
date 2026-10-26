@@ -222,6 +222,14 @@ def test_live_balance_says_when_it_was_read_only_when_it_was(monkeypatch):
     assert "balance_at" not in server._live_balance(object(), 5)
 
 
+def _no_closed_trades(monkeypatch, realized=None, closed=None):
+    """Funds' realized P&L read (the dashboard's book totals), answered without a database."""
+    from app.services import book_memo
+
+    realized = realized or {m: (0.0, 0.0) for m in ("paper", "demo", "live")}
+    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None: (realized, closed or {}, {}))
+
+
 def test_funds_dates_the_demo_balance_from_its_memo_and_never_reads_kalshi_for_it(monkeypatch):
     """The demo key line says when its balance was read, from the demo memo's own fill time; a balance
     that couldn't be read carries no time, and dating it never makes another demo read."""
@@ -232,11 +240,12 @@ def test_funds_dates_the_demo_balance_from_its_memo_and_never_reads_kalshi_for_i
 
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: None)
     monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEVKEY-1234"})
-    monkeypatch.setattr(server.repo, "demo_equity", lambda cur, uid: {"capital": 1000, "equity": 1000, "realized": 0,
-                                                                       "before_reload": 0})
+    monkeypatch.setattr(server.repo, "demo_equity", lambda cur, uid, realized=None: {"capital": 1000, "equity": 1000,
+                                                                                      "realized": 0, "before_reload": 0})
     monkeypatch.setattr(server.repo, "paper_balance", lambda cur, uid: 1000)
     monkeypatch.setattr(server.repo, "ledger_rows", lambda cur, uid: [])
     monkeypatch.setattr(server.repo, "user_positions", lambda cur, uid, status: [])
+    _no_closed_trades(monkeypatch)
     monkeypatch.setattr(demo_twins, "_read_balance", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no read")))
 
     class Ctx:
@@ -261,16 +270,23 @@ def test_funds_names_each_books_open_positions_and_paper_matches_the_dashboard(m
            {"mode": "paper", "qty": 12, "entry_price": 0.42}, {"mode": "paper", "qty": 5, "entry_price": 0.61}]
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda cur, uid: None)
     monkeypatch.setattr(server.repo, "get_kalshi_dev_key", lambda cur, uid: None)
-    monkeypatch.setattr(server.repo, "demo_equity", lambda cur, uid: {"capital": 750.0, "equity": 753.77, "realized": 3.77,
-                                                                       "before_reload": 0})
+    demo_read = []
+    monkeypatch.setattr(server.repo, "demo_equity", lambda cur, uid, realized=None: demo_read.append(realized) or {
+        "capital": 750.0, "equity": 753.77, "realized": 3.77, "before_reload": 0})
     monkeypatch.setattr(server.repo, "paper_balance", lambda cur, uid: 2001.74)
     monkeypatch.setattr(server.repo, "ledger_rows", lambda cur, uid: [])
     monkeypatch.setattr(server.repo, "user_positions", lambda cur, uid, status: pos)
+    _no_closed_trades(monkeypatch, {"paper": (5.61, 4.16), "demo": (3.77, 1.0), "live": (3.11, 1.66)},
+                      {"paper": 5, "demo": 4, "live": 3})
 
     class Ctx:
         cur, uid = object(), 1
 
     out = server.funds(Ctx())
+    # Each book's realized P&L and closed trades, its own and never another's: the dashboard's read.
+    assert (out["paper"]["realized_pnl"], out["paper"]["closed_trades"]) == (5.61, 5)
+    assert (out["kalshi"]["realized_pnl"], out["kalshi"]["closed_trades"]) == (3.11, 3)
+    assert out["demo"]["closed_trades"] == 4 and demo_read == [3.77]  # demo's P&L since reload reuses the read
     assert (out["kalshi"]["open_positions"], out["kalshi"]["open_at_cost"]) == (1, 4.0)
     assert (out["demo"]["open_positions"], out["demo"]["open_at_cost"]) == (1, 3.05)
     assert (out["paper"]["open_positions"], out["paper"]["open_at_cost"]) == (2, 8.09)

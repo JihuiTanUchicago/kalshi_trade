@@ -728,6 +728,26 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   assert.match(h.root.querySelector('#ffigs').innerHTML, /Kalshi didn’t answer just now\. Reload in a minute to try again\./);
 });
 
+test('Funds says what each book has made, realized, never summed, and when a new book’s P&L will show', async () => {
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
+    d.kalshi = {connected: true, key_id: 'k', balance: 1234.56, open_positions: 1, open_at_cost: 4, realized_pnl: 3.11, closed_trades: 5};
+    d.demo = {...d.demo, realized: 9.77, before_reload: 40, closed_trades: 5};
+    d.paper = {...d.paper, cash: 995.19, equity: 1005.19, open_positions: 1, open_at_cost: 10, realized_pnl: 5.61, closed_trades: 5}; return response(d); }});
+  await f.viewFunds(); await flush();
+  const figs = f.root.querySelector('#ffigs').innerHTML;
+  assert.match(figs, /Real money at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time\. 1 open live position/);
+  assert.match(figs, /\$995\.19 cash ·\u00a01 open \(\$10\.00 at cost\) ·\u00a0\+\$5\.61 realized all time</);
+  assert.match(figs, /\+\$9\.77 realized since reload ·\u00a0needs a demo key/);
+  assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
+  const g = frontend({fetchImpl: () => { const d = funds();
+    d.kalshi = {connected: false, realized_pnl: 0, closed_trades: 0};
+    d.demo = {...d.demo, closed_trades: 0}; d.paper = {...d.paper, realized_pnl: 0, closed_trades: 0}; return response(d); }});
+  await g.viewFunds(); await flush();
+  const empty = g.root.querySelector('#ffigs').innerHTML;
+  assert.match(empty, /P&amp;L shows once a demo trade closes/); assert.match(empty, /cash ·\u00a0P&amp;L shows once a paper trade closes</);
+  assert.doesNotMatch(empty, /realized all time|Tau’s live/);
+});
+
 test('Overview Kalshi cash says when it was read, and keeps Tau\'s realized line when Kalshi is down', async () => {
   for (const balance of [3333, null]) {
     const f = apDashboard(dashboardData({deployments: [dashboardDeployment('live')], live: {connected: true, balance, balance_at: new Date().toISOString(), open_positions: 2}}), {...apStatus});

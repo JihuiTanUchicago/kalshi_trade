@@ -8,6 +8,7 @@ from app import repository as repo
 from app.adapters.kalshi import kalshi_account, kalshi_dev_exec
 from app.adapters.kalshi_perps import kalshi_perps_trading
 from app.adapters.ses import notify
+from app.services import book_memo
 from app.web.http import ApiError, Ctx, _num
 from app.web.routes.brokers import _perps_live_call
 from app.web.settings import MAX_PAPER_BALANCE, MAX_WAITLIST_PER_MINUTE
@@ -33,18 +34,26 @@ def funds(ctx: Ctx):
             kalshi_dev_key["balance_at"] = demo_twins.balance_read_at(ctx.uid)  # up to a minute old, like Kalshi cash
         # The demo cash the autopilot's demo copies wait for, so Funds can say why a small balance starts none.
         kalshi_dev_key["copies_from"] = demo_twins.DEMO_TWIN_MIN_BALANCE if demo_twins.DEMO_TWINS else None
-    de = repo.demo_equity(cur, ctx.uid)
+    # Each book's realized P&L and closed trades, from the dashboard's read (kept while the positions
+    # are unchanged), so Funds says what each book has made with the figure the dashboard, Deploy and
+    # the track record show. Demo's is since its last reload, as on the dashboard.
+    day = repo.now_utc().replace(hour=0, minute=0, second=0, microsecond=0)
+    realized, closed, _ = book_memo.closed_book_totals(book_memo.BookMemo(cur, ctx.uid), day)
+    de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
     # Each book's open positions, so every figure says what it leaves out; paper's balance is cash plus
     # open at cost, the dashboard's paper figure. Books are never added together.
     open_pos = repo.user_positions(cur, ctx.uid, "open")
     paper = _open_book(open_pos, "paper")
     cash = round(repo.paper_balance(cur, ctx.uid), 2)
-    kalshi.update(_open_book(open_pos, "live"))
+    kalshi.update(_open_book(open_pos, "live"), realized_pnl=round(realized["live"][0], 2),
+                  closed_trades=int(closed.get("live", 0)))
     return {
         "paper": {"cash": cash, "equity": round(cash + paper["open_at_cost"], 2), **paper,
+                  "realized_pnl": round(realized["paper"][0], 2), "closed_trades": int(closed.get("paper", 0)),
                   "ledger": repo.ledger_rows(cur, ctx.uid)},
         "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"],
-                 "before_reload": de["before_reload"], **_open_book(open_pos, "demo")},
+                 "before_reload": de["before_reload"], "closed_trades": int(closed.get("demo", 0)),
+                 **_open_book(open_pos, "demo")},
         "kalshi": kalshi,
         "kalshi_dev": kalshi_dev_key,
     }

@@ -4029,6 +4029,13 @@
   const openAt = (b) => b.open_positions ? `${b.open_positions} open (${usd(b.open_at_cost)} at cost) ·\u00a0` : '';
   const openLeft = (b, mode) => b.open_positions == null ? 'Open positions not included'
     : b.open_positions ? `${b.open_positions} open ${mode} position${b.open_positions === 1 ? '' : 's'} (${usd(b.open_at_cost)} at cost) not included` : `No open ${mode} positions`;
+  // What each book has made: its realized P&L from closed trades, the figure the dashboard, Deploy and the
+  // track record show, never added to another book's. Before a book's first close it says when one shows.
+  // An API without the figure says nothing. Demo's is since its last reload, as on the dashboard.
+  const bookPnl = (b, mode, pnl = b.realized_pnl, span = 'all time') => b.closed_trades == null ? ''
+    : b.closed_trades ? `${usd(pnl, true)} realized ${span} ·\u00a0` : `P&amp;L shows once a ${mode} trade closes ·\u00a0`;
+  const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time.`
+    : k.connected ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : '';
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
   async function viewFunds() {
     const gen = S.gen;
@@ -4040,9 +4047,9 @@
       const k = d.kalshi;
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
-      root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? '' : k.balance == null ? KALSHI_UNREAD : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}. ${openLeft(k, 'live')}` }) +
-        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} ·\u00a0${openAt(dm)}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
-        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash${d.paper.open_positions ? ` ·\u00a0${d.paper.open_positions} open (${usd(d.paper.open_at_cost)} at cost)` : ''}` });
+      root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? livePnl(k).trim() : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
+        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
+        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}`.replace(/ ·\u00a0$/, '') });
       root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
