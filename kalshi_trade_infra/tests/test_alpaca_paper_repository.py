@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from app import alpaca_paper_repository as repo
+from app.adapters.alpaca import alpaca_paper_repository as repo
 
 NOW = datetime(2026, 10, 18, 18, 0, 0)
 CONNECTION = hashlib.sha256(b"synthetic-account-one").hexdigest()

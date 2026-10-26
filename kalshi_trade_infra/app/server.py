@@ -25,10 +25,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from app import agent, auth, backtest, billing, devlog, dreaming, engine, kalshi_account, notify
-from app import kalshi_dev
-from app import kalshi_dev_exec
-from app import broker_oauth, alpaca_paper, kalshi_perps_trading
+from app import agent, auth, backtest, billing, devlog, dreaming, engine, notify
+from app.adapters.kalshi import kalshi_account
+from app.adapters.kalshi import kalshi_dev
+from app.adapters.kalshi import kalshi_dev_exec
+from app.adapters.kalshi_perps import kalshi_perps_trading
+from app.adapters.alpaca import alpaca_paper
+from app.adapters.brokers import broker_oauth
 from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo

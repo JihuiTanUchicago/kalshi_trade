@@ -12,7 +12,7 @@ import pytest
 from app import backtest, sandbox
 from app import gatekeeper as gk
 from app import spec as specmod
-from app import tao_repository as taorepo
+from app.adapters.tao import tao_repository as taorepo
 from app.backtest import Trade
 from app.markets import MARKETS, TAO_USD_SYMBOL
 

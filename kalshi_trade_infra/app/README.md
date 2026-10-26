@@ -16,7 +16,7 @@ production/demo candles, funding and observations are retrieved successfully.
 Five anonymous public requests also pass directly from the production server.
 Update 2026-10-24: merged main, perps included, is deployed to the web box, and
 hosted staging including the perps verification passes. Native perps orders stay
-off (`TAU_KALSHI_PERPS_LIVE_ENABLED` unset); `app/kalshi_perps_watch.py` adds
+off (`TAU_KALSHI_PERPS_LIVE_ENABLED` unset); `app/adapters/kalshi_perps/kalshi_perps_watch.py` adds
 position, liquidation and margin alerts for when they are turned on.
 See [setup, supported rules and limitations](KALSHI_PERPS_RESEARCH.md) and
 [implementation evidence](../results/kalshi_bitcoin_perps_2026-10-23/HANDOFF.md).

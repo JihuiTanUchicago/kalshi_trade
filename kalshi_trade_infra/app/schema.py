@@ -7,8 +7,11 @@ line by line and two writers cannot lose an update to each other.
 """
 from data_pipeline import init_schema
 from data_pipeline.common import get_db_conn
-from app import broker_repository, alpaca_paper_repository, kalshi_perps_repository
-from app import kalshi_perps_orders_repository, rsi_playbook, rsi_repair, rsi_scout, tournament
+from app.adapters.kalshi_perps import kalshi_perps_repository
+from app.adapters.alpaca import alpaca_paper_repository
+from app.adapters.brokers import broker_repository
+from app import rsi_playbook, rsi_repair, rsi_scout, tournament
+from app.adapters.kalshi_perps import kalshi_perps_orders_repository
 
 DDL = [
     # -- market history (written by app.market_history; Kalshi candles go in
@@ -56,7 +59,7 @@ DDL = [
     # the spot price series by ts - the same (key, minute) join model_features_1m uses. The alpha
     # PRICE series itself lives in spot_candles_1m (symbol=TAO-SN{n}); only these tokenomics/flow
     # features and the pool reserves (which drive the slippage fill model) live here. Written by
-    # data_pipeline/taostats_collector.py via app/tao_repository.py; read into the spot backtest
+    # data_pipeline/taostats_collector.py via app/adapters/tao/tao_repository.py; read into the spot backtest
     # window so signals(window) can condition on emission/registration/staking mechanisms.
     """
     CREATE TABLE IF NOT EXISTS tao_subnet_features (
@@ -113,7 +116,7 @@ DDL = [
     """,
     # The per-user Kalshi DEMO (sandbox) API key, a dead ringer for app_kalshi_keys.
     # Kept in its own table so a user's demo key and live key never share a row and
-    # the demo execution path (app/kalshi_dev_exec.py) can only ever read the demo key.
+    # the demo execution path (app/adapters/kalshi/kalshi_dev_exec.py) can only ever read the demo key.
     # Encrypted the same way (AES-256-GCM bound to user_id); demo != real money.
     """
     CREATE TABLE IF NOT EXISTS app_kalshi_dev_keys (

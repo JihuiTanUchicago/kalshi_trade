@@ -1,6 +1,6 @@
 """Opt-in native public Bitcoin perps collection, without any running service.
 
-    python -m app.kalshi_perps_collector --start 2026-10-01 --end 2026-10-02
+    python -m app.adapters.kalshi_perps.kalshi_perps_collector --start 2026-10-01 --end 2026-10-02
 
 The default prints counts/provenance only. --persist explicitly stores append-only
 batches using the normal app DB configuration; no schema migration is performed.
@@ -12,7 +12,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from app.kalshi_perps_data import (
+from app.adapters.kalshi_perps.kalshi_perps_data import (
     MAX_BATCH_SECONDS, MAX_HISTORY_SECONDS, SOURCE_SCHEMA, Config,
     KalshiPerpsDataClient, epoch, fingerprint, funding_coverage, iso_time,
     requested_range,
@@ -123,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
                                        include_observations=not args.no_observations):
                 version = None
                 if connection is not None:
-                    from app.kalshi_perps_repository import store_batch
+                    from app.adapters.kalshi_perps.kalshi_perps_repository import store_batch
                     with connection.cursor() as cur:
                         version = store_batch(cur, batch)
                     connection.commit()

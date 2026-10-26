@@ -98,7 +98,7 @@ the deployment owner. This source-merge task has not run it on any database.
 
 Before migration, confirm `app_users` exists and inspect any existing
 `app_broker_connections` / `app_broker_oauth_attempts` definitions against
-`app.broker_repository.DDL`. Stop if an existing definition differs; `IF NOT
+`app.adapters.brokers.broker_repository.DDL`. Stop if an existing definition differs; `IF NOT
 EXISTS` does not fix it. Both tables must be InnoDB; connections must include
 `pending_claimed_at`. Keep existing grants and other data.
 
@@ -117,7 +117,8 @@ set +a
 unset AWS_PROFILE
 cd "$TAU_OAUTH_SOURCE"
 /opt/kalshi/.venv/bin/python - <<'PY'
-from app import broker_repository, broker_vault, schema
+from app import schema
+from app.adapters.brokers import broker_repository, broker_vault
 
 if not broker_vault.configured():
     raise SystemExit("Existing APP_SECRET_KEY is missing or invalid; stop without changing it.")
@@ -147,7 +148,7 @@ For OAuth alone, do not restart collector, house, agent, engine or history servi
 If also applying the market-data overlay, follow the separate
 [market-data guide](MARKET_DATA_DEPLOYMENT.md) to drain/restart the agent worker.
 With the
-actual web environment loaded, `python -m app.broker_oauth status` should report
+actual web environment loaded, `python -m app.adapters.brokers.broker_oauth status` should report
 Alpaca configured and Tau execution disabled. Robinhood/IBKR can remain awaiting
 their separate approvals. Invalidate `/*` on the verified Tau CloudFront
 distribution and wait for completion; leave the dashboard distribution unchanged.

@@ -26,8 +26,8 @@ import os
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, NamedTuple
 
-from app import kalshi_perps_orders_repository as store
-from app import kalshi_perps_trading as service
+from app.adapters.kalshi_perps import kalshi_perps_orders_repository as store
+from app.adapters.kalshi_perps import kalshi_perps_trading as service
 from app import repository as repo
 
 MISMATCH = "mismatch"

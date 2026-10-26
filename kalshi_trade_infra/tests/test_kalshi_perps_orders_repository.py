@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from app import kalshi_perps_orders_repository as repo
+from app.adapters.kalshi_perps import kalshi_perps_orders_repository as repo
 from app.repository import transaction
 
 
@@ -579,7 +579,7 @@ def test_instrument_digest_binds_economics_and_excludes_dynamic_quote_fields(cur
 
 
 def test_native_metadata_adapter_factors_bridge_to_store_without_double_multiplier(cur):
-    from app.kalshi_perps_data import normalize_instrument
+    from app.adapters.kalshi_perps.kalshi_perps_data import normalize_instrument
 
     native = dict(ticker="BTC-PERP", title="Bitcoin", asset_class="crypto", status="active",
                   contract_size="1.000000", underlying_multiplier="0.0001", tick_size="0.0001",

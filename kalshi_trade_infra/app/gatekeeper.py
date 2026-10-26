@@ -526,7 +526,7 @@ def _verdict_dict(v: Dict[str, Any], cls: Classification, n_trials: int) -> Dict
 def _assert_perpetual_source(cur, experiment_id: int, dataset) -> None:
     if getattr(dataset.market, "kind", "binary") != "perpetual":
         return
-    from app import kalshi_perps_repository as perps
+    from app.adapters.kalshi_perps import kalshi_perps_repository as perps
     experiment = rr.experiment_row_by_id(cur, experiment_id)
     if not experiment or int(experiment["research_partition_id"]) != getattr(dataset, "partition_id", None):
         raise ValueError("Perpetual evaluation must use the experiment's frozen partition.")

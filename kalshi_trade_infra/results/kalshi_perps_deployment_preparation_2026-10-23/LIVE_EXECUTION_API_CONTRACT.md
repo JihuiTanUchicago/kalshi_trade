@@ -1,6 +1,6 @@
 # Native Bitcoin perps live execution contract
 
-2026-10-23 / official-documentation review and isolated client implementation / integration handoff. Owned artifacts are this document, new `app/kalshi_perps_trading_client.py`, and its new synthetic tests. No private account, provider API, order, schema, service, deployment, or production operation was performed. The client is offline verified; this is not live acceptance.
+2026-10-23 / official-documentation review and isolated client implementation / integration handoff. Owned artifacts are this document, new `app/adapters/kalshi_perps/kalshi_perps_trading_client.py`, and its new synthetic tests. No private account, provider API, order, schema, service, deployment, or production operation was performed. The client is offline verified; this is not live acceptance.
 
 **User decision:** a person confirms every order. Kalshi controls permitted leverage, margin and exposure; add no Tau dollar, exposure, or leverage caps. The earlier proposed 1×/$100/$250 defaults are superseded. Technical guards, immutable confirmation, account ownership, exact units, freshness, reconciliation and fail-closed handling remain. Build a dedicated perps path; retain the binary engine and its execution controls unchanged.
 

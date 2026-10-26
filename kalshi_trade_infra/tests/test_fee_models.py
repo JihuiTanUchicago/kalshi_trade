@@ -49,7 +49,7 @@ def test_kalshi_perps_fees_use_the_exchange_tiers_and_refuse_unknown_tickers():
 
 
 def test_tao_swap_fee_is_the_chain_cost_on_notional():
-    from app import tao_fees
+    from app.adapters.tao import tao_fees
     assert TaoSwapFees().fee(ALPHA, -40, 0.25) == pytest.approx(tao_fees.swap_fee(10.0))
 
 

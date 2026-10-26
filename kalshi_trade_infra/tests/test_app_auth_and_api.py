@@ -6,7 +6,8 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
-from app import auth, kalshi_account, server
+from app import auth, server
+from app.adapters.kalshi import kalshi_account
 
 
 # -- Google ID token claims -------------------------------------------------------

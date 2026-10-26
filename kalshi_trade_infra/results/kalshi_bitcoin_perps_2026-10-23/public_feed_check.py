@@ -19,8 +19,8 @@ from urllib.request import getproxies
 
 import requests
 
-from app.kalshi_perps_collector import collect, summary
-from app.kalshi_perps_data import Config, KalshiPerpsDataClient
+from app.adapters.kalshi_perps.kalshi_perps_collector import collect, summary
+from app.adapters.kalshi_perps.kalshi_perps_data import Config, KalshiPerpsDataClient
 from app.adapters.data.market_data_common import MarketDataError
 
 

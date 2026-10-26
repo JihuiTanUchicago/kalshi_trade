@@ -6,7 +6,7 @@ model, and graceful degradation when the demo host is down.
 """
 from datetime import datetime, timezone
 
-from app import kalshi_dev
+from app.adapters.kalshi import kalshi_dev
 from app import spec as specmod
 from app.backtest import Dataset, Trade
 from app.markets import MARKETS, snapshot

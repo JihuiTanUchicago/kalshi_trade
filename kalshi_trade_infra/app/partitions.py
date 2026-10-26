@@ -21,7 +21,8 @@ from collections import Counter
 from datetime import timedelta, timezone
 from typing import Dict, List, Optional
 
-from app import backtest, research_repository as rr, tao_repository
+from app import backtest, research_repository as rr
+from app.adapters.tao import tao_repository
 from app.markets import MARKETS, Market
 from app.repository import now_utc
 
@@ -146,8 +147,8 @@ def merged_dataset(cur, markets: List[str], phase: str):
 
 
 def _ensure_perpetual_partition(cur, market: Market) -> Dict:
-    from app import kalshi_perps_repository as perps
-    from app.kalshi_perps_data import Config
+    from app.adapters.kalshi_perps import kalshi_perps_repository as perps
+    from app.adapters.kalshi_perps.kalshi_perps_data import Config
 
     if not Config.from_env().enabled:
         raise ValueError("Bitcoin perpetual research is disabled; configure its public data collector first.")
@@ -178,7 +179,7 @@ def _ensure_perpetual_partition(cur, market: Market) -> Dict:
 
 
 def _perpetual_boundaries(points: List[int], fingerprint: str) -> Dict:
-    from app.kalshi_perps_backtest import MAX_HOLDING_SECONDS, MAX_LOOKBACK_MINUTES
+    from app.adapters.kalshi_perps.kalshi_perps_backtest import MAX_HOLDING_SECONDS, MAX_LOOKBACK_MINUTES
 
     if len(points) < 600:
         raise ValueError("Not enough completed Bitcoin perpetual history for three research windows.")
@@ -346,9 +347,9 @@ def holdout_dataset(market: str, partition: Dict, history_days: Optional[int] = 
 
 
 def _load_perpetual_window(market: str, partition: Dict, phase: str) -> backtest.Dataset:
-    from app import kalshi_perps_repository as perps
-    from app.kalshi_perps_backtest import build_dataset
-    from app.kalshi_perps_data import Config
+    from app.adapters.kalshi_perps import kalshi_perps_repository as perps
+    from app.adapters.kalshi_perps.kalshi_perps_backtest import build_dataset
+    from app.adapters.kalshi_perps.kalshi_perps_data import Config
     from data_pipeline.common import get_db_conn
 
     if not Config.from_env().enabled:

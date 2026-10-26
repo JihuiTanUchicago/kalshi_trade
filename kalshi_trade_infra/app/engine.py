@@ -1739,7 +1739,7 @@ def _make_order_lookup(conn) -> Callable[[Dict], Optional[Dict]]:
     NOTE: the Kalshi orders-field mapping (fill_count/average_fill_price) is verified on the demo
     sandbox before it is trusted on live (see EXECUTION_RISK_HARDENING §9); until then absent->None
     keeps it safe (a no-op + alert), never a wrong booking."""
-    from app import kalshi_account, kalshi_dev_exec
+    from app.adapters.kalshi import kalshi_account, kalshi_dev_exec
     from data_pipeline.common import api_get_auth
 
     def lookup(it: Dict) -> Optional[Dict]:
@@ -2100,7 +2100,7 @@ def enforce_account_equity_limits(conn) -> int:
     enforce_autopilot_limits. That one reads only booked P&L, so a fill we never recorded, a fee we
     under-counted or an open position marked down never trips it. A withdrawal reads as a loss
     (stops early, the safe side); a deposit masks one. Read-only against the exchange."""
-    from app import kalshi_account
+    from app.adapters.kalshi import kalshi_account
     from data_pipeline.common import kalshi_account_equity_dollars
 
     cur = conn.cursor()
@@ -2174,7 +2174,7 @@ def live_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     `ws_feed` (the shared WsTickerFeed) makes order pricing read the live websocket book first
     (≤1s, pushed on every top-of-book change) with REST as the freshness backstop (P1-1); None
     => REST-only, exactly as before."""
-    from app import kalshi_account
+    from app.adapters.kalshi import kalshi_account
     from app.execution import guarded_submitter, timed_submitter
     from data_pipeline.architecture.position_guard import exchange_net_reader, position_guarded_submitter
     from data_pipeline.market_data import MarketFeed
@@ -2240,7 +2240,7 @@ def run_forever() -> None:
     from app.adapters.polymarket import store as pm_store
     from data_pipeline.common import get_db_conn
 
-    from app.kalshi_dev_exec import demo_kernel_factory
+    from app.adapters.kalshi.kalshi_dev_exec import demo_kernel_factory
 
     last_review = 0.0
     last_reconcile = 0.0
@@ -2393,7 +2393,7 @@ def run_forever() -> None:
                     # plus liquidation and margin proximity. Read-only, contained.
                     if time.time() - last_perps_watch > perps_watch_every:
                         try:
-                            from app import kalshi_perps_watch
+                            from app.adapters.kalshi_perps import kalshi_perps_watch
                             summary = kalshi_perps_watch.watch_all(conn)
                             if summary.get("alerts") or summary.get("errors"):
                                 print("[engine] perps watch %s" % summary, flush=True)

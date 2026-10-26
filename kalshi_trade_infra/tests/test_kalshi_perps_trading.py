@@ -7,8 +7,8 @@ from decimal import Decimal
 import pytest
 import requests
 
-from app import kalshi_perps_trading as trading
-from app import kalshi_perps_trading_client as broker
+from app.adapters.kalshi_perps import kalshi_perps_trading as trading
+from app.adapters.kalshi_perps import kalshi_perps_trading_client as broker
 from app import repository as repo
 from tests.test_kalshi_perps_orders_repository import FakeConnection, PerpsCursor, instrument
 

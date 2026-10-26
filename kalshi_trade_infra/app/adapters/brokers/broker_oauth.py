@@ -11,8 +11,8 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from app import broker_repository as store
-from app import broker_vault as vault
+from app.adapters.brokers import broker_repository as store
+from app.adapters.brokers import broker_vault as vault
 from app import repository as repo
 
 PROVIDERS = {
@@ -44,7 +44,7 @@ class Error(ValueError):
 def _adapter(provider: str):
     if provider not in PROVIDERS:
         raise Error("Unknown brokerage.", 404)
-    return importlib.import_module("app.broker_" + provider)
+    return importlib.import_module("app.adapters.brokers.broker_" + provider)
 
 
 def redirect_uri(provider: str) -> str:

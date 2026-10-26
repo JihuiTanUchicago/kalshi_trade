@@ -10,8 +10,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from app import broker_oauth as oauth
-from app import broker_vault as vault
+from app.adapters.brokers import broker_oauth as oauth
+from app.adapters.brokers import broker_vault as vault
 from app import server
 
 SESSION = hashlib.sha256(b"synthetic-session").hexdigest()

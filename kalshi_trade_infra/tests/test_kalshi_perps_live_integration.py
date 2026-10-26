@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import agent, billing, kalshi_perps_trading as live, llm, schema, server
+from app import agent, billing, llm, schema, server
+from app.adapters.kalshi_perps import kalshi_perps_trading as live
 
 
 def ctx(body=None, params=()):

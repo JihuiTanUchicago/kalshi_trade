@@ -6,7 +6,7 @@ import os
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from app import broker_vault as vault
+from app.adapters.brokers import broker_vault as vault
 
 
 @pytest.fixture

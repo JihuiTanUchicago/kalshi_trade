@@ -14,9 +14,9 @@ import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, localcontext
 
-from app import kalshi_account as account
-from app import kalshi_perps_orders_repository as store
-from app import kalshi_perps_trading_client as broker
+from app.adapters.kalshi import kalshi_account as account
+from app.adapters.kalshi_perps import kalshi_perps_orders_repository as store
+from app.adapters.kalshi_perps import kalshi_perps_trading_client as broker
 from app import repository as repo
 
 PREVIEW_TTL_SECONDS = 120

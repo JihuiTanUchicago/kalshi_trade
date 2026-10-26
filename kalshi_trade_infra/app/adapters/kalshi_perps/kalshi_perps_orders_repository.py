@@ -104,7 +104,7 @@ DDL = [
       INDEX idx_kalshi_perps_reservations (user_id, environment, status),
       INDEX idx_kalshi_perps_claims (user_id, environment, claimed_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-    # Standing conditions found by app.kalshi_perps_watch, so each is announced
+    # Standing conditions found by app.adapters.kalshi_perps.kalshi_perps_watch, so each is announced
     # once (and once when it clears) rather than on every sweep.
     """CREATE TABLE IF NOT EXISTS app_kalshi_perps_watch (
       user_id BIGINT NOT NULL,
@@ -672,7 +672,7 @@ def begin_cancel(cur: Any, user_id: int, environment: str, order_id: int,
                          expected_version=expected_version)
 
 
-# -- position and margin watch (app.kalshi_perps_watch) ------------------------
+# -- position and margin watch (app.adapters.kalshi_perps.kalshi_perps_watch) ------------------------
 
 
 def users_to_watch(cur: Any, environment: str) -> list[int]:

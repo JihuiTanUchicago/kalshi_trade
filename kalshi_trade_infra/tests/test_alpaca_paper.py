@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import alpaca_paper as paper
+from app.adapters.alpaca import alpaca_paper as paper
 
 BROKER_ID = "00000000-1111-4222-8333-000000000001"
 

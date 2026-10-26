@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 
-from app.kalshi_perps_data import BASE_URLS, Config, normalize_instrument, ticker_checked
+from app.adapters.kalshi_perps.kalshi_perps_data import BASE_URLS, Config, normalize_instrument, ticker_checked
 from app.adapters.data.market_data_common import MarketDataError
 
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024

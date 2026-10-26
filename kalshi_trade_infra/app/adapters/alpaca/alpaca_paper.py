@@ -16,10 +16,10 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from app import alpaca_paper_client as broker
-from app import alpaca_paper_repository as store
-from app import broker_repository as connections
-from app import broker_vault as vault
+from app.adapters.alpaca import alpaca_paper_client as broker
+from app.adapters.alpaca import alpaca_paper_repository as store
+from app.adapters.brokers import broker_repository as connections
+from app.adapters.brokers import broker_vault as vault
 from app import repository as repo
 
 TERMINAL = {"filled", "canceled", "expired", "rejected"}
@@ -515,7 +515,7 @@ def agent_context(conn, user_id: int) -> str:
 def main() -> None:
     """Offline operator check: configuration readiness is not broker acceptance."""
     import argparse
-    from app import broker_alpaca, broker_oauth
+    from app.adapters.brokers import broker_alpaca, broker_oauth
     parser = argparse.ArgumentParser(description="Check Alpaca paper configuration without network or database access.")
     parser.add_argument("command", choices=["status"])
     parser.parse_args()

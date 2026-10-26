@@ -101,7 +101,7 @@ Register that exact HTTPS callback in the Alpaca OAuth app. If its allowlist sti
 Run the configuration check in the intended injected environment:
 
 ```bash
-python -m app.alpaca_paper status
+python -m app.adapters.alpaca.alpaca_paper status
 ```
 
 It uses no network/database and prints booleans, endpoint, callback and notional

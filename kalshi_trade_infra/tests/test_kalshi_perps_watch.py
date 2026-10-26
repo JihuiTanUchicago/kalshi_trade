@@ -5,8 +5,8 @@ from decimal import Decimal
 
 import pytest
 
-from app import kalshi_perps_watch as watch
-from app.kalshi_perps_watch import LIQUIDATION, MARGIN, MISMATCH, position_alerts, risk_alerts
+from app.adapters.kalshi_perps import kalshi_perps_watch as watch
+from app.adapters.kalshi_perps.kalshi_perps_watch import LIQUIDATION, MARGIN, MISMATCH, position_alerts, risk_alerts
 
 T = "KXBTCPERP-USD"
 D = Decimal

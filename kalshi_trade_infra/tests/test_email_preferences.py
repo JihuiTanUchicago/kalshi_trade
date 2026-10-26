@@ -8,7 +8,8 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from app import agent, kalshi_perps_watch, notify, server
+from app import agent, notify, server
+from app.adapters.kalshi_perps import kalshi_perps_watch
 
 
 class Cur:

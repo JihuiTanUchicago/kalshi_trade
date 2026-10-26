@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-from app.kalshi_perps_data import (
+from app.adapters.kalshi_perps.kalshi_perps_data import (
     BASE_URLS, MAX_BATCH_BYTES, MAX_CANDLES, MAX_FUNDING, MAX_HISTORY_SECONDS,
     SOURCE_SCHEMA, Config, candle_coverage, canonical_json, epoch, fingerprint,
     funding_coverage, normalize_instrument, requested_range, ticker_checked,

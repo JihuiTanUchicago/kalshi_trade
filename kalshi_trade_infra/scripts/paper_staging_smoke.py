@@ -303,8 +303,9 @@ def run_acceptance() -> dict:
     stage("application_import")
     import requests
     from pymysql.err import IntegrityError
-    from app import alpaca_paper as paper, alpaca_paper_repository as store
-    from app import broker_repository as connections, broker_vault as vault, repository as repo, server
+    from app.adapters.alpaca import alpaca_paper as paper, alpaca_paper_repository as store
+    from app import repository as repo, server
+    from app.adapters.brokers import broker_repository as connections, broker_vault as vault
     from data_pipeline.common import get_db_conn
 
     require(server.DEV_LOGIN and not server.SECURE_COOKIES and server.HOST == "127.0.0.1", "imported_server_not_isolated")

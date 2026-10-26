@@ -26,8 +26,8 @@ PAUSE_REASON = "Its paper strategy is no longer running, so the demo copy stoppe
 
 def _read_balance(cur, user_id: int, timeout: int = 15) -> Optional[float]:
     """The user's demo cash in dollars, or None when there is no key or the read fails."""
-    from app import kalshi_account
-    from app.kalshi_dev_exec import demo_balance_dollars
+    from app.adapters.kalshi import kalshi_account
+    from app.adapters.kalshi.kalshi_dev_exec import demo_balance_dollars
 
     row = repo.get_kalshi_dev_key(cur, user_id)
     if row is None:
@@ -56,7 +56,7 @@ def forget_balance(user_id: int) -> None:
 
 def balance_read_at(user_id: int) -> Optional[datetime]:
     """When the memoized demo cash was read (naive UTC), or None. The memo only, never Kalshi."""
-    from app import kalshi_account
+    from app.adapters.kalshi import kalshi_account
 
     return kalshi_account.memo_read_at(_BALANCE_CACHE, user_id)
 

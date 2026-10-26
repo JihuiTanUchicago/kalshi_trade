@@ -113,7 +113,7 @@ not a claim about every external disk, Git object or remote backup.
 One current drifted backend **is locally recoverable byte-for-byte**:
 
 ```text
-app/broker_oauth.py
+app/adapters/brokers/broker_oauth.py
 SHA256 a92b71ddf2e97487d5f6423fdc12e2f872cf11569ac007d4b456e8824550ef26
 ```
 
@@ -122,7 +122,7 @@ Matching loose copies exist in:
 - `/Users/jonathanzhang/Desktop/Polygon/.runtime/github-export/kalshi_trade/kalshi_trade_infra/app/broker_oauth.py`
 - `/Users/jonathanzhang/Desktop/Polygon/.runtime/github-export/tau-workspace-refinement-20261018/kalshi_trade_infra/app/broker_oauth.py`
 
-It also matches the `app/broker_oauth.py` member of retained local
+It also matches the `app/adapters/brokers/broker_oauth.py` member of retained local
 `/Users/jonathanzhang/Desktop/Polygon/.runtime/github-export/kalshi_trade/kalshi_trade_infra/results/broker_oauth_2026-10-17/production_2026-10-17/tau-broker-oauth-app.tgz`.
 That archive has only 38 current-manifest matches, 30 different current-manifest
 members and 52 current paths absent. Its agent, billing, llm, repository, schema

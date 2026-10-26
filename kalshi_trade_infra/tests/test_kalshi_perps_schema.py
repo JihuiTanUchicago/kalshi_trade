@@ -3,7 +3,8 @@ import re
 
 import pytest
 
-from app import kalshi_perps_trading, schema
+from app import schema
+from app.adapters.kalshi_perps import kalshi_perps_trading
 
 
 class Cursor:

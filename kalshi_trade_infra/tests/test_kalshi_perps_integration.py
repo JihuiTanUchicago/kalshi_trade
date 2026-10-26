@@ -14,9 +14,9 @@ import pytest
 import requests
 
 from app import agent, backtest, gatekeeper, partitions, server
-from app import kalshi_perps_collector as collector
-from app import kalshi_perps_data as data
-from app import kalshi_perps_repository as sources
+from app.adapters.kalshi_perps import kalshi_perps_collector as collector
+from app.adapters.kalshi_perps import kalshi_perps_data as data
+from app.adapters.kalshi_perps import kalshi_perps_repository as sources
 from app import research_repository as ledger
 from app import spec as specmod
 from app.markets import MARKETS

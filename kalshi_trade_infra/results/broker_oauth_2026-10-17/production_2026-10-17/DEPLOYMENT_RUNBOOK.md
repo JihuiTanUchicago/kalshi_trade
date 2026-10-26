@@ -75,7 +75,7 @@ rewrites the Google callback and restarts agents as well as web.
 
 Load the intended production environment without tracing or printing values.
 Using the staged candidate's app module and the deployed configured database
-connection, execute only the two statements from app.broker_repository.DDL (the
+connection, execute only the two statements from app.adapters.brokers.broker_repository.DDL (the
 same text as broker-tables.sql). Check app_users exists first; inspect the two
 broker table definitions/column sets and confirm InnoDB and pending_claimed_at.
 CREATE IF NOT EXISTS does not repair a divergent prior table: stop/reconcile if

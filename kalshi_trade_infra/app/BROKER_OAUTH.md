@@ -59,7 +59,7 @@ that parameter. No out-of-band verifier paste or password fallback is exposed.
 Check configuration after loading the server environment:
 
 ```bash
-python -m app.broker_oauth status
+python -m app.adapters.brokers.broker_oauth status
 ```
 
 This prints only readiness, a safe setup reason, callback URLs and disabled Tau

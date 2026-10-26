@@ -121,7 +121,7 @@ class FakeCursor:
             self._last = [{"settings_json": row}] if row else []
         elif s.startswith("INSERT INTO sim_settings"):
             self.sim_settings["risk_config"] = params[0]
-        # -- TAO research venue (app/tao_repository.py) ------------------------
+        # -- TAO research venue (app/adapters/tao/tao_repository.py) ------------------------
         elif s.startswith("INSERT INTO spot_candles_1m"):
             symbol, start_ts, o, h, lo, c, v = params
             self.spot_candles[(symbol, int(start_ts))] = dict(

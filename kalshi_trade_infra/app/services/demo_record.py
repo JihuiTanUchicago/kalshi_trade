@@ -29,8 +29,8 @@ UNSETTLED_AFTER = timedelta(hours=1)
 
 def _read_positions(cur, user_id: int) -> Optional[Dict[str, int]]:
     """The user's demo positions (ticker -> signed net), or None with no demo key or a failed read."""
-    from app import kalshi_account
-    from app.kalshi_dev_exec import demo_positions
+    from app.adapters.kalshi import kalshi_account
+    from app.adapters.kalshi.kalshi_dev_exec import demo_positions
 
     row = repo.get_kalshi_dev_key(cur, user_id)
     if row is None:

@@ -73,7 +73,8 @@ class _Conn:
 @pytest.fixture
 def venues(monkeypatch):
     """Real live and demo kernels (guards, adapters) whose HTTP POST answers with ``answer``."""
-    from app import engine, kalshi_account, kalshi_dev_exec
+    from app import engine
+    from app.adapters.kalshi import kalshi_account, kalshi_dev_exec
     from app import repository as repo
     from app.execution import guard, latency
     from data_pipeline import common
