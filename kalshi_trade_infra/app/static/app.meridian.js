@@ -1548,8 +1548,10 @@
     return `<span class="mk ${cls}">${esc(label)}</span>`;
   };
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
-  const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th><th>Status</th></tr></thead>`;
-  const strategyTable = (rows, pick) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick)}<tbody>${rows}</tbody></table></div>`;
+  // `inRun`: the table sits on its own session's page, where every row's "Ideas tested" was that session's
+  // count again (a running session's counter, behind the Tested figure above it), so the column is left out.
+  const STRAT_HEAD = (pick, inRun) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th>${inRun ? '' : '<th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th>'}<th>Status</th></tr></thead>`;
+  const strategyTable = (rows, pick, inRun) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick, inRun)}<tbody>${rows}</tbody></table></div>`;
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
   // would start a second deployment of the same rules and double its positions.
   const bulkDeployable = (s) => s.status === 'passed' && !researchOnly(s) && !s.deployed;
@@ -1593,7 +1595,7 @@
       <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
-      <td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>
+      ${opts.inRun ? '' : `<td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>`}
       <td class="act st" data-lab="Status">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
@@ -2975,6 +2977,7 @@
     let stage = null, lastAt = Date.now(), runState = 'queued', initialUpdate = true, wait = null, waitAt = 0;
     const waitEl = host.querySelector('[data-wait]');
     let waitHidPhase = false;
+    let doneRun = null;
     const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
     const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
 
@@ -2999,7 +3002,7 @@
       if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
       if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
-      if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Cancelled' : 'Stopped'; return; }
+      if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = doneRun ? runDoneText(doneRun) : runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Stopped by you' : 'Stopped'; return; }
       const secs = Math.max(0, Math.round((Date.now() - lastAt) / 1000)), stalled = secs >= 75;
       host.classList.toggle('is-quiet', stalled);
       liveWrap.className = 'rsiobs-live' + (stalled ? ' is-stall' : '');
@@ -3034,6 +3037,7 @@
     return {
       push(events, state, run) {
         wait = (run && run.wait) || null; waitAt = Date.now();
+        doneRun = run || doneRun;  // the badge of a finished run says why it stopped, as the Status figure does
         const firstUpdate = initialUpdate;
         initialUpdate = false;
         runState = state || runState;
@@ -3105,8 +3109,15 @@
     const n = Math.max(+r.hypotheses_tried || 0, tried || 0);
     const cap = active && !r.run_forever && +r.max_hypotheses ? `of up to ${num(r.max_hypotheses)}` : '';
     const passed = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
-    return fig('Hypotheses', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
+    return fig('Tested', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
   }
+  // A finished session's status, in the research list's words (RUN_STOP, from the server's stop_reason):
+  // the list said "Finished" or "Stopped by you" and this page "Done" or "Cancelled" for the same session,
+  // and an interrupted one read only "Stopped". A run-until-stopped session that used up the credits is
+  // read from its log (runOutOfCredits), since the run page's server answer can't tell.
+  const RUN_DONE = { interrupted: 'Interrupted', no_data: 'Nothing to research' };
+  const runDoneText = (r) => r.out_of_credits ? 'Out of credits' : RUN_STOP[r.stop_reason] || RUN_DONE[r.stop_reason]
+    || (r.status === 'succeeded' ? 'Finished' : r.status === 'stopped' ? 'Stopped' : r.status === 'cancelled' ? 'Stopped by you' : 'Stopped on an error');
   // A session that ended with no strategy to list says why it stopped (the server's stop_reason,
   // services.run_stop): "Each strategy below says which check it missed" sat over an empty list.
   const RUN_EMPTY = {
@@ -3188,12 +3199,11 @@
         : r.status === 'queued' ? 'Waiting'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching'
-        : r.out_of_credits ? 'Out of credits'
-        : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
+        : runDoneText(r);
       paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', started ? waitSpan((end - started) / 1000) : '—') +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
         runCountFigs(r, active, tried, d.strategies));
       const next = root.querySelector('#runnext');
       paint(next, active ? '' : runNext(r, d.strategies));
@@ -3204,10 +3214,14 @@
         if (el && el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
       });
       // Passed ideas lead the list: a long session's one pass sat mid-way down 40 cards on a phone.
+      // An idea dropped while it was built never becomes a strategy, and one still being tested has none yet:
+      // "Tested 5" sat over "Strategies 4" with nothing to say why.
+      const gapN = Math.max(+r.hypotheses_tried || 0, tried) - (d.strategies || []).length;
+      const gap = gapN > 0 ? `${num(gapN)} more idea${gapN === 1 ? '' : 's'} ${active ? 'still being tested' : 'dropped before testing'}.` : '';
       const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => (b.status === 'passed') - (a.status === 'passed'));
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;
-      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2></div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { missed: s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${strategies.length}</button>` : ''}` : '';
+      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${strategies.length}</button>` : ''}` : '';
       // Compared with what was last written, not with innerHTML: the browser's serialization never matched
       // the template (&nbsp;, quoting), so the table was rebuilt every 2s.
       paint(artifacts, artifactHtml);

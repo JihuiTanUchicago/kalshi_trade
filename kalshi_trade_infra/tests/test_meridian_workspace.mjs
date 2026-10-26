@@ -10,6 +10,7 @@ import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
+import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 
@@ -217,6 +218,7 @@ stopReasonCases({name: 'Meridian', frontend});
 trustGlitchCases({name: 'Meridian', frontend});
 bellCases({name: 'Meridian', frontend});
 researchPollCases({name: 'Meridian', frontend});
+runPageCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend});
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
@@ -296,8 +298,12 @@ test('strategy evidence identifies run-wide trial counts and places missing vali
       assert.equal(path, '/api/runs/9?after=0'); return response({run, events: [], strategies: [detail]});
     }});
     await r.viewRun(9);
-    assert.equal(r.root.querySelector('td[data-lab="Ideas tested"]').textContent, expected);
-    assert.match(r.root.querySelector('thead').textContent, /Ideas tested/);
+    // On its own session's page every row's count was the session's again (a running one's counter, behind
+    // the Tested figure above it): the column is left out there, and kept on the Strategies list.
+    assert.equal(r.root.querySelector('td[data-lab="Ideas tested"]'), null);
+    assert.doesNotMatch(r.root.querySelector('thead').textContent, /Ideas tested/);
+    assert.match(r.root.querySelector('#runfigs').innerHTML, /Tested/);
+    assert.match(r.strategySlip(detail), new RegExp('data-lab="Ideas tested">' + expected + '<'));
     assert.doesNotMatch(r.root.querySelector('tbody').textContent, /1 of /);
     assert.equal(postRequests(r).length, 0);
   }
@@ -4315,7 +4321,7 @@ test('Meridian: a session that ran out of credits says so and offers Add credits
   assert.doesNotMatch(next, /Try another idea/);
   assert.equal(f.root.querySelector('#runend').innerHTML, '<div class="run-end"><a class="btn" href="/billing">Add credits</a></div>');
   f = await M_RUN_AT({status: 'succeeded'}, [], []);
-  assert.match(f.root.querySelector('#runfigs').innerHTML, /Done/);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Finished/);
   assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, /billing/);
 });
 
@@ -4323,7 +4329,7 @@ test('Meridian: a running session counts its ideas and passes live; a stopped on
   const hyp = (id) => ({id, kind: 'hypothesis', message: 'Idea ' + id, data: {}, created_at: '2026-10-25T10:00:00Z'});
   let f = await M_RUN_AT({status: 'running', run_forever: 1, hypotheses_tried: 3, strategies_passed: 0}, [1, 2, 3, 4, 5].map(hyp), [{id: 42, title: 'Late', status: 'passed', market: 'btc15m', direction: 'momentum'}]);
   let figs = f.root.querySelector('#runfigs').innerHTML;
-  assert.equal(M_FIG(figs, 'Hypotheses'), '5'); assert.equal(M_FIG(figs, 'Passed'), '1');
+  assert.equal(M_FIG(figs, 'Tested'), '5'); assert.equal(M_FIG(figs, 'Passed'), '1');
   f = await M_RUN_AT({status: 'running', max_hypotheses: 10, hypotheses_tried: 2}, [hyp(1)], []);
   assert.match(f.root.querySelector('#runfigs').innerHTML, /of up to 10/);
   f = await M_RUN_AT({status: 'succeeded', started_at: '2026-10-25T10:00:00Z', finished_at: '2026-10-25T14:59:00Z'});
@@ -4345,7 +4351,6 @@ test('Meridian: a long session shows its first strategies and folds the rest beh
   assert.equal(results.querySelectorAll('tbody tr').length, 8);
   assert.equal(results.querySelector('tbody .name a').getAttribute('href'), '/strategies/109');  // the pass leads
   assert.match(results.innerHTML, /data-allstrats[^>]*>Show all 12<\/button>/);
-  assert.match(f.root.querySelector('#runfigs').innerHTML, /Stopped/);
   f.clearTimers();
   // A failed session says why and how to start again, above the folded log.
   const bad = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run: {...run, status: 'failed', error: 'The model <i>timed out</i>.'}, events: [], strategies: []}) : response({})});

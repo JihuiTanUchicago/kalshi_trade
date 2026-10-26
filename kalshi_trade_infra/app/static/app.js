@@ -2948,6 +2948,7 @@
     let stage = null, lastAt = Date.now(), runState = 'queued', wait = null, waitAt = 0;
     const waitEl = host.querySelector('[data-wait]');
     let waitHidPhase = false;
+    let doneRun = null;
     const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
     const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
 
@@ -2973,7 +2974,7 @@
       if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
       if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
-      if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Cancelled' : 'Stopped'; return; }
+      if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = doneRun ? runDoneText(doneRun) : runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Stopped by you' : 'Stopped'; return; }
       const secs = Math.max(0, Math.round((Date.now() - lastAt) / 1000)), stalled = secs >= 75;
       host.classList.toggle('is-quiet', stalled);
       liveWrap.className = 'rsiobs-live' + (stalled ? ' is-stall' : '');
@@ -3007,6 +3008,7 @@
     return {
       push(events, state, run) {
         wait = (run && run.wait) || null; waitAt = Date.now();
+        doneRun = run || doneRun;  // the badge of a finished run says why it stopped, as the Status figure does
         runState = state || runState;
         (events || []).forEach((ev) => {
           const d = ev.data || {};
@@ -3075,8 +3077,15 @@
     const n = Math.max(+r.hypotheses_tried || 0, tried || 0);
     const cap = active && !r.run_forever && +r.max_hypotheses ? `of up to ${num(r.max_hypotheses)}` : '';
     const passed = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
-    return fig('Hypotheses', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
+    return fig('Tested', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
   }
+  // A finished session's status, in the research list's words (RUN_STOP, from the server's stop_reason):
+  // the list said "Finished" or "Stopped by you" and this page "Done" or "Cancelled" for the same session,
+  // and an interrupted one read only "Stopped". A run-until-stopped session that used up the credits is
+  // read from its log (runOutOfCredits), since the run page's server answer can't tell.
+  const RUN_DONE = { interrupted: 'Interrupted', no_data: 'Nothing to research' };
+  const runDoneText = (r) => r.out_of_credits ? 'Out of credits' : RUN_STOP[r.stop_reason] || RUN_DONE[r.stop_reason]
+    || (r.status === 'succeeded' ? 'Finished' : r.status === 'stopped' ? 'Stopped' : r.status === 'cancelled' ? 'Stopped by you' : 'Stopped on an error');
   // A session that ended with no strategy to list says why it stopped (the server's stop_reason,
   // services.run_stop): "Each strategy below says which check it missed" sat over an empty list.
   const RUN_EMPTY = {
@@ -3124,7 +3133,10 @@
   // in plain words. Each idea's outcome sat only in the log, a scroll box that held 200+ lines on a
   // long session; a title jumps to its card there. Passed ideas lead; past six, the rest fold.
   const IDEA_STAMP = { passed: ['pass', 'Passed'], failed: ['void', 'Void'], rejected: ['rej', 'Rejected'], 'backtest-only': ['rej', 'Backtest only'] };
-  function runIdeas(strategies, whyBySid, open) {
+  // An idea the agent dropped while building it never becomes a strategy, and one still being tested has
+  // none yet: the Tested figure counted them and this list didn't ("Tested 5" over "4"), so the gap is said.
+  const ideasGap = (n, listed, active) => n > listed ? ` ·\u00a0${num(n - listed)} more ${active ? 'still being tested' : 'dropped before testing'}` : '';
+  function runIdeas(strategies, whyBySid, open, gap = '') {
     const list = (strategies || []).slice().sort((a, b) => (b.status === 'passed') - (a.status === 'passed'));
     if (!list.length) return '';
     const row = (s) => {
@@ -3135,7 +3147,7 @@
       return `<li><span class="hx-stamp ${cls}">${label}</span><button type="button" class="ri-title" data-goto="${s.id}">${esc(s.title)}</button>${said ? `<span class="ri-why">${said}</span>` : ''}</li>`;
     };
     const SHOW = 6;
-    return `<section class="run-ideas"><div class="section-head"><h2>Ideas tested</h2><p>${list.length} ·\u00a0tap one for its story</p></div>
+    return `<section class="run-ideas"><div class="section-head"><h2>Ideas tested</h2><p>${list.length}${gap} ·\u00a0tap one for its story</p></div>
       <ol class="ri-list">${list.slice(0, SHOW).map(row).join('')}</ol>${list.length > SHOW
         ? `<details class="ri-rest"${open ? ' open' : ''}><summary>Show all ${list.length}</summary><ol class="ri-list">${list.slice(SHOW).map(row).join('')}</ol></details>` : ''}</section>`;
   }
@@ -3182,13 +3194,11 @@
         : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
-        : r.out_of_credits ? 'Out of credits'
-        : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped'
-        : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
+        : runDoneText(r);
       paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', started ? waitSpan((end - started) / 1000) : '—') +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
         runCountFigs(r, active, tried, d.strategies) +
         fig('How it searches', d.rsi && d.rsi.evolved ? 'Improved' : 'Self\u2011tuning',  // a no-break hyphen: never "Self-" over "tuning"
             { small: d.rsi && d.rsi.evolved ? `it found a better way to pick ideas (score ${d.rsi.score})` : 'it gets better at picking ideas after each session' }));
@@ -3222,8 +3232,9 @@
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
       // Painted only when it changes, so a poll never closes "Show all" or drops a focused title.
-      const ideasKey = runIdeas(d.strategies, whyBySid, false);
-      if (ideasEl.dataset.h !== ideasKey) { ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]')); }
+      const gap = ideasGap(Math.max(+r.hypotheses_tried || 0, tried), (d.strategies || []).length, active);
+      const ideasKey = runIdeas(d.strategies, whyBySid, false, gap);
+      if (ideasEl.dataset.h !== ideasKey) { ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]'), gap); }
       stream.push(d.events);
       stream.state(active ? r.status : 'done', r.wait);
       obs.push(d.events, r.status, r);
