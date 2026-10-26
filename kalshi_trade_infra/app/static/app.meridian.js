@@ -1571,6 +1571,10 @@
   // A demo row says what it is: Kalshi's sandbox with play money, a copy of its paper run when it has
   // one, there to prove the order path before live. Its fills differ from paper's because the demo
   // book is thin, which is also why its P&L is no evidence of the edge (paper keeps that job).
+  // A deployment's sizing on its Deploy row and monitor card. A spec stored without sizing sends stake and
+  // max_positions as null: it says the stake is not set and leaves out the cap, instead of "$ / trade".
+  const depStake = (d) => d.stake != null ? `$${esc(d.stake)} / trade` : 'Stake not set';
+  const depCap = (d) => d.max_positions != null ? `Max ${esc(d.max_positions)} open` : '';
   const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   function deploymentSlip(d, controls, regs) {
     const live = d.mode === 'live';
@@ -1578,7 +1582,7 @@
     const actions = controls ? `<td class="act" data-lab="">${deploymentActions(d)}</td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="dep-meta"><span class="sub-fig">${esc(marketShort(d.market))} ·\u00a0$${esc(d.stake)} / trade ·\u00a0Max ${esc(d.max_positions)} open${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</span>
+        <div class="dep-meta"><span class="sub-fig">${[esc(marketShort(d.market)), depStake(d), depCap(d)].filter(Boolean).join(' \u00b7\u00a0')}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</span>
         ${deploymentEvidence(d)}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Status">${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}<div class="sub-fig">${modeTag}</div></td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -1591,7 +1595,7 @@
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}</span></header>
-      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} ·\u00a0$${esc(d.stake)} / trade</p><div class="monitor-limits"><span> ·\u00a0Max ${esc(d.max_positions)} open${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + esc(d.status_why || d.status_reason) : ''}</span></div></div>${demoRowLine(d)}</div>
+      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} ·\u00a0${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? ' \u00b7\u00a0' + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + esc(d.status_why || d.status_reason) : ''}</span></div></div>${demoRowLine(d)}</div>
       <dl class="monitor-metrics">
         <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd></div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}</dd></div>
@@ -3529,7 +3533,7 @@
 
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
             <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0"></div>
-            <div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>
+            ${s.stake != null ? `<div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>` : ''}
             <div id="wflash" aria-live="polite"></div>
           </section>`) : ''}
           <details class="strategy-management"><summary>Manage strategy</summary>
@@ -3657,16 +3661,18 @@
     if (wi) {
       let t = null, seq = 0;
       const update = () => {
-        const fee = +wi.querySelector('#wf').value, slip = +wi.querySelector('#ws').value, stake = +wi.querySelector('#wk').value;
+        // A strategy stored without sizing (stake null) has no stake dial: the re-run keeps its own sizing.
+        const wk = wi.querySelector('#wk');
+        const fee = +wi.querySelector('#wf').value, slip = +wi.querySelector('#ws').value, stake = wk ? +wk.value : s.stake;
         wi.querySelector('#wfo').textContent = fee.toFixed(2).replace(/0$/, '') + '×';
         wi.querySelector('#wso').textContent = slip.toFixed(1) + '¢';
-        wi.querySelector('#wko').textContent = '$' + stake;
+        if (wk) wi.querySelector('#wko').textContent = '$' + stake;
         clearTimeout(t);
         t = setTimeout(async () => {
           const mine = ++seq;
           root.querySelector('#sheet-results').style.opacity = '.55';
           try {
-            const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, stake });
+            const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, ...(wk ? { stake } : {}) });
             if (mine !== seq) return;
             root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) +
               `<div class="split"><div><h4>In-sample</h4>${metricRows(r.in_sample)}</div><div><h4>Out-of-sample</h4>${metricRows(r.out_of_sample)}</div></div>`;

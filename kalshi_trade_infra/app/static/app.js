@@ -1554,6 +1554,10 @@
   // A demo row says what it is: Kalshi's sandbox with play money, a copy of its paper run when it has
   // one, there to prove the order path before live. Its fills differ from paper's because the demo
   // book is thin, which is also why its P&L is no evidence of the edge (paper keeps that job).
+  // A deployment's sizing on its Deploy row. A spec stored without sizing sends stake and max_positions
+  // as null: the row says the stake is not set and leaves out the cap, instead of "$ a trade, up to  open".
+  const depSizing = (d) => [d.stake != null ? `$${esc(d.stake)} a trade` : 'Stake not set',
+    d.max_positions != null ? `up to ${esc(d.max_positions)} open` : ''].filter(Boolean).join(', ');
   const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   function deploymentSlip(d, regs, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
@@ -1569,7 +1573,7 @@
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="sub-fig">$${esc(d.stake)} a trade, up to ${esc(d.max_positions)} open${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
+        <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -3523,7 +3527,7 @@
             <p class="hint" style="margin-bottom:6px">Move a dial and the whole sheet re-runs.</p>
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
             <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0"></div>
-            <div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>
+            ${s.stake != null ? `<div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>` : ''}
             <div id="wflash" aria-live="polite"></div>
           </section>`) : ''}
           ${fold('Share', `<section class="panel"><h3>Share</h3>
@@ -3649,16 +3653,18 @@
     if (wi) {
       let t = null, seq = 0;
       const update = () => {
-        const fee = +wi.querySelector('#wf').value, slip = +wi.querySelector('#ws').value, stake = +wi.querySelector('#wk').value;
+        // A strategy stored without sizing (stake null) has no stake dial: the re-run keeps its own sizing.
+        const wk = wi.querySelector('#wk');
+        const fee = +wi.querySelector('#wf').value, slip = +wi.querySelector('#ws').value, stake = wk ? +wk.value : s.stake;
         wi.querySelector('#wfo').textContent = fee.toFixed(2).replace(/0$/, '') + '×';
         wi.querySelector('#wso').textContent = slip.toFixed(1) + '¢';
-        wi.querySelector('#wko').textContent = '$' + stake;
+        if (wk) wi.querySelector('#wko').textContent = '$' + stake;
         clearTimeout(t);
         t = setTimeout(async () => {
           const mine = ++seq;
           root.querySelector('#sheet-results').style.opacity = '.55';
           try {
-            const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, stake });
+            const r = await api(`/api/strategies/${s.id}/whatif`, { fee_multiplier: fee, slippage_cents: slip, ...(wk ? { stake } : {}) });
             if (mine !== seq) return;
             root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) +
               `<div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(r.in_sample)}</div><div><h4>Never seen (out-of-sample)</h4>${metricRows(r.out_of_sample)}</div></div>`;

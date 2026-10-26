@@ -4587,3 +4587,57 @@ test('Tau: a long run log stays cheap to animate on a phone', () => {
   assert.match(css, /prefers-reduced-motion: no-preference\) \{ \.apf\.live \.apf-dot::after \{ animation: apf-pulse/);
   assert.doesNotMatch(css, /@keyframes (rsibeat|apf-pulse) \{[^\n]*box-shadow/);
 });
+
+// A spec stored without sizing reaches the client as stake: null and max_positions: null (the server
+// reads old rows only as far as they go). Nothing reads "$ a trade", "null" or NaN.
+const nullStakeDep = (over) => ({id: 1, strategy_id: 42, title: 'Old spec', market: 'btc15m', mode: 'paper', status: 'running',
+  realized_pnl: 1, closed_trades: 4, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [],
+  stake: null, max_positions: null, backtest: {out_of_sample: null}, ...over});
+const deployBoard = async (deps) => {
+  const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: deps, open_positions: []}) : response({})});
+  f.location.pathname = '/deploy';
+  await f.viewDeploy(); for (let i = 0; i < 6; i++) await flush();
+  const html = f.root.querySelector('#deps').innerHTML;
+  f.clearTimers();
+  return html;
+};
+
+test('a strategy page with no stake drops the stake dial and the pace line, and sends no stake', async () => {
+  const deps = [nullStakeDep({stake: 5})];
+  const detail = detailStrategy({stake: null, max_positions: null, deployments: deps});
+  const bodies = [];
+  const f = strategyFrontend(detail, (path, options) => {
+    if (path === '/api/strategies/42/whatif') { bodies.push(JSON.parse(options.body)); return response({in_sample: metrics(1), out_of_sample: metrics(2), equity: [[100, 0]], gates: [], passed: true}); }
+    return response({});
+  });
+  await f.viewStrategy(42); await flush();
+  const main = f.root.querySelector('main').innerHTML;
+  assert.match(main, /Since deploying/);
+  assert.doesNotMatch(main, /NaN|null|undefined|\$ a trade|unseen-data pace/);
+  const whatif = f.root.querySelector('#whatif');
+  assert.equal(whatif.querySelector('#wk'), null);
+  whatif.querySelector('#wf').value = '2';
+  whatif.querySelector('#wf').oninput();
+  await [...f.timeouts.values()].at(-1)();
+  assert.deepEqual(bodies, [{fee_multiplier: 2, slippage_cents: 0}]);
+  assert.match(whatif.querySelector('#wflash').innerHTML, /under these conditions/);
+  f.clearTimers();
+  // With a stake, a deployment that has none is scaled at the strategy's own: 4 trades at +$2 each.
+  const g = strategyFrontend(detailStrategy({deployments: deps.map((d) => ({...d, stake: null}))}), () => response({}));
+  await g.viewStrategy(42); await flush();
+  const real = g.root.querySelector('main').innerHTML;
+  assert.match(real, /unseen-data pace, 4 trades would have made \+\$8\.00/);
+  assert.doesNotMatch(real, /NaN/);
+  assert.ok(g.root.querySelector('#whatif #wk'), 'a strategy with a stake keeps its dial');
+  g.clearTimers();
+});
+
+test('a Deploy row with no stake says so instead of "$ a trade, up to  open"', async () => {
+  const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
+    nullStakeDep({id: 3, title: 'Stake only', stake: 5}), nullStakeDep({id: 4, title: 'Both', stake: 5, max_positions: 3})]);
+  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not set<\/div>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not set, up to 3 open<\/div>/);
+  assert.match(html, /Stake only<\/a>\s*<div class="sub-fig">\$5 a trade<\/div>/);
+  assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open<\/div>/);
+  assert.doesNotMatch(html, /\$ a trade|up to\s+open|null|NaN/);
+});
