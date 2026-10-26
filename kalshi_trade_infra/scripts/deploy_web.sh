@@ -28,7 +28,7 @@ SERVICES=${SERVICES:-"recursive-web recursive-agents recursive-engine recursive-
 # Memory caps, applied on the box every deploy (scripts/systemd/*.service carry the same values).
 # The units on the box are hand-installed, so the repo's MemoryMax never reached them; the 400M/250M
 # caps sized for the old 2GB box OOM-killed every research run on the 16GB one (2026-10-24).
-MEMORY_CAPS=${MEMORY_CAPS:-"recursive-agents=3G recursive-web=1G recursive-engine=1G recursive-history=512M"}
+MEMORY_CAPS=${MEMORY_CAPS:-"recursive-agents=8G recursive-web=1G recursive-engine=1G recursive-history=512M"}
 # Unit files this script owns on the box (same mechanism as deploy_collector.sh): shipped in the
 # bundle, copied to /etc/systemd/system when they differ, timers enabled --now. Older web-box timers
 # (tau-scout, tau-research-watch, ...) are still hand-installed and not listed here.

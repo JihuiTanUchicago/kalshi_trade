@@ -19,9 +19,10 @@ StartLimitBurst=10
 KillSignal=SIGTERM
 TimeoutStopSec=30
 # The web box is a 16GB t4g.xlarge. A research run holds a whole 1-minute market's
-# snapshots (~0.5-1GB for a sports series) and two run at once (APP_AGENT_CONCURRENCY).
+# snapshots (~0.5-1GB for a sports series, the worker peaks ~1.4GB) and four run at once
+# (APP_AGENT_CONCURRENCY=4 in .env.app, Todd's call 2026-10-26; 4 heavy runs ~5.6GB).
 # deploy_web.sh applies these caps on every deploy (systemctl set-property).
-MemoryMax=3G
+MemoryMax=8G
 Nice=5
 
 [Install]
