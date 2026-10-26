@@ -3389,8 +3389,14 @@
     if (!/-----END [A-Z ]*PRIVATE KEY-----/.test(pem)) return 'That private key is cut off: it should end with an -----END … PRIVATE KEY----- line. Choose the .key file instead of copying it.';
     return '';
   }
-  // How you know it worked: the existing balance read, right under the panel title.
-  const keyOk = (bal, kind) => `<p class="key-ok"><b>Connected ✓</b> ${bal == null ? '(couldn’t read the balance just now)' : `(balance ${usd(bal)})`}${kind === 'demo' && bal != null ? ' <span class="hint">in your Kalshi demo account</span>' : ''}</p>`;
+  // How you know it worked: the existing balance read, right under the panel title. No balance means Kalshi
+  // didn't answer for this key just now (Kalshi down, or the key deleted there), so it gets no check mark.
+  const keyOk = (bal, kind) => bal == null
+    ? `<p class="key-ok key-unread"><b>Key saved</b> (Kalshi didn’t send a balance for it just now)</p><p class="hint key-diff">If this lasts, the key may have been deleted on ${KALSHI_KEYS[kind === 'demo' ? 'demo' : 'live'].site}: ${kind === 'demo' ? 'remove it' : 'disconnect it'} and connect a new one.</p>`
+    : `<p class="key-ok"><b>Connected ✓</b> (balance ${usd(bal)})${kind === 'demo' ? ' <span class="hint">in your Kalshi demo account</span>' : ''}</p>`;
+  // Kalshi refuses orders from a demo account with no cash, and a new one starts empty. Tau's demo balance is
+  // Tau's own figure, so a $0.00 here would otherwise read as harmless.
+  const demoEmpty = (bal) => bal != null && bal < 0.005 ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has $0.00, so Kalshi refuses demo orders. Add demo funds in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (play money, not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>` : '';
 
   async function viewFunds() {
     const gen = S.gen;
@@ -3411,7 +3417,7 @@
           <h3>Kalshi account (live money)</h3>
           ${k.connected ? `
             ${keyOk(k.balance)}<dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
-            <p class="lede" style="margin-bottom:14px">Funds stay in your Kalshi account. Manage deposits and withdrawals at Kalshi.</p>
+            <p class="lede" style="margin-bottom:14px">Funds stay in your Kalshi account. Manage deposits and withdrawals at Kalshi. To change keys, disconnect and connect the new one.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Deposit or withdraw at Kalshi ${ICON.ext}</a>
               <button class="btn danger" id="disconnect">Disconnect</button>
@@ -3419,8 +3425,8 @@
             <p class="lede" style="margin-bottom:12px">Connect your Kalshi account for live trading. Funds stay at Kalshi.</p>
             <details class="connection-help" open><summary>Key setup</summary>${keySteps('live')}</details>
             <form id="kalshi" style="display:grid;gap:12px">
-              <label class="field"><span>Key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required placeholder="like a952bcbe-ec3b-4b5b-…"></label>
-              <label class="field"><span>Private key</span><textarea class="input" name="private_key" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
+              <label class="field"><span>Key ID</span><input class="input" name="key_id" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="like a952bcbe-ec3b-4b5b-…"></label>
+              <label class="field"><span>Private key</span><textarea class="input" name="private_key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
               <label class="key-file"><span>Or choose the downloaded key file</span><input type="file" accept=".key,.pem,.txt,text/plain" data-keyfile></label>
               <button class="btn" type="submit">Verify and connect</button>
             </form>`}
@@ -3437,14 +3443,14 @@
           <div id="dmflash" style="margin-top:10px"></div>
           <h3 style="margin-top:24px">Demo key</h3>
           ${kd.connected ? `
-            ${keyOk(kd.balance, 'demo')}<dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
-            <p class="lede" style="margin-bottom:14px">Sandbox orders only. Demo and live keys are stored separately.</p>
+            ${keyOk(kd.balance, 'demo')}${demoEmpty(kd.balance)}<dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
+            <p class="lede" style="margin-bottom:14px">Sandbox orders only. Demo and live keys are stored separately. To change keys, remove this one and connect the new one.</p>
             <button class="btn danger" id="dev-disconnect">Remove demo key</button>` : `
             <p class="lede" style="margin-bottom:12px">Connect a Kalshi <b>demo</b> key for sandbox orders. No real money.</p>
             <details class="connection-help" open><summary>Key setup</summary>${keySteps('demo')}</details>
             <form id="kalshi-dev" style="display:grid;gap:12px">
-              <label class="field"><span>Demo key ID</span><input class="input" name="key_id" autocomplete="off" spellcheck="false" required placeholder="like a952bcbe-ec3b-4b5b-…"></label>
-              <label class="field"><span>Demo private key</span><textarea class="input" name="private_key" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
+              <label class="field"><span>Demo key ID</span><input class="input" name="key_id" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="like a952bcbe-ec3b-4b5b-…"></label>
+              <label class="field"><span>Demo private key</span><textarea class="input" name="private_key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea></label>
               <label class="key-file"><span>Or choose the downloaded key file</span><input type="file" accept=".key,.pem,.txt,text/plain" data-keyfile></label>
               <button class="btn" type="submit">Verify and connect demo</button>
             </form>`}
@@ -3463,7 +3469,7 @@
         </section>
         </div>
         <div class="funds-col funds-history">
-        <section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>
+        ${S.me.perps_live_available ? '<section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>' : ''}
         <section class="panel">
           <h3>Paper history</h3>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
@@ -3520,7 +3526,7 @@
       };
       const dc = root.querySelector('#disconnect');
       if (dc) dc.onclick = () => armed(dc, 'Confirm disconnect', () => busy(dc, async () => {
-        try { await api('/api/kalshi-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_connected = false; await load(); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
+        try { await api('/api/kalshi-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_connected = false; await load(); if (gen === S.gen) flash('#kflash', 'Disconnected. Tau deleted its copy of the key; the key itself stays valid until you delete it on kalshi.com.', 'good'); } catch (err) { if (gen === S.gen) flash('#kflash', err.message, 'bad'); }
       }));
       const kdf = root.querySelector('#kalshi-dev');
       if (kdf) kdf.onsubmit = async (e) => {
@@ -3533,7 +3539,7 @@
       };
       const dvc = root.querySelector('#dev-disconnect');
       if (dvc) dvc.onclick = () => armed(dvc, 'Confirm remove', () => busy(dvc, async () => {
-        try { await api('/api/kalshi-dev-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_dev_connected = false; await load(); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
+        try { await api('/api/kalshi-dev-key/delete', {}); if (gen !== S.gen) return; S.me.kalshi_dev_connected = false; await load(); if (gen === S.gen) flash('#kdflash', 'Demo key removed. Tau deleted its copy; delete the key on demo.kalshi.co too if you’re done with it.', 'good'); } catch (err) { if (gen === S.gen) flash('#kdflash', err.message, 'bad'); }
       }));
       return d;
     };
