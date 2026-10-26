@@ -3219,6 +3219,40 @@ test('the dashboard asks for the track record beside the board, once, and draws 
   }
 });
 
+test('a trade the dashboard poll sees open or close re-reads the track record now, not on its own minute', async () => {
+  const empty = (label) => ({trades: 0, label});
+  let tr = {generated_at: 1, default_mode: 'paper', method: [], thresholds: {min_sharpe_days: 14, min_trades: 30},
+    modes: {live: empty('Live money'), demo: empty('Kalshi demo'), paper: empty('Paper')}};
+  let dash = emptyDashboard();
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dash);
+    if (path === '/api/track-record') return response(tr);
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  Object.defineProperty(Element.prototype, 'parentNode', {get() { return this.parent; }, configurable: true});
+  try {
+    await f.viewDashboard(); await flush(); await flush();
+    const reads = () => f.requests.filter(r => r.path === '/api/track-record').length;
+    const dashPoll = f.intervals.get(f.S.timers[0]);
+    const poll = async () => { dashPoll(); await flush(); await flush(); await flush(); };
+    assert.equal(reads(), 1);
+    await poll();
+    assert.equal(reads(), 1);  // nothing moved: the record keeps its own minute
+    const paperChip = () => f.root.querySelector('#track-record [data-trtab="paper"]').textContent;
+    assert.equal(paperChip(), 'Paper ·\u00a00');
+    // The first trade closes: the board's poll sees it, and the record below follows it at once.
+    dash = {...emptyDashboard(), paper: {...emptyDashboard().paper, closed_trades: 1}};
+    tr = {...tr, generated_at: 2, modes: {...tr.modes, paper: {...empty('Paper'), trades: 1}}};
+    await poll();
+    assert.equal(reads(), 2); assert.equal(paperChip(), 'Paper ·\u00a01');
+    await poll();
+    assert.equal(reads(), 2);  // once per move
+  } finally {
+    delete Element.prototype.parentNode;
+  }
+});
+
 // The autopilot feed under a slow or failing server: a read that lands after a newer one never paints
 // a move twice, and a first load that fails says so instead of leaving the feed blank.
 test('the autopilot feed never repeats a move and says when it could not load', async () => {
@@ -3356,6 +3390,69 @@ test('the autopilot card puts credits left and the only limit beside its spend, 
   f.S.ap = {...apOn, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
   f.clearTimers();
+});
+
+test('a credits pause puts the week line in the paused state, and the next status read after a top-up puts it back', async () => {
+  const week = {research_credits: 7.26, tested: 10, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0, checkin_credits: 0, credits_left: 0.4, runway_days: 0.4};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    if (path === '/api/autopilot/status') return response({...apOn, week});
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 0.4, min_run_balance: 1, auto_reload: null};
+  f.S.me.user.autopilot = true; f.S.ap = {...apOn, week, billing_blocked: true, billing_reason: 'credits'};
+  await f.viewDashboard(); await flush();
+  const line = () => f.root.querySelector('#dash-ap .ap-week-left').innerHTML;
+  // Already paused: it said "it uses credits until your balance is under $1.00, then pauses" and how long $0.40 lasts.
+  assert.equal(line(), 'Credits left: <b>$0.40</b>. Research is paused until you add credits: a session needs $1.00 to start. <a href="/billing">Billing</a> lists every charge.');
+  assert.doesNotMatch(line(), /then pauses|this week’s pace|no daily spending cap/);
+  f.S.ap = {...apOn, week, billing_blocked: true, billing_reason: 'card'}; f.paintDashAp();
+  assert.match(line(), /Research is paused until you add a payment method\./);
+  // Credits added: the status read clears the pause and the running copy comes back.
+  f.S.ap = {...apOn, week: {...week, credits_left: 20.4, runway_days: 17}}; f.paintDashAp();
+  assert.match(line(), /^Credits left: <b>\$20\.40<\/b>, about 17 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
+  f.clearTimers();
+});
+
+test('the autopilot switch card says it would wait for credits when the balance is already under what research needs', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(emptyDashboard());
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, credit_balance: 0.4, min_run_balance: 1, auto_reload: null};
+  f.S.me.user.autopilot = false; f.S.ap = null;
+  await f.viewDashboard(); await flush();
+  const cost = f.root.querySelector('#dash-ap .apcard-cost').innerHTML;
+  assert.equal(cost, 'It uses your credits while it\'s on. You have $0.40, under the $1.00 a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.');
+  f.clearTimers();
+});
+
+test('Billing copies its balance and card onto the page state, and a moved balance re-reads the autopilot status', async () => {
+  const f = frontend({stripe: STRIPE_STUB, fetchImpl: (path) => {
+    if (path === '/api/billing') return response(cardedBilling({balance: 20.4}));
+    if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+    if (path === '/api/autopilot/status') return response({...apOn, billing_blocked: false});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me = {...f.S.me, billing_enabled: true, needs_card: true, credit_balance: 0.4, min_run_balance: 1, auto_reload: null};
+  f.S.me.user.autopilot = true;
+  const box = new Element('div', {id: 'autopilot-float'}); f.document.body.appendChild(box);
+  await f.viewBilling(); await flush(); await flush();
+  assert.equal(f.S.me.credit_balance, 20.4); assert.equal(f.S.me.needs_card, false);
+  assert.deepEqual({...f.S.me.auto_reload}, {amount: 25, charge: cardedBilling().autoreload_charge, threshold: 8});
+  assert.equal(f.requests.filter(({path}) => path === '/api/autopilot/status').length, 1);
+  assert.equal(f.S.ap.billing_blocked, false);
+  // The dashboard's "Needs you" no longer says credits are at $0.40 (it did until a reload).
+  const since = {deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: false, books: {}, passed: {n: 0, items: []}, autopilot: {}, runs: {}}};
+  assert.doesNotMatch(f.sinceStrip(since, '#dash-deps'), /Credits are at/);
+  f.S.me.credit_balance = 0.4;
+  assert.match(f.sinceStrip(since, '#dash-deps'), /Credits are at \$0\.40/);  // the same strip, under the floor
+  f.S.me.credit_balance = 20.4;
+  // Read again with nothing moved: no extra status read.
+  await f.viewBilling(); await flush(); await flush();
+  assert.equal(f.requests.filter(({path}) => path === '/api/autopilot/status').length, 1);
 });
 
 // The bell, the reconciliation warning and the demo key line: what a once-a-day reader needs to trust.

@@ -15,6 +15,7 @@ its own mode's position rows, to the cent. Opt in as for test_app_engine_db.py (
 import csv
 import io
 import os
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -199,7 +200,10 @@ def test_paper_demo_and_live_figures_never_mix(conn, monkeypatch):
         assert op["unrealized"] == book[op["mode"]]["unrealized"]
 
     # -- the track record, per mode --------------------------------------------------------------
-    server._TRACK_RECORD.pop(uid, None)
+    # An empty record cached a moment ago (read before these trades): a book this small is read fresh,
+    # so the stale empty one is never served.
+    from app import track_record
+    server._TRACK_RECORD[uid] = (time.time(), track_record.build([]), 0, server._BOOK_SHAPE.get(uid))
     record = server.get_track_record(ctx)["modes"]
     for mode in MODES:
         t = record[mode]

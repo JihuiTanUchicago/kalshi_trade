@@ -257,6 +257,8 @@ def test_endpoint_builds_from_repo_rows_and_caches_per_user(monkeypatch):
     from app import server
     calls = []
     monkeypatch.setattr(server, "_TRACK_RECORD", {})
+    monkeypatch.setattr(server, "_BOOK_SHAPE", {})
+    monkeypatch.setattr(server, "TRACK_RECORD_CACHE_MIN_TRADES", 1)  # a busy book: one trade is enough here
     monkeypatch.setattr(server.repo, "track_record_rows", lambda cur, uid: calls.append(uid) or [row("live", 3, ref="k")])
     out = server.get_track_record(_ctx(7))
     assert out["default_mode"] == "live" and out["modes"]["live"]["net_pnl"] == 3
@@ -266,6 +268,48 @@ def test_endpoint_builds_from_repo_rows_and_caches_per_user(monkeypatch):
     monkeypatch.setattr(server.time, "time", lambda: 10 ** 10)  # past the TTL
     server.get_track_record(_ctx(7))
     assert calls == [7, 8, 7]
+
+
+def test_a_new_users_record_is_read_fresh_so_the_first_trade_shows_at_once(monkeypatch):
+    # Onboarding: the record was read empty, then the first trade closed. The cached empty record
+    # stayed up for a minute under a board that already showed the trade.
+    from app import server
+    book = []
+    monkeypatch.setattr(server, "_TRACK_RECORD", {})
+    monkeypatch.setattr(server, "_BOOK_SHAPE", {})
+    monkeypatch.setattr(server.repo, "track_record_rows", lambda cur, uid: list(book))
+    assert server.get_track_record(_ctx(7))["modes"]["paper"]["trades"] == 0
+    book.append(row("paper", 2.5))
+    assert server.get_track_record(_ctx(7))["modes"]["paper"]["trades"] == 1
+
+
+def test_a_busy_record_is_rebuilt_once_the_dashboard_sees_a_trade_it_predates(monkeypatch):
+    from app import server
+    calls = []
+    monkeypatch.setattr(server, "_TRACK_RECORD", {})
+    monkeypatch.setattr(server, "_BOOK_SHAPE", {})
+    monkeypatch.setattr(server, "TRACK_RECORD_CACHE_MIN_TRADES", 1)
+    monkeypatch.setattr(server.repo, "track_record_rows", lambda cur, uid: calls.append(uid) or [row("paper", 1)])
+    server._BOOK_SHAPE[7] = server._book_shape({"paper": 1}, 0)
+    server.get_track_record(_ctx(7)); server.get_track_record(_ctx(7))
+    assert calls == [7]
+    server._BOOK_SHAPE[7] = server._book_shape({"paper": 1}, 1)  # the dashboard saw a trade open
+    server.get_track_record(_ctx(7)); server.get_track_record(_ctx(7))
+    assert calls == [7, 7]
+    server._BOOK_SHAPE[7] = server._book_shape({"paper": 2}, 0)  # ... and close
+    server.get_track_record(_ctx(7))
+    assert calls == [7, 7, 7]
+
+
+def test_the_users_own_deploy_and_stop_drop_their_cached_record(monkeypatch):
+    from app import server
+    monkeypatch.setattr(server, "_TRACK_RECORD", {7: (10 ** 10, {}, 999, None), 8: (10 ** 10, {}, 999, None)})
+    monkeypatch.setattr(server.repo, "get_deployment", lambda cur, uid, dep_id: {"id": dep_id, "status": "running", "mode": "paper", "spec": {}, "market": "btc15m"})
+    monkeypatch.setattr(server.repo, "set_deployment_status", lambda *a: True)
+    ctx = _ctx(7)
+    ctx.params = ("5", "pause")
+    assert server.deployment_action(ctx) == {"ok": True, "status": "paused"}
+    assert 7 not in server._TRACK_RECORD and 8 in server._TRACK_RECORD
 
 
 def test_endpoint_surfaces_a_db_failure_and_caches_nothing(monkeypatch):

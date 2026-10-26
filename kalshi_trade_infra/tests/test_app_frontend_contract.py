@@ -507,6 +507,13 @@ def _passed(title='Rain tails', market='kxrainnyc', in_focus=True, candidate=Fal
     (_idle_d(paper_running=1), [_paper()], [], 20, [], 'starting',
      "No trades yet: Fade tails went on paper and hasn't had its first look at the market. It checks at its "
      "market's next decision time.", None),
+    # No scan record, but it has closed trades: the line defers to them instead of "No trades yet".
+    (_idle_d(paper_running=1, paper_progress={'strategy_id': 1, 'title': 'Fade tails — v2', 'trades': 12}), [_paper()], [], 20, [],
+     'flat', "Nothing open right now: Fade tails has closed 12 trades on paper and holds no position. It checks again "
+     "at its market's next decision time.", None),
+    (_idle_d(paper_running=2, paper_progress={'strategy_id': 1, 'title': 'Rain tails', 'trades': 1}), [_paper(), _paper('Rain tails')], [], 20, [],
+     'flat', "Nothing open right now: none of your 2 paper strategies holds a position (the furthest along, Rain tails, "
+     "has closed 1 trade). Each checks again at its market's next decision time.", None),
     # Nothing running: billing first, then paused deployments, then the focus, then research.
     (_idle_d(billing_blocked=True, billing_reason='card'), [], [], None, [], 'billing',
      "Nothing is on paper, and it can't research new strategies until you add a payment method.",

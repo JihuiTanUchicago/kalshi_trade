@@ -1853,6 +1853,8 @@
     const trWrap = root.querySelector('main') && root.querySelector('main').parentNode;
     const trFirst = trWrap && trWrap.appendChild ? api('/api/track-record', undefined, { keep: true }) : null;
     if (trFirst) trFirst.catch(() => {});  // a failure is drawn by dashTrackRecord, with its retry
+    S.trReread = null;  // set by dashTrackRecord once this view's record is mounted
+    let booksSeen = null;  // each book's closed and open trade counts at the last poll
     const gen = S.gen;
     const visitAt = visitStart();
     const load = async (cfg) => {
@@ -1860,7 +1862,15 @@
       if (gen !== S.gen) return;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
+      const depsWas = S.dashDeps;
       S.dashDeps = d.deployments.length;  // the empty track record's button reads it (trackRecordPanel)
+      // The record below polls once a minute: a trade this poll saw open or close re-reads it now (the
+      // server rebuilds a cached record the board has moved past), and a first deployment repaints its
+      // empty copy, which reads S.dashDeps.
+      const books = ['paper', 'demo', 'live'].map((m) => (d[m] ? `${d[m].closed_trades}/${d[m].open_positions}` : '')).join(' ');
+      if (booksSeen != null && books !== booksSeen && S.trReread) S.trReread();
+      else if (depsWas !== S.dashDeps && trAp && trAp.host.isConnected) trAp.repaint();
+      booksSeen = books;
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
@@ -3658,6 +3668,7 @@
       }
       if (gen !== S.gen) return;
       if (location.hash === '#track-record') host.scrollIntoView();
+      S.trReread = () => mountTrackRecord(host, last).catch(() => {});  // the dashboard poll's re-read
       poll(() => mountTrackRecord(host, last), 60000);
     };
     await first();
@@ -4574,7 +4585,7 @@
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${apLastHtml(d.last_action)}${Array.isArray(d.focus) ? `
         <p class="ap-focus">${apFocusLine(d.focus, 'data-apcard="focus"')}</p>` : ''}
-        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl><p class="stale-note" id="dash-ap-stale" role="status">${apStale()}</p>${apWeek(d.week)}</div>
+        <dl class="apcard-figs">${cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl><p class="stale-note" id="dash-ap-stale" role="status">${apStale()}</p>${apWeek(d.week, d)}</div>
       <div class="apcard-act"><button type="button" class="btn" data-apcard="open">Open autopilot</button></div>`;
     host.querySelector('[data-apcard="open"]').onclick = () => apOpen();
     const idleFocus = host.querySelector('[data-apcard="idle-focus"]');
@@ -4682,7 +4693,7 @@
   // The autopilot's last 7 days (d.week). Credits are real money and paper P&L is not, so they are two
   // labelled figures, never added together. Research counts every session; paper counts only the
   // strategies the autopilot put on paper itself (the server attributes them by their deploy record).
-  function apWeek(w) {
+  function apWeek(w, d) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
@@ -4690,7 +4701,7 @@
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot's paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
-    </dl>${apCreditsLeft(w)}<p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
+    </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
   const apFloorText = () => (S.me && S.me.min_run_balance != null ? `starting research needs ${usd(S.me.min_run_balance)} in credits.` : 'it’s out of credits.');
@@ -4702,10 +4713,17 @@
   };
   // Beside the week's spend: what is left, how long it lasts at that pace (the Billing page's runway),
   // and the only limit there is. Autopilot has no spending budget of its own: it researches until the
-  // balance is under what a session needs to start, then pauses.
-  function apCreditsLeft(w) {
+  // balance is under what a session needs to start, then pauses. Once it has paused (the status's
+  // billing_blocked, the worker's own gate) the line says so, without the pace: nothing is being
+  // spent. The next status read after credits land puts the running copy back.
+  function apCreditsLeft(w, d) {
     const me = S.me;
     if (!w || w.credits_left == null || !me || !me.billing_enabled) return '';
+    if (d && d.billing_blocked) {
+      const why = d.billing_reason === 'card' ? 'until you add a payment method'
+        : me.min_run_balance != null ? `until you add credits: a session needs ${usd(me.min_run_balance)} to start` : 'until you add credits';
+      return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>. Research is paused ${why}. <a href="/billing">Billing</a> lists every charge.</p>`;
+    }
     const pace = w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at this week’s pace` : '';
     const floor = me.min_run_balance != null ? ` until your balance is under ${usd(me.min_run_balance)}, then pauses` : '';
     return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}. It has no daily spending cap: it uses credits${floor}${me.auto_reload ? ` (auto-reload adds ${usd(me.auto_reload.amount)} at ${usd(me.auto_reload.threshold)})` : ''}. <a href="/billing">Billing</a> lists every charge.</p>`;
@@ -4716,6 +4734,9 @@
     const me = S.me;
     if (!me || !me.billing_enabled) return '';
     const ar = me.auto_reload;
+    // Already under what a session needs to start: switched on, it would sit paused from the start.
+    if (!ar && !me.needs_card && me.min_run_balance != null && me.credit_balance < me.min_run_balance)
+      return `<p class="apcard-cost">It uses your credits while it's on. You have ${usd(me.credit_balance)}, under the ${usd(me.min_run_balance)} a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.</p>`;
     return `<p class="apcard-cost">It uses your credits while it's on (${usd(me.credit_balance)} left)${ar
       ? `. When they fall to ${usd(ar.threshold)}, auto-reload charges your card ${usd(ar.charge)} for ${usd(ar.amount)} more. Turn it off any time, or change auto-reload on <a href="/billing">Billing</a>.`
       : ' and pauses when they run out. Turn it off any time.'}</p>`;
@@ -5213,7 +5234,7 @@
     // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.
     const idleEl = box.querySelector('[data-ap-idle]'); if (idleEl) idleEl.textContent = apIdleLine(box);
     const lastEl = box.querySelector('#apf-last'); if (lastEl) lastEl.innerHTML = d.autopilot ? apLastHtml(d.last_action) : '';
-    const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week) : '';
+    const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week, d) : '';
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);
     const fsel = box.querySelector('#apf-focus');
@@ -5355,6 +5376,21 @@
   }
 
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Admin grant' };
+  // /api/me is read once per page load, and the since-strip, the research form and the autopilot card
+  // read its balance and card: after a top-up they kept saying "Credits are at $0.40" until a reload.
+  // Each Billing read copies its own figures over (the same reads /api/me makes), and a moved balance
+  // re-reads the autopilot status at once, so a credits pause clears without waiting for its next poll.
+  function syncMeBilling(d) {
+    const me = S.me;
+    if (!me || !d || !d.configured) return;
+    const moved = me.credit_balance !== d.balance;
+    me.credit_balance = d.balance;
+    me.needs_card = !d.default_pm;
+    me.auto_reload = d.auto_reload && d.default_pm ? { amount: Math.max(d.min_reload_amount, d.autoreload_amount),
+      charge: d.autoreload_charge, threshold: Math.max(d.min_reload_threshold, d.autoreload_threshold) } : null;
+    const box = document.getElementById('autopilot-float');
+    if (moved && box && me.user && me.user.autopilot) refreshAutopilot(box);
+  }
   // How long the balance lasts at last week's spend. Research pauses at $0, so autopilot users
   // need this more than the one-time welcome credit.
   const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
@@ -5365,6 +5401,7 @@
     let stripe = null, card = null;
     const load = async () => {
       const d = await api('/api/billing');
+      syncMeBilling(d);
       if (gen !== S.gen) return;
       // Below the research floor no new research starts, so the balance reads as a problem.
       const low = d.configured && d.min_run_balance != null && d.balance < d.min_run_balance;

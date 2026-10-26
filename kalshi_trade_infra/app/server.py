@@ -534,6 +534,7 @@ def dashboard(ctx: Ctx):
     visit, first = _visit_since(ctx.query.get("since"))
     # Every book's realized P&L and closed-trade count (today and since the last visit), in one read.
     realized, closed, recent = repo.closed_book_totals(cur, ctx.uid, day, visit)
+    _BOOK_SHAPE[ctx.uid] = _book_shape(closed, len(open_pos))  # the track record's cache checks it
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
     # Kalshi balance (money we never hold).
@@ -608,18 +609,41 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict) -> D
 
 
 TRACK_RECORD_TTL = 60.0  # seconds; the record moves only when a trade closes
-_TRACK_RECORD: Dict[int, Tuple[float, Dict]] = {}
+# A book with fewer trades than this is read fresh on every request: its grouped read is a few rows
+# through idx_pos_user, and a new user's first trade showed up only after the cached empty record
+# expired (up to a minute after the board above it showed the trade).
+TRACK_RECORD_CACHE_MIN_TRADES = 200
+# (built at, payload, trades read, the book's shape the dashboard had seen when it was built)
+_TRACK_RECORD: Dict[int, Tuple[float, Dict, int, Optional[Tuple]]] = {}
+# {user id: the book's shape at the dashboard's last read} (_book_shape): one closed-trade count per
+# mode and the open count. A busy book's cached record is rebuilt once the dashboard has seen a trade
+# open or close that the record predates, so the two never disagree for the rest of the minute.
+_BOOK_SHAPE: Dict[int, Tuple] = {}
+
+
+def _book_shape(closed: Dict[str, int], open_count: int) -> Tuple:
+    return tuple(sorted(closed.items())), int(open_count)
+
+
+def _forget_track_record(uid: int) -> None:
+    """Drop the user's cached record after a change the web app made itself (a deploy, a pause, resume
+    or stop, the kill switch, a removed strategy): its by-strategy rows carry each deployment's status."""
+    _TRACK_RECORD.pop(uid, None)
 
 
 def get_track_record(ctx: Ctx):
     """The fund-grade track record: realized results per money bucket (live / demo / paper), from
-    the user's own closed trades. A plain per-user TTL cache (never served stale past the TTL), so
-    a page that is reloaded or left open costs one grouped scan a minute at most."""
-    hit = _TRACK_RECORD.get(ctx.uid)
-    if hit and time.time() - hit[0] < TRACK_RECORD_TTL:
+    the user's own closed trades. A busy book is cached per user for TRACK_RECORD_TTL (never served
+    stale past it, nor past a trade the dashboard has seen open or close, nor past the user's own
+    deploy or stop), so a page left open costs one grouped scan a minute at most; a small one is
+    read every time."""
+    hit, shape = _TRACK_RECORD.get(ctx.uid), _BOOK_SHAPE.get(ctx.uid)
+    if (hit and hit[2] >= TRACK_RECORD_CACHE_MIN_TRADES and time.time() - hit[0] < TRACK_RECORD_TTL
+            and hit[3] == shape):
         return hit[1]
-    val = track_record.build(repo.track_record_rows(ctx.cur, ctx.uid))
-    _TRACK_RECORD[ctx.uid] = (time.time(), val)
+    rows = repo.track_record_rows(ctx.cur, ctx.uid)
+    val = track_record.build(rows)
+    _TRACK_RECORD[ctx.uid] = (time.time(), val, len(rows), shape)
     return val
 
 
@@ -1087,6 +1111,7 @@ def delete_strategy(ctx: Ctx):
     if block:
         raise ApiError(409, block)
     repo.delete_strategy(ctx.cur, ctx.uid, s["id"])
+    _forget_track_record(ctx.uid)
     return {"ok": True}
 
 
@@ -1455,6 +1480,7 @@ def create_deployment(ctx: Ctx):
     if sum(1 for d in repo.list_deployments(cur, ctx.uid) if d["status"] != "stopped") >= MAX_ACTIVE_DEPLOYMENTS:
         raise ApiError(429, "You can run up to %d deployments at once." % MAX_ACTIVE_DEPLOYMENTS)
     dep_id = repo.create_deployment(cur, ctx.uid, s["id"], s["market"], mode)
+    _forget_track_record(ctx.uid)
     where = {"live": "LIVE money", "demo": "the demo (sandbox) exchange"}.get(mode, "paper")
     repo.add_chat(cur, ctx.uid, "system", "Deployed %s on %s." % (s["title"], where))
     return {"id": dep_id}
@@ -1578,6 +1604,7 @@ def deployment_action(ctx: Ctx):
     if action == "resume" and dep["mode"] == "live" and not engine.LIVE_TRADING_ENABLED:
         raise ApiError(409, "Live trading isn't open yet.")
     repo.set_deployment_status(ctx.cur, ctx.uid, dep_id, status, "By you")
+    _forget_track_record(ctx.uid)
     return {"ok": True, "status": status}
 
 
@@ -1685,6 +1712,7 @@ def autopilot_kill(ctx: Ctx):
         if d["mode"] == "live" and d["status"] == "running":
             repo.set_deployment_status(ctx.cur, ctx.uid, d["id"], "paused", "Kill switch")
             paused += 1
+    _forget_track_record(ctx.uid)
     repo.add_chat(ctx.cur, ctx.uid, "system", "Kill switch: live autopilot off, %d live deployment(s) paused." % paused)
     return {"ok": True, "paused": paused}
 
@@ -2073,6 +2101,19 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
             return None
         n = len(paper_run)
         if not any(sc.get("why") for sc in scans):
+            # No scan record says nothing about the trades: a strategy that has already closed paper
+            # trades read "No trades yet ... hasn't had its first look" when its scan row was missing.
+            # paper_progress is the running strategy with the most closed paper trades.
+            prog = d.get("paper_progress") or {}
+            done = int(prog.get("trades") or 0)
+            if done:
+                who = _short_title(prog.get("title") or paper_run[0].get("title"))
+                line = ("Nothing open right now: %s has closed %s on paper and holds no position. It checks "
+                        "again at its market's next decision time." % (who, _plural(done, "trade"))) if n == 1 else \
+                       ("Nothing open right now: none of your %d paper strategies holds a position (the furthest "
+                        "along, %s, has closed %s). Each checks again at its market's next decision time."
+                        % (n, who, _plural(done, "trade")))
+                return _idle("flat", line)
             line = ("No trades yet: %s went on paper and hasn't had its first look at the market. It checks at its "
                     "market's next decision time." % _short_title(paper_run[0].get("title"))) if n == 1 else \
                    ("No trades yet: your %d paper strategies haven't had their first look at the market. Each checks "
