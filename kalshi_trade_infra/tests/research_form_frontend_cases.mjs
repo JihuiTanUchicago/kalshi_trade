@@ -8,6 +8,8 @@
 //   fold on a phone: Start looked like it did nothing. It is scrolled into view.
 // - A strategy count the browser refuses inside folded Options left Start doing nothing (Chrome: "An
 //   invalid form control is not focusable"). Options unfold so the browser can point at it.
+// - Arriving from Explore with ?market= for a market the picker doesn't offer (perpetuals off) left
+//   Agent's choice picked and said nothing. It says the market isn't open for research right now.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -72,6 +74,34 @@ export function researchFormCases({name, frontend}) {
     const opts = f.root.querySelector('#ropts'); opts.open = false;
     dispatch.dispatchEvent({type: 'invalid', target: f.root.querySelector('#maxhyp')});
     assert.equal(opts.open, true);
+    f.clearTimers();
+  });
+
+  test(`${name}: arriving from Explore with a market the picker doesn't offer says so instead of quietly letting the agent choose`, async () => {
+    const markets = [{key: 'btc15m', label: 'Bitcoin 15-minute', category: 'Crypto', has_data: true},
+      {key: 'eth15m', label: 'Ethereum 15-minute', category: 'Crypto', has_data: true}];
+    // The harness has no radio groups: the picked market is the checked row that isn't Agent's choice.
+    const picked = (f) => f.root.querySelectorAll('input[name=market]').find((r) => r.checked && r.value) || {value: ''};
+    const sum = (f) => f.root.querySelector('#ropts-sum').textContent;
+    // A market it offers: picked, Options open, no note.
+    let f = await form({me: {markets}, search: '?new=1&market=eth15m'});
+    assert.equal(picked(f).value, 'eth15m');
+    assert.equal(f.root.querySelector('#ropts').open, true);
+    assert.equal(f.root.querySelector('.mkt-missing'), null);
+    f.clearTimers();
+    // Before: Agent's choice stayed picked and nothing said the perpetual wasn't there.
+    f = await form({me: {markets}, search: '?new=1&market=btc_perp'});
+    assert.equal(picked(f).value, '');
+    assert.equal(f.root.querySelector('#ropts').open, true);
+    assert.equal(f.root.querySelector('.mkt-missing').textContent,
+      'BTC perp isn’t open for research right now, so the agent picks the market unless you choose one here.');
+    assert.match(sum(f), /agent’s choice of market \(BTC perp isn’t open for research right now\)$/);
+    f.clearTimers();
+    // A key it doesn't know is never shown as typed.
+    f = await form({me: {markets}, search: '?new=1&market=KXFOO%3Cb%3E'});
+    assert.equal(f.root.querySelector('.mkt-missing').textContent,
+      'The market you picked isn’t open for research right now, so the agent picks the market unless you choose one here.');
+    assert.doesNotMatch(f.root.querySelector('#dispatch').innerHTML, /KXFOO/);
     f.clearTimers();
   });
 }

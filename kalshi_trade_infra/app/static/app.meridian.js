@@ -2427,6 +2427,13 @@
     shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
     // /api/me carries the model list, so the page's own reads below don't wait a round trip on it.
     const mdl = (me && me.models) || await api('/api/models').catch(() => ({ models: [], default: '' }));
+    // Arriving with ?market= (Explore's "Research <market>") for a market the picker doesn't offer right now
+    // (perpetuals switched off, a venue with no data yet) left Agent's choice picked and said nothing, so the
+    // session ran on whatever market the agent chose. It says so, where the market is picked and in the
+    // Options line. A key it doesn't know is never shown as typed.
+    const wantMkt = new URLSearchParams(location.search).get('market');
+    const wantRow = wantMkt ? (me.markets || []).find((m) => m.key === wantMkt) : null;
+    const notOpen = wantMkt && !wantRow ? `${MKT_SHORT[wantMkt] || 'The market you picked'} isn\u2019t open for research right now` : '';
     const modelOpts = (mdl.models || []).map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (access pending)' : ''}</option>`).join('');
     shell('/research', '', `
       <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
@@ -2444,6 +2451,7 @@
           <label class="switch tune-sw"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
         </div>
         <fieldset class="field mkt-field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:8px">Market</legend>
+          ${notOpen ? `<p class="hint mkt-missing" role="status">${esc(notOpen)}, so the agent picks the market unless you choose one here.</p>` : ''}
           ${marketPicker(me.markets)}
         </fieldset>
         </div></details>
@@ -2460,13 +2468,12 @@
         <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section></div>`);
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
-    const wantMkt = new URLSearchParams(location.search).get('market');
-    const pickMkt = wantMkt && [...form.querySelectorAll('input[name=market]')].find((r) => r.value === wantMkt);
+    const pickMkt = wantRow && [...form.querySelectorAll('input[name=market]')].find((r) => r.value === wantMkt);
     if (pickMkt) {
       pickMkt.checked = true;
       const grp = pickMkt.closest('details'); if (grp) grp.open = true;
-      const opts = form.querySelector('#ropts'); if (opts) opts.open = true;
     }
+    if (pickMkt || notOpen) { const opts = form.querySelector('#ropts'); if (opts) opts.open = true; }
     // Model, depth and market fold behind "Options" on a phone (closed while at their defaults), so
     // Start session sits right under the idea. The summary line says what will run.
     const optsSum = form.querySelector('#ropts-sum');
@@ -2477,7 +2484,7 @@
       const pick = [...form.querySelectorAll('input[name=market]')].find((r) => r.checked);
       const row = pick && pick.value ? pick.closest('.mktrow') : null, nm = row && row.querySelector('.mktrow-name');
       optsSum.textContent = [mo ? mo.textContent.trim() : '', rfx && rfx.checked ? 'runs until you stop it' : `${(mhx && mhx.value) || 10} strategies`,
-        nm ? nm.textContent.trim() : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
+        nm ? nm.textContent.trim() : notOpen ? `agent\u2019s choice of market (${notOpen})` : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
     };
     form.addEventListener('change', syncOpts); syncOpts();
     // A field the browser won't accept (0 or 5,000 strategies) inside folded Options: it can't show its
