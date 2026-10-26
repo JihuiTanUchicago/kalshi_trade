@@ -104,7 +104,17 @@ JSON per hour (totals per config and per series) to `ticks/v1/lip_maker_paper/`.
 deleted after each hour (`TAU_TICK_CACHE=/opt/kalshi/ticks-cache`). Read the running total with
 `python -m app.adapters.sim.maker_paper summary --days 7`.
 
-`scripts/deploy_web.sh` installs and enables both units (its `UNITS` list), so no hand install.
+### Market-making research lab (web box)
+
+`tau-maker-lab.timer` runs `app.maker_lab_run --series auto` every 4 hours at :45, rotating
+KXBTCD, KXBTC15M and KXBTC (each series every 12 hours). The model proposes Bitcoin quoting
+policies, the queue-aware tick replay scores them on the 24 research hours before a 12-hour
+holdout (60-second fill markouts, hour as the unit), and one finalist is judged once on the held-out
+hours (`app.services.maker_lab`). Each run sees the summaries of that series' last 3 runs. Results go
+to S3 `research-watch/maker/runs/`, the held-out ledger to `research-watch/maker/ledger.json`. Paper
+only: it places no orders. Log: `/opt/kalshi/logs/maker_lab.log`.
+
+`scripts/deploy_web.sh` installs and enables these units (its `UNITS` list), so no hand install.
 
 ### Weather forecasts (web box)
 

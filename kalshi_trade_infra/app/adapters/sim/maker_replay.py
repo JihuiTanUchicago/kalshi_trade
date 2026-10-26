@@ -13,12 +13,21 @@ or from ``--pool-per-hour`` for a hypothetical pool on every contract.
 At the end every open position is marked at its contract's settlement when ``results`` has it
 (fetch_results), else at its last mid (a contract that closed in the window sits near 0 or 1). Reported: rewards, trading P&L, fills, peak collateral, and both
 per contract.
+
+Policy inputs from the per-second feature table (features_1s), read only when the config needs them:
+``fair_source`` "spot" prices a single-strike contract at Phi(dist_sigma_comp) (the spot-implied
+probability), "micro" at the book's microprice; ``MakerConfig.pull_move_bp`` reads the underlying's
+return over ``move_window_s`` (1, 10 or 60 s). Every fill is also marked out: the mid ``MARKOUTS``
+seconds later (the settlement value or last mid if the contract closed first) minus the price paid,
+fees included. Markouts and rewards are bucketed by UTC hour (``report()["hours"]``) so a researched
+policy is judged with the hour as the independent unit.
 """
 from __future__ import annotations
 
 import argparse
 import gzip
 import json
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -30,6 +39,9 @@ from trading_core.pricing.depth_rewards import DepthRewardTerms, snapshot_reward
 
 NS = 1_000_000_000
 MAKER_RATE = 0.0175
+MARKOUTS = (10, 60)
+FAIR_SOURCES = ("mid", "micro", "spot")
+MOVE_WINDOWS = {1: "spot_ret_1s", 10: "spot_ret_10s", 60: "spot_ret_60s"}
 
 
 class MakerFees:
@@ -88,10 +100,19 @@ def _in_series(ticker: str, series: Sequence[str]) -> bool:
 class MakerReplay:
     def __init__(self, series: Sequence[str], cfg: MakerConfig, programs: Sequence[dict] = (),
                  pool_per_hour: Optional[float] = None, target_size: float = 300.0,
-                 fees: Optional[MakerFees] = None, decide_every_s: int = 1, tickers_from_markets: bool = False) -> None:
+                 fees: Optional[MakerFees] = None, decide_every_s: int = 1, tickers_from_markets: bool = False,
+                 fair_source: str = "mid", move_window_s: int = 10) -> None:
         """``tickers_from_markets``: read only the book rows of contracts kalshi_markets listed in the
         two hours before each replayed hour (a fraction of the memory; fine for short-dated series)."""
+        if fair_source not in FAIR_SOURCES:
+            raise ValueError("fair_source must be one of %s" % (FAIR_SOURCES,))
+        if move_window_s not in MOVE_WINDOWS:
+            raise ValueError("move_window_s must be one of %s" % (sorted(MOVE_WINDOWS),))
         self.series, self.cfg = list(series), cfg
+        self.fair_source, self.move_window_s = fair_source, move_window_s
+        self.feat: Dict[Tuple[str, int], Tuple[Optional[float], Optional[float]]] = {}   # (ticker, sec) -> (fair, move bp)
+        self.pending: Dict[str, List[list]] = defaultdict(list)   # ticker -> [due sec, horizon, hour, outcome, price, qty, fee]
+        self.hours: Dict[int, dict] = defaultdict(_hour_row)
         self.tickers_from_markets = tickers_from_markets
         self.pool_per_hour, self.target_size = pool_per_hour, target_size
         self.decide_every_s = max(1, int(decide_every_s))
@@ -139,7 +160,7 @@ class MakerReplay:
     # --- one second ----------------------------------------------------------------------------
     def _second(self, sec: int, tickers: Sequence[str]) -> None:
         v = self.venue
-        quotes, secs_to_close, rewarded = {}, {}, set()
+        quotes, secs_to_close, rewarded, fairs = {}, {}, set(), {}
         for t in tickers:
             by, bn = v.best(t, "yes"), v.best(t, "no")
             if by is None or bn is None or by + bn >= 1.0:
@@ -155,17 +176,24 @@ class MakerReplay:
                 if r > 0:
                     self.rewards[t] += r
                     self.reward_s[t] += 1
+                    self.hours[_hour(sec)]["reward"] += r
                 rewarded.add(yid)
-            quotes[yid] = Quote(yid, float(sec), by, ask, v.books[t]["yes"].get(by), v.books[t]["no"].get(bn))
+            fair, move = self.feat.get((t, sec), (None, None))
+            if fair is not None:
+                fairs[yid] = fair
+            quotes[yid] = Quote(yid, float(sec), by, ask, v.books[t]["yes"].get(by), v.books[t]["no"].get(bn),
+                                features={} if move is None else {"spot_move_bp": move})
+            self._resolve(t, sec, self.last_mid[t])
             close = self.close_ts.get(t)
             if close:
                 secs_to_close[yid] = close - sec
         if sec % self.decide_every_s == 0:
             earned = {InstrumentId("kalshi", t, "yes"): r for t, r in self.rewards.items()}
-            fills = self.loop.step(float(sec), quotes, secs_to_close=secs_to_close, rewarded=rewarded,
+            fills = self.loop.step(float(sec), quotes, fair=fairs, secs_to_close=secs_to_close, rewarded=rewarded,
                                    earned=earned).fills
         else:
             fills = self.loop.book_fills()
+        self._track(fills, sec)
         self.fills += len(fills)
         self.filled_qty += sum(f.qty for f in fills)
         collateral = sum(o.qty * o.price for o in v.open_orders())
@@ -174,6 +202,61 @@ class MakerReplay:
         self.peak_collateral = max(self.peak_collateral, collateral)
         for yid in quotes:
             self.max_abs_inventory = max(self.max_abs_inventory, abs(net_yes(self.book.positions, yid)))
+
+    # --- policy inputs and markouts -------------------------------------------------------------
+    def _load_features(self, store, h: datetime, he: datetime, tickers) -> None:
+        """(fair, underlying move in bp) per (ticker, second) of the hour from features_1s."""
+        cols = ["sec", "ticker", "strike_lo", "strike_hi", "dist_sigma", "dist_sigma_comp", "microprice",
+                MOVE_WINDOWS[self.move_window_s]]
+        f = store.features_1s(h, he, tickers=tickers, series=None if tickers else self.series, columns=cols)
+        self.feat = {}
+        if not f or "sec" not in f:
+            return
+        n = len(f["sec"])
+        nan = [math.nan] * n
+        lo, hi = f.get("strike_lo", nan), f.get("strike_hi", nan)
+        dsc, ds = f.get("dist_sigma_comp", nan), f.get("dist_sigma", nan)
+        micro, mv = f.get("microprice", nan), f.get(MOVE_WINDOWS[self.move_window_s], nan)
+        for i, (sec, t) in enumerate(zip(f["sec"], f["ticker"])):
+            fair = None
+            if self.fair_source == "micro":
+                fair = _num(micro[i])
+            elif self.fair_source == "spot" and (_num(lo[i]) is None) != (_num(hi[i]) is None):
+                d = _num(dsc[i])
+                d = _num(ds[i]) if d is None else d
+                fair = None if d is None else 0.5 * (1.0 + math.erf(d / math.sqrt(2.0)))
+            m = _num(mv[i])
+            self.feat[(t, int(sec))] = (fair, None if m is None else m * 1e4)
+
+    def _track(self, fills, sec: Optional[int]) -> None:
+        for f in fills:
+            ts = int(f.ts if f.ts is not None else (sec or 0))
+            row = self.hours[_hour(ts)]
+            row["fills"] += 1
+            row["qty"] += f.qty
+            row["fees"] += f.fee or 0.0
+            row["fee_stress"] += MAKER_RATE * f.qty * f.price * (1 - f.price)   # if the series charged makers
+            for hz in MARKOUTS:
+                self.pending[f.instrument.symbol].append([ts + hz, hz, _hour(ts), f.instrument.outcome, f.price,
+                                                          f.qty, f.fee or 0.0])
+
+    def _resolve(self, ticker: str, sec: Optional[int], yes_mid: float) -> None:
+        """Mark out every pending fill on ``ticker`` due by ``sec`` (all of them when sec is None)."""
+        todo = self.pending.get(ticker)
+        if not todo:
+            return
+        keep = []
+        for p in todo:
+            if sec is not None and p[0] > sec:
+                keep.append(p)
+                continue
+            _due, hz, hour, outcome, price, qty, fee = p
+            value = yes_mid if outcome == "yes" else 1.0 - yes_mid
+            self.hours[hour]["m%d" % hz] += (value - price) * qty - fee
+        if keep:
+            self.pending[ticker] = keep
+        else:
+            self.pending.pop(ticker, None)
 
     # --- replay --------------------------------------------------------------------------------
     def run(self, store, start: datetime, end: datetime) -> dict:
@@ -190,6 +273,8 @@ class MakerReplay:
                 want = sorted(t for t in self.close_ts if self.close_ts[t] > h.timestamp())
                 if not want:
                     continue
+            if self.fair_source != "mid" or self.cfg.pull_move_bp is not None:
+                self._load_features(store, h, he, want)
             book = store.read("kalshi_book", h, he, tickers=want)
             trades = store.read("kalshi_trades", h, he, tickers=want)
             book = _only_series(book, self.series)
@@ -250,10 +335,15 @@ class MakerReplay:
         """``results``: YES settlement value (1.0 / 0.0) per settled ticker; those are marked at it,
         the rest at their last mid."""
         late = self.loop.book_fills()
+        self._track(late, None)
         self.fills += len(late)
         self.filled_qty += sum(f.qty for f in late)
         marks = {}
         results = results or {}
+        for t in list(self.pending):                 # horizons past the window's end or the close
+            m = results.get(t, self.last_mid.get(t))
+            if m is not None:
+                self._resolve(t, None, m)
         for t in set(self.last_mid) | set(results):
             m = results.get(t, self.last_mid.get(t))
             if m is None:
@@ -274,8 +364,30 @@ class MakerReplay:
                 "fills": self.fills, "filled_qty": self.filled_qty, "peak_collateral": round(self.peak_collateral, 2),
                 "max_abs_inventory": self.max_abs_inventory, "stopped_contracts": len(self.loop.stopped),
                 "settled_marks": len([t for t in results if t in self.last_mid]),
+                "hours": [dict(hour=h, **{k: round(v, 4) if isinstance(v, float) else v for k, v in d.items()})
+                          for h, d in sorted(self.hours.items())],
+                "markout_per_contract": {"m%d" % hz: round(sum(d["m%d" % hz] for d in self.hours.values())
+                                                             / max(self.filled_qty, 1e-9), 5) for hz in MARKOUTS},
                 "per_contract": {t: {k: round(v, 2) if isinstance(v, float) else v for k, v in d.items()}
                                  for t, d in sorted(per.items(), key=lambda kv: -(kv[1]["reward"] + kv[1]["pnl"]))}}
+
+
+def _hour_row() -> dict:
+    row = {"reward": 0.0, "fills": 0, "qty": 0.0, "fees": 0.0, "fee_stress": 0.0}
+    row.update({"m%d" % hz: 0.0 for hz in MARKOUTS})
+    return row
+
+
+def _hour(sec: int) -> int:
+    return int(sec) // 3600 * 3600
+
+
+def _num(x) -> Optional[float]:
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) else None
 
 
 def _only_series(t, series: Sequence[str]):
