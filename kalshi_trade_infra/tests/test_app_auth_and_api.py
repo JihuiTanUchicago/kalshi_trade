@@ -929,6 +929,57 @@ def test_explore_market_shows_the_market_when_only_its_history_failed(monkeypatc
     assert d["close_time"] == "2026-10-26T03:00:00Z"
 
 
+def test_explore_market_says_how_it_settles_and_lists_the_readers_positions(monkeypatch):
+    # The market page answers: how does it settle, when were the figures read, and what do my strategies hold here.
+    import data_pipeline.common as common
+    c = server.Ctx(FakeConn(), {"id": 7}, (), {"ticker": "KXBTCD-26OCT2617-T113499.99"}, {}, None)
+
+    def kalshi(path, params=None):
+        if "/candlesticks" in path:
+            return {"candlesticks": [{"end_period_ts": 1793012460, "price": {"close_dollars": "0.56"}, "volume_fp": "3"}]}
+        return {"market": {"title": "Bitcoin at 5pm?", "yes_bid_dollars": "0.55", "yes_ask_dollars": "0.57", "status": "active",
+                           "open_time": "2026-10-25T21:00:00Z", "close_time": "2026-10-26T21:00:00Z",
+                           "expected_expiration_time": "2026-10-26T21:05:00Z", "rules_primary": "If the BRTI is above 113499.99, Yes.",
+                           "rules_secondary": "Not eligible if the index is unavailable."}}
+    monkeypatch.setattr(common, "api_get", kalshi)
+    seen = []
+    row = {"id": 1, "mode": "live", "side": "yes", "qty": 2, "entry_price": 0.52, "entry_fee": 0.02, "status": "open", "title": "Drift",
+           "strategy_id": 4, "market_close_time": None, "opened_at": None, "mark_price": 0.55, "mark_ts": None,
+           "order_ref": "kalshi-order", "user_id": 7}
+    closed = {**row, "id": 2, "mode": "paper", "status": "closed", "exit_price": 0.75, "pnl": 0.44, "close_reason": "take_profit", "mark_price": None}
+    monkeypatch.setattr(server.repo, "user_positions_in_ticker",
+                        lambda cur, uid, ticker, since: seen.append((uid, ticker, since)) or {"open": [dict(row)], "closed": [dict(closed)]})
+    d = server.explore_market(c)
+    assert d["rules"] == "If the BRTI is above 113499.99, Yes." and d["rules_more"] == "Not eligible if the index is unavailable."
+    assert d["settles_at"] == "2026-10-26T21:05:00Z" and d["result"] == ""
+    assert server.re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$", d["as_of"]) and "snapshot" not in d
+    # Closed rows are read only from the contract's open time on (none can settle earlier).
+    assert seen == [(7, "KXBTCD-26OCT2617-T113499.99", server.datetime(2026, 10, 25, 21, 0))]
+    (o,), (x,) = d["mine"]["open"], d["mine"]["closed"]
+    assert o["mode"] == "live" and o["cost"] == 1.06 and o["unrealized"] == 0.04 and o["strategy_id"] == 4
+    assert x["mode"] == "paper" and x["pnl"] == 0.44 and "unrealized" not in x
+    assert "order_ref" not in o and "user_id" not in o  # only what the page shows
+
+
+def test_explore_market_still_shows_when_the_positions_read_fails(monkeypatch, capsys):
+    import data_pipeline.common as common
+    c = server.Ctx(FakeConn(), {"id": 7}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)
+    feed = {"at": "2026-10-26T10:55:00Z", "markets": [{"t": "KXNBAGAME-26OCT25TORMIN-MIN", "ti": "Minnesota wins", "bid": "0.50", "ask": "0.51"}]}
+    monkeypatch.setattr(server, "_explore_feed", lambda: feed)
+
+    def down(path, params=None):
+        raise OSError("Tunnel connection failed: 403 Forbidden")
+    monkeypatch.setattr(common, "api_get", down)
+
+    def broken(*a, **k):
+        raise RuntimeError("Lost connection to MySQL server")
+    monkeypatch.setattr(server.repo, "user_positions_in_ticker", broken)
+    d = server.explore_market(c)
+    # The page says its positions didn't load (None, not an empty book); the snapshot says it is one, and when.
+    assert d["mine"] is None and d["snapshot"] is True and d["as_of"] == "2026-10-26T10:55:00Z" and d["yes_bid"] == "0.50"
+    assert "Lost connection" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("nxt,ok", [
     ("/strategies/16", True), ("/explore?m=KXBTC-26OCT2507-T0", True), ("/research/6", True),
     (None, False), ("", False), ("strategies/16", False), ("//evil.example/x", False),

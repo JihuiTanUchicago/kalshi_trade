@@ -4153,8 +4153,8 @@ test('Meridian money pages: open positions name their market, settle with date a
   f.S.me.markets = markets;
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
-  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
-  assert.match(html, /KXOTHER-1<\/td>/);
+  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<\/a><div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
+  assert.match(html, /KXOTHER-1<\/a><\/td>/);
   assert.match(html, /data-lab="Settles">Jan 1[56], \d\d:\d\d [^<\s]+<\/td>/);
   assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
@@ -4651,4 +4651,70 @@ test('Meridian Overview says the paper portfolio is practice money', async () =>
   const f = apDashboard(dashboardData(), apStatus);
   await f.viewDashboard(); await flush();
   assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · All-time P&amp;L \+\$111\.25/);
+});
+
+// Meridian opens a market page from Explore's ?m= link.
+const OPEN_MARKET = (payload, markets) => {
+  const f = frontend({search: '?m=' + encodeURIComponent(payload.ticker), fetchImpl: (path) => path.startsWith('/api/explore/market?') ? response(payload) : response({})});
+  if (markets) f.S.me.markets = markets;
+  f.ready = f.viewExplore().then(flush);
+  return f;
+};
+// One contract's market page as a customer reads it: what the price means and when it was read, how
+// and when it settles (in a named zone), and the reader's own positions, each money book apart.
+const MARKET_PAGE = {ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD', title: 'Bitcoin price at 5pm EDT?', sub: '$113,500 or above',
+  status: 'active', yes_bid: '0.55', yes_ask: '0.57', last: '0.55', volume_24h: '15234', open_interest: '40211',
+  close_time: '2026-10-26T21:00:00Z', settles_at: '2026-10-26T21:05:00Z', as_of: '2026-10-26T11:00:00Z',
+  rules: 'If the BRTI average before 5 PM EDT is above 113499.99, then the market resolves to Yes.', rules_more: '',
+  period_min: 1, points: [{t: 1793012400, yes: .5, vol: 3}, {t: 1793012460, yes: .52, vol: 2}],
+  mine: {open: [
+    {mode: 'live', strategy_id: 4, title: 'Daily close drift', side: 'yes', qty: 2, entry_price: 0.52, cost: 1.06, unrealized: 0.04, mark_ts: '2026-10-26T10:59:00Z', status: 'open', market_close_time: '2026-10-26T21:00:00Z'},
+    {mode: 'paper', strategy_id: 4, title: 'Daily close drift', side: 'no', qty: 10, entry_price: 0.44, cost: 4.5, unrealized: 0.8, mark_ts: '2026-10-26T10:59:00Z', status: 'open', market_close_time: '2026-10-26T21:00:00Z'}],
+  closed: [{mode: 'paper', strategy_id: null, title: null, side: 'no', qty: 8, entry_price: 0.7, cost: 5.68, status: 'closed', pnl: 0.24, exit_price: 0.75, close_reason: 'take_profit', market_close_time: '2026-10-26T21:00:00Z'}]}};
+const readerZone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value;
+
+test('a market page says what its price is, how it settles and when, and the reader’s positions by money book', async () => {
+  const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}]);
+  await f.ready;
+  const html = f.root.innerHTML;
+  // The market's readable name and status in words, not "KXBTCD · active".
+  assert.match(html, /Bitcoin daily close, 5pm EDT · Open for trading · KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  // The price: a chance, the book it comes from, and when it was read.
+  assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
+  // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
+  assert.match(html, new RegExp('Closes</dt><dd><span class="fig ">[^<]*' + readerZone));
+  assert.match(html, new RegExp('Result expected [^<]*' + readerZone)); assert.match(f.root.querySelector('#rawsect').innerHTML, new RegExp('Time \\(' + readerZone + '\\)'));
+  assert.match(html, new RegExp('class="pc-xlab" text-anchor="end">[^<]*' + readerZone));
+  assert.match(html, /If the BRTI average before 5 PM EDT is above 113499\.99/);
+  // Live and paper each get their own block and totals; nothing adds them together.
+  const live = html.slice(html.indexOf('<span class="mk live">Live</span> real money'), html.indexOf('<span class="mk">Paper</span>'));
+  const paper = html.slice(html.indexOf('<span class="mk">Paper</span> paper money, not real'));
+  assert.ok(live.length > 0 && paper.length > 0);
+  assert.match(live, /1 open at cost \+ fees \$1\.06/); assert.match(live, /\+\$0\.04/); assert.doesNotMatch(live, /\$4\.50/);
+  assert.match(paper, /1 open at cost \+ fees \$4\.50/); assert.match(paper, /1 closed · realized <span class="gain">\+\$0\.24/);
+  assert.match(paper, /Closed \(take-profit\) @ 75¢/); assert.match(paper, /Deleted strategy/);
+  assert.doesNotMatch(html, /\$5\.56|\$0\.84/);  // live + paper cost, live + paper unrealized
+  assert.match(live, /<a href="\/strategies\/4">Daily close drift<\/a>/);
+  assert.doesNotMatch(html, /NaN|undefined/);
+});
+
+test('a market page says when the reader has no positions there, or when they did not load', async () => {
+  for (const [mine, said] of [[{open: [], closed: []}, /None of your strategies holds or has traded this contract/], [null, /Your positions in this market didn’t load/]]) {
+    const f = OPEN_MARKET({...MARKET_PAGE, mine});
+    await f.ready;
+    assert.match(f.root.innerHTML, said); assert.doesNotMatch(f.root.innerHTML, /mk-book/);
+  }
+  // Kalshi unreachable: the Explore snapshot says how old it is, and the rules point to Kalshi.
+  const f = OPEN_MARKET({...MARKET_PAGE, rules: undefined, settles_at: undefined, close_time: null, snapshot: true,
+    as_of: new Date(Date.now() - 6 * 60000).toISOString(), history_unavailable: true, points: []});
+  await f.ready;
+  assert.match(f.root.innerHTML, /Explore snapshot, 6m ago/); assert.match(f.root.innerHTML, /settlement rules didn’t come with this snapshot/);
+  assert.match(f.root.innerHTML, /Closes<\/dt><dd><span class="fig ">—/);
+});
+
+test('a settled market shows its result in place of a live price', async () => {
+  const f = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'no'});
+  await f.ready;
+  assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><div class="sub-fig">each No contract paid \$1/);
+  assert.match(f.root.innerHTML, /· Settled ·/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });

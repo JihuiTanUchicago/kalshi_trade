@@ -76,6 +76,25 @@ def user_positions(cur, user_id: int, status: str = "open", limit: int = 100) ->
     return cur.fetchall()
 
 
+_TICKER_POSITIONS = """SELECT p.*, s.title, d.strategy_id FROM app_positions p
+           JOIN app_deployments d ON d.id=p.deployment_id LEFT JOIN app_strategies s ON s.id=d.strategy_id
+           WHERE p.user_id=%s AND p.status=%s{since} AND p.ticker=%s ORDER BY {order} LIMIT %s"""
+
+
+def user_positions_in_ticker(cur, user_id: int, ticker: str, since: datetime, limit: int = 20) -> Dict[str, List[Dict]]:
+    """A user's positions in one contract, for its market page: {"open": [...], "closed": [...]}, each with
+    its strategy title and id (None once the strategy is deleted). Open ones newest first; closed ones
+    most recently settled first, only those settled at or after `since` (the contract's open time:
+    nothing in it can settle earlier). Both read idx_pos_user (user_id, status, closed_at): the user's
+    few open rows, and the closed rows from `since` on, so a busy trader's whole history is never read.
+    No index is added to app_positions, because the order path writes it."""
+    cur.execute(_TICKER_POSITIONS.format(since="", order="p.id DESC"), (user_id, "open", ticker, int(limit)))
+    open_rows = list(cur.fetchall())
+    cur.execute(_TICKER_POSITIONS.format(since=" AND p.closed_at>=%s", order="p.closed_at DESC, p.id DESC"),
+                (user_id, "closed", since, ticker, int(limit)))
+    return {"open": open_rows, "closed": list(cur.fetchall())}
+
+
 CLOSED_SLACK = 8  # extra newest rows read in case a few belong to deleted strategies
 
 # The most recently settled, over idx_pos_user (user_id, status, closed_at, id) read backwards.
