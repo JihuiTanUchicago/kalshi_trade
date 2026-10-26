@@ -1826,7 +1826,11 @@ body.landing-body .apf { display: none; }
 .holdlist-figs { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 4px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .holdlist-figs b { color: var(--ink); font-weight: 600; }
 /* A trade's one-line entry/exit reason (server trade_why), in the UI face even inside a .tick cell. */
-.pos-why { font-family: var(--f-ui); letter-spacing: normal; }
+.pos-why { font-family: var(--f-ui); letter-spacing: normal; white-space: normal; }
+/* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
+   nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
+#openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
+#openpos .pos-why { min-width: 24ch; max-width: 60ch; }
 
 /* Failed load: the error plus a retry button, stacked. */
 .load-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -1907,7 +1911,7 @@ body.landing-body .apf { display: none; }
 .fold > summary.fold-h { display: none; }
 @media (max-width: 760px) {
   .fold { margin: 0 0 12px; border: 1px solid var(--rule); background: var(--stock-raised); }
-  .fold > summary.fold-h { display: flex; align-items: center; min-height: 44px; padding: 10px 14px; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--ink); font-weight: 600; }
+  .fold > summary.fold-h { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 10px 14px; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--ink); font-weight: 600; }
   .fold[open] > summary.fold-h { border-bottom: 1px solid var(--rule); }
   .fold > .panel, .fold > .paper-sec, .fold > .paper-sub { border: 0; margin: 0; box-shadow: none; }
   .fold > .panel > h3:first-child, .fold > .paper-sec > .paper-sec-t, .fold > .paper-sub > .paper-h:first-child { display: none; }
@@ -1950,6 +1954,7 @@ body.landing-body .apf { display: none; }
   .lbrand { padding-block: 7px; margin-block: -7px; }
   .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
   .demo-bar .replay { min-height: 40px; }
+  .dispatch-go .ex-run { min-height: 40px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */

@@ -3151,8 +3151,9 @@ test('a returning user reads what happened since the last visit at the top of th
   const text = f.root.querySelector('#dash-since').innerHTML;
   assert.match(text, /Since your last visit/);
   // Each book on its own, never added together; a book with no trades and nothing deployed stays out.
-  assert.match(text, /<b>Demo<\/b> <span class="neg">−\$1\.10<\/span> on 1 trade<\/span>/);
-  assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$2\.42<\/span> on 3 trades<\/span>/);
+  // A book's name and its signed amount are one unit that a phone never splits.
+  assert.match(text, /<span class="nobr"><b>Demo<\/b> <span class="neg">−\$1\.10<\/span><\/span> on 1 trade<\/span>/);
+  assert.match(text, /<span class="nobr"><b>Paper<\/b> <span class="pos">\+\$2\.42<\/span><\/span> on 3 trades<\/span>/);
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
   assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
   assert.match(text, /3 research sessions started/);
@@ -3304,7 +3305,7 @@ test('Funds says where each Kalshi key comes from, what to paste, and which key 
   await f.viewFunds();
   const live = f.root.querySelector('#kalshi').closest('section').innerHTML, main = f.root.querySelector('main').innerHTML;
   assert.match(live, /<a href="https:\/\/kalshi\.com\/account\/profile" target="_blank" rel="noopener">your profile<\/a>, find API Keys and click Create New API Key/);
-  assert.match(live, /<b>Key ID<\/b> \(like a952bcbe-ec3b-…\) and downloads a <b>private key<\/b> file \(\.key\), once/);
+  assert.match(live, /<b>Key ID<\/b> \(like <span class="nobr">a952bcbe-ec3b-…<\/span>\) and downloads a <b>private key<\/b> file \(\.key\), once/);
   assert.match(live, /A key made on demo\.kalshi\.co won’t work here: add it under Demo key\./);
   assert.match(main, /<a href="https:\/\/demo\.kalshi\.co\/" target="_blank" rel="noopener">Sign up or sign in at demo\.kalshi\.co<\/a> \(free\)/);
   assert.match(main, /<a href="https:\/\/demo\.kalshi\.co\/account\/profile" target="_blank" rel="noopener">your demo profile<\/a>/);
@@ -3453,4 +3454,107 @@ test('the admin page counts open positions whose strategy was deleted', async ()
     if (typeof text === 'string') assert.equal(line, text); else assert.match(line, text);
     f.clearTimers();
   }
+});
+
+test('the since strip says what demo needs in a sentence, and a book with nothing closed keeps its name', async () => {
+  const since = {at: '2026-10-25T08:00:00+00:00', first: false, books: {demo: {pnl: 0, trades: 0}},
+    passed: {n: 0, items: []}, autopilot: {}, runs: {}};
+  const deployments = [{id: 4, strategy_id: 4, title: 'On demo', market: 'btc15m', mode: 'demo', status: 'running',
+    stake: 5, max_positions: 2, realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, curve: [], created_at: '2026-10-25T08:00:00Z'}];
+  const strip = async (health) => {
+    const base = dashboardData();
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...base, deployments, since, demo: {...base.demo, health}});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    return f.root.querySelector('#dash-since').innerHTML;
+  };
+  const key = await strip({code: 'demo_key', need: 'your Kalshi demo key', line: "Demo isn't trading: your Kalshi demo key isn't connected.",
+    action: {label: 'Add demo key', href: '/funds'}});
+  assert.match(key, /Demo can’t trade: it needs your Kalshi demo key\. <a href="\/funds">Add demo key<\/a>/);
+  assert.doesNotMatch(key, /Demo can’t trade: your/);
+  assert.match(key, /<span class="since-book" data-book="demo"><b>Demo<\/b> no trades closed<\/span>/);
+  // No `need` from an older server: its whole line, not an empty "Demo can't trade: ."
+  const old = await strip({line: "Demo isn't trading: your Kalshi demo key isn't connected."});
+  assert.match(old, /Demo isn.+t trading: your Kalshi demo key isn.+t connected\./); assert.doesNotMatch(old, /trade: \./);
+});
+
+test('past its paper-trade target the autopilot card says how many and how many were needed, never "67 of 30"', async () => {
+  for (const [trades, said] of [[4, '4 of 30 paper trades'], [67, '67 paper trades (30 needed)'], [30, '30 paper trades (30 needed)']]) {
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response(dashboardData());
+      if (path === '/api/autopilot/status') return response({autopilot: true, mode: 'paper', story: ['Researching.'],
+        research: {tested_7d: 3, passed_7d: 0, active: []}, live_running: 0, demo_running: 0, paper_running: 1,
+        paper_progress: {strategy_id: 3, trades, trades_needed: 30, net_pnl: 1}});
+      if (path === '/api/settings') return response({ok: true});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    await f.root.querySelector('#dash-ap').querySelector('[data-apcard="on"]').onclick(); await flush(); await flush();
+    const html = f.root.querySelector('#dash-ap').innerHTML;
+    assert.ok(html.includes(said), said); assert.doesNotMatch(html, /\b67 of 30\b/);
+  }
+});
+
+test('a backtest trade\'s exit reads in words, and a sub-cent charge shows its amount', async () => {
+  const opened = '2026-10-17T10:00Z';
+  const recent = ['take_profit', 'stop_loss', 'edge_gone', 'settled', 'brand_new_reason'].map((reason, i) =>
+    ({ticker: 'KXBTC15M-T' + i, side: 'yes', qty: 2, entry: 0.4, exit: 0.6, pnl: 0.4, reason, opened}));
+  const f = strategyFrontend(detailStrategy({recent_trades: recent}), () => response({deployments: [], open_positions: []}));
+  await f.viewStrategy(42); await flush();
+  const html = f.root.querySelector('main').innerHTML;
+  for (const word of ['take-profit', 'stop-loss', 'edge gone', 'settled', 'brand new reason']) assert.ok(html.includes(`<small class="hint">${word}</small>`), word);
+  assert.doesNotMatch(html, /take_profit|stop_loss|edge_gone|brand_new_reason/);
+  const b = billingPage(cardedBilling({ledger: [{kind: 'usage', amount: -0.0042, memo: 'Agent usage · sonnet', created_at: '2026-10-25T17:00:00Z'},
+    {kind: 'usage', amount: -0.21, memo: 'Agent usage · sonnet', created_at: '2026-10-25T16:00:00Z'}]}));
+  await b.viewBilling(); await flush();
+  const rows = b.root.querySelector('.t-ledger').innerHTML;
+  assert.match(rows, />−\$0\.004</); assert.match(rows, />−\$0\.21</); assert.doesNotMatch(rows, /−\$0\.00</);
+});
+
+test('the example Kalshi Key ID never breaks across lines', async () => {
+  assert.equal((source.match(/\(like <span class="nobr">a952bcbe-ec3b-…<\/span>\)/g) || []).length, 1);
+  assert.doesNotMatch(source, /Key ID<\/b> \(like a952bcbe/);
+});
+
+test('a deployed book with nothing open says so instead of "Unavailable"', async () => {
+  const dep = (id, open) => ({id, strategy_id: id, title: 'Book ' + id, market: 'btc15m', mode: 'paper', status: 'running',
+    stake: 5, max_positions: 2, realized_pnl: 1, unrealized_pnl: null, closed_trades: 3, open_positions: open, curve: [], created_at: '2026-10-25T08:00:00Z'});
+  const f = frontend({fetchImpl: path => {
+    if (path.startsWith('/api/dashboard')) return response(dashboardData({deployments: [dep(1, 0), dep(2, 2)]}));
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush();
+  const cells = f.root.querySelectorAll('.monitor-unrealized').map((c) => c.innerHTML);
+  assert.equal(cells.length, 2);
+  assert.match(cells[0], /<span class="unavailable">None open<\/span>/);
+  assert.match(cells[1], /<span class="unavailable">Unavailable<\/span>/);
+});
+
+test('Meridian CSS: open-positions why line wraps, "Not connected" keeps its small size on phones, ledger notes wrap', () => {
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.pos-why \{[^}]*white-space: normal;/);
+  assert.match(css, /#openpos td\.name \{ white-space: normal;/);
+  const phone = css.indexOf('.account-band .portfolio-numbers .fig { font-size: 28px');
+  const state = css.indexOf('.account-band .portfolio-numbers .fig.balance-state { font-size: 20px');
+  assert.ok(phone > 0 && state > phone, 'the state size comes after the phone figure size');
+  assert.match(css, /\.t-ledger\.stack tbody td\.name \{[^}]*flex-wrap: wrap; \}\n  \.t-ledger\.stack tbody td\.name \.sub-fig \{ min-width: 0; flex: 0 1 auto; \}/);
+});
+
+test('Deploy prices a deployment\'s open positions in its row, as the dashboard does, one deployment at a time', async () => {
+  const dep = (id, mode) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: 3, open_positions: 2, unrealized_pnl: null, created_at: '2026-10-25T08:00:00Z', curve: [],
+    stake: 5, max_positions: 4, backtest: {out_of_sample: null}});
+  const pos = (id, deployment_id, mode, unrealized) => ({id, deployment_id, mode, title: 'Dep ' + deployment_id, ticker: 'KXBTC15M-T' + id,
+    side: 'yes', qty: 2, entry_price: 0.4, entry_fee: 0.01, market_close_time: '2026-10-26T12:00:00Z', unrealized});
+  const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dep(1, 'paper'), dep(2, 'live'), dep(3, 'paper')],
+    open_positions: [pos(10, 1, 'paper', 1.25), pos(11, 1, 'paper', -0.5), pos(12, 2, 'live', 2), pos(13, 3, 'paper', null)]}) : response({})});
+  await f.viewDeploy(); await flush(); await flush();
+  const html = f.root.querySelector('#deps').innerHTML;
+  assert.ok(html.includes('+$0.75'), 'paper deployment 1: its two marks');
+  assert.ok(html.includes('+$2.00'), 'live deployment 2: its own mark only');
+  assert.doesNotMatch(html, /\+\$2\.75/);  // never added across deployments or books
 });
