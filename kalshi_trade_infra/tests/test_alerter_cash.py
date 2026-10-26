@@ -44,3 +44,37 @@ def test_unreadable_balance_falls_back_to_the_snapshot_and_says_when(monkeypatch
 
 def test_live_balance_line(monkeypatch):
     assert "Cash: $123.45 (kalshi_api)\n" in la.heartbeat_body(_now(cash=123.45, cash_source="kalshi_api"))
+
+
+class _SqlCur:
+    """Answers each query by the table it reads."""
+
+    def __init__(self, answers):
+        self.answers, self.rows = answers, []
+
+    def execute(self, sql, args=None):
+        self.rows = next((rows for key, rows in self.answers if key in sql), [])
+
+    def fetchall(self):
+        return list(self.rows)
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+
+def test_app_live_positions_and_todays_pnl_reach_the_email(monkeypatch):
+    # Real-money trades placed by the app live in app_positions, not the legacy live_* tables.
+    monkeypatch.setattr(la, "get_kalshi_cash_balance_dollars", lambda: 50.74)
+    monkeypatch.setattr(la, "_writer_ages", lambda cur: {})
+    cur = _SqlCur([
+        ("FROM app_positions WHERE mode='live' AND status='open'",
+         [{"deployment_id": 7, "ticker": "KXBTCD-T1", "side": "no", "qty": 3, "entry_price": 0.40}]),
+        ("FROM app_positions WHERE mode='live' AND status='closed'", [{"deployment_id": 7, "p": -1.25}]),
+        ("MAX(id)", [{"m": 0}]),
+    ])
+    now = la.collect(cur)
+    assert now["positions"] == [{"model": "app #7 no", "ticker": "KXBTCD-T1", "qty": 3, "entry": 0.40,
+                                 "cost": 3 * 0.40}]
+    assert now["daily"] == {"app #7": -1.25}
+    body = la.heartbeat_body(now)
+    assert "Open positions: 1\n" in body and "Realised so far this UTC day: $-1.25" in body
