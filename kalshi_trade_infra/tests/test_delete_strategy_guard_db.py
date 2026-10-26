@@ -58,7 +58,8 @@ def test_delete_waits_until_every_deployments_positions_close(conn, monkeypatch)
     cur = conn.cursor()
     uid, user = _user(cur, repo, "guard")
     ctx = _ctx(conn, user)
-    monkeypatch.setattr(server, "_freshness", lambda c: {})
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda c: {})
     sid = _strategy(cur, repo, uid, "Guarded")
     deps = {m: repo.create_deployment(cur, uid, sid, "btc15m", m) for m in ("paper", "demo", "live")}
     tag = uuid.uuid4().hex[:8].upper()
@@ -112,7 +113,8 @@ def test_another_users_positions_never_block_a_delete(conn, monkeypatch):
     uid, user = _user(cur, repo, "mine")
     other, _ = _user(cur, repo, "theirs")
     ctx = _ctx(conn, user)
-    monkeypatch.setattr(server, "_freshness", lambda c: {})
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda c: {})
     sid = _strategy(cur, repo, uid, "Clear")
     did = repo.create_deployment(cur, uid, sid, "btc15m", "paper")
     close = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)

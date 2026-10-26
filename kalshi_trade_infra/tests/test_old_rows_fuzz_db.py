@@ -74,7 +74,8 @@ def quiet(monkeypatch):
     monkeypatch.setattr(server.backtest, "dataset", _offline)
     monkeypatch.setattr(billing, "STRIPE_SECRET_KEY", "")
     monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", False)
-    monkeypatch.setattr(server, "_freshness", lambda c: {})
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda c: {})
     monkeypatch.setattr(repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEV-test", "private_key_enc": b"",
                                                                        "created_at": datetime(2026, 10, 1)})
     monkeypatch.setattr(demo_twins, "balance_cached", lambda cur, uid, ttl=0: 1.0)

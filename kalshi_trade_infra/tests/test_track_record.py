@@ -4,13 +4,16 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from app.trading import track_record as tr
+from app.web.routes import dashboard as dashboard_routes
 
 
 def _swap_track_cache(monkeypatch, value):
-    """Swap the track-record cache everywhere it is bound: app.server reads it, app.web.caches drops it."""
+    """Swap the track-record cache everywhere it is bound: the dashboard routes read it, app.web.caches
+    drops it, app.server keeps the name."""
     from app import server
     from app.web import caches
-    for mod in (server, caches):
+    from app.web.routes import dashboard
+    for mod in (server, caches, dashboard):
         monkeypatch.setattr(mod, "_TRACK_RECORD", value)
 
 NOW = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
@@ -265,8 +268,8 @@ def test_endpoint_builds_from_repo_rows_and_caches_per_user(monkeypatch):
     from app import server
     calls = []
     _swap_track_cache(monkeypatch, {})
-    monkeypatch.setattr(server, "_BOOK_SHAPE", {})
-    monkeypatch.setattr(server, "TRACK_RECORD_CACHE_MIN_TRADES", 1)  # a busy book: one trade is enough here
+    monkeypatch.setattr(dashboard_routes, "_BOOK_SHAPE", {})
+    monkeypatch.setattr(dashboard_routes, "TRACK_RECORD_CACHE_MIN_TRADES", 1)  # a busy book: one trade is enough here
     monkeypatch.setattr(server.book_memo, "track_record",
                         lambda cur, uid: calls.append(uid) or tr.build([row("live", 3, ref="k")]))
     out = server.get_track_record(_ctx(7))
@@ -285,7 +288,7 @@ def test_a_new_users_record_is_read_fresh_so_the_first_trade_shows_at_once(monke
     from app import server
     book = []
     _swap_track_cache(monkeypatch, {})
-    monkeypatch.setattr(server, "_BOOK_SHAPE", {})
+    monkeypatch.setattr(dashboard_routes, "_BOOK_SHAPE", {})
     monkeypatch.setattr(server.book_memo, "track_record", lambda cur, uid: tr.build(list(book)))
     assert server.get_track_record(_ctx(7))["modes"]["paper"]["trades"] == 0
     book.append(row("paper", 2.5))
@@ -296,16 +299,16 @@ def test_a_busy_record_is_rebuilt_once_the_dashboard_sees_a_trade_it_predates(mo
     from app import server
     calls = []
     _swap_track_cache(monkeypatch, {})
-    monkeypatch.setattr(server, "_BOOK_SHAPE", {})
-    monkeypatch.setattr(server, "TRACK_RECORD_CACHE_MIN_TRADES", 1)
+    monkeypatch.setattr(dashboard_routes, "_BOOK_SHAPE", {})
+    monkeypatch.setattr(dashboard_routes, "TRACK_RECORD_CACHE_MIN_TRADES", 1)
     monkeypatch.setattr(server.book_memo, "track_record", lambda cur, uid: calls.append(uid) or tr.build([row("paper", 1)]))
-    server._BOOK_SHAPE[7] = server._book_shape({"paper": 1}, 0)
+    dashboard_routes._BOOK_SHAPE[7] = dashboard_routes._book_shape({"paper": 1}, 0)
     server.get_track_record(_ctx(7)); server.get_track_record(_ctx(7))
     assert calls == [7]
-    server._BOOK_SHAPE[7] = server._book_shape({"paper": 1}, 1)  # the dashboard saw a trade open
+    dashboard_routes._BOOK_SHAPE[7] = dashboard_routes._book_shape({"paper": 1}, 1)  # the dashboard saw a trade open
     server.get_track_record(_ctx(7)); server.get_track_record(_ctx(7))
     assert calls == [7, 7]
-    server._BOOK_SHAPE[7] = server._book_shape({"paper": 2}, 0)  # ... and close
+    dashboard_routes._BOOK_SHAPE[7] = dashboard_routes._book_shape({"paper": 2}, 0)  # ... and close
     server.get_track_record(_ctx(7))
     assert calls == [7, 7, 7]
 
