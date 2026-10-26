@@ -653,8 +653,9 @@ def validation_power(cur, user_id: int, market: str, spec: dict, research_ds, pa
     stress = (backtest.WhatIf(slippage_cents=COST_STRESS_CENTS)
               if getattr(getattr(research_ds, "market", None), "kind", "binary") == "binary" and COST_STRESS_CENTS > 0
               else None)
-    rows = _per_trade(backtest.research_fold_trades(spec, research_ds, int(partition.get("embargo_seconds") or 0),
-                                                    what_if=stress))
+    fold = backtest.research_fold_trades(spec, research_ds, int(partition.get("embargo_seconds") or 0),
+                                         what_if=stress)
+    rows = _per_trade(fold)
     out: Dict[str, Any] = {"ok": False, "power": 0.0, "mu": None, "n_research": len(rows),
                            "n_val_expected": 0.0, "alpha_next": None, "reason": ""}
     if len(rows) < POWER_MIN_RESEARCH_TRADES:
@@ -664,6 +665,10 @@ def validation_power(cur, user_id: int, market: str, spec: dict, research_ds, pa
     rets = [r for _e, _x, r in rows]
     boot = stats.stationary_bootstrap_ci(rets, stat="mean", n_boot=500, alpha=ALPHA, seed=_BOOT_SEED)
     mu, se = float(boot["point"]), float(boot.get("se") or 0.0)
+    # Strikes and legs settling on one event are one bet, and time blocks don't group them: on the
+    # replayed experiment 65 (a 22-event longshot pool whose top 3 events made all its profit, then
+    # -65%/$ at validation) the event-clustered SE was 2.64 vs the bootstrap's 2.01. Use the wider.
+    se = max(se, backtest.clustered_edge(fold).get("se_ret") or 0.0)
     out["mu"] = mu
     if mu <= 0:
         out["reason"] = "research-fold mean net return %.4f is not positive" % mu

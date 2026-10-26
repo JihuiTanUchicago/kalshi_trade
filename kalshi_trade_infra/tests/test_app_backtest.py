@@ -239,6 +239,40 @@ def test_score_ignores_tiny_samples():
     assert backtest.score({"trades": 2, "pnl": 1000}) < backtest.score({"trades": 30, "pnl": 1})
 
 
+def _trade(ticker, entry_price, pnl, i):
+    qty = int(5 / entry_price)
+    exit_price = entry_price + (pnl + 0.0) / qty
+    return backtest.Trade(ticker, "yes", qty, T0 + 60 * i, entry_price, T0 + 60 * i + 900, exit_price, 0.0,
+                          "settle", 0.05)
+
+
+def test_event_cluster_pools_the_same_close_across_series():
+    assert backtest.event_cluster("KXBTCD-26OCT2517-T80000") == backtest.event_cluster("KXETHD-26OCT2517-T4000")
+    assert backtest.event_cluster("KXBTC15M-26OCT241515-15") != backtest.event_cluster("KXBTC15M-26OCT241530-30")
+    assert backtest.event_cluster("ODD") == "ODD"
+
+
+def test_clustered_edge_counts_a_lucky_day_once():
+    # 40 longshot buys at 5c: 8 strikes on each of 5 days. One day moved and all 8 strikes won;
+    # the rest lost. Per trade that is +3.0/$ at t ~ 2.4; per event it is ONE win in 5 (t 0.75).
+    lucky = [_trade("KXBTCD-26OCT%02d17-T%d" % (20 + d, 80000 + 100 * k), 0.05, 95.0 if d == 0 else -5.0, 8 * d + k)
+             for d in range(5) for k in range(8)]
+    e = backtest.clustered_edge(lucky)
+    assert e["events"] == 5 and e["top3_event_share"] == 1.0
+    assert e["mean_ret"] > 0 and e["t_events"] < 1.0
+    # A steady small edge over many independent events keeps a high t.
+    steady = [_trade("KXBTC15M-26OCT%04d-15" % i, 0.50, 0.30 if i % 5 else -0.20, i) for i in range(200)]
+    s = backtest.clustered_edge(steady)
+    assert s["events"] == 200 and s["t_events"] > 5
+
+
+def test_score_ranks_research_folds_by_clustered_t_not_pnl():
+    lucky = {"trades": 40, "pnl": 400.0, "t_events": 0.9, "events": 5}
+    steady = {"trades": 200, "pnl": 30.0, "t_events": 4.0, "events": 200}
+    one_event = {"trades": 20, "pnl": 900.0, "t_events": None, "events": 1}
+    assert backtest.score(steady) > backtest.score(lucky) > backtest.score(one_event) > backtest.score({"trades": 2, "pnl": 1})
+
+
 # -- cross-contract (relative-value pairs) ------------------------------------
 
 

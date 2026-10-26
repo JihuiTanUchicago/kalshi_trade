@@ -482,6 +482,33 @@ def test_pooled_finalist_preregisters_on_the_merged_partition(monkeypatch):
     assert loads == ["validation"] and len(store.judged) == 1
 
 
+def test_pooled_finalist_is_power_screened_on_its_merged_research_data(monkeypatch):
+    """Pooled specs used to skip the power pre-screen. With the run's merged research dataset cached
+    (by _test_in_sample), the screen runs on that dataset against the merged partition and stream."""
+    from app import backtest
+    store = FakeStore(monkeypatch)
+    seen = []
+    monkeypatch.setattr(agent.partitions, "ensure_merged_partition",
+                        lambda cur, mk: {"id": 77, "embargo_seconds": 900, "legs": tuple(mk)})
+    pooled_ds = backtest.Dataset(None, [], {}, 0, 0, 0)
+    power = store._power
+    monkeypatch.setattr(agent.gatekeeper, "validation_power",
+                        lambda cur, uid, market, spec, ds, part, ms: seen.append((market, ds, part["id"]))
+                        or power(cur, uid, market, spec, ds, part, ms))
+    store.underpowered = {"P"}
+    cand = _cand("P", 50, 20, 9.0)
+    cand["spec"] = dict(specmod.validate({"side": "yes", "entry": {"min_edge": 0.1},
+                                          "pool": ["eth15m", "sol15m"]}), _title="P")
+    monkeypatch.setattr(agent, "_challenge", lambda finalists, run, model, usage, log:
+                        [{"decision": "approve", "reason": "", "fixes": None}] * len(finalists))
+    log = lambda kind, msg, data=None: store.events.append((kind, msg, data))
+    agent._gate_and_save(None, RUN, SimpleNamespace(summary=lambda: {"market": "btc15m"}), PARTITION, [cand],
+                         log, exploration.DefaultPolicy(), model=None, usage=None,
+                         merged_cache={"btc15m+eth15m+sol15m": (pooled_ds, 900)})
+    assert seen == [("btc15m+eth15m+sol15m", pooled_ds, 77)]
+    assert store.preregistered == [] and store.strategies[0]["result"]["classification"] == "underpowered"
+
+
 def test_code_window_exposes_quotes_both_at_top_level_and_in_features():
     """Generated code reads the quote either as c["yes_bid"] (documented) or c["features"]["yes_bid"]
     (how rule specs name it); both must see the real quote, never None."""

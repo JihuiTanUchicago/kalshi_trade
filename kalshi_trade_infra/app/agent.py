@@ -525,9 +525,27 @@ def _hypotheses_check(market: str, max_n: int) -> Callable[[Dict], List[Dict]]:
 
 
 def _metrics_line(m: Dict) -> str:
-    return "trades=%s win_rate=%s pnl=$%s fees=$%s profit_factor=%s max_dd=$%s" % (
+    line = "trades=%s win_rate=%s pnl=$%s fees=$%s profit_factor=%s max_dd=$%s" % (
         m["trades"], m["win_rate"], m["pnl"], m["fees"], m["profit_factor"], m["max_drawdown"],
     )
+    if m.get("events") is not None:
+        # The evidence, not just the P&L (backtest.clustered_edge): trades on one event are one bet.
+        share = m.get("top3_event_share")
+        line += " | events=%s mean=%s/$ t=%s (event-clustered) top3_events=%s of profit" % (
+            m["events"], "%+.3f" % m["mean_ret"] if m.get("mean_ret") is not None else "n/a",
+            m["t_events"] if m.get("t_events") is not None else "n/a",
+            "%.0f%%" % (100 * share) if share is not None else "n/a")
+    return line
+
+
+# Read with every research-fold metrics line (backtest.clustered_edge). On 2026-10-26 the 34 scored
+# gate tests' research-fold returns correlated -0.50 with their validation returns: the strongest
+# research results were few-event longshot bets, which the develop turn kept and committed.
+EVIDENCE_NOTE = ("How to read the evidence: t is the mean net return per $ divided by its EVENT-clustered "
+                 "standard error (every strike, coin and leg settling on the same event is one bet). The "
+                 "unseen-data test needs roughly t >= 2 on a window about half this size, so a research t "
+                 "under ~3 rarely survives. When the top 3 events carry most of the profit, the P&L is luck "
+                 "on a few days, not an edge: do not commit it, and do not refine toward it.")
 
 
 def _attribution_line(attr: Optional[Dict]) -> str:
@@ -1636,6 +1654,7 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
     if len(ranked) > 12:
         extra = "\nAlso already tested (do not repeat): " + "; ".join(t["title"] for t in ranked[12:])
     return (base + "\n\nResults so far this session (in-sample only; out-of-sample is held back):\n" + detail + extra
+            + "\n\n" + EVIDENCE_NOTE
             + "\n\nThe 'edge-by-regime' line shows WHERE each rule's in-sample net edge sat (by price "
               "band, side, time-of-day). Use it to STRENGTHEN the economic mechanism — if the edge "
               "lives in one regime, say WHY it should (e.g. favorite-longshot overpricing lives in the "
@@ -1826,7 +1845,7 @@ def _gate_tx(conn):
 
 def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk: List[Dict], log,
                    policy: exploration.ExplorationPolicy, model: ModelFn, usage: Usage, conn=None,
-                   mark_gated=None) -> int:
+                   mark_gated=None, merged_cache: Optional[Dict] = None) -> int:
     """The HAND-OFF (§B.5 step 3): freeze the finalists, let the Challenger review them, then
     hand the approved ones to the Statistical Gatekeeper for validation. The generator never
     runs a backtest on validation data and only ever receives a classification LABEL back — the
@@ -1888,11 +1907,23 @@ def _gate_and_save(cur, run: Dict, ds: backtest.Dataset, partition: Dict, chunk:
             # Validation-budget pre-screen (research data only): a finalist whose research-fold edge
             # cannot plausibly clear the next alpha level is NOT pre-registered and spends nothing, so
             # it neither decays the LORD++ stream nor inflates the DSR trial count for real candidates.
-            # Cross-contract and perpetual specs judge on their own windows and skip this screen.
+            # Cross-contract and perpetual specs judge on their own windows and skip this screen. A
+            # pooled rule is screened on the merged research data it was developed on (cached by
+            # _test_in_sample) against its merged partition: before 2026-10-26 pooled specs skipped
+            # it, and they were most of the gate reaches (experiment 65: a 22-event longshot pool).
+            pw = None
             if not (specmod.is_cross_contract(spec) or specmod.is_multi_market(spec)
                     or specmod.is_perpetual_spec(spec)):
                 pw = gatekeeper.validation_power(cur, user_id, market, spec, ds, partition,
                                                  int(t.get("min_sample") or 30))
+            elif specmod.is_pooled(spec) and merged_cache and specmod.stream_key(spec) in merged_cache:
+                pooled_ds = merged_cache[specmod.stream_key(spec)][0]
+                if isinstance(pooled_ds, backtest.Dataset):
+                    pw = gatekeeper.validation_power(
+                        cur, user_id, specmod.stream_key(spec), spec, pooled_ds,
+                        partitions.ensure_merged_partition(cur, specmod.involved_markets(spec)),
+                        int(t.get("min_sample") or 30))
+            if pw is not None:
                 if not pw["ok"]:
                     t["strategy_id"] = repo.insert_strategy(
                         cur, user_id, run_id, parent, market, direction, t["title"], t["thesis"], spec,
@@ -2149,7 +2180,7 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
     if knowledge is not None:
         challenger = knowledge.wrap(challenger, usage)
     return len(chunk), _gate_and_save(cur, run, ds, partition, chunk, log, policy, challenger, usage,
-                                      conn, mark_gated=mark_gated)
+                                      conn, mark_gated=mark_gated, merged_cache=merged_cache)
 
 
 def _call_with_timeout(label: str, seconds: float, fn, *args, beat=None, beat_every: float = 5.0, **kwargs):
@@ -2918,7 +2949,7 @@ def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int, ds=None) 
         "Develop THIS one thesis in depth before committing it — you may take several steps to get "
         "the mechanism right, OR exit early at any step if it clearly can't work here.\n"
         "Thesis: %s\nCurrent spec: %s\nResearch-fold result (a leak-free sandbox you may study "
-        "freely — NOT the held-out data): %s%s%s%s\n\n"
+        "freely — NOT the held-out data): %s\n%s%s%s%s\n\n"
         "What this market's earlier research found (learn from it; do not repeat failures):\n%s\n\n%s"
         "This is step %d of at most %d for this thesis — the cap is a ceiling, NOT a target: there "
         "is no reward for staying, and dropping a dead line to hunt a better one elsewhere is the "
@@ -2938,7 +2969,7 @@ def _develop_prompt(run: Dict, t: Dict, memory: List[Dict], step: int, ds=None) 
         '{\"decision\":\"commit\",\"why\":\"<why it is ready to gate>\"} OR '
         '{\"decision\":\"abandon\",\"why\":\"<why it cannot work here>\"}.'
         % (t["thesis"], json.dumps(t["spec"], separators=(",", ":")),
-           _metrics_line(t["in_sample"]), ("\n" + attr) if attr else "", diag_line, _feature_block(ds),
+           _metrics_line(t["in_sample"]), EVIDENCE_NOTE, ("\n" + attr) if attr else "", diag_line, _feature_block(ds),
            _memory_block(memory), (run.get("_playbook") + "\n\n") if run.get("_playbook") else "",
            step + 1, THESIS_MAX_STEPS)
     ) + THINK_ALOUD

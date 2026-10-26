@@ -1096,10 +1096,64 @@ def gates(ins: Dict, oos: Dict, capital: float) -> List[Dict]:
     ]
 
 
+def event_cluster(ticker: Optional[str]) -> str:
+    """The settlement event a trade belongs to, shared ACROSS pooled series: the ticker's event
+    segment (KXBTCD-26OCT2517-T80000 -> 26OCT2517, the same key as KXETHD-26OCT2517-T4000), so one
+    day's move across coins and strikes counts once. On a single series this is the same grouping
+    as agent._trip_event_key (ticker minus strike)."""
+    parts = (ticker or "").split("-")
+    return parts[1] if len(parts) >= 3 else (ticker or "")
+
+
+def clustered_edge(trades: List[Trade]) -> Dict:
+    """Mean net return per $ at risk (the gatekeeper's _per_trade quantity) with an EVENT-clustered
+    standard error, the number of events, and the share of the profit the 3 best events carry.
+
+    Research-fold trades on one event are one bet: 20 strikes of a day that moved, or 4 coins on
+    the same close, win or lose together. Counted as 20 trades they make one lucky day look like
+    t=10. Measured 2026-10-26 on the 34 scored gate tests: research-fold mean return vs validation
+    mean return correlated -0.50, and the worst flips were few-event longshot bets."""
+    rows = []
+    for t in trades:
+        cost = getattr(t, "capital_at_risk", t.qty * t.entry_price)
+        if cost > 0:
+            rows.append((event_cluster(t.ticker), t.pnl / cost, t.pnl))
+    out: Dict = {"events": len({e for e, _r, _p in rows}), "mean_ret": None, "se_ret": None,
+                 "t_events": None, "top3_event_share": None}
+    if not rows:
+        return out
+    n = len(rows)
+    mean = sum(r for _e, r, _p in rows) / n
+    dev: Dict[str, float] = defaultdict(float)
+    pnl: Dict[str, float] = defaultdict(float)
+    for e, r, p in rows:
+        dev[e] += r - mean
+        pnl[e] += p
+    g = len(dev)
+    out["mean_ret"] = round(mean, 4)
+    if g >= 2:
+        se = math.sqrt(sum(v * v for v in dev.values()) * g / (g - 1)) / n
+        out["se_ret"] = round(se, 6)
+        out["t_events"] = round(mean / se, 2) if se > 0 else None
+    wins = sorted((v for v in pnl.values() if v > 0), reverse=True)
+    if wins:
+        out["top3_event_share"] = round(sum(wins[:3]) / sum(wins), 3)
+    return out
+
+
 def score(in_sample: Dict) -> float:
-    """Rank candidates the agent may promote, using in-sample numbers only."""
+    """Rank candidates the agent may promote, using in-sample numbers only.
+
+    Research-fold metrics carry an event-clustered t (clustered_edge): rank on it, because raw
+    P&L rewards variance. A few-event longshot spec has the largest P&L in the chunk and the
+    least evidence; ranked by P&L it took the finalist slots and then lost at validation. A
+    result with fewer than 2 events has no t and ranks below every one that has. Older metrics
+    without the field (replay of stored trees) keep the P&L score."""
     if in_sample["trades"] < 5:
         return -1e9
+    if "t_events" in in_sample:
+        t = in_sample["t_events"]
+        return float(t) if t is not None else -1e6
     return in_sample["pnl"] * min(1.0, in_sample["trades"] / 20.0)
 
 
@@ -1452,4 +1506,6 @@ def research_fold_metrics(spec: Dict, ds: Dataset, embargo_seconds: int,
     span = (fold[-1].exit_ts - fold[0].entry_ts) / 86400.0 if fold else (ds.end_ts - ds.start_ts) / 86400.0
     m = metrics(fold, capital, max(span, 1e-9))
     m.pop("_curve", None)
+    if getattr(ds.market, "kind", "binary") == "binary":  # events are settlements; spot/perps have none
+        m.update(clustered_edge(fold))
     return {"capital": capital, "in_sample": m, "attribution": attribution(fold)}
