@@ -237,6 +237,9 @@
   const isPerpetual = (s) => s.kind === 'perpetual' || s.market === 'btc_perp' || s.key === 'btc_perp' || (s.spec && s.spec.market === 'btc_perp');
   const researchOnly = (s) => s.research_only === true || isPerpetual(s);
   const researchBadge = (s) => researchOnly(s) ? '<span class="mk quiet">Research only</span>' : '';
+  // A strategy written as code (the server's kind "code") runs only in the research sandbox: the server
+  // refuses to deploy it in any mode, so its page offers no deploy button and says what to do instead.
+  const CODE_RESEARCH_ONLY = 'Strategies written as code run only in the research sandbox, even after passing every check: paper, demo and live trading run rule-based strategies only. To trade this idea, ask for a rule-based version in a new research session.';
   const perpsPrice = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 6});
   const tradePrice = (v, perpetual) => perpetual ? (!['number', 'string'].includes(typeof v) || String(v).trim() === '' || !Number.isFinite(Number(v)) ? '—' : perpsPrice.format(Number(v))) : cents(v);
   const PERPS_SCENARIO = 'Research scenario: at most 1× capital, fixed 12 bps taker fees and 5 bps adverse slippage per fill, plus settled funding. These are uncalibrated cost assumptions; fills use the next bar’s open. No margin or liquidation model. Short losses can exceed capital.';
@@ -1264,25 +1267,41 @@
   // Phase colours reuse Kursbuch tokens: in-sample = muted ink, validation = ink,
   // holdout = signal red (the one decisive, one-time forward test). Every colour is
   // paired with a text label, never carried by colour alone.
-  const rpCent = (v) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(2) + '¢');
+  // A per-trade net return (net P&L over what the trade cost) as a percent of its stake: the unit the
+  // gatekeeper judges and the "What it missed" lines use. It read as cents ("+3.10¢"), which it isn't.
+  const rpRet = (v) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(2) + '%');
   const rpProb = (v, d = 3) => (v == null ? '—' : Number(v).toFixed(d));
   const rpInt = (v) => (v == null ? '—' : num(v));
   const rpText = (v) => esc(v == null ? '' : String(v));
   const rpHuman = (k) => String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+  // The gatekeeper's pre-registration names its metric and test in code words; say them plainly.
+  const rpPlain = (t) => String(t).replace(/\bmean_net_return_per_trade\b/g, 'average net return per trade, after fees')
+    .replace(/\bstationary_bootstrap( one-sided)?/g, (m, one) => (one ? 'one-sided ' : '') + 'bootstrap test (resamples its trades in blocks)').replace(/\balpha from\b/g, 'significance bar from')
+    .replace(/\b([a-z]+)_([a-z_]+)\b/g, (m) => m.replace(/_/g, ' '));
+  const LORD_WORDS = ' (a false-discovery control: it keeps count of every idea tested, so lucky passes stay rare)';
   const rpStamp = (iso) => { try { return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(iso); } };
-  const rpDiffs = (curve) => (!curve || curve.length < 2) ? [] : curve.slice(1).map((p, i) => p[1] - curve[i][1]);
+  // The gatekeeper stores each phase as its per-trade net returns ([ts, return] per trade), not a running
+  // total. The equity and drawdown figures add them up, counted in stakes (+2× = twice one trade's stake);
+  // the distribution plots each one. They were drawn as a dollar curve, and the distribution as the
+  // differences between neighbouring trades.
+  const rpCum = (series) => { let c = 0; return (series || []).map(([t, r]) => [t, (c += +r || 0)]); };
+  const rpStakes = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '×';
   const RP_MECH = { who_pays: 'Who pays', why_not_arbitraged: 'Why it isn’t arbitraged', when: 'When it fires', why_persists: 'Why it persists' };
   const RP_RUNGS = [['promising', 'Promising'], ['statistically_supported', 'Stat. supported'], ['forward_validated', 'Forward-validated'], ['deployment_candidate', 'Deployment candidate']];
   const RP_RANK = { rejected: -1, inconclusive: 0, promising: 1, statistically_supported: 2, forward_validated: 3, deployment_candidate: 4 };
 
-  function rpLadder(cls) {
-    const rank = RP_RANK[cls] == null ? 0 : RP_RANK[cls];
+  // `reached`: the validation verdict. A strategy that cleared validation and then failed the holdout
+  // has the holdout's verdict as its latest, so the ladder lit no rung, as if it never got past research.
+  function rpLadder(cls, reached, where) {
+    const rank = Math.max(RP_RANK[cls] == null ? 0 : RP_RANK[cls], RP_RANK[reached] || 0);
+    const got = rank > 0 && rank > (RP_RANK[cls] || 0) ? RP_RUNGS[rank - 1][1] : '';
     const rungs = RP_RUNGS.map(([k, label], i) => {
       const r = i + 1, state = r === rank ? 'lit' : r < rank ? 'done' : '';
       return `<div class="rung ${state}"><div class="r-n">Rung ${r}</div><div class="r-t">${esc(label)}</div></div>`;
     }).join('');
     let terminal = '';
-    if (cls === 'rejected') terminal = `<div class="rp-terminal"><span><b>Rejected</b> — this hypothesis did not advance the ladder.</span></div>`;
+    if (got && (cls === 'rejected' || cls === 'inconclusive')) terminal = `<div class="rp-terminal${cls === 'inconclusive' ? ' quiet' : ''}"><span><b>${cls === 'rejected' ? 'Rejected' : 'Inconclusive'}</b> ${esc(where || 'at its last check')} — it reached ${esc(got)} in validation, then its edge did not hold up.</span></div>`;
+    else if (cls === 'rejected') terminal = `<div class="rp-terminal"><span><b>Rejected</b> — this hypothesis did not advance the ladder.</span></div>`;
     else if (cls === 'inconclusive') terminal = `<div class="rp-terminal quiet"><span><b>Inconclusive</b> — tested, but the evidence was too weak to move it up.</span></div>`;
     return `<div class="ladder">${rungs}</div>${terminal}`;
   }
@@ -1300,11 +1319,11 @@
     const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
     const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
     const line = (c, col) => `<polyline points="${c.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
-    const ticks = [lo, (lo + hi) / 2, hi].map((v) => `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${usd(v)}</text>`).join('');
+    const ticks = [lo, (lo + hi) / 2, hi].map((v) => `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${rpStakes(v)}</text>`).join('');
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     const bounds = phases.slice(1).map((p) => { const bx = x(p.curve[0][0]).toFixed(1); return `<line x1="${bx}" x2="${bx}" y1="${T}" y2="${H - B}" stroke="var(--rule-2)" stroke-dasharray="3 4"/>`; }).join('');
     const legend = `<div class="rp-legend">${phases.map((p) => `<span><i style="background:${p.color}"></i>${esc(p.label)}</span>`).join('')}</div>`;
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative net profit and loss over time by research phase: ${esc(phases.map((p) => p.label).join(', '))}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Running total of net return per trade, counted in stakes, by research phase: ${esc(phases.map((p) => p.label).join(', '))}">
       <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
       ${ticks}
       <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
@@ -1312,12 +1331,13 @@
     </svg>${legend}`;
   }
 
-  // 2. in-sample vs validation mean — shrinkage.
-  function rpShrinkage(isMean, oosMean) {
+  // 2. validation vs locked holdout mean: did the edge hold up on data it had never met? (This compared
+  // "in-sample" with validation, but its in-sample bar was the validation slices' own average.)
+  function rpShrinkage(valMean, holdMean) {
     const bars = [];
-    if (isMean != null) bars.push(['In-sample', isMean, 'var(--ink-3)']);
-    if (oosMean != null) bars.push(['Validation', oosMean, 'var(--ink)']);
-    if (!bars.length) return `<div class="rp-empty">No in-sample / validation means to compare.</div>`;
+    if (valMean != null) bars.push(['Validation', valMean, 'var(--ink)']);
+    if (holdMean != null) bars.push(['Holdout', holdMean, 'var(--signal)']);
+    if (!bars.length) return `<div class="rp-empty">No validation or holdout average to compare.</div>`;
     const W = 340, H = 180, T = 24, Bm = 30, L = 10, R = 10;
     const mags = bars.map((b) => b[1]);
     let lo = Math.min(0, ...mags), hi = Math.max(0, ...mags);
@@ -1327,15 +1347,15 @@
     const cells = bars.map((b, i) => {
       const cx = L + slot * i + slot / 2, top = Math.min(y(b[1]), zero), h = Math.max(1, Math.abs(y(b[1]) - zero));
       return `<rect x="${(cx - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${b[2]}" rx="3"/>
-        <text x="${cx.toFixed(1)}" y="${(b[1] >= 0 ? top - 6 : top + h + 14).toFixed(1)}" text-anchor="middle" style="fill:var(--ink)">${rpCent(b[1])}</text>
+        <text x="${cx.toFixed(1)}" y="${(b[1] >= 0 ? top - 6 : top + h + 14).toFixed(1)}" text-anchor="middle" style="fill:var(--ink)">${rpRet(b[1])}</text>
         <text x="${cx.toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(b[0])}</text>`;
     }).join('');
-    let note = '';
-    if (isMean != null && oosMean != null && isMean !== 0) {
-      const shr = Math.round((1 - oosMean / isMean) * 100);
-      note = `<div class="cap">Validation edge is ${shr >= 0 ? shr + '% smaller' : Math.abs(shr) + '% larger'} than in-sample — ${shr >= 40 ? 'heavy shrinkage, a sign the in-sample fit was partly luck' : 'modest shrinkage'}.</div>`;
+    let note = holdMean == null ? '<div class="cap">The locked holdout hasn’t run yet, so there is nothing to compare the validation average with.</div>' : '';
+    if (valMean != null && holdMean != null && valMean > 0) {
+      const shr = Math.round((1 - holdMean / valMean) * 100);
+      note = `<div class="cap">Average net return per trade, as % of its stake. The holdout's is ${shr >= 0 ? shr + '% smaller' : Math.abs(shr) + '% larger'} than validation's — ${shr >= 100 ? 'the edge did not hold up on fresh data' : shr >= 40 ? 'heavy shrinkage, a sign the validation edge was partly luck' : 'it held up on fresh data'}.</div>`;
     }
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="In-sample versus validation mean net return per trade">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Validation versus locked holdout average net return per trade">
       <line x1="${L}" x2="${W - R}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--rule-2)"/>${cells}
     </svg>${note}`;
   }
@@ -1343,7 +1363,8 @@
   // 3. underwater drawdown.
   // `drawn`: a drawdown series the server already built from every trade (the track record sends
   // one, since its equity curve is thinned and could have lost the peak a drop started from).
-  function rpUnderwater(curve, drawn) {
+  // `fmt` labels the worst drop: dollars for the track record, stakes for a research phase.
+  function rpUnderwater(curve, drawn, fmt = usd) {
     const src = drawn || curve;
     if (!src || src.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
     let peak = -Infinity; const dd = drawn || curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
@@ -1357,7 +1378,7 @@
     const y = (v) => T + (1 - (v - lo) / (0 - lo)) * (H - T - B);
     const curvePts = dd.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     const area = `${curvePts} ${x(dd[dd.length - 1][0]).toFixed(1)},${y(0).toFixed(1)} ${x(dd[0][0]).toFixed(1)},${y(0).toFixed(1)}`;
-    const maxDd = usd(minDd);
+    const maxDd = fmt(minDd);
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Underwater drawdown plot from ${day(t0)} to ${day(t1)}; worst drawdown ${maxDd}">
       <polygon points="${area}" fill="var(--signal-wash)" stroke="none"/>
       <polyline points="${curvePts}" fill="none" stroke="var(--signal)" stroke-width="1.6"/>
@@ -1386,7 +1407,7 @@
     const bars = counts.map((c, i) => c ? `<rect x="${(px(lo + i * bwid) + gap / 2).toFixed(1)}" y="${py(c).toFixed(1)}" width="${barW.toFixed(1)}" height="${(base - py(c)).toFixed(1)}" fill="var(--ink)"/>` : '').join('');
     const zeroLine = `<line x1="${px(0).toFixed(1)}" x2="${px(0).toFixed(1)}" y1="${T}" y2="${base}" stroke="var(--rule-2)"/><text x="${px(0).toFixed(1)}" y="${H - 8}" text-anchor="middle">break-even</text>`;
     const meanLine = mean != null ? `<line x1="${px(mean).toFixed(1)}" x2="${px(mean).toFixed(1)}" y1="${T}" y2="${base}" stroke="var(--signal)" stroke-width="1.5" stroke-dasharray="4 3"/>` : '';
-    const legend = `<div class="rp-legend"><span><i style="background:var(--ink)"></i>Per-trade net P&amp;L</span>${ciLo != null ? `<span><i style="background:var(--stock-raised);border:1px solid var(--rule-2)"></i>90% CI of the mean</span>` : ''}${mean != null ? `<span><i class="dash" style="color:var(--signal)"></i>Mean</span>` : ''}</span></div>`;
+    const legend = `<div class="rp-legend"><span><i style="background:var(--ink)"></i>Per-trade net return</span>${ciLo != null ? `<span><i style="background:var(--stock-raised);border:1px solid var(--rule-2)"></i>90% CI of the mean</span>` : ''}${mean != null ? `<span><i class="dash" style="color:var(--signal)"></i>Mean</span>` : ''}</span></div>`;
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribution of per-trade net profit and loss with the bootstrap confidence interval of the mean and the break-even line">
       ${band}${bars}${zeroLine}${meanLine}
     </svg>${legend}`;
@@ -1406,22 +1427,22 @@
     const cells = folds.map((f, i) => {
       const cx = L + slot * i + slot / 2, v = f.mean_net_return, top = Math.min(y(v), zero), h = Math.max(1, Math.abs(y(v) - zero)), col = v >= 0 ? 'var(--ink)' : 'var(--signal)';
       return `<rect x="${(cx - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${col}" rx="3"/>
-        <text x="${cx.toFixed(1)}" y="${(v >= 0 ? top - 5 : top + h + 13).toFixed(1)}" text-anchor="middle" style="fill:var(--ink)">${rpCent(v)}</text>
-        <text x="${cx.toFixed(1)}" y="${H - 18}" text-anchor="middle">${esc(day(f.from) || ('W' + (i + 1)))}</text>
+        <text x="${cx.toFixed(1)}" y="${(v >= 0 ? top - 5 : top + h + 13).toFixed(1)}" text-anchor="middle" style="fill:var(--ink)">${rpRet(v)}</text>
+        <text x="${cx.toFixed(1)}" y="${H - 18}" text-anchor="middle">${esc(day(f.from_ts || f.from) || ('W' + (i + 1)))}</text>
         <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" style="fill:var(--ink-3)">${f.n_trades != null ? f.n_trades + 't' : ''}</text>`;
     }).join('');
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Mean net return per trade across each purged walk-forward research fold">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Average net return per trade in each slice of the validation window">
       <line x1="${L}" x2="${W - R}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--rule-2)"/>${cells}
     </svg>`;
   }
 
   function rpConclusion(cls) {
     const m = {
-      deployment_candidate: ['good', 'Deployment candidate. It cleared validation under the audited false-discovery budget, survived the one-time locked holdout, and is diverse enough from the deployed book to add something new.'],
+      deployment_candidate: ['good', 'Deployment candidate. It cleared validation on data it had never seen, held up on the one-time locked holdout, and is different enough from your deployed strategies to add something new.'],
       forward_validated: ['good', 'Forward-validated. It passed validation and then held up on the locked holdout, which is evaluated exactly once — the strongest evidence this pipeline produces.'],
-      statistically_supported: ['', 'Statistically supported. The validation edge survives multiple-testing correction and the deflated-Sharpe test, but has not yet been spent against the locked holdout.'],
+      statistically_supported: ['', 'Statistically supported. Its validation edge passed the significance, deflated-Sharpe and placebo checks, but it has not yet faced the one-time locked holdout.'],
       promising: ['', 'Promising. An in-research edge that has not yet faced the validation partition.'],
-      inconclusive: ['quiet', 'Inconclusive. The evidence was too weak, or the sample too small, to move the verdict — and no alpha budget was spent claiming it works.'],
+      inconclusive: ['quiet', 'Inconclusive. The evidence was too weak, or the sample too small, to show an edge that isn’t luck.'],
       rejected: ['sig', 'Rejected. It failed in-research, lacked a credible mechanism, or was indistinguishable from its placebo. It is kept on the record so the next search does not repeat it.'],
     };
     return m[cls] || ['quiet', 'Awaiting a recorded verdict.'];
@@ -1457,10 +1478,10 @@
     const pre = [];
     if (exp.null_hypothesis) pre.push(['Null hypothesis', exp.null_hypothesis]);
     if (exp.alt_hypothesis) pre.push(['Alternative', exp.alt_hypothesis]);
-    if (exp.primary_metric) pre.push(['Primary metric', exp.primary_metric]);
-    if (exp.planned_test) pre.push(['Planned test', exp.planned_test]);
+    if (exp.primary_metric) pre.push(['Primary metric', rpPlain(exp.primary_metric)]);
+    if (exp.planned_test) pre.push(['Planned test', rpPlain(exp.planned_test)]);
     if (exp.min_sample != null) pre.push(['Minimum sample', exp.min_sample + ' trades']);
-    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests ·\u00a0' : ''}${exp.correction_method || '—'}`]);
+    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests ·\u00a0' : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
     if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${v}`).join(' ·\u00a0')]);
     if (pre.length) {
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
@@ -1475,38 +1496,37 @@
     const v = exp.validation;
     if (v) {
       const stat = (k, val, cls, sb) => `<div class="rp-stat"><div class="k">${esc(k)}</div><div class="val${cls ? ' ' + cls : ''}">${val}</div>${sb ? `<div class="sub">${esc(sb)}</div>` : ''}</div>`;
-      const ciTxt = (v.ci_lo != null && v.ci_hi != null) ? `90% CI ${rpCent(v.ci_lo)} to ${rpCent(v.ci_hi)}` : '';
+      const ciTxt = (v.ci_lo != null && v.ci_hi != null) ? `90% CI ${rpRet(v.ci_lo)} to ${rpRet(v.ci_hi)}` : '';
       const stats = [
-        stat('Mean net return / trade', rpCent(v.mean_net_return), tint('validation', 'mean_net_return'), ciTxt),
-        stat('Bootstrap p-value', rpProb(v.p_value), tint('validation', 'p_value'), 'one-sided, autocorr-robust'),
-        stat('PSR', rpProb(v.psr), '', 'prob. true Sharpe > 0'),
-        stat('DSR', rpProb(v.dsr), tint('validation', 'dsr'), 'deflated for selection'),
-        stat('Trials audited', rpInt(exp.n_trials_audited), '', 'competed for this evidence'),
-        stat('FDR α spent', rpProb(v.fdr_alpha_i, 4), '', v.fdr_reject == null ? '' : (v.fdr_reject ? 'rejects the null' : 'does not reject')),
-        stat('Placebo p-value', rpProb(v.placebo_p), tint('validation', 'placebo_p'), 'label-shuffle control'),
+        stat('Net return per trade', rpRet(v.mean_net_return), tint('validation', 'mean_net_return'), 'average, as % of its stake' + (ciTxt ? ' ·\u00a0' + ciTxt : '')),
+        stat('Bootstrap p-value', rpProb(v.p_value), tint('validation', 'p_value'), 'chance a rule with no edge does this well; lower is better'),
+        stat('PSR', rpProb(v.psr), '', 'probability its true risk-adjusted return (Sharpe) is above 0'),
+        stat('DSR', rpProb(v.dsr), tint('validation', 'dsr'), 'the same, discounted for the many ideas tried'),
+        stat('Trials audited', rpInt(exp.n_trials_audited), '', 'ideas tested on this data; more ideas, more lucky passes'),
+        stat('p-value needed', rpProb(v.fdr_alpha_i, 4), '', 'the bar its p-value had to clear' + (v.fdr_reject == null ? '' : v.fdr_reject ? '; it cleared it' : '; it missed it')),
+        stat('Placebo p-value', rpProb(v.placebo_p), tint('validation', 'placebo_p'), 'chance shuffled outcomes do as well; lower is better'),
         stat('Trades', rpInt(v.n_trades), tint('validation', 'n_trades'), 'on the validation window'),
       ].join('');
-      const isMean = (exp.folds && exp.folds.length) ? exp.folds.reduce((a, f) => a + (f.mean_net_return || 0), 0) / exp.folds.length : null;
       const figs = `<div class="rp-figs">
         <div class="rp-fig wide"><h5>Equity by phase</h5>${rpPhaseEquity([
-          { key: 'validation', label: 'Validation', color: 'var(--ink)', curve: v.equity_curve },
-          { key: 'holdout', label: 'Holdout', color: 'var(--signal)', curve: exp.holdout && exp.holdout.equity_curve },
-        ])}<div class="cap">Each phase is its own out-of-sample run; the dashed divider marks the one-way handoff from validation to the locked holdout.</div></div>
-        <div class="rp-fig"><h5>In-sample vs validation</h5>${rpShrinkage(isMean, v.mean_net_return)}</div>
-        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(v.equity_curve)}</div>
-        <div class="rp-fig wide"><h5>Per-trade return distribution</h5>${rpReturnDist(rpDiffs(v.equity_curve), v.ci_lo, v.ci_hi, v.mean_net_return)}<div class="cap">Bars: the net P&amp;L of each validation trade. Shaded band: the 90% bootstrap confidence interval of the mean. Dashed line: the mean. A band entirely right of break-even means the edge clears fees.</div></div>
-        <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds)}<div class="cap">Mean net return per purged/embargoed research fold — a consistent sign across windows is robustness; one window carrying the whole edge is a warning.</div></div>
+          { key: 'validation', label: 'Validation', color: 'var(--ink)', curve: rpCum(v.equity_curve) },
+          { key: 'holdout', label: 'Holdout', color: 'var(--signal)', curve: exp.holdout && rpCum(exp.holdout.equity_curve) },
+        ])}<div class="cap">Running total of each trade's net return, counted in stakes: +2× means it made twice what one trade puts in, after fees. Each phase is its own run on data the agent never saw; the dashed divider marks the one-way handoff from validation to the locked holdout.</div></div>
+        <div class="rp-fig"><h5>Validation vs holdout</h5>${rpShrinkage(v.mean_net_return, exp.holdout ? exp.holdout.mean_net_return : null)}</div>
+        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(rpCum(v.equity_curve), null, rpStakes)}<div class="cap">Validation, counted in stakes: the deepest drop from a running high.</div></div>
+        <div class="rp-fig wide"><h5>Per-trade return distribution</h5>${rpReturnDist((v.equity_curve || []).map((p) => +p[1]), v.ci_lo, v.ci_hi, v.mean_net_return)}<div class="cap">Bars: the net return of each validation trade, as % of its stake. Shaded band: the 90% bootstrap confidence interval of the mean. Dashed line: the mean. A band entirely right of break-even means the edge clears fees.</div></div>
+        <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds)}<div class="cap">The validation window cut into consecutive slices, with each slice's average net return per trade (as % of its stake) and its trade count. The same sign in most slices is robustness; one slice carrying the whole edge is a warning.</div></div>
       </div>`;
-      parts.results += sub('Validation-window evidence', `<p class="rp-sub" style="margin-top:0">The window the agent iterated against is in-sample; these are the numbers from the held-out validation partition, under the audited false-discovery budget.</p><div class="rp-stats">${stats}</div>${figs}`);
+      parts.results += sub('Validation-window evidence', `<p class="rp-sub" style="margin-top:0">The agent searched and tuned on earlier data (in-sample). These numbers come from the validation window after it: data the agent never saw while searching.</p><div class="rp-stats">${stats}</div>${figs}`);
     }
     // Verdict — the ladder, the one-time locked holdout, and the gatekeeper's conclusion.
-    parts.verdict += `<div class="paper-sub"><h4 class="paper-h">Where it reached on the ladder</h4>${rpLadder(exp.classification)}</div>`;
+    parts.verdict += `<div class="paper-sub"><h4 class="paper-h">Where it reached on the ladder</h4>${rpLadder(exp.classification, exp.validation && exp.validation.classification, exp.holdout ? 'on the locked holdout' : '')}</div>`;
     const h = exp.holdout;
     const holdBody = h ? `<div class="rp-stats">
-      <div class="rp-stat"><div class="k">Mean net return / trade</div><div class="val${tint('holdout', 'mean_net_return') ? ' sig' : ''}">${rpCent(h.mean_net_return)}</div><div class="sub">${h.ci_lo != null && h.ci_hi != null ? '90% CI ' + rpCent(h.ci_lo) + ' to ' + rpCent(h.ci_hi) : ''}</div></div>
+      <div class="rp-stat"><div class="k">Net return per trade</div><div class="val${tint('holdout', 'mean_net_return') ? ' sig' : ''}">${rpRet(h.mean_net_return)}</div><div class="sub">average, as % of its stake${h.ci_lo != null && h.ci_hi != null ? ' ·\u00a090% CI ' + rpRet(h.ci_lo) + ' to ' + rpRet(h.ci_hi) : ''}</div></div>
       <div class="rp-stat"><div class="k">Bootstrap p-value</div><div class="val${tint('holdout', 'p_value') ? ' sig' : ''}">${rpProb(h.p_value)}</div></div>
       <div class="rp-stat"><div class="k">Trades</div><div class="val${tint('holdout', 'n_trades') ? ' sig' : ''}">${rpInt(h.n_trades)}</div></div>
-      <div class="rp-stat"><div class="k">Holdout</div><div class="val">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'spent — roll to fresh forward data' : 'evaluations remain'}</div></div>
+      <div class="rp-stat"><div class="k">Holdout</div><div class="val">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'used once, as designed: it can’t be re-run on this data' : 'not used yet'}</div></div>
     </div>` : `<div class="rp-empty">Not yet evaluated on the locked holdout. The holdout is spent only once, on strategies that already passed validation — so an empty holdout here is expected until then.</div>`;
     parts.verdict += sub('The one-time locked holdout', holdBody);
     const [vtone, words] = rpConclusion(exp.classification);
@@ -3436,6 +3456,30 @@
     }
     return books.join('') + (need ? `<p class="hint">${need}</p>` : '');
   }
+  // The verdict in one line near the top of a strategy page: whether it passed and on what held-out
+  // evidence, or the check it missed. The full evidence stays in Verdict, which on a phone is many
+  // screens down; a Void strategy's page read "returned $3.10 on unseen data" up top and said why it
+  // failed only there.
+  function verdictGlance(s, missed) {
+    const exp = s.experiment, h = exp && exp.holdout, v = exp && exp.validation;
+    const lc = (t) => String(t).charAt(0).toLowerCase() + String(t).slice(1);
+    let lead, words;
+    if (missed && ['failed', 'rejected'].includes(s.status)) {
+      lead = s.status === 'failed' ? 'Void.' : 'Rejected.';
+      words = `It missed ${missed.length === 1 ? 'a check' : missed.length + ' checks'}: ${lc(missed[0].label)}${missed.length > 1 ? `, and ${missed.length - 1} more` : ''}. Verdict, below, has what was measured and what to try next.`;
+    } else if (s.status === 'passed' && h && h.n_trades != null && ['deployment_candidate', 'forward_validated'].includes(exp.classification)) {
+      lead = 'Passed.';
+      words = `It cleared every check, including the one-time locked holdout: ${num(h.n_trades)} trades on data it had never seen${h.mean_net_return != null ? `, averaging ${rpRet(h.mean_net_return)} of the stake per trade after fees` : ''}.`;
+    } else if (s.status === 'passed' && v && v.n_trades != null && !h) {
+      lead = 'Passed validation.';
+      words = `It cleared the checks on ${num(v.n_trades)} trades it had never seen; the one-time locked holdout hasn’t run yet.`;
+    } else if (s.status === 'backtest-only') {
+      lead = 'Backtest only.';
+      words = 'It never went through the held-out checks, so its only evidence is the backtest below.';
+    } else return '';
+    return `<p class="paper-ab-result verdict-glance"><b>${esc(lead)}</b> ${esc(words)}</p>`;
+  }
+
   async function viewStrategy(id) {
     shell('/strategies', boardTitle('Strategy'), loading(420));
     const s = await api('/api/strategies/' + id);
@@ -3508,10 +3552,11 @@
             <div><dt>Unseen (held out) from</dt><dd>${esc((s.dataset.out_of_sample_from || '').slice(0, 10)) || '—'}</dd></div>
           </dl>
           <p class="rp-sub" style="margin-top:8px">${perpetual ? 'The agent only saw the research partition. ' + PERPS_SCENARIO : "The agent only ever saw data before the held-out date. Every simulated fill pays the ask or bid plus Kalshi's taker fee — results are net of fees or they do not count."}</p></div>` : '';
-    const ruleBlock = `<div class="paper-sub"><h4 class="paper-h">The decision rule, in plain words</h4>
-          <ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
-          <details class="raw"><summary>Exact machine spec (JSON)</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details></div>`;
-    const methodologyBody = rp.methodology + ruleBlock + dataBlock + (perpetual && !s.dataset ? `<p class="hint">${PERPS_SCENARIO}</p>` : '');
+    // What it does, in plain words: the paper's first section. It sat inside the Methodology fold,
+    // which a phone opens closed, under the pre-registration, so the rule took digging to find.
+    const ruleBlock = `${(s.rules || []).length ? `<ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+          <details class="raw"><summary>Exact machine spec (JSON)</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details>`;
+    const methodologyBody = rp.methodology + dataBlock + (perpetual && !s.dataset ? `<p class="hint">${PERPS_SCENARIO}</p>` : '');
     const resultsBody = rp.results
       + `<div class="paper-sub">${perpetual ? '<h4 class="paper-h">Perpetual research scenario</h4>' : hasExp ? '<h4 class="paper-h">Backtest &amp; Kalshi demo replay</h4>' : ''}
           ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent\'s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
@@ -3522,7 +3567,7 @@
       + fold('Most recent unseen trades', `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`);
     let verdictBody = rp.verdict;
     if (!hasExp) {
-      const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. ' + (restricted ? 'This market remains research only.' : 'Deploying it is your decision and your risk.')];
+      const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. ' + (perpetual ? 'This market remains research only.' : restricted ? 'Agent-written code stays in research.' : 'It can’t be deployed: only a strategy put through those checks can be.')];
       const vmap = {
         // No experiment resolved (by experiment_id OR strategy_id) means NO gatekeeper record
         // exists — so this was NOT validated, whatever the status says. Never claim it "cleared
@@ -3557,9 +3602,11 @@
             ${s.shared_from ? `<div class="paper-byline"><span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span></div>` : ''}
             <section class="paper-abstract" aria-label="Strategy hypothesis">
               <p class="paper-ab">${mdLite(s.thesis)}</p>
+              ${hasExp ? verdictGlance(s, missed) : ''}
               <details class="saved-result"><summary>Saved result</summary><p class="paper-ab-result">${abResult}</p>${s.hypotheses_tried != null ? '<p class="hint">The more ideas a session tests, the likelier one passes by luck.</p>' : ''}</details>
             </section>
             <div class="paper-body">
+              ${paperSec('What it does, in plain words', ruleBlock)}
               ${paperSec('Mechanism &amp; hypothesis', rp.mechanism)}
               ${paperSec(hasExp ? 'Results' : 'Backtest results', resultsBody)}
               ${fold('Methodology', paperSec('Methodology', methodologyBody))}
@@ -3601,7 +3648,7 @@
                 </form>
                 </div></details>
                 <div id="depflash"></div>
-              </div>` : restricted ? '<p class="hint">Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.</p>' : '<p class="hint">This strategy isn’t ready to deploy yet.</p>'}
+              </div>` : restricted ? `<p class="hint">${perpetual ? 'Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.' : CODE_RESEARCH_ONLY}</p>` : `<p class="hint">${s.status === 'backtest-only' ? 'A backtest-only strategy can’t be deployed: it never went through the held-out checks. To test this idea properly, ask for it in a new research session.' : 'This strategy isn’t ready to deploy yet.'}</p>`}
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
           </section>
           ${!restricted && s.status === 'passed' ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}

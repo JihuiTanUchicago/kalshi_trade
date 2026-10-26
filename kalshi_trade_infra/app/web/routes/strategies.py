@@ -29,6 +29,9 @@ def _strategy_card(s: Dict) -> Dict:
         "stake": _spec_sizing(s).get("stake"),
         "side": (s["spec"].get("perpetual") or {}).get("side") if specmod.is_perpetual_spec(s["spec"]) else s["spec"].get("side"),
         **({"kind": "perpetual", "research_only": True} if specmod.is_perpetual_spec(s["spec"]) else {}),
+        # Agent-authored code runs only in the research sandbox: create_deployment refuses it in every
+        # mode, so the pages offer no deploy button for it (they did, and every tap failed).
+        **({"kind": "code", "research_only": True} if specmod.is_code_spec(s["spec"]) else {}),
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
         "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
         "example": s.get("direction") == repo.DEMO_DIRECTION,  # from the seeded example session

@@ -11,6 +11,7 @@ import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
+import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -217,6 +218,7 @@ trustGlitchCases({name: 'Meridian', frontend});
 bellCases({name: 'Meridian', frontend});
 researchPollCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend});
+strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -4375,7 +4377,7 @@ test('Meridian: the strategy page lists what it missed under Verdict and names t
 // same checks that write why_failed); the page restates no cutoff. These fixtures are what the server
 // sends for these numbers (tests/test_gate_explain.py pins the server side).
 const FIGURE_GATES = {'Trades': ['sample_size'], 'Bootstrap p-value': ['significance', 'multiple_testing'],
-  'Mean net return / trade': ['net_edge'], 'DSR': ['deflated_sharpe'], 'Placebo p-value': ['placebo']};
+  'Net return per trade': ['net_edge'], 'DSR': ['deflated_sharpe'], 'Placebo p-value': ['placebo']};
 const tintedFigures = html => [...String(html).matchAll(/<div class="rp-stat"><div class="k">([^<]*)<\/div><div class="val( sig)?">/g)]
   .filter(m => m[2]).map(m => m[1].replace(/&amp;/g, '&'));
 const missedFigures = lines => Object.keys(FIGURE_GATES).filter(k => lines.some(l => FIGURE_GATES[k].includes(l.gate)));
@@ -4396,7 +4398,7 @@ test('Meridian: a research-paper figure is red exactly when its gate line says i
   const f = strategyFrontend(detailStrategy({status: 'failed', experiment: failing, why_failed: VAL_LINES})); await f.viewStrategy(42); await flush();
   const red = tintedFigures(paperSections(f.root.querySelector('main').innerHTML).validation);
   assert.deepEqual(red.sort(), missedFigures(VAL_LINES).sort());
-  assert.deepEqual(red.sort(), ['Bootstrap p-value', 'Mean net return / trade', 'Trades']);
+  assert.deepEqual(red.sort(), ['Bootstrap p-value', 'Net return per trade', 'Trades']);
   // Passed validation, failed holdout: the validation figures all pass (DSR 0.60 and placebo 0.02
   // would have been red under the old cutoffs); the holdout's p-value and mean are red as its lines
   // say, its sample is not judged, and a consumed holdout is a state, not a miss.
