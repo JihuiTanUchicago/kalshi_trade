@@ -2936,6 +2936,40 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   assert.match(css, /\.rsidisc \.pipechev \{ position: absolute; right: 14px;/);
 });
 
+test('Meridian phone polish: a glossary marker keeps its last word, one rule where boxes meet, touch controls 40px or more', async () => {
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const perps = readFileSync(new URL('../app/static/kalshi-perps-live.css', import.meta.url), 'utf8');
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 3, passed: 1, failed: 1, rejected: 1}}) : response({}))});
+  await f.viewStrategies(); await flush(); await flush();
+  const figs = f.root.querySelector('#sfigs').innerHTML;
+  // The marker shares a no-wrap span with the label's last word, so it never wraps onto a line of its own.
+  assert.match(figs, /Void on unseen <span class="nobr">data<button type="button" class="info" data-glo="void"/);
+  assert.match(figs, /Rejected in <span class="nobr">testing<button type="button" class="info" data-glo="rejected"/);
+  assert.doesNotMatch(source, /fig\('[^']*' \+ glo\(/, 'figure labels go through gl(), not label + glo()');
+  assert.match(css, /\.nobr \{ white-space: nowrap; \}/);
+  // The double dividers: the research-policy box on the progress section's top rule (run page), and
+  // a stacked position card's rule 4-9px above the next family's heading or Recent settlements (dashboard).
+  assert.match(css, /#rsibox:not\(:empty\) \+ \.rsiobs \{ border-top: 0; \}/);
+  assert.match(css, /@container dashboard \(max-width: 779px\) \{\n  \.t-positions tbody > tr:last-child \{ border-bottom: 0; \}\n\}/);
+  assert.match(css, /\.pipefig:not\(\[open\]\) > \.pipecap \{ border-bottom: 0; \}/);
+  // Phone: the RSI tag sits under the title, the system map scrolls sideways at a readable size.
+  const phone = css.slice(css.lastIndexOf('@media (max-width: 760px)'));
+  assert.match(phone, /\.rsidisc-cap > \.rsi-tag, \.rsidisc-cap > \.rsidisc-delta \{ grid-column: 2;/);
+  assert.match(phone, /\.sys-wrap \{ overflow-x: auto;/);
+  // Touch: every field, summary, slider and small link that measured under 40px at 360px.
+  const touch = css.slice(css.lastIndexOf('@media (pointer: coarse)'));
+  const block = touch.slice(0, touch.indexOf('\n}\n'));
+  assert.match(block, /\.input, select, input\[type=text\][^{]*\.post-tools select, \.explore-filters \.input \{ min-height: 44px; \}/);
+  assert.match(block, /input\[type=range\], \.dial input\[type=range\] \{ height: 40px; \}/);
+  assert.match(block, /details > summary \{ padding-block: 11px; min-height: 40px; \}/);
+  assert.match(block, /\.wordmark a \{ padding: 3px 5px; margin: -3px -5px; \}/);
+  assert.match(block, /\.legal-nav a, \.legal-foot a, \.lfoot-links a, \.linkish \{ padding: 10px 4px; margin: -10px -4px; \}/);
+  assert.doesNotMatch(block, /#dep-(paper|demo|live)|\.go\b|strat-quick/);
+  // Funds: the perps ticket's buttons, fields and checkboxes were 34px and 16px.
+  assert.match(perps, /@media \(pointer: coarse\) \{\n  \.kalshi-perps-live \.btn, \.kp-field input, \.kp-field select, \.kp-reduce, \.kp-check \{ min-height: 44px; \}/);
+});
+
 test('Meridian: separators wrap with the item after them, the phone tabs show which edge has more, stacked cells are named', () => {
   const f = frontend();
   // Every " · " in the bundle binds to the next item (" · "), so a wrapped line never ends on a dot.

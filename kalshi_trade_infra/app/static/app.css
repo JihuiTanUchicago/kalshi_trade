@@ -1288,6 +1288,8 @@ body.landing-body { background: #FBFBFA; }
 .composer-post textarea { min-height: 40px; max-height: 180px; resize: none; }
 .post-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .post-tools select { max-width: 280px; }
+/* The strategy picker keeps a usable width: below 160px it wraps Post to the next line (it was squeezed to ~20px at 390px). */
+.post-tools > .post-strat-f { flex: 1 1 160px; min-width: 0; }
 .post-tools .btn { margin-left: auto; }
 .post-tools .btn + .btn { margin-left: 8px; }
 #feed { display: grid; gap: 0; margin-top: 18px; }
@@ -1908,4 +1910,42 @@ body.landing-body .apf { display: none; }
   .fold > .panel, .fold > .paper-sec, .fold > .paper-sub { border: 0; margin: 0; box-shadow: none; }
   .fold > .panel > h3:first-child, .fold > .paper-sec > .paper-sec-t, .fold > .paper-sub > .paper-h:first-child { display: none; }
   .fold > .paper-sec, .fold > .paper-sub, .fold > .fold-body { padding: 12px 14px; }
+}
+/* ── Phone polish ─────────────────────────────────────────────────────────────── */
+/* A label's last word keeps its glossary marker (gl() in app.js): the marker never wraps alone. */
+.nobr { white-space: nowrap; }
+/* One rule between stacked boxes: the RSI loop box sits right on the pipeline figure, and a closed
+   figure's caption rule sat on the figure's own bottom border. */
+.rengine:has(.rsidisc.loop) + .pipefig { border-top: 0; }
+.pipefig:not([open]) > .pipecap { border-bottom: 0; }
+@media (max-width: 760px) {
+  /* RSI headings: badge (and the "+" marker) in their own columns, the tag under the title instead of
+     wrapping to the far left under the badge. */
+  .rsi-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 8px; row-gap: 6px; }
+  .rsi-head .rsi-badge { margin-right: 0; }
+  .rsi-head > .rsi-tag { grid-column: 2; justify-self: start; margin-left: 0; }
+  .rsidisc-cap { display: grid; grid-template-columns: auto auto minmax(0, 1fr); column-gap: 8px; row-gap: 6px; }
+  .rsidisc-cap > .rsi-tag, .rsidisc-cap > .rsidisc-delta { grid-column: 3; justify-self: start; margin-left: 0; }
+  /* The pipeline caption's chevron stays on the first line, not on a row of its own. */
+  .pipecap { position: relative; padding-right: 44px; }
+  .pipecap > .pipechev { position: absolute; right: 16px; top: 14px; }
+  /* System map: wide enough to read and tap (nodes ~45px tall), scrolled sideways inside its frame. */
+  .sys-wrap { overflow-x: auto; overscroll-behavior-x: contain; }
+  .sys-wrap svg { width: 640px; max-width: none; }
+}
+/* Touch: every control at least 40px tall. Inline links grow with padding, which leaves the line
+   box alone; block links pair it with a negative margin so the layout does not move. */
+@media (pointer: coarse) {
+  .input, select, input[type=text], input[type=search], input[type=email], input[type=number], input[type=password] { min-height: 44px; }
+  input[type=range] { height: 40px; }
+  .key-file input[type=file] { padding-block: 10px; }
+  .switch { min-height: 44px; }
+  details > summary { padding-block: 11px; min-height: 40px; }
+  .wordmark a { padding-block: 12px; margin-block: -12px; }
+  .sub-fig a, .said a, .hint a, .steps a, a.csv-link { padding: 13px 4px; margin-inline: -4px; }
+  td.name > a:not(.btn) { padding-block: 10px; margin-block: -10px; }
+  .stub-all { padding-bottom: 12px; margin-bottom: -12px; }
+  .lbrand { padding-block: 7px; margin-block: -7px; }
+  .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
+  .demo-bar .replay { min-height: 40px; }
 }

@@ -63,6 +63,8 @@
   };
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
+  // A label with its marker: the last word and the marker never break apart, so the marker can't wrap onto a line of its own.
+  const gl = (label, key) => { const i = label.lastIndexOf(' '); return `${label.slice(0, i + 1)}<span class="nobr">${label.slice(i + 1)}${glo(key)}</span>`; };
   function setupGlossary() {
     const pop = document.createElement('div');
     pop.className = 'glossary-pop'; pop.setAttribute('role', 'tooltip'); pop.id = 'glossary-pop'; pop.hidden = true;
@@ -1912,7 +1914,7 @@
       const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
       const running = d.counts.research_running, queued = d.counts.research_queued;
       root.querySelector('#research-status').innerHTML = fig('Running', running) + fig('Queued', queued);
-      root.querySelector('#rfigs').innerHTML = fig('Passed' + glo('gate'), passed) + fig('Tested', tried);
+      root.querySelector('#rfigs').innerHTML = fig(gl('Passed', 'gate'), passed) + fig('Tested', tried);
       root.querySelector('#rfigs').setAttribute('title', tried ? `${pct(passed / tried, false)} of ${num(tried)} tested` : 'No strategies tested');
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       const active = d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused');
@@ -2531,7 +2533,7 @@
         return;
       }
       const counts = d.counts || {}, total = counts.total || 0, c = (st) => counts[st] || 0;
-      root.querySelector('#sfigs').innerHTML = fig('Passed' + glo('passed'), c('passed')) + fig('Void on unseen data' + glo('void'), c('failed')) + fig('Rejected in testing' + glo('rejected'), c('rejected')) +
+      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed')) + fig(gl('Void on unseen data', 'void'), c('failed')) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
         fig('Pass rate', total ? pct(c('passed') / total, false) : '—');
       root.querySelector('#strategy-passrate').textContent = total ? `${pct(c('passed') / total, false)} pass rate` : 'Research results';
       const kept = total - c('failed') - c('rejected');

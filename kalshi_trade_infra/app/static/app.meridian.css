@@ -2581,3 +2581,53 @@ body.landing-body .apf { display: none; }
   .fold > .panel > h3:first-child, .fold > .paper-sec > .paper-sec-t, .fold > .paper-sub > .paper-h:first-child { display: none; }
   .fold > .paper-sec, .fold > .paper-sub, .fold > .fold-body { padding: 12px 14px; }
 }
+/* ── Phone polish ─────────────────────────────────────────────────────────────── */
+/* A label's last word keeps its glossary marker (gl() in app.meridian.js): the marker never wraps alone. */
+.nobr { white-space: nowrap; }
+/* One rule between stacked boxes. The run page's research-policy box sat right on the progress
+   section's top rule; the RSI loop box can sit on the pipeline figure; a closed figure's caption
+   rule sat on the figure's own bottom border. */
+#rsibox:not(:empty) + .rsiobs { border-top: 0; }
+.rengine:has(.rsidisc.loop) + .pipefig { border-top: 0; }
+.pipefig:not([open]) > .pipecap { border-bottom: 0; }
+/* Stacked position cards: each family's last card drops its rule, as the wide table's last row does.
+   The next family's heading rule (or Recent settlements' rule) is the one divider, not two lines 4-9px apart. */
+@container dashboard (max-width: 779px) {
+  .t-positions tbody > tr:last-child { border-bottom: 0; }
+}
+@media (max-width: 760px) {
+  /* RSI headings: the badge in its own column, the tag under the title instead of wrapping to the
+     far left under the badge. */
+  .rsi-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 8px; row-gap: 6px; }
+  .rsi-head .rsi-badge { margin-right: 0; }
+  .rsi-head > .rsi-tag { grid-column: 2; justify-self: start; margin-left: 0; }
+  .rsidisc-cap { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 6px; }
+  .rsidisc-cap > .rsi-tag, .rsidisc-cap > .rsidisc-delta { grid-column: 2; justify-self: start; margin-left: 0; }
+  /* The pipeline caption's chevron stays on the first line, not on a row of its own. */
+  .pipecap { position: relative; padding-right: 44px; }
+  .pipecap > .pipechev { position: absolute; right: 16px; top: 14px; }
+  .research-compose .pipecap { padding-right: 28px; }
+  .research-compose .pipecap > .pipechev { right: 0; top: 50%; margin-top: -8px; }
+  /* System map: wide enough to read and tap (nodes ~45px tall), scrolled sideways inside its frame. */
+  .sys-wrap { overflow-x: auto; overscroll-behavior-x: contain; }
+  .sys-wrap svg { width: 640px; max-width: none; }
+}
+/* Touch: every control at least 40px tall. Inline links grow with padding, which leaves the line
+   box alone; block links pair it with a negative margin so the layout does not move. */
+@media (pointer: coarse) {
+  .input, select, input[type=text], input[type=search], input[type=email], input[type=number], input[type=password], .post-tools select, .explore-filters .input { min-height: 44px; }
+  input[type=range], .dial input[type=range] { height: 40px; }
+  .key-file input[type=file] { padding-block: 10px; }
+  .switch { min-height: 44px; }
+  details > summary { padding-block: 11px; min-height: 40px; }
+  .rsiobs-head, .research-compose .pipecap { min-height: 40px; }
+  summary.section-head { min-height: 40px; align-items: center; }
+  .dep-evidence > summary { display: inline-flex; align-items: center; min-height: 40px; padding-top: 0; }
+  .wordmark a { padding: 3px 5px; margin: -3px -5px; }
+  .sub-fig a, .said a, .hint a, .steps a, .dep-monitor h3 a, a.csv-link { padding: 13px 4px; margin-inline: -4px; }
+  td.name > a:not(.btn):not(.market-name) { padding-block: 10px; margin-block: -10px; }
+  .t-explore a.market-name { padding-block: 4px; margin-block: -4px; }
+  .lbrand { padding-block: 7px; margin-block: -7px; }
+  .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
+  .demo-bar .replay { min-height: 40px; }
+}

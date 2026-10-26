@@ -58,3 +58,7 @@
   .kp-review-head { display: block; }
   .kp-review-head span { display: block; margin-top: 3px; }
 }
+/* Touch: the ticket's fields, buttons and checkboxes at least 44px tall, like every other control. */
+@media (pointer: coarse) {
+  .kalshi-perps-live .btn, .kp-field input, .kp-field select, .kp-reduce, .kp-check { min-height: 44px; }
+}
