@@ -5540,9 +5540,12 @@
     // the same voice taking it back. It is the autopilot's own rule (agent.act), so it is headed as
     // that, and says that your own Pause on Deploy still stops it.
     const rule = !m.proposal_kind && /^I left .+ running: it (?:has been on paper for only|is a paper tournament entrant)/.test(m.content || '');
+    // The engine's own loss guard or drawdown limit paused a strategy (the server says it by name,
+    // customer_text.auto_pause_line): no review ran, so it isn't headed "Reviewed".
+    const guard = !m.proposal_kind && /^Paused (?:your (?:paper|demo|live) strategy .+|one of your strategies) automatically\b/.test(m.content || '');
     const kind = (st === 'pending' && AP_ASK[m.proposal_kind]) || AP_ACT[m.proposal_kind]
       || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off')
-        : said || (rule ? 'Autopilot’s rule: kept running' : 'Reviewed'));
+        : said || (rule ? 'Autopilot’s rule: kept running' : guard ? 'Paused automatically' : 'Reviewed'));
     const own = rule ? '<p class="apf-ask apf-rule">To stop it anyway, pause it yourself on <a href="/deploy">Deploy</a>.</p>' : '';
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
     const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`

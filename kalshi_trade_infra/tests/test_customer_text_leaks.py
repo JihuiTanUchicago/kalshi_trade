@@ -187,8 +187,14 @@ def test_the_autopilot_panel_cleans_the_lines_tau_wrote(monkeypatch):
             {"id": 3, "role": "system", "content": "Autopilot paused Fade."}]
     monkeypatch.setattr(repo, "active_agent_run", lambda cur, uid: None)
     monkeypatch.setattr(repo, "chat_messages", lambda cur, uid, after: [dict(m) for m in msgs])
+    monkeypatch.setattr(repo, "deployment_names", lambda cur, uid, ids: {})  # deployment #4 is gone
     out = server.get_chat(_ctx())
-    assert [m["content"] for m in out["messages"]] == [msgs[0]["content"], ct.CHAT_FALLBACK, "Autopilot paused Fade."]
+    # The engine's pause reads in words (customer_text.auto_pause_line), and a reason it doesn't know,
+    # here a raw trace, is left out whole.
+    assert [m["content"] for m in out["messages"]] == [msgs[0]["content"], "Paused one of your strategies automatically.",
+                                                       "Autopilot paused Fade."]
+    msgs[1]["content"] = "Autopilot paused deployment 4. %s" % TRACE  # any other line Tau wrote: the fallback, as before
+    assert [m["content"] for m in server.get_chat(_ctx())["messages"]][1] == ct.CHAT_FALLBACK
     _no_leak(out)
 
 

@@ -1010,6 +1010,34 @@ def test_the_engines_own_pause_is_the_last_move_with_its_strategy(conn, user):
     assert "deployment" not in repo.last_autopilot_action(cur, uid)
 
 
+def test_the_chat_feed_says_the_engines_pause_by_name_and_keeps_the_stored_line(conn, user):
+    """The chat feed read the engine's "Paused deployment #N automatically." as stored. It says the
+    strategy by name now (GET /api/chat), the stored row keeps the engine's words, and another user's
+    deployment number reads no title."""
+    from types import SimpleNamespace
+
+    from app import repository as repo
+    from app.web.routes import chat as chat_routes
+
+    cur, uid = conn.cursor(), user["id"]
+    dep = _deployment(conn, user)
+    line = "Paused deployment #%d automatically. Lost $12.00, more than the $10.00 guard (2x its worst backtest drawdown)." % dep["id"]
+    repo.add_chat(cur, uid, "system", line)
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "o@example.com", "O", None)
+    assert repo.deployment_names(cur, uid, [dep["id"], dep["id"] + 999]) == {dep["id"]: {"title": "T", "mode": "paper"}}
+    assert repo.deployment_names(cur, other["id"], [dep["id"]]) == {}
+    assert repo.deployment_names(cur, uid, []) == {}
+
+    def feed(user_id):
+        out = chat_routes.get_chat(SimpleNamespace(cur=cur, uid=user_id, query={}))
+        return [m["content"] for m in out["messages"] if m["role"] == "system"]
+
+    assert feed(uid) == ["Paused your paper strategy T automatically: it lost $12.00, more than its $10.00 loss guard."]
+    repo.add_chat(cur, other["id"], "system", line)
+    assert feed(other["id"]) == ["Paused one of your strategies automatically: it lost $12.00, more than its $10.00 loss guard."]
+    assert [m["content"] for m in repo.chat_messages(cur, uid)] == [line]  # the engine's words, as written
+
+
 def test_chat_lines_name_the_book_a_proposal_would_change(conn, user):
     """The agent panel says whether Approve touches real money: a proposal's chat line carries its
     deployment's book; a line with no deployment (a risk change, plain chat) carries none."""

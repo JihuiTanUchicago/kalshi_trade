@@ -75,3 +75,48 @@ def test_a_line_naming_a_strategy_with_a_dash_carries_that_name_and_other_lines_
     assert _status_last_move(monkeypatch, plain, deps) == plain  # no name with a dash: the same {text, at}
     assert _status_last_move(monkeypatch, None, deps) is None
     # The full status route, against MySQL: tests/test_autopilot_status_db.py ("the engine pauses a deployment").
+
+
+# -- the chat feed says the engine's pause the same way -------------------------------------------
+# "Last move" said it by name, but the panel's feed below still showed "Paused deployment #12
+# automatically. Lost $12.00, more than the $10.00 guard (...)" as the engine stored it.
+
+PAUSE = "Paused deployment #12 automatically. Lost $12.00, more than the $10.00 guard (2x its worst backtest drawdown)."
+
+
+def test_the_chat_feed_says_the_engines_pause_by_name_never_its_row_number():
+    rows = [{"role": "system", "content": PAUSE},
+            {"role": "system", "content": "Paused deployment #13 automatically. force-closed: drawdown 26.0% >= limit 25.0%"},
+            {"role": "agent", "content": "Paused deployment #12 automatically."},  # the agent's own words stay as said
+            {"role": "system", "content": "Autopilot paused Rain: it hit its loss guard."}]
+    assert customer_text.auto_paused_ids(rows) == [12, 13]
+    out = customer_text.chat_rows(rows, {12: {"title": SPIKE, "mode": "paper"}})
+    assert [m["content"] for m in out] == [
+        "Paused your paper strategy %s automatically: it lost $12.00, more than its $10.00 loss guard." % SPIKE,
+        "Paused one of your strategies automatically: it was down 26.0% of its capital, past your 25.0% limit.",  # gone
+        "Paused deployment #12 automatically.",
+        "Autopilot paused Rain: it hit its loss guard."]
+    assert customer_text.auto_paused_id("Autopilot paused deployment #4") is None
+    assert customer_text.chat_rows([{"role": "system", "content": PAUSE}])[0]["content"].startswith("Paused one of your strategies")
+
+
+def test_get_chat_reads_the_paused_names_once_and_sends_no_deployment_number(monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    reads = []
+    monkeypatch.setattr(chat_routes.repo, "active_agent_run", lambda cur, uid: None)
+    monkeypatch.setattr(chat_routes.repo, "chat_messages", lambda cur, uid, after: [
+        {"id": 5, "role": "system", "content": PAUSE, "created_at": AT}, {"id": 6, "role": "user", "content": "why?", "created_at": AT}])
+    monkeypatch.setattr(chat_routes.repo, "deployment_names",
+                        lambda cur, uid, ids: reads.append((uid, ids)) or {12: {"title": SPIKE, "mode": "demo"}})
+    monkeypatch.setattr(chat_routes.billing, "configured", lambda: False)
+    out = chat_routes.get_chat(SimpleNamespace(cur=None, uid=7, query={}))
+    assert reads == [(7, [12])]
+    assert out["messages"][0]["content"] == ("Paused your demo strategy %s automatically: it lost $12.00, more than "
+                                             "its $10.00 loss guard." % SPIKE)
+    assert "#12" not in json.dumps(out, default=str) and "deployment" not in out["messages"][0]["content"]
+    # No pause line in the read: no name lookup at all.
+    monkeypatch.setattr(chat_routes.repo, "chat_messages", lambda cur, uid, after: [{"id": 6, "role": "user", "content": "hi"}])
+    chat_routes.get_chat(SimpleNamespace(cur=None, uid=7, query={"after": "5"}))
+    assert len(reads) == 1
