@@ -511,7 +511,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .panel:first-child { margin-top: 0; }
 .panel h3 { font-family: var(--f-nar); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 10px; }
 .figures.measure { margin: 0; }
-/* A run's figures (status, time, cost, hypotheses, passed, how it searches) share one row on a
+/* A run's figures (status, time, cost, tested, passed) share one row on a
    desktop, each column as wide as its content needs: auto-fit's 160px floor pushed the sixth onto a
    row of its own at 1280px with the hot-markets rail open. Where the row is too narrow for six
    ("Researching", "2880 min") they sit in two even rows of three; phones keep two columns below. */
@@ -1946,8 +1946,12 @@ body.landing-body .apf { display: none; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .run-next .btn { display: table; margin: 10px 0 0; }
 /* Ideas tested (runIdeas): each idea's outcome and the first check it missed, above the log. */
-.run-ideas { margin: 0 0 24px; }
+/* Its heading keeps a gap from the figures above: on a running session (no line between them) it sat
+   flush against the figures' bottom rule. */
+.run-ideas { margin: 24px 0; }
 .ri-list { list-style: none; padding: 0; margin: 0; }
+/* A void or rejected strategy's backtest P&L (strategySlip): muted, never a gain's colour. */
+.t-strat .pnl-nopass { color: var(--ink-3); white-space: nowrap; }
 .ri-list li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--rule); }
 .ri-list .hx-stamp { margin-left: 0; grid-row: span 2; min-width: 74px; justify-content: center; }
 .ri-title { background: none; border: 0; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere; }

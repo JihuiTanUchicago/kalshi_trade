@@ -1,7 +1,10 @@
 // Shared cases, run against each bundle's offline DOM/transport harness (Tau and Meridian): the research
 // session page (/research/:id) says how a session ended in the research list's words, names its count
 // once ("Tested") and says why the list under it holds fewer, shows the example as free, prints the agent's
-// step lines in the server's plain words, and calls the challenger the skeptic's review.
+// step lines in the server's plain words, and calls the challenger the skeptic's review. Its Time leaves out
+// the pauses, a silent session's sentence is said once, the loop's phase line moves past a verdict, the
+// research system's explainer is one folded line (no "How it searches" figure), and a void or rejected
+// strategy's backtest P&L is muted and says it did not pass.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -80,5 +83,92 @@ export function runPageCases({name, frontend}) {
     assert.match(f.root.querySelector('#log').querySelector('[data-review]').innerHTML, /Skeptic’s review · approved<\/span>plausible/);
     assert.match(log, /Skeptic’s review<\/span>revised - Other: tighten it/);
     assert.doesNotMatch(log, />Challenger/);
+  });
+
+  test(`${name}: Time leaves out the pauses the log records, and stops while the session is paused`, async () => {
+    const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+    const at = (id, kind, min) => ({id, kind, message: kind, data: {}, created_at: ago(min)});
+    const time = (f) => f.root.querySelectorAll('#runfigs .m').find((m) => m.querySelector('dt').textContent === 'Time').textContent;
+    // Started 90 min ago, paused 60 min ago and still paused: 30 min, not 2 hr.
+    let f = await open({status: 'paused', started_at: ago(90)}, [at(1, 'step', 89), at(2, 'paused', 60)]);
+    assert.match(time(f), /^Time30 minnot counting time paused$/);
+    // Paused before the worker logged it: the clock stops at its last line.
+    f = await open({status: 'paused', started_at: ago(90)}, [at(1, 'step', 89), at(2, 'step', 50)]);
+    assert.match(time(f), /^Time40 min$/);
+    // Paused for 40 min, resumed and running: the pause is left out.
+    f = await open({status: 'running', started_at: ago(70)}, [at(1, 'step', 69), at(2, 'paused', 60), at(3, 'resumed', 20), at(4, 'step', 1)]);
+    assert.match(time(f), /^Time30 minnot counting time paused$/);
+    // Cancelled while paused: the open pause up to the end is left out.
+    f = await open({status: 'cancelled', started_at: ago(60), finished_at: ago(10)}, [at(1, 'step', 59), at(2, 'paused', 50)]);
+    assert.match(time(f), /^Time10 minnot counting time paused$/);
+    // Never paused: the wall clock, with no note.
+    f = await open({status: 'succeeded', started_at: ago(60), finished_at: ago(15)}, [at(1, 'step', 59)]);
+    assert.match(time(f), /^Time45 min$/);
+  });
+
+  test(`${name}: a silent session says "No word from the agent" once, in the loop panel, in place of its last phase`, async () => {
+    const f = await open({status: 'running', wait: {state: 'silent', seconds: 1500, overdue: true}},
+      [ev(1, 'step', 'Loading data…'), ev(2, 'verdict', 'VOID - Idea', {title: 'Idea', status: 'failed'})]);
+    const shown = ['#runfigs', '#runnext', '#rsiobs [data-livetext]', '#rsiobs [data-phase]', '#rsiobs [data-wait]', '#runpulse', '#log']
+      .map((sel) => f.root.querySelector(sel)).filter((el) => el && !el.hidden).map((el) => el.textContent).join('\n');
+    assert.equal(shown.split('No word from the agent for 25 min.').length - 1, 1, shown);
+    assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, false);
+    assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, true);
+  });
+
+  test(`${name}: the loop's phase line moves past a verdict, and an ended session's is hidden behind the badge`, async () => {
+    const phase = (f) => f.root.querySelector('#rsiobs [data-phase]');
+    const verdict = ev(3, 'verdict', 'VOID - Idea', {title: 'Idea', status: 'failed'});
+    let f = await open({status: 'running'}, [ev(1, 'hypothesis', 'Idea'), verdict]);
+    assert.equal(phase(f).textContent, 'Verdict in, on to the next step'); assert.equal(phase(f).hidden, false);
+    // A verdict with no idea is a note on the session (the data scan), not "Recording the verdict".
+    f = await open({status: 'running'}, [ev(1, 'hypothesis', 'Idea'), ev(2, 'verdict', 'Lead scan: control arm, hypotheses first.', {phase: 'leads'})]);
+    assert.doesNotMatch(phase(f).textContent, /verdict/i);
+    f = await open({status: 'running'}, [verdict, ev(4, 'paused', 'Paused.'), ev(5, 'resumed', 'Resumed.')]);
+    assert.equal(phase(f).textContent, 'Back at work');
+    f = await open({status: 'running'}, [verdict, ev(4, 'done', '0 of 1 passed.')]);
+    assert.equal(phase(f).textContent, 'Wrapping up');
+    f = await open({status: 'succeeded', stop_reason: 'limit'}, [verdict, ev(4, 'done', '0 of 1 passed.')]);
+    assert.equal(phase(f).hidden, true); assert.equal(badge(f), 'Finished');
+  });
+
+  test(`${name}: the research system's explainer is one folded "How research works" line, not a figure on every session`, async () => {
+    const at = (status, rsi) => frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+      ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, status}, events: [], strategies: [], rsi})
+      : response({})});
+    const f = at('running', {evolved: false, last_dream: null, min_history: 12});
+    await f.viewRun(9); f.clearTimers();
+    assert.doesNotMatch(figs(f), /How it searches|Self.tuning|Improved/);
+    const box = f.root.querySelector('#rsibox'), disc = box.querySelector('details.rsidisc');
+    assert.equal('open' in disc.attributes, false);
+    assert.match(disc.querySelector('summary').textContent, /How research works\s*Self-tuning/);
+    // Nothing is lost: the explainer and what the first check needs are inside.
+    assert.match(box.innerHTML, /The agent is <b>self-tuning<\/b>/);
+    assert.match(box.innerHTML, /once at least 12 ideas have been tested/);
+    const evolved = at('succeeded', {evolved: true, score: 0.61, base_score: 0.48, summary: 'Prefers ideas near settlement.'});
+    await evolved.viewRun(9); evolved.clearTimers();
+    assert.doesNotMatch(figs(evolved), /How it searches/);
+    const ebox = evolved.root.querySelector('#rsibox').innerHTML;
+    assert.match(ebox, /How research works/); assert.match(ebox, /Evolved/);
+    assert.match(ebox, /0\.48 <span class="rsi-arrow">→<\/span> 0\.61/); assert.match(ebox, /Prefers ideas near settlement\./);
+  });
+
+  test(`${name}: a void or rejected strategy's backtest P&L is muted and says it did not pass`, async () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const m = (pnl) => ({pnl, trades: 40, win_rate: 0.54});
+    const cell = (s) => f.strategySlip({id: 1, title: 'T', thesis: '', market: 'btc15m', direction: 'momentum', ...s}, {})
+      .match(/<td class="num" data-lab="Backtest P&amp;L[^"]*">(.*?)<\/td>/s)[1];
+    for (const status of ['failed', 'rejected']) {
+      const tested = cell({status, out_of_sample: null, in_sample: m(2.1)});
+      assert.match(tested, /<span class="pnl-nopass">\+\$2\.10<\/span>/, status);
+      assert.doesNotMatch(tested, /class="gain"/, status);
+      assert.match(tested, /tested only · did not pass/, status);
+      const unseen = cell({status, out_of_sample: m(3), in_sample: m(2.1)});
+      assert.match(unseen, /<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig">did not pass<\/div>/, status);
+    }
+    // Passed and backtest-only keep the money tone and say nothing of the kind.
+    assert.match(cell({status: 'passed', out_of_sample: m(3)}), /^<span class="gain">\+\$3\.00<\/span>$/);
+    const kept = cell({status: 'backtest-only', out_of_sample: null, in_sample: m(2.1)});
+    assert.match(kept, /class="gain"/); assert.doesNotMatch(kept, /did not pass/);
   });
 }

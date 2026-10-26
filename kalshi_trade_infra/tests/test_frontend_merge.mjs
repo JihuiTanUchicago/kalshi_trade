@@ -1605,7 +1605,9 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   const line = 'Still waiting for a free research worker (6 min). 2 sessions are ahead of it; it starts when one frees up.';
   assert.match(f.root.querySelector('#runfigs').innerHTML, /Waiting 6 min/);
   assert.ok(f.root.querySelector('#runpulse').classes.has('late'));
-  assert.ok(f.root.querySelector('#runpulse').innerHTML.includes(line));
+  // The sentence is said once, in the loop panel; the log's foot says the state in the badge's words.
+  assert.match(f.root.querySelector('#runpulse').innerHTML, /<span>Waiting 6 min<\/span>/);
+  assert.ok(!f.root.querySelector('#runpulse').innerHTML.includes(line));
   assert.doesNotMatch(f.root.querySelector('#runpulse').innerHTML, /class="working"/);
   const wait = f.root.querySelector('#rsiobs [data-wait]');
   assert.equal(wait.hidden, false); assert.equal(wait.textContent, line);
@@ -1622,7 +1624,11 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   await f.viewRun(9);
   assert.match(f.root.querySelector('#runfigs').innerHTML, /Silent 7 min/);
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Silent 7 min');
-  assert.ok(f.root.querySelector('#runpulse').innerHTML.includes('No word from the agent for 7 min. A session this quiet is normally interrupted and resumed from its last checkpoint.'));
+  // Said once, in the loop panel (as on Meridian), where it takes the place of the last phase.
+  assert.equal(f.root.querySelector('#rsiobs [data-wait]').textContent, 'No word from the agent for 7 min. A session this quiet is normally interrupted and resumed from its last checkpoint.');
+  assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, true);
+  assert.match(f.root.querySelector('#runpulse').innerHTML, /<span>Silent 7 min<\/span>/);
+  assert.doesNotMatch(f.root.querySelector('#runpulse').innerHTML, /No word from the agent/);
   f.clearTimers();
 });
 
@@ -2329,20 +2335,20 @@ test('Tau: a finished session ends under its last log line with the way on: your
   assert.equal((await at({status: 'running'}, [])).root.querySelector('#runend').innerHTML, '');
 });
 
-test('Tau: the run page folds its RSI explainer on a phone, opens it wider, and keeps the reader\'s choice across repaints', async () => {
+test('Tau: the run page folds its RSI explainer into one "How research works" line on every screen, and keeps the reader\'s choice across repaints', async () => {
   const run = {id: 9, prompt: 'Idea', status: 'running', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
   const rsi = {evolved: false, last_dream: null, min_history: 12};
   for (const phone of [true, false]) {
     const f = frontend({matchMedia: () => ({matches: phone}), fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: [], rsi}); }});
     await f.viewRun(9);
     const box = f.root.querySelector('#rsibox'), disc = () => box.querySelector('details.rsidisc');
-    assert.equal('open' in disc().attributes, !phone, String(phone));
-    assert.match(disc().querySelector('summary').innerHTML, /Self-improving research/);
+    assert.equal('open' in disc().attributes, false, String(phone));
+    assert.match(disc().querySelector('summary').innerHTML, /How research works<\/span><span class="rsi-tag quiet">Self-tuning/);
     assert.match(box.innerHTML, /The agent is <b>self-tuning<\/b>/);
-    // The reader flips it; the next poll's repaint keeps their choice.
-    disc().open = phone;
+    // The reader opens it; the next poll's repaint keeps their choice.
+    disc().open = true;
     await [...f.intervals.values()].at(-1)(); await flush();
-    assert.equal('open' in disc().attributes, phone, String(phone));
+    assert.equal('open' in disc().attributes, true, String(phone));
     f.clearTimers();
   }
 });
@@ -4753,4 +4759,11 @@ test('Tau: a research start that moved off a cooldown market is the autopilot\'s
   const f = frontend();
   const line = 'Started a fresh research session on a market the research specialist picks. Bitcoin 15-minute was researched in the last few hours, so this angle goes to one that isn\'t on cooldown. Follow it on the Research page.';
   assert.equal(f.apMoveText({text: line, at: new Date().toISOString()}), 'Started a fresh research session on a market the research specialist picks');
+});
+
+test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, and a strategy that did not pass shows its P&L muted', () => {
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  // On a running session nothing sits between them: the heading sat flush on the figures' bottom rule.
+  assert.match(css, /\n\.run-ideas \{ margin: 24px 0; \}/);
+  assert.match(css, /\n\.t-strat \.pnl-nopass \{ color: var\(--ink-3\);/);
 });

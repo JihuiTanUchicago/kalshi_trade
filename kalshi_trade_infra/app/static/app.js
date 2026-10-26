@@ -1577,6 +1577,10 @@
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
+    // A void or rejected idea's backtest P&L read as a green "+$2.10" beside its Void stamp: it is muted
+    // and says the idea did not pass, so a gain on the data it was built on never reads as a result.
+    const noPass = s.status === 'failed' || s.status === 'rejected';
+    const pnlSub = [oos ? '' : 'tested only', noPass ? 'did not pass' : ''].filter(Boolean).join(' \u00b7\u00a0');
     const tried = s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const pickCell = opts.pick ? (bulkDeployable(s)
@@ -1585,7 +1589,7 @@
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
       <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : ''}<div class="sub-fig cellwrap">${mdInline(esc(s.thesis))}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7\u00a0${esc(dirLabel(s.direction))}</span></td>
-      <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : money(m.pnl)}${oos ? '' : '<div class="sub-fig">tested only</div>'}</td>
+      <td class="num" data-lab="${oos ? 'Backtest P&amp;L (unseen)' : 'Backtest P&amp;L (tested)'}">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub ? `<div class="sub-fig">${pnlSub}</div>` : ''}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried"${tried === '\u2014' ? ' class="nil"' : ''}>${esc(tried)}</td>
@@ -2837,7 +2841,9 @@
         pulse.hidden = false;
         // Count the queue from the server's clock: "Queued · 19s" restarted on every reload.
         queuedAt = st === 'queued' && wait && wait.state === 'queued' ? Date.now() - wait.seconds * 1000 : null;
-        const late = st !== 'paused' && wait && wait.overdue ? runWaitLine(wait) : '';
+        // An overdue run's sentence ("No word from the agent for 25 min. …") is said once, in the loop panel
+        // above, as on Meridian: it sat there and again here. The log's foot says the state in the badge's words.
+        const late = st !== 'paused' && wait && wait.overdue ? (wait.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(wait.seconds) : '';
         if (st + late !== pulseKey) {
           pulseKey = st + late;
           pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : late ? ' late' : '');
@@ -2916,9 +2922,14 @@
     'proposing': ['explore', 'Proposing hypotheses'], 'developing-thesis': ['explore', 'Developing a thesis'],
     'thinking': ['explore', 'Thinking it through'], 'step': ['explore', 'Working'],
     'hypothesis': ['backtest', 'Backtesting a hypothesis'], 'challenger': ['backtest', 'Challenging the result'],
-    'gating': ['gate', 'Gating on unseen data'], 'verdict': ['gate', 'Recording the verdict'],
+    'gating': ['gate', 'Gating on unseen data'], 'verdict': ['gate', 'Verdict in, on to the next step'],
     'dreaming': ['dream', 'Tuning how it searches'],
   };
+  // The phase line read "Recording the verdict" for as long as the agent then worked without a line (nine
+  // minutes into the next idea's backtest), and kept it through a resume or the session's last line.
+  // A verdict is done when it is logged, so the line says the agent moved on; a verdict with no idea
+  // (the data scan, the model tiering) is a note on the session, read as a step; and these say where it is.
+  const RSI_SAID = { paused: 'Paused', resumed: 'Back at work', done: 'Wrapping up' };
   const SX = { explore: 80, backtest: 240, gate: 400, dream: 560 };  // viewBox-x of each station (= flex-cell centres: 12.5/37.5/62.5/87.5% of 640)
   // The engine's own words for its self-tuning step ("Dreaming:", "Research policy evolved:"), said plainly.
   const plainDream = (m) => String(m || '').replace(/^Dreaming:/, 'Tuning how it searches:').replace(/^Research policy evolved:/, 'Search improved:');
@@ -2972,8 +2983,9 @@
       const w = ['queued', 'running'].includes(runState) ? waitNow() : null, late = !!(w && w.overdue);
       waitEl.hidden = !late;
       if (late) waitEl.textContent = runWaitLine(w);
-      // An overdue queued run's wait line says what "Waiting for the agent to start." said, and more.
-      if (late && runState === 'queued') { phaseEl.hidden = true; waitHidPhase = true; }
+      // An overdue run's wait line takes the phase line's place: a queued one's says what "Waiting for the
+      // agent to start." said, and more; a silent one's last phase ("Working") sat over "No word from the agent".
+      if (late) { phaseEl.hidden = true; waitHidPhase = true; }
       else if (waitHidPhase) { waitHidPhase = false; phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState); }
       if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
       if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
@@ -3022,10 +3034,11 @@
         (events || []).forEach((ev) => {
           const d = ev.data || {};
           lastAt = Date.parse(ev.created_at) || Date.now();   // newest event's own clock drives liveness
-          let ph = RSI_PHASE[ev.kind];
+          const kind = ev.kind === 'verdict' && !d.title ? 'step' : ev.kind;
+          let ph = RSI_PHASE[kind];
           if (!ph && /^(Dreaming:|Research policy evolved:)/.test(ev.message || '')) ph = ['dream', plainDream(ev.message).split(':')[0]];
           if (ph) { stage = ph[0]; fired.add(stage); phaseEl.textContent = ph[1]; }
-          else if (ev.kind && ev.kind !== 'done') phaseEl.textContent = prettyKind(ev.kind);  // unknown kind: keep stage lit, show a readable label
+          else if (kind) phaseEl.textContent = RSI_SAID[kind] || prettyKind(kind);  // unknown kind: keep stage lit, show a readable label
           if (ev.kind === 'hypothesis') {
             const id = hypId(d), key = id != null ? id : ev.message;
             if (!byId.has(key)) { const n = { id: key, parent: hypParent(d), title: ev.message, depth: 0, status: null, _new: true }; nodes.push(n); byId.set(key, n); byTitle.set(ev.message, n); }
@@ -3074,6 +3087,25 @@
     cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
   }
 
+  // A session's time at work. The agent logs "paused" when it stops at a checkpoint and "resumed" when it
+  // goes on (agent.run_research); "Time" counted the wall clock from the start, so a paused session's
+  // figure kept climbing while it waited on Resume. The pauses are left out, and a paused session's clock
+  // stops where it paused (at its last line, before the worker has logged the pause).
+  // pz carries { ms: closed pauses, since: an open pause's start, last: the newest line } across polls.
+  function runPauses(pz, ev) {
+    const t = Date.parse(ev.created_at);
+    if (!t) return;
+    if (ev.kind === 'paused' && pz.since == null) pz.since = t;
+    else if (ev.kind === 'resumed' && pz.since != null) { pz.ms += Math.max(0, t - pz.since); pz.since = null; }
+    pz.last = t;
+  }
+  function runWorked(r, pz, now = Date.now()) {
+    const started = r.started_at ? Date.parse(r.started_at) : null;
+    if (!started) return null;
+    const end = r.finished_at ? Date.parse(r.finished_at) : r.status === 'paused' ? (pz.since != null ? pz.since : pz.last || now) : now;
+    const open = pz.since != null && end > pz.since ? end - pz.since : 0;
+    return Math.max(0, (end - started - pz.ms - open) / 1000);
+  }
   // A run-until-stopped session that used up the credits ends as a finished one (agent.run_research
   // logs this step, then wraps up): the page said "Done" and "Try another idea", and the reason sat
   // in the log. The step's own words mark it, so sessions that ended this way before say so too.
@@ -3170,6 +3202,7 @@
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" aria-live="polite" hidden></div></div><div id="runend"></div></section>`);
     let after = 0, tried = 0, outOfCredits = false;
+    const pauses = { ms: 0, since: null, last: null };
     const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
     const ideasEl = root.querySelector('#runideas');
     ideasEl.addEventListener('click', (e) => {
@@ -3188,6 +3221,7 @@
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
       d.events.forEach((ev) => {
         after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
+        runPauses(pauses, ev);
         if (runOutOfCredits(ev)) outOfCredits = true;
         const dd = ev.data || {};
         if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
@@ -3196,8 +3230,7 @@
       // The 2s poll repaints only what changed: rewriting the same title and figures each time made
       // the phone lay the page out again (and the autopilot pill re-check what it covers).
       paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${runKind(r)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`));
-      const started = r.started_at ? Date.parse(r.started_at) : null;
-      const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
+      const worked = runWorked(r, pauses);
       const late = r.wait && r.wait.overdue ? r.wait : null;
       const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
         : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
@@ -3206,11 +3239,9 @@
         : runDoneText(r);
       paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
-        fig('Time', started ? waitSpan((end - started) / 1000) : '—') +
+        fig('Time', worked == null ? '—' : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
         (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
-        runCountFigs(r, active, tried, d.strategies) +
-        fig('How it searches', d.rsi && d.rsi.evolved ? 'Improved' : 'Self\u2011tuning',  // a no-break hyphen: never "Self-" over "tuning"
-            { small: d.rsi && d.rsi.evolved ? `it found a better way to pick ideas (score ${d.rsi.score})` : 'it gets better at picking ideas after each session' }));
+        runCountFigs(r, active, tried, d.strategies));
       const next = root.querySelector('#runnext');
       paint(next, active ? '' : runNext(r, d.strategies));
       // Painted only when it changes: a finished run still polls, and a repaint would undo the
@@ -3224,11 +3255,13 @@
         // The adopted policy is arbitrary agent-evolved Python with no structured decision record
         // behind it, so a raw-source dump isn't inspection — the human "What it changed" summary
         // and the generalization-score delta below are the faithful, readable account.
-        // The explainer folds behind its title on a phone, where it pushed the log a screen down; it
-        // opens on wider screens. A reader's open or close holds across the 2s repaint.
-        const prev = rsibox.querySelector('details.rsidisc'), expanded = prev ? prev.open : !phone();
+        // "How it searches: Self-tuning" sat among this session's figures and the explainer open under its
+        // ideas on every session, though both describe the research system, not the session: they are one
+        // folded "How research works" line (closed on every screen), its tag saying whether the search has
+        // improved. A reader's open or close holds across the 2s repaint.
+        const prev = rsibox.querySelector('details.rsidisc'), expanded = prev ? prev.open : false;
         const focused = !!rsibox.querySelector('details.rsidisc > summary:focus');
-        const rsiHtml = `<details class="rsidisc rsi-run"${expanded ? ' open' : ''}><summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research</span>${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">
+        const rsiHtml = `<details class="rsidisc rsi-run"${expanded ? ' open' : ''}><summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">How research works</span>${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
