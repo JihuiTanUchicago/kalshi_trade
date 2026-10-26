@@ -215,6 +215,19 @@ def test_a_research_session_page_never_shows_a_raw_error_or_model_id(monkeypatch
     _no_leak(out)
 
 
+def test_the_agents_own_words_and_code_are_never_mistaken_for_an_error(monkeypatch):
+    run = {"id": 9, "kind": "research", "status": "running", "error": None, "model": None, "created_at": None,
+           "heartbeat_at": None, "finished_at": None}
+    thought = "If the feature is missing this raises KeyError: 'spot_comp', so guard it in strategy.py."
+    code = "def signal(row):\n    if row is None:\n        raise ValueError('no row')\n    return 1"
+    events = [{"id": 1, "kind": "thinking", "message": thought, "data": {"block": 1}},
+              {"id": 2, "kind": "hypothesis", "message": "Fade the open", "data": {"code": code}}]
+    _run_reads(monkeypatch, run, events)
+    out = server.get_run(_ctx(("9",)))
+    assert out["events"][0]["message"] == thought
+    assert out["events"][1]["data"]["code"] == code
+
+
 def test_the_research_list_never_shows_a_raw_error(monkeypatch):
     monkeypatch.setattr(repo, "get_policy", lambda *a: None)
     monkeypatch.setattr(repo, "list_runs", lambda cur, uid: [

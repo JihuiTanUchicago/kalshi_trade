@@ -99,15 +99,30 @@ def run_rows(runs: List[Dict]) -> List[Dict]:
     return runs
 
 
+def named(text: Optional[str]) -> Optional[str]:
+    """Only an email address or an internal model id replaced where it stands; nothing dropped. For
+    text that is the agent's own words or a strategy's code, where a pattern above can be legitimate
+    (a thought naming a KeyError, code that raises ValueError, a file called strategy.py)."""
+    if not text:
+        return text
+    return MODEL_ID.sub(A_MODEL, EMAIL.sub(SOMEONE, str(text)))
+
+
 def event_rows(events: List[Dict]) -> List[Dict]:
-    """A run's log lines, and the text values of their data."""
+    """A run's log lines, and the text values of their data. An error line (the provider's or the
+    app's own failure text) goes through ``clean``; every other line is the agent's thinking, steps,
+    verdicts and code, which keep their words and only lose an email or a model id (``named``), so a
+    thought that mentions an exception never reads as an error."""
     for ev in events:
-        ev["message"] = clean(ev.get("message"), EVENT_FALLBACK)
+        if ev.get("kind") == "error":
+            ev["message"] = clean(ev.get("message"), EVENT_FALLBACK)
+        else:
+            ev["message"] = named(ev.get("message"))
         data = ev.get("data")
         if isinstance(data, dict):
             for k, v in list(data.items()):
                 if isinstance(v, str):
-                    data[k] = clean(v, "")
+                    data[k] = named(v)
     return events
 
 
