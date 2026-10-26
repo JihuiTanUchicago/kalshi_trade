@@ -862,6 +862,13 @@ def main() -> None:
         _add_index_if_missing(cur, "app_credit_ledger", "idx_credit_user_amount",
                               "ALTER TABLE app_credit_ledger ADD INDEX idx_credit_user_amount (user_id, amount_usd), "
                               "ALGORITHM=INPLACE, LOCK=NONE")
+        # The Strategies page counts and lists each strategy's active deployments (EXISTS / COUNT on
+        # d.strategy_id), one probe per strategy. With no index on strategy_id every probe walked the
+        # whole table: 85ms for 700 strategies against 320 deployments. The engine's per-tick writes
+        # (last_decision_ts, the scan) touch neither column; status changes a few times in a life.
+        _add_index_if_missing(cur, "app_deployments", "idx_dep_strategy",
+                              "ALTER TABLE app_deployments ADD INDEX idx_dep_strategy (strategy_id, status), "
+                              "ALGORITHM=INPLACE, LOCK=NONE")
         # Same slow log: the collector box's per-minute reads of the legacy feature tables
         # (data_pipeline.init_schema owns them) full-scanned them, ~5s each, two every minute.
         # They are added here because only this migration runs on every deploy.

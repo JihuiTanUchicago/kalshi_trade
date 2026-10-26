@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import now_utc
 from app.adapters.db.strategy_repository import DEMO_DIRECTION, _strategy_row
+
+_EPOCH = datetime(1970, 1, 1)  # naive UTC, as the DATETIME columns are read
 
 
 def create_deployment(cur, user_id: int, strategy_id: int, market: str, mode: str) -> int:
@@ -165,23 +167,51 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
     (mode, deployment, entry fill). Partial-exit slices share the entry's order_ref and are summed;
     `open_slices` > 0 marks a trade not yet fully closed; its `pnl` is what the sold slices already
     realized and `open_cost` what is still held at cost. A row with no order_ref is its own trade.
-    One pass over idx_pos_user; the strategy title rides along so the page needs no second query."""
+    Two reads: the user's positions grouped alone through idx_pos_user (joined to every deployment, the
+    planner walked all users' deployments and their positions), then the strategy of each deployment
+    in it, once. Rows come in the order of the group key, as the single join returned them. A trade
+    whose deployment row is gone stays out, as the inner join left it out."""
+    # pymysql parses each DATETIME in Python and a busy book has two per trade (~60ms of a 9,000-trade
+    # read): the times come back as whole seconds and are rebuilt here (the columns hold no fraction).
     cur.execute(
-        """SELECT p.mode, MAX(d.strategy_id) AS strategy_id, MAX(s.title) AS title, MAX(s.market) AS market,
-                  MAX(p.order_ref) AS order_ref,
+        """SELECT p.mode, p.deployment_id, MAX(p.order_ref) AS order_ref,
                   SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END) AS open_slices,
                   COALESCE(SUM(p.pnl),0) AS pnl,
                   COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0) AS fees,
                   COALESCE(SUM(p.qty * p.entry_price),0) AS cost,
                   COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price END),0) AS open_cost,
-                  MIN(p.opened_at) AS opened_at, MAX(p.closed_at) AS closed_at
-           FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
-           LEFT JOIN app_strategies s ON s.id=d.strategy_id
+                  TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at)) AS opened_s,
+                  TIMESTAMPDIFF(SECOND, '1970-01-01', MAX(p.closed_at)) AS closed_s
+           FROM app_positions p
            WHERE p.user_id=%s
-           GROUP BY p.mode, p.deployment_id, COALESCE(p.order_ref, CONCAT('row:', p.id))""",
+           GROUP BY p.mode, p.deployment_id, COALESCE(p.order_ref, CONCAT('row:', p.id))
+           ORDER BY p.mode, p.deployment_id, COALESCE(p.order_ref, CONCAT('row:', p.id))""",
         (user_id,),
     )
-    return cur.fetchall()
+    trades = cur.fetchall()
+    dep_ids = sorted({t["deployment_id"] for t in trades})
+    if not dep_ids:
+        return []
+    cur.execute(
+        "SELECT d.id, d.strategy_id, s.title, s.market FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id "
+        "WHERE d.id IN (" + ",".join(["%s"] * len(dep_ids)) + ")",
+        tuple(dep_ids),
+    )
+    deps = {d["id"]: d for d in cur.fetchall()}
+
+    def at(seconds):
+        return None if seconds is None else _EPOCH + timedelta(seconds=int(seconds))
+
+    out = []
+    for t in trades:
+        d = deps.get(t["deployment_id"])
+        if d is None:
+            continue
+        out.append({"mode": t["mode"], "strategy_id": d["strategy_id"], "title": d["title"], "market": d["market"],
+                    "order_ref": t["order_ref"], "open_slices": t["open_slices"], "pnl": t["pnl"], "fees": t["fees"],
+                    "cost": t["cost"], "open_cost": t["open_cost"], "opened_at": at(t["opened_s"]),
+                    "closed_at": at(t["closed_s"])})
+    return out
 
 
 # Both paper readouts below start from the strategies' deployments and read each one's positions

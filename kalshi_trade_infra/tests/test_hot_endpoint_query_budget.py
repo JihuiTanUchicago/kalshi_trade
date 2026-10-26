@@ -19,6 +19,10 @@ P&L pass (idx_pos_user), and the deployments sum their positions before joining 
 Then the dashboard's "since your last visit" strip: its two reads (new passes; the autopilot's own
 changes and the sessions started) are paid for by reading the paper ledger once (balance, deposits
 and reset, 3 -> 1), and each book's since-visit sums ride the same realized-P&L pass. Still 14.
+Measured 2026-10-26 on a seeded busy account (700 strategies, 900 runs, 9,000 positions, beside five
+smaller ones): /api/track-record 245 -> 145ms of SQL, 1 -> 2 statements (the positions grouped alone,
+then each deployment's strategy once, times read as seconds); /api/strategies 90 -> 12ms, still 3
+(idx_dep_strategy answers each strategy's active-deployment probes).
 """
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -36,6 +40,8 @@ BUDGET = {"autopilot_status": 20, "me": 5, "get_run": 6, "dashboard": 14}  # das
 # The Deploy board polls /api/deployments every 10s; /api/strategies/<id> is the strategy page. Both
 # counted cold: the per-book backtest comparison is read once a minute, and these requests include it.
 BUDGET.update({"list_deployments": 6, "get_strategy": 6})
+# The track record (cached a minute per user; a returning user pays it cold) and the Strategies page.
+BUDGET.update({"get_track_record": 2, "list_strategies": 3})
 
 # Statements that return one aggregate row; any other SELECT answers no rows unless listed below.
 AGGREGATE = ("SELECT COALESCE(", "SELECT COUNT(", "SELECT MAX(", "SELECT st.started")
@@ -218,3 +224,60 @@ def test_shared_billing_reads_answer_as_the_unshared_gate_does(monkeypatch):
         reads = billing.Reads(None, 7)
         assert billing.is_ready(None, 7, reads) is billing.is_ready(None, 7), (cust, bal)
         assert reads.customer() is cust and reads.balance() == bal
+
+
+def _book_rows():
+    """Three trades in two deployments (one still part-open), those deployments' strategy, and a
+    deployed strategy card, so the track record and the Strategies page run every read they make."""
+    trade = {"mode": "paper", "order_ref": "sim:1", "open_slices": 0, "pnl": 1.5, "fees": 0.14, "cost": 4.0,
+             "open_cost": 0, "opened_s": 1761390000, "closed_s": 1761393600}
+    rows = _board_rows()
+    rows.update({
+        "TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at))": [
+            dict(trade, deployment_id=5), dict(trade, deployment_id=5, order_ref="sim:2", pnl=-0.5),
+            dict(trade, deployment_id=6, mode="demo", order_ref="demo:3", open_slices=1, closed_s=None, open_cost=2.0)],
+        "FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id WHERE d.id IN": [
+            {"id": 5, "strategy_id": 9, "title": "Fade tails", "market": "btc15m"},
+            {"id": 6, "strategy_id": 9, "title": "Fade tails", "market": "btc15m"}],
+        "AS ex FROM app_strategies s WHERE s.user_id=%s": [{"status": "passed", "n": 1, "dep": 1, "ex": 0}],
+    })
+    rows["FROM app_strategies s LEFT JOIN app_agent_runs r"][0].update(active_deps=1, live_deps=0)
+    return rows
+
+
+@pytest.mark.parametrize("name", ["get_track_record", "list_strategies"])
+def test_the_track_record_and_strategies_page_stay_in_their_query_budget(production, name):
+    server._TRACK_RECORD.clear()
+    log = []
+    out = getattr(server, name)(_ctx(log, 10.0, extra=_book_rows()))
+    repeats = sorted({s for s in log if log.count(s) > 1})
+    assert not repeats, "%s read the same thing twice in one request: %s" % (name, repeats)
+    assert len(log) <= BUDGET[name], "%s sent %d statements (budget %d):\n  %s" % (
+        name, len(log), BUDGET[name], "\n  ".join(s for s, _ in log))
+    if name == "get_track_record":
+        # The trades are grouped from the positions alone; the strategies are read after them, once,
+        # for the deployments in the book.
+        assert [p for s, p in log if "WHERE d.id IN" in s] == [(5, 6)]
+        assert not any("JOIN app_deployments" in s for s, _ in log if "FROM app_positions" in s)
+        paper = out["modes"]["paper"]
+        assert (paper["trades"], paper["net_pnl"], paper["first_trade_at"]) == (2, 1.0, 1761390000)
+        assert out["modes"]["demo"]["open_trades"] == 1 and paper["strategies"][0]["title"] == "Fade tails"
+    else:
+        assert out["counts"]["deployed"] == 1 and out["strategies"][0]["real"]["pnl"] == 1.5  # paper; demo beside it
+
+
+def test_the_track_record_rebuilds_its_times_and_drops_a_trade_whose_deployment_is_gone():
+    rows = {"TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at))": [
+                {"mode": "live", "deployment_id": 5, "order_ref": "live:1", "open_slices": 1, "pnl": 0, "fees": 0.07,
+                 "cost": 4.0, "open_cost": 4.0, "opened_s": 1761390061, "closed_s": None},
+                {"mode": "live", "deployment_id": 8, "order_ref": "live:2", "open_slices": 0, "pnl": 1, "fees": 0.07,
+                 "cost": 4.0, "open_cost": 0, "opened_s": 1761390000, "closed_s": 1761390900}],
+            "WHERE d.id IN": [{"id": 5, "strategy_id": 9, "title": None, "market": None}]}
+    log = []
+    assert server.repo.track_record_rows(CountingCursor(log, rows), 7) == [
+        {"mode": "live", "strategy_id": 9, "title": None, "market": None, "order_ref": "live:1", "open_slices": 1,
+         "pnl": 0, "fees": 0.07, "cost": 4.0, "open_cost": 4.0, "opened_at": datetime(2025, 10, 25, 11, 1, 1),
+         "closed_at": None}]
+    assert log[1][1] == (5, 8)
+    log = []
+    assert server.repo.track_record_rows(CountingCursor(log, {}), 7) == [] and len(log) == 1  # no trades, no 2nd read
