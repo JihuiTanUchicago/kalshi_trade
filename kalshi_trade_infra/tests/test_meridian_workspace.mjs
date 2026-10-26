@@ -2472,6 +2472,7 @@ test('Hot Markets preserves dated contract identity and escapes full accessible 
   assert.equal(rows.length, 3); assert.notEqual(labels[0], labels[1]);
   for (let index = 0; index < 2; index++) {
     assert.equal(rows[index].querySelector('.hot-title strong').textContent, 'BTC 15-min');
+    assert.ok(rows[index].innerHTML.includes('>BTC 15-min<') && !rows[index].innerHTML.includes('>KXBTC15M<'), 'no raw series chip, not even for screen readers');
     assert.ok(labels[index].includes(markets[index].ti)); assert.ok(labels[index].includes(markets[index].t));
     assert.match(labels[index], /At least \$105,000.*52¢.*\+4¢ across available history.*1\.2k volume over 24 hours.*Opens Kalshi in a new tab/);
     assert.equal(rows[index].getAttribute('target'), '_blank'); assert.equal(rows[index].getAttribute('rel'), 'noopener');
@@ -2625,8 +2626,8 @@ test('deployment details hold realized P&L against the backtest pace for the sam
   await f.viewDashboard();
   const text = id => evidenceFor(f.root.querySelector('#dash-deps'), id).textContent;
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
-  assert.ok(text(1).includes('Test expected +$10.00 for the same 5 trades ·\u00a0Unseen P&amp;L +$12.00'), text(1));
-  assert.ok(!text(2).includes('Test expected')); assert.ok(!text(3).includes('Test expected'));
+  assert.ok(text(1).includes('Backtest estimate +$10.00 for the same 5 trades ·\u00a0Unseen P&amp;L +$12.00'), text(1));
+  assert.ok(!text(2).includes('Backtest estimate')); assert.ok(!text(3).includes('Backtest estimate'));
 });
 
 test('Buying credits says how long the amount lasts at the user\'s own pace', async () => {
@@ -4064,7 +4065,7 @@ test('Meridian: a research-paper figure is red exactly when its gate line says i
   assert.doesNotMatch(old.root.querySelector('main').innerHTML, /class="val sig"/);
 });
 
-test('Meridian: the dashboard points a quiet stretch with sessions at what each idea missed', async () => {
+test('Meridian: the dashboard says where the sessions it counts are, and points finished ones at what each idea missed', async () => {
   const at = async (since) => {
     const f = frontend({fetchImpl: path => {
       if (path.startsWith('/api/dashboard')) return response({...dashboardData(), deployments: [], since});
@@ -4076,7 +4077,15 @@ test('Meridian: the dashboard points a quiet stretch with sessions at what each 
   };
   const base = {at: '2026-10-25T08:00:00+00:00', first: false, books: {paper: {pnl: 0, trades: 0}}, autopilot: {}};
   assert.match(await at({...base, passed: {n: 0, items: []}, runs: {succeeded: 2}}),
-    /Nothing new passed <span class="since-sub">· 2 research sessions started, <a href="\/research">see what each idea missed<\/a><\/span>\./);
+    /Nothing new passed <span class="since-sub">· 2 research sessions started, all finished, <a href="\/research">see what each idea missed<\/a><\/span>\./);
+  // A session still queued or running hasn't judged any idea yet: the line says where it is instead.
+  const queued = await at({...base, passed: {n: 0, items: []}, runs: {queued: 1}});
+  assert.match(queued, /· 1 research session started, still queued, <a href="\/research">follow it on Research<\/a><\/span>\./);
+  assert.doesNotMatch(queued, /see what each idea missed/);
+  assert.match(await at({...base, passed: {n: 0, items: []}, runs: {running: 2}}), /2 research sessions started, all running, <a href="\/research">follow them on Research<\/a>/);
+  assert.match(await at({...base, passed: {n: 0, items: []}, runs: {running: 1, succeeded: 2, cancelled: 1}}),
+    /4 research sessions started, 1 running, 2 finished, 1 stopped, <a href="\/research">see what each idea missed<\/a>/);
+  assert.match(await at({...base, passed: {n: 1, items: [{id: 9, title: 'Rain'}]}, runs: {queued: 1}}), /1 research session started, still queued<\/span>\./);
   assert.doesNotMatch(await at({...base, passed: {n: 1, items: [{id: 9, title: 'Rain'}]}, runs: {succeeded: 2}}), /see what each idea missed/);
   assert.doesNotMatch(await at({...base, passed: {n: 0, items: []}, runs: {}}), /see what each idea missed/);
 });

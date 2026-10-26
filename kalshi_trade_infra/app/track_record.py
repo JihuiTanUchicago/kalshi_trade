@@ -321,8 +321,19 @@ def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: 
     }
 
 
-def monthly(trades: List[Dict]) -> List[Dict]:
-    """Net P&L per calendar month (UTC), newest first: the grid an allocator scans first."""
+def _months(first: date, last: date) -> List[str]:
+    """Every calendar month from `first`'s through `last`'s, oldest first, as "YYYY-MM"."""
+    y, m, out = first.year, first.month, []
+    while (y, m) <= (last.year, last.month):
+        out.append("%04d-%02d" % (y, m))
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
+def monthly(trades: List[Dict], today: Optional[date] = None) -> List[Dict]:
+    """Net P&L per calendar month (UTC), newest first: the grid an allocator scans first. Every
+    month from the first close through `today` (or the last close) has a row, so a month with no
+    trades reads as one (trades 0, win_rate None) instead of silently dropping out of the grid."""
     out: Dict[str, Dict] = {}
     for t in trades:
         k = _day(t["closed_ts"]).strftime("%Y-%m")
@@ -330,10 +341,14 @@ def monthly(trades: List[Dict]) -> List[Dict]:
         m["pnl"] += t["pnl"]
         m["trades"] += 1
         m["wins"] += t["pnl"] > 0
+    if trades:
+        days = [_day(t["closed_ts"]) for t in trades]
+        for k in _months(min(days), max(days + ([today] if today else []))):
+            out.setdefault(k, {"month": k, "pnl": 0.0, "trades": 0, "wins": 0})
     rows = sorted(out.values(), key=lambda m: m["month"], reverse=True)
     for m in rows:
         m["pnl"] = round(m["pnl"], 2)
-        m["win_rate"] = round(m["wins"] / m["trades"], 4)
+        m["win_rate"] = round(m["wins"] / m["trades"], 4) if m["trades"] else None
     return rows
 
 
@@ -414,7 +429,7 @@ def build(rows: List[Dict], now: Optional[datetime] = None) -> Dict:
     for m in MODES:
         s = summarize(closed[m], opened[m], today, now_ts)
         s.update(label=MODE_LABEL[m], excluded_instant_fills=excluded[m],
-                 monthly=monthly(closed[m]), strategies=by_strategy(closed[m], opened[m]))
+                 monthly=monthly(closed[m], today), strategies=by_strategy(closed[m], opened[m]))
         modes[m] = s
     default = next((m for m in MODES if modes[m]["trades"]), "paper")
     return {"generated_at": now_ts, "default_mode": default, "modes": modes, "method": METHOD,

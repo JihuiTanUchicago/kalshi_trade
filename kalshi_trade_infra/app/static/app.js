@@ -59,7 +59,7 @@
     unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
-    pace: ['Test expected', 'What these same closed trades would have made at the strategy’s average per trade on unseen data in its test. Hold the real result against it.'],
+    pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade on unseen data. Compare it with Realized: well below it means trading is falling short of the test.'],
   };
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
@@ -296,6 +296,12 @@
   };
   // A contract ticker that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(ticker)}</a>`;
+  // A Kalshi series (KXBTC15M, a hot-markets row's `s`) as the app names its market ("BTC 15-min"); '' for a
+  // series no market here covers, so a chip is left off rather than showing the raw series.
+  const seriesMarket = (s) => {
+    const m = s && ((S.me && S.me.markets) || []).find((x) => x.series && x.series.toUpperCase() === String(s).toUpperCase());
+    return m ? marketShort(m.key) : '';
+  };
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
@@ -1179,20 +1185,24 @@
     const src = drawn || curve;
     if (!src || src.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
     let peak = -Infinity; const dd = drawn || curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
-    const W = 340, H = 180, L = 54, R = 10, T = 14, B = 22;
-    const t0 = src[0][0], t1 = src[src.length - 1][0];
+    const W = 340, H = 180, L = 54, R = 10, T = 14, B = 32;  // B leaves the date labels their own line
+    // The same time span and date labels as the equity curve drawn above it, so the two line up.
+    const span = curve && curve.length > 1 ? curve : src;
+    const t0 = Math.min(span[0][0], src[0][0]), t1 = Math.max(span[span.length - 1][0], src[src.length - 1][0]);
+    const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     const minDd = Math.min(0, ...dd.map((p) => p[1])), lo = minDd < 0 ? minDd : -0.5;
     const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
     const y = (v) => T + (1 - (v - lo) / (0 - lo)) * (H - T - B);
     const curvePts = dd.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const area = `${curvePts} ${x(t1).toFixed(1)},${y(0).toFixed(1)} ${x(t0).toFixed(1)},${y(0).toFixed(1)}`;
+    const area = `${curvePts} ${x(dd[dd.length - 1][0]).toFixed(1)},${y(0).toFixed(1)} ${x(dd[0][0]).toFixed(1)},${y(0).toFixed(1)}`;
     const maxDd = usd(minDd);
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Underwater drawdown plot; worst drawdown ${maxDd}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Underwater drawdown plot from ${day(t0)} to ${day(t1)}; worst drawdown ${maxDd}">
       <polygon points="${area}" fill="var(--signal-wash)" stroke="none"/>
       <polyline points="${curvePts}" fill="none" stroke="var(--signal)" stroke-width="1.6"/>
       <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
       <text x="${L - 8}" y="${(y(0) + 4).toFixed(1)}" text-anchor="end">0</text>
       <text x="${L - 8}" y="${(y(minDd) + 4).toFixed(1)}" text-anchor="end">${maxDd}</text>
+      <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
     </svg>`;
   }
 
@@ -1396,7 +1406,9 @@
       <td class="act st" data-lab="Status">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` <span class="mk ${s.deploy_live ? 'live' : 'dep'}">${s.deploy_live ? 'Live' : 'Deployed'}</span>${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}</td>
     </tr>`;
   }
-  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="What the same closed trades would have made at the unseen-data backtest's average per trade">Test expected${glo('pace')}</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
+  // The Backtest estimate column's hover text (its header's glossary marker says the same at more length).
+  const PACE_TIP = 'What these same closed trades would have made at the backtest’s average per trade on unseen data';
+  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="${PACE_TIP}">${gl('Backtest estimate', 'pace')}</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
   // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
   const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
@@ -1444,7 +1456,7 @@
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
-      <td class="num" data-lab="Test expected">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : '<span class="sub-fig">no closed trades</span>'}</td>
+      <td class="num" data-lab="Backtest estimate" title="${PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : '<span class="sub-fig">no closed trades</span>'}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
       ${actions}
     </tr>`;
@@ -2767,7 +2779,7 @@
   async function viewRun(id) {
     // Pause and Cancel (and their error notice) sit beside the title, as on Meridian: at the Agent log
     // heading they were a screen below the spend figure on a phone.
-    shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><div id="flash"></div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><div id="runideas"></div><p class="stale-note" id="run-stale" role="status"></p>', `
+    shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><div id="flash"></div><dl class="figures measure run-figs" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><div id="runideas"></div><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
       <section><div class="section-head"><h2>Agent log</h2></div>
@@ -2803,7 +2815,7 @@
         fig('Time', started ? Math.max(0, Math.round((end - started) / 60000)) + ' min' : '—') +
         (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
         fig('Hypotheses', r.hypotheses_tried || tried) + fig('Passed', active ? '…' : r.strategies_passed) +
-        fig('How it searches', d.rsi && d.rsi.evolved ? 'Improved' : 'Self-tuning',
+        fig('How it searches', d.rsi && d.rsi.evolved ? 'Improved' : 'Self\u2011tuning',  // a no-break hyphen: never "Self-" over "tuning"
             { small: d.rsi && d.rsi.evolved ? `it found a better way to pick ideas (score ${d.rsi.score})` : 'it gets better at picking ideas after each session' });
       const next = root.querySelector('#runnext');
       if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
@@ -3509,9 +3521,11 @@
       <dt>Longest drawdown</dt><dd>${trFix(m.longest_drawdown_days, 1)} days</dd>
       <dt>First trade</dt><dd>${trDay(m.first_trade_at)}</dd><dt>Calendar days (UTC)</dt><dd>${num(m.days)}</dd>
     </dl>`;
+    // A month with no closes keeps its row (the server sends every month through this one), saying so
+    // instead of a $0.00 that reads as if it traded flat.
     const months = m.monthly.map((r) => `<tr><td class="name" data-lab="Month">${esc(trMonth(r.month))}</td>
-      <td class="num" data-lab="Net P&amp;L">${money(r.pnl)}</td><td class="num" data-lab="Trades">${num(r.trades)}</td>
-      <td class="num" data-lab="Win rate">${pct(r.win_rate, false)}</td></tr>`).join('');
+      <td class="num" data-lab="Net P&amp;L">${r.trades ? money(r.pnl) : '<span class="tr-none">No trades</span>'}</td><td class="num" data-lab="Trades">${num(r.trades)}</td>
+      <td class="num" data-lab="Win rate">${r.trades ? pct(r.win_rate, false) : '\u2014'}</td></tr>`).join('');
     const strats = m.strategies.map((r) => {
       const [tag, cls] = TR_EDGE[r.edge] || TR_EDGE.unclear;
       // A stopped or removed strategy stays in the table (and every figure); it says so instead of
@@ -4333,6 +4347,23 @@
   };
   // The strip's Autopilot row when it made no moves: just the switch, which syncApCopy keeps current.
   const sinceApWord = (on) => on ? 'On. It made no changes.' : 'Off.';
+  // Where the sessions counted in "N research sessions started" are now (the server sends {status: n}),
+  // so a session still queued isn't offered as if its ideas had been judged: "still queued", "all
+  // running", "1 running, 2 finished". `point` (nothing passed) adds the link: what each idea missed
+  // once any finished, else where to follow them.
+  const SINCE_RUN_STATES = [['queued', 'queued'], ['running', 'running'], ['paused', 'paused'], ['succeeded', 'finished'], ['failed', 'failed'], ['stopped', 'stopped']];
+  function sinceRunsState(runs, started, point) {
+    const n = (k) => k === 'stopped' ? (runs.stopped || 0) + (runs.cancelled || 0) : runs[k] || 0;
+    const known = SINCE_RUN_STATES.reduce((a, [k]) => a + n(k), 0);
+    const parts = SINCE_RUN_STATES.filter(([k]) => n(k)).map(([k, w]) => [n(k), w]);
+    if (started > known) parts.push([started - known, 'finished']);  // a status this list doesn't know has ended
+    const solo = parts.length === 1 && parts[0][1];
+    const state = solo ? (started === 1 ? (['queued', 'running'].includes(solo) ? 'still ' + solo : solo) : 'all ' + solo)
+      : parts.map(([c, w]) => `${num(c)} ${w}`).join(', ');
+    if (!point) return state;
+    return state + (n('succeeded') ? ', <a href="/research">see what each idea missed</a>'
+      : n('queued') || n('running') || n('paused') ? `, <a href="/research">follow ${started === 1 ? 'it' : 'them'} on Research</a>` : '');
+  }
   function sinceStrip(d, pausedHref) {
     const s = d.since;
     if (!s) return '';
@@ -4351,7 +4382,7 @@
     // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
     const found = s.own_sessions === false && !pass.n ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
       ? `${plural(pass.n, 'strategy', 'strategies')} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length ? `, <a href="/strategies">${num(pass.n - pass.items.length)} more</a>` : ''}`
-      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started${pass.n ? '' : ', <a href="/research">see what each idea missed</a>'}</span>` : '') + '.');
+      : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started, ${sinceRunsState(runs, started, !pass.n)}</span>` : '') + '.');
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', k === 'research' ? plural(ap[k], 'research session', 'research sessions') : num(ap[k])));
@@ -5132,7 +5163,7 @@
   // Why live autopilot can't be enabled yet (ordered), or '' when all gates pass.
   function apLiveBlock(d) {
     if (!d) return '';
-    if (!d.autopilot) return 'Turn on autopilot first — live autopilot builds on it. ';
+    if (!d.autopilot) return 'Live autopilot can only be turned on after autopilot (paper) is on. It moves a strategy to real money only after the strategy has proven itself on paper, and autopilot is what runs it there. ';
     if (!d.live_enabled) return 'Live trading isn’t available on this server yet. ';  // no live button then, just this line
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
@@ -5179,7 +5210,7 @@
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener">
       <span class="hot-title">${esc(mktLabel(m))}</span>
       <span class="hot-mid">${hotChart(h)}<span class="hot-price"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
-      <span class="hot-foot"><span class="mk quiet">${esc(m.s || '')}</span><span class="hot-vol">${kfmt(m.v24)} vol ·\u00a024h</span>${ICON.ext}</span></a>`;
+      <span class="hot-foot">${seriesMarket(m.s) ? `<span class="mk quiet">${esc(seriesMarket(m.s))}</span>` : ''}<span class="hot-vol">${kfmt(m.v24)} vol ·\u00a024h</span>${ICON.ext}</span></a>`;
   }
   function renderHotRail() {
     const rail = document.getElementById('hotrail'); if (!rail) return;

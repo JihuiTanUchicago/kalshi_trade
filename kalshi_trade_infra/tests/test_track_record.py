@@ -1,5 +1,5 @@
 """Track record math (app/track_record.py): pure functions over repo.track_record_rows output."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -125,6 +125,20 @@ def test_by_strategy_and_monthly():
     assert [s["title"] for s in strat] == ["A", "B"]
     assert strat[0]["trades"] == 2 and strat[0]["net_pnl"] == 7 and strat[0]["edge"] == "thin"
     assert [(m["month"], m["pnl"], m["trades"]) for m in p["monthly"]] == [("2026-10", 1, 2), ("2026-09", 5, 1)]
+
+
+def test_a_month_with_no_trades_keeps_its_row_through_this_month():
+    # July and September had no closes: they read as months with no trades, not as missing ones,
+    # and the grid runs to this month (October) even when the last close was earlier.
+    rows = [row("paper", 3, closed=datetime(2026, 6, 20, tzinfo=timezone.utc)),
+            row("paper", -1, closed=datetime(2026, 8, 5, tzinfo=timezone.utc))]
+    months = tr.build(rows, NOW)["modes"]["paper"]["monthly"]
+    assert [(m["month"], m["trades"], m["pnl"], m["win_rate"]) for m in months] == [
+        ("2026-10", 0, 0, None), ("2026-09", 0, 0, None), ("2026-08", 1, -1, 0), ("2026-07", 0, 0, None), ("2026-06", 1, 3, 1)]
+    # A year boundary steps December into January; no trades at all means no rows.
+    assert [m["month"] for m in tr.monthly([{"closed_ts": int(datetime(2025, 11, 3, tzinfo=timezone.utc).timestamp()), "pnl": 1}],
+                                           date(2026, 1, 9))] == ["2026-01", "2025-12", "2025-11"]
+    assert tr.monthly([], date(2026, 1, 9)) == []
 
 
 def test_longest_drawdown_runs_to_now_when_still_under():
