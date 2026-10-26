@@ -15,7 +15,7 @@ from app.trading import backtest, track_record
 from app.trading import spec as specmod
 from app.web.caches import _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param, _num
-from app.web.views import _deployment_out, _demo_health, _gate_lines, _gate_tints, _spec_sizing
+from app.web.views import _deployment_out, _demo_health, _demo_key_back, _gate_lines, _gate_tints, _spec_sizing
 
 
 def _strategy_card(s: Dict) -> Dict:
@@ -58,12 +58,24 @@ def _with_marks(rows: List[Dict]) -> List[Dict]:
     return rows
 
 
+# An open position whose strategy was deleted (before delete_strategy refused while positions were
+# open) comes back with no title, and Deploy and the dashboard showed it with a blank name. The engine
+# settles and sells positions through their strategy row (repo.orphaned_open_positions), so nothing
+# acts on it now: the row names it and says so.
+DELETED_STRATEGY = "Deleted strategy"
+DELETED_WHY = "Its strategy was deleted, so Tau no longer sells or settles this position."
+
+
 def _with_why(rows: List[Dict], deps: List[Dict]) -> List[Dict]:
     """Each position's one-line entry/exit reason (app.services.trade_why), from the strategy specs
     of the deployments the request already read: no extra statement. A position of a stopped
-    deployment (not in `deps`) gets its exit reason only."""
+    deployment (not in `deps`) gets its exit reason only; an open one whose strategy is deleted is
+    named DELETED_STRATEGY and says nothing acts on it (display only)."""
     specs = {d["id"]: d.get("spec") for d in deps}
     for p in rows:
+        if "title" in p and not p["title"] and p.get("status") == "open":
+            p["title"], p["why"] = DELETED_STRATEGY, DELETED_WHY
+            continue
         p["why"] = trade_why.trade_why(p, specs.get(p.get("deployment_id")))
     return rows
 
@@ -290,6 +302,7 @@ def get_strategy(ctx: Ctx):
     res = s.get("result") or {}
     deps = repo.list_deployments_for_display(ctx.cur, ctx.uid, strategy_id=s["id"])
     held = repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open")
+    key_back = _demo_key_back(ctx.cur, ctx.uid, deps)
     exp = _experiment_block(ctx.cur, s["id"], s.get("experiment_id"))
     if exp:
         # Which research-paper figures their gate passed or missed, by the same checks as
@@ -304,7 +317,7 @@ def get_strategy(ctx: Ctx):
         experiment=exp,
         # One plain line per gate it missed: measured, needed, and what to try next (display only).
         why_failed=_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
-        deployments=[_deployment_out(d, []) for d in deps],
+        deployments=[_deployment_out(d, [], demo_key_back=key_back) for d in deps],
         holdings=[{
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
             "entry_price": float(p["entry_price"]),

@@ -152,7 +152,18 @@ def _usd(v: float) -> str:
     return "$%s" % format(round(float(v), 2), ",.2f")
 
 
-def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, paper_sids: Optional[set] = None) -> Dict:
+def _demo_key_back(cur, uid: int, deps: List[Dict]) -> bool:
+    """True when a demo deployment is paused for a missing demo key and the key is connected now. The
+    engine leaves it paused once the key is added, and its row still said to add the key, beside a
+    Funds page saying it is connected. Reads the key only when such a deployment is listed."""
+    if not any(d["mode"] == "demo" and d["status"] == "paused" and _DEMO_KEY_PAUSE in (d.get("status_reason") or "")
+               for d in deps):
+        return False
+    return repo.get_kalshi_dev_key(cur, uid) is not None
+
+
+def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, paper_sids: Optional[set] = None,
+                    demo_key_back: bool = False) -> Dict:
     res = d.get("result") or {}
     return {
         # A demo deployment of a strategy that is also on paper is its demo copy (app.trading.demo_twins makes
@@ -160,7 +171,7 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
         "demo_copy": d["mode"] == "demo" and d["strategy_id"] in (paper_sids or ()),
         "id": d["id"], "strategy_id": d["strategy_id"], "title": d["title"], "direction": d["direction"],
         "market": d["market"], "mode": d["mode"], "status": d["status"], "status_reason": d["status_reason"],
-        "status_why": _status_why(d),
+        "status_why": _status_why(d, demo_key_back),
         "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
         "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
         "stake": _spec_sizing(d).get("stake"), "max_positions": _spec_sizing(d).get("max_positions"),
@@ -168,18 +179,32 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
     }
 
 
-def _status_why(d: Dict) -> Optional[str]:
+# The engine's loss guard pause (engine.loss_guard): "Lost $12.40, more than the $10.00 guard (...)".
+_LOSS_GUARD = re.compile(r"^Lost \$[\d,]+\.\d\d, more than the \$([\d,]+\.\d\d) guard")
+
+
+def _status_why(d: Dict, demo_key_back: bool = False) -> Optional[str]:
     """Why a deployment isn't running, in plain words, for its row and its strategy page. The stored
     reason read "By you", "Kill switch" or an engine line ("force-closed: position down 33.0% >= stop
     30.0%") after the stake, and "By you" didn't say whether you paused it or removed it. A reason
-    that is already a sentence is kept as written."""
+    that is already a sentence is kept as written, with what Resume does where the reason alone
+    misleads: a demo key that is connected now (`demo_key_back`, from _demo_key_back), or a loss guard
+    its lifetime realized P&L is still past (the guard sums every closed trade after each decision, so
+    a resumed deployment pauses again at its next check). Display only."""
     raw = (d.get("status_reason") or "").strip()
     if d.get("status") == "running" or not raw:
         return None
     if raw == "By you" and d.get("status") == "stopped":
         return "You removed it"
+    if d.get("status") == "paused" and demo_key_back and _DEMO_KEY_PAUSE in raw:
+        return "Your Kalshi demo key wasn't connected when it paused. It is now, so you can resume it"
     if raw not in ("By you", "Approved agent proposal", "Kill switch") and not re.search(r"% >= (?:stop|limit) ", raw):
-        return customer_text.clean(raw, "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")
+        why = customer_text.clean(raw, "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")
+        guard = _LOSS_GUARD.match(raw)
+        if (guard and d.get("status") == "paused" and d.get("realized_pnl") is not None
+                and float(d["realized_pnl"]) < -float(guard.group(1).replace(",", ""))):
+            why = why.rstrip(".") + ". Its loss is still past that guard, so Resume would pause it again at its next check"
+        return why
     clause = _pause_clause(raw)
     return clause[:1].upper() + clause[1:]
 
