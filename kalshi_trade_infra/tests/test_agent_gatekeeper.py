@@ -547,7 +547,7 @@ def test_calibration_prices_each_contract_at_its_first_quote_in_the_cell():
     assert "LEAD (buy-YES)" not in late[0]
 
 
-def _explore_with_outcomes(monkeypatch, outcomes, budget=8):
+def _explore_with_outcomes(monkeypatch, outcomes, budget=8, **kw):
     """Drive _explore_and_gate with scripted develop outcomes (None = dropped), 4 theses per round."""
     seq, developed, gated = list(outcomes), [], []
 
@@ -572,7 +572,7 @@ def _explore_with_outcomes(monkeypatch, outcomes, budget=8):
     events = []
     ds = SimpleNamespace(start_ts=0, cutoff_ts=1)
     agent._explore_and_gate(None, {"market": "btc15m", "user_id": 1}, ds, {}, [], None, None,
-                            lambda *a: events.append(a), lambda: None, budget, [], policy)
+                            lambda *a: events.append(a), lambda: None, budget, [], policy, **kw)
     return len(developed), gated, events
 
 
@@ -632,6 +632,22 @@ def test_a_survivor_resets_the_drop_streak(monkeypatch):
     monkeypatch.setattr(agent, "EXPLORE_MAX_DROP_STREAK", 8)
     n, gated, _ = _explore_with_outcomes(monkeypatch, ([None] * 7 + [True]) * 2 + [None] * 40)
     assert n == 16 + 8 and gated == [2]
+
+
+def test_a_restart_keeps_the_drop_streak_and_attempts_it_had(monkeypatch):
+    """Runs 3282/3286/3293 were restarted twice by deploys and explored 49-57 ideas each: every
+    resume started a fresh attempts budget and drop streak. Both now ride the checkpoint."""
+    monkeypatch.setattr(agent, "EXPLORE_MAX_DROP_STREAK", 8)
+    saved = []
+    n, gated, _ = _explore_with_outcomes(
+        monkeypatch, [None] * 40, resume_counts={"attempts": 6, "streak": 6},
+        save_progress=lambda chunk, round_no, rest, counts: saved.append(dict(counts)))
+    assert n == 2 and gated == [0]                        # 6 + 2 drops hit the streak of 8
+    assert saved[-1] == {"attempts": 8, "streak": 8}      # what the next resume would seed from
+    monkeypatch.setattr(agent, "EXPLORE_MAX_DROP_STREAK", 0)
+    n, _, _ = _explore_with_outcomes(monkeypatch, [None] * 40, budget=2,
+                                     resume_counts={"attempts": 2 * agent.EXPLORE_ATTEMPT_MULT})
+    assert n == 0                                         # the attempt cap counts pre-restart work too
 
 
 def test_drop_streak_zero_falls_back_to_the_attempt_cap(monkeypatch):
