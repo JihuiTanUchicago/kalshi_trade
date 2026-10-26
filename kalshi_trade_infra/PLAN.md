@@ -1,5 +1,12 @@
 # PLAN
 
+- Stop closes only the breacher, behind APP_STOP_BREACHER_ONLY (2026-10-26, flag OFF, card to Todd):
+  one position past position_stop_pct now force-sells and pauses the whole deployment, but the
+  backtest the gates validate (backtest._stop_hit) stops each position on its own and keeps
+  trading. Scored at 04:10Z: 21 settled collateral exits lost $54.55 vs holding (NFL #81 alone:
+  15 exits realized -$24.81, holding made +$32.26); breachers -$12 vs holding on 4. About 6
+  independent episodes. With the flag on, only the breacher sells, the deployment keeps running,
+  the ticker can be re-entered as in the backtest, and the drawdown limit still flattens and pauses.
 - Code paper replay runs on Python 3.13 (2026-10-26): tau-code-paper.service (#378) called
   /opt/kalshi/.venv, which is Python 3.9, so every hourly replay died importing app.markets
   (dataclass slots=True) and no code strategy reached paper. The unit now uses .venv313, and
