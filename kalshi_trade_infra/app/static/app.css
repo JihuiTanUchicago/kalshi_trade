@@ -303,6 +303,8 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 .recon.warn { color: var(--signal); }
 .recon svg { width: 13px; height: 13px; flex: none; }
 .sub-fig { font-size: 12px; color: var(--ink-3); margin-top: 4px; overflow-wrap: anywhere; }
+/* The track record's by-month row for a month with no closes: muted, and inline (a .sub-fig would drop under its phone label). */
+.tr-none { color: var(--ink-3); }
 
 .sect, .section { margin-top: 32px; }
 .sect-head, .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 7px; border-bottom: 2px solid var(--ink); margin-bottom: 0; }
@@ -491,6 +493,25 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .panel:first-child { margin-top: 0; }
 .panel h3 { font-family: var(--f-nar); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 10px; }
 .figures.measure { margin: 0; }
+/* A run's figures (status, time, cost, hypotheses, passed, how it searches) share one row on a
+   desktop, each column as wide as its content needs: auto-fit's 160px floor pushed the sixth onto a
+   row of its own at 1280px with the hot-markets rail open. Where the row is too narrow for six
+   ("Researching", "2880 min") they sit in two even rows of three; phones keep two columns below. */
+@media (min-width: 761px) {
+  .run-figs { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: auto; }
+  .run-figs > .m { padding-left: 14px; padding-right: 14px; }
+  .run-figs > .m:first-child { padding-left: 0; }
+}
+@media (min-width: 761px) and (max-width: 959px) {
+  .run-figs { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .run-figs > .m:nth-child(3n+1) { border-left: 0; padding-left: 0; }
+  .run-figs > .m:nth-child(n+4) { border-top: 1px solid var(--rule); }
+}
+@media (min-width: 1081px) and (max-width: 1259px) {
+  body.hot-open .run-figs { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body.hot-open .run-figs > .m:nth-child(3n+1) { border-left: 0; padding-left: 0; }
+  body.hot-open .run-figs > .m:nth-child(n+4) { border-top: 1px solid var(--rule); }
+}
 
 .dash { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; align-items: start; margin-top: 8px; }
 /* Two columns need room. With the hot-markets rail open, a 1400px laptop left the Deployed table

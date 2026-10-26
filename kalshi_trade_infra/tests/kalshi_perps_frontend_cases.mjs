@@ -295,9 +295,42 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const m = {trades: 5000, wins: 1, losses: 1, label: 'Paper', net_pnl: 100, fees: 0, monthly: [], strategies: [], max_drawdown: 50,
       curve: [[1760000000, 0], [1760003600, 0], [1760007200, 100], [1760010800, 100]],
       underwater: [[1760000000, 0], [1760005400, -50], [1760010800, 0]], sample: {level: 'solid', edge: 'positive', text: 'Solid.'}};
-    assert.match(f.trackRecordPanel(m, 'paper', th), /Underwater drawdown plot; worst drawdown −\$50\.00/);
+    assert.match(f.trackRecordPanel(m, 'paper', th), /Underwater drawdown plot from [^;]+; worst drawdown −\$50\.00/);
     // An older payload without the series still derives one from the curve.
-    assert.match(f.trackRecordPanel({...m, underwater: undefined}, 'paper', th), /Underwater drawdown plot; worst drawdown \$0\.00/);
+    assert.match(f.trackRecordPanel({...m, underwater: undefined}, 'paper', th), /Underwater drawdown plot from [^;]+; worst drawdown \$0\.00/);
+  });
+
+  test(`${name}: the track record drawdown chart carries the equity curve's date axis`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const th = {min_sharpe_days: 14, min_trades: 30};
+    const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+    const t0 = Date.UTC(2026, 7, 3, 15) / 1000, t1 = Date.UTC(2026, 9, 20, 15) / 1000;
+    // The server's drawdown series is thinned and can start and end inside the curve's span.
+    const m = {trades: 3, wins: 2, losses: 1, label: 'Paper', net_pnl: 1, fees: 0, monthly: [], strategies: [], max_drawdown: 1,
+      curve: [[t0, 1], [t0 + 86400 * 30, 0], [t1, 1]], underwater: [[t0 + 86400, 0], [t0 + 86400 * 30, -1], [t1 - 86400, 0]],
+      sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
+    const html = f.trackRecordPanel(m, 'paper', th);
+    const svgs = html.split('<svg').slice(1);
+    const labels = (svg) => [...svg.matchAll(/<text x="[\d.]+" y="[\d.]+"(?: text-anchor="end")?>([A-Z][a-z]{2} \d+)<\/text>/g)].map((x) => x[1]);
+    const under = svgs.find((svg) => svg.includes('Underwater drawdown plot'));
+    assert.deepEqual(labels(under), [day(t0), day(t1)]);
+    assert.match(under, new RegExp(`Underwater drawdown plot from ${day(t0)} to ${day(t1)};`));
+    assert.deepEqual(labels(svgs.find((svg) => svg.includes('Cumulative profit and loss'))), [day(t0), day(t1)]);
+  });
+
+  test(`${name}: a month with no trades reads as one in the by-month table, never as $0.00`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const th = {min_sharpe_days: 14, min_trades: 30};
+    const m = {trades: 2, wins: 1, losses: 1, label: 'Paper', net_pnl: 2, fees: 0, strategies: [], max_drawdown: 1,
+      curve: [[1760000000, 3], [1765000000, 2]], sample: {level: 'thin', edge: 'unclear', text: 'Too early.'},
+      monthly: [{month: '2026-10', pnl: -1, trades: 1, wins: 0, win_rate: 0}, {month: '2026-09', pnl: 0, trades: 0, wins: 0, win_rate: null},
+        {month: '2026-08', pnl: 3, trades: 1, wins: 1, win_rate: 1}]};
+    const html = f.trackRecordPanel(m, 'paper', th);
+    const rows = html.slice(html.indexOf('By month')).split('<tr>').slice(2, 5);
+    assert.equal(rows.length, 3);
+    assert.match(rows[1], /Sep 2026<\/td>\s*<td class="num" data-lab="Net P&amp;L"><span class="tr-none">No trades<\/span><\/td><td class="num" data-lab="Trades">0<\/td>\s*<td class="num" data-lab="Win rate">—<\/td>/);
+    assert.doesNotMatch(rows[1], /\$0\.00|0\.0%/);
+    assert.match(rows[0], /Oct 2026[\s\S]*−\$1\.00/); assert.match(rows[2], /Aug 2026[\s\S]*\+\$3\.00/);
   });
 
   test(`${name}: the seeded example's strategies and session say the app ran them for free`, async () => {

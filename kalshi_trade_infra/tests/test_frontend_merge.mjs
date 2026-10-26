@@ -125,7 +125,7 @@ function frontend({fetchImpl, brokerMount, storage, stripe, matchMedia = () => (
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewCommunity, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render, paymentGate};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewCommunity, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render, paymentGate, hotRowHtml, rpUnderwater};'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -561,7 +561,11 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   }});
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, />Test expected<button type="button" class="info" data-glo="pace"/);
+  // The header says what the figure is (Backtest estimate), with a hover title and a glossary marker;
+  // a phone's stacked cell keeps the same name and title.
+  assert.match(html, /<th class="num" title="What these same closed trades would have made at the backtest’s average per trade on unseen data">Backtest <span class="nobr">estimate<button type="button" class="info" data-glo="pace" aria-label="What does “Backtest estimate” mean\?">/);
+  assert.match(html, /<td class="num" data-lab="Backtest estimate" title="What these same closed trades would have made at the backtest’s average per trade on unseen data">\+\$10\.00/);
+  assert.doesNotMatch(html, /Test expected/);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
   assert.match(html, /\+\$10\.00<div class="sub-fig">same 5 trades<\/div>/);
   assert.match(html, /no closed trades/);
@@ -1408,7 +1412,7 @@ test('Tau: Pause and Cancel sit beside the run title, above the spend figure, no
   const f = frontend({fetchImpl: () => response({run, events: []})});
   await f.viewRun(9);
   const html = f.root.innerHTML;
-  assert.match(html, /<div class="run-header"><div id="runboard">[\s\S]*<\/div><span id="runact"><\/span><\/div><div id="flash"><\/div><dl class="figures measure" id="runfigs"/);
+  assert.match(html, /<div class="run-header"><div id="runboard">[\s\S]*<\/div><span id="runact"><\/span><\/div><div id="flash"><\/div><dl class="figures measure run-figs" id="runfigs"/);
   assert.match(html, /<h2>Agent log<\/h2><\/div>/);
   assert.ok(f.root.querySelector('#pause') && f.root.querySelector('#cancel'));
   f.clearTimers();
@@ -2922,7 +2926,18 @@ test('Tau: a research-paper figure is red exactly when its gate line says it mis
   assert.doesNotMatch(old.root.querySelector('main').innerHTML, /class="val sig"/);
 });
 
-test('Tau: the dashboard points a quiet stretch with sessions at what each idea missed', async () => {
+test('Tau: a hot-markets row names its market the app’s way, never by the raw series', () => {
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin 15-minute'}, {key: 'eth_daily', series: 'KXETHD', label: 'Ethereum daily close, 5pm EDT'}];
+  const row = (s) => f.hotRowHtml({t: s + '-26OCT261530-30', s, ti: 'Some title', su: '', bid: .48, ask: .52, v24: 1200, h: [.4, .5]});
+  assert.match(row('KXBTC15M'), /<span class="hot-foot"><span class="mk quiet">BTC 15-min<\/span>/);
+  assert.match(row('KXETHD'), /<span class="mk quiet">ETH 5pm<\/span>/);
+  // A series no market here covers loses the chip rather than showing the ticker.
+  assert.doesNotMatch(row('KXWEIRD'), /mk quiet|>KXWEIRD</);
+  for (const s of ['KXBTC15M', 'KXETHD']) assert.doesNotMatch(row(s), new RegExp('>' + s + '<'));
+});
+
+test('Tau: the dashboard says where the sessions it counts are, and points finished ones at what each idea missed', async () => {
   const at = async (since) => {
     const f = frontend({fetchImpl: path => {
       if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), deployments: [], since});
@@ -2934,7 +2949,15 @@ test('Tau: the dashboard points a quiet stretch with sessions at what each idea 
   };
   const base = {at: '2026-10-25T08:00:00+00:00', first: false, books: {paper: {pnl: 0, trades: 0}}, autopilot: {}};
   assert.match(await at({...base, passed: {n: 0, items: []}, runs: {succeeded: 2}}),
-    /Nothing new passed <span class="since-sub">· 2 research sessions started, <a href="\/research">see what each idea missed<\/a><\/span>\./);
+    /Nothing new passed <span class="since-sub">· 2 research sessions started, all finished, <a href="\/research">see what each idea missed<\/a><\/span>\./);
+  // A session still queued or running hasn't judged any idea yet: the line says where it is instead.
+  const queued = await at({...base, passed: {n: 0, items: []}, runs: {queued: 1}});
+  assert.match(queued, /· 1 research session started, still queued, <a href="\/research">follow it on Research<\/a><\/span>\./);
+  assert.doesNotMatch(queued, /see what each idea missed/);
+  assert.match(await at({...base, passed: {n: 0, items: []}, runs: {running: 2}}), /2 research sessions started, all running, <a href="\/research">follow them on Research<\/a>/);
+  assert.match(await at({...base, passed: {n: 0, items: []}, runs: {running: 1, succeeded: 2, cancelled: 1}}),
+    /4 research sessions started, 1 running, 2 finished, 1 stopped, <a href="\/research">see what each idea missed<\/a>/);
+  assert.match(await at({...base, passed: {n: 1, items: [{id: 9, title: 'Rain'}]}, runs: {queued: 1}}), /1 research session started, still queued<\/span>\./);
   assert.doesNotMatch(await at({...base, passed: {n: 1, items: [{id: 9, title: 'Rain'}]}, runs: {succeeded: 2}}), /see what each idea missed/);
   assert.doesNotMatch(await at({...base, passed: {n: 0, items: []}, runs: {}}), /see what each idea missed/);
 });

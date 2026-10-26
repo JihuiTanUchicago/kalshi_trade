@@ -1643,7 +1643,9 @@ def autopilot_live(ctx: Ctx):
         if repo.get_kalshi_key(ctx.cur, ctx.uid) is None:
             raise ApiError(400, "Connect your Kalshi key on the Funds page first.")
         if not ctx.user.get("autopilot"):
-            raise ApiError(400, "Turn on autopilot first — live autopilot builds on it.")
+            raise ApiError(400, "Live autopilot can only be turned on after autopilot (paper) is on. It moves "
+                           "a strategy to real money only after the strategy has proven itself on paper, "
+                           "and autopilot is what runs it there.")
     repo.set_autopilot_live(ctx.cur, ctx.uid, on)
     if on:
         sides = "paper strategies of any side (YES or NO)" if engine.NO_SIDE_LIVE_ENABLED else \

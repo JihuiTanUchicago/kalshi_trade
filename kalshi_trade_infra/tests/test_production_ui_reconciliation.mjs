@@ -127,6 +127,14 @@ test('a failed model save restores the existing preference without changing trad
   assert.equal(f.apLiveBlock(status()), 'Live trading isn’t available on this server yet. ');
 });
 
+test('live autopilot with autopilot off says plainly that autopilot (paper) comes first, and why', () => {
+  const f = frontend(() => response({}));
+  const why = f.apLiveBlock(status({autopilot: false, live_enabled: true, kalshi_connected: true}));
+  assert.match(why, /^Live autopilot can only be turned on after autopilot \(paper\) is on\. /);
+  assert.match(why, /proven itself on paper, and autopilot is what runs it there\. $/);
+  assert.doesNotMatch(why, /builds on it/);
+});
+
 test('catalog failure and a response after shell replacement cannot populate a stale picker', async () => {
   const failed = frontend(() => response({error: 'Synthetic catalog failure'}, 503));
   failed.apBuildShell(failed.box); await flush();

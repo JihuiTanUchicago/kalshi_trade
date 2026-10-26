@@ -1074,3 +1074,18 @@ def test_full_research_slots_say_to_cancel_one_not_to_wait(monkeypatch):
 def test_a_free_research_slot_lets_the_session_start(monkeypatch):
     _active_runs(monkeypatch, server.MAX_ACTIVE_RESEARCH - 1)
     assert server._require_research_capacity(_capacity_ctx()) is None
+
+
+def test_live_autopilot_before_autopilot_says_plainly_why_it_waits(monkeypatch):
+    # "Live autopilot builds on it" was jargon: say it needs autopilot (paper) on first, and why.
+    from types import SimpleNamespace
+    monkeypatch.setattr(server.engine, "LIVE_TRADING_ENABLED", True)
+    monkeypatch.setattr(server.repo, "get_kalshi_key", lambda *_a: {"key_id": "k"})
+    monkeypatch.setattr(server.repo, "set_autopilot_live", lambda *_a: pytest.fail("must not arm"))
+    ctx = server.Ctx(SimpleNamespace(cursor=lambda: object()), {"id": 7, "autopilot": False}, (),
+                     {}, {"on": True, "confirm": "LIVE AUTOPILOT"}, SimpleNamespace())
+    with pytest.raises(server.ApiError) as error:
+        server.autopilot_live(ctx)
+    assert error.value.status == 400
+    assert "only be turned on after autopilot (paper) is on" in error.value.message
+    assert "proven itself on paper" in error.value.message and "builds on it" not in error.value.message
