@@ -3887,3 +3887,57 @@ test('a Deploy poll that reads the same board repaints nothing, and repaints wha
   assert.equal(reads, 3); assert.deepEqual(regions.map((el, i) => el.writes - first[i]), [1, 1, 1]);
   assert.match(f.root.querySelector('#openpos').innerHTML, /No open positions/);
 });
+
+// The autopilot feed under a slow or failing server: a read that lands after a newer one never paints
+// a move twice, and a first load that fails says so instead of leaving the feed blank.
+test('the autopilot feed never repeats a move and says when it could not load', async () => {
+  let reply = () => response({messages: [{id: 1, role: 'user', content: 'one', created_at: '2026-10-17T10:00:00Z'}, {id: 2, role: 'user', content: 'two', created_at: '2026-10-17T10:01:00Z'}]});
+  const f = frontend({fetchImpl: path => { assert.match(path, /^\/api\/chat\?after=\d+$/); return reply(path); }});
+  const box = f.document.createElement('div'); box.innerHTML = '<ol id="apf-messages"></ol>';
+  const moves = () => box.querySelector('#apf-messages').children.filter(li => li.classes.has('apf-you')).length;
+  assert.equal(await f.apLoadChat(box, true), true);
+  assert.equal(moves(), 2);
+  // An older read that only lands now still carries move 2.
+  reply = () => response({messages: [{id: 2, role: 'user', content: 'two', created_at: '2026-10-17T10:01:00Z'}, {id: 3, role: 'user', content: 'three', created_at: '2026-10-17T10:02:00Z'}]});
+  await f.apLoadChat(box);
+  assert.equal(moves(), 3);
+  const empty = f.document.createElement('div'); empty.innerHTML = '<ol id="apf-messages"></ol>';
+  reply = () => response({error: "Something went wrong on our side. It's been logged."}, 500);
+  assert.equal(await f.apLoadChat(empty, true), false);
+  assert.match(empty.querySelector('#apf-messages').innerHTML, /Couldn’t load the autopilot’s activity\. Retrying\./);
+});
+
+test('back online, a dashboard poll sitting out its back-off reads at once and clears its note', async () => {
+  let down = false, equity = 1000;
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return down ? response({error: "Something went wrong on our side. It's been logged."}, 500) : response(staleDashboard(equity));
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  await f.viewDashboard(); await flush(); await flush();
+  const tick = f.intervals.get(f.S.timers[0]);
+  const reads = () => f.requests.filter(r => r.path === '/api/dashboard').length;
+  const note = () => f.root.querySelector('#dash-stale').textContent;
+  down = true;
+  await pollStep(f, tick, 15000); await pollStep(f, tick, 20000); await pollStep(f, tick, 15000);  // two failures in a row
+  const before = reads();
+  await pollStep(f, tick, 20000);
+  assert.equal(reads(), before);  // sitting out its back-off
+  assert.match(note(), /Last updated .* ago, retrying/);
+  down = false; equity = 1234.5;
+  (f.windowListeners.get('online') || []).forEach(fn => fn());
+  await settleRead(f);
+  assert.equal(reads() - before, 1);
+  assert.equal(note(), ''); assert.match(f.root.querySelector('main').innerHTML, /\$1,234\.50/);
+});
+
+test('a boot whose account read fails offers Try again instead of sending a signed-in user to sign in', async () => {
+  for (const me of [response({error: "Something went wrong on our side. It's been logged."}, 500), {ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); }}]) {
+    const f = frontend({fetchImpl: path => { assert.equal(path, '/api/me'); return me; }});
+    f.S.me = null;
+    await f.render(); await flush(); await flush();
+    assert.deepEqual(f.navigations, []);
+    assert.ok(f.root.querySelector('#bootretry'));
+    assert.match(f.root.innerHTML, /Tau is taking longer than usual to load/);
+  }
+});

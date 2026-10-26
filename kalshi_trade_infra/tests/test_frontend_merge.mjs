@@ -2682,3 +2682,34 @@ test('the dashboard asks for the track record beside the board, once, and draws 
     delete Element.prototype.parentNode;
   }
 });
+
+// The autopilot feed under a slow or failing server: a read that lands after a newer one never paints
+// a move twice, and a first load that fails says so instead of leaving the feed blank.
+test('the autopilot feed never repeats a move and says when it could not load', async () => {
+  let reply = () => response({messages: [{id: 1, role: 'user', content: 'one', created_at: '2026-10-17T10:00:00Z'}, {id: 2, role: 'user', content: 'two', created_at: '2026-10-17T10:01:00Z'}]});
+  const f = frontend({fetchImpl: path => { assert.match(path, /^\/api\/chat\?after=\d+$/); return reply(path); }});
+  const box = f.document.createElement('div'); box.innerHTML = '<ol id="apf-messages"></ol>';
+  const moves = () => box.querySelector('#apf-messages').children.filter(li => li.classes.has('apf-you')).length;
+  assert.equal(await f.apLoadChat(box, true), true);
+  assert.equal(moves(), 2);
+  // An older read that only lands now still carries move 2.
+  reply = () => response({messages: [{id: 2, role: 'user', content: 'two', created_at: '2026-10-17T10:01:00Z'}, {id: 3, role: 'user', content: 'three', created_at: '2026-10-17T10:02:00Z'}]});
+  await f.apLoadChat(box);
+  assert.equal(moves(), 3);
+  const empty = f.document.createElement('div'); empty.innerHTML = '<ol id="apf-messages"></ol>';
+  reply = () => response({error: "Something went wrong on our side. It's been logged."}, 500);
+  assert.equal(await f.apLoadChat(empty, true), false);
+  assert.match(empty.querySelector('#apf-messages').innerHTML, /Couldn’t load the autopilot’s activity\. Retrying\./);
+});
+
+test('a page that throws on a reply it did not expect shows plain words, not the TypeError', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/deployments') return response({deployments: 'not a list', open_positions: []});
+    return response({});
+  }});
+  f.location.pathname = '/deploy';
+  await f.render(); await flush(); await flush();
+  const html = f.root.querySelector('main').innerHTML;
+  assert.match(html, /Something went wrong on this page\. Try again\./);
+  assert.doesNotMatch(html, /TypeError|is not a function|undefined/);
+});
