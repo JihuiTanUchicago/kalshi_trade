@@ -1,9 +1,10 @@
 """Why a research idea did not pass, in plain words: one line per failed gate.
 
-Each line says what the gate checks (label), what was measured and what was needed, and one
-concrete thing to try next. The pages render it as, e.g.
+Each line says what fell short (label: the miss itself, never the check's goal, since it sits
+under a REJECTED/VOID stamp), what was measured and what was needed, and one concrete thing to
+try next; `check` keeps the check's own neutral name. The pages render it as, e.g.
 
-    Enough trades to judge
+    Too few trades to judge (18 of 30)
     Measured 18 trades on the unseen test window; needed at least 30 trades (fixed before the test).
     Try next: Needs about 12 more trades: widen the market set or lengthen the test window, ...
 
@@ -26,8 +27,18 @@ NB = "\u00a0"  # a no-break space: keeps a figure with its unit on a phone
 Line = Dict[str, str]
 
 
-def _line(gate: str, label: str, measured: str, needed: str, next_step: str) -> Line:
-    return {"gate": gate, "label": label, "measured": measured, "needed": needed, "next": next_step}
+def _line(gate: str, check: str, label: str, measured: str, needed: str, next_step: str) -> Line:
+    """One failed gate. `check` names what the gate checks ("Enough trades to judge"); `label`
+    says what fell short ("Too few trades to judge (18 of 30)"), which is what a page shows under
+    a failure. Figures in a label are ones the line already measures, never new ones."""
+    return {"gate": gate, "check": check, "label": label, "measured": measured, "needed": needed,
+            "next": next_step}
+
+
+def _of(have: Any, need: Any) -> str:
+    """' (18 of 30)' when both counts are known, else ''."""
+    h, n = _f(have), _f(need)
+    return " (%s of %s)" % (_int(h), _int(n)) if h is not None and n is not None and n > 0 else ""
 
 
 def humanise(key: Any) -> str:
@@ -95,7 +106,8 @@ def _cap(s: str) -> str:
 def _sample(n: Any, min_sample: Any, where: str) -> Line:
     need = int(float(min_sample)) if _f(min_sample) is not None and float(min_sample) > 0 else None
     return _line(
-        "sample_size", "Enough trades to judge", "%s on %s" % (_trades(n or 0), where),
+        "sample_size", "Enough trades to judge", "Too few trades to judge" + _of(n or 0, need),
+        "%s on %s" % (_trades(n or 0), where),
         ("at least %s (fixed before the test)" % _trades(need)) if need else "the minimum fixed before the test",
         ("%s: %s." % (_cap(_more(n or 0, need)), MORE_TRADES)) if need else "Get more trades: %s." % MORE_TRADES)
 
@@ -192,7 +204,7 @@ def _judge(v: Dict[str, Any], phase: str, min_sample: Any, classification: Optio
         judged["significance"] = bool(sig_ok)
     if sig_ok is False:
         out.append(_line(
-            "significance", "Edge is not luck" + on,
+            "significance", "Edge is not luck" + on, "The edge could be luck" + on,
             "p-value %s: a rule with no edge would do this well about %d%% of the time" % (_p(p), round(100 * p)),
             ("%s or lower" % _p(level)) if level is not None else "a p-value low enough for the test",
             "Its validation edge did not repeat on fresh data, a sign it was luck: try a simpler version of the idea in a new session."
@@ -204,6 +216,7 @@ def _judge(v: Dict[str, Any], phase: str, min_sample: Any, classification: Optio
         k = _f(n_tested)
         out.append(_line(
             "multiple_testing", "Stands out among the ideas tested with it",
+            "Didn't stand out among the ideas tested with it",
             "p-value %s%s" % (_p(p), (", one of %s ideas judged together" % _int(k)) if k and k > 1 else ""),
             "low enough to survive the correction for testing several ideas at once (%d%% false-discovery rate)"
             % round(100 * gatekeeper.ALPHA),
@@ -215,6 +228,7 @@ def _judge(v: Dict[str, Any], phase: str, min_sample: Any, classification: Optio
         losing = mean is not None and mean <= 0
         out.append(_line(
             "net_edge", "Profit after fees holds up" + on,
+            ("Loses money after fees" if losing else "Profit after fees is too uncertain") + on,
             ("%s after fees%s" % (_per_trade(mean), rng)) if mean is not None else "a 90%% range starting at %s" % _pct(lo),
             "the whole 90% range above 0%",
             "It loses money after fees here: require a bigger mispricing before entering, so each trade clears the fee."
@@ -228,6 +242,7 @@ def _judge(v: Dict[str, Any], phase: str, min_sample: Any, classification: Optio
             trials = _f(v.get("n_trials_audited"))
             out.append(_line(
                 "deflated_sharpe", "Beats the luck of trying many ideas",
+                "Doesn't beat the luck of trying many ideas",
                 "deflated Sharpe %.2f%s" % (dsr, (" with %s ideas tried on this data" % _int(trials)) if trials and trials > 1 else ""),
                 "%.2f or higher" % gatekeeper.DSR_MIN,
                 "Many ideas have been tried on this data, so the bar is higher: make this idea more distinct, or get more trades so a real edge stands out."))
@@ -237,6 +252,7 @@ def _judge(v: Dict[str, Any], phase: str, min_sample: Any, classification: Optio
         if placebo is not None and placebo >= gatekeeper.ALPHA:
             out.append(_line(
                 "placebo", "Wins more often than its prices imply",
+                "Wins no more often than its prices imply",
                 "placebo p-value %s: random replays at the same prices did as well %d%% of the time" % (_p(placebo), round(100 * placebo)),
                 "below %s" % _p(gatekeeper.ALPHA),
                 "The wins look like what the prices already predicted: base the entry on information the price does not have yet (a faster feed, news, a forecast)."))
@@ -261,6 +277,7 @@ def _unstored(v: Dict[str, Any], holdout: bool, on: str) -> List[Line]:
     passed = "not recorded, but every other check passed, so this one failed"
     if cd_unknown and cs_unknown:
         return [_line("cross_day_or_cost", "Works on several stretches of days, and survives %s worse fills" % c,
+                      "Didn't hold up on several stretches of days, or with %s worse fills" % c,
                       "not recorded, but every other check passed, so one of these two failed",
                       "profit on most stretches of days, and above 0%% with %s worse fills" % c,
                       "Test it on a longer history and require a bigger edge to enter, then run it again.")]
@@ -290,17 +307,20 @@ def _cross_day(v: Dict[str, Any], folds: Optional[Iterable[Dict]]) -> Optional[L
     share = _f(v.get("cross_day_max_day_share"))
     need = "most time slices profitable and no single day over %d%% of the gains" % round(100 * gatekeeper.CROSS_DAY_MAX_DAY_SHARE)
     nxt = "The profit came from a short stretch: test it on a longer history, and add a condition that says when it should work."
+    check = "Works on several stretches of days"
     if n_folds is not None and n_folds < gatekeeper.CROSS_DAY_MIN_FOLDS and (ok is False or ok is None):
-        return _line("cross_day", "Works on several stretches of days",
+        return _line("cross_day", check, "Too few trades to check several stretches of days",
                      "too few trades for %d time slices" % gatekeeper.CROSS_DAY_MIN_FOLDS, need,
                      "Get more trades so the test can split them by time: %s." % MORE_TRADES)
     if n_folds and pos is not None and pos / n_folds < gatekeeper.CROSS_DAY_MIN_POS_FRACTION and ok is not True:
-        return _line("cross_day", "Works on several stretches of days",
+        return _line("cross_day", check, "Made money on too few stretches of days" + _of(pos, n_folds),
                      "%s of %s time slices profitable" % (_int(pos), _int(n_folds)), need, nxt)
     if ok is False:
-        measured = ("one day carrying %d%% of the gains" % round(100 * share)) if share is not None and share > gatekeeper.CROSS_DAY_MAX_DAY_SHARE \
+        one_day = share is not None and share > gatekeeper.CROSS_DAY_MAX_DAY_SHARE
+        measured = ("one day carrying %d%% of the gains" % round(100 * share)) if one_day \
             else "profit that did not hold across time slices"
-        return _line("cross_day", "Works on several stretches of days", measured, need, nxt)
+        label = "Nearly all the gains came from one day" if one_day else "Didn't hold up across stretches of days"
+        return _line("cross_day", check, label, measured, need, nxt)
     return None
 
 
@@ -310,7 +330,7 @@ def _cost_stress(v: Dict[str, Any], on: str = "") -> Optional[Line]:
     c = _cents(gatekeeper.COST_STRESS_CENTS)
     m = _f(v.get("cost_stress_mean"))
     return _line(
-        "cost_stress", "Survives %s worse fills%s" % (c, on),
+        "cost_stress", "Survives %s worse fills%s" % (c, on), "Loses its edge with %s worse fills%s" % (c, on),
         ("%s with %s worse fills" % (_per_trade(m), c)) if m is not None else "no trades left with %s worse fills" % c,
         "above 0%",
         "The edge is thinner than real trading friction: raise the minimum edge to enter by at least 2¢, so it still pays after a worse fill.")
@@ -338,28 +358,34 @@ def prescreen(reason: Optional[str]) -> List[Line]:
         g = m.groups()
         if kind == "trades":
             return [_line("research_trades", "Enough research trades to plan the test",
+                          "Too few research trades to plan the test" + _of(g[0], g[1]),
                           "%s on the research data" % _trades(g[0]), "at least %s" % _trades(g[1]),
                           "%s: loosen the entry rule or add markets so it trades more on the research data." % _cap(_more(g[0], g[1])))]
         if kind == "edge":
-            return [_line("research_edge", "Makes money after fees and %s worse fills on the research data" % _cents(gatekeeper.COST_STRESS_CENTS),
+            c = _cents(gatekeeper.COST_STRESS_CENTS)
+            return [_line("research_edge", "Makes money after fees and %s worse fills on the research data" % c,
+                          "Doesn't make money after fees and %s worse fills on the research data" % c,
                           _per_trade(float(g[0])), "above 0%",
                           "Require a bigger mispricing before entering, so each trade clears the fee and a worse fill.")]
         if kind == "window":
             return [_line("expected_trades", "Enough trades expected in the unseen test window",
+                          "Too few trades expected in the unseen test window" + _of(g[0], g[1]).replace("(", "(about ", 1),
                           "about %s expected" % _trades(g[0]), "at least %s (fixed before the test)" % _trades(g[1]),
                           "%s: %s." % (_cap(_more(g[0], g[1])), MORE_TRADES))]
         return [_line("test_power", "Likely to prove itself on unseen data",
+                      "Unlikely to prove itself on unseen data (about a %s%% chance)" % g[0],
                       "about a %s%% chance to pass (an edge of %s over about %s)"
                       % (g[0], _per_trade(float(g[2]) / 100.0), _trades(g[3])),
                       "at least a %s%% chance" % g[1],
                       "A bigger edge per trade or more trades raise the odds: enter only on the strongest setups, or widen the market set.")]
-    return [_line("pre_screen", "Worth spending a test on", r[:200], "a research result strong enough to test",
+    return [_line("pre_screen", "Worth spending a test on", "Not yet worth spending a test on", r[:200], "a research result strong enough to test",
                   "Make the research result stronger (more trades or a bigger edge per trade), then run it again.")]
 
 
 def challenger(reason: Optional[str]) -> List[Line]:
     why = str(reason or "").strip() or "no credible reason the edge exists"
-    return [_line("challenger", "Passed the skeptic's review", "an objection before testing: " + why[:240].rstrip("."),
+    return [_line("challenger", "Passed the skeptic's review", "The skeptic's review didn't pass it",
+                  "an objection before testing: " + why[:240].rstrip("."),
                   "a believable reason the edge exists and is not traded away",
                   "Say who is on the other side of the trade and why they keep paying, then run the idea again.")]
 
@@ -368,14 +394,15 @@ def not_finalist(in_sample: Optional[Dict[str, Any]]) -> List[Line]:
     ins = in_sample or {}
     pnl, n = _f(ins.get("pnl")), _f(ins.get("trades"))
     if n is not None and n < 5:
-        return [_line("research_trades", "Enough research trades to be a finalist", "%s on the research data" % _trades(n),
+        return [_line("research_trades", "Enough research trades to be a finalist",
+                      "Too few research trades to be a finalist" + _of(n, 5), "%s on the research data" % _trades(n),
                       "at least %s" % _trades(5), "Loosen the entry rule or add markets so it trades more on the research data.")]
     if pnl is not None and pnl <= 0:
-        return [_line("research_pnl", "Makes money on the research data",
+        return [_line("research_pnl", "Makes money on the research data", "Lost money on the research data",
                       "%s over %s" % (_usd(pnl), _trades(n or 0)), "above $0",
                       "It lost money on the data it was built on: rethink the signal before testing more.")]
     made = ("%s over %s on the research data" % (_usd(pnl), _trades(n or 0))) if pnl is not None else "a lower rank than the finalists"
-    return [_line("finalist", "Among the round's strongest ideas", made,
+    return [_line("finalist", "Among the round's strongest ideas", "Not among the round's strongest ideas", made,
                   "a top spot: only the best few of each round are tested on unseen data",
                   "Run a session focused on this one idea, so it does not compete with stronger ones.")]
 
@@ -387,7 +414,8 @@ def diversification(reason: Optional[str]) -> List[Line]:
     m = _CORR.search(str(reason or ""))
     measured = ("a %s correlation of daily results with a strategy you already run" % m.group(1)) if m \
         else (str(reason or "").strip()[:200] or "too similar to a strategy you already run")
-    return [_line("diversification", "Adds something new to what you already run", measured,
+    return [_line("diversification", "Adds something new to what you already run",
+                  "Too similar to a strategy you already run", measured,
                   "%s or less" % (m.group(2) if m else "%.2f" % gatekeeper.CORR_MAX),
                   "Point it at a different market or time of day, so it does not repeat a strategy you already run.")]
 
@@ -421,27 +449,30 @@ def backtest_gates(gates: Optional[Iterable[Dict[str, Any]]]) -> List[Line]:
         name, val, thr = str(g.get("name") or ""), g.get("value"), g.get("threshold")
         need = _needed(thr)
         if name == "Makes money in-sample":
-            out.append(_line("in_sample_pnl", "Makes money on the data it was built on", _money(val), need,
+            out.append(_line("in_sample_pnl", "Makes money on the data it was built on",
+                             "Didn't make money on the data it was built on", _money(val), need,
                              "It lost money even on the data it was tuned on: rethink the signal before testing more."))
         elif name == "Makes money on unseen data":
-            out.append(_line("unseen_pnl", name, _money(val), need,
+            out.append(_line("unseen_pnl", name, "Didn't make money on unseen data", _money(val), need,
                              "It made money only where it was tuned, a sign of overfitting: simplify the rule (fewer conditions) and test again."))
         elif name == "Enough unseen trades to judge":
             have = _f(val) or 0
-            out.append(_line("unseen_trades", name, _trades(have) + " on unseen data",
+            out.append(_line("unseen_trades", name,
+                             "Too few trades on unseen data" + _of(have, backtest.GATES["min_oos_trades"]),
+                             _trades(have) + " on unseen data",
                              "at least %s" % _trades(backtest.GATES["min_oos_trades"]),
                              "%s: %s." % (_cap(_more(have, backtest.GATES["min_oos_trades"])), MORE_TRADES)))
         elif name == "Wins outweigh losses on unseen data":
             pf = _f(val)
-            out.append(_line("profit_factor", name,
+            out.append(_line("profit_factor", name, "Wins don't outweigh losses by enough on unseen data",
                              ("wins %.2f×%sthe losses" % (pf, NB)) if pf is not None else "no winning trades",
                              "at least %.1f×%sthe losses" % (backtest.GATES["min_profit_factor"], NB),
                              "Cut losing trades sooner (add a stop-loss) or skip the weakest entries."))
         elif name == "Worst drawdown on unseen data":
-            out.append(_line("drawdown", name, _money(val) + " at the worst point", need,
+            out.append(_line("drawdown", name, "Drawdown on unseen data was too deep", _money(val) + " at the worst point", need,
                              "Lower the stake or hold fewer positions at once, or add a stop-loss."))
         elif name == "Has a real edge, not a coin flip":
-            out.append(_line("real_edge", name, str(val), need,
+            out.append(_line("real_edge", name, "No real edge: it looks like a coin flip", str(val), need,
                              "Describe an idea with a reason it should beat the price, and run a session on it."))
         else:
             out.append(unknown(name, val, thr))
@@ -458,7 +489,7 @@ def unknown(key: Any, value: Any = None, threshold: Any = None) -> Line:
         measured = _money(value) if "$" in str(threshold or "") else "%g" % value
     else:
         measured = str(value)[:200]
-    return _line("other", humanise(key), measured,
+    return _line("other", humanise(key), "Didn't pass: " + humanise(key), measured,
                  _needed(threshold) if threshold is not None else "the gate's threshold",
                  "Change one thing about the rule and test again, so you can see what moves this check.")
 

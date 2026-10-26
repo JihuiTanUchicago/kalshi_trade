@@ -3092,7 +3092,7 @@
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
             ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `#${d.id} ·\u00a0${esc(d.mode)} ·\u00a0${esc(d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
             ${canDeploy ? `<div style="display:grid;gap:10px">
-                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: it missed “${esc(missed[0].label)}”${missed.length > 1 ? ` and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''}` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
+                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn${activeDeps.length ? '' : ' primary'}" id="dep-paper">Deploy on paper</button>
                 <details class="deployment-environments"><summary>Demo &amp; live</summary><div class="deployment-environments-body">
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>
@@ -5294,6 +5294,13 @@
       if (id === 'live_engine') return `${L.deployments} live ·\u00a0${a}`;
       return a;
     }
+    // A verdict reads as the run page's plain note (server gate_explain.event_note) when it has one,
+    // after the idea's title; else its own message, minus the status word the row doesn't need.
+    const sysVerdict = (e) => {
+      const n = e.data && e.data.note;
+      if (n) return e.data.title ? `${e.data.title}: ${n}` : n;
+      return e.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, '');
+    };
     const load = async () => {
       let d;
       try { d = await api('/api/admin/system'); }
@@ -5315,7 +5322,7 @@
       const sel = svg.querySelector('.sys-node.sel'); if (sel && !codeState) showDetail(sel.dataset.id);
       root.querySelector('#sys-stamp').textContent = 'updated ' + clock(d.now);
       const feed = root.querySelector('#sys-feed');
-      feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}"><time>${clock(e.created_at)}</time><span>${e.kind === 'verdict' ? esc(e.message.replace(/^(PASSED|VOID|FAILED)\s*[-–]\s*/, '')) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';
+      feed.innerHTML = d.events.length ? d.events.map((e) => `<li class="${e.kind === 'error' ? 'error' : ''}"><time>${clock(e.created_at)}</time><span>${e.kind === 'verdict' ? esc(sysVerdict(e)) : esc(e.message)}</span></li>`).join('') : '<li><span class="hint">Quiet right now.</span></li>';
     };
     await load();
     if (gen === S.gen) poll(load, 4000);
