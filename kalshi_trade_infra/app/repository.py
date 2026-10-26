@@ -28,7 +28,7 @@ from app.adapters.db.kalshi_dev_keys_repository import (  # noqa: F401
 )
 from app.adapters.db.chat_repository import (  # noqa: F401
     active_agent_run, add_chat, chat_contains, chat_messages, create_proposal, decide_proposal, get_proposal,
-    last_autopilot_action, last_review_at, recent_chat_same, REVIEW_AT_SQL,
+    last_autopilot_action, last_chat_turn_cost, last_review_at, recent_chat_same, REVIEW_AT_SQL,
 )
 from app.adapters.db.order_intent_repository import (  # noqa: F401
     _naive_utc, claim_intent_booking, insert_order_intent, mark_order_intent, open_sent_intents,

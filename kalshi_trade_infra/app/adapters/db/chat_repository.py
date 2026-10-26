@@ -34,6 +34,21 @@ def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
     return {"text": r["content"], "at": r["created_at"]} if r else None
 
 
+def last_chat_turn_cost(cur, user_id: int) -> Optional[float]:
+    """What the user's newest finished chat turn (one message answered, or one that failed) debited
+    from their credits, in dollars; None when they have no finished turn. A turn that debited nothing
+    reads 0. Read through idx_runs_user (user_id, kind, ...) and the ledger's run index."""
+    cur.execute(
+        "SELECT r.id, (SELECT COALESCE(-SUM(l.amount_usd), 0) FROM app_credit_ledger l "
+        "WHERE l.run_id = r.id AND l.kind='usage' AND l.user_id=%s) AS cost "
+        "FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='chat' AND r.status IN ('succeeded','failed') "
+        "ORDER BY r.id DESC LIMIT 1",
+        (user_id, user_id),
+    )
+    r = cur.fetchone()
+    return float(r["cost"] or 0) if r else None
+
+
 # When the newest review ran: its start, or the time it was queued while it hasn't started yet.
 REVIEW_AT_SQL = ("SELECT COALESCE(started_at, created_at) AS at FROM app_agent_runs "
                  "WHERE user_id=%s AND kind='review' ORDER BY id DESC LIMIT 1")

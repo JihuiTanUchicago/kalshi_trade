@@ -16,6 +16,7 @@ import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
+import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -5767,3 +5768,4 @@ test('Meridian: a strategy that did not pass shows its backtest P&L muted, at th
 
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
+chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});

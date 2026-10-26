@@ -1760,6 +1760,8 @@ body.landing-body .apf { display: none; }
 .apf-act .apf-ask.live { color: var(--signal); font-weight: 600; }
 .apf-err { grid-column: 1 / -1; margin: 0; font-size: 13px; line-height: 1.45; color: var(--signal); }
 .apf-err[hidden] { display: none; }
+.apf-cost { grid-column: 1 / -1; margin: 0; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+.apf-cost[hidden] { display: none; }
 /* A markdown table in the agent's answer: its own sideways scroll, so a wide one never widens the panel. */
 .md-table { max-width: 100%; overflow-x: auto; margin: 4px 0 8px; }
 .md-table table { border-collapse: collapse; font-size: 12.5px; line-height: 1.45; }

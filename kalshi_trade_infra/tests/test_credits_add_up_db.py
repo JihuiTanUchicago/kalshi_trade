@@ -200,6 +200,15 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert server._autopilot_week(cur, uid, status["research"])["research_credits"] == status["research"]["cost_7d"]
     assert spent_total - research_usd == per_run[chat_id] > 0  # the chat turn is billed, just not as research
 
+    # -- the autopilot chat's line under the composer: what your last message cost ---------------
+    # The chat turn's own debits, to the cent: on the first read and on a read that brings its answer.
+    assert repo.last_chat_turn_cost(cur, uid) == float(per_run[chat_id])
+    first_read = server.get_chat(ctx())
+    assert first_read["turn_cost"] == float(per_run[chat_id])
+    answer = max(m["id"] for m in first_read["messages"] if m["role"] == "agent")
+    assert server.get_chat(ctx(query={"after": str(answer - 1)}))["turn_cost"] == first_read["turn_cost"]
+    assert "turn_cost" not in server.get_chat(ctx(query={"after": str(answer)}))  # a poll with nothing new reads nothing
+
     # -- the Billing page ------------------------------------------------------------------------
     state = server.billing_state(ctx())
     assert state["configured"] is True and state["default_pm"] == "pm_credits" and state["auto_reload"] is True
