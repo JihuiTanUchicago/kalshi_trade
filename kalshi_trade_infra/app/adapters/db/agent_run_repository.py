@@ -252,12 +252,25 @@ def add_event(cur, run_id: int, kind: str, message: str, data: Optional[Dict] = 
     cur.execute("UPDATE app_agent_runs SET heartbeat_at=%s WHERE id=%s AND status='running'", (now, run_id))
 
 
+# The start of the step agent.run_research logs when a run-until-stopped session runs out of credits,
+# just before it finishes the run `succeeded` (tests/test_run_stop.py checks the agent still writes
+# it). Its 23 characters sit inside idx_events_message's 24-character prefix.
+OUT_OF_CREDITS_STEP = "Paused \u2014 out of credits"
+
+
 def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
+    """The user's newest research sessions. `out_of_credits` is 1 for a run-until-stopped session that
+    finished because the credits ran out (its log holds OUT_OF_CREDITS_STEP), so the list can say why
+    it stopped (services.run_stop). Still one statement: the log is probed only for a finished
+    run-until-stopped session, through idx_events_run_kind."""
     cur.execute(
-        """SELECT id, market, direction, prompt, status, hypotheses_tried, strategies_passed, error,
-                  created_at, started_at, finished_at, heartbeat_at
-           FROM app_agent_runs WHERE user_id=%s AND kind='research' ORDER BY id DESC LIMIT %s""",
-        (user_id, limit),
+        """SELECT r.id, r.market, r.direction, r.prompt, r.status, r.hypotheses_tried, r.strategies_passed,
+                  r.error, r.run_forever, r.created_at, r.started_at, r.finished_at, r.heartbeat_at,
+                  CASE WHEN r.status='succeeded' AND r.run_forever=1 THEN EXISTS(
+                    SELECT 1 FROM app_agent_events e WHERE e.run_id=r.id AND e.kind='step' AND e.message LIKE %s)
+                  ELSE 0 END AS out_of_credits
+           FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research' ORDER BY r.id DESC LIMIT %s""",
+        (OUT_OF_CREDITS_STEP + "%", user_id, limit),
     )
     return cur.fetchall()
 

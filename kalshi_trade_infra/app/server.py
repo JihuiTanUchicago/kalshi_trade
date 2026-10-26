@@ -37,7 +37,7 @@ from app import models_catalog as catalog
 from app import repository as repo
 from app import research_repository as research_repo
 from app import spec as specmod
-from app.services import backtest_check, book_memo, gate_explain, paper_checks, trade_why
+from app.services import backtest_check, book_memo, gate_explain, paper_checks, run_stop, trade_why
 from app import track_record
 from app import client_errors, webperf
 from app import worker
@@ -720,11 +720,28 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
         "demo_copy": d["mode"] == "demo" and d["strategy_id"] in (paper_sids or ()),
         "id": d["id"], "strategy_id": d["strategy_id"], "title": d["title"], "direction": d["direction"],
         "market": d["market"], "mode": d["mode"], "status": d["status"], "status_reason": d["status_reason"],
+        "status_why": _status_why(d),
         "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
         "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
         "stake": d["spec"]["sizing"]["stake"], "max_positions": d["spec"]["sizing"]["max_positions"],
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
     }
+
+
+def _status_why(d: Dict) -> Optional[str]:
+    """Why a deployment isn't running, in plain words, for its row and its strategy page. The stored
+    reason read "By you", "Kill switch" or an engine line ("force-closed: position down 33.0% >= stop
+    30.0%") after the stake, and "By you" didn't say whether you paused it or removed it. A reason
+    that is already a sentence is kept as written."""
+    raw = (d.get("status_reason") or "").strip()
+    if d.get("status") == "running" or not raw:
+        return None
+    if raw == "By you" and d.get("status") == "stopped":
+        return "You removed it"
+    if raw not in ("By you", "Approved agent proposal", "Kill switch") and not re.search(r"% >= (?:stop|limit) ", raw):
+        return raw
+    clause = _pause_clause(raw)
+    return clause[:1].upper() + clause[1:]
 
 
 def models(ctx: Ctx):
@@ -745,6 +762,9 @@ def list_runs(ctx: Ctx):
     runs = repo.list_runs(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, runs)
     _mark_example(runs)
+    for r in runs:  # why a finished session stopped (out of credits, by you, an error, finished): services.run_stop
+        r["stop_reason"] = run_stop.stop_reason(r)
+        r.pop("out_of_credits", None)
     return {"runs": runs, "counts": repo.active_run_counts(ctx.cur, ctx.uid, silent_before=_silent_before()),
             "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
 
