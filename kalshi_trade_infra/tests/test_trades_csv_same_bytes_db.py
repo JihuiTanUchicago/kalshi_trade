@@ -166,9 +166,10 @@ def test_every_modes_file_is_byte_for_byte_the_file_the_old_read_wrote(conn, mon
 def test_a_capped_file_cuts_at_the_same_trade(conn, monkeypatch):
     from app import repository as repo
     from app import server
+    from app.web.routes import billing as billing_routes
 
     monkeypatch.setattr(server.repo, "now_utc", lambda: TODAY)
-    monkeypatch.setattr(server, "TRADES_CSV_MAX_ROWS", 37)
+    monkeypatch.setattr(billing_routes, "TRADES_CSV_MAX_ROWS", 37)
     uid, _ = _book(conn, random.Random(7), "capped", 200)
     cur = conn.cursor()
     old = _old_rows(cur, uid, "paper", 38)

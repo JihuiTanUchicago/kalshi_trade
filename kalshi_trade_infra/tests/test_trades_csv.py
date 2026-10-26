@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
+from app.web.routes import billing as billing_routes
 
 
 def _row(i, **over):
@@ -71,7 +72,7 @@ def test_cells_that_a_spreadsheet_would_run_as_formulas_are_made_text(monkeypatc
 
 
 def test_a_capped_file_says_it_is_cut(monkeypatch):
-    monkeypatch.setattr(server, "TRADES_CSV_MAX_ROWS", 2)
+    monkeypatch.setattr(billing_routes, "TRADES_CSV_MAX_ROWS", 2)
     monkeypatch.setattr(server.repo, "closed_trades_for_export", lambda cur, uid, mode, limit: [_row(3), _row(2), _row(1)])
     _, rows = _parse(server.trades_csv(_ctx({"mode": "demo"})))
     assert [r[14] for r in rows[1:3]] == ["2", "3"]  # the newest two, oldest first
