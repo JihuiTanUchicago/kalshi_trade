@@ -219,9 +219,9 @@ def test_the_credits_receipt_is_formula_safe_and_keeps_its_numbers(monkeypatch):
     assert fname.startswith("tau-credits-") and seen == [100000]
     assert rows[0] == ["Tau - Credits & Usage receipt"] and rows[1] == ["Account", "'=cmd@example.com"]
     assert rows[3] == ["Current balance (USD)", "4.5000"] and rows[4] == ["Total spent (USD)", "1.2500"]
-    head = rows.index(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
+    head = rows.index(billing_routes.RECEIPT_HEADER)
     assert rows[head + 1] == ["2026-10-25 09:00:00", "usage", "-0.1234",
-                              '\'=HYPERLINK("http://x.example","Research run")']  # a debit stays a number
+                              '\'=HYPERLINK("http://x.example","Research run")', "", "", ""]  # a debit stays a number
     assert rows[head + 2][3] == "'@SUM(A1)" and rows[head + 3][3] == ""
 
 

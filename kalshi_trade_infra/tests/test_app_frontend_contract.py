@@ -73,12 +73,17 @@ def test_sub_minimum_balance_blocks_research_start(monkeypatch):
     assert error.value.status == 402
 
 
+def _totals(**by_kind):
+    """credit_totals' answer: each kind's all-time sum, all of it inside the statement's window."""
+    return {k: {'all': v, 'n': 1, 'since': v, 'n_since': 1} for k, v in by_kind.items()}
+
+
 def test_unconfigured_billing_is_a_complete_readonly_frontend_payload(monkeypatch):
     monkeypatch.setattr(server.billing, 'configured', lambda: False)
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
-    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 98.4)
+    monkeypatch.setattr(server.repo, 'credit_totals', lambda *a: _totals(bonus=100.0, usage=-1.6))
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a: 1.6)
-    monkeypatch.setattr(server.repo, 'credit_rows', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'credit_statement', lambda *a: [])
     monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE, research=1.2, autopilot_review=0.4))
     monkeypatch.setattr(server.billing, '_stripe', lambda *a, **k: pytest.fail('provider contacted'))
     data = server.billing_state(context())
@@ -96,16 +101,16 @@ def test_unconfigured_billing_is_a_complete_readonly_frontend_payload(monkeypatc
 def test_billing_runway_is_absent_without_recent_usage_or_balance(monkeypatch):
     monkeypatch.setattr(server.billing, 'configured', lambda: False)
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
-    monkeypatch.setattr(server.repo, 'credit_rows', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'credit_statement', lambda *a: [])
     monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE))
     seen = []
-    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: seen.append(since) or (0.0 if since else 5.0))
-    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 15.0)
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: seen.append(since) or 0.0)
+    monkeypatch.setattr(server.repo, 'credit_totals', lambda *a: _totals(bonus=20.0, usage=-5.0))
     data = server.billing_state(context())
     assert data['spent'] == 5.0 and data['spent_7d'] == 0.0 and data['runway_days'] is None
     assert any(s is not None for s in seen)
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda cur, uid, since=None: 2.0)
-    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: -1.0)
+    monkeypatch.setattr(server.repo, 'credit_totals', lambda *a: _totals(bonus=1.0, usage=-2.0))
     assert server.billing_state(context())['runway_days'] is None
 
 
@@ -605,9 +610,9 @@ def test_billing_states_what_one_auto_reload_charges_the_card(monkeypatch, custo
     monkeypatch.setattr(server.billing, 'TOPUP_FEE', Decimal('0.055'))
     monkeypatch.setattr(server.billing, 'list_cards', lambda *a: [])
     monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: customer)
-    monkeypatch.setattr(server.repo, 'credit_balance', lambda *a: 20.0)
+    monkeypatch.setattr(server.repo, 'credit_totals', lambda *a: _totals(bonus=20.0))
     monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a, **k: 0.0)
-    monkeypatch.setattr(server.repo, 'credit_rows', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'credit_statement', lambda *a: [])
     monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE))
     data = server.billing_state(context())
     # Credits plus the top-up fee, the same sum billing.auto_reload charges; never the bare credit amount.

@@ -30,10 +30,12 @@ def _customer_id(ctx: Ctx) -> str:
     return cid
 
 
-def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None):
+def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None, balance: Optional[float] = None):
     """(balance, last-7-day usage spend, days the balance lasts at that pace). Research pauses at
-    zero, so this is how long autopilot keeps working; None when there is no recent usage."""
-    balance = (reads or billing.Reads(cur, uid)).balance()
+    zero, so this is how long autopilot keeps working; None when there is no recent usage. A caller
+    that already summed the ledger passes its `balance`."""
+    if balance is None:
+        balance = (reads or billing.Reads(cur, uid)).balance()
     spent_7d = repo.credit_spent_total(cur, uid, repo.now_utc() - timedelta(days=7))
     runway = round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None
     return balance, spent_7d, runway
@@ -69,12 +71,17 @@ def billing_state(ctx: Ctx):
             reload_amount = float(cust["reload_amount"])
         if cust.get("reload_threshold") is not None:
             reload_threshold = float(cust["reload_threshold"])
-    balance, spent_7d, runway = _credit_runway(cur, ctx.uid)
+    since = repo.now_utc() - timedelta(days=STATEMENT_DAYS)
+    # One grouped read gives the balance, the all-time spend and how the balance came to be (the
+    # kinds add up to it, from the same snapshot, so the page's sum always closes).
+    totals = repo.credit_totals(cur, ctx.uid, since)
+    balance = float(sum((Decimal(str(t["all"])) for t in totals.values()), Decimal(0)))
+    balance, spent_7d, runway = _credit_runway(cur, ctx.uid, balance=balance)
     return {
         "configured": billing.configured(),
         "publishable_key": billing.STRIPE_PUBLISHABLE_KEY,
         "balance": round(balance, 4),
-        "spent": round(repo.credit_spent_total(cur, ctx.uid), 4),
+        "spent": round(-(totals.get("usage") or {}).get("all", 0.0), 4) + 0.0,
         "spent_7d": round(spent_7d, 4),
         "runway_days": runway,
         "free_bonus": float(billing.FREE_BONUS),
@@ -94,9 +101,67 @@ def billing_state(ctx: Ctx):
         "spent_7d_by": {k: round(v, 4) for k, v in
                         repo.usage_by_source(cur, ctx.uid, repo.now_utc() - timedelta(days=7)).items()},
         "min_run_balance": float(billing.MIN_RUN_BALANCE),
-        "ledger": [dict({"kind": r["kind"], "amount": float(r["amount_usd"]), "memo": _ledger_memo(r), "created_at": r["created_at"]},
-                        **_usage_item(r)) for r in repo.credit_rows(cur, ctx.uid)],
+        **_statement(cur, ctx.uid, since, _tz_minutes(ctx), totals, balance),
     }
+
+
+STATEMENT_DAYS = 30     # Billing lists the last 30 days; the receipt has every row
+STATEMENT_LINES = 300   # at most this many lines; a day the cap cuts short is left out whole
+_CARD_KINDS = ("topup", "autoreload")  # credits bought with the card, each with a Stripe reference
+
+
+def _tz_minutes(ctx: Ctx) -> int:
+    """The viewer's offset from UTC in minutes, as the browser's getTimezoneOffset() gives it (240
+    for UTC-4), so the statement's days are the viewer's days. 0 (UTC) when absent or not sane."""
+    try:
+        tz = int(str(ctx.query.get("tz") or "0"))
+    except ValueError:
+        return 0
+    return tz if -840 <= tz <= 840 else 0
+
+
+def _cents(v) -> Decimal:
+    return Decimal(str(v)).quantize(billing.CENT, rounding=ROUND_HALF_UP)
+
+
+def _statement(cur, uid: int, since, tz: int, totals: Dict, balance: float) -> Dict:
+    """Billing's history and the sum that explains the balance. `ledger`: the last STATEMENT_DAYS
+    as lines, newest first. A usage line is one session's model calls on one of the viewer's days
+    with one model (`calls`, `first_at`, and `session` when it billed a research session the user
+    can open); a card purchase says what the card was charged and its Stripe reference.
+    `ledger_cut`: the line cap left older days out. `math`: the balance STATEMENT_DAYS ago, plus
+    credits bought by card, plus other credits, minus agent usage, is the balance now, in cents that
+    add up (the starting balance takes the rounding). Only what was charged or debited; never a rate."""
+    rows = repo.credit_statement(cur, uid, since, tz, STATEMENT_LINES)
+    cut = len(rows) >= STATEMENT_LINES
+    if cut:  # the oldest day listed may be missing lines: drop it, so every day shown is whole
+        oldest = rows[-1]["day"]
+        rows = [r for r in rows if r["day"] != oldest]
+    lines = []
+    for r in rows:
+        line = dict({"kind": r["kind"], "amount": float(r["amount"]), "memo": _ledger_memo(r),
+                     "created_at": r["last_at"], "first_at": r["first_at"], "day": str(r["day"])}, **_usage_item(r))
+        if r["kind"] == "usage":
+            line["calls"] = int(r["n"])
+            if r.get("run_kind") == "research" and r.get("run_id"):
+                line["session"] = {"id": int(r["run_id"]), "prompt": (r.get("run_prompt") or "")[:120] or None,
+                                   "market": r.get("run_market"), "direction": r.get("run_direction")}
+        elif r["kind"] in _CARD_KINDS:
+            line["card_charge"] = billing.topup_charge_cents(Decimal(str(r["amount"]))) / 100
+            line["stripe_ref"] = r.get("stripe_ref")
+        lines.append(line)
+
+    def since_usd(kinds) -> Decimal:
+        return sum((Decimal(str(v["since"])) for k, v in totals.items() if kinds(k)), Decimal(0))
+
+    bought = _cents(since_usd(lambda k: k in _CARD_KINDS))
+    usage = _cents(-since_usd(lambda k: k == "usage"))
+    other = _cents(since_usd(lambda k: k != "usage" and k not in _CARD_KINDS))
+    end = _cents(balance)
+    purchases = sum(int(v["n_since"]) for k, v in totals.items() if k in _CARD_KINDS)
+    return {"ledger": lines, "ledger_cut": cut, "math": {
+        "days": STATEMENT_DAYS, "start": float(end - bought - other + usage), "bought": float(bought),
+        "purchases": purchases, "other": float(other), "usage": float(usage), "end": float(end)}}
 
 
 _USAGE_MEMO = "Agent usage · "  # billing.charge_usage's memo: this, then the invokable modelId
@@ -152,6 +217,11 @@ def _usd4(v) -> str:
     return str(Decimal(str(v)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
 
 
+# Session: the research session (or chat, or check-in) a usage row billed. Card charged: what the card
+# paid for credits bought (the credits plus the purchase fee). Stripe reference: that payment's id.
+RECEIPT_HEADER = ["Date (UTC)", "Type", "Amount (USD)", "Memo", "Session", "Card charged (USD)", "Stripe reference"]
+
+
 def billing_receipt(ctx: Ctx):
     """Full Credits & Usage history as a downloadable CSV receipt. Memos can carry run and strategy
     names, so every cell is formula-safe."""
@@ -166,9 +236,13 @@ def billing_receipt(ctx: Ctx):
     row(["Current balance (USD)", _usd4(repo.credit_balance(cur, ctx.uid))])
     row(["Total spent (USD)", _usd4(repo.credit_spent_total(cur, ctx.uid))])
     row([])
-    row(["Date (UTC)", "Type", "Amount (USD)", "Memo"])
+    row(RECEIPT_HEADER)
     for r in repo.credit_rows(cur, ctx.uid, 100000):  # full history, newest first
-        row([r["created_at"], r["kind"], _usd4(r["amount_usd"]), _ledger_memo(r)])
+        card = r["kind"] in _CARD_KINDS
+        row([r["created_at"], r["kind"], _usd4(r["amount_usd"]), _ledger_memo(r),
+             r.get("run_id") if r["kind"] == "usage" and r.get("run_id") else "",
+             "%.2f" % (billing.topup_charge_cents(Decimal(str(r["amount_usd"]))) / 100) if card else "",
+             (r.get("stripe_ref") or "") if card else ""])
     fname = "tau-credits-%s.csv" % repo.now_utc().strftime("%Y%m%d")
     return ("download", fname, "text/csv; charset=utf-8", buf.getvalue())
 

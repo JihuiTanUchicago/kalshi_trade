@@ -33,10 +33,52 @@ def credit_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
     research, review, chat; NULL with no run) and whether the autopilot started it (`run_brief`),
     so Billing can say what each charge was for. Read through the run's primary key."""
     cur.execute(
-        "SELECT l.kind, l.amount_usd, l.memo, l.created_at, r.kind AS run_kind, r.brief AS run_brief "
-        "FROM app_credit_ledger l LEFT JOIN app_agent_runs r ON r.id = l.run_id "
+        "SELECT l.kind, l.amount_usd, l.memo, l.created_at, l.run_id, l.stripe_ref, r.kind AS run_kind, "
+        "r.brief AS run_brief FROM app_credit_ledger l LEFT JOIN app_agent_runs r ON r.id = l.run_id "
         "WHERE l.user_id=%s ORDER BY l.id DESC LIMIT %s",
         (user_id, limit),
+    )
+    return cur.fetchall()
+
+
+def credit_totals(cur, user_id: int, since) -> Dict[str, Dict[str, float]]:
+    """Each ledger kind's all-time total and row count, and its total since `since`:
+    {kind: {"all": usd, "n": rows, "since": usd, "n_since": rows}}. The kinds' "all" add up to
+    credit_balance, so Billing can show how the balance came to be. One grouped read."""
+    cur.execute(
+        "SELECT kind, COUNT(*) AS n, COALESCE(SUM(amount_usd),0) AS s, "
+        "COALESCE(SUM(CASE WHEN created_at >= %s THEN amount_usd ELSE 0 END),0) AS s_since, "
+        "COALESCE(SUM(CASE WHEN created_at >= %s THEN 1 ELSE 0 END),0) AS n_since "
+        "FROM app_credit_ledger WHERE user_id=%s GROUP BY kind",
+        (since, since, user_id),
+    )
+    return {r["kind"]: {"all": float(r["s"]), "n": int(r["n"]), "since": float(r["s_since"]),
+                        "n_since": int(r["n_since"])} for r in cur.fetchall()}
+
+
+def credit_statement(cur, user_id: int, since, tz_minutes: int = 0, limit: int = 300) -> List[Dict]:
+    """The ledger since `since` as statement lines, newest first: a usage row is one model call, so
+    a session's calls on one day (the viewer's day, `tz_minutes` behind UTC as a browser's
+    getTimezoneOffset says) with one model are one line, with their count, total, first and last
+    time and the run they billed; every other row (credits bought, auto-reloads, grants) is its own
+    line with its Stripe reference. Amounts are the ledger's own sums. One statement."""
+    tz = int(tz_minutes)
+    cur.execute(
+        "SELECT g.kind, g.run_id, g.day, g.n, g.amount, g.first_at, g.last_at, g.memo, g.stripe_ref, "
+        "r.kind AS run_kind, r.brief AS run_brief, r.prompt AS run_prompt, r.market AS run_market, "
+        "r.direction AS run_direction FROM ("
+        "(SELECT 'usage' AS kind, l.run_id, DATE(l.created_at - INTERVAL %s MINUTE) AS day, COUNT(*) AS n, "
+        "SUM(l.amount_usd) AS amount, MIN(l.created_at) AS first_at, MAX(l.created_at) AS last_at, l.memo, "
+        "NULL AS stripe_ref, MAX(l.id) AS last_id FROM app_credit_ledger l "
+        "WHERE l.user_id=%s AND l.kind='usage' AND l.created_at >= %s "
+        "GROUP BY l.run_id, DATE(l.created_at - INTERVAL %s MINUTE), l.memo) "
+        "UNION ALL "
+        "(SELECT l.kind, l.run_id, DATE(l.created_at - INTERVAL %s MINUTE), 1, l.amount_usd, l.created_at, "
+        "l.created_at, l.memo, l.stripe_ref, l.id FROM app_credit_ledger l "
+        "WHERE l.user_id=%s AND l.kind<>'usage' AND l.created_at >= %s) "
+        "ORDER BY last_at DESC, last_id DESC LIMIT %s) g LEFT JOIN app_agent_runs r ON r.id = g.run_id "
+        "ORDER BY g.last_at DESC, g.last_id DESC",
+        (tz, user_id, since, tz, tz, user_id, since, int(limit)),
     )
     return cur.fetchall()
 

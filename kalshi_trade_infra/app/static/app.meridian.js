@@ -5642,7 +5642,7 @@
       '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl><p class="hint bill-split" id="bsplit"></p>', loading(360));
     let stripe = null, card = null;
     const load = async () => {
-      const d = await api('/api/billing');
+      const d = await api('/api/billing?tz=' + new Date().getTimezoneOffset());  // the statement's days are yours
       syncMeBilling(d);
       if (gen !== S.gen) return;
       // Below the research floor no new research starts, so the balance reads as a problem.
@@ -5676,7 +5676,7 @@
         : '<p class="hint">No card on file. Add one to buy credits or turn on auto-reload.</p>';
       const main = !d.configured
         ? `<div class="notice">${ICON.warn}<span>Payments aren’t enabled on this server yet. You can still use your free credits.</span></div>
-           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d.ledger, d.topup_fee_pct)}</section>`
+           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d)}</section>`
         : `${lowNote}<div class="detail bill-detail">
             <div>
               <section class="panel"><h3>Payment method</h3><div id="cards">${cardLines}</div>
@@ -5695,7 +5695,7 @@
                   <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
                 </div>
               </section>
-              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d.ledger, d.topup_fee_pct)}</section>
+              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d)}</section>
             </div>
             <aside>
               <section class="panel"><h3>Add credits</h3>
@@ -5798,21 +5798,65 @@
   const USAGE_PREFIX = /^Agent usage\s\u00b7\s/;  // the server's memo, "Agent usage" then a middle dot
   // A usage line: what it was for (`item`: research session, autopilot research or check-in, chat)
   // over the model's name (`model`). The server sends both and never the model's internal id.
+  // A usage line is one session's calls on one day: it links the research session it paid for and says
+  // how many model calls it adds up. A card purchase says what the card paid and its Stripe reference.
   function ledgerNote(r, feePct) {
-    if (r.kind === 'usage') return r.model ? esc(r.model) : r.memo && !r.item ? esc(r.memo.replace(USAGE_PREFIX, '')) : '';
-    if ((r.kind === 'topup' || r.kind === 'autoreload') && feePct != null) return `Card charged for these credits plus the ${esc(feePct)}% purchase fee`;
+    if (r.kind === 'usage') {
+      const model = r.model ? esc(r.model) : r.memo && !r.item ? esc(r.memo.replace(USAGE_PREFIX, '')) : '';
+      return [r.session ? `<a href="/research/${+r.session.id}">${esc(sessionTitle(r.session))}</a>` : '', model,
+        +r.calls > 1 ? `${num(r.calls)} model calls` : ''].filter(Boolean).join(' · ');
+    }
+    if (r.kind === 'topup' || r.kind === 'autoreload') {
+      const paid = r.card_charge != null ? `Card charged ${usd(r.card_charge)}` : 'Card charged';
+      return (feePct != null ? `${paid}: ${usd(r.amount)} credits plus the ${esc(feePct)}% purchase fee` : paid)
+        + (r.stripe_ref ? ` · Stripe ref <span class="ref">${esc(r.stripe_ref)}</span>` : '');
+    }
     return '';
+  }
+  // The time of a line, or the span of a session's calls that day, in the viewer's clock.
+  const clockAt = (iso, zone) => { const d = new Date(iso || NaN); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(zone ? { timeZoneName: 'short' } : {}) }) : '—'; };
+  const lineWhen = (r) => r.first_at && r.first_at !== r.created_at ? `${clockAt(r.first_at)}–${clockAt(r.created_at, true)}` : clockAt(r.created_at, true);
+  // A statement day ('2026-10-26', the viewer's day from the server) as a heading: "Today" or "Mon, Oct 26".
+  const ledgerDay = (day) => {
+    const [y, m, dd] = String(day).split('-').map(Number), d = new Date(y, m - 1, dd);
+    if (!Number.isFinite(d.getTime())) return esc(day);
+    return d.toDateString() === new Date().toDateString() ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  // How the balance came to be over the statement's days (/api/billing math): the balance then, plus
+  // credits bought, plus other credits, minus agent usage, is the balance now. The server sends cents
+  // that add up. Only what was bought and debited, never a rate.
+  function billMath(m) {
+    if (!m) return '';
+    const rows = [[`Balance ${m.days} days ago`, usd(m.start)],
+      [`Credits bought${m.purchases ? ` (${m.purchases} card charge${m.purchases === 1 ? '' : 's'})` : ''}`, usd(m.bought, true)],
+      ...(+m.other ? [['Welcome and other credits', usd(m.other, true)]] : []),
+      ['Agent usage', usd(-m.usage)], ['Balance now', usd(m.end)]];
+    return `<dl class="bill-math">${rows.map(([k, v], i) => `<div${i === rows.length - 1 ? ' class="total"' : ''}><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
   }
   // The week's usage by what spent it (/api/billing spent_7d_by), biggest first; '' when nothing did.
   const SPEND_SOURCE = { research: 'your research sessions', autopilot_research: 'autopilot research', autopilot_review: 'autopilot check-ins', chat: 'chat', other: 'other agent calls' };
   const spendSplit = (by) => Object.entries(by || {}).filter(([k, v]) => SPEND_SOURCE[k] && +v >= 0.005)
     .sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SPEND_SOURCE[k]} ${usd(v)}`).join(' \u00b7\u00a0');
-  function ledgerTable(rows, feePct) {
-    if (!rows.length) return '<p class="hint">No credit activity yet.</p>';
-    return `<p class="hint ledger-key">Newest first. Research and chat bill one line per model call, named by its model. The receipt has every line, with exact amounts.</p><div class="sheet"><table class="table stack t-dep t-ledger"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${rows.map((r) => `<tr>
-      <td class="hint" data-lab="When"><time datetime="${esc(r.created_at)}">${settleAt(r.created_at)}</time></td>
+  // Billing's statement (/api/billing ledger): the last days, newest first, under a heading per day that
+  // says what the day used and added. Each usage line is one session's model calls that day.
+  function ledgerTable(d) {
+    const rows = d.ledger || [], feePct = d.topup_fee_pct;
+    if (!rows.length) return billMath(d.math) + '<p class="hint">No credit activity yet.</p>';
+    const days = [];
+    rows.forEach((r) => { const last = days[days.length - 1]; if (last && last.day === (r.day || '')) last.rows.push(r); else days.push({ day: r.day || '', rows: [r] }); });
+    const line = (r) => `<tr>
+      <td class="hint" data-lab="When"><time datetime="${esc(r.created_at)}">${r.day ? lineWhen(r) : settleAt(r.created_at)}</time></td>
       <td class="name" data-lab="Item">${esc((r.kind === 'usage' && r.item) || KIND_LABEL[r.kind] || r.kind)}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
-      <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${ledgerAmount(r.amount)}</span></td></tr>`).join('')}</tbody></table></div>`;
+      <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${ledgerAmount(r.amount)}</span></td></tr>`;
+    const head = (g) => {
+      const used = g.rows.filter((r) => r.kind === 'usage').reduce((s, r) => s - r.amount, 0);
+      const added = g.rows.filter((r) => r.kind !== 'usage').reduce((s, r) => s + r.amount, 0);
+      return `<tr class="ledger-day"><td colspan="3" data-lab="Day"><b>${ledgerDay(g.day)}</b><span class="day-sum">${[used >= 0.005 ? `${usd(used)} used` : '', added ? `${usd(added, true)} credits` : ''].filter(Boolean).join(' · ')}</span></td></tr>`;
+    };
+    const key = d.math ? `Last ${d.math.days} days, newest first. Each research line is one session's model calls that day; open it to see the session. The receipt has every call and every card charge.`
+      : 'Newest first. The receipt has every line, with exact amounts.';
+    return `${billMath(d.math)}<p class="hint ledger-key">${key}</p><div class="sheet"><table class="table stack t-dep t-ledger"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${
+      days.map((g) => (g.day ? head(g) : '') + g.rows.map(line).join('')).join('')}</tbody></table></div>${d.ledger_cut ? '<p class="hint">Older days are in the receipt.</p>' : ''}`;
   }
 
   // ---------- admin ----------
