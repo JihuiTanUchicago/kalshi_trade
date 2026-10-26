@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from app import server
+from app.web.routes import explore as explore_routes
 from app.web.routes import strategies as strategy_routes
 from app.web import auth
 from app.web.routes import admin as admin_routes
@@ -940,7 +941,7 @@ def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys)
     def proxy_down(path, params=None):
         raise OSError("HTTPSConnectionPool(host='api.elections.kalshi.com'): Tunnel connection failed: 403 Forbidden")
     monkeypatch.setattr(common, "api_get", proxy_down)
-    monkeypatch.setattr(server, "_explore_feed", lambda: {"markets": []})  # not in the feed either
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: {"markets": []})  # not in the feed either
     with pytest.raises(server.ApiError) as err:
         server.explore_market(c)
     assert err.value.status == 502 and "Try again in a minute" in str(err.value)
@@ -959,7 +960,7 @@ def test_explore_market_shows_the_market_when_only_its_history_failed(monkeypatc
     c = server.Ctx(FakeConn(), {"id": 1}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)
     feed = {"markets": [{"t": "KXNBAGAME-26OCT25TORMIN-MIN", "s": "KXNBAGAME", "ti": "Minnesota wins", "su": "Minnesota",
                          "bid": "0.50", "ask": "0.51", "last": "0.50", "v24": "195732", "oi": "201649", "st": "active"}]}
-    monkeypatch.setattr(server, "_explore_feed", lambda: feed)
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
 
     def down(path, params=None):
         raise OSError("Tunnel connection failed: 403 Forbidden")
@@ -1014,7 +1015,7 @@ def test_explore_market_still_shows_when_the_positions_read_fails(monkeypatch, c
     import data_pipeline.common as common
     c = server.Ctx(FakeConn(), {"id": 7}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)
     feed = {"at": "2026-10-26T10:55:00Z", "markets": [{"t": "KXNBAGAME-26OCT25TORMIN-MIN", "ti": "Minnesota wins", "bid": "0.50", "ask": "0.51"}]}
-    monkeypatch.setattr(server, "_explore_feed", lambda: feed)
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
 
     def down(path, params=None):
         raise OSError("Tunnel connection failed: 403 Forbidden")
