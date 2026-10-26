@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from app.adapters.db.sql import _json, _loads, now_utc, transaction
+from app.adapters.db.strategy_repository import DEMO_DIRECTION
 
 # How many times a broken research run may be reclaimed + resumed from its checkpoint before it
 # fails for good. Caps a run that keeps wedging at the same spot (a hanging data load) so it can't
@@ -259,6 +260,18 @@ def list_runs(cur, user_id: int, limit: int = 50) -> List[Dict]:
         (user_id, limit),
     )
     return cur.fetchall()
+
+
+def example_run_id(cur, user_id: int) -> Optional[int]:
+    """The id of the user's seeded example session (repository.seed_demo_session; the newest if there
+    are several), or None. What /example opens: it looked for the example in list_runs, which holds only
+    the newest 50 sessions, so a user with more landed on /research. One row through idx_runs_user."""
+    cur.execute(
+        "SELECT id FROM app_agent_runs WHERE user_id=%s AND kind='research' AND direction=%s ORDER BY id DESC LIMIT 1",
+        (user_id, DEMO_DIRECTION),
+    )
+    row = cur.fetchone()
+    return int(row["id"]) if row else None
 
 
 def research_week(cur, user_id: int, since, include_demo: bool = False) -> List[Dict]:

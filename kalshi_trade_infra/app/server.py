@@ -651,6 +651,12 @@ def list_runs(ctx: Ctx):
             "policy": policy, "totals": _research_totals(ctx.cur, ctx.uid)}
 
 
+def example_run(ctx: Ctx):
+    """{"id": the user's seeded example session, or None}: /example opens it however many sessions
+    came after it (the runs list holds only the newest 50)."""
+    return {"id": repo.example_run_id(ctx.cur, ctx.uid)}
+
+
 def _mark_example(runs: List[Dict]) -> None:
     """Flag the example session every account is seeded with: the app ran it, not the user, and
     it cost them nothing, so the list marks it and the headline leaves it out."""
@@ -2574,6 +2580,9 @@ def _iso_utc(v: Any) -> str:
 
 
 def _dec(v: Any, places: int = 4) -> str:
+    """An amount to `places`; text is already the file's (closed_trades_for_export reads it so)."""
+    if isinstance(v, str):
+        return v
     return "" if v is None else "%.*f" % (places, float(v))
 
 
@@ -3196,6 +3205,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/models", models, True),
         ("GET", "/api/runs", list_runs, True),
         ("POST", "/api/runs", create_run, True),
+        ("GET", "/api/runs/example", example_run, True),
         ("GET", r"/api/runs/(\d+)", get_run, True),
         ("POST", r"/api/runs/(\d+)/cancel", cancel_run, True),
         ("POST", r"/api/runs/(\d+)/pause", pause_run, True),
