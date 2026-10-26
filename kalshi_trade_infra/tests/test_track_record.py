@@ -45,6 +45,16 @@ def test_modes_never_mix_and_default_prefers_live():
     assert out["default_mode"] == "live"
 
 
+def test_default_tab_prefers_paper_over_a_demo_copy():
+    """Without live trades the record opens on paper, the book that carries the evidence, even when the
+    demo sandbox copy has trades too; demo opens only when it is the one book with a closed trade."""
+    paper_and_demo = [row("paper", 5, ref="sim:%d" % i) for i in range(3)] + [row("demo", 1, ref="d1")]
+    assert tr.build(paper_and_demo, NOW)["default_mode"] == "paper"
+    assert tr.build([row("demo", 1, ref="d1")], NOW)["default_mode"] == "demo"
+    # Only instant paper fills (left out of the record) leave paper with no trade: demo opens.
+    assert tr.build([row("paper", 5, ref=None), row("demo", 1, ref="d1")], NOW)["default_mode"] == "demo"
+
+
 def test_instant_paper_fills_are_excluded_but_counted():
     out = tr.build([row("paper", 3, ref="sim:a"), row("paper", 100, ref=None), row("paper", 100, ref="legacy")], NOW)
     p = out["modes"]["paper"]

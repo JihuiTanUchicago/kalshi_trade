@@ -44,6 +44,8 @@ def _strategy_card(s: Dict) -> Dict:
         "deployed": bool(s.get("active_deps")), "deploy_live": bool(s.get("live_deps")),
         "shared_from": s.get("shared_from_name") if s.get("shared_from_user_id") else None,
         "example": s.get("direction") == repo.DEMO_DIRECTION,  # from the seeded example session
+        # Found in a session the autopilot started (its run's brief flag, as the research list reads it).
+        **({"by_autopilot": True} if s.get("by_autopilot") else {}),
     }
 
 
@@ -108,10 +110,13 @@ def list_strategies(ctx: Ctx):
     ex = counts.get("examples") or {}
     shown_ex = ex.get(status, 0) if status else sum(n for s, n in ex.items() if s not in repo.NOISE_STATUSES)
     matched = (counts.get(status, 0) if status else counts["total"] - noise) + shown_ex
+    # "best": best unseen-data backtest P&L first, across every page (the list is paged server-side).
+    sort = "best" if q.get("sort") == "best" else None
     rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per,
-                                q=search, deployed=deployed, hide_noise=hide_noise)
+                                q=search, deployed=deployed, hide_noise=hide_noise, sort=sort)
     cards = [_strategy_card(s) for s in rows]
     _attach_real_records(ctx.cur, ctx.uid, cards)
+    _attach_past_records(ctx.cur, ctx.uid, cards, [s["id"] for s in rows if s.get("removed_deps")])
     return {"strategies": cards, "counts": counts,
             "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
 
@@ -138,10 +143,34 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
             if mode is None:  # only a mode this list doesn't show
                 continue
             r = books[mode]
+            # Every book it runs in now, so the row's badge names them ("On paper + demo"), not "Deployed".
+            c["books"] = [m for m in BOOK_ORDER if m in books]
             c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": mode == "live", "mode": mode}
             if mode == "paper" and "demo" in books:
                 dm = books["demo"]
                 c["real"]["demo"] = {"pnl": round(dm["pnl"], 2), "trades": dm["trades"], "open": dm["open"]}
+
+
+BOOK_ORDER = ("live", "paper", "demo")
+
+
+def _attach_past_records(cur, uid: int, cards: List[Dict], removed_ids: List[int]) -> None:
+    """Stamp each card whose strategy has removed deployments (`removed_ids`, from the list read's
+    removed_deps) with what they made, per book: {mode: {"pnl", "trades", "deployments"}} under
+    "past". A removed deployment leaves the card's "since deploying" line (active ones only), so a
+    strategy that traded for a week and was removed read as if it never traded, while the track
+    record's strategy row and the strategy page's "Past deployments" line still counted its trades.
+    Books are never added together. One read, and only when the page has such a strategy."""
+    if not removed_ids:
+        return
+    past: Dict[int, Dict[str, Dict]] = {}
+    for r in repo.removed_totals_by_strategy(cur, uid, removed_ids):
+        past.setdefault(int(r["strategy_id"]), {})[r["mode"]] = {
+            "pnl": round(float(r["pnl"] or 0), 2), "trades": int(r["trades"] or 0), "deployments": int(r["deployments"] or 0)}
+    for c in cards:
+        books = past.get(c["id"])
+        if books:
+            c["past"] = {m: books[m] for m in BOOK_ORDER if m in books}
 
 
 def _owned_strategy(ctx: Ctx) -> Dict:

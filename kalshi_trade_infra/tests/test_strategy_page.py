@@ -23,6 +23,31 @@ def test_a_code_strategy_card_is_research_only_like_the_deploy_route_says():
     assert "kind" not in rule and "research_only" not in rule
 
 
+def test_a_strategy_card_says_when_the_autopilot_found_it():
+    # The list read carries its run's brief flag (a session the autopilot started); a user's own or a
+    # chat-made strategy (no run) carries none, and the card leaves the flag out.
+    spec = specmod.validate({"market": "btc15m", "side": "yes"})
+    assert strategy_routes._strategy_card({**_row(spec), "by_autopilot": 1})["by_autopilot"] is True
+    for brief in (0, None):
+        assert "by_autopilot" not in strategy_routes._strategy_card({**_row(spec), "by_autopilot": brief})
+    assert "by_autopilot" not in strategy_routes._strategy_card(_row(spec))
+
+
+def test_the_list_read_carries_the_runs_autopilot_flag():
+    from app import repository as repo
+
+    class Cur:
+        def execute(self, sql, params=()):
+            self.sql = " ".join(sql.split())
+
+        def fetchall(self):
+            return []
+
+    cur = Cur()
+    repo.list_strategies(cur, 1)
+    assert "r.brief AS by_autopilot" in cur.sql and "LEFT JOIN app_agent_runs r ON r.id=s.run_id" in cur.sql
+
+
 def test_the_deploy_route_refuses_a_code_strategy_in_every_mode(monkeypatch):
     # The flag above mirrors this refusal: if the route ever deploys code, the card must change too.
     code = specmod.validate({"market": "btc15m", "code": CODE})

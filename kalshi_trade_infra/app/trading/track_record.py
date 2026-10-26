@@ -31,6 +31,10 @@ from app.research.stats import probabilistic_sharpe_ratio
 
 MODES = ("live", "demo", "paper")
 MODE_LABEL = {"live": "Live money", "demo": "Kalshi demo", "paper": "Paper"}
+# The tab the record opens on: the first of these with a closed trade. Paper comes before demo: demo
+# is the order-path check on Kalshi's thin sandbox book, and its P&L is no evidence of the edge (paper
+# keeps that job). A user with 146 paper trades and a 10-trade demo copy opened on demo's figures.
+DEFAULT_ORDER = ("live", "paper", "demo")
 MIN_TRADES = 30          # below this a win rate or average trade is mostly noise
 SOLID_TRADES = 100
 MIN_SHARPE_DAYS = 14     # a Sharpe on fewer calendar days is not shown
@@ -480,7 +484,7 @@ def finish(prepared: Dict, now: Optional[datetime] = None) -> Dict:
         s.update(label=MODE_LABEL[m], excluded_instant_fills=excluded[m],
                  monthly=monthly(closed[m], today), strategies=[dict(r) for r in prepared["strategies"][m]])
         modes[m] = s
-    default = next((m for m in MODES if modes[m]["trades"]), "paper")
+    default = next((m for m in DEFAULT_ORDER if modes[m]["trades"]), "paper")
     return {"generated_at": now_ts, "default_mode": default, "modes": modes, "method": METHOD,
             "thresholds": {"min_trades": MIN_TRADES, "min_sharpe_days": MIN_SHARPE_DAYS,
                            "min_annualize_days": MIN_ANNUALIZE_DAYS}}

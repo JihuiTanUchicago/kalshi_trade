@@ -360,6 +360,13 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
     for mode in MODES:
         real = cards[sids[mode]]["real"]
         assert real["mode"] == mode and real["pnl"] == _money(sum(float(x["pnl"]) for x in book[mode]["by_dep"][deps[mode]]))
+        assert cards[sids[mode]]["books"] == [mode]  # its badge names its one book
+    # The removed deployment's money is on the card too, apart from the active one ("Removed from paper"),
+    # as the Deploy board and the strategy page count it: together they are the dashboard's paper figure.
+    old_rows = paper["by_dep"][p_old]
+    assert cards[sids["paper"]]["past"] == {"paper": {"pnl": stopped, "trades": len(old_rows), "deployments": 1}}
+    assert _money(cards[sids["paper"]]["real"]["pnl"] + cards[sids["paper"]]["past"]["paper"]["pnl"]) == dash["paper"]["realized_pnl"]
+    assert "past" not in cards[sids["demo"]] and "past" not in cards[sids["live"]]
 
     # -- the paper account: its equity P&L restarts at the reset; realized P&L keeps every trade --------
     cash = repo.paper_balance(cur, uid)
