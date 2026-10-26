@@ -436,6 +436,14 @@
   const reportBroken = (kind, err) => { try { if (typeof window.__tauReport === 'function') window.__tauReport(kind, err); } catch (e) { /* best-effort */ } };
   const apiBroke = (path, write, what) => reportBroken('api', `${write ? 'POST' : 'GET'} ${String(path).split('?')[0].replace(/\/\d+(?=\/|$)/g, '/:id')} ${what}`);
   async function api(path, body, cfg) {
+    // A signed-in shell carries the page's first reads ([{url, body}], app/web/shell_reads.py; boot.js
+    // parks them): the first render takes each in place of that one request, once, instead of waiting a
+    // round trip for it.
+    const carried = body === undefined ? window.__TAU_FIRST__ : null;
+    if (carried) {
+      if (S.gen > 1 || !Array.isArray(carried)) window.__TAU_FIRST__ = null;  // the first page has gone: never an old answer later
+      else { const i = carried.findIndex((r) => r && r.url === path); if (i >= 0) return carried.splice(i, 1)[0].body; }
+    }
     const gen = S.gen, scoped = body === undefined && !(cfg && cfg.keep);
     const opts = { credentials: 'same-origin', headers: {} };
     if (body !== undefined) {

@@ -3088,6 +3088,21 @@ test('boot.js hands the app the account a signed-in shell carries, once, and sur
   }
 });
 
+test("boot.js hands the app the page's first read the shell carries, once, apart from the account", () => {
+  for (const [text, expected] of [['[{"url":"/api/deployments","body":{"v":"x","t":"\\u003c/script\\u003e"}}]', [{url: '/api/deployments', body: {v: 'x', t: '</script>'}}]], ['{not json', undefined]]) {
+    const me = {textContent: '{"user":{"id":7}}', remove() { this.removed = true; }};
+    const node = {textContent: text, removed: false, remove() { this.removed = true; }};
+    const dataset = {ui: 'tau', tauJs: '/static/app.js?v=t', tauVer: 't', merJs: '/static/app.meridian.js?v=m', merVer: 'm', merCss: '/static/app.meridian.css?v=m'};
+    const context = {window: {}, location: {pathname: '/deploy'}, localStorage: {getItem: () => null, setItem() {}},
+      document: {getElementById: id => id === 'tau-first' ? node : id === 'tau-me' ? me : id === 'tau-boot' ? {dataset} : null,
+        createElement: () => ({}), body: {appendChild() {}}}};
+    vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+    assert.deepEqual(context.window.__TAU_FIRST__ === undefined ? undefined : JSON.parse(JSON.stringify(context.window.__TAU_FIRST__)), expected);
+    assert.equal(node.removed, expected !== undefined);
+    assert.deepEqual(JSON.parse(JSON.stringify(context.window.__TAU_ME__)), {user: {id: 7}}, 'a broken first read leaves the account');
+  }
+});
+
 test('a research session that does not exist links to the list instead of offering Try again', async () => {
   const f = frontend({fetchImpl: path => (path.startsWith('/api/runs/9') ? {ok: false, status: 404, json: async () => ({error: 'No such research run.'})} : {ok: true, status: 200, json: async () => ({})})});
   f.location.pathname = '/research/9';

@@ -41,7 +41,7 @@ from app.research import research_repository as research_repo
 from app.trading import spec as specmod
 from app.services import backtest_check, bell, book_memo, customer_text, gate_explain, page_poll, paper_checks, research_list, run_stop, trade_why
 from app.trading import track_record
-from app.web import client_errors, webperf
+from app.web import client_errors, shell_reads, webperf
 from app import worker
 from app.trading.markets import MARKETS
 from app.services import markets as market_service
@@ -654,8 +654,9 @@ class Handler(BaseHTTPRequestHandler):
         theme = user.get("ui_theme") if user.get("ui_theme") in UI_THEMES else "tau"
         return theme, [_ui_cookie(theme)]
 
-    def _shell_boot(self, path: str) -> Tuple[Optional[str], List[str], Optional[Dict]]:
-        """(theme, Set-Cookie headers, the account as /api/me answers it or None) for the page shell.
+    def _shell_boot(self, path: str, query: str = "") -> Tuple[Optional[str], List[str], Optional[Dict], List[Dict]]:
+        """(theme, Set-Cookie headers, the account as /api/me answers it or None, the page's first reads
+        as [{url, body}]: app.web.shell_reads) for the page shell.
 
         Signed in, an app page's shell does /api/me's reads itself and carries the reply, so the app
         starts its page's data reads at once instead of after a /api/me round trip of its own: one
@@ -665,21 +666,22 @@ class Handler(BaseHTTPRequestHandler):
         cookies = self.cookies()
         token = cookies.get(auth.SESSION_COOKIE)
         if not token or path in ("/signin", "/terms", "/privacy"):
-            return self._shell_theme(path) + (None,)
+            return self._shell_theme(path) + (None, [])
         theme = cookies.get(UI_COOKIE) if cookies.get(UI_COOKIE) in UI_THEMES else None
         conn = None
         try:
             conn = get_db_conn()
             user = repo.session_user(conn.cursor(), auth.hash_token(token))
             if user is None:
-                return theme, [], None
+                return theme, [], None, []
             theme = user.get("ui_theme") if user.get("ui_theme") in UI_THEMES else "tau"
             ctx = Ctx(conn, user, (), {}, {}, self)
             account = me(ctx)
-            return theme, ctx.set_cookies, account
+            first, first_cookies = shell_reads.first_reads(path, query, cookies, lambda params, q: Ctx(conn, user, params, q, {}, self))
+            return theme, ctx.set_cookies + first_cookies, account, first
         except Exception as e:  # noqa: BLE001 - the shell must never fail on this; the app reads /api/me
             _log_line("[app] shell account read failed (%s); the app reads /api/me" % type(e).__name__)
-            return theme, ([_ui_cookie(theme)] if theme and theme != cookies.get(UI_COOKIE) else []), None
+            return theme, ([_ui_cookie(theme)] if theme and theme != cookies.get(UI_COOKIE) else []), None, []
         finally:
             if conn is not None:
                 conn.close()
@@ -694,17 +696,20 @@ class Handler(BaseHTTPRequestHandler):
                 return
         if SPA_ROUTES.match(path):
             versions = _static_versions()
-            theme, cookies, account = self._shell_boot(path)
+            theme, cookies, account, first = self._shell_boot(path, query)
             # A data block, not a script: CSP's script-src never applies, and boot.js parses it.
             boot_me = "" if account is None else '\n<script type="application/json" id="tau-me">%s</script>' % (
                 webperf.embed_json(json.dumps(account, default=_json_default, separators=(",", ":"))))
+            # After the scripts, so the browser finds and starts the bundles before these bytes arrive.
+            boot_first = "" if not first else '\n<script type="application/json" id="tau-first">%s</script>' % (
+                webperf.embed_json(json.dumps(first, default=_json_default, separators=(",", ":"))))
             css = ("/static/app.meridian.css?v=" + versions["app.meridian.css"] if theme == "meridian"
                    else "/static/app.css?v=" + versions["app.css"])
             bundle = ("" if theme is None else '\n<script src="/static/%s?v=%s" defer></script>' % (
                 ("app.meridian.js", versions["app.meridian.js"]) if theme == "meridian" else ("app.js", versions["app.js"])))
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{ui_css}}", css).replace("{{ui}}", theme or "").replace("{{ui_bundle}}", bundle)
-                    .replace("{{boot_me}}", boot_me)
+                    .replace("{{boot_me}}", boot_me).replace("{{boot_first}}", boot_first)
                     .replace("{{css_v}}", versions["app.css"])
                     .replace("{{js_v}}", versions["app.js"])
                     .replace("{{session_v}}", versions["session-data.js"])
