@@ -140,15 +140,15 @@ def test_auto_reload_settings_out_of_range_are_refused_in_dollars(monkeypatch, c
 
 def test_the_autopilot_status_names_a_declined_reload_only_when_it_is_why_credits_are_short(monkeypatch):
     failed = {'at': NOW, 'text': "It couldn't add $25.00 in credits. Your card was declined for insufficient funds. Try another card."}
-    monkeypatch.setattr(chat_routes, '_reload_failed', lambda cur, uid: failed)
+    monkeypatch.setattr(billing_routes, '_reload_failed', lambda cur, uid: failed)
     reads = SimpleNamespace(customer=lambda: ON, balance=lambda: 0.62)
-    assert chat_routes._reload_failed_now(object(), 7, reads) == failed['text']
+    assert billing_routes.reload_failed_now(object(), 7, reads) == failed['text']
     # Above the trigger a reload never fires, so it can't be failing; auto-reload off: nothing to fail.
-    assert chat_routes._reload_failed_now(object(), 7, SimpleNamespace(customer=lambda: ON, balance=lambda: 12.0)) is None
-    assert chat_routes._reload_failed_now(object(), 7, SimpleNamespace(customer=lambda: dict(ON, auto_reload=0),
+    assert billing_routes.reload_failed_now(object(), 7, SimpleNamespace(customer=lambda: ON, balance=lambda: 12.0)) is None
+    assert billing_routes.reload_failed_now(object(), 7, SimpleNamespace(customer=lambda: dict(ON, auto_reload=0),
                                                                        balance=lambda: 0.62)) is None
-    monkeypatch.setattr(chat_routes, '_reload_failed', lambda cur, uid: None)
-    assert chat_routes._reload_failed_now(object(), 7, reads) is None
+    monkeypatch.setattr(billing_routes, '_reload_failed', lambda cur, uid: None)
+    assert billing_routes.reload_failed_now(object(), 7, reads) is None
 
 
 def test_the_idle_line_says_the_card_is_the_step_when_the_reload_was_declined():
@@ -159,3 +159,34 @@ def test_the_idle_line_says_the_card_is_the_step_when_the_reload_was_declined():
     assert idle['action'] == {'label': 'Update card', 'href': '/billing'}
     idle = chat_routes._idle_reason(dict(d, reload_failed=None), [], [], 20, [])
     assert idle['line'].endswith('until you add credits.') and idle['action']['label'] == 'Add credits'
+
+
+def test_api_me_carries_a_declined_reload_only_while_it_is_why_credits_are_short(monkeypatch):
+    from app.web.routes import account as account_routes
+    failed = {'at': NOW, 'text': "It couldn't add $25.00 in credits. Your card was declined for insufficient funds. Try another card."}
+    balance = [0.62]
+
+    class Reads:
+        def __init__(self, cur, uid):
+            pass
+
+        def customer(self):
+            return ON
+
+        def balance(self):
+            return balance[0]
+
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.billing, 'Reads', Reads)
+    monkeypatch.setattr(billing_routes, '_reload_failed', lambda cur, uid: failed)
+    monkeypatch.setattr(account_routes, '_researchable_markets', lambda cur: [])
+    monkeypatch.setattr(account_routes, 'models', lambda ctx: [])
+    monkeypatch.setattr(server.repo, 'get_kalshi_key', lambda cur, uid: None)
+    monkeypatch.setattr(server.repo, 'get_kalshi_dev_key', lambda cur, uid: None)
+    ctx = server.Ctx(SimpleNamespace(cursor=lambda: object()),
+                     {'id': 7, 'email': 'trader@example.invalid', 'name': 'Sample', 'picture_url': None, 'autopilot': 1},
+                     (), {}, {}, SimpleNamespace(headers={}))
+    me = server.me(ctx)
+    assert me['reload_failed'] == failed['text'] and me['auto_reload']['charge'] == 26.38
+    balance[0] = 12.0  # above the trigger: a reload never fired, so nothing is failing
+    assert server.me(ctx)['reload_failed'] is None

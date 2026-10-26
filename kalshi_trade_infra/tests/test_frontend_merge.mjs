@@ -16,7 +16,7 @@ import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
-import {creditsCases} from './credits_frontend_cases.mjs';
+import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -3816,7 +3816,7 @@ test('run-until-stopped says what an hour costs at recent rates, how long the ba
   f = research({yours: null, sessions: 0, typical: {}, per_hour: {yours: null, typical: {opus: 3}}});
   f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 100, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
   await f.viewResearch(); await flush(); await flush();
-  assert.equal(cost().textContent, 'At recent rates it costs about $3.00 an hour (recent sessions on this model). Your $100.00 covers about 33 hours. Auto-reload adds $20.00 when your balance falls to $5.00.');
+  assert.equal(cost().textContent, 'At recent rates it costs about $3.00 an hour (recent sessions on this model). Your $100.00 covers about 33 hours. Auto-reload adds $20.00 when your balance falls to $5.00, charging your card $21.10.');
   const model = f.root.querySelector('#rmodel'); model.value = 'haiku'; model.dispatchEvent({type: 'change'});
   // Nothing known for this model: with payments on it says how it is billed instead of going blank.
   assert.match(cost().textContent, /^No cost estimate for this model yet\. It’s charged to your credits as it runs/);
@@ -4857,3 +4857,4 @@ test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, 
 firstHourCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
+declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});

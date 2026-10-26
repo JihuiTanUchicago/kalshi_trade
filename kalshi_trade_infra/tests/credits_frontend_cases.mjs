@@ -95,3 +95,53 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     g.clearTimers();
   });
 }
+
+// A declined auto-reload card where credits run short outside the autopilot card: the dashboard's Needs
+// you and the research form name the card as the step, and the research form's forever line says what
+// auto-reload charges the card instead of promising a top-up the card refuses.
+export function declinedCardCases({name, frontend, dashboard}) {
+  const declined = {credit_balance: 0.62, auto_reload: {amount: 25, charge: 26.38, threshold: 5}, reload_failed: FAILED};
+
+  test(`${name}: under the research floor with a declined reload card, Needs you says to update the card`, async () => {
+    const since = {at: '2026-10-19T08:00:00+00:00', first: false, books: {paper: {pnl: 0, trades: 0}},
+      passed: {n: 0, items: []}, autopilot: {}, runs: {succeeded: 1}, spent: {since: 2.5, week: 17.5}, milestones: {}};
+    const strip = async (me) => {
+      const f = frontend({fetchImpl: (path) => {
+        if (path.startsWith('/api/dashboard')) return response({...dashboard(), since});
+        if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+        throw new Error('Unexpected offline request: ' + path);
+      }});
+      f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, min_run_balance: 1, ...me};
+      await f.viewDashboard(); await flush();
+      return f.root.querySelector('#dash-since').innerHTML;
+    };
+    assert.match(await strip(declined), /Credits are at \$0\.62: new research needs \$1\.00 to start\. Auto-reload couldn’t charge your card\. <a href="\/billing">Update your card and add credits<\/a>/);
+    assert.match(await strip({...declined, reload_failed: null}), /Credits are at \$0\.62: new research needs \$1\.00 to start\. <a href="\/billing">Add credits<\/a>/);
+  });
+
+  const research = (me) => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/models') return response({models: [{key: 'opus', label: 'Opus'}], default: 'opus'});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/research/estimate') return response({yours: null, sessions: 0, typical: {}, per_hour: {yours: null, typical: {opus: 3}}});
+      if (path === '/api/runs') return response({runs: [], counts: {research_running: 0, research_queued: 0, research_paused: 0}, policy: null});
+      if (path.startsWith('/api/research/scoreboard')) return response({total: {runs: 0}});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, min_run_balance: 1, ...me};
+    return f;
+  };
+
+  test(`${name}: the research form says what auto-reload charges the card, and not to count on a declined one`, async () => {
+    let f = research({credit_balance: 100, auto_reload: {amount: 20, charge: 21.1, threshold: 5}});
+    await f.viewResearch(); await flush(); await flush();
+    assert.match(f.root.querySelector('#rcost').textContent, /Auto-reload adds \$20\.00 when your balance falls to \$5\.00, charging your card \$21\.10\.$/);
+    f = research(declined);
+    await f.viewResearch(); await flush(); await flush();
+    assert.match(f.root.querySelector('#rcost').textContent, /Auto-reload couldn’t charge your card, so it stops by itself if your credits run out\.$/);
+    assert.doesNotMatch(f.root.querySelector('#rcost').textContent, /Auto-reload adds/);
+    assert.match(f.root.querySelector('#dispatch .notice').innerHTML,
+      /a research session needs at least \$1\.00 to start\. Auto-reload couldn’t charge your card\. <a href="\/billing">Update your card and add credits →<\/a>/);
+  });
+}

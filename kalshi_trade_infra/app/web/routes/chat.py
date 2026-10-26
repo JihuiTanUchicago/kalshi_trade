@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta
-from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
 from app import repository as repo
@@ -22,11 +21,10 @@ from app.web.caches import _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.billing import (
     _credits_running_low,
-    _reload_failed,
     pace_days,
     pause_at,
     reload_days,
-    reload_trigger,
+    reload_failed_now,
     runway_days,
 )
 from app.web.routes.brokers import _paper_call, _perps_live_call
@@ -770,7 +768,7 @@ def autopilot_status(ctx: Ctx):
                              if on and payments and not billing_blocked else None),
         # The last auto-reload failed (Billing's banner text: what it tried to add and why), read only
         # when it can be why credits are short: auto-reload on with a card, the balance at its trigger.
-        "reload_failed": _reload_failed_now(cur, ctx.uid, reads) if on and payments else None,
+        "reload_failed": reload_failed_now(cur, ctx.uid, reads) if on and payments else None,
         "paper_progress": paper_progress,
         # Read by the story and the idle line, both of which say nothing of paper while autopilot is off.
         "paper_open": book_memo.open_count(memo, "paper") if paper_run and on else 0,
@@ -797,17 +795,6 @@ def autopilot_status(ctx: Ctx):
         out["idle"] = None
     out["story"] = _autopilot_story(out)
     return out
-
-
-def _reload_failed_now(cur, uid: int, reads: billing.Reads) -> Optional[str]:
-    """The failed auto-reload's text when it can be why credits are short, else None. This endpoint
-    polls, so the notice is read only while auto-reload is on with a card and the balance is at or under
-    its trigger (a reload above the trigger never fires, so it can't be failing)."""
-    trigger = reload_trigger(reads.customer())
-    if trigger is None or Decimal(str(reads.balance())) > trigger:
-        return None
-    failed = _reload_failed(cur, uid)
-    return failed["text"] if failed else None
 
 
 def _pulse(cur, uid: int, since, review: bool, engine: bool) -> Dict:

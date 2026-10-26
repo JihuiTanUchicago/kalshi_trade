@@ -2393,7 +2393,11 @@
     const bal = +me.credit_balance || 0, h = hourly > 0 ? bal / hourly : null;
     if (h != null && bal > 0) s += ` Your ${usd(bal)} covers ${h < 1 ? 'less than an hour' : h < 48 ? `about ${Math.round(h)} hour${Math.round(h) === 1 ? '' : 's'}` : `about ${Math.round(h / 24)} days`}.`;
     const ar = me.auto_reload;
-    return (s + (ar ? ` Auto-reload adds ${usd(ar.amount)} when your balance falls to ${usd(ar.threshold)}.` : ' It stops by itself if your credits run out.')).trim();
+    // What auto-reload charges the card is said with it (credits plus the purchase fee), and a declined
+    // reload card is not promised as a top-up: the session stops when credits run out.
+    return (s + (ar && me.reload_failed ? ' Auto-reload couldn’t charge your card, so it stops by itself if your credits run out.'
+      : ar ? ` Auto-reload adds ${usd(ar.amount)} when your balance falls to ${usd(ar.threshold)}, charging your card ${usd(ar.charge)}.`
+      : ' It stops by itself if your credits run out.')).trim();
   }
   // A research idea typed before the session ran out is kept for this tab (sessionStorage) and put back
   // when the same account signs in and lands on the same page; a 401 sends the reader to sign in and
@@ -2425,7 +2429,7 @@
       <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
 
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
-        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? `<div class="notice" role="status">${ICON.warn}<span>You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start. <a href="/billing">Add credits →</a></span></div>` : ''}
+        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? `<div class="notice" role="status">${ICON.warn}<span>You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start. ${me.reload_failed ? 'Auto-reload couldn’t charge your card. <a href="/billing">Update your card and add credits →</a>' : '<a href="/billing">Add credits →</a>'}</span></div>` : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <details class="dispatch-opts" id="ropts"${phone() ? '' : ' open'}><summary><span class="dispatch-opts-t">Options</span><span class="dispatch-opts-sum" id="ropts-sum"></span></summary><div class="dispatch-opts-body">
@@ -5078,7 +5082,8 @@
     const me = S.me || {};
     const low = me.billing_enabled && !me.needs_card && me.min_run_balance != null && me.credit_balance < me.min_run_balance;
     if (low)
-      needs.push(`Credits are at ${usd(me.credit_balance)}: new research needs ${usd(me.min_run_balance)} to start. <a href="/billing">Add credits</a>`);
+      needs.push(`Credits are at ${usd(me.credit_balance)}: new research needs ${usd(me.min_run_balance)} to start. ${me.reload_failed
+        ? 'Auto-reload couldn’t charge your card. <a href="/billing">Update your card and add credits</a>' : '<a href="/billing">Add credits</a>'}`);
     // Before the pause, not after: with auto-reload off, the week's pace runs the balance out within
     // CREDITS_WARN_DAYS (the server's CREDIT_RUNWAY_WARN_DAYS, which the autopilot panel warns on).
     const spent = me.billing_enabled ? s.spent : null, wk = spent ? +spent.week || 0 : 0;
@@ -6069,6 +6074,8 @@
     const reloadWas = JSON.stringify(me.auto_reload || null);
     me.auto_reload = d.auto_reload && d.default_pm ? { amount: Math.max(d.min_reload_amount, d.autoreload_amount),
       charge: d.autoreload_charge, threshold: Math.max(d.min_reload_threshold, d.autoreload_threshold) } : null;
+    // As /api/me reads it: a failed reload counts only while it can be why credits are short.
+    me.reload_failed = d.reload_failed && me.auto_reload && d.balance <= me.auto_reload.threshold ? d.reload_failed.text : null;
     const box = document.getElementById('autopilot-float');
     if (moved && box && me.user && me.user.autopilot) refreshAutopilot(box);
     // A changed auto-reload (the user's own save on Billing) repaints the autopilot card's line from

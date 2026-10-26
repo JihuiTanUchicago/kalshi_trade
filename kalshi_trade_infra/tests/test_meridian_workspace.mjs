@@ -17,7 +17,7 @@ import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
-import {creditsCases} from './credits_frontend_cases.mjs';
+import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -4823,7 +4823,7 @@ test('run-until-stopped says what an hour costs at recent rates, how long the ba
   f = researchFrontend([], {estimate: {yours: null, sessions: 0, typical: {}, per_hour: {yours: null, typical: {offline: 3}}}});
   f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 100, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
   await f.viewResearch(); await flush();
-  assert.equal(cost().textContent, 'At recent rates it costs about $3.00 an hour (recent sessions on this model). Your $100.00 covers about 33 hours. Auto-reload adds $20.00 when your balance falls to $5.00.');
+  assert.equal(cost().textContent, 'At recent rates it costs about $3.00 an hour (recent sessions on this model). Your $100.00 covers about 33 hours. Auto-reload adds $20.00 when your balance falls to $5.00, charging your card $21.10.');
 });
 
 test('the autopilot card puts credits left and the only limit beside its spend, and a credits pause says how much it needs', async () => {
@@ -5773,3 +5773,4 @@ test('Meridian: a strategy that did not pass shows its backtest P&L muted, at th
 firstHourCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
 creditsCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
+declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});

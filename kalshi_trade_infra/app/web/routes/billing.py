@@ -132,6 +132,18 @@ def _reload_failed(cur, uid: int) -> Optional[Dict]:
         return None
 
 
+def reload_failed_now(cur, uid: int, reads: billing.Reads) -> Optional[str]:
+    """The failed auto-reload's text (Billing's banner) when it can be why credits are short, else None:
+    read only while auto-reload is on with a card and the balance is at or under its trigger (a reload
+    above the trigger never fires, so it can't be failing), since /api/me and the autopilot poll read it.
+    The autopilot card, the dashboard and the research form then name the card as the step."""
+    trigger = reload_trigger(reads.customer())
+    if trigger is None or Decimal(str(reads.balance())) > trigger:
+        return None
+    failed = _reload_failed(cur, uid)
+    return failed["text"] if failed else None
+
+
 def billing_state(ctx: Ctx):
     cur = ctx.cur
     cust = repo.get_stripe_customer(cur, ctx.uid)
