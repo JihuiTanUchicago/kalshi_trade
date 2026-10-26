@@ -252,12 +252,23 @@
     const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : d.toLocaleString(undefined, day);
     return `<time datetime="${esc(iso)}" title="${esc(d.toLocaleString(undefined, { ...day, timeZoneName: 'short' }))}">${esc(shown)}</time>`;
   };
-  const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  // Each date format is built once and reused: toLocaleString with options builds a new formatter on
+  // every call, and a 600-event research log spent ~0.3s of a phone's first paint on its clocks.
+  const fmts = new Map();
+  const dateFmt = (d, o) => {
+    if (!Number.isFinite(d.getTime())) return 'Invalid Date';  // what toLocaleString says; format() throws
+    let f = fmts.get(o);  // keyed by the options object: pass a constant
+    if (!f) { f = new Intl.DateTimeFormat(undefined, o); fmts.set(o, f); }
+    return f.format(d);
+  };
+  const CLOCK = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  const LOG_STAMP = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
+  const clock = (iso) => dateFmt(new Date(iso), CLOCK);
   // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in.
   const tzName = () => { try { return (new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName') || {}).value || ''; } catch (e) { return ''; } };
   // A run log line's time: the bare clock fits the rail; the date and zone ride on hover and to a
   // screen reader (a run-until-stopped session spans days, and "06:07" named neither).
-  const logTime = (iso) => `<time datetime="${esc(iso || '')}" title="${esc(new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }))}">${clock(iso)}</time>`;
+  const logTime = (iso) => `<time datetime="${esc(iso || '')}" title="${esc(dateFmt(new Date(iso), LOG_STAMP))}">${clock(iso)}</time>`;
   // When an open contract settles: the time alone today, the date too on any other day, and always the
   // zone. A bare "21:17" read as today in no stated zone, and a daily close settling tomorrow looked due.
   const settleAt = (iso) => {
@@ -2680,6 +2691,41 @@
     jump.onclick = toLatest;
     const sealThink = () => { if (think) { think.seal(); think = null; } };
     const add = (el) => { if (!first) el.classList.add('in'); log.appendChild(el); appended++; };
+    // A long session's first paint keeps only its latest rows in the page and holds the rest behind
+    // "Show N earlier entries" at the top: laying out and painting 600 events took a phone ~1.5s.
+    // Held rows are built (a late verdict still lands on its card); they just wait outside the page.
+    const KEEP_ROWS = 60;
+    let earlier = null;
+    function foldEarlier() {
+      const rows = Array.from(log.children);
+      if (rows.length <= KEEP_ROWS + 20) return;
+      earlier = rows.slice(0, rows.length - KEEP_ROWS);
+      earlier.forEach((el) => el.remove());
+      const li = document.createElement('li');
+      li.className = 'log-earlier';
+      li.innerHTML = `<button type="button" class="btn small">Show ${num(earlier.length)} earlier entries</button>`;
+      li.querySelector('button').onclick = () => showEarlier(true);
+      log.insertBefore(li, log.firstChild);
+    }
+    // Puts the held rows back above what is on screen, which stays where it was.
+    function showEarlier(focus) {
+      if (!earlier) return;
+      const rows = earlier, btn = log.querySelector('.log-earlier'), ref = btn ? btn.nextSibling : log.firstChild;
+      earlier = null;
+      const was = ref ? ref.offsetTop : 0, top = log.scrollTop;
+      const frag = document.createDocumentFragment();
+      rows.forEach((el) => frag.appendChild(el));
+      log.insertBefore(frag, ref);
+      if (btn) btn.remove();
+      // Instantly, not with the log's smooth scrolling, and the same whether or not the browser
+      // anchored the scroll itself.
+      log.style.scrollBehavior = 'auto';
+      log.scrollTop = top + ((ref ? ref.offsetTop : 0) - was);
+      log.style.scrollBehavior = '';
+      // Focus goes to the newest revealed entry (the button it pressed is gone), just above the view.
+      const last = rows[rows.length - 1];
+      if (focus && last && last.focus) { last.setAttribute('tabindex', '-1'); last.focus({ preventScroll: true }); }
+    }
 
     function dispatch(ev) {
       if (ev.kind === 'thinking') {
@@ -2706,12 +2752,14 @@
     }
 
     return {
+      reveal: () => showEarlier(false),  // a jump to an older card shows the held rows first
       push(events) {
         if (!events || !events.length) return;
         const ph = log.querySelector('.log-empty'); if (ph) ph.remove();
         const stick = first || atBottom();
         appended = 0;
         events.forEach((ev) => { try { dispatch(ev); } catch (e) { /* one bad event must not break the feed */ } });
+        if (first) foldEarlier();
         if (stick) toLatest();
         else if (appended) { unseen += appended; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
         first = false;
@@ -3007,7 +3055,9 @@
         if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
       });
       r.out_of_credits = outOfCredits && !active;
-      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`);
+      // The 2s poll repaints only what changed: rewriting the same title and figures each time made
+      // the phone lay the page out again (and the autopilot pill re-check what it covers).
+      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`));
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       const late = r.wait && r.wait.overdue ? r.wait : null;
@@ -3017,13 +3067,13 @@
         : r.status === 'running' ? 'Researching'
         : r.out_of_credits ? 'Out of credits'
         : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped' : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
-      root.querySelector('#runfigs').innerHTML =
+      paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', started ? waitSpan((end - started) / 1000) : '—') +
         (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
-        runCountFigs(r, active, tried, d.strategies);
+        runCountFigs(r, active, tried, d.strategies));
       const next = root.querySelector('#runnext');
-      if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
+      paint(next, active ? '' : runNext(r, d.strategies));
       // Painted only when it changes, so a repaint never undoes the autopilot line's "on" note.
       const endHtml = active ? '' : runEnd(r, d.strategies);
       [['#runend', r.example ? '' : endHtml], ['#runend-log', r.example ? endHtml : '']].forEach(([sel, html]) => {
@@ -3035,7 +3085,9 @@
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;
       const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2></div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { missed: s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${strategies.length}</button>` : ''}` : '';
-      if (artifacts.innerHTML !== artifactHtml) artifacts.innerHTML = artifactHtml;
+      // Compared with what was last written, not with innerHTML: the browser's serialization never matched
+      // the template (&nbsp;, quoting), so the table was rebuilt every 2s.
+      paint(artifacts, artifactHtml);
       if (focusedArtifact) Array.from(artifacts.querySelectorAll('a')).find(a => a.getAttribute('href') === focusedArtifact)?.focus({ preventScroll: true });
       if (!loaded && !active) root.querySelector('#run-history').open = false;
       loaded = true;
@@ -3048,14 +3100,14 @@
         // The adopted policy is arbitrary agent-evolved Python with no structured decision record
         // behind it, so a raw-source dump isn't inspection — the human "What it changed" summary
         // and the generalization-score delta below are the faithful, readable account.
-        rsibox.innerHTML = `<details class="rsidisc"${expanded ? ' open' : ''}><summary class="rsidisc-cap">Research policy ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">
+        paint(rsibox, `<details class="rsidisc"${expanded ? ' open' : ''}><summary class="rsidisc-cap">Research policy ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
                <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' ·\u00a0adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
             : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can't overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' ·\u00a0' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
-          </div></details>`;
+          </div></details>`);
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
       }
       runControls(root.querySelector('#runact'), id, r.status, load);

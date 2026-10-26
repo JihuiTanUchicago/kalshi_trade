@@ -252,12 +252,23 @@
     const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : d.toLocaleString(undefined, day);
     return `<time datetime="${esc(iso)}" title="${esc(d.toLocaleString(undefined, { ...day, timeZoneName: 'short' }))}">${esc(shown)}</time>`;
   };
-  const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  // Each date format is built once and reused: toLocaleString with options builds a new formatter on
+  // every call, and a 600-event research log spent ~0.3s of a phone's first paint on its clocks.
+  const fmts = new Map();
+  const dateFmt = (d, o) => {
+    if (!Number.isFinite(d.getTime())) return 'Invalid Date';  // what toLocaleString says; format() throws
+    let f = fmts.get(o);  // keyed by the options object: pass a constant
+    if (!f) { f = new Intl.DateTimeFormat(undefined, o); fmts.set(o, f); }
+    return f.format(d);
+  };
+  const CLOCK = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  const LOG_STAMP = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
+  const clock = (iso) => dateFmt(new Date(iso), CLOCK);
   // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in.
   const tzName = () => { try { return (new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName') || {}).value || ''; } catch (e) { return ''; } };
   // A run log line's time: the bare clock fits the rail; the date and zone ride on hover and to a
   // screen reader (a run-until-stopped session spans days, and "06:07" named neither).
-  const logTime = (iso) => `<time datetime="${esc(iso || '')}" title="${esc(new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }))}">${clock(iso)}</time>`;
+  const logTime = (iso) => `<time datetime="${esc(iso || '')}" title="${esc(dateFmt(new Date(iso), LOG_STAMP))}">${clock(iso)}</time>`;
   // When an open contract settles: the time alone today, the date too on any other day, and always the
   // zone. A bare "21:17" read as today in no stated zone, and a daily close settling tomorrow looked due.
   const settleAt = (iso) => {
@@ -2622,6 +2633,41 @@
     jump.onclick = toLatest;
     const sealThink = () => { if (think) { think.seal(); think = null; } };
     const add = (el) => { if (!first) el.classList.add('in'); log.appendChild(el); appended++; };
+    // A long session's first paint keeps only its latest rows in the page and holds the rest behind
+    // "Show N earlier entries" at the top: laying out and painting 600 events took a phone ~1.5s.
+    // Held rows are built (a late verdict still lands on its card); they just wait outside the page.
+    const KEEP_ROWS = 60;
+    let earlier = null;
+    function foldEarlier() {
+      const rows = Array.from(log.children);
+      if (rows.length <= KEEP_ROWS + 20) return;
+      earlier = rows.slice(0, rows.length - KEEP_ROWS);
+      earlier.forEach((el) => el.remove());
+      const li = document.createElement('li');
+      li.className = 'log-earlier';
+      li.innerHTML = `<button type="button" class="btn small">Show ${num(earlier.length)} earlier entries</button>`;
+      li.querySelector('button').onclick = () => showEarlier(true);
+      log.insertBefore(li, log.firstChild);
+    }
+    // Puts the held rows back above what is on screen, which stays where it was.
+    function showEarlier(focus) {
+      if (!earlier) return;
+      const rows = earlier, btn = log.querySelector('.log-earlier'), ref = btn ? btn.nextSibling : log.firstChild;
+      earlier = null;
+      const was = ref ? ref.offsetTop : 0, top = log.scrollTop;
+      const frag = document.createDocumentFragment();
+      rows.forEach((el) => frag.appendChild(el));
+      log.insertBefore(frag, ref);
+      if (btn) btn.remove();
+      // Instantly, not with the log's smooth scrolling, and the same whether or not the browser
+      // anchored the scroll itself.
+      log.style.scrollBehavior = 'auto';
+      log.scrollTop = top + ((ref ? ref.offsetTop : 0) - was);
+      log.style.scrollBehavior = '';
+      // Focus goes to the newest revealed entry (the button it pressed is gone), just above the view.
+      const last = rows[rows.length - 1];
+      if (focus && last && last.focus) { last.setAttribute('tabindex', '-1'); last.focus({ preventScroll: true }); }
+    }
 
     function dispatch(ev) {
       lastAt = Date.now();
@@ -2659,12 +2705,14 @@
     S.timers.push(ptick);
 
     return {
+      reveal: () => showEarlier(false),  // a jump to an older card shows the held rows first
       push(events) {
         if (!events || !events.length) return;
         const ph = log.querySelector('.log-empty'); if (ph) ph.remove();
         const stick = first || atBottom();
         appended = 0;
         events.forEach((ev) => { try { dispatch(ev); } catch (e) { /* one bad event must not break the feed */ } });
+        if (first) foldEarlier();
         if (stick) toLatest();
         else if (appended) { unseen += appended; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
         first = false;
@@ -2984,7 +3032,9 @@
     ideasEl.addEventListener('click', (e) => {
       const b = e.target.closest('[data-goto]');
       if (!b) return;
-      const card = root.querySelector(`#log li[data-sid="${b.dataset.goto}"]`);
+      const find = () => root.querySelector(`#log li[data-sid="${b.dataset.goto}"]`);
+      let card = find();
+      if (!card) { stream.reveal(); card = find(); }  // its card may be among the held earlier rows
       if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }); else go('/strategies/' + b.dataset.goto);
     });
     const stream = runFeed(root.querySelector('#runfeed'));
@@ -3000,7 +3050,9 @@
         if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
       });
       r.out_of_credits = outOfCredits && !active;
-      root.querySelector('#runboard').innerHTML = boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`);
+      // The 2s poll repaints only what changed: rewriting the same title and figures each time made
+      // the phone lay the page out again (and the autopilot pill re-check what it covers).
+      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${dirLabel(r.direction)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`));
       const started = r.started_at ? Date.parse(r.started_at) : null;
       const end = r.finished_at ? Date.parse(r.finished_at) : Date.now();
       const late = r.wait && r.wait.overdue ? r.wait : null;
@@ -3011,15 +3063,15 @@
         : r.out_of_credits ? 'Out of credits'
         : r.status === 'succeeded' ? 'Done' : r.status === 'stopped' ? 'Stopped'
         : r.status === 'cancelled' ? 'Cancelled' : 'Failed';
-      root.querySelector('#runfigs').innerHTML =
+      paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', started ? waitSpan((end - started) / 1000) : '—') +
         (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: 'from your credits' }) : '') +
         runCountFigs(r, active, tried, d.strategies) +
         fig('How it searches', d.rsi && d.rsi.evolved ? 'Improved' : 'Self\u2011tuning',  // a no-break hyphen: never "Self-" over "tuning"
-            { small: d.rsi && d.rsi.evolved ? `it found a better way to pick ideas (score ${d.rsi.score})` : 'it gets better at picking ideas after each session' });
+            { small: d.rsi && d.rsi.evolved ? `it found a better way to pick ideas (score ${d.rsi.score})` : 'it gets better at picking ideas after each session' }));
       const next = root.querySelector('#runnext');
-      if (next) next.innerHTML = active ? '' : runNext(r, d.strategies);
+      paint(next, active ? '' : runNext(r, d.strategies));
       // Painted only when it changes: a finished run still polls, and a repaint would undo the
       // autopilot line's "on" note or a press in flight.
       const endEl = root.querySelector('#runend'), endHtml = active ? '' : runEnd(r, d.strategies);
@@ -5173,6 +5225,7 @@
   // The open panel is left alone: the user opened it.
   const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
     '.figures .m', '.fig', 'td.num', 'dd', '#dash-ap'];
+  const AP_UNDER_SEL = AP_UNDER.join(', ');
   function apYield() {
     const box = document.getElementById('autopilot-float'), pill = box && box.querySelector('.apf-pill');
     if (!pill || !pill.getBoundingClientRect) { if (box) box.classList.remove('yield'); return; }
@@ -5189,11 +5242,35 @@
         return !!top && el.contains(top);
       });
     };
-    const covers = AP_UNDER.some((sel) => [...document.body.querySelectorAll(sel)].some((el) => {
-      if (box.contains(el)) return false;
+    // What can show of an element is its box cut to every ancestor that clips what overflows it. A long
+    // research log scrolls inside its own box: its rows out of view sat under the pill and each one cost
+    // a hit test (elementsFromPoint is slow on a phone), though the log hides them. Cut first, test after.
+    const clips = new Map(), styleOf = typeof getComputedStyle === 'function' ? getComputedStyle : null;
+    const visible = (el, r) => {
+      if (!styleOf) return r;
+      let { left, right, top, bottom } = r;
+      for (let a = el.parentElement; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
+        let c = clips.get(a);
+        if (c === undefined) {
+          const st = styleOf(a);
+          c = { rect: st.overflowX !== 'visible' || st.overflowY !== 'visible' ? a.getBoundingClientRect() : null, fixed: st.position === 'fixed' };
+          clips.set(a, c);
+        }
+        if (c.rect) { left = Math.max(left, c.rect.left); right = Math.min(right, c.rect.right); top = Math.max(top, c.rect.top); bottom = Math.min(bottom, c.rect.bottom); }
+        if (c.fixed) break;  // what is above a fixed box doesn't clip it
+      }
+      return { left, right, top, bottom, width: Math.max(0, right - left) };
+    };
+    const over = (r) => !!(r && r.width && r.right > L && r.left < R && r.bottom > T && r.top < B);
+    // One pass over the page (it was one per kind of thing), stopping at the first thing it covers.
+    let covers = false;
+    for (const el of document.body.querySelectorAll(AP_UNDER_SEL)) {
+      if (box.contains(el)) continue;
       const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-      return !!(r && r.width && r.right > L && r.left < R && r.bottom > T && r.top < B) && shows(el, r);
-    }));
+      if (!over(r)) continue;
+      const v = styleOf && styleOf(el).position === 'fixed' ? r : visible(el, r);
+      if (over(v) && shows(el, v)) { covers = true; break; }
+    }
     box.classList.toggle('yield', covers);
   }
   // The open panel is a full-screen sheet under this width (app.css: `.apf.open { inset: 0 }`), which is

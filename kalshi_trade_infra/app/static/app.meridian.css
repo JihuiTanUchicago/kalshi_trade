@@ -821,6 +821,8 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 @keyframes rsipop { from { opacity: 0; transform: scale(.35); } to { opacity: 1; transform: scale(1); } }
 
 .log > li.log-empty { display: block; grid-column: 1 / -1; color: var(--ink-3); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .02em; padding: 16px 2px; border-bottom: 0; }
+/* A long session's earlier entries wait behind this button at the top of the log (runFeed). */
+.log > li.log-earlier { display: block; text-align: center; padding: 10px 0 12px; }
 .rsiobs.is-quiet .rsi-rail .is-flow { animation-play-state: paused; opacity: .5; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1636,8 +1638,14 @@ body.landing-body .apf { display: none; }
 .apf.live .apf-dot { background: var(--signal); }
 .apf.live .apf-pill { border-color: var(--signal); }
 .apf.live .apf-pill-label { color: var(--signal); font-weight: 600; letter-spacing: .02em; }
-@media (prefers-reduced-motion: no-preference) { .apf.live .apf-dot { animation: apf-pulse 1.6s var(--ease) infinite; } }
-@keyframes apf-pulse { 0%,100% { box-shadow: 0 0 0 0 var(--signal-wash); } 50% { box-shadow: 0 0 0 5px transparent; } }
+/* Live autopilot's pulse is a halo behind the dot that grows and fades (transform and opacity, which
+   the compositor runs). A box-shadow pulse repainted every frame and held a phone's main thread at
+   ~33% on every page while live autopilot was on. */
+.apf.live .apf-pill, .apf.live .apf-head { isolation: isolate; }
+.apf.live .apf-dot { position: relative; }
+.apf.live .apf-dot::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: var(--signal-wash); opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) { .apf.live .apf-dot::after { animation: apf-pulse 1.6s var(--ease) infinite; } }
+@keyframes apf-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0; transform: scale(2.25); } }
 /* Expanded: a wide, legible session surface — the research-session live log, scoped to the
    whole operation. Controls pinned on top, the activity feed scrolls, the composer anchored. */
 .apf.open { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; width: 560px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px);

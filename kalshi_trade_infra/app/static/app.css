@@ -690,6 +690,10 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 /* -- live research feed: a Claude-Code-style streaming agent log (both themes, identical) --- */
 .runfeed { position: relative; border: 1px solid var(--rule); background: var(--stock-raised); }
 .log.stream { height: clamp(340px, 52vh, 560px); overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 2px 16px 10px; scroll-behavior: smooth; }
+/* Paint containment keeps the spinner under the log (and any beat beside it) from re-walking a long
+   session's hundreds of rows every frame: without it the run page held a phone's main thread at ~65%.
+   The log already clips what overflows it, so nothing it draws changes. */
+.log.stream { contain: paint; }
 .log.stream .ln { grid-template-columns: 40px 16px minmax(0, 1fr); column-gap: 10px; align-items: start; padding: 10px 0; }
 .log.stream .ln:last-child { border-bottom: 0; }
 .log.stream .ln time { padding-top: 3px; font-size: 11.5px; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
@@ -737,7 +741,10 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 }
 
 /* --- live "thinking" card: the proposer's reasoning streaming in as it's written --- */
-.log.stream .lane-think .node::after { background: var(--stock-raised); border-color: var(--ink-2); animation: thinkpulse 1.5s var(--ease) infinite; }
+/* Only the open thought pulses: a sealed one is history. Every past thought pulsing (120 in a long
+   session) repainted the whole log each frame and held a phone's main thread at ~100%. */
+.log.stream .lane-think .node::after { background: var(--stock-raised); border-color: var(--ink-2); }
+.log.stream .lane-think:not(.sealed) .node::after { animation: thinkpulse 1.5s var(--ease) infinite; }
 @keyframes thinkpulse { 50% { box-shadow: 0 0 0 4px rgba(68, 72, 65, .14); } }
 /* A finished thought is still: every past thought pulsing kept a long log repainting (a phone's main thread busy between polls). */
 .log.stream .think.sealed .node::after { animation: none; }
@@ -821,13 +828,19 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .rsiobs-head h2 { font-family: var(--f-nar); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
 .rsiobs-live { margin-left: auto; }
 .rsiobs-live { display: inline-flex; align-items: center; gap: 7px; font-family: var(--f-nar); font-size: 12px; letter-spacing: .04em; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rsiobs-pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule-2); flex: none; }
-.rsiobs-live:not(.is-paused):not(.is-done):not(.is-wait):not(.is-stall) .rsiobs-pdot { background: var(--signal); animation: rsibeat 1.6s var(--ease) infinite; }
+.rsiobs-pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule-2); flex: none; position: relative; }
+/* The beat is a halo behind the dot that grows and fades (transform and opacity, which the compositor
+   runs): a box-shadow beat repainted the page every frame and held a phone's main thread at ~20%. */
+.rsiobs-live { isolation: isolate; }
+.rsiobs-pdot::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: var(--signal-wash); opacity: 0; pointer-events: none; }
+.rsiobs-live:not(.is-paused):not(.is-done):not(.is-wait):not(.is-stall) .rsiobs-pdot { background: var(--signal); }
+.rsiobs-live:not(.is-paused):not(.is-done):not(.is-wait):not(.is-stall) .rsiobs-pdot::after { animation: rsibeat 1.6s var(--ease) infinite; }
 .rsiobs-live.is-stall { color: var(--ink-2); }
-.rsiobs-live.is-stall .rsiobs-pdot { background: var(--ink-3); animation: rsibeat 3.4s var(--ease) infinite; }
+.rsiobs-live.is-stall .rsiobs-pdot { background: var(--ink-3); }
+.rsiobs-live.is-stall .rsiobs-pdot::after { animation: rsibeat 3.4s var(--ease) infinite; }
 .rsiobs-live.is-done .rsiobs-pdot { background: var(--ink); }
 .rsiobs-live.is-paused .rsiobs-pdot { background: var(--ink-2); }
-@keyframes rsibeat { 0%, 100% { box-shadow: 0 0 0 0 var(--signal-wash); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@keyframes rsibeat { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0; transform: scale(2.4); } }
 
 .rsiobs-loop { margin: 6px 0 2px; }
 .rsi-rail { display: block; width: 100%; height: auto; }
@@ -859,6 +872,8 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 @keyframes rsipop { from { opacity: 0; transform: scale(.35); } to { opacity: 1; transform: scale(1); } }
 
 .log > li.log-empty { display: block; grid-column: 1 / -1; color: var(--ink-3); font-family: var(--f-nar); font-size: 12.5px; letter-spacing: .02em; padding: 16px 2px; border-bottom: 0; }
+/* A long session's earlier entries wait behind this button at the top of the log (runFeed). */
+.log > li.log-earlier { display: block; text-align: center; padding: 10px 0 12px; }
 .rsiobs.is-quiet .rsi-rail .is-flow { animation-play-state: paused; opacity: .5; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -866,9 +881,9 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
   .log.stream .ln.in { animation: none; }
   .ell::after { content: "…"; animation: none; }
   .caret { animation: none; }
-  .log.stream .lane-think .node::after { animation: none; }
+  .log.stream .lane-think:not(.sealed) .node::after { animation: none; }
   .hx-more > summary::before { transition: none; }
-  .rsiobs-pdot { animation: none !important; }
+  .rsiobs-pdot, .rsiobs-pdot::after { animation: none !important; }
   .rsi-rail .rsi-link.is-flow, .rsi-rail .rsi-arc.is-flow { animation: none; stroke-dasharray: none; }
   .rsi-rail .is-active .rsi-ring { animation: none; opacity: .5; }
   .rsi-tnode.pop { animation: none; }
@@ -1639,8 +1654,14 @@ body.landing-body .apf { display: none; }
 .apf.live .apf-dot { background: var(--signal); }
 .apf.live .apf-pill { border-color: var(--signal); }
 .apf.live .apf-pill-label { color: var(--signal); font-weight: 600; letter-spacing: .02em; }
-@media (prefers-reduced-motion: no-preference) { .apf.live .apf-dot { animation: apf-pulse 1.6s var(--ease) infinite; } }
-@keyframes apf-pulse { 0%,100% { box-shadow: 0 0 0 0 var(--signal-wash); } 50% { box-shadow: 0 0 0 5px transparent; } }
+/* Live autopilot's pulse is a halo behind the dot that grows and fades (transform and opacity, which
+   the compositor runs). A box-shadow pulse repainted every frame and held a phone's main thread at
+   ~33% on every page while live autopilot was on. */
+.apf.live .apf-pill, .apf.live .apf-head { isolation: isolate; }
+.apf.live .apf-dot { position: relative; }
+.apf.live .apf-dot::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: var(--signal-wash); opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) { .apf.live .apf-dot::after { animation: apf-pulse 1.6s var(--ease) infinite; } }
+@keyframes apf-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0; transform: scale(2.25); } }
 /* Expanded: a wide, legible session surface — the research-session live log, scoped to the
    whole operation. Controls pinned on top, the activity feed scrolls, the composer anchored. */
 .apf.open { display: flex; flex-direction: column; width: 560px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px);
