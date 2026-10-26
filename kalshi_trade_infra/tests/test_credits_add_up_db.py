@@ -265,3 +265,45 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     assert me["credit_balance"] == state["balance"]
     assert me["auto_reload"] == {"amount": 25.0, "charge": 26.38, "threshold": 8.0}
     assert me["needs_card"] is False and me["free_bonus"] == 20.0
+
+
+def test_an_admin_grant_never_shows_who_made_it(conn, monkeypatch):
+    """An admin grant's stored memo names the admin ("Admin grant by <their email>"); the customer's
+    Billing page and receipt say Tau support added the credits instead, for rows already stored too.
+    The row keeps its memo (it is the record of who granted it) and its amount counts as before."""
+    from app import server
+    from app import repository as repo
+    from app.adapters.stripe import billing
+    from app.services import customer_text
+    from app.web import settings
+    from app.web.routes import billing as billing_routes
+
+    monkeypatch.setattr(billing, "STRIPE_SECRET_KEY", "")  # payments off: the page reads no card
+    cur = conn.cursor()
+    email = "grantee-%s@example.com" % uuid.uuid4().hex[:8]
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, email, "G", None)["id"]
+    admin = {"id": 0, "email": settings.ADMIN_EMAIL, "name": "Admin"}
+    server.admin_grant(server.Ctx(conn, admin, (), {}, {"email": email, "amount": 5}, None))
+    server.admin_grant(server.Ctx(conn, admin, (), {}, {"email": email, "amount": -1.5}, None))
+    cur.execute("SELECT amount_usd, memo FROM app_credit_ledger WHERE user_id=%s AND kind='admin_grant' ORDER BY id",
+                (uid,))
+    stored = cur.fetchall()
+    assert [Decimal(r["amount_usd"]) for r in stored] == [Decimal("5"), Decimal("-1.5")]
+    assert all(settings.ADMIN_EMAIL in r["memo"] for r in stored)  # the record still says who
+
+    ctx = server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None)
+    state = server.billing_state(ctx)
+    grants = [ln for ln in state["ledger"] if ln["kind"] == "admin_grant"]
+    assert sorted(ln["memo"] for ln in grants) == sorted([billing_routes.ADMIN_GRANT_MEMO, billing_routes.ADMIN_DEBIT_MEMO])
+    assert state["math"]["other"] == float(billing.FREE_BONUS) + 3.5  # the welcome credit and the grants
+    page = json.dumps(state, default=str)
+    assert settings.ADMIN_EMAIL not in page and customer_text.leaks(page) == []
+
+    _kind, _name, _ctype, data = server.billing_receipt(ctx)
+    rows = list(csv.reader(io.StringIO(data)))
+    table = rows[rows.index(billing_routes.RECEIPT_HEADER) + 1:]
+    assert sorted(r[3] for r in table if r[1] == "admin_grant") == sorted(
+        [billing_routes.ADMIN_GRANT_MEMO, billing_routes.ADMIN_DEBIT_MEMO])
+    assert sorted(r[2] for r in table if r[1] == "admin_grant") == ["-1.5000", "5.0000"]
+    assert settings.ADMIN_EMAIL not in data
+    assert customer_text.leaks(data.replace(email, "")) == []  # the account row is the customer's own address

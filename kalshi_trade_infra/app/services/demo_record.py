@@ -19,6 +19,7 @@ from datetime import timedelta
 from typing import Callable, Dict, List, Optional
 
 from app.trading import reconcile
+from app.services import customer_text
 from app import repository as repo
 
 DEMO_ORDERS_FOR_LIVE = 20
@@ -94,7 +95,10 @@ def refusal_reason(refusal: Optional[Dict]) -> str:
         return "the Kalshi demo account doesn't have enough balance; add demo funds on Kalshi's demo site"
     if status in (401, 403):
         return "it didn't accept the demo key; check the Kalshi demo key on the Funds page"
-    said = r.get("message") or code or ("HTTP %s" % status if status else "")
+    # The exchange's own words when they are a plain sentence; a body that is a proxy's error page or
+    # names a host or path is not for the customer (services.customer_text).
+    said = customer_text.clean(r.get("message") or "", "") or customer_text.clean(code, "") \
+        or ("HTTP %s" % status if status else "")
     return "Kalshi said: %s" % said if said else "no reason given"
 
 

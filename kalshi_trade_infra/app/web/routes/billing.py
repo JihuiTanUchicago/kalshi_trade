@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 from app import repository as repo
 from app.adapters.llm import models_catalog as catalog
 from app.adapters.stripe import billing
+from app.services import customer_text
 from app.web.http import ApiError, Ctx, _num
 
 
@@ -203,11 +204,25 @@ def _usage_item(r: Dict) -> Dict[str, str]:
     return {"item": item, "model": catalog.label_for_model_id(model) if model else ""}
 
 
+# An admin grant's stored memo names the staff member who made it ("Admin grant by <their email>");
+# the admin tool asks for no reason meant for the customer, so the customer reads this instead. The
+# row keeps its memo: it is the record of who granted it.
+ADMIN_GRANT_MEMO = "Credits added by Tau support"
+ADMIN_DEBIT_MEMO = "Credits adjusted by Tau support"
+
+
 def _ledger_memo(r: Dict) -> str:
     """A ledger row's memo as the customer reads it (Billing and the receipt): a usage line says what
-    it was for and names the model, never its id; any other memo is as written."""
+    it was for and names the model, never its id; an admin grant says Tau support added (or took
+    back) credits, never who; any other memo is as written, less anything internal
+    (services.customer_text)."""
     use = _usage_item(r)
-    return "%s · %s" % (use["item"], use["model"]) if use.get("model") else (r.get("memo") or "")
+    if use.get("model"):
+        return "%s · %s" % (use["item"], use["model"])
+    if r.get("kind") == "admin_grant":
+        amount = r.get("amount", r.get("amount_usd"))
+        return ADMIN_DEBIT_MEMO if amount is not None and Decimal(str(amount)) < 0 else ADMIN_GRANT_MEMO
+    return customer_text.clean(r.get("memo") or "") or ""
 
 
 _PLAIN_NUMBER = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)$")
