@@ -1,0 +1,80 @@
+// Shared cases, run against each bundle's offline harness (Tau and Meridian): a new user's first hour.
+// A first session the autopilot already put on paper does not ask for a second deploy; a credit balance
+// on an account minutes old does not claim "over 3 months at this week's pace", and one a few days old
+// states its pace per day so far; the autopilot panel names its check-in as the dashboard card does.
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+
+const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+const AT = '2026-10-25T10:00:00Z';
+
+export function firstHourCases({name, frontend, billingPage, cardedBilling, dashboard, apStatus}) {
+  const run = async (strategies) => {
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+      ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', brief: 1, status: 'succeeded', hypotheses_tried: 2,
+        strategies_passed: 1, created_at: AT, started_at: AT}, events: [], strategies})
+      : response({})});
+    await f.viewRun(9); f.clearTimers();
+    return f.root.querySelector('#runnext').innerHTML;
+  };
+  const passed = (o) => ({id: 42, title: 'Momentum', status: 'passed', market: 'btc15m', direction: 'momentum', deployed: false, ...o});
+
+  test(`${name}: a finished session whose passed strategy is already deployed says so instead of asking to deploy it`, async () => {
+    let next = await run([passed({deployed: true}), {id: 43, title: 'Fade', status: 'rejected', market: 'btc15m', direction: 'momentum'}]);
+    assert.match(next, /Passed: <a href="\/strategies\/42">Momentum<\/a>\. It is already deployed\. <a href="\/deploy">See it on Deploy<\/a>\./);
+    assert.doesNotMatch(next, /to deploy it on paper/);
+    next = await run([passed()]);
+    assert.match(next, /Passed: <a href="\/strategies\/42">Momentum<\/a>\. Open it to deploy it on paper\./);
+    next = await run([passed({deployed: true}), passed({id: 44, title: 'Other'})]);
+    assert.match(next, /2 passed: .*\. 1 is already deployed; open another to deploy it on paper\./);
+  });
+
+  test(`${name}: Billing does not project a first day's spend over a week, and states a young account's pace per day`, async () => {
+    // Twelve minutes old, $0.44 spent: the server sends no runway and pace_days under 1.
+    let f = billingPage(cardedBilling({balance: 19.56, spent_7d: 0.44, runway_days: null, pace_days: 0.01}));
+    await f.viewBilling(); await flush();
+    let figs = f.root.querySelector('#bfigs').textContent;
+    assert.match(figs, /Credits last\s*Too soon to tell\s*your first day of research sets the pace/);
+    assert.doesNotMatch(figs, /Over 3 months|a week/);
+    const amt = f.root.querySelector('#topup-amt'); amt.value = '20'; amt.oninput();
+    assert.doesNotMatch(f.root.querySelector('#topup-note').textContent, /At your pace|3 months/);
+    // Two days old, $8 spent: $4 a day so far, and the buy line reads the same pace.
+    f = billingPage(cardedBilling({balance: 12, spent_7d: 8, runway_days: 3, pace_days: 2}));
+    await f.viewBilling(); await flush();
+    figs = f.root.querySelector('#bfigs').textContent;
+    assert.match(figs, /Credits last\s*About 3 days\s*at \$4\.00 a day so far/);
+    const amt2 = f.root.querySelector('#topup-amt'); amt2.value = '20'; amt2.oninput();
+    assert.match(f.root.querySelector('#topup-note').textContent, /At your pace \(\$4\.00 a day so far\) that's about 5 days of research\./);
+    // A week-old account (or an older server with no pace_days) keeps the week's words.
+    for (const o of [{pace_days: 7}, {}]) {
+      f = billingPage(cardedBilling(o));
+      await f.viewBilling(); await flush();
+      assert.match(f.root.querySelector('#bfigs').textContent, /Credits last\s*About 5 days\s*at \$9\.80 a week/);
+    }
+  });
+
+  test(`${name}: the autopilot card says it is too soon to tell how long credits last on a first day, and "its pace so far" after`, async () => {
+    const week = {research_credits: 0.42, tested: 1, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0,
+      checkin_credits: 0.02, credits_left: 19.56, runway_days: null, pace_days: 0.01};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard') return response(dashboard());
+      if (path === '/api/autopilot/status') return response({...apStatus, week});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 19.56, min_run_balance: 1, auto_reload: null};
+    f.S.me.user.autopilot = true; f.S.ap = {...apStatus, week};
+    await f.viewDashboard(); await flush();
+    f.S.ap = {...apStatus, week}; f.paintDashAp();
+    const line = () => f.root.querySelector('#dash-ap .ap-week-left').innerHTML;
+    assert.match(line(), /^Credits left: <b>\$19\.56<\/b>, too soon to say how long they last: its first day sets the pace\. It has no daily spending cap/);
+    assert.doesNotMatch(line(), /3 months|this week’s pace/);
+    f.S.ap = {...apStatus, week: {...week, runway_days: 9.8, pace_days: 2}}; f.paintDashAp();
+    assert.match(line(), /^Credits left: <b>\$19\.56<\/b>, about 10 days at its pace so far\./);
+    f.S.ap = {...apStatus, week: {...week, runway_days: 9.8, pace_days: 7}}; f.paintDashAp();
+    assert.match(line(), /about 10 days at this week’s pace\./);
+    f.clearTimers();
+  });
+}

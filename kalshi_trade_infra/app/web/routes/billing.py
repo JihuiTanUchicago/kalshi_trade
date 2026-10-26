@@ -32,30 +32,58 @@ def _customer_id(ctx: Ctx) -> str:
     return cid
 
 
+RUNWAY_MIN_DAYS = 1.0  # an account younger than this has no spending pace to project from yet
+
+
+def pace_days(created_at) -> float:
+    """How many days the last-7-day spend covers: the account's age, at most 7 (7 when the age is
+    unknown). A new account spent its whole "week" in its first minutes, and dividing that by 7 put
+    "over 3 months at this week's pace" beside a first session that had only just begun."""
+    if not isinstance(created_at, datetime):
+        return 7.0
+    return round(max(0.0, min(7.0, (repo.now_utc() - created_at).total_seconds() / 86400)), 2)
+
+
+def runway_days(balance: float, spent_7d: float, days: float, floor: bool = False) -> Optional[float]:
+    """Days the balance lasts at the spend of the last `days` days (pace_days). None with no spend
+    or no balance, and for an account under RUNWAY_MIN_DAYS old, whose pace is not known yet;
+    `floor` reads that account's spend as one day's instead (the low-credit warning: never later)."""
+    if spent_7d <= 0 or balance <= 0:
+        return None
+    if days < RUNWAY_MIN_DAYS:
+        if not floor:
+            return None
+        days = RUNWAY_MIN_DAYS
+    return round(balance / (spent_7d / days), 1)
+
+
 def _credit_runway(cur, uid: int, reads: Optional[billing.Reads] = None, balance: Optional[float] = None,
-                   spent_7d: Optional[float] = None):
+                   spent_7d: Optional[float] = None, created_at=None, floor: bool = False):
     """(balance, last-7-day usage spend, days the balance lasts at that pace). Research pauses at
     zero, so this is how long autopilot keeps working; None when there is no recent usage. A caller
-    that already summed the ledger passes its `balance` and its week's usage (`spent_7d`)."""
+    that already summed the ledger passes its `balance` and its week's usage (`spent_7d`). The
+    pace is per day of the account's age (`created_at`) for an account under a week old."""
     if balance is None:
         balance = (reads or billing.Reads(cur, uid)).balance()
     if spent_7d is None:
         spent_7d = repo.credit_spent_total(cur, uid, repo.now_utc() - timedelta(days=7))
-    runway = round(balance / (spent_7d / 7), 1) if spent_7d > 0 and balance > 0 else None
-    return balance, spent_7d, runway
+    return balance, spent_7d, runway_days(balance, spent_7d, pace_days(created_at), floor)
 
 
 CREDIT_RUNWAY_WARN_DAYS = 3
 
 
-def _credits_running_low(cur, uid: int, reads: Optional[billing.Reads] = None, spent_7d: Optional[float] = None):
+def _credits_running_low(cur, uid: int, reads: Optional[billing.Reads] = None, spent_7d: Optional[float] = None,
+                         created_at=None):
     """Days of credit left when autopilot will pause within CREDIT_RUNWAY_WARN_DAYS and auto-reload
-    won't top it up; None otherwise. A readout for the panel, never a gate. `spent_7d` as _credit_runway."""
+    won't top it up; None otherwise. A readout for the panel, never a gate. `spent_7d` and
+    `created_at` as _credit_runway; a first-day account's spend counts as one day's, so the warning
+    comes no later than at the old 7-day pace."""
     reads = reads or billing.Reads(cur, uid)
     cust = reads.customer()
     if cust and cust.get("auto_reload") and cust.get("default_pm_id"):
         return None
-    runway = _credit_runway(cur, uid, reads, spent_7d=spent_7d)[2]
+    runway = _credit_runway(cur, uid, reads, spent_7d=spent_7d, created_at=created_at, floor=True)[2]
     return runway if runway is not None and runway < CREDIT_RUNWAY_WARN_DAYS else None
 
 
@@ -99,7 +127,8 @@ def billing_state(ctx: Ctx):
     # kinds add up to it, from the same snapshot, so the page's sum always closes).
     totals = repo.credit_totals(cur, ctx.uid, since)
     balance = float(sum((Decimal(str(t["all"])) for t in totals.values()), Decimal(0)))
-    balance, spent_7d, runway = _credit_runway(cur, ctx.uid, balance=balance)
+    created_at = ctx.user.get("created_at")
+    balance, spent_7d, runway = _credit_runway(cur, ctx.uid, balance=balance, created_at=created_at)
     return {
         "configured": billing.configured(),
         "publishable_key": billing.STRIPE_PUBLISHABLE_KEY,
@@ -107,6 +136,9 @@ def billing_state(ctx: Ctx):
         "spent": credit_usd(-(totals.get("usage") or {}).get("all", 0.0)),
         "spent_7d": credit_usd(spent_7d),
         "runway_days": runway,
+        # The days the week's spend covers (the account's age, at most 7): under 1 the page says it is
+        # too soon to project, under 7 it states the pace per day so far instead of a week's.
+        "pace_days": pace_days(created_at),
         "free_bonus": float(billing.FREE_BONUS),
         "topup_fee_pct": float(billing.TOPUP_FEE) * 100,
         "autoreload_threshold": reload_threshold,
