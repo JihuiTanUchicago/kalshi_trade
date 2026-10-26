@@ -1,6 +1,7 @@
 // Shared cases, run against each bundle's offline DOM/transport harness (Tau and Meridian): the research
 // session page (/research/:id) says how a session ended in the research list's words, names its count
-// once ("Tested") and says why the list under it holds fewer, and shows the example as free.
+// once ("Tested") and says why the list under it holds fewer, shows the example as free, prints the agent's
+// step lines in the server's plain words, and calls the challenger the skeptic's review.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -62,4 +63,22 @@ export function runPageCases({name, frontend}) {
     assert.match(figs(f), /\$1\.84\s*from your credits/);
   });
 
+  test(`${name}: a step line shows the server's plain words, and the challenger reads as the skeptic's review`, async () => {
+    const plan = 'Plan: explore up to 6 hypotheses, refining each round on the in-sample results, then gate the best on data never seen.';
+    const f = await open({status: 'succeeded'}, [
+      ev(1, 'step', plan, {note: 'Plan: try up to 6 ideas, sharpen each one on past data, then test the best on data it hasn’t seen.'}),
+      ev(2, 'step', 'Loaded 30 days of **Bitcoin** history.'),
+      ev(3, 'hypothesis', 'Momentum', {thesis: 't'}),
+      ev(4, 'challenger', 'Challenger approved - Momentum: plausible', {title: 'Momentum', decision: 'approve'}),
+      ev(5, 'challenger', 'Challenger revised - Other: tighten it', {title: 'Other', decision: 'revise'}),
+      ev(6, 'done', '1 of 2 hypotheses passed every gate.', {note: '1 of 2 ideas passed every check.'}),
+    ]);
+    const log = [...f.root.querySelector('#log').children].map((li) => li.innerHTML).join('\n');
+    assert.match(log, /Plan: try up to 6 ideas/); assert.doesNotMatch(log, /in-sample|gate the best/);
+    assert.match(log, /<b>Bitcoin<\/b>/);  // a step without a note keeps its own (markdown) words
+    assert.match(log, /1 of 2 ideas passed every check\./); assert.doesNotMatch(log, /passed every gate/);
+    assert.match(f.root.querySelector('#log').querySelector('[data-review]').innerHTML, /Skeptic’s review · approved<\/span>plausible/);
+    assert.match(log, /Skeptic’s review<\/span>revised - Other: tighten it/);
+    assert.doesNotMatch(log, />Challenger/);
+  });
 }

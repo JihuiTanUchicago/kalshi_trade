@@ -77,7 +77,8 @@ def _with_gate_lines(events: List[Dict]) -> List[Dict]:
     what to try next), from the numbers the event already carries, and `note`: a plain sentence
     the page shows in place of a message written for the ledger ("gatekeeper-held
     (classification=...)", "Lead scan: control arm"). The model tiering line's internal model id
-    is dropped: the page never shows one. Display only; no extra read."""
+    is dropped: the page never shows one. A step or done line the agent wrote in the ledger's terms
+    gains `note` too (gate_explain.step_note). Display only; no extra read."""
     for ev in events:
         if ev.get("kind") == "verdict":
             data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
@@ -88,6 +89,13 @@ def _with_gate_lines(events: List[Dict]) -> List[Dict]:
             except (TypeError, ValueError, KeyError, AttributeError):
                 data["note"] = None
             ev["data"] = data
+        elif ev.get("kind") in ("step", "done"):
+            # The agent's step lines in plain words ("Froze 2 finalists; ... validation budget" read as jargon).
+            note = gate_explain.step_note(ev.get("kind"), ev.get("message"))
+            if note:
+                data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+                data["note"] = note
+                ev["data"] = data
     return events
 
 

@@ -636,3 +636,77 @@ def event_note(message: Optional[str], data: Optional[Dict[str, Any]]) -> Option
     if "gatekeeper-held" in msg:
         return "Did not pass on data it never saw%s." % trades
     return None
+
+
+# -- the run feed's step lines, in plain words ------------------------------------------------------
+
+def _ideas(n: int) -> str:
+    return "%d idea%s" % (n, "" if n == 1 else "s")
+
+
+def _Ideas(n: int) -> str:
+    return "%d idea%s" % (n, "" if n == 1 else "s") if n else "None"
+
+
+# The agent's own step lines, written for whoever reads the run's ledger ("Froze 2 finalists; the
+# challenger reviewed each before any validation budget was spent."), as a customer reads them. Each
+# pattern matches the line agent.py writes today (tests/test_gate_explain.py renders each one); a line
+# no pattern knows keeps its words.
+_STEP_NOTES: List[Tuple["re.Pattern[str]", Any]] = [
+    (re.compile(r"^Plan: explore (?:up to (\d+) hypotheses|hypotheses until you stop it), refining each round on "
+                r"the in-sample results, then gate the best on data never seen\."),
+     lambda m: "Plan: try %s, sharpen each one on past data, then test the best on data it hasn't seen."
+     % ("up to " + _ideas(int(m.group(1))) if m.group(1) else "ideas until you stop it")),
+    (re.compile(r"^Proposing round (\d+) — generating up to (\d+) hypothes[ie]s…"),
+     lambda m: "Round %s: coming up with up to %s…" % (m.group(1), _ideas(int(m.group(2))))),
+    (re.compile(r"^Resuming round (\d+) with (\d+) proposed hypothes[ie]s not yet developed\."),
+     lambda m: "Round %s, picking up where it left off: %s still to work out." % (m.group(1), _ideas(int(m.group(2))))),
+    (re.compile(r"^Froze (\d+) finalists?; the challenger reviewed each before any validation budget was spent\."),
+     lambda m: ("Picked 1 idea to test on data it hasn't seen; a skeptical reviewer read it first."
+                if m.group(1) == "1" else "Picked the best %s to test on data it hasn't seen; a skeptical reviewer "
+                "read each one first." % _ideas(int(m.group(1))))),
+    (re.compile(r"^Challenger unavailable; approving finalists as-is — the gatekeeper still gates\."),
+     lambda m: "The skeptical review couldn't run this time, so the picked ideas go straight to the test on "
+               "data it hasn't seen, which still decides."),
+    (re.compile(r"^Still running - (\d+) tested so far, (\d+) passed\. Exploring more \(stop anytime\)\."),
+     lambda m: "%s tested so far, %s passed. Looking for more; you can stop it anytime." % (m.group(1), m.group(2))),
+    (re.compile(r"^Paused — out of credits\."),
+     lambda m: "Out of credits, so the session stopped here. Add credits (or turn on auto-reload), then start "
+               "a new session to keep researching."),
+    (re.compile(r"^Resuming — re-using (\d+) explored hypotheses, preparing (.+)…$"),
+     lambda m: "Picking up where it left off, keeping the %s it had explored; preparing %s…"
+     % (_ideas(int(m.group(1))), m.group(2))),
+    (re.compile(r"^Last (\d+) theses all dropped on the research fold\. Stopping proposals; (\d+) kept go to the gate\."),
+     lambda m: "The last %s all fell apart on past data, so it stopped coming up with more. %s go on to the test."
+     % (_ideas(int(m.group(1))), _Ideas(int(m.group(2))))),
+    (re.compile(r"^The proposer keeps returning mechanisms the sibling markets already killed\. Stopping proposals; "
+                r"(\d+) kept go to the gate\."),
+     lambda m: "Its new ideas kept repeating ones that already failed on similar markets, so it stopped coming up "
+               "with more. %s go on to the test." % _Ideas(int(m.group(1)))),
+    (re.compile(r"^No tradeable surface after (\d+) attempts — stopping to free the worker\."),
+     lambda m: "After %s attempts, nothing here traded often enough to test, so it stopped." % m.group(1)),
+]
+# The session's last line; the seeded example's says "0 of 2 hypotheses passed. Random really does ...".
+_DONE = re.compile(r"^(\d+) of (\d+) hypotheses passed( every gate)?(?: \((\d+) dropped on research data\))?\.(.*)$", re.S)
+
+
+def step_note(kind: Optional[str], message: Optional[str]) -> Optional[str]:
+    """One plain sentence for a run's step or done line written for the ledger ("in-sample",
+    "finalist", "gate", "validation budget"), or None when the line already reads plainly. The run page
+    shows it in place of the message, which stays as written (the page finds the out-of-credits line by
+    its words). Display only."""
+    msg = str(message or "")
+    if kind == "done":
+        m = _DONE.match(msg)
+        if not m:
+            return None
+        dropped = int(m.group(4) or 0)
+        return "%s of %s passed%s%s.%s" % (m.group(1), _ideas(int(m.group(2))), " every check" if m.group(3) else "",
+                                           " (%d dropped before testing)" % dropped if dropped else "", m.group(5))
+    if kind != "step":
+        return None
+    for rx, say in _STEP_NOTES:
+        m = rx.match(msg)
+        if m:
+            return say(m)
+    return None

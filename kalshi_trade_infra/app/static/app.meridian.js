@@ -2706,7 +2706,7 @@
         const dec = (e2.data || {}).decision || 'review';
         const reason = strip(strip(e2.message, /^Challenger\s+\w+\s+[-–]\s*/i), new RegExp('^' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*'));
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Challenger ·\u00a0${esc(dec)}</span>${esc(reason)}</p>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Skeptic’s review ·\u00a0${esc(REVIEW_SAID[dec] || dec)}</span>${esc(reason)}</p>`);
       },
       verdict(e2) {
         const dd = e2.data || {};
@@ -2792,6 +2792,9 @@
   // their hypothesis card, appends everything else newest-at-bottom with an enter animation, sticks
   // to the latest only when already at the foot, raises a "jump to latest" chip when scrolled up,
   // Run state and source-event age are reported by the observatory above the log.
+  // The second model that reads each idea before its test, by what it does (the verdicts already say
+  // "The skeptic's review didn't pass it"), and its call in words, not the agent's codes.
+  const REVIEW_SAID = { approve: 'approved', revise: 'asked for changes', reject: 'turned it down' };
   function runFeed(section) {
     const log = section.querySelector('.log');
     const jump = section.querySelector('.jumplatest');
@@ -2916,14 +2919,16 @@
       const why = whyFailedHtml(data.why_failed);
       inner = `${tag} ${titleHtml}${why ? '' : esc(tail)}${why}`;
     } else if (ev.kind === 'challenger') {
-      inner = `<span class="say-kind">Challenger</span>${esc(ev.message.replace(/^Challenger\s+/, ''))}`;
+      inner = `<span class="say-kind">Skeptic’s review</span>${esc(ev.message.replace(/^Challenger\s+/, ''))}`;
     } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
       lane = 'rsi';
       inner = `<b class="rsi-badge">RSI</b> ${esc(plainDream(ev.message))}`;
     } else if (ev.kind === 'paused' || ev.kind === 'resumed') {
       inner = `<span class="say-kind">${ev.kind === 'paused' ? 'Paused' : 'Resumed'}</span>${esc(ev.message)}`;
     } else {
-      inner = mdLite(ev.message);   // step notes: inline markdown (bold/code/italic/links), escaped
+      // The server's plain sentence for a step written in the ledger's terms ("Froze 2 finalists; ...
+      // validation budget"), else the step itself: inline markdown (bold/code/italic/links), escaped.
+      inner = (ev.kind === 'step' || ev.kind === 'done') && data.note ? esc(data.note) : mdLite(ev.message);
     }
     li.className = 'ln lane-' + lane + (lane === 'rsi' ? ' rsi-event' : '');
     li.innerHTML = `${logTime(ev.created_at)}<span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
