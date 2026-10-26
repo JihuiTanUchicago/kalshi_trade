@@ -1435,6 +1435,10 @@ def _paper_record(trips: List[Dict]) -> Dict:
 
 ROAD_TTL = 30.0  # seconds; the Deploy board polls every 10s and a record moves only when a trade closes
 _ROADS: Dict[Tuple, Tuple[float, Dict]] = {}
+# paper_evidence runs the paper gate's bootstrap (~200ms a strategy), so the board keeps each
+# strategy's `failing` until its record changes or FAILING_TTL passes (the demo check can move alone).
+FAILING_TTL = 300.0
+_FAILING: Dict[Tuple, Tuple[float, List[str]]] = {}
 
 
 def _deploy_roads(cur, uid: int, deps: List[Dict]) -> Dict[int, Dict]:
@@ -1462,9 +1466,17 @@ def _deploy_roads(cur, uid: int, deps: List[Dict]) -> Dict[int, Dict]:
                 and rec["span_hours"] >= agent.MIN_PAPER_SPAN_HOURS):
             # Once the counts are in, the rest of the check decides: the same reads as Road to live, so
             # the board can say it clears (or which checks are left) without the user opening each page.
-            ev = agent.paper_evidence(cur, uid, sid)
-            road["failing"] = ([] if agent._is_deployment_candidate(cur, sid) else ["candidate"]) + [
-                k for k, ok in ev["checks"].items() if not ok]
+            fkey = (uid, sid, rec["trades"], rec["events"], rec["span_hours"])
+            fhit = _FAILING.get(fkey)
+            if fhit and time.time() - fhit[0] < FAILING_TTL:
+                road["failing"] = list(fhit[1])
+            else:
+                ev = agent.paper_evidence(cur, uid, sid)
+                road["failing"] = ([] if agent._is_deployment_candidate(cur, sid) else ["candidate"]) + [
+                    k for k, ok in ev["checks"].items() if not ok]
+                if len(_FAILING) > 5000:
+                    _FAILING.clear()
+                _FAILING[fkey] = (time.time(), list(road["failing"]))
         out[sid] = road
     if len(_ROADS) > 5000:
         _ROADS.clear()

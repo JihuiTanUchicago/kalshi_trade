@@ -534,7 +534,7 @@ def test_readiness_has_no_pace_when_nothing_runs_on_paper(monkeypatch):
 
 def test_deploy_roads_count_the_record_as_road_to_live_does(monkeypatch):
     from app import agent, server
-    server._ROADS.clear()
+    server._ROADS.clear(); server._FAILING.clear()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     t0 = now - timedelta(hours=60)
     # Two strikes of one event are one event; the span is first entry to last exit.
@@ -554,7 +554,30 @@ def test_deploy_roads_count_the_record_as_road_to_live_does(monkeypatch):
     assert roads[8]["trades"] == 55 and roads[8]["events"] == 55 and roads[8]["running"] is False
     assert roads[8]["failing"] == ["edge", "demo"]
     assert (roads[8]["trades_needed"], roads[8]["events_needed"], roads[8]["span_needed_hours"]) == (30, 20, 48.0)
-    server._ROADS.clear()
+    server._ROADS.clear(); server._FAILING.clear()
+
+
+def test_deploy_roads_rerun_the_paper_gate_only_when_the_record_moves(monkeypatch):
+    # paper_evidence runs the gate's bootstrap; the 10s Deploy poll must not pay it while nothing closes.
+    from app import agent, server
+    server._ROADS.clear(); server._FAILING.clear()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    t0 = now - timedelta(hours=60)
+    trips = [{"pnl": 0.3, "opened_at": t0 + timedelta(hours=i), "closed_at": t0 + timedelta(hours=i, minutes=5),
+              "ticker": "KXR-E%d-A" % i} for i in range(55)]
+    calls = []
+    monkeypatch.setattr(server.repo, "paper_round_trips_by_strategy", lambda cur, uid, sids: {8: list(trips)})
+    monkeypatch.setattr(agent, "paper_evidence", lambda cur, uid, sid: calls.append(sid) or {"checks": {"edge": False}})
+    monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: True)
+    deps = [{"id": 2, "strategy_id": 8, "mode": "paper", "status": "running", "created_at": now - timedelta(hours=61), "result": {}}]
+    assert server._deploy_roads(None, 1, deps)[8]["failing"] == ["edge"]
+    server._ROADS.clear()  # the board's 30s cache lapses, the record hasn't moved
+    assert server._deploy_roads(None, 1, deps)[8]["failing"] == ["edge"] and calls == [8]
+    trips.append({"pnl": 0.3, "opened_at": now - timedelta(hours=1), "closed_at": now, "ticker": "KXR-E99-A"})
+    server._ROADS.clear()  # a trade closed: the gate is asked again
+    server._deploy_roads(None, 1, deps)
+    assert calls == [8, 8]
+    server._ROADS.clear(); server._FAILING.clear()
 
 
 def test_readiness_unknown_strategy_is_404(monkeypatch):

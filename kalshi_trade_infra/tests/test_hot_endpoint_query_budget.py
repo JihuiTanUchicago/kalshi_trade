@@ -160,7 +160,7 @@ def _board_rows():
 @pytest.mark.parametrize("name,kw", [("list_deployments", {}), ("get_strategy", {"params": ("9",)})])
 def test_the_deploy_board_and_strategy_page_stay_in_their_query_budget(production, name, kw):
     server._BACKTEST_CHECKS.clear()
-    server._ROADS.clear()
+    server._ROADS.clear(); server._FAILING.clear()
     log = _call(name, 10.0, extra=_board_rows(), **kw)
     repeats = sorted({s for s in log if log.count(s) > 1})
     assert not repeats, "%s read the same thing twice in one request: %s" % (name, repeats)
