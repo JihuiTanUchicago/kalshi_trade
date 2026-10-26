@@ -85,7 +85,7 @@ def _board(conn, user):
 
 
 def test_the_gates_evidence_is_the_loops_on_a_seeded_paper_book(conn, book, monkeypatch):
-    from app import stats
+    from app.research import stats
     from app.research import agent
     from tests.test_stats_bootstrap_exact import reference_ci
 

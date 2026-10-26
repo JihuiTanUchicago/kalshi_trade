@@ -270,7 +270,7 @@ Local milestones below retain their own acceptance limits. Entries labelled inhe
 - Autopilot consolidated into the floating window; the Deploy page is now board-only (Agent panel removed).
 - Dashboard pause/resume/stop for deployments (same code path as Deploy).
 - Theme switcher — pick the Tau or Meridian frontend in Settings; Meridian brought to feature parity.
-- Quant toolkit `app/quant.py` (BS-digital fair value, vol, Kalshi fees, edge, Kelly, portfolio metrics) — built + tested, not yet wired into the agent.
+- Quant toolkit `app/trading/quant.py` (BS-digital fair value, vol, Kalshi fees, edge, Kelly, portfolio metrics) — built + tested, not yet wired into the agent.
 
 ### 2026-10-16 — local integration
 

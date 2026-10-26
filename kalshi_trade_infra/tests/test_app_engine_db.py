@@ -455,7 +455,7 @@ def test_underpowered_verdict_pnl_reaches_probation_but_not_replay(conn, user):
     candidate read returns that P&L; the replay optimizer's read masks it, so the research loop
     learns from no more than it did before the P&L was recorded."""
     from app import repository as repo
-    from app import research_repository as rr
+    from app.research import research_repository as rr
     from app.trading import spec as specmod
 
     cur = conn.cursor()

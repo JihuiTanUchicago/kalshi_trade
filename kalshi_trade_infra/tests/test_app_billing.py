@@ -34,7 +34,7 @@ def test_usage_margin_is_tunable(monkeypatch):
 def test_usage_cost_opus_4_5_fallback(monkeypatch):
     # Registry miss must NOT mis-price a 4-5 string at the old $15/$75: the "opus-4-5" fallback
     # entry precedes "opus-4" so the substring loop can't grab the wrong row first.
-    import app.models_catalog as models_catalog
+    import app.adapters.llm.models_catalog as models_catalog
     monkeypatch.setattr(models_catalog, "price_for_model_id", lambda m: None)
     # opus-4-5 $5/$25 list -> $30 list -> $60 billed at the 2x margin.
     assert billing.usage_cost("something-opus-4-5-weird", 1_000_000, 1_000_000) == Decimal("60.000000")

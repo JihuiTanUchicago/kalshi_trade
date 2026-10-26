@@ -14,7 +14,7 @@ Verdicts are tests, not threshold point estimates: a stationary-bootstrap one-si
 non-normality and for selection across the AUDITED number of competing trials), a fixed
 per-test level VALIDATION_ALPHA (LORD++ is still tracked; it gates only if that is set to 0)
 plus Benjamini-Hochberg within a chunk, and a
-label-shuffle negative control. All stats math lives in app.stats; this module only wires it
+label-shuffle negative control. All stats math lives in app.research.stats; this module only wires it
 to the ledger and classifies.
 
 ponytail: per-trade returns, moments, and the placebo are plain-python loops over a few
@@ -33,10 +33,11 @@ from datetime import timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from app import quant, stats
+from app.trading import quant
+from app.research import stats
 from app.trading import backtest
 from app.research import partitions
-from app import research_repository as rr
+from app.research import research_repository as rr
 from app.trading import spec as specmod
 
 log = logging.getLogger(__name__)

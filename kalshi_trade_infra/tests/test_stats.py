@@ -1,4 +1,4 @@
-"""Known-answer + edge-case checks for the statistical-validation toolkit (app/stats.py).
+"""Known-answer + edge-case checks for the statistical-validation toolkit (app/research/stats.py).
 
 Shapes follow RESEARCH_PIPELINE_DESIGN.md §B.1 exactly (dict returns, string `stat`,
 timestamp-based purging, plain-dict LORD++).
@@ -8,7 +8,7 @@ import math
 
 import numpy as np
 
-from app import stats
+from app.research import stats
 
 
 def test_norm_ppf_known_and_edges():

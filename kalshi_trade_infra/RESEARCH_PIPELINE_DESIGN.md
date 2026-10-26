@@ -5,7 +5,7 @@
 Single source of truth for the Wave-2 implementation agents. This document specifies
 *what to build* (signatures, schema, file ownership, prompts). It contains no production
 code. Ground truth was read from `app/research/agent.py`, `app/trading/backtest.py`, `app/research/exploration.py`,
-`app/research/dreaming.py`, `app/trading/replay.py`, `app/research/sandbox.py`, `app/quant.py`, `app/trading/spec.py`,
+`app/research/dreaming.py`, `app/trading/replay.py`, `app/research/sandbox.py`, `app/trading/quant.py`, `app/trading/spec.py`,
 `app/trading/markets.py`, `app/schema.py`, `app/repository.py`, `app/server.py`, and the
 `data_pipeline/` collectors, at the state of the repo on 2026-10-16.
 
@@ -55,7 +55,7 @@ profitable" is a statement about the **population** mean of that return, not the
 
 Three properties make this hard and specific to this venue:
 
-1. **The fee is a hard, state-dependent hurdle.** `after_fee_edge` (`app/quant.py:99`)
+1. **The fee is a hard, state-dependent hurdle.** `after_fee_edge` (`app/trading/quant.py:99`)
    shows a mid-priced contract (`P≈0.5`) pays the maximum fee `0.0175/contract`. A
    strategy must clear ~1.75¢ of edge *per mid-priced contract* before it earns a cent.
    The existing business finding (PLAN.md "Business finding - read before launch": a grid
@@ -137,10 +137,10 @@ sits:
 
 | Leak | Minimal closure |
 |---|---|
-| 1 | Replace fixed-OOS gating with a **Statistical Gatekeeper** that spends an **online-FDR alpha-wealth budget** per validation test (`app/stats.py` LORD++, state in `app_fdr_state`). Uncapped generation is fine; validation access is budgeted and audited. |
+| 1 | Replace fixed-OOS gating with a **Statistical Gatekeeper** that spends an **online-FDR alpha-wealth budget** per validation test (`app/research/stats.py` LORD++, state in `app_fdr_state`). Uncapped generation is fine; validation access is budgeted and audited. |
 | 2 | The generator reads only **Research-partition** results + the gatekeeper's **classification label** (an enum), never validation/holdout numbers. Scrub `_memory_block`. |
-| 3 | A **purged walk-forward + embargo** splitter inside Research (`app/stats.py`), with purge/embargo tied to each market's contract duration. |
-| 4 | Gatekeeper verdicts come from **stationary-bootstrap p-values, PSR, and DSR** (`app/stats.py`), not threshold point estimates. |
+| 3 | A **purged walk-forward + embargo** splitter inside Research (`app/research/stats.py`), with purge/embargo tied to each market's contract duration. |
+| 4 | Gatekeeper verdicts come from **stationary-bootstrap p-values, PSR, and DSR** (`app/research/stats.py`), not threshold point estimates. |
 | 5 | The replay tree is built from **validation** outcomes recorded by the gatekeeper, dreaming is scored on a **rotating validation fold** and **never touches holdout**; dreaming keeps its finalist-count penalty (a multiple-testing proxy). |
 | 6 | Add a **Locked-Holdout** partition, consumed once per frozen candidate, tracked in `app_holdout_ledger`; roll to fresh forward data when consumed. |
 
@@ -172,7 +172,7 @@ manufacture confidence a 65-day sample does not contain; it can only stop us fro
 
 ### B.0 Conventions (reuse, do not duplicate)
 
-- `app/quant.py` already owns pricing/fees/sizing/portfolio math: `yes_fair_value`,
+- `app/trading/quant.py` already owns pricing/fees/sizing/portfolio math: `yes_fair_value`,
   `realized_vol`, `annualize_vol`, `kalshi_fee`, `edge`/`after_fee_edge`,
   `kelly_fraction`/`fractional_kelly`, `portfolio_metrics`, `max_drawdown`. **`stats.py`
   imports and reuses these; it never re-implements fees, drawdown, or sizing.**
@@ -182,17 +182,17 @@ manufacture confidence a 65-day sample does not contain; it can only stop us fro
   Leave a `ponytail:` note to vectorize with numpy only if profiling shows the bootstrap is
   hot.
 - DB access stays in the repository layer (AGENTS.md). New data-access goes in a **new**
-  `app/research_repository.py` (so Wave-2 agents don't collide on `repository.py`), except
+  `app/research/research_repository.py` (so Wave-2 agents don't collide on `repository.py`), except
   the schema DDL which lives in `app/schema.py`.
 
-### B.1 New module — `app/stats.py`
+### B.1 New module — `app/research/stats.py`
 
 Pure functions + two tiny stateful helpers. No I/O, no DB, no LLM. This is the one module a
 "stats core" agent can build and unit-test in complete isolation. Exact contracts:
 
 ```python
 """Statistical validity toolkit for the Tau research engine. Pure math; stdlib only.
-Reuses app.quant for any pricing/fee/drawdown need. See RESEARCH_PIPELINE_DESIGN.md §B.1."""
+Reuses app.trading.quant for any pricing/fee/drawdown need. See RESEARCH_PIPELINE_DESIGN.md §B.1."""
 
 # ---- normal helpers (stdlib) ----
 def _norm_cdf(x: float) -> float: ...        # reuse the one in quant via import, do not copy
@@ -288,7 +288,7 @@ def purged_walkforward_splits(entry_ts: list[int], settle_ts: list[int],
     it replaces the single 0.7 cut inside the Research partition only."""
 ```
 
-**Runnable check (per the testing rule):** `app/stats.py`'s `demo()` / `tests/test_stats.py`
+**Runnable check (per the testing rule):** `app/research/stats.py`'s `demo()` / `tests/test_stats.py`
 must assert: BH on all-null uniform p-values rejects ≈ `alpha·m` on average; `lord_record`
 never spends more than available wealth and reproduces a published LORD++ toy sequence;
 `probabilistic_sharpe_ratio(0,n,0,3)==0.5`; a strategy with an injected real edge gets
@@ -601,7 +601,7 @@ research-fold path and the existing what-if UI; the **production gate** no longe
   stay subordinate to the gatekeeper's FDR accounting (the policy chooses *which* finalists
   to send; the gatekeeper decides *whether each clears the budget*).
 
-**`app/research_repository.py` (new):** all reads/writes for the four new tables
+**`app/research/research_repository.py` (new):** all reads/writes for the four new tables
 (`preregister`, `append_result`, `get_fdr_state`/`set_fdr_state`, `holdout_ledger` CRUD,
 `ensure/get partition`, `experiment_records_for_replay`, `experiments_for_strategy`). Keeps
 `repository.py` collision-free for Wave-2.
@@ -769,8 +769,8 @@ one owner.
 
 | Agent | Owns (writes) | Depends on | Ships |
 |---|---|---|---|
-| **A — stats core** | `app/stats.py`, `tests/test_stats.py` | nothing (pure math, reuses `quant.py`) | 1st |
-| **B — ledger & data layer** | `app/schema.py` (the 4-table DDL block + `_add_column_if_missing` calls), `app/research_repository.py`, `app/research/partitions.py`, `tests/test_research_repository.py` | A (none at runtime) | 2nd |
+| **A — stats core** | `app/research/stats.py`, `tests/test_stats.py` | nothing (pure math, reuses `quant.py`) | 1st |
+| **B — ledger & data layer** | `app/schema.py` (the 4-table DDL block + `_add_column_if_missing` calls), `app/research/research_repository.py`, `app/research/partitions.py`, `tests/test_research_repository.py` | A (none at runtime) | 2nd |
 | **C — gatekeeper** | `app/research/gatekeeper.py`, `tests/test_gatekeeper.py` (FakeCursor per `tests/conftest.py`) | A, B | 3rd |
 | **D — generator wiring + prompt + 3-role** | edits to `app/research/agent.py`, `app/trading/backtest.py`, `app/research/exploration.py`, `app/research/dreaming.py`, `app/trading/replay.py`, `tests/test_agent_gatekeeper.py` | C | 4th |
 | **E — API + research-paper page** | `app/server.py` (field additions), `app/static/*`, `tests/test_app_research_page.py` | B, C (data shapes frozen) | parallel to D after shapes freeze |

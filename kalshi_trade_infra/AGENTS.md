@@ -50,8 +50,8 @@ Python 3.12+ in a venv (CI runs 3.12, the boxes run 3.13 in `.venv313`). `pip in
 - **DB access stays in the repository layer** (`*_repository.py`/`common.py`), never inline in
   business logic (pattern: `sim_repository.py`) — that layer is what makes engine/risk logic
   testable against `FakeCursor`. Enforce DRY; flag duplication early.
-- **Stdlib/quant-toolkit first.** Reuse `app/quant.py` (fees, vol, edge, Kelly, drawdown) and
-  `app/stats.py`; do not re-implement math or add numpy/scipy unless profiling demands it.
+- **Stdlib/quant-toolkit first.** Reuse `app/trading/quant.py` (fees, vol, edge, Kelly, drawdown) and
+  `app/research/stats.py`; do not re-implement math or add numpy/scipy unless profiling demands it.
 
 ## Testing
 - Add `tests/test_<module>.py`, cases `test_<behavior>`, for any non-trivial logic. Prefer

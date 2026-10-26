@@ -134,7 +134,7 @@ def _pipeline_deaths(cur, days: int) -> List[Dict]:
 
 def window_contracts(cur, market: str) -> int:
     """Settled contracts the market's research loader would see right now."""
-    from app import research_repository as rr
+    from app.research import research_repository as rr
     m = MARKETS[market]
     return len(rr.partition_contracts(cur, m, _now() - timedelta(days=m.history_days)))
 
@@ -143,7 +143,7 @@ def research_window(cur, market: str) -> Tuple[datetime, datetime]:
     """[from, to) of the data a research run on `market` would load: the active partition's research
     window, or where a fresh partition would put it (the oldest RESEARCH_FRAC of history_days)."""
     from app.research import partitions
-    from app import research_repository as rr
+    from app.research import research_repository as rr
     active = None
     try:
         active = rr.get_active_partition(cur, market)

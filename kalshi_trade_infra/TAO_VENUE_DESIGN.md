@@ -43,7 +43,7 @@ Three layers are already instrument-agnostic and we pay nothing to reuse them:
 
 1. **`spot_candles_1m`** (`app/schema.py:42`) — keyed by `(symbol, start_ts)`, already generalized beyond BTC ("so the backtester can price any crypto series off its own underlying"). A subnet alpha price series is just another `symbol` (e.g. `TAO-SN64`). **Zero schema change.**
 2. **The code-strategy sandbox** (`app/trading/spec.py` `CODE_SPEC_KEYS`, `app/research/sandbox.py`, `app/trading/backtest.py::_code_book`) — an agent writes `signals(window)` returning a target book per frame; the shared `simulate()` loop does sizing/fees/settlement. The signal logic is *already* decoupled from the digital-option DSL. This is the seam.
-3. **The gatekeeper + `app/stats.py`** — bootstrap CI, PSR/DSR, LORD++ FDR, Benjamini-Hochberg, cross-day folds all operate on `_per_trade` net returns (`pnl/cost`), which is instrument-agnostic. Only `_placebo_pvalue` is binary-specific.
+3. **The gatekeeper + `app/research/stats.py`** — bootstrap CI, PSR/DSR, LORD++ FDR, Benjamini-Hochberg, cross-day folds all operate on `_per_trade` net returns (`pnl/cost`), which is instrument-agnostic. Only `_placebo_pvalue` is binary-specific.
 
 ### A.3 Recommended representation — opinionated
 
@@ -225,7 +225,7 @@ Phase 0 spike ──pass?──► Phase 1 research pipeline ──James wants l
 - `app/trading/spec.py` — digital-option DSL (`fair_yes`, `side_prices`), and the reusable code-strategy surface (`CODE_SPEC_KEYS`, `signals(window)`).
 - `app/trading/backtest.py` — `simulate()`/`simulate_pairs()` (binary settlement), `metrics()` (instrument-agnostic), `_code_book`/`_code_entries` (the seam).
 - `app/research/gatekeeper.py` — `_per_trade`/`_net_returns` (instrument-agnostic), `_placebo_pvalue` (binary-specific — the one thing to replace).
-- `app/stats.py` — bootstrap/PSR/DSR/LORD++/BH (all reusable on a return series).
+- `app/research/stats.py` — bootstrap/PSR/DSR/LORD++/BH (all reusable on a return series).
 - `app/schema.py:42` — `spot_candles_1m` (already generalized by `symbol`).
 - `app/repository.py:1114` — `load_history` (selects price by `underlying` symbol).
 - `data_pipeline/coinbase_collector.py`, `data_pipeline/kalshi_fees.py` — patterns for the new collector + fee model.

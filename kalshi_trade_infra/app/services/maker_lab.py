@@ -26,8 +26,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Sequence
 
-from app import stats
-from app.llm import ModelFn, Usage, ask_json
+from app.research import stats
+from app.adapters.llm.llm import ModelFn, Usage, ask_json
 from trading_core.engine import maker_policy as mr
 
 GATE_ALPHA = 0.05

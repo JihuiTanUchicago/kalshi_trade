@@ -257,7 +257,7 @@ def idea_lines(events: List[Dict], limit: int = 40) -> List[str]:
 def reflect(model, usage, family: str, market_label: str, current: Dict, card: Dict,
             ideas: List[str], facts: str) -> Dict:
     """Ask the model for the next candidate playbook. Returns {"playbook", "changes"}."""
-    from app.llm import ask_json
+    from app.adapters.llm.llm import ask_json
     msg = ("Family: %s (this run: %s).\n\nCURRENT PLAYBOOK (v%s):\n%s\n\nTHIS RUN: %d ideas explored, %d dropped "
            "on research data (%s), %d reached the gate, %d passed.\n\nIDEAS AND VERDICTS:\n%s\n\n"
            "FEATURES AND MEASURED FACTS ON THIS MARKET'S RESEARCH WINDOW:\n%s"

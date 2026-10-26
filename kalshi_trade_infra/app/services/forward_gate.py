@@ -19,7 +19,7 @@ from typing import Dict, List
 
 from app.research import gatekeeper
 from app import repository as repo
-from app import research_repository as rr
+from app.research import research_repository as rr
 
 ENABLED = os.getenv("APP_PAPER_FORWARD_GATE", "0") == "1"
 

@@ -21,7 +21,7 @@ from collections import Counter
 from datetime import timedelta, timezone
 from typing import Dict, List, Optional
 
-from app import research_repository as rr
+from app.research import research_repository as rr
 from app.trading import backtest
 from app.adapters.tao import tao_repository
 from app.trading.markets import MARKETS, Market

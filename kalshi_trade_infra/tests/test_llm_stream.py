@@ -11,12 +11,12 @@ import pytest
 def _reset_model_cooldown():
     # The daily-quota cooldown is module-level global state; clear it around every test so a
     # cooldown set by one fallback test doesn't skip a model in the next.
-    from app import llm as _llm
+    from app.adapters.llm import llm as _llm
     _llm._MODEL_COOLDOWN.clear()
     yield
     _llm._MODEL_COOLDOWN.clear()
 
-from app import llm
+from app.adapters.llm import llm
 
 
 class _FakeStreamClient:
@@ -227,7 +227,7 @@ def test_stall_guard_lets_a_healthy_stream_through():
 
 # -- Automatic model fallback on quota exhaustion -------------------------------------------------
 
-from app import models_catalog as _cat
+from app.adapters.llm import models_catalog as _cat
 # The default chain (llm.BEDROCK_MODEL defaults to the catalog default): _OPUS is the preferred
 # model and _SONNET stands for "the next model down", whatever the catalog's FALLBACK_ORDER says.
 _CHAIN = _cat.fallback_chain_from(llm.BEDROCK_MODEL)

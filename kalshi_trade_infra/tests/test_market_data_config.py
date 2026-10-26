@@ -8,7 +8,7 @@ import pytest
 
 from app import market_data_config as settings
 from app.research import agent_market_data as market
-from app.llm import Usage
+from app.adapters.llm.llm import Usage
 from app.adapters.data.market_data_common import MarketDataError
 from tests.test_agent_databento_data import NOW, provider as databento_provider
 from tests.test_agent_market_data import final_check, provider as alpaca_provider, scripted

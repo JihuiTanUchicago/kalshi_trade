@@ -19,7 +19,7 @@ from app.research import agent, gatekeeper, partitions
 from app.adapters.kalshi_perps import kalshi_perps_collector as collector
 from app.adapters.kalshi_perps import kalshi_perps_data as data
 from app.adapters.kalshi_perps import kalshi_perps_repository as sources
-from app import research_repository as ledger
+from app.research import research_repository as ledger
 from app.trading import spec as specmod
 from app.trading.markets import MARKETS
 from data_pipeline import common

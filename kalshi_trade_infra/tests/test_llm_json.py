@@ -1,7 +1,7 @@
 """llm.extract_json: parsing the model's JSON replies."""
 import pytest
 
-from app.llm import extract_json
+from app.adapters.llm.llm import extract_json
 
 
 def test_a_broken_batch_keeps_its_complete_items():

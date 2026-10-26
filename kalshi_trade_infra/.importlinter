@@ -68,6 +68,11 @@ ignore_imports =
     ; step 8 injects it from app.bootstrap.
     app.services.demo_record -> app.adapters.kalshi.kalshi_account
     app.services.demo_record -> app.adapters.kalshi.kalshi_dev_exec
+    ; research_screen and maker_lab call the LLM client (and its model catalog) directly; step 10 hands
+    ; services a model function from app.bootstrap instead.
+    app.services.research_screen -> app.adapters.llm.llm
+    app.services.research_screen -> app.adapters.llm.models_catalog
+    app.services.maker_lab -> app.adapters.llm.llm
 ; Add when app.web exists: a forbidden contract app.web -> app.adapters (web reaches adapters only
 ; through services and the bootstrap wiring).
 
@@ -108,7 +113,7 @@ source_modules =
     data_pipeline.architecture
 forbidden_modules =
     app.research.agent
-    app.llm
+    app.adapters.llm.llm
     app.server
     app.research.dreaming
 
@@ -116,8 +121,8 @@ forbidden_modules =
 name = quant/stats/fees/order contracts do no I/O
 type = forbidden
 source_modules =
-    app.quant
-    app.stats
+    app.trading.quant
+    app.research.stats
     data_pipeline.kalshi_fees
     data_pipeline.architecture.contracts
 forbidden_modules =

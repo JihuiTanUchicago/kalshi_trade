@@ -158,7 +158,7 @@ def test_a_micro_feature_is_ready_only_once_it_covers_the_research_window(monkey
         def fetchone(self):
             return {"h": 24 * 5}
 
-    import app.research_repository as rr
+    import app.research.research_repository as rr
     monkeypatch.setattr(rr, "get_active_partition", lambda cur, m: None)
     lo, hi = rsi_repair.research_window(Cur(), "eth15m")
     days = rsi_repair.MARKETS["eth15m"].history_days

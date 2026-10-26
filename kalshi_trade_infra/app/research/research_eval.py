@@ -28,7 +28,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
-from app import stats
+from app.research import stats
 from app.trading import backtest
 from app.research import gatekeeper
 from app.trading import spec as specmod

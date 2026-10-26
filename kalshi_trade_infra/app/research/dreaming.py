@@ -21,7 +21,7 @@ from app.trading import replay
 from app.research import sandbox
 from app import repository as repo
 from app.research.exploration import DefaultPolicy
-from app.llm import Usage, ask_json
+from app.adapters.llm.llm import Usage, ask_json
 
 MIN_TREE = 12          # need some history before evolving is meaningful
 N_CANDIDATES = 5       # revised policies to dream up per round (cheap; more shots, better hit rate)

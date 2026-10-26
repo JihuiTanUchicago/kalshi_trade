@@ -2,7 +2,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from app.llm import Usage
+from app.adapters.llm.llm import Usage
 from app.services import maker_lab as lab
 
 H0 = datetime(2026, 10, 25, 0, tzinfo=timezone.utc)

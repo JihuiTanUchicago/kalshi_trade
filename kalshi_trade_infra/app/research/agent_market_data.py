@@ -21,7 +21,7 @@ from app.adapters.data.alpaca_data import AlpacaDataClient, Config, MarketDataEr
 from app.adapters.data.massive_data import MassiveDataClient, Config as MassiveConfig, DEFAULT_SYMBOLS as MASSIVE_SYMBOLS, options_checked, pairs_checked
 from app.adapters.data.databento_data import DatabentoDataClient, Config as DatabentoConfig, CostBudget, TIMEFRAMES as DATABENTO_TIMEFRAMES, dataset_checked, symbols_checked as databento_symbols
 from app.market_data_config import Routing
-from app.llm import ask_json
+from app.adapters.llm.llm import ask_json
 
 DEFAULT_SYMBOLS = "SPY,QQQ,IWM,TLT,GLD,USO"
 MAX_DATA_ROUNDS = 2

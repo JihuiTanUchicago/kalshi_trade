@@ -7,7 +7,7 @@ import pymysql
 
 from app.research import agent, agent_knowledge as knowledge, agent_market_data as market, agent_news as news
 from app.adapters.data.exa_data import ExaDataClient
-from app.llm import LLMError, Usage
+from app.adapters.llm.llm import LLMError, Usage
 from app.adapters.data.market_data_common import iso
 from tests.test_agent_knowledge import scripted, tool_request
 from tests.test_agent_market_data import provider as alpaca_provider

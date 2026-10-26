@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import llm, schema, server
+from app import schema, server
+from app.adapters.llm import llm
 from app.adapters.stripe import billing
 from app.research import agent
 from app.adapters.kalshi_perps import kalshi_perps_trading as live
@@ -83,7 +84,7 @@ def test_generic_approve_routes_to_review_instead_of_broker_submission(monkeypat
 
 
 def test_preserved_production_stall_falls_back_without_daily_quota_cooldown(monkeypatch):
-    from app import models_catalog
+    from app.adapters.llm import models_catalog
     monkeypatch.setattr(models_catalog, "fallback_chain_from", lambda *args: ["synthetic-a", "synthetic-b"])
     monkeypatch.setattr(llm, "_MODEL_COOLDOWN", {})
     seen = []

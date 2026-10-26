@@ -8,7 +8,7 @@ import uuid
 import pytest
 
 from app.research import rsi_playbook as pb
-from app.llm import Usage
+from app.adapters.llm.llm import Usage
 
 
 def test_p_better_follows_the_evidence():
@@ -71,7 +71,7 @@ def test_reflect_refuses_an_empty_rewrite():
     def model(system, messages):
         return next(replies), {}
 
-    from app.llm import LLMError
+    from app.adapters.llm.llm import LLMError
     with pytest.raises((LLMError, ValueError)):
         pb.reflect(model, Usage(), "f", "m", {"version": 0, "text": ""}, CARD, [], "")
 

@@ -166,7 +166,7 @@ def _price_for(model: str) -> Tuple[Decimal, Decimal]:
     # A user-chosen model is billed at its EXACT registry price (keyed on the
     # invokable modelId); the substring table below is the fallback for legacy
     # model strings and anything not in the registry.
-    from app import models_catalog
+    from app.adapters.llm import models_catalog
     exact = models_catalog.price_for_model_id(model)
     if exact is not None:
         return exact

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from app.trading import backtest
 from app.research import gatekeeper as gk
 from app.trading import spec as specmod
-from app import stats
+from app.research import stats
 from app.trading.markets import MARKETS
 
 T0 = 1_800_000_000 - 1_800_000_000 % 3600
