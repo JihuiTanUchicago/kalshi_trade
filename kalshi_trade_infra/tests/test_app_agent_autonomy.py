@@ -297,7 +297,9 @@ def test_with_every_market_on_cooldown_research_rotates_to_the_stalest_ones(monk
     monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: runs)
     ready = ["btc15m", "eth15m", "sol15m", "xrp15m", "zec15m"]
     assert agent._least_recent_markets(None, 1, ready) == ["xrp15m", "eth15m", "sol15m"]
-    assert agent._least_recent_markets(None, 1, ready, n=5) == ["xrp15m", "eth15m", "sol15m", "btc15m"]
+    # The market researched last (btc15m here) is never offered while another is free.
+    assert agent._least_recent_markets(None, 1, ready, n=5) == ["xrp15m", "eth15m", "sol15m"]
+    assert agent._least_recent_markets(None, 1, ["btc15m", "eth15m"]) == ["eth15m"]
     assert agent._least_recent_markets(None, 1, ["zec15m"]) == ["zec15m"]  # only a busy one left: keep it
 
 

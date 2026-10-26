@@ -3643,6 +3643,10 @@ def _least_recent_markets(cur, user_id: int, ready: List[str], n: int = RESEARCH
         if t and (m not in last or t > last[m]):
             last[m] = t
     free = [k for k in ready if k not in busy] or ready
+    # Never offer the market researched last while another is free: with only 2-3 Bitcoin markets
+    # in scope, n=3 offered all of them and the picker chose btc15m for every floor run (prod
+    # 2026-10-26 19:20-23:00Z, 11 runs in a row) while btc_daily sat idle.
+    n = min(n, max(1, len(free) - 1))
     return sorted(free, key=lambda k: (k in last, last.get(k) or datetime.min))[:n]
 
 
