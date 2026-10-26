@@ -135,6 +135,31 @@ def test_describe_reads_like_english():
     assert any("takes profit at +20" in line for line in lines)
 
 
+def test_describe_reads_an_old_or_partial_stored_spec_without_raising():
+    # A seeded spec with no `model` 500ed the strategy page; a stored spec keeps the lines it can fill.
+    seeded = {"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": 5.0, "max_positions": 4}}
+    assert specmod.describe(seeded) == ["Buys YES contracts when its fair value beats the price by at least 5¢.",
+                                        "Stakes $5 per trade, at most 4 open at once."]
+    full = specmod.validate({"side": "no", "entry": {"filters": [{"feature": "z_score", "op": ">", "value": 1.0}]},
+                             "exit": {"take_profit": 0.2, "stop_loss": 0.1},
+                             "cross": {"pairing": "cross_strike", "legs": []}, "market": "btc_daily"})
+    whole = specmod.describe(full)
+    for key in full:
+        for sub in [None] + (list(full[key]) if isinstance(full[key], dict) else []):
+            for gone in (True, False):
+                spec = {k: (dict(v) if isinstance(v, dict) else v) for k, v in full.items()}
+                holder, k = (spec, key) if sub is None else (spec[key], sub)
+                if gone:
+                    del holder[k]
+                else:
+                    holder[k] = None
+                lines = specmod.describe(spec)  # never raises
+                # Nothing made up ("None", a default): every line is one the whole spec says, except the
+                # exits line, which rightly reads differently with one exit gone.
+                assert set(lines) <= set(whole) or key == "exit"
+    assert specmod.describe(None) == [] and specmod.describe({}) == []
+
+
 def test_cross_contract_spec_validates_and_keys_a_shared_stream():
     # single-contract: cross stays None, stream is just the market.
     single = specmod.validate({"market": "btc_daily"})

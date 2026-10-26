@@ -481,6 +481,22 @@ def test_strategy_detail_marks_a_seeded_example_strategy(monkeypatch):
         assert server.get_strategy(ctx(params=("4",)))["example"] is example
 
 
+def test_strategy_detail_answers_on_a_stored_spec_with_no_model_or_sizing(monkeypatch):
+    # A seeded row's spec had no `model` and the page answered 500; one with no sizing broke the cards too.
+    # tests/test_old_rows_fuzz_db.py walks every stored key against a real MySQL.
+    row = {"id": 4, "run_id": 1, "parent_id": None, "market": "btc15m", "title": "Seeded", "thesis": "t",
+           "status": "passed", "created_at": None, "result": {}, "direction": "momentum", "experiment_id": None,
+           "spec": {"side": "yes", "entry": {"min_edge": 0.05}}}
+    monkeypatch.setattr(server, "_experiment_block", lambda *a: None)
+    monkeypatch.setattr(server, "_demo_health", lambda *a, **k: None)
+    monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
+    monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
+    monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(row))
+    out = server.get_strategy(ctx(params=("4",)))
+    assert out["rules"] == ["Buys YES contracts when its fair value beats the price by at least 5¢."]
+    assert out["stake"] is None and out["side"] == "yes"
+
+
 def test_list_strategies_applies_limit_and_offset():
     cur = StratCur()
     server.repo.list_strategies(cur, 1, limit=50, offset=100)
