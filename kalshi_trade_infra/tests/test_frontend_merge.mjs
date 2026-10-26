@@ -209,7 +209,7 @@ strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, post
 strategyListCases({name: 'Tau', frontend, detailStrategy});
 explorePageCases({name: 'Tau', frontend});
 researchFormCases({name: 'Tau', frontend});
-phoneSpeedCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
+phoneSpeedCases({name: 'Tau', frontend, source, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 settingsCases({name: 'Tau', frontend, current: 'tau', cardWallOpts: () => ({stripe: STRIPE_STUB}),
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});

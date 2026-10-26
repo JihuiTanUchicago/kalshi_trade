@@ -18,7 +18,7 @@ const researchTransport = (over = {}) => (path) => {
 };
 const asked = (f, prefix) => f.requests.filter(({path}) => path.startsWith(prefix)).length;
 
-export function phoneSpeedCases({name, frontend, storageFor, railOpenWide}) {
+export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, source}) {
   test(`${name}: hot markets are read once while the rail shows, and not at all while it is hidden`, async () => {
     // Shown: the rail is open on a wide screen. Research paints its shell twice; one read, not two.
     let f = frontend({fetchImpl: researchTransport(), storage: storageFor(new Map(railOpenWide)), matchMedia: () => ({matches: false})});
@@ -63,5 +63,39 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide}) {
     await settle();
     assert.equal(asked(f, '/api/research/scoreboard'), 1);
     f.clearTimers();
+  });
+
+  test(`${name}: Billing's statement builds its date and count formats once, whatever its length, and reads as toLocaleString did`, async () => {
+    const day = (k) => `2026-09-${String(10 + (k % 15)).padStart(2, '0')}`;
+    const statement = (n) => ({configured: false, balance: 12.5, spent: 40, spent_7d: 3, spent_24h: 1, pace_days: 7, free_bonus: 20,
+      topup_fee_pct: 5.5, cards: [], default_pm: null, auto_reload: false, min_run_balance: 1, spent_7d_by: {},
+      math: {days: 30, start: 20, bought: 0, purchases: 0, other: 0, usage: 7.5, end: 12.5}, ledger_cut: false,
+      ledger: Array.from({length: n}, (_, k) => ({kind: 'usage', amount: -0.25, memo: 'Model usage', item: 'Research session', model: 'A model',
+        calls: 1234 + k, day: day(Math.floor(k / 3)), first_at: `${day(Math.floor(k / 3))}T08:0${k % 3}:00Z`, created_at: `${day(Math.floor(k / 3))}T09:1${k % 3}:00Z`}))});
+    // toLocale*String builds a new formatter on every call: count those calls on the page's own dates.
+    const made = async (n) => {
+      let calls = 0;
+      class CountingDate extends Date {
+        toLocaleString(...a) { calls++; return super.toLocaleString(...a); }
+        toLocaleDateString(...a) { calls++; return super.toLocaleDateString(...a); }
+        toLocaleTimeString(...a) { calls++; return super.toLocaleTimeString(...a); }
+      }
+      const f = frontend({globals: {Date: CountingDate}, fetchImpl: (path) => path.startsWith('/api/billing') ? response(statement(n)) : response({})});
+      f.location.pathname = '/billing';
+      await f.viewBilling(); await settle();
+      f.clearTimers();
+      return {built: calls, html: f.root.querySelector('main').innerHTML};
+    };
+    const short = await made(6), long = await made(300);
+    assert.equal(long.built, short.built, 'a longer statement formats no more dates through toLocale*String');
+    // The words are the ones toLocale*String gave: the line's clock span and zone, the day's heading, the call count.
+    const first = new Date('2026-09-10T08:00:00Z'), last = new Date('2026-09-10T09:10:00Z');
+    const clock = {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'};
+    assert.ok(long.html.includes(`${first.toLocaleTimeString(undefined, clock)}–${last.toLocaleTimeString(undefined, {...clock, timeZoneName: 'short'})}`));
+    const [y, m, dd] = '2026-09-10'.split('-').map(Number);
+    assert.ok(long.html.includes(new Date(y, m - 1, dd).toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})));
+    assert.ok(long.html.includes(`${(1234).toLocaleString('en-US')} model calls`));
+    // Counts go through one NumberFormat too (Number#toLocaleString('en-US') built one per call).
+    assert.doesNotMatch(source, /const num = \(n\) => \(n == null \? '—' : Number\(n\)\.toLocaleString/);
   });
 }

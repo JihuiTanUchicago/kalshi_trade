@@ -252,19 +252,21 @@
     if (s < 60) return 'just now';
     if (s < 3600) return Math.floor(s / 60) + 'm ago';
     if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return dateFmt(d, MON_DAY);
   };
   // A bell item's time: relative within the day, then the day and clock ("Oct 24, 14:05"), not a bare
   // date; the full stamp with its zone rides on hover.
   const bellTime = (iso) => {
     const d = new Date(iso || NaN);
     if (!Number.isFinite(d.getTime())) return '';
-    const day = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
-    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : d.toLocaleString(undefined, day);
-    return `<time datetime="${esc(iso)}" title="${esc(d.toLocaleString(undefined, { ...day, timeZoneName: 'short' }))}">${esc(shown)}</time>`;
+    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : dateFmt(d, DAY_CLOCK);
+    return `<time datetime="${esc(iso)}" title="${esc(dateFmt(d, LOG_STAMP))}">${esc(shown)}</time>`;
   };
   // Each date format is built once and reused: toLocaleString with options builds a new formatter on
-  // every call, and a 600-event research log spent ~0.3s of a phone's first paint on its clocks.
+  // every call, and a 600-event research log spent ~0.3s of a phone's first paint on its clocks (and
+  // Billing's 300-line statement ~0.15s on its clock times and counts, the bell ~10ms on every page).
+  // Same options, same words: toLocaleDateString/TimeString/String only add defaults when the options
+  // name no date or time field, and each constant below names one.
   const fmts = new Map();
   const dateFmt = (d, o) => {
     if (!Number.isFinite(d.getTime())) return 'Invalid Date';  // what toLocaleString says; format() throws
@@ -273,6 +275,12 @@
     return f.format(d);
   };
   const CLOCK = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  const CLOCK_ZONE = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
+  const MON_DAY = { month: 'short', day: 'numeric' };
+  const DAY_CLOCK = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  const WEEKDAY_DAY = { weekday: 'short', month: 'short', day: 'numeric' };
+  const YEAR_DAY = { year: 'numeric', month: 'short', day: 'numeric' };
+  const UTC_MONTH = { year: 'numeric', month: 'short', timeZone: 'UTC' };
   const LOG_STAMP = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
   const clock = (iso) => dateFmt(new Date(iso), CLOCK);
   // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in.
@@ -286,9 +294,10 @@
     const d = new Date(iso || NaN);
     if (!Number.isFinite(d.getTime())) return '—';
     const today = d.toDateString() === new Date().toDateString();
-    return d.toLocaleString(undefined, { ...(today ? {} : { month: 'short', day: 'numeric' }), hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' });
+    return dateFmt(d, today ? CLOCK_ZONE : LOG_STAMP);
   };  // fits the 40px log rail; '10:31 AM' wrapped to 'AM'
-  const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+  const fmtCount = new Intl.NumberFormat('en-US');  // what Number#toLocaleString('en-US') builds on every call
+  const num = (n) => (n == null ? '—' : fmtCount.format(Number(n)));
   // Compact count for tight spaces (system-map node metrics): 1.1M, 352k, 940.
   const compact = (n) => (n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : num(n));
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
@@ -4092,8 +4101,8 @@
   // The headline names its book and its window: scrolled past the tabs, "+$5.61" alone could be any book's.
   const trBook = (key) => (TR_MODES.find(([k]) => k === key) || [key, key])[1];
   const trFix = (v, dp = 2) => (v == null ? '—' : (+v).toFixed(dp).replace('-', '\u2212'));  // a true minus, as usd() prints
-  const trDay = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
-  const trMonth = (k) => { const [y, m] = k.split('-'); return new Date(Date.UTC(+y, +m - 1, 15)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', timeZone: 'UTC' }); };
+  const trDay = (ts) => (ts ? dateFmt(new Date(ts * 1000), YEAR_DAY) : '—');
+  const trMonth = (k) => { const [y, m] = k.split('-'); return dateFmt(new Date(Date.UTC(+y, +m - 1, 15)), UTC_MONTH); };
   const trCi = (ci, f) => (ci ? `95%: ${f(ci[0])} to ${f(ci[1])}` : 'needs 2+ trades for a range');
   const TR_STATUS = { paused: 'Paused', stopped: 'Stopped' };
   const TR_EDGE = { positive: ['Edge', 'on'], negative: ['Losing', 'live'], unclear: ['Unproven', ''], thin: ['Too few', 'quiet'] };
@@ -6436,13 +6445,13 @@
     return '';
   }
   // The time of a line, or the span of a session's calls that day, in the viewer's clock.
-  const clockAt = (iso, zone) => { const d = new Date(iso || NaN); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(zone ? { timeZoneName: 'short' } : {}) }) : '—'; };
+  const clockAt = (iso, zone) => { const d = new Date(iso || NaN); return Number.isFinite(d.getTime()) ? dateFmt(d, zone ? CLOCK_ZONE : CLOCK) : '—'; };
   const lineWhen = (r) => r.first_at && r.first_at !== r.created_at ? `${clockAt(r.first_at)}–${clockAt(r.created_at, true)}` : clockAt(r.created_at, true);
   // A statement day ('2026-10-26', the viewer's day from the server) as a heading: "Today" or "Mon, Oct 26".
   const ledgerDay = (day) => {
     const [y, m, dd] = String(day).split('-').map(Number), d = new Date(y, m - 1, dd);
     if (!Number.isFinite(d.getTime())) return esc(day);
-    return d.toDateString() === new Date().toDateString() ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    return d.toDateString() === new Date().toDateString() ? 'Today' : dateFmt(d, WEEKDAY_DAY);
   };
   // How the balance came to be over the statement's days (/api/billing math): the balance then, plus
   // credits bought, plus other credits, minus agent usage, is the balance now. The server sends cents
