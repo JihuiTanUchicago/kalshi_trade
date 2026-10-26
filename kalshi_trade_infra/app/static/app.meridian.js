@@ -4037,6 +4037,17 @@
   const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time.`
     : k.connected ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : '';
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
+  // A paper history line in plain words. The engine writes prices as dollars ("@ 0.40") and exit reasons as
+  // codes ("stop_loss"); a settled row's $0.00 read as nothing happening when the contract lost. Display only:
+  // the stored memo and the amount are unchanged.
+  const ledgerWhat = (r) => {
+    const memo = String(r.memo || r.kind || '').replace(/ (@|->) (\d*\.\d+)/g, (m, w, p) => ` ${w === '@' ? 'at' : '\u2192'} ${Math.round(+p * 100)}\u00a2`)
+      .replace(/\(([a-z]+(?:_[a-z]+)+)/g, (m, c) => '(' + c.replace(/_/g, ' '));
+    const settled = r.kind === 'settlement' ? (+r.amount > 0 ? ' \u00b7\u00a0won, paid $1 a contract' : ' \u00b7\u00a0lost, paid $0') : '';
+    return esc(memo) + (settled ? `<span class="hint">${settled}</span>` : '');
+  };
+  // Fees and settlement, once, in plain words, where the cash moves.
+  const LEDGER_HOW = 'Cash in and out of your paper account, newest first. A buy takes the contracts\u2019 price plus Kalshi\u2019s fee, as a real order would. When a market settles, each winning contract pays $1 and each losing one pays $0; a sale before then pays the price it sold at, less the fee. A trade\u2019s P&amp;L is what it brought back less everything it cost, fees included.';
   async function viewFunds() {
     const gen = S.gen;
     shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
@@ -4111,8 +4122,9 @@
         ${S.me.perps_live_available ? '<section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>' : ''}
         <section class="panel">
           <h3>Paper history</h3>
+          <p class="hint ledger-how">${LEDGER_HOW}${d.paper.ledger.length >= 50 ? ' The latest 50 entries.' : ''}</p>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
-            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${esc(r.memo || r.kind)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
+            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
         </section>
         </div></div>`;

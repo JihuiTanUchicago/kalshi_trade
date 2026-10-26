@@ -728,6 +728,34 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   assert.match(h.root.querySelector('#ffigs').innerHTML, /Kalshi didn’t answer just now\. Reload in a minute to try again\./);
 });
 
+test('Funds paper history says prices in cents, a lost settlement as lost, and explains fees and settlement once', async () => {
+  const ledger = [
+    {created_at: '2026-10-26T10:05:00Z', kind: 'settlement', memo: 'KXBTC15M-L settled NO', amount: 0},
+    {created_at: '2026-10-26T10:04:00Z', kind: 'settlement', memo: 'KXBTC15M-W settled YES', amount: 25},
+    {created_at: '2026-10-26T10:03:00Z', kind: 'trade', memo: 'Sold 8/25 YES KXBTC15M-P @ 0.25 (stop_loss, partial)', amount: 1.86},
+    {created_at: '2026-10-26T10:02:00Z', kind: 'trade', memo: 'Paper replay: 10 YES KXBTC15M-R @ 0.40 -> 0.55 (take_profit)', amount: 1.3},
+    {created_at: '2026-10-26T10:01:00Z', kind: 'trade', memo: 'Bought 25 YES KXBTC15M-W @ 0.40', amount: -10.42},
+    {created_at: '2026-10-26T10:00:00Z', kind: 'deposit', memo: '<b>Starting</b> paper balance', amount: 1000},
+  ];
+  const f = frontend({fetchImpl: () => { const d = funds(); d.paper.ledger = ledger; return response(d); }});
+  await f.viewFunds(); await flush();
+  const rows = [...f.root.querySelectorAll('.t-ledger tbody tr')].map((tr) => tr.innerHTML);
+  assert.match(rows[0], /KXBTC15M-L settled NO<span class="hint"> ·\u00a0lost, paid \$0<\/span>[\s\S]*\$0\.00/);
+  assert.match(rows[1], /settled YES<span class="hint"> ·\u00a0won, paid \$1 a contract<\/span>[\s\S]*\+\$25\.00/);
+  assert.match(rows[2], /Sold 8\/25 YES KXBTC15M-P at 25¢ \(stop loss, partial\)/);
+  assert.match(rows[3], /Paper replay: 10 YES KXBTC15M-R at 40¢ → 55¢ \(take profit\)/);
+  assert.match(rows[4], /Bought 25 YES KXBTC15M-W at 40¢<\/td>[\s\S]*−\$10\.42/);
+  assert.match(rows[5], /&lt;b&gt;Starting&lt;\/b&gt; paper balance/);  // still escaped
+  for (const r of rows) assert.doesNotMatch(r, /@ 0\.|stop_loss|take_profit/);
+  const how = f.root.querySelector('.ledger-how').textContent;
+  assert.match(how, /A buy takes the contracts’ price plus Kalshi’s fee/);
+  assert.match(how, /each winning contract pays \$1 and each losing one pays \$0/);
+  assert.doesNotMatch(how, /latest 50/);
+  const g = frontend({fetchImpl: () => { const d = funds(); d.paper.ledger = Array.from({length: 50}, () => ledger[4]); return response(d); }});
+  await g.viewFunds(); await flush();
+  assert.match(g.root.querySelector('.ledger-how').textContent, /The latest 50 entries\./);
+});
+
 test('Funds says what each book has made, realized, never summed, and when a new book’s P&L will show', async () => {
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
     d.kalshi = {connected: true, key_id: 'k', balance: 1234.56, open_positions: 1, open_at_cost: 4, realized_pnl: 3.11, closed_trades: 5};
