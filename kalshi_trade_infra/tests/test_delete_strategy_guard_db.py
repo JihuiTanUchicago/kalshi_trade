@@ -174,5 +174,6 @@ def test_the_admin_page_counts_open_positions_whose_strategy_is_gone(conn, monke
     with pytest.raises(server.ApiError) as no:
         server.admin_overview(ctx())
     assert no.value.status == 403
-    monkeypatch.setattr(server, "_require_admin", lambda c: None)
+    from app.web.routes import admin as admin_routes
+    monkeypatch.setattr(admin_routes, "_require_admin", lambda c: None)
     assert server.admin_overview(ctx())["orphaned_open"] == after

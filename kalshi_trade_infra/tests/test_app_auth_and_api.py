@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from app import server
 from app.web import auth
+from app.web.routes import admin as admin_routes
 from app.web.routes import auth as auth_routes
 from app.adapters.kalshi import kalshi_account
 
@@ -640,7 +641,7 @@ def test_new_signin_is_blocked_unless_approved(monkeypatch):
 
 
 def test_admin_waitlist_approve_and_errors(monkeypatch):
-    monkeypatch.setattr(server, "_require_admin", lambda ctx: None)
+    monkeypatch.setattr(admin_routes, "_require_admin", lambda ctx: None)
     calls = {}
     monkeypatch.setattr(server.repo, "set_waitlist_status", lambda cur, e, s: calls.update(approve=(e, s)) or True)
     monkeypatch.setattr(server.repo, "remove_waitlist", lambda cur, e: calls.update(remove=e) or True)
