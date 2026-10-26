@@ -68,7 +68,7 @@ def test_module_symbols_extracts_functions():
 
 
 def test_module_symbols_extracts_classes_and_methods():
-    out = code_map.module_symbols("app/server.py")
+    out = code_map.module_symbols("app/web/http.py")
     classes = {c["name"]: c for c in out["classes"]}
     assert "Ctx" in classes
     assert any(m["qual"] == "Ctx.uid" for m in classes["Ctx"]["methods"])

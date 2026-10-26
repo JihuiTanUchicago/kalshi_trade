@@ -17,8 +17,7 @@ import sys
 import threading
 import time
 import traceback
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -35,7 +34,7 @@ from app.adapters.kalshi import kalshi_dev
 from app.adapters.kalshi import kalshi_dev_exec
 from app.adapters.kalshi_perps import kalshi_perps_trading
 from app.adapters.alpaca import alpaca_paper
-from app.adapters.brokers import broker_oauth
+from app.adapters.brokers import broker_oauth  # noqa: F401  (tests patch server.broker_oauth)
 from app.adapters.llm import models_catalog as catalog
 from app import repository as repo
 from app.research import research_repository as research_repo
@@ -85,53 +84,7 @@ CSP = (
 )
 
 
-class ApiError(Exception):
-    def __init__(self, status: int, message: str):
-        super().__init__(message)
-        self.status = status
-        self.message = message
-
-
-@dataclass
-class Ctx:
-    conn: Any
-    user: Optional[Dict]
-    params: Tuple[str, ...]
-    query: Dict[str, str]
-    body: Dict[str, Any]
-    handler: "Handler"
-    set_cookies: List[str] = field(default_factory=list)
-
-    @property
-    def cur(self):
-        return self.conn.cursor()
-
-    @property
-    def uid(self) -> int:
-        return self.user["id"]
-
-
-def _json_default(v):
-    if isinstance(v, (datetime, date)):
-        return (v.replace(tzinfo=timezone.utc) if isinstance(v, datetime) and v.tzinfo is None else v).isoformat()
-    if isinstance(v, Decimal):
-        return float(v)
-    if isinstance(v, (bytes, bytearray)):
-        return None
-    raise TypeError(type(v))
-
-
-def _num(body: Dict, key: str, lo: float, hi: float, default: Optional[float] = None) -> float:
-    v = body.get(key, default)
-    if isinstance(v, bool) or not isinstance(v, (int, float)):
-        raise ApiError(400, "%s must be a number" % key)
-    if not lo <= v <= hi:
-        raise ApiError(400, "%s must be between %g and %g" % (key, lo, hi))
-    return float(v)
-
-
-def _int_param(ctx: Ctx, i: int = 0) -> int:
-    return int(ctx.params[i])
+from app.web.http import ApiError, Ctx, _int_param, _json_default, _num  # noqa: F401  (request types)
 
 
 # -- auth routes ---------------------------------------------------------------
@@ -240,96 +193,22 @@ def logout(ctx: Ctx):
     return {"ok": True}
 
 
-def _broker_session_hash(ctx: Ctx) -> str:
-    token = ctx.handler.cookies().get(auth.SESSION_COOKIE) if ctx.handler else None
-    if not token:
-        raise ApiError(401, "Please sign in again before connecting a brokerage.")
-    return auth.hash_token(token)
-
-
-def _broker_call(fn, *args, **kwargs):
-    try:
-        return fn(*args, **kwargs)
-    except broker_oauth.Error as exc:
-        raise ApiError(exc.status, str(exc)) from None
-
-
-def broker_connections(ctx: Ctx):
-    return _broker_call(broker_oauth.list_brokers, ctx.cur, ctx.uid)
-
-
-def broker_connect(ctx: Ctx):
-    provider = ctx.params[0]
-    environment = ctx.body.get("environment", broker_oauth.PROVIDERS[provider]["default_environment"])
-    return _broker_call(broker_oauth.connect, ctx.conn, ctx.uid, provider, environment,
-                        _broker_session_hash(ctx), permission=ctx.body.get("permission", "read"))
-
-
-def broker_callback(ctx: Ctx):
-    provider = ctx.params[0]
-    result = _broker_call(broker_oauth.callback, ctx.conn, ctx.uid, provider, ctx.query,
-                          _broker_session_hash(ctx))
-    # Only fixed provider/status identifiers enter the return URL. Provider
-    # errors, codes, request tokens and state are never reflected into the SPA.
-    return ("redirect", "/settings/account?broker=%s&broker_status=%s" % (provider, result))
-
-
-def broker_disconnect(ctx: Ctx):
-    return _broker_call(broker_oauth.disconnect, ctx.conn, ctx.uid, ctx.params[0],
-                        ctx.body.get("environment"))
-
-
-def _paper_call(fn, *args, **kwargs):
-    try:
-        return fn(*args, **kwargs)
-    except alpaca_paper.Error as exc:
-        raise ApiError(exc.status, str(exc)) from None
-
-
-def alpaca_paper_account(ctx: Ctx):
-    return _paper_call(alpaca_paper.overview, ctx.conn, ctx.uid)
-
-
-def alpaca_paper_draft(ctx: Ctx):
-    return _paper_call(alpaca_paper.create_order, ctx.conn, ctx.uid, ctx.body)
-
-
-def alpaca_paper_action(ctx: Ctx):
-    operation = {"submit": alpaca_paper.submit_order, "refresh": alpaca_paper.refresh_order,
-                 "cancel": alpaca_paper.cancel_order}[ctx.params[1]]
-    return _paper_call(operation, ctx.conn, ctx.uid, _int_param(ctx))
-
-
-def _perps_live_call(fn, *args):
-    try:
-        return fn(*args)
-    except kalshi_perps_trading.Error as exc:
-        raise ApiError(exc.status, str(exc)) from None
-
-
-def kalshi_perps_live_account(ctx: Ctx):
-    return _perps_live_call(kalshi_perps_trading.overview, ctx.conn, ctx.uid)
-
-
-def kalshi_perps_live_policy(ctx: Ctx):
-    return _perps_live_call(kalshi_perps_trading.save_policy, ctx.conn, ctx.uid, ctx.body)
-
-
-def kalshi_perps_live_draft(ctx: Ctx):
-    return _perps_live_call(kalshi_perps_trading.create_order, ctx.conn, ctx.uid, ctx.body)
-
-
-def kalshi_perps_live_proposal(ctx: Ctx):
-    return _perps_live_call(kalshi_perps_trading.preview_proposal,
-                            ctx.conn, ctx.uid, _int_param(ctx), ctx.body)
-
-
-def kalshi_perps_live_action(ctx: Ctx):
-    operation = {"submit": kalshi_perps_trading.submit_order,
-                 "refresh": kalshi_perps_trading.refresh_order,
-                 "cancel": kalshi_perps_trading.cancel_order}[ctx.params[1]]
-    args = (ctx.conn, ctx.uid, _int_param(ctx))
-    return _perps_live_call(operation, *args) if ctx.params[1] == "refresh" else _perps_live_call(operation, *args, ctx.body)
+from app.web.routes.brokers import (  # noqa: F401  (routes registered in ROUTES below)
+    broker_connections,
+    broker_connect,
+    broker_callback,
+    broker_disconnect,
+    _paper_call,
+    alpaca_paper_account,
+    alpaca_paper_draft,
+    alpaca_paper_action,
+    _perps_live_call,
+    kalshi_perps_live_account,
+    kalshi_perps_live_policy,
+    kalshi_perps_live_draft,
+    kalshi_perps_live_proposal,
+    kalshi_perps_live_action,
+)
 
 
 # -- read routes ---------------------------------------------------------------
