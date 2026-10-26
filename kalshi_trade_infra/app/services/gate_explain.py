@@ -556,3 +556,51 @@ def for_event(message: Optional[str], data: Optional[Dict[str, Any]]) -> List[Li
         return stat_checks(st, "validation", st.get("min_sample"), d.get("classification"),
                            n_tested=st.get("n_tested"))
     return []
+
+
+# -- the run feed's other verdict lines, in plain words ---------------------------------------------
+
+def _count(v: Any) -> Optional[int]:
+    f = _f(v)
+    return int(round(f)) if f is not None else None
+
+
+def event_note(message: Optional[str], data: Optional[Dict[str, Any]]) -> Optional[str]:
+    """One plain sentence for a run verdict event whose own message is written for the ledger
+    ("validation verdict is gatekeeper-held (classification=...)", "Lead scan: control arm",
+    "Model tiering: ..."), or None when the message already reads plainly or its for_event lines
+    say it. The run page shows it in place of that message. Built from the numbers the event
+    carries; display only, and nothing here reaches the generator."""
+    d = data or {}
+    msg = str(message or "")
+    phase = d.get("phase") or ("leads" if msg.startswith("Lead scan:") else "screen" if msg.startswith("Model tiering:") else None)
+    if phase == "leads":
+        if d.get("arm") != "leads":
+            return "Went straight to ideas, with no scan of the data first."
+        n, tests = _count(d.get("n_leads")), _count(d.get("tests"))
+        if n is None or not tests:
+            return "Scanned the research data for mispriced setups first."
+        return ("Scanned the research data for mispriced setups first: %s of %s held up after correcting "
+                "for testing so many at once." % (_int(n), _int(tests)))
+    if phase == "screen":
+        if d.get("arm") != "screen":
+            return "One model did every step of this session."
+        out, handed, rescued = (_count(d.get(k)) or 0 for k in ("screened_out", "handed_over", "rescued"))
+        return ("A quicker model screened the ideas first: %d set aside, %d passed on to be developed%s."
+                % (out, handed, (", and a second look brought back %d" % rescued) if rescued else ""))
+    stats = d.get("stats") if isinstance(d.get("stats"), dict) else {}
+    n = _count(stats.get("n_trades"))
+    trades = (" (%s)" % _trades(n)) if n is not None else ""
+    if phase == "holdout":
+        if d.get("skipped"):
+            return "The one-time final test on the locked holdout did not run."
+        if d.get("classification") in _PASSED:
+            return "Held up on the locked holdout, a final test it gets only once%s." % trades
+        return "Did not hold up on the locked holdout, a final test it gets only once%s." % trades
+    if phase == "forward":
+        return "Adds something new to what you already run." if d.get("marginal_ok") else None
+    if d.get("status") == "passed":
+        return "Passed every check on data it never saw%s." % trades
+    if "gatekeeper-held" in msg:
+        return "Did not pass on data it never saw%s." % trades
+    return None

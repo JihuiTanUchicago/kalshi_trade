@@ -1730,8 +1730,13 @@ test('Tau: a finished session says what to do next: your own idea after the exam
   const html = await at({status: 'succeeded'}, [{id: 42, title: '<b>Late</b> momentum', status: 'passed'}, {id: 43, title: 'Fade', status: 'rejected'}]);
   assert.match(html, /Passed: <a href="\/strategies\/42">&lt;b&gt;Late&lt;\/b&gt; momentum<\/a>\. Open it to deploy it on paper\./);
   assert.doesNotMatch(html, /strategies\/43/);
-  assert.match(await at({status: 'succeeded'}, [{id: 43, title: 'Fade', status: 'rejected'}]), /Nothing passed this time\. Most ideas don’t\. Each idea in the log below says which check it missed and what to try next\. <a href="\/research\?new=1">Try another idea<\/a>/);
+  assert.match(await at({status: 'succeeded'}, [{id: 43, title: 'Fade', status: 'rejected'}]), /Nothing passed this time\. Most ideas don’t\. Each idea below says which check it missed; tap one for what to try next\. <a href="\/research\?new=1">Try another idea<\/a>/);
   assert.equal(await at({status: 'running'}, []), '');  // still going: nothing to do yet
+  // A failed session says why (escaped) and how to start again; a cancelled one says so too.
+  assert.match(await at({status: 'failed', error: 'The model <i>timed out</i>.'}, []),
+    /This session stopped on an error\. The model &lt;i&gt;timed out&lt;\/i&gt;\. <a href="\/research\?new=1">Start a new session<\/a>/);
+  assert.match(await at({status: 'cancelled'}, [{id: 43, title: 'Fade', status: 'rejected'}]),
+    /This session was cancelled before it finished\. The ideas it tested are listed below\. <a href="\/research\?new=1">Try another idea<\/a>/);
 });
 
 test('Tau: a finished session ends under its last log line with the way on: your own idea after the example, another idea or autopilot after nothing passed', async () => {
@@ -2396,17 +2401,67 @@ test('Tau: a run says per missed gate what was measured, what was needed and wha
   const reviews = items.map((li) => (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).filter(Boolean);  // the two hypothesis cards
   assert.deepEqual(missedRows(reviews[0]), MISSED_ROWS);
   assert.doesNotMatch(reviews[0], /classification=|gatekeeper-held|<b>sharpe/);  // the plain lines replace the raw note
-  assert.deepEqual(missedRows(reviews[1]), []);  // a pass lists nothing it missed
-  assert.match(reviews[1], /cleared every gate/);
-  // A verdict with no card of its own (the one-time holdout) lists its lines on its own row.
-  const holdout = items[items.length - 1].innerHTML;
+  // A pass lists nothing it missed; its one-time holdout lands on the same card after the verdict,
+  // with the lines it missed there, not on a loose row stamped VOID.
+  const [passPart, holdout] = reviews[1].split('Locked holdout');
+  assert.deepEqual(missedRows(passPart), []);
+  assert.match(passPart, /cleared every gate/);
   assert.deepEqual(missedRows(holdout), [MISSED_ROWS[0]]);
-  assert.doesNotMatch(holdout, /classification=/);
+  assert.match(holdout, /missed/);
+  assert.doesNotMatch(reviews[1], /classification=/);
+  assert.equal(items.filter((li) => !li.removed).length, 2);
   f.clearTimers();
   // Nothing passed: the next-step line says where the reasons are.
   const none = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run: {...run, strategies_passed: 0}, events: [], strategies: [{id: 41, title: 'Fade', status: 'failed'}]}) : response({})});
   await none.viewRun(9); none.clearTimers();
-  assert.match(none.root.querySelector('#runnext').innerHTML, /Each idea in the log below says which check it missed and what to try next\./);
+  assert.match(none.root.querySelector('#runnext').innerHTML, /Each idea below says which check it missed; tap one for what to try next\./);
+});
+
+test('Tau: a run says its ledger lines in plain words, with the zone of its times', async () => {
+  const run = {id: 9, status: 'succeeded', prompt: 'Session 9', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 2, strategies_passed: 1};
+  const at = '2026-10-17T10:01:00Z';
+  const events = [
+    {id: 1, kind: 'verdict', message: 'Lead scan: control arm, hypotheses first.', created_at: at,
+      data: {phase: 'leads', arm: 'control', why_failed: [], note: 'Went straight to ideas, with no scan of the data first.'}},
+    {id: 2, kind: 'hypothesis', message: 'Lean in', created_at: at, data: {in_sample: {pnl: 3, trades: 9}}},
+    {id: 3, kind: 'verdict', message: 'PASSED - Lean in: validation verdict is gatekeeper-held (classification=statistically_supported, 88 trades); the numbers never return to the generator.',
+      created_at: at, data: {status: 'passed', title: 'Lean in', strategy_id: 42, why_failed: [], note: 'Passed every check on data it never saw (88 trades).'}},
+    {id: 4, kind: 'verdict', message: 'Other: one-time holdout verdict is gatekeeper-held (classification=forward_validated, 31 trades); the numbers never return to the generator.',
+      created_at: at, data: {title: 'Other', phase: 'holdout', classification: 'forward_validated', why_failed: [], note: 'Held up on the locked holdout, a final test it gets only once (31 trades).'}},
+    {id: 5, kind: 'verdict', message: 'DROPPED "Thin" (no candidate) — every variant took 0 trades', created_at: at,
+      data: {title: 'Thin', status: 'abandoned', why: 'every variant took 0 trades', why_failed: []}},
+  ];
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies: []}) : response({})});
+  await f.viewRun(9); await flush();
+  const log = f.root.querySelector('#log').children.filter((li) => !li.removed).map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('\n');
+  assert.doesNotMatch(log, /classification=|gatekeeper-held|control arm|VOID/);
+  assert.match(log, /Went straight to ideas, with no scan of the data first\./);
+  assert.match(log, /Passed every check on data it never saw \(88 trades\)\./);
+  assert.match(log, /Locked holdout · held<\/span><span class="hx-vtext">Held up on the locked holdout/);
+  assert.match(log, /DROPPED<\/b> <b>Thin<\/b> — every variant took 0 trades/);
+  assert.match(log, /<time datetime="2026-10-17T10:01:00Z" title="[^"]+">/);
+  f.clearTimers();
+});
+
+test('Tau: a run lists each idea it tested with its outcome and first missed check, passed first, each jumping to its card', async () => {
+  const run = {id: 9, status: 'succeeded', prompt: 'Session 9', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 2, strategies_passed: 1};
+  const at = '2026-10-17T10:01:00Z';
+  const events = [
+    {id: 1, kind: 'hypothesis', message: 'Fade <b>', created_at: at, data: {in_sample: {pnl: 4.5, trades: 8}}},
+    {id: 2, kind: 'verdict', message: 'FAILED - Fade <b>: ...', created_at: at, data: {status: 'failed', title: 'Fade <b>', strategy_id: 41, why_failed: MISSED}},
+    {id: 3, kind: 'hypothesis', message: 'Lean in', created_at: at, data: {in_sample: {pnl: 3, trades: 9}}},
+    {id: 4, kind: 'verdict', message: 'PASSED - Lean in: ...', created_at: at, data: {status: 'passed', title: 'Lean in', strategy_id: 42, why_failed: []}},
+  ];
+  const strategies = [{id: 41, title: 'Fade <b>', status: 'failed'}, {id: 42, title: 'Lean in', status: 'passed'}];
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies}) : response({})});
+  await f.viewRun(9); await flush();
+  const ideas = f.root.querySelector('#runideas').innerHTML;
+  assert.match(ideas, /<h2>Ideas tested<\/h2>/);
+  assert.ok(ideas.indexOf('Lean in') < ideas.indexOf('Fade'), 'passed first');
+  assert.match(ideas, /<span class="hx-stamp pass">Passed<\/span><button type="button" class="ri-title" data-goto="42">Lean in<\/button><span class="ri-why"><a href="\/strategies\/42">/);
+  assert.match(ideas, new RegExp(`<span class="hx-stamp void">Void</span><button type="button" class="ri-title" data-goto="41">Fade &lt;b&gt;</button><span class="ri-why">Missed: ${MISSED[0].label} · 1 more check</span>`));
+  assert.ok(f.root.querySelector('#log').children.some((li) => li.dataset && String(li.dataset.sid) === '41'), 'the card is the jump target');
+  f.clearTimers();
 });
 
 test('Tau: the strategy page lists what it missed under Verdict and names the first in the Deploy notice', async () => {

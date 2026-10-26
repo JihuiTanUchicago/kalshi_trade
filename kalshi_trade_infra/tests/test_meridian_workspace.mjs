@@ -1544,7 +1544,7 @@ test('Research results keep every returned status and source value with escaped 
   const reorderedLink = results.querySelector('a[href="/strategies/12"]');
   assert.notEqual(reorderedLink, originalLink); assert.equal(originalLink.isConnected, false);
   assert.equal(f.document.activeElement, reorderedLink); assert.equal(reorderedLink.focusOptions.preventScroll, true);
-  assert.deepEqual(results.querySelectorAll('tbody .name a').map(a => a.getAttribute('href')), [15, 14, 13, 12, 11].map(id => `/strategies/${id}`));
+  assert.deepEqual(results.querySelectorAll('tbody .name a').map(a => a.getAttribute('href')), [11, 15, 14, 13, 12].map(id => `/strategies/${id}`));  // passed first, the rest as returned
   payload = {...payload, strategies: strategies.filter(s => s.id !== 12)}; poll(); await flush();
   assert.equal(reorderedLink.isConnected, false); assert.equal(f.document.activeElement, f.document.body);
   const outside = f.root.querySelector('.profile-trig'); outside.focus();
@@ -3679,23 +3679,70 @@ test('Meridian: a run says per missed gate what was measured, what was needed an
   const reviews = items.map((li) => (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).filter(Boolean);  // the two hypothesis cards
   assert.deepEqual(missedRows(reviews[0]), MISSED_ROWS);
   assert.doesNotMatch(reviews[0], /classification=|gatekeeper-held|<b>sharpe/);  // the plain lines replace the raw note
-  assert.deepEqual(missedRows(reviews[1]), []);  // a pass lists nothing it missed
-  assert.match(reviews[1], /cleared every gate/);
-  // A verdict with no card of its own (the one-time holdout) lists its lines on its own row.
-  const holdout = items[items.length - 1].innerHTML;
+  // A pass lists nothing it missed; its one-time holdout lands on the same card after the verdict,
+  // with the lines it missed there, not on a loose row stamped VOID.
+  const [passPart, holdout] = reviews[1].split('Locked holdout');
+  assert.deepEqual(missedRows(passPart), []);
+  assert.match(passPart, /cleared every gate/);
   assert.deepEqual(missedRows(holdout), [MISSED_ROWS[0]]);
-  assert.doesNotMatch(holdout, /classification=/);
+  assert.match(holdout, /missed/);
+  assert.doesNotMatch(reviews[1], /classification=/);
+  assert.equal(items.filter((li) => !li.removed).length, 2);
   // The agent log folds shut once a session ends, so the Strategies list carries each miss too:
   // the first gate under the strategy's name, and a link to the rest on its page; a pass shows none.
+  // Passed strategies lead the list.
   const rows = f.root.querySelector('#run-artifacts').innerHTML.split('<tr').slice(2);
-  assert.deepEqual(missedRows(rows[0]), [MISSED_ROWS[0]]);
-  assert.match(rows[0], /<a class="sub-fig" href="\/strategies\/41">1 more check on its page<\/a>/);
-  assert.doesNotMatch(rows[1], /slip-missed/);
+  assert.deepEqual(missedRows(rows[1]), [MISSED_ROWS[0]]);
+  assert.match(rows[1], /<a class="sub-fig" href="\/strategies\/41">1 more check on its page<\/a>/);
+  assert.doesNotMatch(rows[0], /slip-missed/);
   f.clearTimers();
   // Nothing passed: the next-step line says where the reasons are.
   const none = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run: {...run, strategies_passed: 0}, events: [], strategies: [{id: 41, title: 'Fade', status: 'failed'}]}) : response({})});
   await none.viewRun(9); none.clearTimers();
   assert.match(none.root.querySelector('#runnext').innerHTML, /Each strategy below says which check it missed and what to try next\./);
+});
+
+test('Meridian: a run says its ledger lines in plain words, with the zone of its times', async () => {
+  const run = {id: 9, status: 'succeeded', prompt: 'Session 9', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 2, strategies_passed: 1};
+  const at = '2026-10-17T10:01:00Z';
+  const events = [
+    {id: 1, kind: 'verdict', message: 'Lead scan: control arm, hypotheses first.', created_at: at,
+      data: {phase: 'leads', arm: 'control', why_failed: [], note: 'Went straight to ideas, with no scan of the data first.'}},
+    {id: 2, kind: 'hypothesis', message: 'Lean in', created_at: at, data: {in_sample: {pnl: 3, trades: 9}}},
+    {id: 3, kind: 'verdict', message: 'PASSED - Lean in: validation verdict is gatekeeper-held (classification=statistically_supported, 88 trades); the numbers never return to the generator.',
+      created_at: at, data: {status: 'passed', title: 'Lean in', strategy_id: 42, why_failed: [], note: 'Passed every check on data it never saw (88 trades).'}},
+    {id: 4, kind: 'verdict', message: 'Other: one-time holdout verdict is gatekeeper-held (classification=forward_validated, 31 trades); the numbers never return to the generator.',
+      created_at: at, data: {title: 'Other', phase: 'holdout', classification: 'forward_validated', why_failed: [], note: 'Held up on the locked holdout, a final test it gets only once (31 trades).'}},
+    {id: 5, kind: 'verdict', message: 'DROPPED "Thin" (no candidate) — every variant took 0 trades', created_at: at,
+      data: {title: 'Thin', status: 'abandoned', why: 'every variant took 0 trades', why_failed: []}},
+  ];
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies: []}) : response({})});
+  await f.viewRun(9); await flush();
+  const log = f.root.querySelector('#log').children.filter((li) => !li.removed).map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('\n');
+  assert.doesNotMatch(log, /classification=|gatekeeper-held|control arm|VOID/);
+  assert.match(log, /Went straight to ideas, with no scan of the data first\./);
+  assert.match(log, /Passed every check on data it never saw \(88 trades\)\./);
+  assert.match(log, /Locked holdout · held<\/span><span class="hx-vtext">Held up on the locked holdout/);
+  assert.match(log, /DROPPED<\/b> <b>Thin<\/b> — every variant took 0 trades/);
+  assert.match(log, /<time datetime="2026-10-17T10:01:00Z" title="[^"]+">/);
+  f.clearTimers();
+});
+
+test('Meridian: a long session shows its first strategies and folds the rest behind Show all', async () => {
+  const strategies = Array.from({length: 12}, (_, i) => ({id: 100 + i, title: 'Idea ' + i, status: i === 9 ? 'passed' : 'failed', market: 'btc15m', direction: 'momentum'}));
+  const run = {id: 9, status: 'stopped', prompt: 'Session 9', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 12, strategies_passed: 1};
+  const f = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events: [], strategies}) : response({})});
+  await f.viewRun(9); await flush();
+  const results = f.root.querySelector('#run-artifacts');
+  assert.equal(results.querySelectorAll('tbody tr').length, 8);
+  assert.equal(results.querySelector('tbody .name a').getAttribute('href'), '/strategies/109');  // the pass leads
+  assert.match(results.innerHTML, /data-allstrats[^>]*>Show all 12<\/button>/);
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Stopped/);
+  f.clearTimers();
+  // A failed session says why and how to start again, above the folded log.
+  const bad = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run: {...run, status: 'failed', error: 'The model <i>timed out</i>.'}, events: [], strategies: []}) : response({})});
+  await bad.viewRun(9); bad.clearTimers();
+  assert.match(bad.root.querySelector('#runnext').innerHTML, /This session stopped on an error\. The model &lt;i&gt;timed out&lt;\/i&gt;\. <a href="\/research\?new=1">Start a new session<\/a>/);
 });
 
 test('Meridian: the strategy page lists what it missed under Verdict and names the first in the Deploy notice', async () => {

@@ -1820,6 +1820,15 @@ body.landing-body .apf { display: none; }
 .research-ap button.busy { opacity: .6; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .run-next .btn { display: table; margin: 10px 0 0; }
+/* Ideas tested (runIdeas): each idea's outcome and the first check it missed, above the log. */
+.run-ideas { margin: 0 0 24px; }
+.ri-list { list-style: none; padding: 0; margin: 0; }
+.ri-list li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.ri-list .hx-stamp { margin-left: 0; grid-row: span 2; min-width: 74px; justify-content: center; }
+.ri-title { background: none; border: 0; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.ri-title:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ri-why { grid-column: 2; font-size: 13px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+.ri-rest > summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; color: var(--ink); }
 /* The foot of a finished session (runEnd), under the log's last line: its way on, as plain buttons. */
 .run-end { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 14px 0 0; }
 .run-end .research-ap { flex: 1 1 260px; margin: 0; }
