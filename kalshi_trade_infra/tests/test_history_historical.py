@@ -241,3 +241,14 @@ def test_rotation_starts_at_a_random_point_after_a_restart(monkeypatch):
     mh._candle_rotation = None
     mh.sync_all_markets(_Cur(), [_cat("a"), _cat("b"), _cat("c")], None, 0.0, {})  # budget already gone
     assert mh._candle_rotation == 2
+
+
+def test_history_skips_long_tail_props_but_keeps_lines_weather_curated_and_requested():
+    curated = next(iter(CURATED.values()))
+    wanted = {m.series for m in [_series("a", "KXNBAGAME"), _series("b", "KXCANPLSPREAD"), _series("c", "KXMLBINNINGTOTAL"),
+                                 _series("d", "KXWTAMATCH"), _series("e", "KXHIGHTSEA"), curated]
+              if mh._history_wanted(m, [])}
+    assert wanted == {"KXNBAGAME", "KXCANPLSPREAD", "KXMLBINNINGTOTAL", "KXWTAMATCH", "KXHIGHTSEA", curated.series}
+    prop = _series("kxnflffweeklead", "KXNFLFFWEEKLEAD")
+    assert not mh._history_wanted(prop, [])
+    assert mh._history_wanted(prop, ["kxnflffweeklead"])   # research asked for it

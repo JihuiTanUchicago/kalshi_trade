@@ -1,3 +1,4 @@
+import json
 import pymysql
 import pytest
 
@@ -48,6 +49,15 @@ def test_trade_row_from_a_ws_trade_message():
     assert (trade_id, ticker, taker) == ("t-1", "KXBTC15M-X-1", "no")
     assert (yes, no, count) == (0.36, 0.64, 136.0)
     assert created.isoformat() == "2022-11-22T20:44:01" and created.tzinfo is None
+
+
+def test_trade_row_raw_json_keeps_only_fields_without_a_column():
+    msg = {"trade_id": "t-9", "market_ticker": "K", "yes_price_dollars": "0.2", "no_price_dollars": "0.8",
+           "count_fp": "12.00", "taker_side": "yes", "ts": 1792969888, "ts_ms": 1792969888116,
+           "taker_outcome_side": "yes", "taker_book_side": "bid", "is_block_trade": False}
+    raw = json.loads(forward_collector.trade_row(msg)[-1])
+    assert raw == {"ts_ms": 1792969888116, "taker_outcome_side": "yes", "taker_book_side": "bid",
+                   "is_block_trade": False}
 
 
 def test_trade_row_falls_back_to_cents_and_integer_count():
