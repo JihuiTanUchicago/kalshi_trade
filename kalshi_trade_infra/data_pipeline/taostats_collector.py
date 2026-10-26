@@ -1,6 +1,6 @@
 """Collector for the TAO (Bittensor subnet-token) research venue (TAO_VENUE_DESIGN.md §B).
 
-Polls the taostats v1 API on a cron and writes, via app.tao_repository (no inline SQL):
+Polls the taostats v1 API on a cron and writes, via app.adapters.tao.tao_repository (no inline SQL):
   * spot_candles_1m[symbol=TAO-SN{n}] - each subnet's alpha price in TAO (the AMM pool ratio),
   * spot_candles_1m[symbol=TAO-USD]   - the TAO/USD rate (alpha-in-USD is derived, not stored),
   * tao_subnet_features               - pool reserves (drive the fill model) + emission weight,
@@ -32,7 +32,7 @@ from typing import Dict, List, Optional
 
 import requests
 
-from app import tao_repository
+from app.adapters.tao import tao_repository
 from app.markets import MARKETS, TAO_USD_SYMBOL
 from data_pipeline.common import get_db_conn, utc_now
 

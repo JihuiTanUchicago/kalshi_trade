@@ -230,7 +230,7 @@ def reconcile_all(conn) -> Dict[str, int]:
     sweep — and the engine loop that calls it — never crashes. READ-ONLY against the
     exchange; writes only the audit trail + user notifications (+ adopted rows when
     the default-OFF flag is set). Never places an order."""
-    from app import kalshi_account
+    from app.adapters.kalshi import kalshi_account
 
     adopt = os.getenv("APP_RECONCILE_ADOPT_ORPHANS") == "1"
     summary = {"users": 0, "discrepancies": 0, "errors": 0}

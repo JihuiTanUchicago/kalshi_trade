@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 import pytest
 import requests
 
-from app.kalshi_perps_data import BASE_URLS, Config, KalshiPerpsDataClient
+from app.adapters.kalshi_perps.kalshi_perps_data import BASE_URLS, Config, KalshiPerpsDataClient
 from app.adapters.data.market_data_common import MarketDataError
 from tests.test_kalshi_perps_data import Response, Session
 

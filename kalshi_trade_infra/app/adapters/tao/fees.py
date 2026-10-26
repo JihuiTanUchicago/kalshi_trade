@@ -1,8 +1,8 @@
 """The TAO swap fee as a ``trading_core.ports.FeeModel``. Price impact is not a fee: it is already
-in the fill price (``app.tao_fees.fill_price``), so this charges only the per-swap chain cost."""
+in the fill price (``app.adapters.tao.tao_fees.fill_price``), so this charges only the per-swap chain cost."""
 from __future__ import annotations
 
-from app import tao_fees
+from app.adapters.tao import tao_fees
 from trading_core.domain import Instrument
 
 

@@ -808,7 +808,7 @@ def research_unavailable_reason(market: Optional[str]) -> Optional[str]:
     if market in MARKETS and MARKETS[market].tick_history_short():
         return MARKETS[market].tick_history_short()
     if market in MARKETS and MARKETS[market].kind == "perpetual":
-        from app.kalshi_perps_data import Config
+        from app.adapters.kalshi_perps.kalshi_perps_data import Config
         from app.adapters.data.market_data_common import MarketDataError
         try:
             Config.from_env().require_enabled()
@@ -851,7 +851,7 @@ def _pick_market(run: Dict, model: ModelFn, usage: Usage, log, keys: Optional[Li
     fit the idea (guided by the brief + the user's cross-market research history), from the
     data-ready `keys` only. One cheap call before the research loop."""
     idea = (run.get("prompt") or "").strip() or "any durable, fee-surviving edge"
-    from app.kalshi_perps_data import Config as PerpsConfig
+    from app.adapters.kalshi_perps.kalshi_perps_data import Config as PerpsConfig
     from app.adapters.data.market_data_common import MarketDataError
     try:
         perps_enabled = PerpsConfig.from_env().enabled
@@ -3928,14 +3928,14 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
     reason = str(action.get("reason") or "").strip()[:1000] or "No reason given."
     user_id = user["id"]
     if kind == "kalshi_perps_order":
-        from app import kalshi_perps_trading
+        from app.adapters.kalshi_perps import kalshi_perps_trading
         try:
             return kalshi_perps_trading.propose_for_agent(
                 cur, user_id, {k: v for k, v in action.items() if k not in ("type", "kind")})
         except kalshi_perps_trading.Error as exc:
             return "I could not propose that Bitcoin perps order: %s" % exc, None
     if kind == "alpaca_paper_order":
-        from app import alpaca_paper
+        from app.adapters.alpaca import alpaca_paper
         try:
             return alpaca_paper.propose_for_agent(cur, user_id, action)
         except alpaca_paper.Error as exc:
@@ -4620,10 +4620,10 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
         else:
             task = "Answer the user's latest message."
         prompt = "%s\n\nRecent conversation:\n%s\n\n%s\n\n%s" % (_copilot_context(cur, user), transcript or "(none)", task, ACTIONS_GUIDE)
-        from app import alpaca_paper
+        from app.adapters.alpaca import alpaca_paper
         if alpaca_paper.enabled():
             prompt += "\n\n" + alpaca_paper.agent_context(conn, user["id"])
-        from app import kalshi_perps_trading
+        from app.adapters.kalshi_perps import kalshi_perps_trading
         if kalshi_perps_trading.enabled():
             prompt += "\n\n" + kalshi_perps_trading.agent_context(conn, user["id"])
         market_data = AgentMarketData(DataScope(), lambda kind, message, data=None:

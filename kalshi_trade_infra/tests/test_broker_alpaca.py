@@ -3,7 +3,7 @@ import pytest
 import requests
 from urllib.parse import parse_qs, urlsplit
 
-from app import broker_alpaca as alpaca
+from app.adapters.brokers import broker_alpaca as alpaca
 
 
 class Response:

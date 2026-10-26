@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import requests
 
-from app import broker_robinhood as broker
+from app.adapters.brokers import broker_robinhood as broker
 
 
 class Response:

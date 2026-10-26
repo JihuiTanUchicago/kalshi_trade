@@ -63,7 +63,7 @@ small completed interval:
 ```bash
 export TAU_KALSHI_PERPS_ENABLED=1
 export TAU_KALSHI_PERPS_ENVIRONMENT=production
-.venv/bin/python -m app.kalshi_perps_collector \
+.venv/bin/python -m app.adapters.kalshi_perps.kalshi_perps_collector \
   --start 2026-10-21T00:00:00Z --end 2026-10-22T00:00:00Z
 ```
 
@@ -104,7 +104,7 @@ real database during this implementation:
 3. Backfill available completed history, for example:
 
    ```bash
-   .venv/bin/python -m app.kalshi_perps_collector \
+   .venv/bin/python -m app.adapters.kalshi_perps.kalshi_perps_collector \
      --start 2026-09-01T00:00:00Z --end 2026-10-22T00:00:00Z --persist
    ```
 

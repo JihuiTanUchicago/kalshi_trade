@@ -43,33 +43,23 @@ layers =
     (services) | (adapters)
 exhaustive = False
 ignore_imports =
-    ; app.repository is the legacy DB facade: it re-exports the per-aggregate modules split into
-    ; app.adapters.db (step 6), and services still reach the DB through it until step 8 injects
-    ; repositories. A service importing app.adapters directly is still refused.
-    app.repository -> app.adapters.db.*
-    ; app.backtest is the legacy research backtest: with TAU_BACKTEST_ENGINE=loop it runs DSL specs
-    ; through the Kalshi TradingLoop adapter (step 8c). Services reach it via gatekeeper/partitions.
-    ; Delete when the backtest itself moves under app.services with the adapter injected.
-    app.backtest -> app.adapters.kalshi.spec_strategy
-    ; app.engine is the legacy paper/live engine: with TAU_ENGINE_LOOP=paper it runs a decision as a
-    ; TradingLoop step over the Kalshi and DB adapters (step 8, paper). Delete when the engine's
-    ; decision moves under app.services with its adapters injected by the bootstrap.
-    app.engine -> app.adapters.**
-    ; The legacy backtest (forecast_book) and engine (run_forever, the live composition root until
-    ; app.bootstrap exists) wire the Polymarket fair-value book in themselves; services reach them via
-    ; gatekeeper/agent. Delete when step 5 injects FeatureProviders from app.bootstrap.
-    app.backtest -> app.adapters.polymarket.features
-    app.engine -> app.adapters.polymarket.features
-    app.engine -> app.adapters.polymarket.store
-    ; The external data clients (sports odds, weather forecasts, options, free data, tick datasets,
-    ; market-data helpers) moved into app.adapters.data on 2026-10-26. The flat legacy modules already
-    ; imported them, so this records existing dependencies, not new ones. `*` is one segment: it
-    ; covers app.<legacy module> only, never app.services.* or app.web.*. Narrow it as those modules
-    ; move under app.services with the providers injected (step 5).
-    app.* -> app.adapters.data.*
-    ; services.markets catches the perps config error type (MarketDataError) next to its legacy perps
-    ; imports; goes when perps moves behind the Venue port (step 11).
+    ; The flat legacy modules (app.<name>: engine, backtest, repository, markets, agent, server, ...)
+    ; are today's composition root: they wire the adapters in themselves, and services reach some of
+    ; them (gatekeeper, partitions, backtest, repository). `*` is one segment, so this covers only
+    ; app.<legacy module>, never app.services.* or app.web.*: a service importing an adapter directly
+    ; is still refused unless named below. It narrows by itself as the app/ layout moves each flat
+    ; module into its layer (ARCHITECTURE.md), and goes when app.bootstrap injects the adapters.
+    app.* -> app.adapters.**
+    ; Named service -> adapter edges, each with the step that removes it:
+    ; services.markets reads perps readiness (config, error type, collection batches); step 11 puts
+    ; perps behind the Venue port.
     app.services.markets -> app.adapters.data.market_data_common
+    app.services.markets -> app.adapters.kalshi_perps.kalshi_perps_data
+    app.services.markets -> app.adapters.kalshi_perps.kalshi_perps_repository
+    ; services.demo_record's default positions reader builds the demo client from the user's key;
+    ; step 8 injects it from app.bootstrap.
+    app.services.demo_record -> app.adapters.kalshi.kalshi_account
+    app.services.demo_record -> app.adapters.kalshi.kalshi_dev_exec
 ; Add when app.web exists: a forbidden contract app.web -> app.adapters (web reaches adapters only
 ; through services and the bootstrap wiring).
 
@@ -83,7 +73,7 @@ forbidden_modules =
 ignore_imports =
     ; runs on the web box, not the collector (scripts/systemd). Move to app.adapters when migrated.
     data_pipeline.taostats_collector -> app.markets
-    data_pipeline.taostats_collector -> app.tao_repository
+    data_pipeline.taostats_collector -> app.adapters.tao.tao_repository
 
 [importlinter:contract:server-is-top]
 name = nothing imports the web server module

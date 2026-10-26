@@ -373,7 +373,7 @@ def research_guide(market: str) -> str:
 
 
 def _validate_perpetual_spec(raw: Dict) -> Dict[str, Any]:
-    from app.kalshi_perps_backtest import normalize_assumptions
+    from app.adapters.kalshi_perps.kalshi_perps_backtest import normalize_assumptions
 
     extra = set(raw) - {"market", "sizing", "perpetual"}
     if extra:

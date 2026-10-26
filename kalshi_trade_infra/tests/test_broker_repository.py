@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app import broker_repository as repo
+from app.adapters.brokers import broker_repository as repo
 
 NOW = datetime(2026, 10, 17, 12, 0, 0)
 CIPHER = b"\x01" + b"synthetic-ciphertext" * 3

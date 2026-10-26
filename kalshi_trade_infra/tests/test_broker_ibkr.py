@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import dh, padding, rsa
 import pytest
 import requests
 
-from app import broker_ibkr as broker
+from app.adapters.brokers import broker_ibkr as broker
 
 # RFC3526 group 14, used only as public fixture parameters (not an IBKR claim).
 PRIME = int("""

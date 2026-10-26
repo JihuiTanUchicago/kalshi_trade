@@ -6,7 +6,8 @@ degradation when demo creds or data are absent.
 """
 from datetime import datetime, timezone
 
-from app import backtest, kalshi_dev
+from app import backtest
+from app.adapters.kalshi import kalshi_dev
 from app import spec as specmod
 from app.markets import MARKETS
 

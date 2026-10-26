@@ -6,7 +6,8 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from app import server, agent, alpaca_paper
+from app import server, agent
+from app.adapters.alpaca import alpaca_paper
 
 
 @pytest.fixture

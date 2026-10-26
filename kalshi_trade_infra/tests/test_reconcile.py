@@ -237,7 +237,7 @@ def test_multi_user_isolation(monkeypatch):
 
     exch_by_user = {1: {"T1": ExchPos(12, 6.0)}, 2: {"T2": ExchPos(5, 2.5)}}
     monkeypatch.setattr(reconcile.repo, "get_kalshi_key", lambda c, uid: {"user_id": uid})
-    import app.kalshi_account as ka
+    import app.adapters.kalshi.kalshi_account as ka
     monkeypatch.setattr(ka, "credentials_from_row", lambda uid, row: uid)
     monkeypatch.setattr(reconcile, "exchange_positions", lambda creds: exch_by_user[creds])
 
@@ -255,7 +255,7 @@ def test_reconcile_all_contains_one_user_failure(monkeypatch):
     cur = FakeCur(store)
     conn = FakeConn(cur)
     monkeypatch.setattr(reconcile.repo, "get_kalshi_key", lambda c, uid: {"user_id": uid})
-    import app.kalshi_account as ka
+    import app.adapters.kalshi.kalshi_account as ka
     monkeypatch.setattr(ka, "credentials_from_row", lambda uid, row: uid)
 
     def exch(creds):
@@ -314,7 +314,7 @@ def test_only_the_operator_key_includes_the_legacy_book(monkeypatch):
     monkeypatch.setattr(reconcile, "OPERATOR_KEY_ID", "op-key")
     keys = {1: {"key_id": "op-key"}, 2: {"key_id": "someone-else"}}
     monkeypatch.setattr(reconcile.repo, "get_kalshi_key", lambda c, uid: keys[uid])
-    import app.kalshi_account as ka
+    import app.adapters.kalshi.kalshi_account as ka
     monkeypatch.setattr(ka, "credentials_from_row", lambda uid, row: uid)
     monkeypatch.setattr(reconcile, "exchange_positions", lambda creds: {"T9": ExchPos(3, 1.5)})
     reconcile.reconcile_all(conn)

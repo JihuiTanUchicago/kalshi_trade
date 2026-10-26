@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import kalshi_perps_backtest as perps
+from app.adapters.kalshi_perps import kalshi_perps_backtest as perps
 from app.markets import Market
 
 

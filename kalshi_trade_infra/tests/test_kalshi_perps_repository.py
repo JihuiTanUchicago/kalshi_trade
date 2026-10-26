@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import kalshi_perps_data as data
-from app import kalshi_perps_repository as repo
+from app.adapters.kalshi_perps import kalshi_perps_data as data
+from app.adapters.kalshi_perps import kalshi_perps_repository as repo
 from app.adapters.data.market_data_common import MarketDataError
 from tests.test_kalshi_perps_data import END, NOW, instrument_row
 
@@ -313,8 +313,8 @@ def test_pre_window_observation_seeds_asof_feature_even_if_its_collection_range_
 
 def test_native_adapter_collector_repository_simulator_bridge_makes_causal_momentum_trade(cur):
     from decimal import Decimal
-    from app import kalshi_perps_backtest as replay
-    from app.kalshi_perps_collector import collect
+    from app.adapters.kalshi_perps import kalshi_perps_backtest as replay
+    from app.adapters.kalshi_perps.kalshi_perps_collector import collect
     from tests.test_kalshi_perps_data import Response, candle_row, client
 
     start = END - 6 * 60

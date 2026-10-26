@@ -189,7 +189,7 @@ class FrozenClock(datetime):
 
 def run_app(monkeypatch, cur, equity, now=NOW):
     from app import engine
-    import app.kalshi_account as ka
+    import app.adapters.kalshi.kalshi_account as ka
     import data_pipeline.common as common
 
     monkeypatch.setattr(engine, "datetime", type("Clock", (FrozenClock,), {"now_value": now}))

@@ -1,6 +1,6 @@
 """Authenticated Kalshi DEMO-environment execution client.
 
-The order-placing sibling of ``app/kalshi_dev.py`` (which is read-only, public,
+The order-placing sibling of ``app/adapters/kalshi/kalshi_dev.py`` (which is read-only, public,
 unauthenticated candlestick GETs). This one SIGNS with a user's own demo
 (sandbox) API key and places / cancels test orders and reads fills on Kalshi's
 demo exchange. It is NOT real money, but it is built with live-path care.
@@ -38,7 +38,7 @@ from app.execution.refusal import OrderRefused, definite_refusal
 from data_pipeline.architecture.execution_kernel import order_wire_params
 from data_pipeline.common import KalshiCredentials, kalshi_auth_headers
 
-# Kalshi demo base — same default and env var as the read-only app.kalshi_dev
+# Kalshi demo base — same default and env var as the read-only app.adapters.kalshi.kalshi_dev
 # client. Already ends with /trade-api/v2, so endpoints below are relative to it.
 KALSHI_DEV_API_BASE = os.getenv("KALSHI_DEV_API_BASE", "https://demo-api.kalshi.co/trade-api/v2").rstrip("/")
 
@@ -255,7 +255,7 @@ def demo_kernel_factory(conn, ws_feed=None) -> Callable[[int], object]:
     as the freshness backstop (P1-1); None => REST-only, as before. Demo places REAL sandbox orders,
     so it passes the same execution guards as live (P1-3), with the same limits and kill switch, on
     an instance of its own: a refused demo order never opens live's circuit breaker."""
-    from app import kalshi_account
+    from app.adapters.kalshi import kalshi_account
     from app.execution import demo_guarded_submitter, timed_submitter
     from data_pipeline.architecture.execution_kernel import MarketableLimitKernel
     from data_pipeline.architecture.position_guard import position_guarded_submitter

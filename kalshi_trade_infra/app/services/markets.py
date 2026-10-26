@@ -29,8 +29,8 @@ def researchable_markets(cur, ready_series: Optional[Set[str]] = None) -> List[D
     live_spot = repo.spot_symbols_with_data(cur, spot_underlyings)
     if ready_series is None:
         ready_series = repo.series_with_candles(cur)
-    from app import kalshi_perps_repository as perps_repo
-    from app.kalshi_perps_data import Config as PerpsConfig
+    from app.adapters.kalshi_perps import kalshi_perps_repository as perps_repo
+    from app.adapters.kalshi_perps.kalshi_perps_data import Config as PerpsConfig
     from app.adapters.data.market_data_common import MarketDataError
     try:
         perps_enabled = PerpsConfig.from_env().enabled

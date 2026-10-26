@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import kalshi_perps_collector as collector
-from app import kalshi_perps_data as data
+from app.adapters.kalshi_perps import kalshi_perps_collector as collector
+from app.adapters.kalshi_perps import kalshi_perps_data as data
 from app.adapters.data.market_data_common import MarketDataError
 from tests.test_kalshi_perps_data import END, NOW, Response, candle_row, client, instrument_row
 

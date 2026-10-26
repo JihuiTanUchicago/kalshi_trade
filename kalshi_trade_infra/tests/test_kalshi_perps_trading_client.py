@@ -9,7 +9,7 @@ import requests
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from app import kalshi_perps_trading_client as trading
+from app.adapters.kalshi_perps import kalshi_perps_trading_client as trading
 
 NOW = 1792719180.125
 TICKER = "SYNTHBTC"

@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 import requests
 
-from app import alpaca_paper_client as alpaca
+from app.adapters.alpaca import alpaca_paper_client as alpaca
 
 TOKEN = "synthetic-private-bearer-only"
 CLIENT_ID = "tau-paper-" + "a" * 32

@@ -259,8 +259,11 @@ def run_acceptance() -> dict:
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
     from pymysql.err import IntegrityError
-    from app import agent, kalshi_account as account, kalshi_perps_trading as trading
-    from app import kalshi_perps_orders_repository as store, repository as repo, server
+    from app import agent
+    from app.adapters.kalshi_perps import kalshi_perps_trading as trading
+    from app.adapters.kalshi import kalshi_account as account
+    from app import repository as repo, server
+    from app.adapters.kalshi_perps import kalshi_perps_orders_repository as store
     from data_pipeline.common import get_db_conn
 
     require(server.DEV_LOGIN and not server.SECURE_COOKIES and server.HOST == "127.0.0.1"

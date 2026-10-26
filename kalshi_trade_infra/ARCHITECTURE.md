@@ -137,8 +137,8 @@ does not sync move only together with their unit.
 | Group | Target | Status |
 |---|---|---|
 | External data clients: Databento, Exa, Massive, Alpaca data, market-data helpers, sports odds, weather forecasts, options fair value, free data, news journal, tick datasets | `app/adapters/data/` | done 2026-10-26 |
-| Brokers and venues: Alpaca paper, IBKR, Robinhood, broker OAuth/vault, Kalshi account/demo, Kalshi perps | `app/adapters/<venue>/` | next |
-| Research loop: agent, knowledge, market data, gatekeeper, partitions, RSI, tournament, sandbox, dreaming | `app/services/research/` | |
+| Brokers and venues: broker OAuth/vault/connectors (Alpaca, IBKR, Robinhood), Alpaca paper, Kalshi account/demo, Kalshi perps, TAO | `app/adapters/brokers/`, `alpaca/`, `kalshi/`, `kalshi_perps/`, `tao/` | done 2026-10-26 |
+| Research loop: agent, knowledge, market data, gatekeeper, partitions, RSI, tournament, sandbox, dreaming | `app/services/research/` | next |
 | Web: `server.py` split into routes, auth, billing, notify | `app/web/` | |
 | Trading: engine, reconcile, demo twins, TCA, track record | `app/services/trading/` | |
 | Entry points run by unsynced units (`market_history`, `sports_odds_collect`, `weather_fcst_collect`, `worldmonitor_data`, `market_data_config`, `worker`) | with their unit | |

@@ -7,7 +7,7 @@ the money math is testable without a live MySQL.
 """
 import pytest
 
-from app import kalshi_account
+from app.adapters.kalshi import kalshi_account
 from app import repository as repo
 
 

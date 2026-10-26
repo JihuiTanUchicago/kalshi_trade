@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pytest
 
 from app import agent, backtest, partitions, server, spec
-from app import kalshi_perps_backtest as simulator
-from app import kalshi_perps_repository as sources
+from app.adapters.kalshi_perps import kalshi_perps_backtest as simulator
+from app.adapters.kalshi_perps import kalshi_perps_repository as sources
 
 
 def forbidden(*_args, **_kwargs):

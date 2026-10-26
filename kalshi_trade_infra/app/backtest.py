@@ -284,7 +284,7 @@ def _simulate(spec: Dict, ds: Dataset, start_ts: int, end_ts: int, what_if: Opti
     if ds.market.kind == "perpetual" or specmod.is_perpetual_spec(spec):
         if ds.market.kind != "perpetual" or spec.get("market") != ds.market.key:
             raise ValueError("Perpetual research requires its own matching instrument dataset.")
-        from app.kalshi_perps_backtest import simulate as simulate_perpetual
+        from app.adapters.kalshi_perps.kalshi_perps_backtest import simulate as simulate_perpetual
         return simulate_perpetual(spec, ds, start_ts, end_ts, what_if)
     if spec.get("cross"):
         return simulate_pairs(spec, ds, start_ts, end_ts, what_if)
@@ -807,7 +807,7 @@ def _code_exit(book: Dict[int, Dict[str, Tuple[str, float]]], ts: int, pos: _Ope
 # taker fee. metrics()/gatekeeper consume the resulting Trade list unchanged. The code-strategy
 # seam is reused: signals(window) returns a per-frame target book, same as the binary path.
 
-from app import tao_fees  # noqa: E402  (local venue cost model, mirrors kalshi_fees import)
+from app.adapters.tao import tao_fees  # noqa: E402  (local venue cost model, mirrors kalshi_fees import)
 
 # Shorting an AMM-only asset is not possible on-chain (TAO_VENUE_DESIGN.md §D), so "short" picks
 # are parsed but dropped unless this is flipped on for research of a hypothetical short venue.
@@ -1197,8 +1197,8 @@ def load_from_db(market: Market, history_days: Optional[int] = None) -> Dataset:
                 contracts = rr.partition_contracts(cur, market, since)
                 return tick_dataset.load_window(market, contracts, 0, 2 ** 62)
             if market.kind == "perpetual":
-                from app.kalshi_perps_repository import load_history
-                from app.kalshi_perps_backtest import build_dataset as build_perpetual_dataset
+                from app.adapters.kalshi_perps.kalshi_perps_repository import load_history
+                from app.adapters.kalshi_perps.kalshi_perps_backtest import build_dataset as build_perpetual_dataset
                 utc_since = since.replace(tzinfo=timezone.utc) if since.tzinfo is None else since
                 return build_perpetual_dataset(market, load_history(cur, market, int(utc_since.timestamp())))
             h = repo.load_history(cur, market.series, market.candle_minutes, since, market.underlying,

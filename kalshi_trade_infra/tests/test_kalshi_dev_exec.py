@@ -7,7 +7,7 @@ host, and (3) the dev-key round-trips through the repository layer.
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from app import kalshi_dev_exec as dx
+from app.adapters.kalshi import kalshi_dev_exec as dx
 from app import repository as repo
 
 DEMO_BASE = "https://demo-api.kalshi.co/trade-api/v2"

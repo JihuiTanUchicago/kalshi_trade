@@ -925,7 +925,7 @@ engine that separates GENERATION from JUDGMENT:
   (thesis/mechanism/pre-registered test/results/holdout + 5 charts) via `server.py`'s
   additive `experiment` block (old strategies → `experiment: null`).
 - Dev-env trading FOUNDATION (dormant until integrated): `app_kalshi_dev_keys` table,
-  per-user dev-key accessors in `repository.py`, and `app/kalshi_dev_exec.py` — an
+  per-user dev-key accessors in `repository.py`, and `app/adapters/kalshi/kalshi_dev_exec.py` — an
   authenticated Kalshi DEMO (sandbox) execution client, host-isolated so it can never
   reach the production exchange.
 - Dev-env trading INTEGRATION (BUILT, uncommitted — awaiting user review): `engine.decide`
@@ -1696,7 +1696,7 @@ re-provisioning). Deployed to the box and live at https://d1gfpzcosqrjya.cloudfr
   coin-flip strategies and an agent log, so the end-to-end flow is visible on first login. Seeded for
   all existing users on deploy; runs for new users at account creation.
 - **Owner Kalshi key connected.** The production key (`/opt/kalshi/.env` PROD_KEYID + prod_key.txt)
-  was encrypted into app user 1 (tjhprivate0416@gmail.com) server-side via `app.kalshi_account`
+  was encrypted into app user 1 (tjhprivate0416@gmail.com) server-side via `app.adapters.kalshi.kalshi_account`
   (never through chat). Verified against Kalshi (cash ~$56.58). **Live trading stays OFF**
   (`APP_LIVE_TRADING_ENABLED` unset); enabling real orders needs separate authorization AND the
   Kalshi geolocation attestation. Note: the house `kalshi-live-engine` shares that same key/account.
@@ -2701,7 +2701,7 @@ multi-month milestone.
 
 ## Sim-vs-real equity curve (Kalshi dev replay)
 
-- `app/kalshi_dev.py`: READ-ONLY replay of a strategy's out-of-sample window against the
+- `app/adapters/kalshi/kalshi_dev.py`: READ-ONLY replay of a strategy's out-of-sample window against the
   Kalshi DEMO environment (`KALSHI_DEV_API_BASE`, e.g. `https://demo-api.kalshi.co/trade-api/v2`).
   Pulls public per-contract candlesticks (unauthenticated GET), rebuilds the OOS snapshots off the
   real demo order-book bid/ask while reusing the real BTC spot features, then re-scores with the
