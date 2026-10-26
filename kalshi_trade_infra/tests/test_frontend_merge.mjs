@@ -76,6 +76,14 @@ class Element {
     return true;
   }
   querySelectorAll(selector) {
+    // A comma list ("button, input, ...", the way a focus walk asks for every control) answers in
+    // document order, as the DOM does.
+    if (selector.includes(',')) {
+      const order = [], walk = element => element.children.forEach(child => { order.push(child); walk(child); });
+      walk(this);
+      const hits = new Set(selector.split(',').map(part => part.trim()).filter(Boolean).flatMap(part => this.querySelectorAll(part)));
+      return order.filter(element => hits.has(element));
+    }
     const parts = selector.trim().split(/\s+(?![^\[]*\])/), found = [];
     const visit = element => element.children.forEach(child => {
       if (child.matches(parts.at(-1))) {
@@ -96,7 +104,8 @@ class Element {
   insertAdjacentHTML(_position, html) { this.html = (this.html || '') + html; }
   getAttribute(key) { return this.attributes[key] ?? null; }
   setAttribute(key, value) { this.attributes[key] = String(value); }
-  focus() {}
+  // Records the focus a script hands it, so a check can say where a keyboard user was left.
+  focus(options) { this.focusOptions = options; this.focused = true; }
   remove() { this.removed = true; }
 }
 
@@ -4197,4 +4206,93 @@ test('a session that ends mid-use says so on the sign-in page, and that a change
   // An edge page in front of Tau that answers a 4xx with no words says what to do.
   const g = frontend({fetchImpl: () => ({ok: false, status: 403, json: async () => { throw new SyntaxError('html'); }})});
   await assert.rejects(g.api('/api/funds/paper', {kind: 'deposit', amount: 5}), /Tau couldn't do that \(403\)\. Reload the page and try again\./);
+});
+
+
+// Keyboard-only and screen-reader paths into autopilot: a change nobody says out loud, and focus
+// dropped at the top of the page, both used to happen on the one-click way in.
+const srSaid = f => { [...f.timeouts.values()].forEach(callback => callback()); return f.document.getElementById('sr-status')?.textContent || ''; };
+
+test('turning autopilot on says so out loud and hands focus to the control that replaced the button', async () => {
+  let status = {autopilot: false, mode: 'off'};
+  const f = frontend({storage: {getItem: key => (key === 'tau_ap_open' ? '1' : null), setItem() {}},
+    fetchImpl: path => {
+      if (path === '/api/dashboard') return response(emptyDashboard());
+      if (path === '/api/autopilot/status') return response(status);
+      if (path === '/api/settings') { status = {...apOn}; return response({ok: true}); }
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+  f.S.ap = status;
+  await f.viewDashboard(); await flush(); await flush();
+  const on = f.root.querySelector('#dash-ap [data-apcard="on"]');
+  f.document.activeElement = on;
+  await on.onclick(); for (let i = 0; i < 4; i++) await flush();
+  assert.match(srSaid(f), /^Autopilot is on\. It researches and trades on paper by itself/);
+  const box = f.document.getElementById('autopilot-float');
+  assert.equal(box.querySelector('.apf-x').focused, true);  // the open panel, not the masthead
+  f.clearTimers();
+});
+
+test('the panel switch says its new state and keeps keyboard focus while it saves', async () => {
+  let status = {...apOn};
+  const f = frontend({storage: {getItem: key => (key === 'tau_ap_open' ? '1' : null), setItem() {}},
+    fetchImpl: path => {
+      if (path === '/api/autopilot/status') return response(status);
+      if (path === '/api/settings') { status = {autopilot: false, mode: 'off'}; return response({ok: true}); }
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+  f.S.me.user.autopilot = true; f.S.ap = status;
+  const box = new Element('div', {id: 'autopilot-float'}); f.document.body.appendChild(box);
+  f.renderAutopilot(box, status); await flush();
+  const sw = box.querySelector('#apf-apswitch');
+  // The browser blurs a control that goes disabled, which is the state the save leaves behind.
+  f.document.activeElement = f.document.body; sw.checked = false;
+  await sw.onchange(); for (let i = 0; i < 3; i++) await flush();
+  assert.equal(f.S.me.user.autopilot, false);
+  assert.match(srSaid(f), /^Autopilot is off\. It only suggests ideas for you to approve\.$/);
+  assert.equal(sw.focused, true);  // focus comes back to the switch, not the top of the page
+  f.clearTimers();
+});
+
+test('the full-screen autopilot sheet keeps Tab inside it; beside the page it lets Tab walk on', async () => {
+  for (const sheet of [true, false]) {
+    const f = frontend({storage: {getItem: key => (key === 'tau_ap_open' ? '1' : null), setItem() {}},
+      matchMedia: () => ({matches: sheet}),   // under 601px the open panel covers the whole page
+      fetchImpl: path => {
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path.startsWith('/api/chat')) return response({messages: []});
+        throw new Error('Unexpected offline request: ' + path);
+      }});
+    const box = new Element('div', {id: 'autopilot-float'}); f.document.body.appendChild(box);
+    f.renderAutopilot(box, {...apOn}); await flush();
+    const first = box.querySelector('.apf-x'), last = box.querySelector('#apf-msg');
+    [first, last].forEach((el) => { el.offsetWidth = 40; });   // the rest is folded away or hidden
+    let prevented = 0;
+    const press = (shiftKey) => box.onkeydown({key: 'Tab', shiftKey, preventDefault: () => prevented++});
+    f.document.activeElement = last; press(false);
+    assert.equal(first.focused, sheet ? true : undefined);
+    f.document.activeElement = first; press(true);
+    assert.equal(last.focused, sheet ? true : undefined);
+    assert.equal(prevented, sheet ? 2 : 0);
+    f.clearTimers();
+  }
+});
+
+test('the notification list closes when focus leaves it, so Tab out never leaves it open behind the page', async () => {
+  const f = bellFrontend(bellNotes());
+  await f.viewDashboard(); await flush(); await flush();
+  const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
+  await trig.onclick({stopPropagation() {}});
+  assert.equal(menu.hidden, false); assert.equal(trig.getAttribute('aria-expanded'), 'true');
+  // Tab out of the list: it closes, instead of staying open where Esc (bound to the bell) can't reach it.
+  wrap.dispatchEvent({type: 'focusout', relatedTarget: f.root.querySelector('.profile-trig')});
+  assert.equal(menu.hidden, true); assert.equal(trig.getAttribute('aria-expanded'), 'false');
+  // Focus moving within the bell (trigger to an item) leaves it open.
+  await trig.onclick({stopPropagation() {}});
+  wrap.dispatchEvent({type: 'focusout', relatedTarget: wrap.querySelector('.notif')});
+  assert.equal(menu.hidden, false);
 });
