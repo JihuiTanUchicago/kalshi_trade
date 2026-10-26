@@ -82,10 +82,15 @@ def recent_chat_same(cur, user_id: int, role: str, content: str, since) -> bool:
 
 
 def chat_messages(cur, user_id: int, after_id: int = 0, limit: int = 100) -> List[Dict]:
+    """The newest `limit` lines after `after_id`, oldest first. A proposal's line carries the book
+    (deployment_mode: paper, demo or live) of the deployment it would change, so the panel can say
+    whether approving it touches real money before anyone presses Approve."""
     cur.execute(
         """SELECT m.id, m.role, m.content, m.created_at, m.proposal_id,
-                  p.kind AS proposal_kind, p.status AS proposal_status, p.deployment_id, p.strategy_id
+                  p.kind AS proposal_kind, p.status AS proposal_status, p.deployment_id, p.strategy_id,
+                  d.mode AS deployment_mode
            FROM app_chat_messages m LEFT JOIN app_proposals p ON p.id=m.proposal_id
+                LEFT JOIN app_deployments d ON d.id=p.deployment_id
            WHERE m.user_id=%s AND m.id>%s ORDER BY m.id DESC LIMIT %s""",
         (user_id, after_id, limit),
     )

@@ -119,6 +119,7 @@
   // tail), and an unterminated inline marker stays literal — the dangling bit resolves on the next
   // flush once its closer streams in. (The thinking card already stops echoing at the first fence,
   // so the fenced path is for robustness / reuse, and never collides with specHtml's code figure.)
+  const MD_ROW = /^\s*\|.*\|\s*$/, MD_RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
   const feedMd = (src) => {
     const lines = String(src == null ? '' : src).split('\n');
     const out = [];
@@ -138,6 +139,18 @@
         }
       }
       if (/^\s*$/.test(line)) { flush(); continue; }
+      // A table (a |row|, then its |---| rule) becomes a real table in a box that scrolls sideways on a
+      // phone. Until the rule line streams in, the row stays a literal line.
+      if (MD_ROW.test(line) && MD_RULE.test(lines[i + 1] || '')) {
+        flush();
+        const cells = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => mdInline(esc(c.trim())));
+        const rows = [];
+        let j = i + 2;
+        while (j < lines.length && MD_ROW.test(lines[j])) rows.push(cells(lines[j++]));
+        out.push('<div class="md-table"><table><thead><tr>' + cells(line).map((c) => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>'
+          + rows.map((r) => '<tr>' + r.map((c) => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>');
+        i = j - 1; continue;
+      }
       const h = line.match(/^\s{0,3}#{1,6}\s+(.*)$/);
       if (h) { flush(); out.push('<p class="md-h"><b>' + mdInline(esc(h[1])) + '</b></p>'); continue; }
       const ol = line.match(/^\s*(\d{1,9})[.)]\s+(.*)$/);
@@ -4578,6 +4591,14 @@
     li.textContent = label + (tzShort() ? ' ·\u00a0times in ' + tzShort() : '');
     return li;
   }
+  // A send or a decision that failed says why just above the composer. alert0 put it at the top of the
+  // page, under the panel, and a phone's full-screen sheet hid it altogether.
+  function apErr(box, msg) {
+    const el = box.querySelector('#apf-err');
+    if (!el) { if (msg) alert0(msg); return; }
+    el.textContent = msg || '';
+    el.hidden = !msg;
+  }
   function apStopChat() { if (apChatTimer) { clearInterval(apChatTimer); apChatTimer = null; } apChatWake = null; }
   let apChatWake = null;
   wakers.add(() => { if (apChatWake && !document.hidden) apChatWake(); });
@@ -4591,6 +4612,22 @@
     alpaca_paper: 'Alpaca paper order',
     kalshi_perps_live: 'Bitcoin perps live order',
   };
+  // A proposal still waiting on you is headed by what it asks, not the done verb above: "Paused" and
+  // "Promoted to paper" sat over Approve and Decline, as if it had already happened. Its line under
+  // that says what Approve does and in which book (paper, demo or live) before anyone presses it.
+  const AP_ASK = {
+    deploy: 'Asks to put on paper', adjust: 'Asks to tune a strategy', pause: 'Asks to pause', resume: 'Asks to resume',
+    set_risk: 'Asks to change risk limits', set_exec: 'Asks to change execution limits',
+  };
+  const AP_BOOK = { paper: 'on paper, with practice money', demo: 'on demo, Kalshi\u2019s sandbox with no real money', live: 'LIVE, with real money in your Kalshi account' };
+  function apApproveLine(m) {
+    const k = m.proposal_kind, book = AP_BOOK[m.deployment_mode];
+    const verb = { pause: 'pauses', resume: 'restarts', adjust: 'swaps the tuned version into' }[k];
+    if (verb) return book ? { text: `Approve ${verb} this strategy, which runs ${book}.`, live: m.deployment_mode === 'live' } : null;
+    if (k === 'deploy') return { text: 'Approve starts it on paper, with practice money. Nothing trades real money.' };
+    if (k === 'set_risk' || k === 'set_exec') return { text: 'Approve applies these limits to every strategy you run, live ones included.' };
+    return null;
+  }
   // One feed entry, rendered with the SAME research-session parts (.ln timeline rail, .say card,
   // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
   // a legible end-to-end session, not a cramped chat. m.content is Markdown; m.stage/m.strategy/
@@ -4612,16 +4649,21 @@
     // The switch notes ("Autopilot is ON: …") were labelled Reviewed, so a new user's first feed line
     // said it had reviewed something seconds after the click, before any review ran.
     const flip = !m.proposal_kind && /^(LIVE )?autopilot is (ON|OFF)\b/i.exec(m.content || '');
-    const kind = AP_ACT[m.proposal_kind] || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off') : 'Reviewed');
     const st = m.proposal_status;
+    // Your own decision and a failed answer are not reviews: both read "Reviewed" here.
+    const said = /^You (approved|declined) the proposal/.test(m.content || '') ? 'Your decision'
+      : /^The agent hit an error/.test(m.content || '') ? 'No answer' : '';
+    const kind = (st === 'pending' && AP_ASK[m.proposal_kind]) || AP_ACT[m.proposal_kind]
+      || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off') : said || 'Reviewed');
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
     const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`
       : st === 'declined' || st === 'rejected' ? '<span class="hx-stamp rej">Declined</span>' : '';
     const stage = m.stage ? `<span class="hx-tag">${esc(m.stage)}</span>` : '';
     const title = m.strategy ? `<b class="say-title">${esc(m.strategy)}</b>` : '';
     const detail = m.detail ? `<details class="hx-more"><summary>Show the detail</summary><div class="hx-body"><div class="apf-md">${feedMd(m.detail)}</div></div></details>` : '';
+    const ask = st === 'pending' ? apApproveLine(m) : null;
     const ctl = (m.proposal_id && st === 'pending')
-      ? `<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve">${m.proposal_kind === 'kalshi_perps_live' ? 'Review live order' : 'Approve'}</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
+      ? `${ask ? `<p class="apf-ask${ask.live ? ' live' : ''}">${esc(ask.text)}</p>` : ''}<div class="proposal" data-prop="${m.proposal_id}"><button class="btn small" data-decide="approve">${m.proposal_kind === 'kalshi_perps_live' ? 'Review live order' : 'Approve'}</button><button class="btn ghost small" data-decide="reject">Decline</button></div>` : '';
     li.className = 'ln lane-' + lane + ' apf-act';
     li.innerHTML = `${t}<div class="say">
       <div class="hx-head"><span class="say-kind">${esc(kind)}</span>${title}${stage}${stamp}</div>
@@ -4629,7 +4671,11 @@
     return li;
   }
   // Resolves false when the read failed (the chat poll backs off on it; other callers ignore it).
-  async function apLoadChat(box, full, cfg) {
+  // `follow`: 'end' brings the newest line into view (you just sent one), 'keep' holds the reader's place
+  // through a full repaint (a decision mid-history). Otherwise it follows only a reader already at the end.
+  // On a phone the open panel is one scroll (app.css), so the sheet is what scrolls there, not the feed:
+  // a sent message and its answer landed below the fold, under a sheet still showing the controls.
+  async function apLoadChat(box, full, cfg, follow) {
     const msgs = box.querySelector('#apf-messages'); if (!msgs) return;
     let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId), undefined, { keep: true, ...cfg }); }
     catch (e) {
@@ -4638,7 +4684,11 @@
       return false;
     }
     msgs.querySelectorAll('.ap-fail').forEach((n) => n.remove());
-    const stick = full || msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 70;
+    const atEnd = (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 70;
+    const sheet = box.scrollHeight > box.clientHeight + 1;
+    const stick = follow === 'end' || (full && follow !== 'keep') || atEnd(msgs);
+    const stickSheet = follow === 'end' || (!full && sheet && atEnd(box));
+    const kept = [msgs.scrollTop, box.scrollTop];
     if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; apFeedDay = ''; }
     const empty = msgs.querySelector('.ap-empty'); if (empty && d.messages.length) empty.remove();
     msgs.querySelectorAll('.apf-typing').forEach((n) => n.remove());
@@ -4666,7 +4716,8 @@
         ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
         : `<span data-ap-idle>${esc(apIdleLine(box))}</span>`;
     }
-    if (stick) msgs.scrollTop = msgs.scrollHeight;
+    if (stick) msgs.scrollTop = msgs.scrollHeight; else if (follow === 'keep') msgs.scrollTop = kept[0];
+    if (stickSheet) box.scrollTop = box.scrollHeight; else if (follow === 'keep') box.scrollTop = kept[1];
     return true;
   }
   // Idle pulse copy: lead with the autopilot's most recent move (from the status poll, always
@@ -4753,6 +4804,7 @@
         <div class="runpulse apf-pulse-row" id="apf-pulse" aria-live="polite" hidden></div>
       </div>
       <form class="composer apf-composer-row" id="apf-composer">
+        <p class="apf-err" id="apf-err" role="alert" hidden></p>
         <label class="vh" for="apf-msg">Message the agent</label>
         <textarea class="input" id="apf-msg" rows="1" maxlength="2000" placeholder="What should it focus on?" aria-label="Message the autopilot"></textarea>
         <button class="btn" type="submit" aria-label="Send">${ICON.send}</button>
@@ -4774,15 +4826,37 @@
     const msgs = box.querySelector('#apf-messages');
     msgs.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-decide]'); if (!b) return;
-      const pid = b.closest('[data-prop]').dataset.prop;
-      await busy(b, async () => { try { const result = await api(`/api/proposals/${pid}/${b.dataset.decide}`, {}); if (result.review_required && result.review_url === `/funds?perps_proposal=${pid}`) { go(result.review_url); return; } await apLoadChat(box, true); } catch (err) { alert0(err.message); } });
+      const prop = b.closest('[data-prop]'), pid = prop.dataset.prop;
+      // One decision per proposal: Approve and Decline both lock while it is sent (a tap on the other
+      // one used to send it too), and stay locked once it lands until the repaint shows the stamp.
+      if (prop.dataset.deciding) return;
+      prop.dataset.deciding = '1';
+      const btns = [...prop.querySelectorAll('button')];
+      btns.forEach((x) => { x.disabled = true; });
+      b.classList.add('busy');
+      apErr(box, '');
+      try {
+        const result = await api(`/api/proposals/${pid}/${b.dataset.decide}`, {});
+        if (result.review_required && result.review_url === `/funds?perps_proposal=${pid}`) { go(result.review_url); return; }
+      } catch (err) {
+        apErr(box, err.message);
+        btns.forEach((x) => { x.disabled = false; });
+        delete prop.dataset.deciding;
+      } finally { b.classList.remove('busy'); }
+      await apLoadChat(box, true, undefined, 'keep');  // the stamp, or the state it was already decided to
     });
     const cf = box.querySelector('#apf-composer'), ta = box.querySelector('#apf-msg');
     ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; });
     ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); cf.requestSubmit(); } });
     cf.onsubmit = async (e) => {
-      e.preventDefault(); const content = ta.value.trim(); if (!content) return;
-      await busy(cf.querySelector('button'), async () => { try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; await apLoadChat(box); } catch (err) { alert0(err.message); } });
+      e.preventDefault(); const content = ta.value.trim(); if (!content || cf.dataset.sending) return;
+      // Enter submits even while the Send button is disabled, so a second Enter during a slow send
+      // sent the message again: one send at a time.
+      cf.dataset.sending = '1';
+      apErr(box, '');
+      try {
+        await busy(cf.querySelector('button'), async () => { try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; await apLoadChat(box, false, undefined, 'end'); } catch (err) { apErr(box, err.message); } });
+      } finally { delete cf.dataset.sending; }
     };
     apLoadChat(box, true);
     apStopChat();
