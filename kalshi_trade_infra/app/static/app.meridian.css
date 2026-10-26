@@ -1052,7 +1052,8 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   /* Credit ledger reads like a bank statement on a phone: item left, amount right, date beneath,
      so a month of usage is a short scroll instead of a labelled card per line. */
   .t-ledger.stack tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; padding: 10px 0; }
-  .t-ledger.stack tbody td.name { grid-column: 1; grid-row: 1; }
+  .t-ledger.stack tbody td.name { grid-column: 1; grid-row: 1; flex-wrap: wrap; }
+  .t-ledger.stack tbody td.name .sub-fig { min-width: 0; flex: 0 1 auto; }
   .t-ledger.stack tbody td.num { grid-column: 2; grid-row: 1; display: block; text-align: right; white-space: nowrap; }
   .t-ledger.stack tbody td.hint { grid-column: 1; grid-row: 2; font-size: 12.5px; }
   .t-ledger.stack tbody td.num::before, .t-ledger.stack tbody td.hint::before { content: none; }
@@ -2263,6 +2264,7 @@ body.landing-body .apf { display: none; }
   .account-band .portfolio-group, .account-band .portfolio-group + .portfolio-group { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
   .account-band .portfolio-group + .portfolio-group { padding: 10px 0 0; border: 0; border-top: 1px solid var(--rule-soft); }
   .account-band .portfolio-numbers .fig { font-size: 28px; line-height: 32px; }
+  .account-band .portfolio-numbers .fig.balance-state { font-size: 20px; line-height: 28px; }
   .account-band .portfolio-detail > strong { font-size: 22px; line-height: 32px; }
   .performance-meta { margin-left: 0; }
 }
@@ -2496,7 +2498,11 @@ body.landing-body .apf { display: none; }
 .holdlist-figs { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 4px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .holdlist-figs b { color: var(--ink); font-weight: 600; }
 /* A trade's one-line entry/exit reason (server trade_why), in the UI face even inside a .tick cell. */
-.pos-why { font-family: var(--f-ui); letter-spacing: normal; }
+.pos-why { font-family: var(--f-ui); letter-spacing: normal; white-space: normal; }
+/* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
+   nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
+#openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
+#openpos .pos-why { min-width: 24ch; max-width: 60ch; }
 
 /* Failed load: the error plus a retry button, stacked. */
 .load-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
