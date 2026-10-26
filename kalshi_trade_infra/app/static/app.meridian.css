@@ -74,6 +74,8 @@ a { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: 2p
 a:hover { text-decoration-color: var(--ink); }
 input, textarea { caret-color: var(--signal); }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* Focus a script hands to a page or section (<main> after a page change, a Skip to content target) draws no ring round all of it. */
+[tabindex="-1"]:focus { outline: none; }
 img, svg { display: block; }
 h1, h2, h3 { margin: 0; text-wrap: balance; }
 p { margin: 0; }
@@ -2374,7 +2376,7 @@ body.landing-body .apf { display: none; }
   .wrap:has(.dash) .pagehead { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 4px 12px; }
   .wrap:has(.dash) .page-actions { display: contents; }
   .wrap:has(.dash) .other-accounts { position: static; grid-column: 2; grid-row: 1; }
-  .pagehead .research-activity { grid-column: 1 / -1; grid-row: 2; text-align: right; }
+  .pagehead .research-activity { grid-column: 1 / -1; grid-row: 2; text-align: right; line-height: 24px; }  /* a 24px touch target */
 }
 @media (hover: none), (pointer: coarse) {
   .other-accounts > summary, .position-details > summary, .recent-settlements > summary, .overview-performance > summary, .monitor-heading > .btn,
@@ -2491,7 +2493,7 @@ body.landing-body .apf { display: none; }
 .apcard-figs dt { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
 .apcard-figs dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
 .apcard-act { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.apcard-alt { font-size: 13px; color: var(--ink-3); }
+.apcard-alt { font-size: 13px; color: var(--ink-3); display: inline-flex; align-items: center; min-height: 24px; }  /* a 24px touch target */
 .apcard-err { flex-basis: 100%; margin: 0; }
 .apcard-err:empty { display: none; }
 @media (max-width: 760px) {

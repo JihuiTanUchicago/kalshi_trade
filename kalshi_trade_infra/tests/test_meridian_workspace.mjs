@@ -3976,3 +3976,34 @@ test('a boot whose account read fails offers Try again instead of sending a sign
     assert.match(f.root.innerHTML, /Tau is taking longer than usual to load/);
   }
 });
+
+test('Meridian: a page change names the tab and puts keyboard focus on the new page, the first page and a repaint do not', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/deployments') return response({deployments: [], open_positions: []});
+    return response({});
+  }});
+  f.location.pathname = '/deploy';
+  await f.render(); await flush(); await flush();
+  assert.equal(f.document.title, 'Deploy · Tau');
+  assert.equal(f.document.activeElement, f.document.body);  // the first page of a visit: the browser's own start
+  await f.render(); await flush(); await flush();
+  assert.equal(f.document.activeElement, f.document.body);  // the same page again
+  f.location.pathname = '/billing';
+  await f.render(); await flush(); await flush();
+  const main = f.root.querySelector('main');
+  assert.equal(f.document.activeElement, main); assert.equal(main.focusOptions.preventScroll, true);
+});
+
+test('Meridian: the autopilot pill keeps keyboard focus through a status repaint, and an unchanged read repaints nothing', () => {
+  const f = frontend();
+  const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+  f.renderAutopilot(box, {mode: 'off'});
+  box.querySelector('.apf-pill').focus();
+  const writes = box.writes;
+  f.renderAutopilot(box, {mode: 'off'});
+  assert.equal(box.writes, writes);
+  f.renderAutopilot(box, {mode: 'paper', autopilot: true});
+  assert.equal(box.writes, writes + 1);
+  assert.equal(f.document.activeElement, box.querySelector('.apf-pill'));
+  assert.match(box.querySelector('.apf-pill').innerHTML, /paper/);
+});

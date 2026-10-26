@@ -61,6 +61,8 @@ a { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: 2p
 a:hover { text-decoration-color: var(--ink); }
 input, textarea { caret-color: var(--signal); }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* Focus a script hands to a page or section (<main> after a page change, a Skip to content target) draws no ring round all of it. */
+[tabindex="-1"]:focus { outline: none; }
 img, svg { display: block; }
 h1, h2, h3 { margin: 0; text-wrap: balance; }
 p { margin: 0; }
@@ -1493,7 +1495,7 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .hot-kicker { display: block; font-family: var(--f-nar); font-weight: 600; font-size: 13px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink); }
 .hot-now { display: flex; align-items: center; gap: 6px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-top: 3px; }
 .hot-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); animation: pulse 1.6s infinite; }
-.hot-x { border: 0; background: none; cursor: pointer; font-size: 19px; line-height: 1; color: var(--ink-3); padding: 0 2px; }
+.hot-x { border: 0; background: none; cursor: pointer; font-size: 19px; line-height: 1; color: var(--ink-3); padding: 0 2px; display: inline-grid; place-items: center; min-width: 24px; min-height: 24px; }
 .hot-x:hover { color: var(--ink); }
 .hot-list { flex: 1; overflow-y: auto; }
 .hot-row { display: block; text-decoration: none; color: var(--ink); padding: 11px 15px 12px; border-bottom: 1px solid var(--rule); }
@@ -1798,7 +1800,7 @@ body.landing-body .apf { display: none; }
 .apcard-figs dt { font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
 .apcard-figs dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
 .apcard-act { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.apcard-alt { font-size: 13px; color: var(--ink-3); }
+.apcard-alt { font-size: 13px; color: var(--ink-3); display: inline-flex; align-items: center; min-height: 24px; }  /* a 24px touch target */
 .apcard-err { flex-basis: 100%; margin: 0; }
 .apcard-err:empty { display: none; }
 @media (max-width: 760px) {

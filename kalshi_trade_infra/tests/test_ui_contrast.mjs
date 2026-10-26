@@ -85,6 +85,15 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.match(css, /\.mktrow-r:checked:focus-visible \+ \.mktrow-face \{ outline-color: var\(--stock-raised\); outline-offset: -4px; \}/);
     assert.match(css, /\.mktrow-r:checked \+ \.mktrow-face \{ background: var\(--ink\);/);
   });
+
+  test(`${bundle}: only focus a script hands to a page or section drops its ring; every control keeps the ink ring`, () => {
+    // <main> takes focus after a page change and a Skip to content target after the jump (tabindex -1); a
+    // ring round the whole page says nothing. No other rule may switch the outline off for a control.
+    assert.match(css, /^:focus-visible \{ outline: 2px solid var\(--ink\); outline-offset: 2px; \}$/m);
+    const off = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{[^}]*outline: none/g)].map((m) => m[1].trim());
+    assert.ok(off.includes('[tabindex="-1"]:focus'));
+    assert.deepEqual(off.filter((sel) => /focus-visible|button|\.btn|a:focus|summary/.test(sel)), []);
+  });
 }
 
 test('Meridian: a light chosen agent\'s-choice row keeps the ink ring', () => {
