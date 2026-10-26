@@ -499,7 +499,7 @@ for (const [label, view, endpoint, selector] of [
 }
 
 const dashboardData = ({paper = {}, live = {}, demo = {}, ...overrides} = {}) => ({
-  paper: {equity: 1111.25, cash: 900, total_pnl: 111.25, today_pnl: -7.5, open_at_cost: 211.25, ...paper},
+  paper: {equity: 1111.25, cash: 900, total_pnl: 111.25, realized_pnl: 98.4, today_pnl: -7.5, open_at_cost: 211.25, ...paper},
   live: {connected: false, balance: null, realized_pnl: 17, today_pnl: -2, open_positions: 0, open_at_cost: 50, ...live},
   demo: {equity: 2222.5, capital: 2200, realized_pnl: 22.5, open_positions: 0, running: 0, ...demo},
   deployments: [], open_positions: [], recent_closed: [], freshness: {btc: 1},
@@ -524,19 +524,20 @@ const apDashboard = (data, status) => {
   return f;
 };
 
-test('Overview paper P&L says "since reset" after a reset and its day figure says realized', async () => {
+test('Overview paper P&L is realized all time, the Closed P&L chart and track record figure, and its day figure says realized', async () => {
   for (const reset_at of [null, '2026-10-20T09:00:00Z']) {
     const f = apDashboard(dashboardData({paper: {reset_at}}), apStatus);
     await f.viewDashboard(); await flush();
     f.S.ap = apStatus; f.paintDashAp();
     const paper = f.root.querySelector('.paper-summary').textContent;
-    // total_pnl restarts at a reset; the track record keeps every closed trade, so "all time" would disagree.
-    assert.match(paper, reset_at ? /P&amp;L since reset \+\$111\.25/ : /All-time P&amp;L \+\$111\.25/);
-    if (reset_at) assert.doesNotMatch(paper, /All-time/);
-    // Today is closed trades only (realized_pnl), unlike the equity P&L beside it; the live group says so too.
+    // total_pnl (equity less deposits) took off open entry fees and restarted at a reset, so it sat
+    // beside a different Closed P&L for one book; realized is what every other page counts.
+    assert.match(paper, /Realized P&amp;L, all time \+\$98\.40/);
+    assert.doesNotMatch(paper, /All-time|since reset/);
+    // Today is closed trades only (realized_pnl); the live group says so too.
     assert.match(paper, /Realized today \(UTC\)−\$7\.50/);
     const card = f.root.querySelector('#dash-ap').innerHTML;
-    assert.match(card, new RegExp(`<dt>Paper P&amp;L, ${reset_at ? 'since reset' : 'all time'}</dt><dd><span class="[^"]*">\\+\\$111\\.25`));
+    assert.match(card, /<dt>Paper P&amp;L, realized all time<\/dt><dd><span class="[^"]*">\+\$98\.40/);
   }
 });
 
@@ -1017,7 +1018,7 @@ test('Overview charts cumulative closed paper results separately from all-time P
       await f.viewDashboard(); poll = f.intervals.get(f.S.timers.at(-1));
       assert.equal(typeof poll, 'function');
     } else { poll(); await flush(); }
-    assert.match(f.root.querySelector('.paper-summary').textContent, /All-time P&amp;L \+\$111\.25/);
+    assert.match(f.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \+\$98\.40/);
     const performance = f.root.querySelector('.overview-performance');
     if (ending === null) assert.equal(performance, null);
     else {
@@ -1495,7 +1496,7 @@ test('Overview chooses the correct primary money bucket and preserves disconnect
     assert.equal(accounts.contains(f.root.querySelector('.paper-summary')), livePrimary, label);
     if (!livePrimary) assert.equal(accounts.querySelector('.fig').textContent, secondaryLive, label);
     const paper = f.root.querySelector('.paper-summary');
-    for (const amount of ['$1,111.25', '+$111.25', '−$7.50', '$900.00', '$211.25']) assert.ok(paper.textContent.includes(amount), label + ' paper ' + amount);
+    for (const amount of ['$1,111.25', '+$98.40', '−$7.50', '$900.00', '$211.25']) assert.ok(paper.textContent.includes(amount), label + ' paper ' + amount);
     assert.match(accounts.textContent, /\$2,222\.50/); assert.match(accounts.textContent, /\$2,200\.00 capital/);
     const liveHost = livePrimary ? primary : accounts;
     if (!data.live.connected) assert.equal(liveHost.querySelector('a').getAttribute('href'), '/funds', label);
@@ -4998,7 +4999,7 @@ test('Meridian: turning autopilot on updates the last-24-hours row at once, not 
 test('Meridian Overview says the paper portfolio is practice money', async () => {
   const f = apDashboard(dashboardData(), apStatus);
   await f.viewDashboard(); await flush();
-  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · All-time P&amp;L \+\$111\.25/);
+  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · Realized P&amp;L, all time \+\$98\.40/);
 });
 
 // Meridian opens a market page from Explore's ?m= link.

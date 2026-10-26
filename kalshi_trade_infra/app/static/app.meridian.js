@@ -2063,7 +2063,7 @@
       const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` });
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
       // newcomer could take it for real money.
-      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span> \u00b7\u00a0<span class="nobr">${p.reset_at ? 'P&amp;L since reset' : 'All-time P&amp;L'} ${money(p.total_pnl)}</span>${tradesCsv('paper', p)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
+      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span> \u00b7\u00a0<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span>${tradesCsv('paper', p)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
@@ -4742,9 +4742,6 @@
     const text = apStale();
     ['apf-stale', 'dash-ap-stale'].forEach((id) => { const el = document.getElementById(id); if (el) el.textContent = text; });
   }
-  // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
-  // "since reset" then; the track record keeps every closed trade and would otherwise disagree.
-  function paperSpan(p) { return p && p.reset_at ? 'since reset' : 'all time'; }
   // Demo P&L restarts at a reload (before_reload holds what came before), unlike the track record.
   function demoSpan(dm) { return dm && dm.before_reload ? 'since reload' : 'all time'; }
 
@@ -4903,9 +4900,12 @@
     if (!d) { host.className = 'apcard on'; host.innerHTML = ''; return; }  // on, status still loading
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
     const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
-    const pnl = S.dashPaper ? S.dashPaper.total_pnl : null;
+    // Realized, as the paper portfolio, the Closed P&L chart, the track record, Deploy and the strategy
+    // page count it. The equity change (total_pnl) took off open positions' entry fees and dropped every
+    // trade before a reset, so "All-time P&L +$5.19" sat beside "Closed P&L +$5.61" for one book.
+    const pnl = S.dashPaper ? S.dashPaper.realized_pnl : null;
     const cells = [
-      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, ' + paperSpan(S.dashPaper), pnl == null ? '—' : money(pnl)],
+      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a>`]

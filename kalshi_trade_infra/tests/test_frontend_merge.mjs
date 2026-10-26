@@ -501,7 +501,7 @@ test('a late Dashboard read cannot paint over the page the user moved to or keep
   void loading;
 });
 
-const emptyDashboard = () => ({paper: {equity: 1000, cash: 1000, open_at_cost: 0, total_pnl: 12.5},
+const emptyDashboard = () => ({paper: {equity: 1000, cash: 1000, open_at_cost: 0, total_pnl: 12.5, realized_pnl: 12.5},
   live: {connected: false}, demo: {equity: 1000, capital: 1000}, deployments: [], open_positions: [], recent_closed: [],
   freshness: {btc: null}, agents: {research_running: 0, research_queued: 0}});
 const apOn = {autopilot: true, mode: 'paper', story: ['Right now it\u2019s researching <b>BTC</b> 15m.'],
@@ -834,21 +834,22 @@ test('the dashboard demo bucket and the autopilot card say plainly when demo can
   assert.doesNotMatch(ok.root.querySelector('#boardbody').innerHTML, /demo-health/);
 });
 
-test('paper P&L reads "since reset" on the card and dashboard once the paper account was reset', async () => {
+test('paper P&L on the card and the autopilot card is realized all time, the figure the track record shows', async () => {
+  // total_pnl (equity less deposits) took off the open position's entry fee and restarted at a reset:
+  // "+$5.19" here beside a "+$5.61" track record, Deploy row and strategy page for one paper book.
   for (const reset_at of [null, '2026-10-20T09:00:00Z']) {
     const f = frontend({fetchImpl: path => {
-      if (path === '/api/dashboard') { const d = emptyDashboard(); d.paper.reset_at = reset_at; return response(d); }
+      if (path === '/api/dashboard') { const d = emptyDashboard(); d.paper = {...d.paper, reset_at, realized_pnl: 9.75, closed_trades: 3}; return response(d); }
       if (path === '/api/autopilot/status') return response(apOn);
       throw new Error('Unexpected offline request: ' + path);
     }});
     f.S.me.user.autopilot = true;
     await f.viewDashboard(); await flush();
     f.S.ap = apOn; f.paintDashAp();
-    const span = reset_at ? 'since reset' : 'all time';
-    // Both read total_pnl, which restarts at a reset; the track record keeps every closed trade.
-    assert.match(f.root.querySelector('#dash-ap').innerHTML, new RegExp(`<dt>Paper P&amp;L, ${span}</dt><dd><span class="[^"]*">\\+\\$12\\.50`));
-    assert.match(f.root.querySelector('#boardbody').innerHTML, new RegExp(`<span class="amt">\\+\\$12\\.50</span> ${span}`));
-    if (reset_at) assert.doesNotMatch(f.root.querySelector('#boardbody').innerHTML, /all time/);
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Paper P&amp;L, realized all time<\/dt><dd><span class="[^"]*">\+\$9\.75/);
+    const card = f.root.querySelector('#boardbody').innerHTML;
+    assert.match(card, /<span class="amt">\+\$9\.75<\/span> realized all time/);
+    assert.doesNotMatch(card + f.root.querySelector('#dash-ap').innerHTML, /12\.50|since reset/);
   }
 });
 
@@ -3811,7 +3812,7 @@ test('the reconciliation warning names the contracts and where to compare them; 
 });
 
 test('a new account\'s paper card says nothing is on paper yet instead of "$0.00 at cost"', async () => {
-  const fresh = {...emptyDashboard(), paper: {equity: 1000, cash: 1000, open_at_cost: 0, total_pnl: 0, open_positions: 0, closed_trades: 0}};
+  const fresh = {...emptyDashboard(), paper: {equity: 1000, cash: 1000, open_at_cost: 0, total_pnl: 0, realized_pnl: 0, open_positions: 0, closed_trades: 0}};
   const dep = {id: 1, strategy_id: 1, title: 'S', market: 'btc15m', mode: 'paper', status: 'running', stake: 5, max_positions: 2,
     realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, created_at: '2026-10-25T08:00:00Z'};
   for (const [d, empty] of [[fresh, true], [{...fresh, deployments: [dep]}, false]]) {
@@ -3822,7 +3823,7 @@ test('a new account\'s paper card says nothing is on paper yet instead of "$0.00
     await f.viewDashboard(); await flush();
     const board = f.root.querySelector('#boardbody').innerHTML;
     if (empty) { assert.match(board, /\$1,000\.00 of practice money ·\u00a0no paper strategies yet/); assert.doesNotMatch(board, /at cost/); }
-    else assert.match(board, /\$1,000\.00 cash ·\u00a0\$0\.00 at cost ·\u00a0<span class="amt">\$0\.00<\/span> all time/);  // a strategy on paper: its book, zeros and all
+    else assert.match(board, /\$1,000\.00 cash ·\u00a0\$0\.00 at cost ·\u00a0<span class="amt">\$0\.00<\/span> realized all time/);  // a strategy on paper: its book, zeros and all
   }
 });
 

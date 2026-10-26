@@ -2021,6 +2021,7 @@
       // Demo is Kalshi's sandbox, not paper: with a demo deployment on, "Paper money only" mislabelled it.
       const hasDemo = d.deployments.some((x) => x.mode === 'demo' && x.status !== 'stopped');
       // A new account's paper book has never been used: say so instead of "$0.00 at cost · $0.00 all time".
+      // Its P&L is realized from closed trades, the figure the track record, Deploy and the strategy page show.
       const paperUsed = p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper');
       // Collector lag is the operator's to fix, so only the admin view shows it (red "needs you" told
       // every user something was wrong that they couldn't act on).
@@ -2045,7 +2046,7 @@
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (d.live.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : (d.live.balance_at ? `Read from Kalshi ${when(d.live.balance_at)} \u00b7\u00a0` : '') + mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
-          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.total_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0<span class="amt">${usd(p.total_pnl, true)}</span> ${paperSpan(p)}${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
+          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
       // The dashboard is a summary: the first few deployments (paused ones, which need the user, then
@@ -4717,9 +4718,6 @@
     const text = apStale();
     ['apf-stale', 'dash-ap-stale'].forEach((id) => { const el = document.getElementById(id); if (el) el.textContent = text; });
   }
-  // The paper book's equity P&L (dashboard total_pnl) restarts when the account is reset, so it reads
-  // "since reset" then; the track record keeps every closed trade and would otherwise disagree.
-  function paperSpan(p) { return p && p.reset_at ? 'since reset' : 'all time'; }
   // Demo P&L restarts at a reload (before_reload holds what came before), unlike the track record.
   function demoSpan(dm) { return dm && dm.before_reload ? 'since reload' : 'all time'; }
 
@@ -4878,9 +4876,12 @@
     if (!d) { host.className = 'apcard on'; host.innerHTML = ''; return; }  // on, status still loading
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
     const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
-    const pnl = S.dashPaper ? S.dashPaper.total_pnl : null;
+    // Realized, as the paper card, the track record, Deploy and the strategy page count it. The equity
+    // change (total_pnl) is a fourth number: it takes off open positions' entry fees and drops every
+    // trade before a reset, so "Paper P&L" read $5.19 here beside a $5.61 track record.
+    const pnl = S.dashPaper ? S.dashPaper.realized_pnl : null;
     const cells = [
-      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, ' + paperSpan(S.dashPaper), pnl == null ? '—' : money(pnl)],
+      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : money(pnl)],
       ['Strategies running', running ? String(running) : 'None yet'],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a>`]
