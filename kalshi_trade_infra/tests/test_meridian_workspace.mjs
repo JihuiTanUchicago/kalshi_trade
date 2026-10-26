@@ -5587,3 +5587,34 @@ test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / 
   assert.doesNotMatch(none, /\$ \/ trade|Max\s+open|null|NaN/);
   assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/p><div class="monitor-limits"><span> · Max 3 open<\/span>/);
 });
+
+test('Meridian: a research session the autopilot started says so on the active card, the list and its page', async () => {
+  const ap = {...researchRun(15, 'running'), by_autopilot: 1};
+  const apDone = {...researchRun(14, 'succeeded'), by_autopilot: 1};
+  const mine = {...researchRun(9, 'succeeded'), by_autopilot: 0, direction: 'momentum'};
+  const example = {...researchRun(1, 'succeeded'), by_autopilot: 0, example: true, direction: 'random_walk'};
+  const f = researchFrontend([ap, apDone, mine, example]); await f.viewResearch(); await flush();
+  const active = f.root.querySelector('#active-research'), history = f.root.querySelector('#runs');
+  assert.equal(active.querySelector('.active-session b').textContent, 'Session 15');
+  assert.match(active.querySelector('.active-session').innerHTML, /title="The autopilot started this session\.">Autopilot<\/span>/);
+  assert.match(history.querySelector('a[href="/research/14"] .run-title').innerHTML, /Autopilot<\/span>/);
+  for (const id of [9, 1]) assert.doesNotMatch(history.querySelector(`a[href="/research/${id}"] .run-title`).innerHTML, /Autopilot<\/span>/);
+  assert.match(history.querySelector('a[href="/research/1"] .run-title').innerHTML, /Example<\/span>/);
+  f.clearTimers();
+  for (const [run, said, not] of [[ap, /BTC 15-min · Started by autopilot/, /· Session/],
+    [{...ap, direction: 'momentum'}, /· Momentum · Started by autopilot/, /· Session/],
+    [mine, /· Momentum/, /Started by autopilot/], [{...ap, by_autopilot: 0}, /· Session/, /Started by autopilot/]]) {
+    const g = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/' + run.id)); return response({run, events: []}); }});
+    g.S.me.directions = [{key: 'momentum', label: 'Momentum', brief: ''}];
+    await g.viewRun(run.id);
+    const head = g.root.querySelector('#runboard').innerHTML.replace(/ /g, ' ');
+    assert.match(head, said); assert.doesNotMatch(head, not);
+    g.clearTimers();
+  }
+});
+
+test('Meridian: a research start that moved off a cooldown market is the autopilot\'s last move, in customer words', () => {
+  const f = frontend();
+  const line = 'Started a fresh research session on a market the research specialist picks. Bitcoin 15-minute was researched in the last few hours, so this angle goes to one that isn\'t on cooldown. Follow it on the Research page.';
+  assert.equal(f.apMoveText({text: line, at: new Date().toISOString()}), 'Started a fresh research session on a market the research specialist picks');
+});

@@ -204,6 +204,12 @@ def test_research_action_skips_a_market_on_cooldown(monkeypatch):
     # run_research picks from markets off cooldown (prod 2026-10-24: an hour of reviews started nothing).
     assert pid is None and rec["runs"] == [(None, None, "Another angle on BTC overreaction.")]
     assert "cooldown" in text.lower()
+    # The line is the autopilot panel's "Last move" and the customer reads it: it starts the way every
+    # research start does (chat_repository.last_autopilot_action looks for that), names the market as
+    # the app does, and carries no market key or run id.
+    assert text.startswith("Started a fresh research session on a market the research specialist picks. ")
+    assert "Bitcoin 15-minute was researched in the last few hours" in text
+    assert "btc15m" not in text and "run #" not in text and "(" not in text
 
 
 def test_research_action_on_cooldown_still_refuses_when_not_autopilot(monkeypatch):
@@ -241,6 +247,26 @@ def test_blocked_markets_and_cooldown_line_come_from_one_read(monkeypatch):
     assert set(blocked) == {"btc15m", "eth_daily"} and len(calls) == 1
     line = agent._cooldown_line(None, 1)
     assert "do NOT propose" in line and "btc15m" in line and "eth_daily" in line and "high_ny" not in line
+
+
+def test_the_seeded_example_session_puts_no_market_on_cooldown(monkeypatch):
+    # A new account's example session (Todd's random walk on BTC 15-min, finished at sign-up) blocked
+    # btc15m for 6h: the first autopilot review was told "btc15m was just researched (run #1)" and its
+    # first session moved off the market it chose. The example is not research; a real run still blocks.
+    rec = _capture(monkeypatch)
+    now = agent.repo.now_utc()
+    example = {"id": 1, "market": "btc15m", "direction": agent.repo.DEMO_DIRECTION, "status": "succeeded",
+               "finished_at": now}
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [example])
+    assert agent._market_research_recent(None, 1, "btc15m") is None
+    assert agent._research_blocked_markets(None, 1) == {}
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
+                          "idea": "Short-term momentum after big moves."}, True)
+    assert pid is None and rec["runs"] == [("btc15m", None, "Short-term momentum after big moves.")]
+    assert "cooldown" not in text and "run #" not in text
+    real = dict(example, id=2, direction=None)
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [real, example])
+    assert "just researched (run #2" in agent._market_research_recent(None, 1, "btc15m")
 
 
 def test_research_action_allows_a_different_market(monkeypatch):
