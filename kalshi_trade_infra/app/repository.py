@@ -384,6 +384,27 @@ def add_notification(cur, user_id: int, kind: str, body: str, link: Optional[str
     return cur.lastrowid
 
 
+def add_notification_collapsed(cur, user_id: int, kind: str, body: str, link: str,
+                               repeat_hours: float = 6) -> Optional[int]:
+    """A notice about something that can be told more than once (a deployment paused again, the same
+    pause seen by a retried review): the same words about the same page within `repeat_hours` are
+    the same event, so nothing is added; an unread notice about that page the user hasn't seen is
+    replaced by this one, so the bell holds one line with the latest reason. Returns the new id, or
+    None when nothing was added."""
+    cur.execute(
+        "SELECT id, body, created_at, read_at FROM app_notifications WHERE user_id=%s AND kind=%s AND link=%s "
+        "ORDER BY id DESC LIMIT 1",
+        (user_id, kind, link),
+    )
+    last = cur.fetchone()
+    if last and last["body"] == body[:400] and last["created_at"] >= now_utc() - timedelta(hours=repeat_hours):
+        return None
+    if last and last["read_at"] is None:
+        cur.execute("DELETE FROM app_notifications WHERE user_id=%s AND kind=%s AND link=%s AND read_at IS NULL",
+                    (user_id, kind, link))
+    return add_notification(cur, user_id, kind, body, link)
+
+
 def list_notifications(cur, user_id: int, limit: int = 20) -> List[Dict]:
     cur.execute(
         "SELECT id, kind, body, link, created_at, read_at FROM app_notifications WHERE user_id=%s ORDER BY id DESC LIMIT %s",

@@ -418,7 +418,8 @@ DDL = [
       link VARCHAR(200) NULL,
       created_at DATETIME NOT NULL,
       read_at DATETIME NULL,
-      INDEX idx_notif_user (user_id, read_at, id)
+      INDEX idx_notif_user (user_id, read_at, id),
+      INDEX idx_notif_user_kind (user_id, kind, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     # -- rigorous-research ledger (RESEARCH_PIPELINE_DESIGN.md §B.3) ------------
@@ -891,6 +892,13 @@ def main() -> None:
         # (last_decision_ts, the scan) touch neither column; status changes a few times in a life.
         _add_index_if_missing(cur, "app_deployments", "idx_dep_strategy",
                               "ALTER TABLE app_deployments ADD INDEX idx_dep_strategy (strategy_id, status), "
+                              "ALGORITHM=INPLACE, LOCK=NONE")
+        # The Billing page and every failed auto-reload read the user's newest notice of one kind
+        # (latest_notification); with only (user_id, read_at, id) MySQL walked the primary key from the
+        # newest row of the whole table, so a user with no such notice read every row (320k of 320k in
+        # a seeded check). The pause notice's repeat check reads the same way.
+        _add_index_if_missing(cur, "app_notifications", "idx_notif_user_kind",
+                              "ALTER TABLE app_notifications ADD INDEX idx_notif_user_kind (user_id, kind, id), "
                               "ALGORITHM=INPLACE, LOCK=NONE")
         # Same slow log: the collector box's per-minute reads of the legacy feature tables
         # (data_pipeline.init_schema owns them) full-scanned them, ~5s each, two every minute.

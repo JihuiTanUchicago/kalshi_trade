@@ -627,6 +627,23 @@ def test_reply_emails_the_author_but_not_yourself(monkeypatch):
     assert sent == []
 
 
+def test_a_reply_that_mentions_the_author_is_one_bell_line_opening_that_post(monkeypatch):
+    from app.web.routes import community as community_routes
+    bells = []
+    monkeypatch.setattr(community_routes.repo, "add_comment", lambda *a, **k: 1)
+    monkeypatch.setattr(community_routes.repo, "get_user", lambda cur, uid: {"id": uid, "name": "Bob"})
+    monkeypatch.setattr(community_routes.notify, "comment_notice", lambda *a, **k: True)
+    monkeypatch.setattr(community_routes.notify, "mention_notice", lambda *a, **k: True)
+    monkeypatch.setattr(community_routes.repo, "post_author", lambda cur, pid: {"user_id": 2, "email": None, "name": "Alice"})
+    monkeypatch.setattr(community_routes.repo, "users_by_usernames",
+                        lambda cur, names: [{"id": 2, "email": None}, {"id": 3, "email": None}])
+    monkeypatch.setattr(community_routes.repo, "add_notification",
+                        lambda cur, uid, kind, body, link: bells.append((uid, kind, link)))
+    server.create_comment(ctx({"body": "@alice @cat look"}, params=("7",)))
+    # Alice (the author) gets the reply line only; Cat, mentioned, gets hers; both open post 7.
+    assert sorted(bells) == [(2, "comment", "/community#post-7"), (3, "mention", "/community#post-7")]
+
+
 def test_new_signin_is_blocked_unless_approved(monkeypatch):
     from app import repository as repo
     seen = {}

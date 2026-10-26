@@ -39,7 +39,7 @@ from app.adapters.llm import models_catalog as catalog
 from app import repository as repo
 from app.research import research_repository as research_repo
 from app.trading import spec as specmod
-from app.services import backtest_check, book_memo, customer_text, gate_explain, page_poll, paper_checks, research_list, run_stop, trade_why
+from app.services import backtest_check, bell, book_memo, customer_text, gate_explain, page_poll, paper_checks, research_list, run_stop, trade_why
 from app.trading import track_record
 from app.web import client_errors, webperf
 from app import worker
@@ -778,12 +778,8 @@ def resume_run(ctx: Ctx):
 
 
 def notifications(ctx: Ctx):
-    rows = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid))
-    return {
-        "unread": repo.count_unread_notifications(ctx.cur, ctx.uid),
-        "items": [{"id": r["id"], "kind": r["kind"], "body": r["body"], "link": r["link"],
-                   "created_at": r["created_at"], "read": r["read_at"] is not None} for r in rows],
-    }
+    rows = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid, limit=bell.READ_ROWS))
+    return {"unread": repo.count_unread_notifications(ctx.cur, ctx.uid), "items": bell.grouped(rows)}
 
 
 def mark_notifications_read(ctx: Ctx):

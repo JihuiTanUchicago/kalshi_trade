@@ -3862,7 +3862,9 @@ def pause_notice(cur, user: Dict, run: Dict) -> bool:
     """Ring the bell when a deployment was paused automatically (the engine's loss guard and
     force-close both queue a review carrying the deployment id). The chat line alone reaches only
     someone who opens the autopilot panel, and a paused strategy is exactly what needs them.
-    Read-only toward trading. True when a notice was added."""
+    Read-only toward trading. One pause is one line: a second review of the same pause (the loss
+    guard and force-close both queue one; a retried review runs this again) adds nothing, and a new
+    pause the user hasn't seen the last one of replaces it. True when a notice was added."""
     dep_id = run.get("deployment_id")
     if not dep_id:
         return False
@@ -3871,10 +3873,10 @@ def pause_notice(cur, user: Dict, run: Dict) -> bool:
         return False  # already resumed or stopped by the time the review ran
     title = (d.get("title") or "Strategy %d" % d["strategy_id"])[:120]
     why = (d.get("status_reason") or "").strip()
-    repo.add_notification(cur, user["id"], "paused",
-                          "“%s” was paused automatically.%s" % (title, (" " + why[:200]) if why else ""),
-                          "/strategies/%d" % d["strategy_id"])
-    return True
+    added = repo.add_notification_collapsed(
+        cur, user["id"], "paused", "“%s” was paused automatically.%s" % (title, (" " + why[:200]) if why else ""),
+        "/strategies/%d" % d["strategy_id"])
+    return added is not None
 
 
 def live_ready_notices(cur, user: Dict) -> List[str]:

@@ -249,6 +249,11 @@ th .info { vertical-align: 0; }
 .bell-list .notif.unread { background: var(--signal-wash); }
 .bell-head .bell-new { color: var(--ink-2); }
 .bell-list .notif time { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-3); }
+.bell-list .notif .notif-more { display: block; margin-top: 2px; font-size: 12px; color: var(--ink-3); }
+.bell-list p.notif { margin: 0; }
+.bell-list p.notif:hover { background: none; color: var(--ink-2); }  /* plain text, not a link: no hover cue */
+.bell-list p.notif.unread:hover { background: var(--signal-wash); }
+.bell-menu:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
 .bell-empty { padding: 14px 9px; font-size: 12.5px; color: var(--ink-3); text-transform: none; letter-spacing: normal; white-space: normal; }
 .mk.shared { display: inline-flex; align-items: center; gap: 4px; border-color: var(--rule-2); color: var(--ink-2); text-transform: none; letter-spacing: normal; }
 .mk.shared svg { width: 12px; height: 12px; }
@@ -2130,6 +2135,10 @@ body.landing-body .apf { display: none; }
 
 /* Community journal: complete conversation beside compact source evidence. */
 .feedwrap { --journal-measure: 1152px; position: relative; min-width: 0; width: 100%; max-width: 1152px; margin-inline: auto; padding-top: 16px; container: community-feed / inline-size; }
+/* A bell link to one post: the feed says where it starts, or that the post is gone, and marks the post. */
+.feedwrap .feed-from { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
+.feedwrap .feed-from .notice { flex: 1 1 240px; margin: 0; }
+.feedwrap .post.post-target { background: var(--signal-wash); box-shadow: 0 0 0 8px var(--signal-wash); }  /* posts sit flush; the wash reaches past the text */
 .community-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; min-height: 44px; padding: 0 128px 12px 0; border-bottom: 1px solid var(--rule-2); }
 .feed-filter { display: flex; gap: 20px; }
 .feed-filter .chip { min-height: 32px; padding: 6px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-transform: none; letter-spacing: 0; }
