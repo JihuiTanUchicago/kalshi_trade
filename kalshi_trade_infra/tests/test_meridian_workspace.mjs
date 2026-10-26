@@ -3135,6 +3135,26 @@ test('a passed strategy not yet on paper puts Deploy on paper up top as well, th
   }
 });
 
+test('strategy page: out-of-sample figures say their span, deployments go by book not row id, and a second paper copy is flagged', async () => {
+  const detail = detailStrategy({out_of_sample: {...metrics(12), days: 15.2}, capital: 100,
+    deployments: [{id: 812, mode: 'demo', status: 'running'}, {id: 811, mode: 'paper', status: 'paused'}]});
+  const f = strategyFrontend(detail, () => response({deployments: [], open_positions: []}));
+  await f.viewStrategy(42); await flush();
+  const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('main').innerHTML;
+  assert.match(figs, /6 trades over 15 days/);
+  assert.match(figs, /Out-of-sample over 15 days · \$100 at risk at most/);
+  assert.match(html, /Demo · running<br>Paper · paused/);
+  assert.match(html, /Stop deployments \(demo, paper\)/);
+  assert.doesNotMatch(html, /#81[12]/);
+  assert.match(html, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
+  // An older result with no window length keeps its figure as it was; not on paper, no warning.
+  const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
+  await g.viewStrategy(42); await flush();
+  assert.match(g.root.querySelector('#figs').innerHTML, /<div class="sub-fig">6 trades<\/div>/);
+  assert.match(g.root.querySelector('#figs').innerHTML, /<div class="sub-fig">\$100 at risk at most<\/div>/);
+  assert.doesNotMatch(g.root.querySelector('main').innerHTML, /paper-again/);
+});
+
 test('Research folds model, depth and market behind Options on a phone, open on a wide screen, and says what will run', async () => {
   const markets = [{key: 'btc15m', label: 'Bitcoin 15 min', category: 'Crypto', has_data: true}];
   const research = (matchMedia) => frontend({matchMedia, fetchImpl: path => {

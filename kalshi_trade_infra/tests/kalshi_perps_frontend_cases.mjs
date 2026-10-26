@@ -204,11 +204,13 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = frontend({fetchImpl: () => response({})});
     const row = real => f.strategySlip(detailStrategy({id: 48, title: 'Books fixture', deployed: true, real}), null, {});
     const both = row({pnl: 1, trades: 3, open: 1, mode: 'paper', demo: {pnl: -0.5, trades: 2, open: 0}});
-    assert.match(both, /\+\$1\.00<\/span> since deploying ·\u00a03 trades/);
+    assert.match(both, /\+\$1\.00<\/span> on paper since deploying ·\u00a03 trades/);
     assert.match(both, /Demo: <span class="[^"]*">−\$0\.50<\/span> ·\u00a02 trades/);
     assert.doesNotMatch(both, /\$0\.50<\/span> since deploying/);
     assert.match(row({pnl: 2, trades: 1, open: 0, mode: 'demo'}), /\+\$2\.00<\/span> on demo since deploying ·\u00a01 trade</);
     assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'demo'}), /No closed demo trades yet/);
+    // Paper says so too, so a paper figure is never read as real money beside a plain "Deployed" badge.
+    assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'paper'}), /No closed paper trades yet/);
     assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'paper', demo: {pnl: 0, trades: 0, open: 1}}), /Demo: no closed trades yet/);
   });
 

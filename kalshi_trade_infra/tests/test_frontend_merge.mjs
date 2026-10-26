@@ -1878,6 +1878,36 @@ test('a passed strategy not yet on paper puts Deploy on paper up top as well, th
   }
 });
 
+test('strategy page: unseen figures say their span, deployments go by book not row id, and a second paper copy is flagged', async () => {
+  const detail = detailStrategy({out_of_sample: {...metrics(12), days: 15.2}, capital: 100,
+    recent_trades: [{opened: '2026-10-24T10:15Z', ticker: 'KXBTC15M-26OCT25-T67000', side: 'yes', qty: 5, entry: .42, exit: 1, pnl: 2.8, reason: 'settled'}],
+    deployments: [{id: 812, mode: 'demo', status: 'running'}, {id: 811, mode: 'paper', status: 'paused'}]});
+  const f = strategyFrontend(detail, () => response({deployments: [], open_positions: []}));
+  await f.viewStrategy(42); await flush();
+  const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('main').innerHTML;
+  assert.match(figs, /6 trades over 15 days the agent never saw/);
+  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
+  assert.match(html, /Already deployed: Demo \(running\), Paper \(paused\)\./);
+  assert.match(html, /Stop deployments \(demo, paper\)/);
+  assert.doesNotMatch(html, /#81[12]/);
+  assert.match(html, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
+  // The unseen trades scroll inside the paper's column and wrap, never running under the sidebar.
+  assert.match(html, /<div class="sheet"><table class="table stack t-unseen">/);
+  // An older result with no window length keeps its figure as it was; not on paper, no warning.
+  const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
+  await g.viewStrategy(42); await flush();
+  assert.match(g.root.querySelector('#figs').innerHTML, /6 trades the agent never saw/);
+  assert.match(g.root.querySelector('#figs').innerHTML, /<div class="sub-fig">\$100 at risk at most<\/div>/);
+  assert.doesNotMatch(g.root.querySelector('main').innerHTML, /paper-again/);
+});
+
+test('a strategy row renders its thesis markdown as the strategy page does, escaped', () => {
+  const f = frontend({fetchImpl: () => response({})});
+  const row = f.strategySlip(detailStrategy({id: 46}), null, {});
+  assert.match(row, /<div class="sub-fig cellwrap"><b>Saved<\/b> &lt;img/);
+  assert.doesNotMatch(row, /\*\*Saved\*\*|<img/);
+});
+
 test('Research folds model, depth and market behind Options on a phone, open on a wide screen, and says what will run', async () => {
   const markets = [{key: 'btc15m', label: 'Bitcoin 15 min', category: 'Crypto', has_data: true}];
   const research = (matchMedia) => frontend({matchMedia, fetchImpl: path => {
