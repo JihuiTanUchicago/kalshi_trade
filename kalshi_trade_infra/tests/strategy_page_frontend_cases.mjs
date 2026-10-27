@@ -32,6 +32,19 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.ok(rule.root.querySelector('#dep-paper'));
   });
 
+  // Every Kalshi strategy's pre-registration stores {fee: 'kalshi_taker', fill: 'ask/bid'} (agent.py), and its page
+  // printed them as stored: "Fee: kalshi_taker · Fill: ask/bid".
+  test(`${name}: the pre-registered cost assumptions read in words, never the stored codes`, async () => {
+    const f = await open({status: 'passed', experiment: {classification: 'deployment_candidate', null_hypothesis: 'No edge.',
+      cost_assumptions: {fee: 'kalshi_taker', fill: 'ask/bid'}}});
+    assert.match(main(f), /<dt>Cost assumptions<\/dt><dd>Fee: Kalshi(?:’|&#39;|')s taker fee on every fill ·\u00a0Fill: buys at the ask, sells at the bid<\/dd>/);
+    assert.doesNotMatch(main(f), /kalshi_taker|ask\/bid/);
+    const perp = await open({status: 'passed', experiment: {classification: 'deployment_candidate', null_hypothesis: 'No edge.',
+      cost_assumptions: {fill: 'next_open', funding: 'finalized_payments_as_cost_only', scenario: 'some_new_code', lookback_minutes: 60}}});
+    assert.match(main(perp), /Fill: the next bar’s open ·\u00a0Funding: settled funding payments, counted only as a cost ·\u00a0Scenario: some new code ·\u00a0Lookback minutes: 60/);
+    assert.doesNotMatch(main(perp), /next_open|finalized_payments|some_new_code/);
+  });
+
   test(`${name}: the research figures read the stored per-trade returns, in stakes and % of stake`, async () => {
     // The gatekeeper stores a phase as its per-trade net returns, not a running total.
     const val = [[1000, 0.5], [2000, -0.8], [3000, 1.0]], hold = [[4000, 0.25], [5000, -0.05]];

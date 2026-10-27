@@ -32,6 +32,11 @@ window.TauPage('strategies', (T) => {
   const rpPlain = (t) => String(t).replace(/\bmean_net_return_per_trade\b/g, 'average net return per trade, after fees')
     .replace(/\bstationary_bootstrap( one-sided)?/g, (m, one) => (one ? 'one-sided ' : '') + 'bootstrap test (resamples its trades in blocks)').replace(/\balpha from\b/g, 'significance bar from')
     .replace(/\b([a-z]+)_([a-z_]+)\b/g, (m) => m.replace(/_/g, ' '));
+  // The pre-registration's cost assumptions as the agent stores them (agent.py): every Kalshi strategy's page read
+  // "Fee: kalshi_taker · Fill: ask/bid". Said in words; a value with no words here reads as rpPlain says it.
+  const RP_COST = { kalshi_taker: 'Kalshi’s taker fee on every fill', 'ask/bid': 'buys at the ask, sells at the bid',
+    next_open: 'the next bar’s open', finalized_payments_as_cost_only: 'settled funding payments, counted only as a cost' };
+  const rpCost = (v) => (typeof v === 'string' ? RP_COST[v] || rpPlain(v) : String(v));
   const LORD_WORDS = ' (a false-discovery control: it keeps count of every idea tested, so lucky passes stay rare)';
   const rpStamp = (iso) => { try { return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(iso); } };
   // The gatekeeper stores each phase as its per-trade net returns ([ts, return] per trade), not a running
@@ -211,7 +216,7 @@ window.TauPage('strategies', (T) => {
     if (exp.planned_test) pre.push(['Planned test', rpPlain(exp.planned_test)]);
     if (exp.min_sample != null) pre.push(['Minimum sample', exp.min_sample + ' trades']);
     if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests ·\u00a0' : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
-    if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${v}`).join(' ·\u00a0')]);
+    if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${rpCost(v)}`).join(' ·\u00a0')]);
     if (pre.length) {
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
       parts.methodology += sub('The pre-registered test', `<dl class="rp-grid">${pre.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${rpText(v)}</dd></div>`).join('')}</dl>${reg}`);
