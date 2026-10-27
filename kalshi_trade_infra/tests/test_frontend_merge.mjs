@@ -1424,7 +1424,7 @@ test('a market page says what its price is, how it settles and when, and the rea
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
   assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
@@ -1462,7 +1462,7 @@ test('a settled market shows its result in place of a live price', async () => {
   const f = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'no'});
   await f.ready;
   assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><dd class="sub-fig">each No contract paid \$1/);
-  assert.match(f.root.innerHTML, /Settled ·\u00a0KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
+  assert.match(f.root.innerHTML, /Settled ·\u00a0<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });
 
 // Every page the server serves the app shell for (app/server.py SPA_ROUTES). A path with no route
@@ -5179,3 +5179,15 @@ flakyNetworkCases({name: 'Tau', frontend});
 deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
+
+test('on a phone the dashboard book figures put their chip above the name, so "Tau’s demo book" reads on one line', () => {
+  // At 390px the half-width figure had ~164px for "DEMO TAU’S DEMO BOOK" (~179px on one line): "BOOK" wrapped.
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const phone = css.slice(css.indexOf('@media (max-width: 480px) {'));
+  assert.ok(phone.length < css.length, 'a phone-width block');
+  assert.match(phone.slice(0, phone.indexOf('\n}\n')), /\.measure dt\.lab > \.mk:first-child \{ display: block; width: fit-content;/);
+  // The rule's target: each book's label leads with its chip.
+  for (const lab of ['<span class="mk live">Real</span> Kalshi cash', '<span class="mk dep">Demo</span> ${DEMO_BOOK}', '<span class="mk">Paper</span> Simulation']) {
+    assert.ok(source.includes('fig(`' + lab) || source.includes("fig('" + lab), lab);
+  }
+});

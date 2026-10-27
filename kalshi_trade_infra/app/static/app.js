@@ -1314,7 +1314,12 @@
     .catch(() => {}).then(() => { demoAsk = null; }));
   const dirTag = () => '';
   // quiet: the words go out through announce(), so the notice leaves off its own live role (read once).
-  const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
+  // Tau's words that send someone to Funds ("... on the Funds page ...": an engine pause reason, a deploy
+  // or live-autopilot refusal) name it as a link to Funds' Connect Kalshi; it was plain text, with nothing to
+  // press. Takes text already escaped (esc), so only these fixed words become markup and whatever else the
+  // server said stays escaped.
+  const fundsLinked = (html) => String(html).replace(/\b(?:the )?Funds page\b/, '<a href="/funds#connect-kalshi">$&</a>');
+  const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${fundsLinked(esc(msg))}</span></div>`;
   // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
   const loadFail = (msg) => `<div class="load-fail">${notice(msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
   // A page's own bug (a TypeError on a reply it didn't expect) is not something to print to the user.
@@ -1783,7 +1788,7 @@
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</div>${idle ? `<div class="sub-fig dep-idle">${esc(idle.why)}</div>` : ''}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
+        <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</div>${idle ? `<div class="sub-fig dep-idle">${esc(idle.why)}</div>` : ''}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
       <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -2728,7 +2733,8 @@
       d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as of ${settleAt(d.as_of)}`) : ''].filter(Boolean).join(' ·\u00a0');
     const settled = d.result === 'yes' || d.result === 'no';
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
-    shell('/explore', boardTitle(label, esc([contractMarket(d.ticker), MKT_STATUS[d.status] || d.status || 'Market', d.ticker].filter(Boolean).join(' ·\u00a0'))) +
+    // The line under the name says what the code is, as a position does (kalshiRef): "Kalshi contract KX…", not a bare ticker.
+    shell('/explore', boardTitle(label, esc([contractMarket(d.ticker), MKT_STATUS[d.status] || d.status || 'Market'].filter(Boolean).join(' ·\u00a0')) + (d.ticker ? ' ·\u00a0' + kalshiRef(d.ticker) : '')) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
@@ -3663,14 +3669,14 @@
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }
-  // apLiveBlock's line as the panel shows it: "the Funds page" links to Funds' Connect Kalshi. It was plain text,
-  // with nothing to press. The flash a refused press shows (apFlash) keeps the plain words.
-  const apLiveBlockHtml = (d) => esc(apLiveBlock(d)).replace('the Funds page', '<a href="/funds#connect-kalshi">the Funds page</a>');
+  // apLiveBlock's line as the panel shows it: "the Funds page" links to Funds' Connect Kalshi (fundsLinked).
+  const apLiveBlockHtml = (d) => fundsLinked(esc(apLiveBlock(d)));
   // Read out as well as shown: the live switch, the kill switch and an unmet gate answered only in
-  // print, so a reader heard nothing after pressing them.
+  // print, so a reader heard nothing after pressing them. A refused press ("Connect your Kalshi key on the
+  // Funds page first.", the gate's words or the server's) links "the Funds page" (fundsLinked).
   function apFlash(box, msg, kind) {
     const f = box.querySelector('#apf-flash');
-    if (f) f.innerHTML = `<p class="${kind === 'bad' ? 'error-text' : 'hint'}">${esc(msg)}</p>`;
+    if (f) f.innerHTML = `<p class="${kind === 'bad' ? 'error-text' : 'hint'}">${fundsLinked(esc(msg))}</p>`;
     if (msg) announce(msg, kind === 'bad');
   }
   async function apAction(box, action, e) {
@@ -3887,7 +3893,7 @@
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
     actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
-    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml,
+    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,

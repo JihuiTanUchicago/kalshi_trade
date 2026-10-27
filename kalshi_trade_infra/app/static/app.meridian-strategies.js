@@ -6,7 +6,7 @@ window.TauPage('strategies', (T) => {
   const {
     actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
-    depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
+    depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
@@ -398,7 +398,7 @@ window.TauPage('strategies', (T) => {
     // A paused deployment (often paused automatically, and the bell links here) says so and why.
     const pausedLine = (ds) => {
       const p = ds.find((d) => d.status === 'paused');
-      return p ? `<p class="real-paused"><b>Paused</b>${(p.status_why || p.status_reason) ? ': ' + esc((p.status_why || p.status_reason).replace(/\.$/, '')) + '.' : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>` : '';
+      return p ? `<p class="real-paused"><b>Paused</b>${(p.status_why || p.status_reason) ? ': ' + fundsLinked(esc((p.status_why || p.status_reason).replace(/\.$/, ''))) + '.' : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>` : '';
     };
     const pace = (ds, n) => {
       if (!n || !oos || !(+oos.trades > 0) || !(stake > 0)) return '';

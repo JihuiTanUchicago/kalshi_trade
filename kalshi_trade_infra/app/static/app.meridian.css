@@ -1916,6 +1916,8 @@ body.landing-body .apf { display: none; }
 .t-dep td.name { width: 40%; min-width: 210px; }
 .t-dep td.name a { text-decoration: none; }
 .t-dep td.name a:hover { text-decoration: underline; }
+/* A link in a row's lines (a pause reason's "the Funds page") reads as a link; only the strategy's name drops its underline. */
+.t-dep td.name .sub-fig a, .monitor-limits a { text-decoration: underline; text-decoration-color: var(--rule-2); }
 .t-dep td.name .sub-fig { margin-top: 3px; font-size: 12px; }
 .t-dep .deployment-state { font-size: 13px; font-weight: 600; color: #365D3B; }
 .t-dep td.num { font-size: 15px; }
@@ -1954,6 +1956,8 @@ body.landing-body .apf { display: none; }
 .hot-title { font-size: 13px; line-height: 1.4; }
 .hot-title strong, .hot-title > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hot-title strong { grid-column: 1; grid-row: 1; align-self: baseline; font-size: 13px; font-weight: 600; }
+/* The rail's name column is ~80px, so a name cut at one line lost its hour ("BTC above…"): it wraps, up to three lines. */
+.hot-title strong { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .hot-title > span { grid-column: 1; grid-row: 2; font-size: 12px; color: var(--ink-2); }
 .hot-price .fig { grid-column: 2; grid-row: 1; align-self: baseline; text-align: right; font-size: 18px; letter-spacing: 0; }
 .hot-delta { grid-column: 3; grid-row: 1; align-self: baseline; text-align: right; background: none; padding: 0; font-size: 12px; }
@@ -2679,6 +2683,8 @@ body.landing-body .apf { display: none; }
 .pos-name { overflow-wrap: anywhere; }
 .kalshi-ref { font-size: 12px; color: var(--ink-3); }
 .kalshi-ref .tick { overflow-wrap: anywhere; }
+/* On a market page it is the line under the name ("Open for trading · Kalshi contract KX…"), at that line's size. */
+.deck .kalshi-ref { font-size: inherit; color: inherit; }
 /* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
 #openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }

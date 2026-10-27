@@ -5390,7 +5390,7 @@ test('a market page says what its price is, how it settles and when, and the rea
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
   assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
@@ -5428,7 +5428,7 @@ test('a settled market shows its result in place of a live price', async () => {
   const f = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'no'});
   await f.ready;
   assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><dd class="sub-fig">each No contract paid \$1/);
-  assert.match(f.root.innerHTML, /Settled ·\u00a0KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
+  assert.match(f.root.innerHTML, /Settled ·\u00a0<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });
 
 // Broken pages on /admin: browser error reports grouped by message and page (server client_error_groups).
@@ -6042,3 +6042,20 @@ moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
 }});
+
+test('the hot rail wraps a market’s name instead of cutting its close hour, and a Deploy row’s link reads as a link', () => {
+  // The rail's name column is ~80px: "BTC above $X at 5pm ET" read "BTC above…", the hour lost.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const rules = [...css.matchAll(/\n\.hot-title strong \{([^}]*)\}/g)].map((m) => m[1]);
+  const last = (prop) => rules.map((r) => (r.match(new RegExp('(?:^|;)\\s*' + prop + ':\\s*([^;]+)')) || [])[1]).filter(Boolean).at(-1);
+  assert.equal(last('white-space'), 'normal');
+  assert.equal(last('-webkit-line-clamp'), '3');
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
+  f.root.innerHTML = '<aside id="hotrail"></aside>';
+  f.S.hot = {at: new Date().toISOString(), markets: [{t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above', bid: .5, ask: .52, v24: 10, oi: 0}]};
+  f.renderHotRail();
+  assert.equal(f.root.querySelector('.hot-title strong').textContent, 'BTC above $X at 5pm ET', 'the whole name, its hour included');
+  // A pause reason's "the Funds page" in a Deploy row is underlined; the row's strategy name still isn't.
+  assert.match(css, /\n\.t-dep td\.name \.sub-fig a, \.monitor-limits a \{ text-decoration: underline;/);
+});

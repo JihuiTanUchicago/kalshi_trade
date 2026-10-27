@@ -34,7 +34,7 @@ export function explorePageCases({name, frontend}) {
     assert.deepEqual(links.map((a) => a.textContent), ['Research BTC above $X at 5pm ET', 'Your BTC above $X at 5pm ET strategies']);
     // The name line reads the market's name with this contract's strike, its status in words and the contract;
     // never the raw series alone.
-    assert.match(f.root.innerHTML, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · KXBTCD-26OCT2617-T113499\.99/);
+    assert.match(f.root.innerHTML, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/);
   });
 
   test(`${name}: a market Tau doesn't research says so, with no raw series key in its name line`, async () => {
@@ -42,20 +42,22 @@ export function explorePageCases({name, frontend}) {
     const next = f.root.querySelector('.mk-next');
     assert.match(next.textContent, /Tau doesn’t research this market, so your strategies can’t trade it\./);
     assert.equal(next.querySelector('a.primary'), null, 'no research button for a market research can’t pick');
-    assert.match(f.root.innerHTML, />Open for trading · KXFEDDECISION-26DEC-H0</);
+    assert.match(f.root.innerHTML, />Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXFEDDECISION-26DEC-H0</);
     assert.doesNotMatch(f.root.innerHTML, /KXFEDDECISION ·/);
   });
 
   test(`${name}: an untitled contract's page is headed by a plain name, its ticker only on the line under it`, async () => {
     const f = await open(page({ticker: 'KXFEDDECISION-26DEC-H0', series: 'KXFEDDECISION', title: '', sub: ''}));
     assert.equal(f.root.querySelector('h1').textContent, 'Kalshi contract', 'never the raw ticker as the heading');
-    assert.match(f.root.querySelector('.board-title .deck').textContent, /Open for trading ·\sKXFEDDECISION-26DEC-H0$/);
+    // The ticker is labelled the way a position's is (kalshiRef): it read "Open for trading · KXFEDDECISION-26DEC-H0".
+    assert.match(f.root.querySelector('.board-title .deck').textContent, /Open for trading ·\sKalshi contract KXFEDDECISION-26DEC-H0$/);
+    assert.doesNotMatch(f.root.querySelector('.board-title .deck').textContent, /·\sKX/);
   });
 
   test(`${name}: an hourly contract of the 5pm Bitcoin ladder isn't named the 5pm market, and points at the close Tau researches`, async () => {
     const f = await open(page({ticker: 'KXBTCD-26OCT2700-T112999.99', title: 'Bitcoin price on Oct 27, 2026 at 12am EDT?', sub: '$113,000 or above'}));
     assert.doesNotMatch(f.root.innerHTML, /Bitcoin above \S+ at 5pm ET ·/, 'the midnight contract is not the 5pm market');
-    assert.match(f.root.innerHTML, /Bitcoin above \$112,999\.99 at midnight ET ·\sOpen for trading ·\sKXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
+    assert.match(f.root.innerHTML, /Bitcoin above \$112,999\.99 at midnight ET ·\sOpen for trading ·\s<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
     const next = f.root.querySelector('.mk-next');
     assert.match(next.textContent, /Tau researches only the 5pm ET close of this ladder, so your strategies don’t trade this contract\./);
     assert.deepEqual(next.querySelectorAll('a').map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily']);

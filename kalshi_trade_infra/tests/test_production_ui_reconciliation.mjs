@@ -6,7 +6,7 @@ import {bundleSource, exposing} from './bundle_source.mjs';
 
 const bundle = process.env.TAU_TEST_THEME === 'meridian' ? 'app.meridian.js' : 'app.js';
 // What the checks read from the bundle and its page files (bundle_source.mjs).
-const EXPOSE = ['S', 'routes', 'apBuildShell', 'apUpdate', 'apFeedLi', 'apLiveBlock', 'viewBilling', 'viewFunds'];
+const EXPOSE = ['S', 'routes', 'apAction', 'apBuildShell', 'apUpdate', 'apFeedLi', 'apLiveBlock', 'notice', 'viewBilling', 'viewFunds'];
 const source = bundleSource(bundle, {expose: EXPOSE, target: 'ui'});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };
@@ -296,6 +296,33 @@ test('with live trading off on the server, the panel says so in one line instead
   f.apUpdate(f.box, status({live_enabled: false, autopilot_live: true}));
   assert.match(controls(), /data-ap="livetoggle"/); assert.match(controls(), /data-ap="kill"/);
   assert.equal(posts(f).length, 0);
+});
+
+test('a refused live press, and the server refusing it, link "the Funds page" to Connect Kalshi in the words they flash', async () => {
+  const refusal = 'Connect your Kalshi key on the Funds page first.';
+  const f = frontend(path => path === '/api/models' ? response(catalog) : path === '/api/autopilot/live' ? response({error: refusal}, 400) : response({}));
+  f.apBuildShell(f.box); await flush();
+  const flashed = () => f.box.querySelector('#apf-flash').innerHTML;
+  const linked = '<p class="error-text">Connect your Kalshi key on <a href="/funds#connect-kalshi">the Funds page</a> first.</p>';
+  // The gate unmet: the press opens no confirm and says why, the words that were plain text now a link.
+  f.S.ap = status({live_enabled: true, kalshi_connected: false}); f.apUpdate(f.box, f.S.ap);
+  await f.apAction(f.box, 'livearm');
+  assert.equal(flashed(), linked);
+  assert.equal(posts(f).length, 0);
+  // The page thought the key was there; the server said it isn't (the key went in another tab).
+  f.S.ap = status({live_enabled: true, kalshi_connected: true}); f.apUpdate(f.box, f.S.ap);
+  const form = f.box.querySelector('#apf-confirm'); form.confirm = {value: 'LIVE AUTOPILOT'};
+  form.onsubmit({preventDefault() {}}); await flush(); await flush();
+  assert.equal(posts(f).length, 1); assert.equal(posts(f)[0].path, '/api/autopilot/live');
+  assert.equal(flashed(), linked);
+  // A deploy refused the same way ("Add your Kalshi demo (sandbox) key on the Funds page first.") flashes as a notice.
+  assert.match(f.notice('Add your Kalshi demo (sandbox) key on the Funds page first.', 'bad', true),
+    /<span>Add your Kalshi demo \(sandbox\) key on <a href="\/funds#connect-kalshi">the Funds page<\/a> first\.<\/span>/);
+  // Only those fixed words become markup: whatever else the message says stays escaped.
+  const hostile = f.notice('<img src=x onerror=alert(1)> Funds page', 'bad');
+  assert.match(hostile, /&lt;img src=x onerror=alert\(1\)&gt; <a href="\/funds#connect-kalshi">Funds page<\/a>/);
+  assert.doesNotMatch(hostile, /<img/);
+  assert.match(f.notice('Saved.', 'good'), /<span>Saved\.<\/span>/);
 });
 
 test('the panel names its log Activity feed, as the dashboard card and the story do', async () => {
