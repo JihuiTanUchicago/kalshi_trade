@@ -268,7 +268,7 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
                                                                                   {m: (0.0, 0) for m in ("paper", "demo", "live")}) + (({},) if split else ()),
         "daily_pnl": lambda *a, **k: [],
         "activity_since": lambda cur, uid, since: {"autopilot": {}, "runs": {}},
-        "passed_since": lambda cur, uid, since: {"n": 0, "items": []},
+        "passed_since": lambda cur, uid, since, **k: {"n": 0, "items": []},
         "demo_equity": lambda cur, uid, realized=None: {"capital": 500.0, "equity": 512.0, "realized": 12.0, "roi": .024, "before_reload": 40.0},
         "get_kalshi_key": lambda cur, uid: None, "open_reconcile_rows": lambda cur, uid: [],
         "active_run_counts": lambda cur, uid, **kw: {},
@@ -1206,7 +1206,9 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_the_cookies_lif
     assert server._visit_since(epoch(now + timedelta(days=1))) == (now, False)
     # The strip's block: the books' since-visit sums as read (never added up), passes, autopilot and runs.
     monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: {"autopilot": {"deploy": 1}, "runs": {"failed": 1}, "own_sessions": True})
-    monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since: {"n": 1, "items": [{"id": 3, "title": "A"}]})
+    monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since, **k: {"n": 1, "items": [{"id": 3, "title": "A"}]})
+    from app.web.routes import dashboard as dashboard_routes
+    monkeypatch.setattr(dashboard_routes, "_later_verdicts", lambda cur, uid, items: {})  # no later check held it back
     out = server._since_visit(None, 1, now, False, {"paper": (2.4249, 3), "demo": (-1.0, 1), "live": (0.0, 0)})
     assert out == {"at": now, "first": False, "books": {"paper": {"pnl": 2.42, "trades": 3}, "demo": {"pnl": -1.0, "trades": 1},
                                                          "live": {"pnl": 0.0, "trades": 0}},
@@ -1230,7 +1232,7 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     act = {"autopilot": {}, "runs": {}, "own_sessions": True, "spent": {"since": 27.45, "week": 27.45},
            "milestones": {"passed": [232], "live_ready": [232]}}
     monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: act)
-    monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since: {"n": 0, "items": []})
+    monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since, **k: {"n": 0, "items": []})
     monkeypatch.setattr(server.billing, "configured", lambda: True)
     out = server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})
     # Without the probe's answer the row keeps "real money" (card_charged True).

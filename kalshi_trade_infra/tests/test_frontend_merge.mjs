@@ -2758,6 +2758,13 @@ test('a returning user reads what happened since the last visit at the top of th
   const q = quiet.root.querySelector('#dash-since').innerHTML;
   assert.match(q, /Last 24 hours/); assert.doesNotMatch(q, /Since your last visit/);
   for (const said of ['No trades closed.', 'Nothing new passed.', 'On. It made no changes.', 'Nothing.']) assert.ok(q.includes(said), said);
+  // A pass a later check left uncleared is named apart, as its page and the lists stamp it, never as passed.
+  const fell = await strip({deployments: [], since: {...since, passed: {n: 1, items: [{id: 9, title: 'Rain'}],
+    not_cleared: [{id: 8, title: '<b>Fade</b>', verdict: 'missed_final'}, {id: 7, title: 'Tails', verdict: 'held_back'}], not_cleared_n: 3}}});
+  const ft = fell.root.querySelector('#dash-since').innerHTML;
+  assert.match(ft, /1 strategy passed: <a href="\/strategies\/9">Rain<\/a>/);
+  assert.match(ft, /Not cleared to trade: <a href="\/strategies\/8">&lt;b&gt;Fade&lt;\/b&gt;<\/a> \(missed the final test\), <a href="\/strategies\/7">Tails<\/a> \(held back\), 1 more\./);
+  assert.doesNotMatch(ft, /passed: [^.]*Fade/);
   // An older server without the block: no strip.
   assert.equal((await strip({})).root.querySelector('#dash-since'), null);
 });

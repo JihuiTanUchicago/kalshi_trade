@@ -108,6 +108,16 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     assert page["why_failed"][0]["measured"] == "a 0.93 correlation of daily results with “Late fade”"
 
     # The session page: the held-back pass says so by name; the missed one lists its holdout checks.
+    # The dashboard's "since your last visit": what passed, without the ones a later check left uncleared.
+    from datetime import timedelta
+    from app.web.routes import dashboard
+    since = dashboard._passed_since(cur, uid, repo.now_utc() - timedelta(hours=1))
+    assert since["n"] == 2 and {i["id"] for i in since["items"]} == {sid["true pass"], sid["awaiting holdout"]}
+    assert since["not_cleared_n"] == 3
+    assert {(i["id"], i["verdict"]) for i in since["not_cleared"]} == {
+        (sid["missed"], "missed_final"), (sid["held"], "held_back"), (sid["legacy held"], "held_back")}
+    assert all(set(i) == {"id", "title", "verdict"} for i in since["not_cleared"])
+
     later = research._later_missed(counting, uid, repo.list_strategies(cur, uid, run_id=run))
     assert later[sid["held"]]["verdict"] == "held_back"
     assert later[sid["held"]]["later_missed"][0]["label"] == "Too similar to “Late fade”"

@@ -808,7 +808,10 @@ def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(c
     repo.insert_strategy(cur, uid, run, None, "btc15m", "momentum", "Rejected", "t", {}, "rejected", None)
     repo.insert_strategy(cur, uid, None, None, "btc15m", repo.DEMO_DIRECTION, "Example", "t", {}, "passed", None)
     got = repo.passed_since(cur, uid, since)
-    assert got == {"n": 4, "items": [{"id": i, "title": "Passed %d" % n} for n, i in reversed(list(enumerate(ids)))][:3]}
+    # Each item also carries what the dashboard judges its later verdict by (market, spec, experiment_id).
+    assert got["n"] == 4 and [{"id": i["id"], "title": i["title"]} for i in got["items"]] == [
+        {"id": i, "title": "Passed %d" % n} for n, i in reversed(list(enumerate(ids)))][:3]
+    assert got["items"][0]["market"] == "btc15m" and got["items"][0]["experiment_id"] is None
     assert repo.passed_since(cur, uid, datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=5)) == {"n": 0, "items": []}
 
     repo.create_proposal(cur, uid, "deploy", "auto", None, ids[0], "applied")
