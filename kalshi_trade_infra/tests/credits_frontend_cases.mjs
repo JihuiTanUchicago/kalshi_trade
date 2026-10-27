@@ -110,6 +110,45 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     assert.match(g.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
     g.clearTimers();
   });
+
+  test(`${name}: Billing's statement adds up: the lines under a day to its "used", and the days to the usage above`, async () => {
+    // Walk 2026-10-27, a few days of autopilot research: each figure rounded half up on its own, so "Sun $7.98 used"
+    // sat over −$7.95 and −$0.02, and the days added up a cent short of "Agent usage −$12.99".
+    const use = (amount, day, item) => ({kind: 'usage', amount, item, model: 'Claude Opus 4.6', calls: 40, day,
+      created_at: `${day}T15:00:00Z`, first_at: `${day}T11:00:00Z`});
+    const f = billingPage(cardedBilling({
+      math: {days: 30, start: 0, bought: 50, purchases: 1, other: 0, usage: 12.99, end: 37.01},
+      ledger: [use(-7.9545, '2026-10-24', 'Autopilot research'), use(-0.0245, '2026-10-24', 'Autopilot check-in'),
+        use(-0.0031, '2026-10-24', 'Research session'), use(-2.0049, '2026-10-23', 'Autopilot research'),
+        use(-3.0049, '2026-10-22', 'Autopilot research'),
+        {kind: 'topup', amount: 50, day: '2026-10-22', created_at: '2026-10-22T09:00:00Z', first_at: '2026-10-22T09:00:00Z', card_charge: 52.75}],
+      ledger_cut: false}));
+    await f.viewBilling(); await flush();
+    const cents = (t) => Math.round(+t.replace(/[^\d.]/g, '') * 100);
+    const days = [];
+    for (const tr of f.root.querySelectorAll('#bledger tbody tr')) {
+      const sum = tr.querySelector('.day-sum');
+      if (sum) { days.push({used: cents((sum.textContent.match(/\$([\d.,]+) used/) || [, '0'])[1]), lines: []}); continue; }
+      const amt = tr.querySelector('td.num').textContent;
+      if (amt.startsWith('−')) days[days.length - 1].lines.push(amt);
+    }
+    assert.equal(days.length, 3);
+    for (const d of days) {
+      // The whole-cent lines plus any line under a cent (shown to three places) round to the day's "used".
+      const shown = d.lines.reduce((a, t) => a + +t.replace(/[^\d.]/g, ''), 0);
+      assert.equal(Math.round(shown * 100), d.used, `${d.lines.join(' + ')} = ${d.used / 100}`);
+    }
+    assert.deepEqual(days.map((d) => d.used), [798, 201, 300]);
+    assert.equal(days.reduce((a, d) => a + d.used, 0), 1299);  // the days are the statement's usage
+    assert.match(f.root.querySelector('.bill-math').textContent, /Agent usage\s*−\$12\.99/);
+    assert.deepEqual(days[0].lines, ['−$7.96', '−$0.02', '−$0.003']);  // each within a cent of its exact amount
+    assert.match(f.root.querySelector('.ledger-key').textContent, /rounded to the cent so they add up to their day; the receipt has every call/);
+    // With older days cut off, the days can't be held to the month's usage, but each still adds up.
+    const cut = billingPage(cardedBilling({math: {days: 30, start: 0, bought: 0, purchases: 0, other: 0, usage: 99.99, end: 1},
+      ledger: [use(-7.9545, '2026-10-24', 'Autopilot research'), use(-0.0245, '2026-10-24', 'Autopilot check-in')], ledger_cut: true}));
+    await cut.viewBilling(); await flush();
+    assert.match(cut.root.querySelector('#bledger').textContent, /\$7\.98 used[\s\S]*−\$7\.96[\s\S]*−\$0\.02/);
+  });
 }
 
 // A declined auto-reload card where credits run short outside the autopilot card: the dashboard's Needs
