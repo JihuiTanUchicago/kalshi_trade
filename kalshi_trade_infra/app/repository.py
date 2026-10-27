@@ -27,8 +27,8 @@ from app.adapters.db.kalshi_dev_keys_repository import (  # noqa: F401
     delete_kalshi_dev_key, get_kalshi_dev_key, set_kalshi_dev_key,
 )
 from app.adapters.db.chat_repository import (  # noqa: F401
-    active_agent_run, add_chat, chat_contains, chat_messages, create_proposal, decide_proposal, deployment_names,
-    get_proposal,
+    active_agent_run, add_chat, chat_contains, chat_lines_like, chat_messages, create_proposal, decide_proposal,
+    deployment_names, get_proposal,
     last_autopilot_action, last_chat_turn_cost, last_review_at, recent_chat_same, REVIEW_AT_SQL,
 )
 from app.adapters.db.order_intent_repository import (  # noqa: F401
@@ -37,8 +37,8 @@ from app.adapters.db.order_intent_repository import (  # noqa: F401
 )
 from app.adapters.db.agent_run_repository import (  # noqa: F401
     MAX_RESUMES, OUT_OF_CREDITS_STEP, RUN_ACTIVE, _has_progress, add_event, cancel_run, claim_run, count_active_research,
-    count_runs, create_run, example_run_id, fail_abandoned_runs, finish_run, forward_verdict, get_run, heartbeat,
-    list_runs, list_runs_version,
+    count_runs, create_run, example_run_id, fail_abandoned_runs, finish_run, forward_verdict, forward_verdicts, get_run,
+    heartbeat, list_runs, list_runs_version,
     load_checkpoint, pause_run, research_queue_ahead, research_week, resume_run, run_events, run_worker, save_checkpoint,
     set_run_counts, set_run_market, update_run_progress, yield_run, count_own_research, RUNS_LISTED,
 )

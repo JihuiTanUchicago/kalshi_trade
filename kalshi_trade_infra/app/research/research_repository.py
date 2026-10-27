@@ -542,3 +542,54 @@ def experiments_for_strategy(cur, strategy_id: int, experiment_id: Optional[int]
     if not exp:
         return None
     return {"experiment": exp, "results": results_for_experiment(cur, int(exp["id"]))}
+
+
+# The verdicts after validation: the one-time holdout, the one paper judgment, and the diversification
+# promotion (phase 'forward', the only phase a deployment candidate is written under).
+LATER_PHASES = ("holdout", "paper", "forward")
+
+
+def later_results(cur, experiment_ids: List[int]) -> Dict[int, Dict]:
+    """{experiment id: {"min_sample", "results": [its LATER_PHASES rows, oldest first]}} for many
+    experiments in one read, through the primary key and idx_res_exp (experiment_id, id). An experiment
+    with no such row is still keyed, with no results; one that doesn't exist is not. Only the columns
+    the lists judge a verdict on (classification and the holdout's own gate figures), never a curve."""
+    ids = sorted({int(i) for i in experiment_ids})
+    if not ids:
+        return {}
+    cur.execute(
+        """SELECT e.id AS experiment_id, e.min_sample, r.id, r.phase, r.classification, r.n_trades, r.p_value,
+                  r.ci_lo, r.ci_hi, r.mean_net_return, r.verdict_at
+           FROM app_experiments e
+           LEFT JOIN app_experiment_results r ON r.experiment_id=e.id AND r.phase IN (%s)
+           WHERE e.id IN (%s) ORDER BY e.id, r.id""" % (",".join(["%s"] * len(LATER_PHASES)), ",".join(["%s"] * len(ids))),
+        (*LATER_PHASES, *ids),
+    )
+    out: Dict[int, Dict] = {}
+    for r in cur.fetchall():
+        e = out.setdefault(int(r["experiment_id"]), {"min_sample": r["min_sample"], "results": []})
+        if r.get("id") is not None:
+            e["results"].append(r)
+    return out
+
+
+def newest_experiment_ids(cur, user_id: int, strategy_ids: List[int]) -> Dict[int, int]:
+    """{strategy id: its newest experiment id}, experiments_for_strategy's fallback for many strategies
+    stored without experiment_id, in one read through idx_exp_user_market's user_id prefix."""
+    ids = sorted({int(i) for i in strategy_ids})
+    if not ids:
+        return {}
+    cur.execute("SELECT strategy_id, MAX(id) AS id FROM app_experiments WHERE user_id=%%s AND strategy_id IN (%s) "
+                "GROUP BY strategy_id" % ",".join(["%s"] * len(ids)), (int(user_id), *ids))
+    return {int(r["strategy_id"]): int(r["id"]) for r in cur.fetchall()}
+
+
+def strategy_titles(cur, user_id: int, experiment_ids: List[int]) -> Dict[int, str]:
+    """{experiment id: the title of the user's own strategy it is linked to}, for naming the deployed
+    strategy a diversification miss repeats (gate_explain.corr_peer) without showing its id."""
+    ids = sorted({int(i) for i in experiment_ids})
+    if not ids:
+        return {}
+    cur.execute("SELECT e.id, s.title FROM app_experiments e JOIN app_strategies s ON s.id=e.strategy_id AND s.user_id=%%s "
+                "WHERE e.id IN (%s)" % ",".join(["%s"] * len(ids)), (int(user_id), *ids))
+    return {int(r["id"]): r["title"] for r in cur.fetchall()}

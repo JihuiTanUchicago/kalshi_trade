@@ -15,13 +15,26 @@ Env: APP_PAPER_FORWARD_GATE=1 turns it on (off by default).
 from __future__ import annotations
 
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from app.research import gatekeeper
 from app import repository as repo
 from app.research import research_repository as rr
 
 ENABLED = os.getenv("APP_PAPER_FORWARD_GATE", "0") == "1"
+
+# run()'s chat line for a paper pass the diversification check held back, the one record of its reason:
+# held_reason reads it back for the strategy's page (display only).
+HELD_LIKE = "Paper forward gate: % passed on paper (%) but stays off the candidate list: %"
+_HELD = " but stays off the candidate list: "
+
+
+def held_reason(line: str, title: str) -> Optional[str]:
+    """The gatekeeper's reason in run()'s held-back line for the strategy titled `title`, or None."""
+    head = "Paper forward gate: %s passed on paper (" % title
+    if not str(line or "").startswith(head) or _HELD not in line[len(head):]:
+        return None
+    return line.rsplit(_HELD, 1)[1].rstrip(".").strip() or None
 
 
 def _paper_experiments(cur, user_id: int) -> List[Dict]:

@@ -124,6 +124,14 @@ def chat_contains(cur, user_id: int, role: str, needle: str) -> bool:
     return cur.fetchone() is not None
 
 
+def chat_lines_like(cur, user_id: int, role: str, pattern: str, limit: int = 50) -> List[Dict]:
+    """The user's newest `role` lines matching the LIKE `pattern` (id, content, created_at), newest first,
+    read through idx_chat_user as chat_contains is."""
+    cur.execute("SELECT id, content, created_at FROM app_chat_messages WHERE user_id=%s AND role=%s AND content LIKE %s "
+                "ORDER BY id DESC LIMIT %s", (user_id, role, pattern, int(limit)))
+    return list(cur.fetchall())
+
+
 def recent_chat_same(cur, user_id: int, role: str, content: str, since) -> bool:
     """True if the user got this exact `role` line at or after `since` (repeat-notice suppression)."""
     cur.execute("SELECT 1 FROM app_chat_messages WHERE user_id=%s AND role=%s AND created_at>=%s AND content=%s LIMIT 1",

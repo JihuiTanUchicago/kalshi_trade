@@ -1497,6 +1497,12 @@
     const [cls, label] = MARK[key] || ['', key];
     return `<span class="mk ${cls}">${esc(label)}</span>`;
   };
+  // A strategy's stamp: its status, unless a later check its status leaves out says otherwise (the server's
+  // `verdict`, as its page shows it). A validation pass whose one-time locked holdout failed, or that the
+  // diversification check after it held back, kept "Passed" on the lists; a probation strategy held back
+  // after passing on paper kept its "Void".
+  const VERDICT = { missed_final: ['', 'Missed final test'], held_back: ['quiet', 'Held back'] };
+  const statusMark = (s) => VERDICT[s.verdict] ? `<span class="mk ${VERDICT[s.verdict][0]}">${VERDICT[s.verdict][1]}</span>` : mark(s.status);
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
   const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>`;
   const strategyTable = (rows, pick) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick)}<tbody>${rows}</tbody></table></div>`;
@@ -1549,9 +1555,10 @@
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
     // A void or rejected idea's backtest P&L read as a green "+$2.10" beside its Void stamp: it is muted
-    // and says the idea did not pass, so a gain on the data it was built on never reads as a result.
-    const noPass = s.status === 'failed' || s.status === 'rejected';
-    const pnlSub = [oos ? '' : 'tested only', noPass ? 'did not pass' : ''].filter(Boolean).join(' \u00b7\u00a0');
+    // and says the idea did not pass, so a gain on the data it was built on never reads as a result. So is
+    // one that passed validation and then missed its final test.
+    const missedFinal = s.verdict === 'missed_final', noPass = s.status === 'failed' || s.status === 'rejected' || missedFinal;
+    const pnlSub = [oos ? '' : 'tested only', missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(' \u00b7\u00a0');
     const tried = s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const pickCell = opts.pick ? (bulkDeployable(s)
@@ -1564,7 +1571,7 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td data-lab="Tried"${tried === '\u2014' ? ' class="nil"' : ''}>${esc(tried)}</td>
-      <td class="act st" data-lab="Status">${mark(s.status)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
+      <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
     </tr>`;
   }
   // The Backtest estimate column's hover text (its header's glossary marker says the same at more length).
@@ -3521,7 +3528,7 @@
     notice, num, overDays, paced, paceDay, paceTooSoon, paceWords, paint, paintDashAp, painted, paintRows,
     paperAgain, PAPER_NET, paperCount, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
-    runTag, runWaitLine, runwayLabel, S, serial, sessionTitle, settleAt, shell, sinceMin, smooth,
+    runTag, runWaitLine, runwayLabel, S, serial, sessionTitle, settleAt, shell, sinceMin, smooth, statusMark,
     strategySlip, strategyTable, stripeFail, syncMeBilling, tone, topupCharge, tradePrice, trDay, tzName,
     usd, waitNote, waitSpan, wakers, WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
   }, { get: (all, k) => { if (!(k in all)) throw new Error('A page file asks for ' + String(k) + ', which this build does not share.'); return all[k]; } }));
