@@ -824,7 +824,7 @@ def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(c
     assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False, "card_charged": False,
                                                    "spent": {"since": 0.0, "week": 0.0},
                                                    "bought": {"usd": 0.0, "charges": 0, "auto": 0},
-                                                   "milestones": {"passed": [], "live_ready": []}}
+                                                   "milestones": {"passed": [], "live_ready": []}, "auto_paused": []}
 
 
 def test_since_your_last_visit_reads_what_it_cost_and_the_paper_milestones(conn, user):
@@ -859,6 +859,7 @@ def test_since_your_last_visit_reads_what_it_cost_and_the_paper_milestones(conn,
     assert act["spent"] == {"since": 2.0, "week": 5.0}
     assert act["card_charged"] is True
     assert act["milestones"] == {"passed": [41], "live_ready": [57, 41]}
+    assert act["auto_paused"] == []
     # Card charges since the visit: the top-up above (now) and two auto-reloads while the user was away,
     # one before the visit left out. The credits are summed exact, apart from what was spent.
     assert act["bought"] == {"usd": 20.0, "charges": 1, "auto": 0}
@@ -868,6 +869,15 @@ def test_since_your_last_visit_reads_what_it_cost_and_the_paper_milestones(conn,
         cur.execute("UPDATE app_credit_ledger SET created_at=%s WHERE id=LAST_INSERT_ID()", (at,))
     act = repo.activity_since(cur, uid, since)
     assert act["bought"] == {"usd": 60.0075, "charges": 3, "auto": 2}
+    # The strategies a loss guard paused since the visit, from their bell notices, once each: a pause
+    # writes no proposal, so the autopilot's moves never counted it. One before the visit is left out.
+    for sid, at in [(41, now - timedelta(hours=2)), (41, now - timedelta(hours=1)), (63, now - timedelta(hours=5)),
+                    (70, now - timedelta(days=2))]:
+        repo.add_notification(cur, uid, "paused", "“A” was paused automatically.", "/strategies/%d" % sid)
+        cur.execute("UPDATE app_notifications SET created_at=%s WHERE id=LAST_INSERT_ID()", (at,))
+    act = repo.activity_since(cur, uid, since)
+    assert act["auto_paused"] == [63, 41]
+    assert act["milestones"] == {"passed": [41], "live_ready": [57, 41]}
     assert act["spent"] == {"since": 2.0, "week": 5.0}  # bought credits are never spend
 
 

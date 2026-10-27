@@ -144,7 +144,8 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
     passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
     (real money) ride apart from the books, and only while payments are on: with them off nothing
     is billed; a card charged in the meantime (auto-reload, mostly) rides with them. `milestones` are
-    the paper forward-gate passes and live-ready strategies since then.
+    the paper forward-gate passes and live-ready strategies since then, `auto_paused` the strategies
+    a loss guard paused (strategy ids).
     `by_deployment` splits each book's figure by the deployment that traded it ({mode: [{deployment_id,
     pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it. A row
     whose deployment the page doesn't list (`listed`: it was removed) says whose it was itself."""
@@ -157,6 +158,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
                       **_bought(act.get("bought"))}
             if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []},
+            "auto_paused": act.get("auto_paused") or [],
             "by_deployment": _since_by_deployment(by_dep or {}, _removed_names(cur, uid, by_dep or {}, listed))}
 
 

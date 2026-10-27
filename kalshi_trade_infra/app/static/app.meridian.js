@@ -2845,7 +2845,11 @@
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', k === 'research' ? plural(ap[k], 'research session', 'research sessions') : num(ap[k])));
     const other = Object.entries(ap).filter(([k]) => !known.has(k)).reduce((a, [, n]) => a + n, 0);
     if (other) did.push('made ' + plural(other, 'other change', 'other changes'));
-    const auto = did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`;
+    // A loss guard's pause is the engine's, not an autopilot move (the server's auto_paused, from the bell):
+    // said here too, since one resumed or removed since is in no other line of the strip.
+    const guarded = (s.auto_paused || []).length;
+    const auto = (did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`)
+      + (guarded ? ` ${plural(guarded, 'strategy was', 'strategies were')} paused automatically to stop a loss.` : '');
     const needs = (ms.live_ready || []).slice(0, 3).map((sid) => `${named(sid)} is ready for live trading. Going live is your call.`);
     needs.push(...d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
       .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_why || x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_why || x.status_reason))}</span>` : ''}`));

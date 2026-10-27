@@ -1211,7 +1211,8 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_the_cookies_lif
     assert out == {"at": now, "first": False, "books": {"paper": {"pnl": 2.42, "trades": 3}, "demo": {"pnl": -1.0, "trades": 1},
                                                          "live": {"pnl": 0.0, "trades": 0}},
                    "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1},
-                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}, "by_deployment": {}}
+                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}, "auto_paused": [],
+                   "by_deployment": {}}
     # Each book's figure split by the deployment that traded it, best first, books kept apart.
     split = server._since_visit(None, 1, now, False, {"paper": (-24.19, 19), "demo": (-1.0, 1)},
                                 {("paper", 4): (-53.0761, 7), ("paper", 3): (28.8867, 12), ("demo", 5): (-1.0, 1)})

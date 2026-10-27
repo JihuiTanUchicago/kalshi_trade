@@ -555,7 +555,9 @@ def activity_since(cur, user_id: int, since) -> Dict:
     credits, the number of charges and how many of those auto-reload made: a card charged while the
     user was away is the first thing the time away cost), and the strategies whose bell said they
     passed the paper forward gate or became ready for live (`milestones`: {kind: [strategy ids]}).
-    Those passes happen days after the strategy was created, so passed_since never sees them."""
+    Those passes happen days after the strategy was created, so passed_since never sees them. The
+    strategies paused automatically to stop a loss (`auto_paused`, from their bell notices too): the
+    engine's guards write no proposal, so `autopilot` never counted them."""
     week = now_utc() - timedelta(days=7)
     cur.execute(
         "SELECT 'ap' AS src, kind AS k, COUNT(*) AS n FROM app_proposals "
@@ -571,7 +573,7 @@ def activity_since(cur, user_id: int, since) -> Dict:
         "UNION ALL SELECT 'spent' AS src, 'week' AS k, COALESCE(-SUM(amount_usd),0) AS n FROM app_credit_ledger "
         "WHERE user_id=%s AND kind='usage' AND created_at>=%s "
         "UNION ALL SELECT 'note' AS src, CONCAT(kind, ' ', COALESCE(link, '')) AS k, COUNT(*) AS n FROM app_notifications "
-        "WHERE user_id=%s AND kind IN ('passed','live_ready') AND created_at>=%s GROUP BY kind, link "
+        "WHERE user_id=%s AND kind IN ('passed','live_ready','paused') AND created_at>=%s GROUP BY kind, link "
         "UNION ALL SELECT 'paid' AS src, 'any' AS k, COUNT(*) AS n FROM (SELECT id FROM app_credit_ledger "
         "WHERE user_id=%s AND kind IN ('topup','autoreload') LIMIT 1) p "
         "UNION ALL SELECT 'bought' AS src, kind AS k, COUNT(*) AS n FROM app_credit_ledger "
@@ -583,7 +585,7 @@ def activity_since(cur, user_id: int, since) -> Dict:
     )
     out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False, "card_charged": False,
                            "spent": {"since": 0.0, "week": 0.0}, "bought": {"usd": 0.0, "charges": 0, "auto": 0},
-                           "milestones": {"passed": [], "live_ready": []}}
+                           "milestones": {"passed": [], "live_ready": []}, "auto_paused": []}
     bought = Decimal(0)  # top-ups and auto-reloads summed exact; the page rounds credits half up (credit_cents)
     for r in cur.fetchall():
         if r["src"] == "bought":
@@ -601,12 +603,13 @@ def activity_since(cur, user_id: int, since) -> Dict:
         elif r["src"] == "note":
             kind, _, link = str(r["k"]).partition(" ")
             m = re.match(r"^/strategies/(\d+)$", link)
-            if m and kind in out["milestones"] and int(m.group(1)) not in out["milestones"][kind]:
-                out["milestones"][kind].append(int(m.group(1)))
+            ids = out["auto_paused"] if kind == "paused" else out["milestones"].get(kind)
+            if m and ids is not None and int(m.group(1)) not in ids:
+                ids.append(int(m.group(1)))
         else:
             out["autopilot" if r["src"] == "ap" else "runs"][r["k"]] = int(r["n"])
     out["bought"]["usd"] = float(bought)
-    for ids in out["milestones"].values():
+    for ids in [*out["milestones"].values(), out["auto_paused"]]:
         ids.sort(reverse=True)
     return out
 

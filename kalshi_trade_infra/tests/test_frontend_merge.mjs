@@ -4510,6 +4510,11 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.match(await reload({bought: 25, charges: 1, reloads: 0}), /spent; you bought <b>\$25\.00<\/b> of credits/);
   assert.doesNotMatch(text, /auto-reload charged|you bought/);
   assert.doesNotMatch(await reload({bought: 20, charges: 1, reloads: 1}), /\$7\.45|\$47\.45/);  // never netted or added
+  // A loss guard's pauses are told in the Autopilot row (the engine's, not its moves), resumed ones too.
+  const guarded = await strip({since: {...since, autopilot: {deploy: 3}, auto_paused: [232, 9]}});
+  assert.match(guarded, /<dt>Autopilot<\/dt><dd>It put 3 on paper\. 2 strategies were paused automatically to stop a loss\.<\/dd>/);
+  assert.match(await strip({since: {...since, auto_paused: [9]}}), /<span data-since-ap>On\. It made no changes\.<\/span> 1 strategy was paused automatically to stop a loss\./);
+  assert.doesNotMatch(text, /paused automatically/);
   assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$12\.65<\/span>/);
   assert.doesNotMatch(text, /\$40\.10|−\$14\.80|\$14\.80/);  // paper and credits never summed or netted
   // The forward-test pass leads New results when nothing else passed, named from the page's deployments.
