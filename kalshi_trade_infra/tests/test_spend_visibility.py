@@ -134,7 +134,7 @@ def test_the_balance_sum_closes_to_the_cent(monkeypatch):
     # The balance as the ledger holds it (the page rounds it half up: $25.00, the math's end); the
     # spend to the cent from its exact decimal. Through four places it read 100.005, then $100.01.
     assert data["balance"] == 24.995001 and data["spent"] == 100.0
-    assert m == {"days": 30, "start": 16.12, "bought": 65.0, "purchases": 2, "other": 5.0, "usage": 61.12, "end": 25.0}
+    assert m == {"days": 30, "start": 16.12, "bought": 65.0, "purchases": 2, "other": 5.0, "usage": 61.12, "end": 25.0, "joined": False}
     cents = lambda v: round(v * 100)
     assert cents(m["start"]) + cents(m["bought"]) + cents(m["other"]) - cents(m["usage"]) == cents(m["end"])
 
@@ -271,6 +271,22 @@ def test_the_receipts_type_column_says_each_line_in_billings_words_never_the_led
         assert found, bundle
         labels = json.loads(re.sub(r"(\w+):", r'"\1":', found.group(1)).replace("'", '"'))
         assert labels == billing_routes.RECEIPT_TYPE, bundle
+
+
+def test_the_statement_of_an_account_younger_than_it_starts_when_the_account_joined(monkeypatch):
+    # Walk 2026-10-27: a subscriber of a day read "Balance 30 days ago $0.00" for an account that didn't exist.
+    monkeypatch.setattr(server.repo, "credit_statement", lambda cur, uid, since, tz, limit: [])
+    since = datetime(2026, 9, 27)
+    welcome = {"bonus": {"all": 20.0, "n": 1, "since": 20.0, "n_since": 1}}
+    new = billing_routes._statement(object(), 7, since, 0, welcome, 20.0, datetime(2026, 10, 26))
+    assert new["math"]["joined"] is True and new["math"]["start"] == 0.0
+    old = billing_routes._statement(object(), 7, since, 0, welcome, 20.0, datetime(2026, 8, 1))
+    assert old["math"]["joined"] is False
+    # A balance before the window means it existed then: never "when you joined" over a non-zero start.
+    carried = billing_routes._statement(object(), 7, since, 0, {"bonus": {"all": 20.0, "n": 1, "since": 0.0, "n_since": 0}},
+                                        20.0, datetime(2026, 10, 26))
+    assert carried["math"]["joined"] is False and carried["math"]["start"] == 20.0
+    assert billing_routes._statement(object(), 7, since, 0, welcome, 20.0)["math"]["joined"] is False  # age unknown
 
 
 class _Cur:

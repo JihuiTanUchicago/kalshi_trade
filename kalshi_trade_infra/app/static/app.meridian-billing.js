@@ -251,7 +251,8 @@ window.TauPage('billing', (T) => {
   // that add up. Only what was bought and debited, never a rate.
   function billMath(m) {
     if (!m) return '';
-    const rows = [[`Balance ${m.days} days ago`, usd(m.start)],
+    // An account younger than the statement starts from when it joined (the server's `joined`), not "30 days ago".
+    const rows = [[m.joined ? 'Balance when you joined' : `Balance ${m.days} days ago`, usd(m.start)],
       [`Credits bought${m.purchases ? ` (${m.purchases} card charge${m.purchases === 1 ? '' : 's'})` : ''}`, usd(m.bought, true)],
       ...(+m.other ? [['Welcome and other credits', usd(m.other, true)]] : []),
       ['Agent usage', usd(-m.usage)], ['Balance now', usd(m.end)]];

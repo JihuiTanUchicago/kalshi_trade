@@ -149,6 +149,19 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     await cut.viewBilling(); await flush();
     assert.match(cut.root.querySelector('#bledger').textContent, /\$7\.98 used[\s\S]*−\$7\.96[\s\S]*−\$0\.02/);
   });
+
+  test(`${name}: a new subscriber's statement starts when they joined, not "30 days ago"`, async () => {
+    const math = {days: 30, start: 0, bought: 0, purchases: 0, other: 20, usage: 0, end: 20};
+    const ledger = [{kind: 'bonus', amount: 20, memo: 'Welcome credits', day: '2026-10-27', created_at: '2026-10-27T15:40:00Z', first_at: '2026-10-27T15:40:00Z'}];
+    const f = billingPage(cardedBilling({math: {...math, joined: true}, ledger, ledger_cut: false}));
+    await f.viewBilling(); await flush();
+    const sum = f.root.querySelector('.bill-math').textContent;
+    assert.match(sum, /^Balance when you joined\s*\$0\.00/);
+    assert.doesNotMatch(sum, /30 days ago/);
+    const aged = billingPage(cardedBilling({math, ledger, ledger_cut: false}));
+    await aged.viewBilling(); await flush();
+    assert.match(aged.root.querySelector('.bill-math').textContent, /^Balance 30 days ago\s*\$0\.00/);
+  });
 }
 
 // A declined auto-reload card where credits run short outside the autopilot card: the dashboard's Needs
