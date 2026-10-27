@@ -215,7 +215,7 @@ def get_run(ctx: Ctx):
     # The passes its done line counts that a later check left uncleared (a probation strategy held back
     # after paper was never among them), so that line agrees with the page's Passed figure.
     # Its "N tested so far, M passed" lines count them apart too, each the ones made by the time it was written.
-    fell_at = [s.get("created_at") for s in mine if s["id"] in later and s.get("status") == "passed"]
+    fell_at = _fell_at(mine, later)
     return {
         "run": run,
         "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after), len(fell_at), fell_at)),
@@ -223,6 +223,19 @@ def get_run(ctx: Ctx):
                         **later.get(s["id"], {})} for s in mine],
         "rsi": _rsi_block(pol, dream),
     }
+
+
+def _fell_at(strategies: List[Dict], later: Dict[int, Dict]) -> List:
+    """When each of a session's passes that a later check left uncleared was made (_later_missed): what its
+    done and "N tested so far, M passed" lines count apart (views._with_gate_lines)."""
+    return [s.get("created_at") for s in strategies if s["id"] in later and s.get("status") == "passed"]
+
+
+def uncleared_passes_at(cur, uid: int, run_id: int) -> List:
+    """_fell_at for one of the user's sessions, read on its own: for a page that shows a session's log lines
+    without the session page's reads (the System page's activity feed)."""
+    mine = [s for s in repo.list_strategies(cur, uid, run_id=run_id) if s["run_id"] == run_id]
+    return _fell_at(mine, _later_missed(cur, uid, mine))
 
 
 def _later_missed(cur, uid: int, strategies: List[Dict]) -> Dict[int, Dict]:

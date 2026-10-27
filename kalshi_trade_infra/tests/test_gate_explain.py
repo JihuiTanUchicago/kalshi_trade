@@ -576,3 +576,52 @@ def test_the_system_feed_reads_a_verdict_as_the_run_pages_note():
               {"kind": "step", "message": "Froze 2 finalists", "data_json": '{"note": "x"}'}):
         out = server._system_event(dict(r, created_at=None))
         assert "data" not in out and out["message"] == r["message"]
+
+
+def test_the_system_feed_says_steps_errors_and_counts_as_the_session_page(monkeypatch):
+    # The System page (open to every customer) listed the agent's own lines as written: "Still running - 4
+    # tested so far, 2 passed." counting a pass a later check left uncleared, the done line's "hypotheses"
+    # and "every gate", and a provider's raw exception with its model id.
+    from datetime import datetime, timedelta
+    from app.web.routes import admin as admin_routes
+    at = datetime(2026, 10, 27, 12)
+    still = {"run_id": 5, "user_id": 7, "kind": "step", "created_at": at, "data_json": None,
+             "message": "Still running - 4 tested so far, 2 passed. Exploring more (stop anytime)."}
+    done = {"run_id": 6, "user_id": 7, "kind": "done", "created_at": at, "data_json": None,
+            "message": "1 of 3 hypotheses passed every gate."}
+    err = {"run_id": 6, "user_id": 7, "kind": "error", "created_at": at, "data_json": None,
+           "message": "botocore.exceptions.ClientError: An error occurred (ThrottlingException) when calling the "
+                      "InvokeModel operation (model us.anthropic.claude-opus-4-6-v1:0)"}
+    nothing = {"run_id": 8, "user_id": 7, "kind": "step", "created_at": at, "data_json": None,
+               "message": "Still running - 3 tested so far, 0 passed. Exploring more (stop anytime)."}
+    assert server._system_event(still, [at - timedelta(minutes=1)])["message"] == (
+        "4 tested so far, 1 cleared every check; 1 more passed its first test, then wasn't cleared to trade. "
+        "Looking for more; you can stop it anytime.")[:120]
+    assert server._system_event(done)["message"] == "1 of 3 ideas passed every check."
+    assert server._system_event(err)["message"] == "The agent hit an internal error on this step."
+    assert "claude" not in server._system_event(dict(still, message="Switched to us.anthropic.claude-haiku-4-5-v1:0."))["message"]
+
+    # The feed reads the uncleared passes only for the sessions whose line counts one, as the session page counts them.
+    class Cur:
+        def __init__(self):
+            self.rows = []
+
+        def execute(self, sql, params=()):
+            self.rows = [still, done, err, nothing] if "FROM app_agent_events" in sql else []
+
+        def fetchone(self):
+            return {"n": 0}
+
+        def fetchall(self):
+            return self.rows
+
+    asked = []
+    monkeypatch.setattr(admin_routes, "uncleared_passes_at",
+                        lambda cur, uid, rid: asked.append((uid, rid)) or ([at - timedelta(minutes=1)] if rid == 5 else []))
+    ctx = server.Ctx(SimpleNamespace(cursor=lambda: Cur()), {"id": 7, "email": "trader@example.invalid", "name": "S",
+                                                             "picture_url": None, "autopilot": 0}, (), {}, {}, SimpleNamespace())
+    feed = [e["message"] for e in server.admin_system(ctx)["events"]]
+    assert sorted(asked) == [(7, 5), (7, 6)]
+    assert feed[0].startswith("4 tested so far, 1 cleared every check; 1 more passed")
+    assert feed[1:] == ["1 of 3 ideas passed every check.", "The agent hit an internal error on this step.",
+                        "3 tested so far, 0 passed. Looking for more; you can stop it anytime."]

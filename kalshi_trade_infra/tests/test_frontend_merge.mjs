@@ -31,6 +31,7 @@ import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
+import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -1394,7 +1395,7 @@ test('a market whose history did not load still shows its figures, with Try agai
   }});
   await f.viewMarketDetail('KXNBAGAME-X'); await flush();
   const main = f.root.querySelector('#main').innerHTML;
-  assert.match(main, /Price history didn’t load/); assert.match(f.root.querySelector('#rawsect').innerHTML, /Waiting on Kalshi for the candles/);
+  assert.match(main, /Price history didn’t load/); assert.match(f.root.querySelector('#rawsect').innerHTML, /Kalshi didn’t send this market’s candles just now/);
   assert.match(f.root.innerHTML, /201,649/);  // the snapshot's open interest still shows
   f.root.querySelector('#mk-retry').onclick(); await flush(); await flush();
   assert.equal(calls, 2); assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /Price history didn’t load/);
@@ -5226,6 +5227,7 @@ declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 flakyNetworkCases({name: 'Tau', frontend});
 deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
+freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
 
 test('on a phone the dashboard book figures put their chip above the name, so "Tau’s demo book" reads on one line', () => {

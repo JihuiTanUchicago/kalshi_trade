@@ -32,6 +32,7 @@ import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
+import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -5396,6 +5397,21 @@ test('Meridian Overview says the paper portfolio is practice money', async () =>
   assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · Realized P&amp;L, all time \+\$98\.40/);
 });
 
+// A new account's paper book read "Realized P&L, all time $0.00" and "Realized today (UTC) $0.00": results it never had.
+test('Meridian Overview says a never-used paper book has no strategies yet, not $0.00 realized', async () => {
+  const fresh = {total_pnl: 0, realized_pnl: 0, today_pnl: 0, open_at_cost: 0, cash: 1000, equity: 1000, closed_trades: 0, open_positions: 0};
+  const f = apDashboard(dashboardData({paper: fresh}), apStatus);
+  await f.viewDashboard(); await flush();
+  const paper = f.root.querySelector('.paper-summary').textContent;
+  assert.match(paper, /Practice money, not real ·\s?no paper strategies yet/);
+  assert.match(paper, /Realized today \(UTC\)None yet/);
+  assert.doesNotMatch(paper, /Realized P&amp;L, all time/);
+  // Once the book has a paper deployment, its figures are figures, $0.00 included.
+  const used = apDashboard(dashboardData({paper: fresh, deployments: [dashboardDeployment('paper')]}), apStatus);
+  await used.viewDashboard(); await flush();
+  assert.match(used.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \$0\.00[\s\S]*Realized today \(UTC\)\$0\.00/);
+});
+
 // Meridian opens a market page from Explore's ?m= link.
 const OPEN_MARKET = (payload, markets) => {
   const f = frontend({search: '?m=' + encodeURIComponent(payload.ticker), fetchImpl: (path) => path.startsWith('/api/explore/market?') ? response(payload) : response({})});
@@ -6069,6 +6085,7 @@ declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});
 flakyNetworkCases({name: 'Meridian', frontend});
 deployErrorCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
+freshWalkCases({name: 'Meridian', frontend, dashboard: dashboardData});
 moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, hotRail: (f, markets) => {
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;

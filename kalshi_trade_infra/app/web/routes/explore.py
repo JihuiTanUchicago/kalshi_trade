@@ -230,9 +230,11 @@ def explore_market(ctx: Ctx):
         if not snap:
             feed = _explore_feed()
             f = next((x for x in (feed.get("markets") or []) if x.get("t") == ticker), None)
+            # The feed carries no close time, but a timed event's ticker says it (as Explore's rows and the spot
+            # section read it): the page said "Closes —" above "Time left 5 hr · closes 21:00 UTC".
             snap = f and {"title": f.get("ti"), "sub": f.get("su"), "yes_bid": f.get("bid"), "yes_ask": f.get("ask"),
                           "last": f.get("last"), "volume_24h": f.get("v24"), "open_interest": f.get("oi"),
-                          "status": f.get("st"), "close_time": None, "as_of": feed.get("at"), "snapshot": True}
+                          "status": f.get("st"), "close_time": _ticker_close(ticker), "as_of": feed.get("at"), "snapshot": True}
         if not snap:
             raise ApiError(502, "Kalshi didn't send this market's history just now. Try again in a minute.")
         return {**snap, "ticker": ticker, "series": series, "title": snap["title"] or "", "sub": snap["sub"] or "",

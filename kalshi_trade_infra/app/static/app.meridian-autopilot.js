@@ -417,6 +417,17 @@ window.TauPage('autopilot', (T) => {
   // The note after "Furthest on paper"'s net, as its own sentence: it ran on from "+$15.26 net on them" into
   // "instant-fill paper trades left out" with nothing between.
   const PAPER_COUNT_WHY_SAID = PAPER_COUNT_WHY.charAt(0).toUpperCase() + PAPER_COUNT_WHY.slice(1) + '.';
+  // The idle line ends with what it is doing right now, the story's own first sentence ("Nothing is on paper
+  // yet: ... It's reviewing the markets to pick its next move." over "Right now it's reviewing the markets to
+  // pick its next move."): under it, the panel said it twice in a row. Said once, the rest of that line kept.
+  function apStoryUnderIdle(d, idleShown) {
+    const lines = apStory(d), raw = String(((d && d.story) || [])[0] || '');
+    const cut = (s) => { const i = s.indexOf('. '); return i < 0 ? [s.replace(/\.$/, ''), ''] : [s.slice(0, i), s.slice(i + 2)]; };
+    const doing = cut(raw)[0].replace(/^Right now /, '');
+    if (!idleShown || !lines.length || !doing || !String(d.idle.line || '').includes(doing.charAt(0).toUpperCase() + doing.slice(1))) return lines;
+    const rest = cut(lines[0])[1].trim();
+    return (rest ? [rest] : []).concat(lines.slice(1));
+  }
   function apUpdate(box, d) {
     const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
     box.className = 'apf open' + (m.cls ? ' ' + m.cls : '');
@@ -438,8 +449,9 @@ window.TauPage('autopilot', (T) => {
     const story = box.querySelector('#apf-story');
     if (story) {
       // The billing pause has its own line under the switch, so the idle line skips it.
-      story.innerHTML = (d.idle && !d.billing_blocked ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"')}</p>` : '')
-        + apStory(d).map((line) => `<p>${esc(line)}</p>`).join('');
+      const idleShown = !!(d.idle && !d.billing_blocked);
+      story.innerHTML = (idleShown ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"')}</p>` : '')
+        + apStoryUnderIdle(d, idleShown).map((line) => `<p>${esc(line)}</p>`).join('');
       const idleFocus = story.querySelector('[data-ap="idle-focus"]');
       if (idleFocus) idleFocus.onclick = () => apShowFocus(box);
     }
@@ -466,7 +478,8 @@ window.TauPage('autopilot', (T) => {
     // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
     const short = [
       `<dt>Running</dt><dd>${runTotal ? runParts.join(' ·\u00a0') : 'None'}</dd>`,
-      `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
+      // With nothing on paper and nothing realized today, there is no day's P&L to show: "$0.00" read as a result.
+      `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : usd(pnl, true)}</dd>`,
     ].concat(budgetShown ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
       // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.
