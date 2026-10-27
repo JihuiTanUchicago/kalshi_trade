@@ -69,3 +69,56 @@ def test_context_counts_running_deployments_up_front(monkeypatch):
     assert "DEPLOYMENTS RUNNING RIGHT NOW: 1 on paper (#75), 0 live." in ctx
     _wire(monkeypatch)
     assert "DEPLOYMENTS RUNNING RIGHT NOW: 0 on paper, 0 live." in agent._copilot_context(None, USER)
+
+
+# Prod 2026-10-26: user 1's plan said "Live: #83 ... trading real money" while #83 was paper.
+PLAN_83 = {"deployments": "Live: #83 btc15m ($31.37 net, 4/6 wins) trading real money correctly. Paper: #90/89/88 "
+                          "pooled z-score 5/5 wins, watching for decay before considering live promotion.",
+           "posture": "Live autopilot ON; #83 promoted to real money and working. Toward live: 12/30 trades."}
+
+
+def _dep(i, mode="paper", status="running"):
+    return {"id": i, "strategy_id": i, "title": "t", "market": "btc15m", "mode": mode, "status": status,
+            "closed_trades": 0, "wins": 0, "realized_pnl": 0, "open_positions": 0, "spec": {}, "result": {}}
+
+
+def test_live_claim_ids_reads_claims_not_plans():
+    assert agent.live_claim_ids(" ".join(PLAN_83.values())) == [83]
+    assert agent.live_claim_ids("Live: #83, #84 and #85 working") == [83, 84, 85]
+    assert agent.live_claim_ids("#91 is live now") == [91]
+    assert agent.live_claim_ids("#90 needs 3 more trips before live promotion; #88 live gate: 2 checks left") == []
+    assert agent.live_claim_ids("Live: none. Toward live: 12/30 trades") == []
+
+
+def test_false_live_line_names_only_the_wrong_ids():
+    deps = [_dep(83), _dep(90), _dep(12)]
+    assert agent.false_live_line(" ".join(PLAN_83.values()), deps) == (
+        "Correction: #83 trades paper, not real money. Live deployments right now: none.")
+    assert agent.false_live_line("Live: #83", [_dep(83, mode="live")]) is None
+    assert agent.false_live_line("Live: #999", deps) is None  # an id it doesn't own: nothing to correct
+    two = agent.false_live_line("Live: #83 and #90", deps + [_dep(7, mode="live")])
+    assert two == "Correction: #83, #90 trade paper, not real money. Live deployments right now: #7."
+
+
+def test_context_fact_checks_a_plan_that_calls_paper_live(monkeypatch):
+    _wire(monkeypatch, deps=[_dep(83), _dep(90)])
+    monkeypatch.setattr(agent.repo, "autopilot_plan", lambda cur, uid: PLAN_83)
+    ctx = agent._copilot_context(None, USER)
+    assert "- FACT CHECK on this plan: Correction: #83 trades paper, not real money." in ctx
+    monkeypatch.setattr(agent.repo, "autopilot_plan", lambda cur, uid: {"deployments": "Paper: #83 holding."})
+    assert "FACT CHECK" not in agent._copilot_context(None, USER)
+
+
+def test_a_reply_that_calls_paper_live_gets_a_correction(monkeypatch):
+    from tests.test_app_agent import Conn, Store
+    Store(monkeypatch)
+    saved = []
+    _wire(monkeypatch, deps=[_dep(83)])
+    monkeypatch.setattr(agent.billing, "charge_usage", lambda *a: None)
+    monkeypatch.setattr(agent.repo, "get_user", lambda cur, uid: {"id": uid})
+    monkeypatch.setattr(agent.repo, "chat_messages", lambda *a, **k: [{"role": "user", "content": "how is it going?"}])
+    monkeypatch.setattr(agent.repo, "add_chat", lambda *a: saved.append(a))
+    reply = '{"reply":"**Live Trading:** #83 btc15m earning steadily on real money.","actions":[]}'
+    agent.run_copilot(Conn(), {"id": 1, "user_id": 7, "kind": "chat"}, model=lambda s, m, on_delta=None: (reply, {"input_tokens": 10, "output_tokens": 5}))
+    assert [a[2] for a in saved] == ["agent", "system"]
+    assert saved[1][3] == "Correction: #83 trades paper, not real money. Live deployments right now: none."
