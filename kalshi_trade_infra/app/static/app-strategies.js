@@ -9,7 +9,7 @@ window.TauPage('strategies', (T) => {
     depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
     gl, glo, go, ICON, isPerpetual, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, S, serial, settleAt, shell, smooth, strategySlip, strategyTable,
+    researchOnly, roadDays, root, rpUnderwater, S, serial, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -161,7 +161,11 @@ window.TauPage('strategies', (T) => {
     </svg>`;
   }
 
-  function rpConclusion(cls) {
+  function rpConclusion(cls, onPaper) {
+    // A probation strategy's forward evidence is its one paper judgment, not the locked holdout: its page
+    // said it "held up on the locked holdout", which it never faced.
+    if (onPaper && cls === 'forward_validated') return ['good', 'Forward-validated on paper. It fell short on validation, then passed its one pre-registered judgment on its own paper trades.'];
+    if (onPaper && cls === 'deployment_candidate') return ['good', 'Deployment candidate. It passed its one pre-registered judgment on its own paper trades, and is different enough from your deployed strategies to add something new.'];
     const m = {
       deployment_candidate: ['good', 'Deployment candidate. It cleared validation on data it had never seen, held up on the one-time locked holdout, and is different enough from your deployed strategies to add something new.'],
       forward_validated: ['good', 'Forward-validated. It passed validation and then held up on the locked holdout, which is evaluated exactly once — the strongest evidence this pipeline produces.'],
@@ -254,7 +258,7 @@ window.TauPage('strategies', (T) => {
       <div class="rp-stat"><div class="k">Holdout</div><div class="val">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'used once, as designed: it can’t be re-run on this data' : 'not used yet'}</div></div>
     </div>` : `<div class="rp-empty">Not yet evaluated on the locked holdout. The holdout is spent only once, on strategies that already passed validation — so an empty holdout here is expected until then.</div>`;
     parts.verdict += sub('The one-time locked holdout', holdBody);
-    const [vtone, words] = rpConclusion(exp.classification);
+    const [vtone, words] = rpConclusion(exp.classification, !!(exp.paper && !h));
     const chip = { good: 'on', sig: 'armed', quiet: 'quiet' }[vtone] || '';
     parts.verdict += `<div class="rp-verdict ${vtone}"><span class="mk ${chip}">${esc(rpHuman(exp.classification || 'unknown'))}</span><p>${words}</p></div>`;
     return parts;
@@ -505,23 +509,28 @@ window.TauPage('strategies', (T) => {
     return books.join('') + (need ? `<p class="hint">${need}</p>` : '');
   }
   // A validation pass keeps the status "passed" when a later check fails: the one-time locked holdout, or
-  // the diversification check after it (the server's why_failed names either). The page stamped it
-  // Passed, offered Deploy on paper up top and said nothing, or "Passed. It cleared every check".
-  const heldBack = (missed) => missed[0].gate === 'diversification';
-  const verdictMark = (s, missed) => s.status !== 'passed' || !missed ? mark(s.status)
-    : heldBack(missed) ? '<span class="mk quiet">Held back</span>' : '<span class="mk">Missed final test</span>';
+  // the diversification check after it. A probation strategy that passed its one paper judgment and was
+  // then held back by that check keeps its Void. The server's `verdict` says which, and why_failed names
+  // the check (an answer without `verdict` is read from it). The page stamped it Passed, offered Deploy on
+  // paper up top and said nothing, or "Passed. It cleared every check", or Void over its validation miss.
+  const laterVerdict = (s, missed) => s.verdict || (s.status === 'passed' && missed
+    ? (missed[0].gate === 'diversification' ? 'held_back' : 'missed_final') : undefined);
+  const heldBack = (s) => s.verdict === 'held_back';
   // The verdict in one line near the top of a strategy page: whether it passed and on what held-out
   // evidence, or the check it missed. The full evidence stays in Verdict, which on a phone is many
   // screens down; a Void strategy's page read "returned $3.10 on unseen data" up top and said why it
   // failed only there.
   function verdictGlance(s, missed) {
-    const exp = s.experiment, h = exp && exp.holdout, v = exp && exp.validation;
+    const exp = s.experiment, h = exp && exp.holdout, v = exp && exp.validation, p = exp && exp.paper;
     const lc = (t) => String(t).charAt(0).toLowerCase() + String(t).slice(1);
     let lead, words;
-    if (missed && ['failed', 'rejected'].includes(s.status)) {
+    if (missed && s.status !== 'passed' && heldBack(s)) {
+      lead = 'Held back.';
+      words = `It fell short on its first test on unseen data, so it went on paper on probation, and passed its one judgment there${p && p.n_trades != null ? ` (${num(p.n_trades)} paper trades)` : ''}, but it is ${lc(missed[0].label)}, so the gatekeeper didn’t clear it to trade. Verdict, below, has what was measured.`;
+    } else if (missed && ['failed', 'rejected'].includes(s.status)) {
       lead = s.status === 'failed' ? 'Void.' : 'Rejected.';
       words = `It missed ${missed.length === 1 ? 'a check' : missed.length + ' checks'}: ${lc(missed[0].label)}${missed.length > 1 ? `, and ${missed.length - 1} more` : ''}. Verdict, below, has what was measured and what to try next.`;
-    } else if (missed && s.status === 'passed' && heldBack(missed)) {
+    } else if (missed && s.status === 'passed' && heldBack(s)) {
       lead = 'Held back.';
       words = `It held up on data it had never seen, the one-time locked holdout included, but it is ${lc(missed[0].label)}, so the gatekeeper didn’t clear it to trade. Verdict, below, has what was measured.`;
     } else if (missed && s.status === 'passed') {
@@ -530,6 +539,9 @@ window.TauPage('strategies', (T) => {
     } else if (s.status === 'passed' && h && h.n_trades != null && ['deployment_candidate', 'forward_validated'].includes(exp.classification)) {
       lead = 'Passed.';
       words = `It cleared every check, including the one-time locked holdout: ${num(h.n_trades)} trades on data it had never seen${h.mean_net_return != null ? `, averaging ${rpRet(h.mean_net_return)} of the stake per trade after fees` : ''}.`;
+    } else if (s.status === 'passed' && !h && p && p.n_trades != null && exp.classification === 'deployment_candidate') {
+      lead = 'Passed on paper.';
+      words = `It fell short on its first test on unseen data, then passed its one judgment on its own paper trades (${num(p.n_trades)}) and every check after it.`;
     } else if (s.status === 'passed' && v && v.n_trades != null && !h) {
       lead = 'Passed validation.';
       words = `It cleared the checks on ${num(v.n_trades)} trades it had never seen; the one-time locked holdout hasn’t run yet.`;
@@ -545,6 +557,7 @@ window.TauPage('strategies', (T) => {
     const s = await api('/api/strategies/' + id);
     const perpetual = isPerpetual(s), restricted = researchOnly(s);
     const missed = Array.isArray(s.why_failed) && s.why_failed.length ? s.why_failed : null;
+    s.verdict = laterVerdict(s, missed);
     const passedAll = s.status === 'passed' && !missed;
     const ins = s.in_sample || {}, oos = s.out_of_sample;
     // A research session's strategy is judged by the gatekeeper on its validation window (the experiment's
@@ -682,7 +695,7 @@ window.TauPage('strategies', (T) => {
             <header class="paper-head">
               <div class="paper-cite"><span>${esc(serial(s.id))}</span><span>${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}</div>
               <h2 class="paper-title">${esc(s.title)}</h2>
-              <div class="paper-byline">${verdictMark(s, missed)}${researchBadge(s)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
+              <div class="paper-byline">${statusMark(s)}${researchBadge(s)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
             </header>
             ${quickHtml}
             <section class="paper-abstract">
@@ -720,8 +733,8 @@ window.TauPage('strategies', (T) => {
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
-                ${missed && s.status === 'passed' ? `<div class="notice bad">${ICON.warn}<span>${heldBack(missed) ? 'Held back' : 'Missed the final test'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict). It wasn’t cleared to trade, so it can’t go live, and putting it on paper is your call.</span></div>` : ''}
-                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
+                ${missed && s.verdict ? `<div class="notice bad">${ICON.warn}<span>${heldBack(s) ? 'Held back' : 'Missed the final test'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict). It wasn’t cleared to trade, so it can’t go live, and putting it on paper is your call.</span></div>` : ''}
+                ${s.status !== 'passed' && !(missed && s.verdict) ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 ${apLine}<button class="btn" id="dep-paper"${apOff}>Deploy on paper</button>${paperAgain(activeDeps)}${paperHere}
                 ${fold('Demo &amp; live', `<div class="fold-body" style="display:grid;gap:10px">
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>

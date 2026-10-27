@@ -1501,8 +1501,8 @@
   // `verdict`, as its page shows it). A validation pass whose one-time locked holdout failed, or that the
   // diversification check after it held back, kept "Passed" on the lists; a probation strategy held back
   // after passing on paper kept its "Void".
-  const VERDICT = { missed_final: ['', 'Missed final test'], held_back: ['quiet', 'Held back'] };
-  const statusMark = (s) => VERDICT[s.verdict] ? `<span class="mk ${VERDICT[s.verdict][0]}">${VERDICT[s.verdict][1]}</span>` : mark(s.status);
+  const VERDICT = { missed_final: ['mk', 'Missed final test'], held_back: ['mk quiet', 'Held back'] };
+  const statusMark = (s) => VERDICT[s.verdict] ? `<span class="${VERDICT[s.verdict][0]}">${VERDICT[s.verdict][1]}</span>` : mark(s.status);
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
   const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>`;
   const strategyTable = (rows, pick) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick)}<tbody>${rows}</tbody></table></div>`;

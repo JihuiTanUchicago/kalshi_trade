@@ -1508,8 +1508,8 @@
   // `verdict`, as its page shows it). A validation pass whose one-time locked holdout failed, or that the
   // diversification check after it held back, kept "Passed" on the lists; a probation strategy held back
   // after passing on paper kept its "Void".
-  const VERDICT = { missed_final: ['', 'Missed final test'], held_back: ['quiet', 'Held back'] };
-  const statusMark = (s) => VERDICT[s.verdict] ? `<span class="mk ${VERDICT[s.verdict][0]}">${VERDICT[s.verdict][1]}</span>` : mark(s.status);
+  const VERDICT = { missed_final: ['mk', 'Missed final test'], held_back: ['mk quiet', 'Held back'] };
+  const statusMark = (s) => VERDICT[s.verdict] ? `<span class="${VERDICT[s.verdict][0]}">${VERDICT[s.verdict][1]}</span>` : mark(s.status);
   const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
   // `inRun`: the table sits on its own session's page, where every row's "Ideas tested" was that session's
   // count again (a running session's counter, behind the Tested figure above it), so the column is left out.

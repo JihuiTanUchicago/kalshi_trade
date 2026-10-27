@@ -225,6 +225,27 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(html, /Held back: too similar to “&lt;b&gt;BTC&lt;\/b&gt; fade” \(see Verdict\)\./);
   });
 
+  test(`${name}: a probation strategy held back after passing on paper says so, not Void over its validation miss`, async () => {
+    const paper = {classification: 'forward_validated', n_trades: 60, mean_net_return: 0.021, p_value: 0.01};
+    const near = {classification: 'inconclusive', n_trades: 18, mean_net_return: 0.012, p_value: null};
+    const f = await open({status: 'failed', verdict: 'held_back', out_of_sample: null, why_failed: tooSimilar,
+      experiment: {classification: 'forward_validated', promoted: false, validation: near, holdout: null, paper}});
+    const html = main(f);
+    assert.match(stamp(f), /<span class="mk quiet">Held back<\/span>/); assert.doesNotMatch(stamp(f), />Void</);
+    assert.match(html, /<b>Held back\.<\/b> It fell short on its first test on unseen data, so it went on paper on probation, and passed its one judgment there \(60 paper trades\), but it is too similar to “&lt;b&gt;BTC&lt;\/b&gt; fade”, so the gatekeeper didn’t clear it to trade\./);
+    // Its forward evidence is the paper judgment: the verdict never says it held up on the locked holdout.
+    assert.match(html, /Forward-validated on paper\. It fell short on validation, then passed its one pre-registered judgment on its own paper trades\./);
+    assert.doesNotMatch(html, /<b>Void\.|held up on the locked holdout|It wasn’t validated|<b>BTC<\/b>/);
+    assert.match(html, /Held back: too similar to “&lt;b&gt;BTC&lt;\/b&gt; fade” \(see Verdict\)\. It wasn’t cleared to trade, so it can’t go live/);
+    assert.equal(f.root.querySelector('#dep-paper-quick'), null); assert.equal(f.root.querySelector('#road-live'), null);
+    // Once the diversification check promotes it, it passed on paper and says so.
+    const ok = await open({status: 'passed', why_failed: [], out_of_sample: null,
+      experiment: {classification: 'deployment_candidate', promoted: true, validation: near, holdout: null, paper}});
+    assert.match(stamp(ok), /<span class="mk on">Passed<\/span>/);
+    assert.match(main(ok), /<b>Passed on paper\.<\/b> It fell short on its first test on unseen data, then passed its one judgment on its own paper trades \(60\) and every check after it\./);
+    assert.doesNotMatch(main(ok), /<b>Passed validation|held up on the one-time locked holdout/);
+  });
+
   test(`${name}: a true pass keeps its stamp, summary, Deploy on paper up top and Road to live`, async () => {
     const f = await open({status: 'passed', why_failed: [], experiment: {classification: 'deployment_candidate', promoted: true, validation: val,
       holdout: {classification: 'forward_validated', n_trades: 64, mean_net_return: 0.024, consumed: true}}});
