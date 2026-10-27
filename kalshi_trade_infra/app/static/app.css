@@ -1722,15 +1722,19 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .mk-rules { max-width: 72ch; margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* ---------- Floating autopilot window (bottom-right) ---------- */
-.apf { position: fixed; right: 16px; bottom: 16px; z-index: 60; font-family: var(--f-ui); }
+/* The pill's offset from the screen's corner and its height (one line, never more: .apf-pill's nowrap), the
+   two figures the page's bottom room is worked out from. A phone sets them smaller and a thumb taller below. */
+:root { --apf-gap: 16px; --apf-h: 38px; }
+.apf { position: fixed; right: var(--apf-gap); bottom: var(--apf-gap); z-index: 60; font-family: var(--f-ui); }
 .apf.yield { opacity: 0; pointer-events: none; }  /* stepping aside from a control or figure under it (apYield) */
 .apf:not(.open) { transition: opacity .15s; }
-/* Room under the page so the pinned autopilot pill never sits on the last row's buttons: deeper than
-   the pill's offset, height and apYield's 8px margin (16+36+8 desktop, 10+40+8 phone), so at the foot
-   of any page it always shows again. */
-body:not(.landing-body) { padding-bottom: 72px; }
+/* Room under the page so the pinned autopilot pill never sits on the last row: the pill's offset and height,
+   apYield's 8px margin and a 14px gap, plus the home-indicator strip on an iPhone (viewport-fit=cover puts the
+   page under it). Scrolled to the foot of any page, its last line sits above the pill: Billing's card form and
+   a market page's settlement note were found under it on a 390px phone. */
+body:not(.landing-body) { padding-bottom: calc(var(--apf-gap) + var(--apf-h) + 22px + env(safe-area-inset-bottom, 0px)); }
 body.landing-body .apf { display: none; }
-.apf-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.14); font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.apf-pill { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; padding: 8px 12px; background: var(--stock-raised); border: 1px solid var(--ink); border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.14); font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
 .apf-pill:hover { background: var(--stock-sunk); }
 .apf-pill svg { width: 13px; height: 13px; opacity: .6; }
 .apf-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rule-2); }
@@ -1839,7 +1843,7 @@ body.landing-body .apf { display: none; }
 .log .ap-empty, .ap-empty { display: block; padding: 16px; font-size: 13px; line-height: 1.6; color: var(--ink-3); list-style: none; }
 .apf-composer-row { flex: none; border-top: 1px solid var(--rule); padding: 11px 14px; background: var(--stock-raised); }
 .apf-composer-row textarea { min-height: 40px; max-height: 120px; }
-@media (max-width: 600px) { .apf { right: 10px; bottom: 10px; }
+@media (max-width: 600px) { :root { --apf-gap: 10px; }
   .apf.open { left: 10px; width: auto; max-width: none; max-height: calc(100vh - 20px); } }
 
 /* ---------- Strategy research-paper page (RESEARCH_PIPELINE_DESIGN.md §D) ----------
@@ -1917,7 +1921,8 @@ body.landing-body .apf { display: none; }
   .btn, .btn.sm, .chip, .pill { min-height: 44px; }
   .admin-toggle, .bell-trig, .profile-trig { min-height: 44px; }
   .bell-trig { min-width: 44px; justify-content: center; }
-  .apf-pill { min-height: 40px; }
+  :root { --apf-h: 40px; }
+  .apf-pill { min-height: var(--apf-h); }
   .t-explore .xlink a { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -14px -14px -14px 0; }
   .info { width: 40px; height: 40px; margin: -13px -13px -13px -8px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }

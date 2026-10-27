@@ -2937,10 +2937,13 @@
   // from one shared spot read): "+$420 · 0.4%" is spot $420 (0.4%) above it, a bucket's is to its nearer
   // edge, and a bucket spot sits in reads "in range". Without a fresh spot no row carries one, and the line
   // above the list says why (spotListNote).
-  const vsText = (v) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? 'at the strike'
+  // A 15-minute window's row measures from the target price in its own name, the one its market page shows
+  // (titleStrike) until a strike is stored; the server says so (`vs.from`), and the row names it the same way.
+  const VS_TITLE = 'Target price from the contract’s title, as on its market page';
+  const vsText = (v) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (v.from === 'title' ? 'at the target price' : 'at the strike')
     : `${+v.diff < 0 ? '−' : '+'}$${num(Math.round(Math.abs(+v.diff)))} · ${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
-  const vsLab = (t) => (/^KXBTC-.+-B[\d.]+$/.test(t) ? 'Spot vs bucket' : 'Spot vs strike');
-  const vsHtml = (m) => (m.vs ? `<span class="xspot">${vsLab(m.t)} <b>${vsText(m.vs)}</b></span>` : '');
+  const vsLab = (m) => (m.vs && m.vs.from === 'title' ? 'Spot vs target price' : /^KXBTC-.+-B[\d.]+$/.test(m.t) ? 'Spot vs bucket' : 'Spot vs strike');
+  const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs)}</b></span>` : '');
   const spotListNote = (s) => (s === undefined ? '' : s && s.failed ? 'Bitcoin’s latest stored price didn’t load, so distances to the strike are left out.'
     : !s ? 'No Bitcoin price stored in the last day, so distances to the strike are left out.'
     : s.stale ? `Bitcoin’s spot feed is ${spotOld(+s.age_s || 0)} old, so distances to the strike are left out until it catches up.`
@@ -3823,7 +3826,7 @@
   const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot))}</p>` : '');
   function hotRowHtml(m) {
     const compactName = contractShort(m.t) || (m.ti || '').trim() || contractName(m.t);
-    const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m.t)} ${vsText(m.vs)}` : '');
+    const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m)} ${vsText(m.vs)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(' ·\u00a0'))} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours${when} ·\u00a0Opens Kalshi in a new tab">

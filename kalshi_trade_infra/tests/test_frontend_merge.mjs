@@ -2308,7 +2308,7 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   const touch = css.slice(css.indexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.bell-trig \{ min-width: 44px;/);
-  assert.match(block, /\.apf-pill \{ min-height: 40px; \}/);
+  assert.match(block, /:root \{ --apf-h: 40px; \}\s*\.apf-pill \{ min-height: var\(--apf-h\); \}/);  // the height the page's bottom room counts
   assert.match(block, /\.t-explore \.xlink a \{ min-width: 44px; min-height: 44px;/);
   assert.match(block, /\.info \{ width: 40px; height: 40px;/);
   // Inline text buttons get a 41px tall hit area from padding that a matching negative margin cancels out.
@@ -2426,8 +2426,9 @@ test('the floating autopilot pill steps aside from any control or value under it
   f.document.activeElement = null; els[3].getBoundingClientRect = rect(0, 0, 0, 0);
   f.apYield(); assert.equal(box.classes.has('yield'), false);
   const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
-  assert.match(css, /body:not\(\.landing-body\) \{ padding-bottom: 72px; \}/);
-  assert.match(css, /@media \(max-width: 600px\) \{ \.apf \{ right: 10px; bottom: 10px; \}/);  // 10 + 40 + 8 < 72
+  // The room under the page is the pill's own offset and height plus apYield's margin (test_ui_layout.mjs has the sums).
+  assert.match(css, /body:not\(\.landing-body\) \{ padding-bottom: calc\(var\(--apf-gap\) \+ var\(--apf-h\) \+ 22px \+ env\(safe-area-inset-bottom, 0px\)\); \}/);
+  assert.match(css, /\.apf \{ position: fixed; right: var\(--apf-gap\); bottom: var\(--apf-gap\);/);
 });
 
 test('the autopilot says the market it researches by its label, never a raw key or series', () => {
@@ -3446,6 +3447,33 @@ test('Tau: a run says its ledger lines in plain words, with the zone of its time
   assert.match(log, /Locked holdout · held<\/span><span class="hx-vtext">Held up on the locked holdout/);
   assert.match(log, /DROPPED<\/b> <b>Thin<\/b> — every variant took 0 trades/);
   assert.match(log, /<time datetime="2026-10-17T10:01:00Z" title="[^"]+">/);
+  f.clearTimers();
+});
+
+// Walk 2026-10-27: the System page's research box read "1 running · 2 queued · 11 done" on one line that nearly ran
+// past its 158-wide box, and "12 running · 30 queued · 1,204 done" ran out of it (171 wide, measured with Playwright
+// at 390px and 1280px; the map scales as one, so the box and its text keep their proportion at every width). The
+// count is two lines in a box tall enough for them; each line measured 109 wide.
+test('Tau: the System page\'s research box sets its count on two lines that fit the box, with big numbers grouped', async () => {
+  const nodes = {agents: {running: 12, queued: 30, done: 1204}, backtest: {strategies: 3}, db: {rows: 10, size_mb: 5}, web: {users: 2}};
+  const f = frontend({fetchImpl: (path) => (path === '/api/admin/system' ? response({nodes, events: [], now: '2026-10-27T16:00:00Z'}) : response({}))});
+  await f.viewSystem(); await flush();
+  const g = f.root.querySelector('.sys-node[data-id="agents"]'), m = g.querySelector('[data-m="agents"]');
+  const spans = m.querySelectorAll('tspan');
+  assert.deepEqual(spans.map((t) => t.textContent), ['12 running · 30 queued', '1,204 done']);
+  const w = +g.querySelector('rect').getAttribute('width'), h = +g.querySelector('rect').getAttribute('height');
+  // About 5 units a character at the map's 10.5px narrow face: each line keeps clear of the box's right edge.
+  for (const t of spans) assert.ok(12 + t.textContent.length * 5 <= w - 8, `"${t.textContent}" in a ${w}-wide box`);
+  // Both lines sit under the name and its sub-line (y 41) and above the box's foot.
+  const ys = spans.map((t) => +t.getAttribute('y'));
+  assert.ok(ys[0] >= 41 + 13 && ys[1] >= ys[0] + 12 && ys[1] <= h - 10, `lines at ${ys} in a ${h}-tall box`);
+  // The box below it still clears the taller box, and the edges leave from its middle.
+  assert.ok(40 + h < 160 - 20);
+  const edge = f.root.querySelectorAll('.sys-edge').find((p) => p.dataset.e === 'agents');
+  assert.match(edge.getAttribute('d'), new RegExp(`^M878,${40 + h / 2} `));
+  // The detail panel reads the count as one line.
+  g.dispatchEvent({type: 'click'});
+  assert.match(f.root.querySelector('#sys-detail').innerHTML, /12 running · 30 queued · 1,204 done/);
   f.clearTimers();
 });
 
