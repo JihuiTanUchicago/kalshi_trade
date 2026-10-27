@@ -586,6 +586,27 @@ test('the research headline uses all-time totals, not the 50 newest runs', async
   assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> hypotheses and kept <em>4<\/em>/);
 });
 
+test('Tau: a new user\'s first idea reads "1 hypothesis tested", not "1 hypotheses"', async () => {
+  const at = (counts) => frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/runs') return response({runs: [], counts, policy: null, totals: {tried: 1, passed: 0}});
+    if (path.startsWith('/api/research/scoreboard')) return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  let f = at({research_running: 1, research_queued: 0});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— <em>1<\/em> hypothesis tested, <em>0<\/em> through every gate\./);
+  f.clearTimers();
+  f = at({research_running: 0, research_queued: 0});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1<\/em> hypothesis and kept <em>0<\/em>/);
+  f.clearTimers();
+});
+
 test('the seeded example session is listed as an example, not counted as the user\'s research', async () => {
   const example = {id: 1, status: 'succeeded', market: 'btc15m', direction: 'random_walk', example: true, prompt: 'Random walk',
     hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};
@@ -1088,11 +1109,11 @@ test('saving auto-reload on Billing updates the autopilot card\'s auto-reload li
   const amt = f.root.querySelector('#reload-amt'); amt.value = '50'; await amt.onchange(); await flush();
   assert.deepEqual(posts, [{on: true, amount: 50, threshold: 8}]);
   assert.deepEqual({...f.S.me.auto_reload}, {amount: 50, charge: 52.75, threshold: 8});
-  assert.match(box.querySelector('#apf-week').innerHTML, /auto-reload adds \$50\.00 at \$8\.00/);
+  assert.match(box.querySelector('#apf-week').innerHTML, /each time your balance falls to \$8\.00, auto-reload charges your card \$52\.75 for \$50\.00 more/);
   assert.equal(reads(), before);
   const sw = f.root.querySelector('#autoreload'); sw.checked = false; await sw.onchange(); await flush();
   assert.equal(f.S.me.auto_reload, null);
-  assert.doesNotMatch(box.querySelector('#apf-week').innerHTML, /auto-reload adds/);
+  assert.doesNotMatch(box.querySelector('#apf-week').innerHTML, /auto-reload charges your card/);
 });
 
 test('the autopilot card says what switching it on costs before the click', async () => {
@@ -3321,6 +3342,13 @@ test('Tau: a run lists each idea it tested with its outcome and first missed che
   assert.match(ideas, new RegExp(`<span class="hx-stamp void">Void</span><button type="button" class="ri-title" data-goto="41">Fade &lt;b&gt;</button><span class="ri-why">Too few trades to judge \\(18 of 30\\) · 1 more check</span>`));
   assert.ok(f.root.querySelector('#log').children.some((li) => li.dataset && String(li.dataset.sid) === '41'), 'the card is the jump target');
   f.clearTimers();
+  // One the autopilot is about to put on paper itself says so instead of asking for a deploy by hand.
+  const g = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies: [strategies[0], {...strategies[1], autopilot_next: true}]}) : response({})});
+  await g.viewRun(9); await flush();
+  const auto = g.root.querySelector('#runideas').innerHTML;
+  assert.match(auto, /data-goto="42">Lean in<\/button><span class="ri-why">The autopilot puts it on paper at its next check-in<\/span>/);
+  assert.doesNotMatch(auto, /Open it to deploy on paper/);
+  g.clearTimers();
 });
 
 test('Tau: the strategy page lists what it missed under Verdict and names the first in the Deploy notice', async () => {
@@ -4273,12 +4301,16 @@ const cardWall = async (billing) => {
 };
 
 test('the card wall says saving the card charges nothing and what auto-reload will charge it, before it is saved', async () => {
-  const dlg = await cardWall({auto_reload: true, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1});
+  const dlg = await cardWall({auto_reload: true, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1, topup_fee_pct: 5.5});
   assert.match(dlg.querySelector('.wl-sub').innerHTML, /Save a card and we'll add \$20 in free credits\./);
   assert.doesNotMatch(dlg.innerHTML, /by the token|list price/i);
   const terms = dlg.querySelector('#pay-terms');
   assert.equal(terms.hidden, false);
-  assert.equal(terms.textContent, 'Saving the card charges nothing. Auto-reload is on: when your credits fall to $5.00, we charge the card $21.10 for $20.00 more. You can turn it off on Billing.');
+  // The card charge is split into credits and the purchase fee, as Billing splits it.
+  assert.equal(terms.textContent, 'Saving the card charges nothing. Auto-reload is on: when your credits fall to $5.00, we charge the card $21.10: $20.00 of credits plus the 5.5% purchase fee. You can turn it off on Billing.');
+  // A server that sends no fee rate keeps the plain words.
+  const old = await cardWall({auto_reload: true, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1});
+  assert.match(old.querySelector('#pay-terms').textContent, /we charge the card \$21\.10 for \$20\.00 more\./);
   // Auto-reload already off on this account: no reload promise.
   const off = await cardWall({auto_reload: false, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1});
   assert.equal(off.querySelector('#pay-terms').textContent, 'Saving the card charges nothing.');
@@ -4368,6 +4400,11 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   const text = await strip({});
   // What it cost: its own row, real money, never added to the paper book above it.
   assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
+  // No card ever charged: the credits spent were free ones, and the row says the card is untouched.
+  const free = await strip({since: {...since, spent: {...since.spent, card_charged: false}}});
+  assert.match(free, /of credits spent<span class="since-sub"> ·\sfree credits so far: your card hasn’t been charged ·\s\$7\.15 left ·\s/);
+  assert.doesNotMatch(free, /real money/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, card_charged: true}}}), /of credits spent<span class="since-sub"> ·\sreal money ·\s/);
   assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$12\.65<\/span>/);
   assert.doesNotMatch(text, /\$40\.10|−\$14\.80|\$14\.80/);  // paper and credits never summed or netted
   // The forward-test pass leads New results when nothing else passed, named from the page's deployments.

@@ -594,6 +594,24 @@ def test_deploy_roads_rerun_the_paper_gate_only_when_the_record_moves(monkeypatc
     server._ROADS.clear(); server._FAILING.clear()
 
 
+def test_deploy_roads_follow_a_trade_that_closed_inside_the_cache_window(monkeypatch):
+    # The Deploy row showed "Realized +$5.63 · 1 trade" beside "Toward live: 0/30 trades" for up to 30s
+    # after a new user's first paper trade closed: the road was kept by time alone.
+    from app import server
+    from app.services import book_memo
+    server._ROADS.clear(); server._FAILING.clear()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    trips = []
+    monkeypatch.setattr(book_memo, "paper_round_trips_by_strategy", lambda memo, sids: {8: list(trips)})
+    deps = [{"id": 2, "strategy_id": 8, "mode": "paper", "status": "running", "created_at": now - timedelta(hours=1), "result": {}}]
+    assert server._deploy_roads(None, 1, deps, book_memo.BookMemo(None, 1, version=(1, 0, 10)))[8]["trades"] == 0
+    trips.append({"pnl": 5.63, "opened_at": now - timedelta(minutes=15), "closed_at": now, "ticker": "KXBTC15M-A"})
+    # Same version: the kept road stands; the closed trade moves the version and the road with it.
+    assert server._deploy_roads(None, 1, deps, book_memo.BookMemo(None, 1, version=(1, 0, 10)))[8]["trades"] == 0
+    assert server._deploy_roads(None, 1, deps, book_memo.BookMemo(None, 1, version=(1, 1, 10)))[8]["trades"] == 1
+    server._ROADS.clear(); server._FAILING.clear()
+
+
 def test_readiness_unknown_strategy_is_404(monkeypatch):
     from app import server
     with pytest.raises(server.ApiError) as e:

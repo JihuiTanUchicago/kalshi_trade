@@ -13,6 +13,7 @@ from app.adapters.stripe import billing
 from app.research import agent, dreaming
 from app.services import customer_text, research_list, run_stop
 from app.services import markets as market_service
+from app.trading import spec as specmod
 from app.trading.markets import MARKETS
 from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
@@ -161,12 +162,42 @@ def get_run(ctx: Ctx):
     # The run stores the model's key, NULL for the default: the page names the model a customer picked.
     run["model_label"] = catalog.label_for_key(run.get("model"))
     customer_text.run_rows([run])
+    mine = [s for s in strategies if s["run_id"] == run["id"]]
+    auto = _autopilot_puts_on_paper(ctx.cur, ctx.user, mine)
     return {
         "run": run,
         "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after))),
-        "strategies": [_strategy_card(s) for s in strategies if s["run_id"] == run["id"]],
+        "strategies": [{**_strategy_card(s), **({"autopilot_next": True} if s["id"] in auto else {})} for s in mine],
         "rsi": _rsi_block(pol, dream),
     }
+
+
+def _autopilot_puts_on_paper(cur, user: Optional[Dict], strategies: List[Dict]) -> set:
+    """The session's passed strategies the autopilot puts on paper itself at its next check-in, by the
+    tests agent.auto_paper_candidates applies: autopilot on, room under its cap, never on paper before,
+    a deployable market inside the focus, not code, and a gatekeeper deployment candidate. Display
+    only: the page said "Open it to deploy it on paper" while the autopilot was about to, and a copy
+    deployed by hand as well doubles the positions."""
+    if not (user or {}).get("autopilot"):
+        return set()
+    waiting = [s for s in strategies if s["status"] == "passed" and not s.get("active_deps")
+               and s.get("direction") != repo.DEMO_DIRECTION]
+    if not waiting:
+        return set()
+    deps = repo.list_deployments(cur, user["id"], include_stopped=True)
+    if sum(1 for d in deps if d["status"] != "stopped") >= agent.AUTO_PAPER_MAX_ACTIVE:
+        return set()
+    tried = {d["strategy_id"] for d in deps if d["mode"] == "paper" or d["status"] != "stopped"}
+    focus = agent.focus_tokens(user)
+    out = set()
+    for s in waiting:
+        mkt = MARKETS.get(s["market"])
+        if (s["id"] in tried or mkt is None or not mkt.deployable or not agent.in_focus(s["market"], focus)
+                or specmod.is_code_spec(s["spec"])):
+            continue
+        if agent._is_deployment_candidate(cur, s["id"]):
+            out.add(s["id"])
+    return out
 
 
 def _rsi_block(pol: Optional[Dict], dream: Optional[Dict]) -> Dict:

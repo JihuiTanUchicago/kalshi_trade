@@ -752,9 +752,11 @@
       const state = await api('/api/billing', undefined, { keep: true });
       if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
       // What the card will be charged, before it is saved: nothing now, and auto-reload is on by default.
+      // The charge is split as Billing splits it: "$21.10 for $20.00 more" left the $1.10 unexplained.
       const terms = dlg.querySelector('#pay-terms');
+      const split = state.topup_fee_pct != null ? `: ${usd(state.autoreload_amount)} of credits plus the ${state.topup_fee_pct}% purchase fee` : ` for ${usd(state.autoreload_amount)} more`;
       terms.textContent = 'Saving the card charges nothing.' + (state.auto_reload && state.autoreload_charge
-        ? ` Auto-reload is on: when your credits fall to ${usd(state.autoreload_threshold)}, we charge the card ${usd(state.autoreload_charge)} for ${usd(state.autoreload_amount)} more. You can turn it off on Billing.` : '');
+        ? ` Auto-reload is on: when your credits fall to ${usd(state.autoreload_threshold)}, we charge the card ${usd(state.autoreload_charge)}${split}. You can turn it off on Billing.` : '');
       terms.hidden = false;
       const Stripe = await loadStripe();
       const sp = Stripe(state.publishable_key);
@@ -842,7 +844,8 @@
       dot.hidden = !d.unread;
       trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
       head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${d.unread} new</span>` : '');
-      list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet.</p>';
+      // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
+      list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
     };
     let data = { unread: 0, items: [] };
     // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
@@ -3323,7 +3326,11 @@
       // The autopilot deploys what it finds on paper itself, and its finished session still said "Open it
       // to deploy it on paper": the strategy page then warned that a second copy doubles the positions.
       const deployed = passed.filter((s) => s.deployed).length;
+      // Before its next check-in the autopilot hasn't deployed them yet, and the line asked for a deploy
+      // by hand all the same. The server marks the ones it will put on paper itself (autopilot_next).
+      const auto = passed.filter((s) => !s.deployed && s.autopilot_next).length;
       const way = deployed === passed.length ? ` ${passed.length === 1 ? 'It is' : 'They are'} already deployed. <a href="/deploy">See ${passed.length === 1 ? 'it' : 'them'} on Deploy</a>.`
+        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
         : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
         : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
       return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}</p>`;
@@ -5212,7 +5219,10 @@
     if (spent && !low && !me.needs_card && !me.auto_reload && runway != null && runway < CREDITS_WARN_DAYS)
       needs.push(`${pausesIn(runway)} <a href="/billing">Add credits or turn on auto-reload</a>`);
     // What the time away cost, in credits: real money, so its own row, never added to a book above.
-    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}<span class="since-sub"> \u00b7\u00a0real money \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
+    // Until a card was ever charged (the server's card_charged) every credit spent was a free one, and
+    // "real money" beside a new user's first cents read as a charge to their card.
+    const paid = spent && spent.card_charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
+    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}<span class="since-sub"> \u00b7\u00a0${paid} \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
       <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>
@@ -5451,8 +5461,13 @@
     const pace = reloadIn ? `; at ${at} auto-reload adds ${usd(me.auto_reload.amount)} ${inDays(w.reload_days)} (card charged ${usd(me.auto_reload.charge)})`
       : w.runway_days != null ? `, ${runwayLabel(w.runway_days).toLowerCase()} at ${at}`
       : paceTooSoon(w.pace_days, (+w.research_credits || 0) + (+w.checkin_credits || 0)) ? ', too soon to say how long they last: its first day sets the pace' : '';
-    const floor = me.min_run_balance != null ? ` until your balance is under ${usd(me.min_run_balance)}, then pauses` : '';
-    return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}. It has no daily spending cap: it uses credits${floor}${me.auto_reload && !reloadIn ? ` (auto-reload adds ${usd(me.auto_reload.amount)} at ${usd(me.auto_reload.threshold)})` : ''}.${d && d.reload_failed ? ` <b>Auto-reload failed.</b> ${esc(d.reload_failed)} <a href="/billing">Update your card</a>.` : ''} <a href="/billing">Billing</a> lists every charge.</p>`;
+    // "Uses credits until your balance is under $1.00, then pauses (auto-reload adds $20.00 at $5.00)" read
+    // as a pause; with auto-reload on the balance never gets there, the card is charged again and again.
+    // A card just declined reads as no auto-reload: the floor is what stops it then.
+    const ar = d && d.reload_failed ? null : me.auto_reload;
+    const cap = ar ? `each time your balance falls to ${usd(ar.threshold)}, auto-reload charges your card${reloadIn ? '' : ` ${usd(ar.charge)} for ${usd(ar.amount)} more`} and research carries on.${me.min_run_balance != null ? ` With auto-reload off, it pauses when your balance is under ${usd(me.min_run_balance)}.` : ''}`
+      : `it uses credits${me.min_run_balance != null ? ` until your balance is under ${usd(me.min_run_balance)}, then pauses` : ''}.`;
+    return `<p class="ap-week-left">Credits left: <b>${usd(w.credits_left)}</b>${pace}. It has no daily spending cap: ${cap}${d && d.reload_failed ? ` <b>Auto-reload failed.</b> ${esc(d.reload_failed)} <a href="/billing">Update your card</a>.` : ''} <a href="/billing">Billing</a> lists every charge.</p>`;
   }
   // What switching it on costs, said before the click: the agent's runs spend credits, and with
   // auto-reload on the saved card is charged when they run low. Payments off on this server: no line.
