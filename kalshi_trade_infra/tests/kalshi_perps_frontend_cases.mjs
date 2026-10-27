@@ -505,6 +505,13 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const near = await road({...base, paper: {...paper, trades: 40, events: 30, span_hours: 110, p_value: 0.104,
       checks: {...paper.checks, realistic_trades: true, events: true, span: true}}});
     assert.match(near, /2 of 8 checks left<\/b>[^<]*a clearer edge \(p 0\.104, needs 0\.10 or lower\)/); assert.doesNotMatch(near, />0\.10</);
+    // Walk 2026-10-27 at 390px: "(now −$13.56)" broke between the minus and the $. Each signed figure in the
+    // sentence is one unbreakable amount.
+    const losing = await road({...base, paper: {...paper, net_pnl: -13.56, legacy_pnl: -2, recent_net_pnl: -0.4,
+      checks: {...paper.checks, net_pnl: false, legacy_pnl: false, recent: false}}});
+    assert.match(losing, /net P&amp;L above \$0 \(now <span class="amt">−\$13\.56<\/span>\)/);
+    assert.match(losing, /every fill at \$0 or above \(now <span class="amt">−\$2\.00<\/span>\)/);
+    assert.match(losing, /its newer trades above \$0 \(now <span class="amt">−\$0\.40<\/span>\)/);
     assert.doesNotMatch(near, /road-eta/);  // the counts are in, so no estimate for them
     // A paused or stopped record isn't growing, so there is no estimate; it says what to do.
     assert.match(await road({...base, pace: {running: false}}, [d(1, 'paper', 'paused')]), /paused, so its record isn’t growing\. <a href="\/deploy">Resume it on Deploy<\/a>/);
