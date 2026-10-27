@@ -37,6 +37,8 @@ def share(monkeypatch):
                                                                        "credits": 12.5})
     monkeypatch.setattr(community.repo, "users_by_usernames", lambda cur, names: [])
     monkeypatch.setattr(community, "_email_community_post_async", lambda *a: None)
+    later = {}  # what strategies._later_verdicts finds: (verdict, the experiment block it was judged on)
+    monkeypatch.setattr(community, "_later_verdicts", lambda cur, uid, rows: {r["id"]: later[r["id"]] for r in rows if r["id"] in later})
 
     def create_post(cur, uid, body, kind, snapshot, image_id=None):
         stored.update(body=body, kind=kind, snapshot=snapshot)
@@ -47,6 +49,7 @@ def share(monkeypatch):
         ctx = SimpleNamespace(cur=None, uid=7, body={"body": "", "kind": kind, "ref_id": ref_id}, query={}, params=())
         assert community.create_community_post(ctx) == {"id": 77}
         return dict(stored)
+    post.later = later
     return post
 
 
@@ -79,6 +82,16 @@ def test_the_card_keeps_what_it_says(share):
     # Each book on its own figure: paper and live are never added together.
     pnl = _as_read(share("pnl"), mine=False)["snapshot"]
     assert pnl == {"kind": "pnl", "paper_pnl": 7.2, "live_pnl": -0.6, "paper_trades": 4, "live_trades": 1}
+
+
+def test_a_shared_pass_a_later_check_left_uncleared_says_so_and_nothing_more(share):
+    # Its status stays "passed" after its one-time holdout failed: the card stamped Passed where its page and
+    # list say Missed final test. The verdict's word rides on the card; the record it was judged on doesn't.
+    share.later[4711] = ("missed_final", {"holdout": {"classification": "inconclusive", "p_value": 0.48}, "experiment_id": 8123})
+    snap = _as_read(share("strategy", 4711), mine=False)["snapshot"]
+    assert snap["status"] == "passed" and snap["verdict"] == "missed_final"
+    assert set(snap) == {"kind", "title", "market", "status", "verdict", "pnl", "trades", "win_rate", "days"}
+    assert "8123" not in json.dumps(snap) and "holdout" not in json.dumps(snap)
 
 
 def test_the_author_alone_gets_the_id_their_card_links(share):

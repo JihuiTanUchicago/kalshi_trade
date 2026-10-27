@@ -1074,12 +1074,16 @@ window.TauPage('research', (T) => {
   // How far along and what it found, live. The run's own counters move once per round of ideas (a
   // run-until-stopped round is several ideas), so a running session read "3 hypotheses" while its
   // log showed nine, and "Passed …" beside a passed idea listed under it. Its log and its strategy
-  // rows are current; a set-size session also says how many it will test.
+  // rows are current; a set-size session also says how many it will test. A pass a later check left
+  // uncleared (`verdict`: Missed final test, Held back) keeps the status "passed" and its place in the run's
+  // counter, so "Passed 3" sat over ideas stamped otherwise below: it is counted apart, as not cleared.
   function runCountFigs(r, active, tried, strategies) {
     const n = Math.max(+r.hypotheses_tried || 0, tried || 0);
     const cap = active && !r.run_forever && +r.max_hypotheses ? `of up to ${num(r.max_hypotheses)}` : '';
-    const passed = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
-    return fig('Tested', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
+    const fell = (strategies || []).filter((s) => s.status === 'passed' && s.verdict).length;
+    const all = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
+    const passed = all == null ? null : Math.max(0, all - fell);
+    return fig('Tested', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed, { small: fell ? `${num(fell)} not cleared` : '' });
   }
   // A finished session's status, in the research list's words (RUN_STOP, from the server's stop_reason):
   // the list said "Finished" or "Stopped by you" and this page "Done" or "Cancelled" for the same session,

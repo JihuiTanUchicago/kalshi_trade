@@ -463,6 +463,33 @@ def test_bitcoin_labels_say_the_contract_and_its_close(bundle):
         assert len(short[k]) <= 30 and "\u00b7" not in short[k] and "\\u00a0" not in short[k]
 
 
+@pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
+def test_every_crypto_label_says_the_contract_and_its_close_as_bitcoins_do(bundle):
+    # "ETH 5pm" and "SOL 15-min" sat beside "BTC above $X at 5pm ET" and "BTC 15-min up/down". Every crypto
+    # market reads Bitcoin's way: a 5pm ladder pays above a strike the app fills in for "$X" per contract, a
+    # 15-minute one pays on up or down. Keys and series stay as stored.
+    import re
+    from pathlib import Path
+    from app.trading import markets
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / bundle).read_text()
+    block = src[src.index('const MKT_SHORT = {'):]
+    short = dict(re.findall(r"(\w+): '([^']*)'", block[:block.index('};')]))
+    coins = {"BTC-USD": ("Bitcoin", "BTC"), "ETH-USD": ("Ethereum", "ETH"), "SOL-USD": ("Solana", "SOL"), "XRP-USD": ("XRP", "XRP"),
+             "DOGE-USD": ("Dogecoin", "DOGE"), "NEAR-USD": ("NEAR", "NEAR"), "ZEC-USD": ("Zcash", "ZEC"),
+             "HYPE-USD": ("Hyperliquid (HYPE)", "HYPE")}
+    crypto = {k: m for k, m in markets.CURATED.items() if m.category == "Crypto" and m.source != "ticks"}
+    assert {m.underlying for m in crypto.values()} == set(coins)
+    for k, m in crypto.items():
+        long, tick = coins[m.underlying]
+        if m.close_hour_et == 17:
+            assert (m.label, short[k]) == ("%s above $X at 5pm ET" % long, "%s above $X at 5pm ET" % tick), k
+            assert m.series == "KX%sD" % tick, k
+        else:
+            assert (m.label, short[k]) == ("%s up or down in 15 minutes" % long, "%s 15-min up/down" % tick), k
+            assert m.series == "KX%s15M" % tick and m.candle_minutes == 1, k
+        assert len(short[k]) <= 30 and "\u00b7" not in short[k] + m.label
+
+
 @pytest.mark.parametrize('css', ['app.css', 'app.meridian.css'])
 def test_a_verdict_figures_explanation_sits_under_it_on_a_phone_and_in_its_bubble_elsewhere(css):
     # The research verdict card says what each figure measures (statGrid's .hx-why). Off a phone the info

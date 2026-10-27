@@ -106,11 +106,20 @@ def _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_no
 def list_strategies(
     cur, user_id: int, direction: Optional[str] = None, status: Optional[str] = None, market: Optional[str] = None,
     run_id: Optional[int] = None, limit: int = 500, offset: int = 0, q: Optional[str] = None, deployed: bool = False,
-    hide_noise: bool = False, sort: Optional[str] = None,
+    hide_noise: bool = False, sort: Optional[str] = None, only_ids: Optional[List[int]] = None,
+    skip_ids: Optional[List[int]] = None,
 ) -> List[Dict]:
     """The user's strategies, filtered as count_strategies counts them. `sort` "best" orders by the
-    unseen-data (out-of-sample) backtest P&L, best first; otherwise newest first, rejected last."""
+    unseen-data (out-of-sample) backtest P&L, best first; otherwise newest first, rejected last.
+    `only_ids` / `skip_ids` narrow it to, or leave out, those strategies (the list's passes a later check
+    left uncleared, from passed_strategies); an empty `only_ids` lists nothing."""
+    if only_ids is not None and not only_ids:
+        return []
     where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise)
+    for ids, op in ((only_ids, "IN"), (skip_ids, "NOT IN")):
+        if ids:
+            where += " AND s.id %s (%s)" % (op, ",".join(["%s"] * len(ids)))
+            fparams.extend(int(i) for i in ids)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
                     s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
                     r.brief AS by_autopilot,
@@ -158,6 +167,20 @@ def count_strategies(
     counts["deployed"] = sum(int(r.get("dep") or 0) for r in rows)
     counts["examples"] = examples
     return counts
+
+
+def passed_strategies(
+    cur, user_id: int, direction: Optional[str] = None, market: Optional[str] = None,
+    q: Optional[str] = None, deployed: bool = False,
+) -> List[Dict]:
+    """Every passed strategy count_strategies counts under the same filters, with only what a later
+    verdict is judged on (id, status, market, direction, spec, experiment_id): the list's chips count
+    the passes a later check left uncleared across every page, not the 50 shown. One read through
+    idx_strat_user (user_id, status)."""
+    where, fparams = _strategy_filter_sql(direction, "passed", market, None, q, deployed)
+    cur.execute("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id FROM app_strategies s" + where,
+                [user_id] + fparams)
+    return [_strategy_row(r) for r in cur.fetchall()]
 
 
 def delete_strategy(cur, user_id: int, strategy_id: int) -> bool:

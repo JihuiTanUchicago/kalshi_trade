@@ -10,6 +10,7 @@ from app import repository as repo
 from app.adapters.ses import notify
 from app.services import customer_text
 from app.web.http import ApiError, Ctx, _int_param
+from app.web.routes.strategies import _later_verdicts
 from data_pipeline.common import get_db_conn
 from trading_core.domain.money import cents
 
@@ -25,10 +26,13 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
         if strat is None:
             raise ApiError(404, "That strategy isn't yours or doesn't exist.")
         oos = (strat.get("result") or {}).get("out_of_sample") or {}
+        # A later check its status leaves out (Missed final test, Held back) rides as `verdict`, the stamp its
+        # page and list show: the card said Passed for a strategy its own page didn't.
+        later = _later_verdicts(cur, user_id, [strat]).get(strat["id"])
         # The backtest's held-out window: `days` is its span, so the feed can say over what.
         return {"kind": "strategy", "id": strat["id"], "title": strat["title"], "market": strat["market"],
-                "status": strat["status"], "pnl": oos.get("pnl"), "trades": oos.get("trades"), "win_rate": oos.get("win_rate"),
-                "days": oos.get("days")}
+                "status": strat["status"], **({"verdict": later[0]} if later else {}), "pnl": oos.get("pnl"),
+                "trades": oos.get("trades"), "win_rate": oos.get("win_rate"), "days": oos.get("days")}
     if kind == "deployment":
         dep = repo.get_deployment(cur, user_id, ref_id)
         if dep is None:
@@ -50,7 +54,7 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
 # What a shared card shows every reader, by kind: the figures the feed prints, never a spec, rules, the
 # run behind it, or a credit balance. A stored snapshot holds no more today; this keeps it so.
 SNAPSHOT_FIELDS = {
-    "strategy": ("kind", "title", "market", "status", "pnl", "trades", "win_rate", "days"),
+    "strategy": ("kind", "title", "market", "status", "verdict", "pnl", "trades", "win_rate", "days"),
     "deployment": ("kind", "title", "market", "mode", "realized_pnl", "closed_trades", "since"),
     "pnl": ("kind", "paper_pnl", "live_pnl", "paper_trades", "live_trades"),
 }

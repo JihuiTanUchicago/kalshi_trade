@@ -107,6 +107,25 @@ export function runPageCases({name, frontend}) {
     assert.match(f.root.querySelector('#runnext').innerHTML, /was held back after passing its tests/);
   });
 
+  test(`${name}: the Passed figure counts what cleared, and says how many passes a later check left uncleared`, async () => {
+    const fell = {id: 42, title: 'Cheap NO after a spike', status: 'passed', verdict: 'missed_final', market: 'btc15m', direction: 'custom'};
+    const held = {id: 44, title: 'Late fade, tighter', status: 'passed', verdict: 'held_back', market: 'btc15m', direction: 'custom'};
+    const ok = {id: 43, title: 'Far-strike fade', status: 'passed', market: 'btc_daily', direction: 'custom'};
+    const passedFig = (f) => f.root.querySelector('#runfigs').innerHTML.match(/<dt class="lab">Passed<\/dt><dd>(.*?)<\/div>/)[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    // Finished: the run's counter (3) less the two not cleared, as its ideas below are stamped.
+    let f = await open({status: 'succeeded', hypotheses_tried: 5, strategies_passed: 3}, [], [fell, held, ok]);
+    assert.equal(passedFig(f), '1 2 not cleared');
+    assert.match(f.root.querySelector('#runnext').innerHTML, /^<p class="run-next">Passed: <a href="\/strategies\/43">/);
+    // Running: counted from its strategy rows, the same way.
+    f = await open({status: 'running', hypotheses_tried: 5}, [], [fell, ok]);
+    assert.equal(passedFig(f), '1 1 not cleared');
+    // Nothing uncleared: the figure stands alone. A probation idea held back on paper never counted as passed.
+    f = await open({status: 'succeeded', hypotheses_tried: 2, strategies_passed: 1}, [], [ok, {...held, status: 'failed'}]);
+    assert.equal(passedFig(f), '1');
+    f = await open({status: 'succeeded', hypotheses_tried: 2, strategies_passed: 2}, [], [fell, held]);
+    assert.equal(passedFig(f), '0 2 not cleared');
+  });
+
   test(`${name}: a finished autopilot session says what the autopilot does next, while the switch is on`, async () => {
     const at = async (apOn, run, strategies = [], events = []) => {
       const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')

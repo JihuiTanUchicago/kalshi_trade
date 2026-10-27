@@ -317,12 +317,12 @@
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
   const MKT_SHORT = {
-    // Bitcoin says the contract and its close, not just the coin and an hour ("BTC 5pm" was every kind),
+    // Each coin says the contract and its close, not just the coin and an hour ("BTC 5pm" was every kind),
     // with no " · " inside: lists and chips join labels with it, and "BTC above $X · 5pm ET" read as two.
     btc15m: 'BTC 15-min up/down', btc15m_tick: 'BTC 15-min up/down, per second', btc_perp: 'BTC perpetual, no expiry',
-    btc_daily: 'BTC above $X at 5pm ET', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
-    sol15m: 'SOL 15-min', sol_daily: 'SOL 5pm', xrp15m: 'XRP 15-min', xrp_daily: 'XRP 5pm',
-    doge15m: 'DOGE 15-min', near15m: 'NEAR 15-min', zec15m: 'ZEC 15-min', hype15m: 'HYPE 15-min',
+    btc_daily: 'BTC above $X at 5pm ET', eth15m: 'ETH 15-min up/down', eth_daily: 'ETH above $X at 5pm ET',
+    sol15m: 'SOL 15-min up/down', sol_daily: 'SOL above $X at 5pm ET', xrp15m: 'XRP 15-min up/down', xrp_daily: 'XRP above $X at 5pm ET',
+    doge15m: 'DOGE 15-min up/down', near15m: 'NEAR 15-min up/down', zec15m: 'ZEC 15-min up/down', hype15m: 'HYPE 15-min up/down',
     nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
     ncaaf_game: 'NCAAF winner', mlb_game: 'MLB winner', epl_game: 'EPL result',
     high_ny: 'NYC high temp',
@@ -341,12 +341,13 @@
   const contractHour = (ticker) => { const m = /^[^-]+-\d{2}[A-Z]{3}\d{2}(\d{2})(?:-|$)/.exec(String(ticker || '')); return m ? +m[1] : null; };
   const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
-  // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do.
+  // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do,
+  // to its last decimal: an XRP strike runs to four (-T2.4599), and num() rounds past three.
   const contractMarket = (ticker) => {
     const m = contractMkt(ticker);
     if (!m) return '';
-    const label = m.label || marketShort(m.key), k = /-T(\d+(?:\.\d+)?)$/.exec(String(ticker));
-    return k ? label.replace('$X', '$' + num(k[1])) : label;
+    const label = m.label || marketShort(m.key), k = /-T(\d+)(\.\d+)?$/.exec(String(ticker));
+    return k ? label.replace('$X', '$' + num(k[1]) + (k[2] || '')) : label;
   };
   // A contract ticker that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(ticker)}</a>`;
@@ -1525,8 +1526,9 @@
   const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>`;
   const strategyTable = (rows, pick) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick)}<tbody>${rows}</tbody></table></div>`;
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
-  // would start a second deployment of the same rules and double its positions.
-  const bulkDeployable = (s) => s.status === 'passed' && !researchOnly(s) && !s.deployed;
+  // would start a second deployment of the same rules and double its positions. A pass a later check
+  // left uncleared (`verdict`: Missed final test, Held back) is left out too; its own page says why.
+  const bulkDeployable = (s) => s.status === 'passed' && !s.verdict && !researchOnly(s) && !s.deployed;
   // What a deployed strategy has actually done, beside its backtest columns.
   // The server sends one book (live, else paper, else demo) and a paper strategy's demo book beside it
   // under r.demo, so sandbox dollars are never added to paper ones.
