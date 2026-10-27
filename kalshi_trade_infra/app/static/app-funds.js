@@ -174,9 +174,11 @@ window.TauPage('funds', (T) => {
       paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}practice money` }));
-      const host = root.querySelector('#main'), main = `<div id="flash"></div><div class="funds">
-        <div class="funds-col funds-manage">
-        <section class="panel">
+      // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
+      // key forms fold under Connect Kalshi: it opened on the live-key form and the demo key's steps. An account
+      // with a key keeps live, demo, paper.
+      const keyless = !k.connected && !kd.connected, sub = keyless ? 'funds-sub' : 'panel';
+      const liveSec = `<section class="${sub}">
           <h2>Kalshi account (live money)</h2>
           ${k.connected ? `
             <div data-cash="live-ok">${keyLine(k, 'live')}</div><dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd data-cash="live-cell">${cashCell(k)}</dd></dl>
@@ -194,8 +196,8 @@ window.TauPage('funds', (T) => {
               <button class="btn" type="submit">Verify and connect</button>
             </form>`}
           <div id="kflash" style="margin-top:10px"></div>
-        </section>
-        <section class="panel">
+        </section>`;
+      const demoSec = `<section class="${sub}">
           <h2>Kalshi demo (sandbox) account</h2>
           <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
           <p class="lede" style="margin-bottom:14px">Demo places real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is ours to set: reload it to any amount; this never touches your Kalshi demo account’s balance. A reload starts realized P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
@@ -218,8 +220,8 @@ window.TauPage('funds', (T) => {
               <button class="btn" type="submit">Verify and connect demo</button>
             </form>`}
           <div id="kdflash" style="margin-top:10px"></div>
-        </section>
-        <section class="panel">
+        </section>`;
+      const paperSec = `<section class="panel">
           <h2>Paper account (simulation)</h2>
           <p class="lede" style="margin-bottom:14px">App-controlled practice money. Add funds, take some out, or reset to a fresh starting balance. Paper strategies trade the real market with it, so results are realistic, but nothing real is at stake.</p>
           <form id="paper" class="amount">
@@ -229,7 +231,12 @@ window.TauPage('funds', (T) => {
             <button class="btn ghost" data-kind="reset" type="submit">Reset to amount</button>
           </form>
           <div id="pflash" style="margin-top:10px"></div>
-        </section>
+        </section>`;
+      const accounts = keyless ? paperSec + `<details class="panel funds-connect" id="connect-kalshi"><summary><span class="funds-connect-h">Connect Kalshi</span><span class="hint">For live money, or Kalshi’s demo sandbox. The autopilot trades paper, which needs neither.</span></summary>${liveSec}${demoSec}</details>`
+        : liveSec + demoSec + paperSec;
+      const host = root.querySelector('#main'), main = `<div id="flash"></div><div class="funds">
+        <div class="funds-col funds-manage">
+        ${accounts}
         ${S.me.perps_live_available ? '<section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>' : ''}
         </div>
         <div class="funds-col funds-history">
@@ -250,7 +257,10 @@ window.TauPage('funds', (T) => {
         return d;
       }
       if (cfg && (painted.get(host) === main || S.perps || inUse(host))) return;
+      // A poll's redraw keeps Connect Kalshi open if it was.
+      const connectOpen = !!(host.querySelector('#connect-kalshi') || {}).open;
       host.innerHTML = main; painted.set(host, main);
+      if (connectOpen && host.querySelector('#connect-kalshi')) host.querySelector('#connect-kalshi').open = true;
       if (S.perps) { S.perps.destroy(); S.perps = null; }
       if (window.TAU_PERPS_LIVE) mountPerps(); else pageAssets('funds').then(mountPerps);
       const df = root.querySelector('#demo');

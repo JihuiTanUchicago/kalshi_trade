@@ -520,7 +520,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 
 .panel { padding: 0; margin-top: 28px; }
 .panel:first-child { margin-top: 0; }
-.panel h3, .panel > h2 { font-size: 15px; letter-spacing: -.01em; color: var(--ink); font-weight: 600; margin-bottom: 16px; }
+.panel h3, .panel > h2, .funds-sub > h2 { font-size: 15px; letter-spacing: -.01em; color: var(--ink); font-weight: 600; margin-bottom: 16px; }
 .figures.measure { margin: 0; }
 
 .stub { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
@@ -1030,6 +1030,14 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
 .funds-page .funds { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 18px; align-items: start; }
 .funds-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; min-width: 0; }
 .funds-col > .panel { margin-top: 0; min-width: 0; }
+/* A keyless account's Connect Kalshi disclosure (Funds): Paper leads, and the live and demo key forms sit
+   under one clear summary, each as a section of the disclosure rather than a panel inside a panel. */
+.funds-connect > summary { display: grid; gap: 2px; min-height: 44px; padding: 4px 0; font-family: inherit; font-size: 13px; letter-spacing: 0; color: var(--ink-2); }
+.funds-connect > summary::before { display: none; }
+.funds-connect-h { font-size: 15px; font-weight: 600; color: var(--ink); }
+.funds-connect-h::before { content: "+ "; color: var(--ink-3); }
+.funds-connect[open] .funds-connect-h::before { content: "\2212\00a0"; }
+.funds-connect > .funds-sub { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule); min-width: 0; }
 /* The paper-history table has long contract tickers; its max-content was sizing the column's
    implicit track (above) and overflowing it, painting over the account-setup column beside it.
    Explicit minmax(0,1fr) column + fixed table layout keep the table inside its own column, and

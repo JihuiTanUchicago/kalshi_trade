@@ -9,7 +9,7 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const AT = '2026-10-25T10:00:00Z';
 
-export function firstHourCases({name, frontend, billingPage, cardedBilling, dashboard, apStatus}) {
+export function firstHourCases({name, frontend, billingPage, cardedBilling, dashboard, apStatus, fundsData}) {
   const run = async (strategies) => {
     const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
       ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', brief: 1, status: 'succeeded', hypotheses_tried: 2,
@@ -187,5 +187,31 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     // Charged once, from a server that doesn't say, or with nothing left: no such line.
     for (const o of [{card_charged: true}, {}, {card_charged: false, balance: 0}])
       assert.doesNotMatch(await balanceFig(o), /free credits so far/, JSON.stringify(o));
+  });
+
+  test(`${name}: Funds for an account with no Kalshi key leads with Paper and folds the key forms under Connect Kalshi`, async () => {
+    const page = async (o) => {
+      const d = {...fundsData(), ...o};
+      const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response(d) : response({})});
+      await f.viewFunds(); await flush();
+      const html = f.root.querySelector('#main').innerHTML;
+      f.clearTimers();
+      return {f, at: (s) => html.indexOf(s)};
+    };
+    // No key of either kind: Paper first, then one closed Connect Kalshi holding the live and demo forms.
+    const fresh = await page({});
+    const connect = fresh.f.root.querySelector('#connect-kalshi');
+    assert.ok(connect, 'Connect Kalshi is there');
+    assert.ok(!connect.open, 'and closed');
+    assert.match(connect.querySelector('summary').textContent, /^Connect Kalshi/);
+    assert.ok(fresh.at('Paper account (simulation)') >= 0 && fresh.at('Paper account (simulation)') < fresh.at('id="connect-kalshi"'), 'Paper leads');
+    assert.ok(fresh.at('id="connect-kalshi"') < fresh.at('Kalshi account (live money)') && fresh.at('Kalshi account (live money)') < fresh.at('Kalshi demo (sandbox) account'), 'the key forms are in it');
+    assert.ok(connect.querySelector('#kalshi') && connect.querySelector('#kalshi-dev'), 'both key forms sit in the disclosure');
+    // A live key, or a demo key alone: today's order (live, demo, paper), no disclosure.
+    for (const keys of [{kalshi: {connected: true, key_id: 'k1', balance: 12}}, {kalshi_dev: {connected: true, key_id: 'k2', balance: 5}}]) {
+      const keyed = await page(keys);
+      assert.equal(keyed.f.root.querySelector('#connect-kalshi'), null, JSON.stringify(keys));
+      assert.ok(keyed.at('Kalshi account (live money)') < keyed.at('Kalshi demo (sandbox) account') && keyed.at('Kalshi demo (sandbox) account') < keyed.at('Paper account (simulation)'), JSON.stringify(keys));
+    }
   });
 }
