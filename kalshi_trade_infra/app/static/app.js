@@ -1695,7 +1695,10 @@
   const runTag = (r) => r.example ? ' ' + EXAMPLE_TAG : +r.by_autopilot ? ' ' + AP_RUN_TAG : '';
   // The run page's kind of session: its direction, and who started it when the autopilot did.
   const runKind = (r) => +r.by_autopilot && !r.example ? (r.direction ? dirLabel(r.direction) + ' \u00b7\u00a0' : '') + 'Started by autopilot' : dirLabel(r.direction);
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
+  // What each figure is net of, as the dashboard and Deploy say it: "+$1.00 on paper since deploying" left out that
+  // Kalshi's fees (and, on paper, the spread) were already taken off.
+  const realNet = (mode) => (mode === 'paper' ? PAPER_NET : 'after Kalshi fees');
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)} \u00b7\u00a0${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)} \u00b7\u00a0${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
   const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));

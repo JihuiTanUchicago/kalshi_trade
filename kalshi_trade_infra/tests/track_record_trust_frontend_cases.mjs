@@ -84,6 +84,21 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     assert.match(f.sinceStrip(d, '#dash-deps'), /It put 1 on paper, removed 2\./);
   });
 
+  test(`${name}: the Strategies list's since-deploying figure says fees are taken off, as the dashboard and Deploy do`, () => {
+    // "+$4.00 on paper since deploying" never said Kalshi's fees and the spread were already in it.
+    const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
+    const s = {id: 3, title: 'Fade the 15-minute Bitcoin overshoot', thesis: 'A rule.', market: 'btc15m', direction: 'both', status: 'passed',
+      out_of_sample: {pnl: 6.2, trades: 48, win_rate: 0.58, days: 30.2}, deployed: true, books: ['paper']};
+    const fig = (real) => plain(f.strategySlip({...s, real}, {}).match(/<div class="sub-fig real-fig">[\s\S]*?<\/td>/)[0]);
+    assert.match(fig({pnl: 4, trades: 2, open: 0, mode: 'paper'}), /\+\$4\.00 on paper since deploying · 2 trades · after Kalshi fees and the spread/);
+    assert.match(fig({pnl: -1.5, trades: 1, open: 0, mode: 'demo'}), /−\$1\.50 on demo since deploying · 1 trade · after Kalshi fees(?! and)/);
+    assert.match(fig({pnl: 2, trades: 3, open: 0, mode: 'live'}), /\+\$2\.00 since deploying · 3 trades · after Kalshi fees(?! and)/);
+    // A paper strategy's demo copy beside it says so too, never added in.
+    const both = fig({pnl: 4, trades: 2, open: 0, mode: 'paper', demo: {pnl: -0.5, trades: 2, open: 0}});
+    assert.match(both, /Demo: −\$0\.50 · 2 trades · after Kalshi fees(?! and)/);
+    assert.doesNotMatch(both, /\$3\.50/);
+  });
+
   test(`${name}: the track record says when its figures were worked out, in its head, and when its minute poll stops landing`, async () => {
     // The read time sat at the foot of the closed "How these numbers are computed" note, so a record its poll could no
     // longer refresh read as current.
