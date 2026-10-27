@@ -55,8 +55,8 @@ def last_autopilot_action(cur, user_id: int) -> Optional[Dict]:
 
 def deployment_names(cur, user_id: int, deployment_ids: List[int]) -> Dict[int, Dict]:
     """{deployment id: {"title", "mode"}} for the user's own deployments among ``deployment_ids``, for
-    the chat feed's automatic-pause lines (customer_text.chat_rows). Another user's id, or one that is
-    gone, is left out. One read by primary key."""
+    the chat feed's automatic-pause and stop-loss sale lines (customer_text.chat_rows). Another user's id,
+    or one that is gone, is left out. One read by primary key."""
     ids = sorted({int(i) for i in deployment_ids})
     if not ids:
         return {}

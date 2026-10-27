@@ -140,16 +140,20 @@ def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None,
     A risk or execution change an older line wrote as the setting's
     key ("max_open_notional=200.0") reads in words, as new lines are written (control_changes).
     The engine's "Paused deployment #N automatically. <why>" reads as the "Last move" line does
-    (auto_pause_line), by the strategy's name from ``paused`` ({deployment id: {"title", "mode"}}
-    for the ids auto_paused_ids lists); the row number never reaches the page, and the stored line
-    is unchanged. An older "Market focus set to btc." names the focus in words through ``focus_words``
-    (the research agent's, which this module can't import), as new lines are written (focus_set_line)."""
+    (auto_pause_line), and its "Deployment #N sold ..." stop-loss line in words (stop_sold_line), each by
+    the strategy's name from ``paused`` ({deployment id: {"title", "mode"}} for the ids auto_paused_ids
+    lists); the row number and the ticker never reach the page, and the stored line is unchanged. An
+    older "Market focus set to btc." names the focus in words through ``focus_words`` (the research
+    agent's, which this module can't import), as new lines are written (focus_set_line)."""
     for m in messages:
         if m.get("role") == "system":
             text = m.get("content")
             dep = auto_paused_id(text)
             if dep is not None:
                 text = auto_pause_line(text, (paused or {}).get(dep))
+            dep = stop_sold_id(text)
+            if dep is not None:
+                text = stop_sold_line(text, (paused or {}).get(dep))
             m["content"] = plain_controls(clean(focus_set_line(unmarked(text), focus_words), CHAT_FALLBACK))
     return messages
 
@@ -185,9 +189,10 @@ def unmarked(text: Optional[str]) -> Optional[str]:
 
 
 def auto_paused_ids(messages: List[Dict]) -> List[int]:
-    """The deployments the engine's automatic-pause lines among ``messages`` name, for one read of
-    their names before chat_rows."""
-    ids = (auto_paused_id(m.get("content")) for m in messages if m.get("role") == "system")
+    """The deployments the engine's automatic-pause and stop-loss sale lines among ``messages`` name, for one
+    read of their names before chat_rows."""
+    ids = (auto_paused_id(m.get("content")) or stop_sold_id(m.get("content"))
+           for m in messages if m.get("role") == "system")
     return sorted({i for i in ids if i is not None})
 
 
@@ -283,6 +288,35 @@ def auto_pause_line(text: Optional[str], deployment: Optional[Dict]) -> Optional
     name = ("your %s strategy %s" % (book, title) if book else title) if title else "one of your strategies"
     why = _pause_reason(m.group(1))
     return "Paused %s automatically%s." % (name, (": " + why) if why else "")
+
+
+# -- the engine's stop-loss sale, in words ------------------------------------------------------------
+# The engine posts "Deployment #12 sold NO KXBTC15M-26OCT271415-15: down 42.0% >= stop 40.0% of cost. The rest
+# of the deployment keeps trading." when one position falls past the user's stop (trading/engine.py; that text
+# stays as written). In the panel's feed it named a row number, the contract's raw ticker and a ">=", under
+# "Reviewed". The feed says it by the strategy's name, as the automatic pause is said.
+
+_STOP_SOLD = re.compile(r"^Deployment #(\d+) sold (YES|NO) \S+: down (\d+(?:\.\d+)?)% >= stop (\d+(?:\.\d+)?)% of cost\.")
+
+
+def stop_sold_id(text: Optional[str]) -> Optional[int]:
+    """The deployment the engine's "Deployment #N sold ..." stop-loss line names, else None."""
+    m = _STOP_SOLD.match(str(text or ""))
+    return int(m.group(1)) if m else None
+
+
+def stop_sold_line(text: Optional[str], deployment: Optional[Dict]) -> Optional[str]:
+    """The engine's stop-loss sale as a customer reads it: which side was sold, the strategy by its name and book
+    (``deployment``, "one of your strategies" once it is gone), and the stop in words. Any other line comes back
+    as given."""
+    m = _STOP_SOLD.match(str(text or ""))
+    if not m:
+        return text
+    d = deployment or {}
+    title, book = (d.get("title") or "").strip(), _PAUSE_BOOK.get(d.get("mode") or "")
+    name = ("your %s strategy %s" % (book, title) if book else title) if title else "one of your strategies"
+    return ("Sold a %s position of %s automatically: it fell %s%% below its cost, past your %s%% stop. "
+            "The rest of the strategy keeps trading." % (m.group(2), name, m.group(3), m.group(4)))
 
 
 # -- what a paper P&L includes ----------------------------------------------------------------------

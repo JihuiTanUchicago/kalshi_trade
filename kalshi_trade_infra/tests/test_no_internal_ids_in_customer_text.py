@@ -8,8 +8,10 @@ admin page, the services, the emails, the Dev Logs, both bundles and their page 
 behaviour tests beside each fix (test_trades_csv, test_spend_visibility, test_live_ready_notice,
 test_app_agent, test_copilot_context) hold what each surface says instead.
 
-Left as they are, and listed as follow-ups: the engine's own chat lines (app/trading/engine.py, the money
-path, "Deployment #12 sold ..."), and the review's context, which the agent reasons over by id.
+The engine's own chat lines (app/trading/engine.py, the money path) are stored as written; the feed says its
+"Paused deployment #12 automatically" and "Deployment #12 sold ..." lines by the strategy's name on read
+(customer_text.chat_rows, tests/test_autopilot_last_move.py). Left as it is: the review's context, which the
+agent reasons over by id.
 """
 import pathlib
 import re
