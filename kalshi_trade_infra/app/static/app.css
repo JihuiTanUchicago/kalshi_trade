@@ -383,6 +383,8 @@ tr.live-row td.name a { color: var(--signal); }
 .mk.live { border-color: var(--signal); color: #FDF2F3; background: var(--signal); }
 .mk.dep { border-color: var(--ink); color: #F1F3ED; background: var(--ink); }
 .mk.quiet { color: var(--ink-3); }
+/* Explore's market-and-close chip ("BTC above $X at midnight ET · closes Oct 28, 04:00 UTC") wraps inside its row on a phone instead of running past the screen edge. */
+#xbody td.name > .mk { white-space: normal; max-width: 100%; }
 
 /* A deployment's cumulative-P&L sparkline: the line takes the colour this theme already gives a
    gain or a loss figure, over a dotted zero line. */

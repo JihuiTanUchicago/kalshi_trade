@@ -82,3 +82,13 @@ def test_the_off_screen_skip_link_never_asks_for_a_web_font(css):
         family = re.search(r'font(?:-family)?:\s*([^;]+)', body).group(1)
     family = re.sub(r'var\((--[\w-]+)\)', lambda m: root.get(m.group(1), m.group(0)), family)
     assert 'var(' not in family and not any(f in family for f in faces), (css, family)
+
+
+def test_explores_market_chip_wraps_inside_a_phone_row():
+    # Tau's Explore chip says the market and its close in one bordered tag ("BTC above $X at midnight ET · closes
+    # Oct 28, 04:00 UTC"). Kept on one line (.mk is nowrap) it ran past a 390px screen; in Explore's rows it wraps.
+    import re
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[1] / 'app' / 'static' / 'app.css').read_text()
+    rule = re.search(r'(?m)^#xbody td\.name > \.mk \{([^}]*)\}', css)
+    assert rule and 'white-space: normal' in rule.group(1) and 'max-width: 100%' in rule.group(1)

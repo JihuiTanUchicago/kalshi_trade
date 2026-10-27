@@ -49,6 +49,7 @@ export function explorePageCases({name, frontend}) {
   test(`${name}: an hourly contract of the 5pm Bitcoin ladder isn't named the 5pm market, and points at the close Tau researches`, async () => {
     const f = await open(page({ticker: 'KXBTCD-26OCT2700-T112999.99', title: 'Bitcoin price on Oct 27, 2026 at 12am EDT?', sub: '$113,000 or above'}));
     assert.doesNotMatch(f.root.innerHTML, /Bitcoin above \S+ at 5pm ET ·/, 'the midnight contract is not the 5pm market');
+    assert.match(f.root.innerHTML, /Bitcoin above \$112,999\.99 at midnight ET ·\sOpen for trading ·\sKXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
     const next = f.root.querySelector('.mk-next');
     assert.match(next.textContent, /Tau researches only the 5pm ET close of this ladder, so your strategies don’t trade this contract\./);
     assert.deepEqual(next.querySelectorAll('a').map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily']);

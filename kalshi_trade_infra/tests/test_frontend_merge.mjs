@@ -1340,7 +1340,7 @@ test('Explore tells same-titled markets from different events apart by market an
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   await f.viewExplore(); await flush();
   const tags = f.root.querySelector('#xbody').querySelectorAll('td.name').map((td) => (td.querySelector('.mk') || {textContent: ''}).textContent);
-  assert.match(tags[0], /^closes /); assert.doesNotMatch(tags[0], /BTC above/, 'the noon contract is not the 5pm market');
+  assert.match(tags[0], /^BTC above \$X at noon ET ·\u00a0closes /); assert.doesNotMatch(tags[0], /5pm/, 'the noon contract is not the 5pm market');
   assert.match(tags[1], /^BTC above \$X at 5pm ET ·\u00a0closes /);
   assert.notEqual(tags[0], tags[1].replace('BTC above $X at 5pm ET ·\u00a0', ''));
   assert.equal(tags[2], '', 'an event with no hour and no market here gets no chip rather than its raw key');
@@ -3545,12 +3545,13 @@ test('Tau: a hot-markets row names its market the app’s way, never by the raw 
   for (const s of ['KXBTC15M', 'KXETHD']) assert.doesNotMatch(row(s), new RegExp('>' + s + '<'));
 });
 
-test('Tau: a hot-markets row for an hourly Bitcoin contract carries no 5pm chip', () => {
+test('Tau: a hot-markets row for an hourly Bitcoin contract carries its own hour, never the 5pm chip', () => {
   const f = frontend();
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   const row = (t) => f.hotRowHtml({t, s: 'KXBTCD', ti: 'Bitcoin price?', su: '$113,000 or above', bid: .48, ask: .52, v24: 1200, h: [.4, .5]});
   assert.match(row('KXBTCD-26OCT2717-T112999.99'), /<span class="mk quiet">BTC above \$X at 5pm ET<\/span>/);
-  assert.doesNotMatch(row('KXBTCD-26OCT2700-T112999.99'), /mk quiet|BTC above/);
+  assert.match(row('KXBTCD-26OCT2700-T112999.99'), /<span class="mk quiet">BTC above \$X at midnight ET<\/span>/);
+  assert.doesNotMatch(row('KXBTCD-26OCT2700-T112999.99'), /5pm/);
 });
 
 test('Tau: the dashboard says where the sessions it counts are, and points finished ones at what each idea missed', async () => {

@@ -376,6 +376,8 @@
   // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
   // contracts whose event closes then: KXBTCD-26OCT2700 is the midnight contract, which no strategy trades.
   const contractHour = (ticker) => { const m = /^[^-]+-\d{2}[A-Z]{3}\d{2}(\d{2})(?:-|$)/.exec(String(ticker || '')); return m ? +m[1] : null; };
+  // An ET hour as a close says it: "noon", "midnight", "9am", "5pm".
+  const hourET = (h) => (h === 12 ? 'noon' : h === 0 ? 'midnight' : `${h % 12}${h < 12 ? 'am' : 'pm'}`);
   const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
   // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do,
@@ -386,14 +388,28 @@
   // do, [chip, name], never the raw series or another market's label. Every series of services/btc_spot.py's
   // BTC_SERIES is a market's or here (test_every_bitcoin_series_the_app_shows_has_a_label).
   const SERIES_SHORT = { KXBTC: ['BTC range at {h} ET', 'Bitcoin range at {h} ET'] };
-  const seriesLabel = (ticker, i) => {
-    const s = SERIES_SHORT[String(ticker || '').split('-')[0]], h = contractHour(ticker);
-    return s && h != null ? s[i].replace('{h}', `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) : '';
+  // Another hour of a ladder a market here keeps to one close (KXBTCD-26OCT2612, the noon "Bitcoin above $X"
+  // contract, beside btc_daily's 5pm): never that market's label, which names the wrong close, but the same
+  // words at its own hour read from the ticker, [chip, name] as SERIES_SHORT: "BTC above $X at noon ET".
+  const offHour = (ticker, h) => {
+    const sib = ((S.me && S.me.markets) || []).find((x) => x.series && x.close_hour_et != null && String(ticker || '').startsWith(x.series + '-'));
+    if (!sib || h == null) return null;
+    const at = ` at ${hourET(sib.close_hour_et)} ET`, to = ` at ${hourET(h)} ET`;
+    const pair = [marketShort(sib.key), sib.label || marketShort(sib.key)];
+    return pair.every((l) => l.includes(at)) ? pair.map((l) => l.replace(at, to)) : null;
   };
-  // A range contract's own bucket (-B113250, its centre) or end (-T114999.99) in its name.
+  const seriesLabel = (ticker, i) => {
+    const h = contractHour(ticker), s = SERIES_SHORT[String(ticker || '').split('-')[0]];
+    if (s && h != null) return s[i].replace('{h}', hourET(h));
+    const o = offHour(ticker, h);
+    return o ? o[i] : '';
+  };
+  // A range contract's own bucket (-B113250, its centre) or end (-T114999.99) in its name; another hour of a
+  // ladder its own strike, as its market's label would ("Bitcoin above $68,499.99 at noon ET").
   const rangeName = (ticker) => {
     const name = seriesLabel(ticker, 1), k = /-([BT])(\d+)(\.\d+)?$/.exec(String(ticker || ''));
-    if (!name || !k) return name;
+    if (!name.startsWith('Bitcoin range ')) return strikeIn(name, ticker);
+    if (!k) return name;
     const at = '$' + num(k[2]) + (k[3] || ''), close = name.replace(/^Bitcoin range /, '');
     return k[1] === 'B' ? `Bitcoin in the bucket around ${at} ${close}` : `Bitcoin range end at ${at}, ${close.replace(/^at /, '')}`;
   };
@@ -406,8 +422,9 @@
   // A contract, by its plain name, that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker, key) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(contractName(ticker, key))}</a>`;
   const kalshiRef = (ticker) => `<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${esc(ticker)}</span></span>`;
-  // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"), or its SERIES_SHORT chip
-  // ("BTC range at 5pm ET"); '' for any other, so a chip is left off rather than the raw series or another hour's market.
+  // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"), or its SERIES_SHORT or
+  // other-hour chip ("BTC range at 5pm ET", "BTC above $X at noon ET"); '' for any other, so a chip is left off
+  // rather than the raw series or another hour's market.
   const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : seriesLabel(ticker, 0); };
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
@@ -2758,7 +2775,7 @@
     // Another hour of a ladder Tau researches at one close (an hourly Bitcoin contract): point at that close.
     const sib = !m && ((S.me && S.me.markets) || []).find((x) => x.series && x.close_hour_et != null && String(ticker || '').startsWith(x.series + '-'));
     const h = sib && sib.close_hour_et;
-    if (sib) return `<p class="hint mk-next">Tau researches only the ${h % 12 || 12}${h < 12 ? 'am' : 'pm'} ET close of this ladder, so your strategies don’t trade this contract. <a href="/research?new=1&amp;market=${encodeURIComponent(sib.key)}">Research ${esc(marketShort(sib.key))}</a></p>`;
+    if (sib) return `<p class="hint mk-next">Tau researches only the ${hourET(h)} ET close of this ladder, so your strategies don’t trade this contract. <a href="/research?new=1&amp;market=${encodeURIComponent(sib.key)}">Research ${esc(marketShort(sib.key))}</a></p>`;
     if (!m) return '<p class="hint mk-next">Tau doesn’t research this market, so your strategies can’t trade it. <a href="/research?new=1">See the markets it researches</a></p>';
     const k = encodeURIComponent(m.key);
     return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a><a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a></p>`;
