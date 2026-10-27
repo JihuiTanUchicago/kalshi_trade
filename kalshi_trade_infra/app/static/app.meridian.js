@@ -546,6 +546,10 @@
     [/^\/track-record$/, () => go('/#track-record', true)],  // the record moved onto the dashboard
     [/^\/settings(?:\/theme)?$/, viewSettings],
   ];
+  // The tab a path's own page marks as current (shell's `active`). A page that failed to load ("Something went
+  // wrong", "Not found") keeps it marked, where it marked none and the reader lost which section they were in.
+  const SECTION_OF = { '/dashboard': '/', '/example': '/research', '/settings/account': '/funds', '/settings/system': '/system', '/settings/billing': '/billing', '/settings/theme': '/settings' };
+  const sectionOf = (path) => SECTION_OF[path] || path.replace(/\/\d+$/, '');
   const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
   // A scroll the page animates jumps instead for a reader who asked for less motion.
   const smooth = () => (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
@@ -729,12 +733,12 @@
       if (gen === S.gen && e.status === 404) {
         // A deleted or mistyped strategy or session: Try again can't bring it back, so offer its list.
         const up = path.replace(/\/\d+$/, ''), label = { '/strategies': 'All strategies', '/research': 'All research sessions' }[up];
-        shell('', boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
+        shell(sectionOf(path), boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
       } else if (gen === S.gen && e.status !== 401) {
         // Offline, it isn't "something went wrong": the page loads by itself once the network is back
         // (the online handler presses Try again).
         const off = e.status === 0 && offline();
-        shell('', boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
+        shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
       }
     }
@@ -2675,6 +2679,10 @@
   // Explore's empty and failed states: what happened, and a way to ask again. Each sits directly under the
   // page's h1, so its heading is an h2 (styled as the other empty states' h3).
   const EXPLORE_WAIT = 'The market list refreshes about once a minute and hasn’t come in yet. Try again shortly.';
+  // Explore's list polls every 15s. The feed itself moves about once a minute; the 15s is for the Bitcoin rows'
+  // distance to spot, which the collector stores every 20s. The server answers from its cached feed and one spot
+  // read shared by every reader for 5s (about 2ms a call, never a Kalshi call), as fast as the market page's spot.
+  const EXPLORE_POLL_MS = 15000;
   const exploreEmpty = (title, text) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
@@ -2685,34 +2693,47 @@
         <label class="field xsearch" style="margin:0"><span class="vh">Search markets</span>
           <input class="input" id="xq" type="search" placeholder="Search markets" value="${esc(f.q)}" autocomplete="off"></label>
         <div class="figures measure" id="xfigs"></div>
-      </div></div>`, `<div id="xbody">${loading(240)}</div>`);
+      </div></div>`, `<p class="stale-note" id="xstale" role="status"></p><div id="xbody">${loading(240)}</div>`);
     const body = root.querySelector('#xbody'), figs = root.querySelector('#xfigs'), gen = S.gen;
     const quoteSide = value => {
       if (typeof value !== 'number' && typeof value !== 'string') return '—';
       if (typeof value === 'string' && !value.trim()) return '—';
       return Number.isFinite(+value) ? cents(+value) : '—';
     };
-    let seq = 0;
     const sync = () => history.replaceState(null, '', '/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
-    const load = async () => {
-      const mine = ++seq;
-      let d;
-      try { d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) })); }
-      catch (e) {
-        if (mine !== seq || gen !== S.gen) return;
-        body.innerHTML = exploreEmpty('Markets didn’t load', e.message); body.querySelector('[data-xretry]').onclick = load; return;
-      }
-      if (mine !== seq || gen !== S.gen) return;
+    // How old the prices are, as Tau says it ("Prices updated 2m ago"), beside the snapshot's own time; past three
+    // minutes it says the list is behind.
+    const paintFigs = (d) => {
       const snapshotAt = d.at ? Date.parse(d.at) : NaN;
       const snapshotOld = !Number.isFinite(snapshotAt) || Date.now() - snapshotAt > 180000;
-      figs.innerHTML = '<dl class="explore-counts">' + fig('Available markets', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig(Number.isFinite(snapshotAt) && snapshotOld ? 'Stale snapshot' : 'Snapshot', Number.isFinite(snapshotAt) ? `<span class="snapshot-age">${sinceMin(d.at)}</span><time datetime="${esc(d.at)}">${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}</time>` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>';
+      paint(figs, '<dl class="explore-counts">' + fig('Available markets', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig('Prices updated', Number.isFinite(snapshotAt) ? `<span class="snapshot-age">${sinceMin(d.at)}</span><time datetime="${esc(d.at)}">${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}</time>${snapshotOld ? '<span class="snapshot-behind">Behind: prices normally refresh each minute</span>' : ''}` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>');
       figs.querySelector('.snapshot-time').setAttribute('title', Number.isFinite(snapshotAt) ? 'Source snapshot: ' + d.at : 'Source snapshot time unavailable');
+    };
+    // The list stays current while it shows (EXPLORE_POLL_MS, paused while the tab is hidden, read at once on
+    // coming back to it). A poll (`cfg`) rewrites only the rows that moved, so scroll, focus, the search box and
+    // the sort stay as they are. A failed poll keeps the list up with its age counting on, and past two polls
+    // the line above it says how old it is. Only the newest read draws: a poll answering after a search doesn't
+    // put the old list back.
+    let seq = 0, shown = null;
+    const load = async (cfg) => {
+      const mine = ++seq;
+      let d;
+      try { d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }), undefined, cfg); }
+      catch (e) {
+        if (mine !== seq || gen !== S.gen) return;
+        if (cfg) { if (shown) paintFigs(shown); throw e; }
+        shown = null; paint(body, exploreEmpty('Markets didn’t load', e.message)); body.querySelector('[data-xretry]').onclick = () => load(); return;
+      }
+      if (mine !== seq || gen !== S.gen) return;
+      paintFigs(d);
       if (!d.markets.length) {
         // No search and no markets is the feed not having arrived yet, not a search that missed.
-        if (f.q) body.innerHTML = `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2></div>`;
-        else { body.innerHTML = exploreEmpty('No markets to show yet', EXPLORE_WAIT); body.querySelector('[data-xretry]').onclick = load; }
+        shown = null;
+        if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2></div>`);
+        else { paint(body, exploreEmpty('No markets to show yet', EXPLORE_WAIT)); body.querySelector('[data-xretry]').onclick = () => load(); }
         return;
       }
+      shown = d;
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
         const label = mktLabel(m);
@@ -2722,24 +2743,33 @@
         const titleParts = title.split(' · ');
         const eventDisplay = titleParts.length > 1 ? `<strong>${esc(titleParts[0])}</strong>` : esc(title);
         const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc(label === m.t ? label : label + ' ·\u00a0' + m.t)}" title="${esc(m.t)}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || m.t)}</strong>`}<span class="market-ref">${esc(m.t)}</span>${m.ct ? `<span class="market-close">Closes ${esc(settleAt(m.ct))}</span>` : ''}</a>${vsHtml(m)}`;
-        return `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(' ·\u00a0'))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
+        return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(' ·\u00a0'))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
           <td class="num yes-price" data-lab="YES Price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="YES Bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="YES Ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
-          <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
-      }).join('');
+          <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
+      });
       const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot);
       const sortHead =(key, label, criterion = label, rowspan = 1) => `<th scope="col"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} class="num${key === 'last' ? ' quote-head' : ''}" aria-sort="${f.sort === key ? 'descending' : 'none'}"><button type="button" data-sort="${key}" title="Sort by ${criterion.toLowerCase()}" aria-label="Sort by ${criterion.toLowerCase()}">${label}${f.sort === key ? ' <span aria-hidden="true">↓</span>' : ''}</button></th>`;
       const sortFocused = body.querySelector('[data-sort]:focus')?.dataset.sort;
-      body.innerHTML = `${note ? `<p class="hint xspot-note${d.spot && !d.spot.stale && !d.spot.failed ? '' : ' behind'}">${esc(note)}</p>` : ''}<div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num" aria-label="Link"></th></tr><tr>${sortHead('last', 'Price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody>${rows}</tbody></table></div>
-        ${pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : ''}`;
+      keepFocus(body, () => {
+        paint(body, `<div id="xnote"></div><div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num" aria-label="Link"></th></tr><tr>${sortHead('last', 'Price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody id="xrows"></tbody></table></div><div id="xpager"></div>`);
+        paint(body.querySelector('#xnote'), note ? `<p class="hint xspot-note${d.spot && !d.spot.stale && !d.spot.failed ? '' : ' behind'}">${esc(note)}</p>` : '');
+        paintRows(body.querySelector('#xrows'), rows);
+        paint(body.querySelector('#xpager'), pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : '');
+      });
       body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: smooth() }); load(); });
       body.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; sync(); load(); });
       if (sortFocused) Array.from(body.querySelectorAll('[data-sort]')).find(b => b.dataset.sort === sortFocused)?.focus({ preventScroll: true });
     };
     let t; root.querySelector('#xq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); f.page = 0; sync(); load(); }, 220); });
     await load();
+    poll(load, EXPLORE_POLL_MS, 'xstale');
   }
 
-  // Hot Markets left rail: persistent (open/closed survives page switches), refreshes each minute.
+  // Hot Markets left rail: persistent (open/closed survives page switches), refreshes every 30s while it shows.
+  // A rail whose reads fail keeps its rows, and once they are two reads old it says how old ("Last updated 1m
+  // ago, retrying"), where it kept them with no word.
+  const HOT_POLL_MS = 30000;
+  const hotStaleText = () => (S.hot && S.hotFail && S.hotAt && Date.now() - S.hotAt > staleAfter(HOT_POLL_MS) ? staleText(S.hotAt) : '');
   const hotOpen = () => {
     const saved = localStorage.getItem('tau_hotrail');
     return saved === '1';
@@ -3461,9 +3491,11 @@
     const snapshotAt = d && d.at ? Date.parse(d.at) : NaN;
     const snapshotAge = Number.isFinite(snapshotAt) ? Math.max(0, (Date.now() - snapshotAt) / 1000) : null;
     rail.classList.toggle('is-stale', !!d && (snapshotAge == null || snapshotAge > 180));
-    const freshness = d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? ' ·\u00a0More than 3 minutes old' : ''}">${snapshotAge == null ? 'Snapshot time unavailable' : `${snapshotAge > 180 ? 'Stale' : 'Snapshot'} ·\u00a0${esc(sinceMin(d.at))}`}</span>` : '';
+    // The narrow rail says its rows are a few reads old in place of their age line, not in a line of its own.
+    const stale = hotStaleText();
+    const freshness = stale ? `<span class="hot-freshness is-old" id="hot-stale" role="status">${esc(stale)}</span>` : d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? ' ·\u00a0More than 3 minutes old' : ''}">${snapshotAge == null ? 'Update time unavailable' : `${snapshotAge > 180 ? 'Behind ·\u00a0updated' : 'Updated'} ${esc(sinceMin(d.at))}`}</span>` : '';
     const rows = d && d.markets && d.markets.length ? hotSpotNote(d) + d.markets.map(hotRowHtml).join('')
-      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying in a minute.' : loading(120)}</div>`;
+      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying shortly.' : loading(120)}</div>`;
     const control = root.querySelector('.market-control');
     const toggle = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-controls="hotrail" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}" title="Hot markets"><span class="hot-tab-label">Hot markets</span><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M7.5 4v12"/></svg></button>`;
     if (control) {
@@ -3494,23 +3526,26 @@
   function refreshHot() {
     if (!hotReq) {
       hotReq = (async () => {
-        try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
+        try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; S.hotAt = Date.now(); renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
       })();
       hotReq.then(() => { hotReq = null; });
     }
     return hotReq;
   }
-  // The rail is read only while it shows (hotShown), on mounting, each minute and when it comes into view.
-  // Hidden, nothing on the page uses the snapshot, and it was one of every page's first reads on a phone.
-  const hotSoon = () => { if (hotShown() && (!S.hot || !S.hotAt || Date.now() - S.hotAt > 55000)) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); };
+  // The rail is read only while it shows (hotShown), on mounting, every HOT_POLL_MS (backing off while reads
+  // fail), when it comes into view and on coming back to the tab. Hidden, nothing on the page uses the snapshot,
+  // and it was one of every page's first reads on a phone.
+  const hotSoon = () => { if (hotShown() && (!S.hot || !S.hotAt || Date.now() - S.hotAt > HOT_POLL_MS - 5000)) refreshHot(); };
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
     document.body.classList.toggle('hot-open', hotOpen());
     if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; a.setAttribute('aria-label', 'Hot markets'); document.body.appendChild(a); }
     renderHotRail();
     hotSoon();
-    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
-      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown() && S.hotFail) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); });
+    if (!hotLoop) { hotLoop = true;
+      const tick = paced(() => refreshHot().then((ok) => { if (!ok) throw new Error('hot markets'); }), HOT_POLL_MS, () => { if (hotStaleText() || document.getElementById('hot-stale')) renderHotRail(); });
+      setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) tick(); }, HOT_POLL_MS);
+      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) tick(true); });
       // A window widened past phone width shows the rail: it reads then.
       const wide = window.matchMedia && window.matchMedia('(max-width: 760px)');
       if (wide && wide.addEventListener) wide.addEventListener('change', () => { if (document.getElementById('hotrail')) hotSoon(); }); }

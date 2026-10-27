@@ -547,6 +547,10 @@
   ];
   // Public routes: viewable signed-OUT, so the boot guard must not force /api/me + a signin bounce.
   const PUBLIC = new Set(['/signin', '/terms', '/privacy']);
+  // The tab a path's own page marks as current (shell's `active`). A page that failed to load ("Something went
+  // wrong", "Not found") keeps it marked, where it marked none and the reader lost which section they were in.
+  const SECTION_OF = { '/dashboard': '/', '/example': '/research', '/settings/account': '/funds', '/settings/system': '/system', '/settings/billing': '/billing', '/settings/theme': '/settings' };
+  const sectionOf = (path) => SECTION_OF[path] || path.replace(/\/\d+$/, '');
   const phone = () => !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
   // A scroll the page animates jumps instead for a reader who asked for less motion.
   const smooth = () => (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
@@ -748,12 +752,12 @@
       if (gen === S.gen && e.status === 404) {
         // A deleted or mistyped strategy or session: Try again can't bring it back, so offer its list.
         const up = path.replace(/\/\d+$/, ''), label = { '/strategies': 'All strategies', '/research': 'All research sessions' }[up];
-        shell('', boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
+        shell(sectionOf(path), boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
       } else if (gen === S.gen && e.status !== 401) {
         // Offline, it isn't "something went wrong": the page loads by itself once the network is back
         // (the online handler presses Try again).
         const off = e.status === 0 && offline();
-        shell('', boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
+        shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
       }
     }
@@ -2554,13 +2558,17 @@
   // Explore's empty and failed states: what happened, and a way to ask again. Each sits directly under the
   // page's h1, so its heading is an h2 (styled as the other empty states' h3).
   const EXPLORE_WAIT = 'The market list refreshes about once a minute and hasn’t come in yet. Try again shortly.';
+  // Explore's list polls every 15s. The feed itself moves about once a minute; the 15s is for the Bitcoin rows'
+  // distance to spot, which the collector stores every 20s. The server answers from its cached feed and one spot
+  // read shared by every reader for 5s (about 2ms a call, never a Kalshi call), as fast as the market page's spot.
+  const EXPLORE_POLL_MS = 15000;
   const exploreEmpty = (title, text) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
     if (q.get('m')) return viewMarketDetail(q.get('m'));
     const f = { q: q.get('q') || '', sort: ['v24', 'oi', 'last'].includes(q.get('sort')) ? q.get('sort') : 'v24', page: Math.max(0, +(q.get('page') || 0)) };
     shell('/explore', boardTitle('Explore', 'Every market Tau is tracking right now — the live book across crypto, politics, sports, weather and more, hottest first. Prices refresh each minute.') +
-      '<dl class="figures measure" id="xfigs" style="margin-top:14px"></dl>', `
+      '<dl class="figures measure" id="xfigs" style="margin-top:14px"></dl><p class="stale-note" id="xstale" role="status"></p>', `
       <div class="section-head filters">
         <label class="field xsearch" style="margin:0"><span class="vh">Search markets</span>
           <input class="input" id="xq" type="search" placeholder="Search markets, series, tickers…" value="${esc(f.q)}" autocomplete="off"></label>
@@ -2569,42 +2577,68 @@
       <div id="xbody" style="margin-top:16px">${loading(240)}</div>`);
     const body = root.querySelector('#xbody'), figs = root.querySelector('#xfigs');
     const sync = () => history.replaceState(null, '', '/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
-    const load = async () => {
-      let d;
-      try { d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) })); }
-      catch (e) { body.innerHTML = exploreEmpty('Markets didn’t load', e.message); body.querySelector('[data-xretry]').onclick = load; return; }
-      // "Live now" was the hottest markets the list carries, not what's live; Matching shows only when a
-      // search narrows the list. The list refreshes each minute, so an older one says it's behind.
+    // "Live now" was the hottest markets the list carries, not what's live; Matching shows only when a
+    // search narrows the list. The list refreshes each minute, so an older one says it's behind.
+    const figsHtml = (d) => {
       const atMs = Date.parse(d.at || ''), behind = Number.isFinite(atMs) && Date.now() - atMs > 180000;
-      figs.innerHTML = fig('Markets tracked', num(d.total)) + fig('In this list', num(d.shown), { small: 'the most traded' }) + (f.q ? fig('Matching', num(d.matched)) : '') +
+      return fig('Markets tracked', num(d.total)) + fig('In this list', num(d.shown), { small: 'the most traded' }) + (f.q ? fig('Matching', num(d.matched)) : '') +
         fig('Prices updated', sinceMin(d.at), behind ? { small: 'Behind: prices normally refresh each minute', cls: 'fig-behind' } : {});
+    };
+    // The list stays current while it shows (EXPLORE_POLL_MS, paused while the tab is hidden, read at once on
+    // coming back to it). A poll (`cfg`) rewrites only the rows that moved, so scroll, focus, the search box and
+    // the sort stay as they are. A failed poll keeps the list up with its age counting on, and past two polls
+    // the line under the figures says how old it is. Only the newest read draws: a poll answering after a
+    // search doesn't put the old list back.
+    let seq = 0, shown = null;
+    const load = async (cfg) => {
+      const mine = ++seq;
+      let d;
+      try { d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }), undefined, cfg); }
+      catch (e) {
+        if (mine !== seq) return;
+        if (cfg) { if (shown) paint(figs, figsHtml(shown)); throw e; }
+        shown = null; paint(body, exploreEmpty('Markets didn’t load', e.message)); body.querySelector('[data-xretry]').onclick = () => load(); return;
+      }
+      if (mine !== seq) return;
+      paint(figs, figsHtml(d));
       if (!d.markets.length) {
         // No search and no markets is the feed not having arrived yet, not a search that missed.
-        if (f.q) body.innerHTML = `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2><p>Try a broader search, or clear it to see the hottest markets.</p></div>`;
-        else { body.innerHTML = exploreEmpty('No markets to show yet', EXPLORE_WAIT); body.querySelector('[data-xretry]').onclick = load; }
+        shown = null;
+        if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2><p>Try a broader search, or clear it to see the hottest markets.</p></div>`);
+        else { paint(body, exploreEmpty('No markets to show yet', EXPLORE_WAIT)); body.querySelector('[data-xretry]').onclick = () => load(); }
         return;
       }
+      shown = d;
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
         // The market as the app names it and when the contract closes (`ct`, read from a timed event's
         // ticker), never the raw event key: that's what tells "every strike of Bitcoin at 5pm" apart from
         // the next hour's ladder, and a 15-minute contract from the one after it.
         const tag = [contractShort(m.t), m.ct ? 'closes ' + settleAt(m.ct) : ''].filter(Boolean).join(' ·\u00a0');
-        return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${tag ? ` <span class="mk quiet">${esc(tag)}</span>` : ''}${vsHtml(m)}</td>
+        return [m.t, `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${tag ? ` <span class="mk quiet">${esc(tag)}</span>` : ''}${vsHtml(m)}</td>
           <td class="num" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num" data-lab="Open int.">${num(Math.round(+m.oi || 0))}</td>
-          <td class="num xlink" data-lab="Kalshi"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
-      }).join('');
+          <td class="num xlink" data-lab="Kalshi"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
+      });
       const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot);
-      body.innerHTML = `${note ? `<p class="hint xspot-note${d.spot && !d.spot.stale && !d.spot.failed ? '' : ' behind'}">${esc(note)}</p>` : ''}<div class="sheet"><table class="stack t-explore"><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open int.</th><th class="num" aria-label="Link"></th></tr></thead><tbody>${rows}</tbody></table></div>
-        ${pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : ''}`;
+      keepFocus(body, () => {
+        paint(body, '<div id="xnote"></div><div class="sheet"><table class="stack t-explore"><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open int.</th><th class="num" aria-label="Link"></th></tr></thead><tbody id="xrows"></tbody></table></div><div id="xpager"></div>');
+        paint(body.querySelector('#xnote'), note ? `<p class="hint xspot-note${d.spot && !d.spot.stale && !d.spot.failed ? '' : ' behind'}">${esc(note)}</p>` : '');
+        paintRows(body.querySelector('#xrows'), rows);
+        paint(body.querySelector('#xpager'), pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : '');
+      });
       body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: smooth() }); load(); });
     };
     let t; root.querySelector('#xq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); f.page = 0; sync(); load(); }, 220); });
     root.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; root.querySelectorAll('[data-sort]').forEach((o) => o.setAttribute('aria-pressed', o === b)); sync(); load(); });
     await load();
+    poll(load, EXPLORE_POLL_MS, 'xstale');
   }
 
-  // Hot Markets left rail: persistent (open/closed survives page switches), refreshes each minute.
+  // Hot Markets left rail: persistent (open/closed survives page switches), refreshes every 30s while it shows.
+  // A rail whose reads fail keeps its rows, and once they are two reads old it says how old ("Last updated 1m
+  // ago, retrying"), where it kept them with no word.
+  const HOT_POLL_MS = 30000;
+  const hotStaleText = () => (S.hot && S.hotFail && S.hotAt && Date.now() - S.hotAt > staleAfter(HOT_POLL_MS) ? staleText(S.hotAt) : '');
   // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page.
   const hotOpen = () => !phone() && localStorage.getItem('tau_hotrail') !== '0';
   const hotShown = () => !phone();  // app.css hides the rail under 761px, the width phone() asks
@@ -3406,10 +3440,11 @@
     const open = hotOpen();
     const d = S.hot;
     const rows = d && d.markets && d.markets.length ? hotSpotNote(d) + d.markets.map(hotRowHtml).join('')
-      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying in a minute.' : loading(120)}</div>`;
+      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying shortly.' : loading(120)}</div>`;
     keepFocus(rail, () => { rail.innerHTML = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}"><span class="hot-tab-label">Hot markets</span><span class="hot-chev">${open ? '‹' : '›'}</span></button>
       <div class="hot-panel">
         <div class="hot-head"><div><span class="hot-kicker">Hot markets</span><span class="hot-now"><span class="hot-dot"></span>Right now</span></div><button class="hot-x" data-hot="toggle" aria-label="Collapse hot markets">‹</button></div>
+        <p class="stale-note" id="hot-stale" role="status">${hotStaleText()}</p>
         <div class="hot-list">${rows}</div>
         <div class="hot-ft">${d && d.at ? 'Updated ' + sinceMin(d.at) : ''} ·\u00a0<a href="/explore">See all markets →</a></div>
       </div>`; });
@@ -3431,23 +3466,26 @@
   function refreshHot() {
     if (!hotReq) {
       hotReq = (async () => {
-        try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
+        try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; S.hotAt = Date.now(); renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
       })();
       hotReq.then(() => { hotReq = null; });
     }
     return hotReq;
   }
-  // The rail is read only while it shows (hotShown), on mounting, each minute and when it comes into view.
-  // Hidden, nothing on the page uses the snapshot, and it was one of every page's first reads on a phone.
-  const hotSoon = () => { if (hotShown() && (!S.hot || !S.hotAt || Date.now() - S.hotAt > 55000)) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); };
+  // The rail is read only while it shows (hotShown), on mounting, every HOT_POLL_MS (backing off while reads
+  // fail), when it comes into view and on coming back to the tab. Hidden, nothing on the page uses the snapshot,
+  // and it was one of every page's first reads on a phone.
+  const hotSoon = () => { if (hotShown() && (!S.hot || !S.hotAt || Date.now() - S.hotAt > HOT_POLL_MS - 5000)) refreshHot(); };
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
     document.body.classList.toggle('hot-open', hotOpen());
     if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; a.setAttribute('aria-label', 'Hot markets'); document.body.appendChild(a); }
     renderHotRail();
     hotSoon();
-    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
-      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown() && S.hotFail) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); });
+    if (!hotLoop) { hotLoop = true;
+      const tick = paced(() => refreshHot().then((ok) => { if (!ok) throw new Error('hot markets'); }), HOT_POLL_MS, () => { const el = document.getElementById('hot-stale'); if (el) el.textContent = hotStaleText(); });
+      setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) tick(); }, HOT_POLL_MS);
+      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) tick(true); });
       // A window widened past phone width shows the rail: it reads then.
       const wide = window.matchMedia && window.matchMedia('(max-width: 760px)');
       if (wide && wide.addEventListener) wide.addEventListener('change', () => { if (document.getElementById('hotrail')) hotSoon(); }); }
