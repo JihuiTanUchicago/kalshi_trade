@@ -270,6 +270,9 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     const html = f.root.querySelector('#openpos').innerHTML;
     assert.match(html, /data-lab="Cost \+ fee">\$1\.51</);
     assert.doesNotMatch(html, /\$1\.50/);
+    // The column says what it is, as each row's label and the strategy page do: "Unreal." read as "unreal".
+    assert.deepEqual([...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]), ['Strategy', 'Market', 'Side', 'Cost + fee', 'Unrealized', 'Settles']);
+    assert.doesNotMatch(html, /Unreal\./);
     f.clearTimers();
   });
 
