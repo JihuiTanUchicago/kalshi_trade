@@ -123,6 +123,43 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
     f.clearTimers();
   });
 
+  // Walk 2026-10-27: the open positions board's Unrealized column had no "as of" time. Each figure says when its mark
+  // was read (the engine's mark_ts, with its zone, as Settles is), the time moves with the marks a "same" answer
+  // carries, an unmarked position stays "—" with no time, and a figure the answer gives no time for says it is
+  // the last mark's.
+  test(`${name}: the Deploy board's open positions say when each Unrealized figure was marked`, async () => {
+    // The page's own format for a time (settleAt): the clock and zone today, the date too on any other day.
+    const at = (iso) => { const d = new Date(iso), today = d.toDateString() === new Date().toDateString();
+      return new Intl.DateTimeFormat(undefined, today ? {hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}
+        : {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}).format(d); };
+    const unmarked = pos({id: 12, mark_price: null, mark: null, value: null, unrealized: null, mark_ts: null});
+    let answer = {deployments: [dep({open_positions: 2})], open_positions: [pos(), unmarked], recent_closed: [], demo_health: null, v: 'b1'};
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/deployments')) return response(answer);
+      if (path === '/api/strategies?status=passed') return response({counts: {passed: 1}});
+      return response({});
+    }});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const open = f.root.querySelector('#openpos');
+    const cells = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+    assert.deepEqual(cells(), [`+$0.13 as of ${at('2026-10-26T12:00:00Z')}`, '—']);
+
+    // Marked again: the figure and its time move together.
+    answer = {v: 'b1', same: true, marks: marks(.52, '2026-10-26T12:05:15Z'), unrealized: {1: null}};
+    await pollOf(f, '/api/deployments');
+    assert.deepEqual(cells(), [`+$0.41 as of ${at('2026-10-26T12:05:15Z')}`, '—']);
+    f.clearTimers();
+
+    // An answer that gives the figure without its time: it is still the last mark's, and says only that.
+    answer = {deployments: [dep()], open_positions: [pos({mark_ts: undefined})], recent_closed: [], demo_health: null, v: 'b3'};
+    const g = frontend({fetchImpl: (path) => (path.startsWith('/api/deployments') ? response(answer) : response({}))});
+    g.location.pathname = '/deploy';
+    await g.viewDeploy(); await settle();
+    assert.match(g.root.querySelector('#openpos').innerHTML, /\+\$0\.13(<\/span>)?<div class="sub-fig">at the last mark<\/div>/);
+    g.clearTimers();
+  });
+
   test(`${name}: back on the tab after a while, the Deploy board reads at once instead of standing on old figures`, async () => {
     const f = frontend({fetchImpl: (path) => {
       if (path.startsWith('/api/deployments')) return response({deployments: [dep()], open_positions: [pos()], recent_closed: [], demo_health: null, v: 'b1'});
