@@ -252,19 +252,21 @@
     if (s < 60) return 'just now';
     if (s < 3600) return Math.floor(s / 60) + 'm ago';
     if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return dateFmt(d, MON_DAY);
   };
   // A bell item's time: relative within the day, then the day and clock ("Oct 24, 14:05"), not a bare
   // date; the full stamp with its zone rides on hover.
   const bellTime = (iso) => {
     const d = new Date(iso || NaN);
     if (!Number.isFinite(d.getTime())) return '';
-    const day = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
-    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : d.toLocaleString(undefined, day);
-    return `<time datetime="${esc(iso)}" title="${esc(d.toLocaleString(undefined, { ...day, timeZoneName: 'short' }))}">${esc(shown)}</time>`;
+    const shown = Date.now() - d.getTime() < 86400000 ? when(iso) : dateFmt(d, DAY_CLOCK);
+    return `<time datetime="${esc(iso)}" title="${esc(dateFmt(d, LOG_STAMP))}">${esc(shown)}</time>`;
   };
   // Each date format is built once and reused: toLocaleString with options builds a new formatter on
-  // every call, and a 600-event research log spent ~0.3s of a phone's first paint on its clocks.
+  // every call, and a 600-event research log spent ~0.3s of a phone's first paint on its clocks (and
+  // Billing's 300-line statement ~0.15s on its clock times and counts, the bell ~10ms on every page).
+  // Same options, same words: toLocaleDateString/TimeString/String only add defaults when the options
+  // name no date or time field, and each constant below names one.
   const fmts = new Map();
   const dateFmt = (d, o) => {
     if (!Number.isFinite(d.getTime())) return 'Invalid Date';  // what toLocaleString says; format() throws
@@ -273,6 +275,12 @@
     return f.format(d);
   };
   const CLOCK = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  const CLOCK_ZONE = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
+  const MON_DAY = { month: 'short', day: 'numeric' };
+  const DAY_CLOCK = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  const WEEKDAY_DAY = { weekday: 'short', month: 'short', day: 'numeric' };
+  const YEAR_DAY = { year: 'numeric', month: 'short', day: 'numeric' };
+  const UTC_MONTH = { year: 'numeric', month: 'short', timeZone: 'UTC' };
   const LOG_STAMP = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' };
   const clock = (iso) => dateFmt(new Date(iso), CLOCK);
   // The reader's zone ("EDT"), for a line that says once which zone the bare clock times are in.
@@ -286,9 +294,10 @@
     const d = new Date(iso || NaN);
     if (!Number.isFinite(d.getTime())) return '—';
     const today = d.toDateString() === new Date().toDateString();
-    return d.toLocaleString(undefined, { ...(today ? {} : { month: 'short', day: 'numeric' }), hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' });
+    return dateFmt(d, today ? CLOCK_ZONE : LOG_STAMP);
   };  // fits the 40px log rail; '10:31 AM' wrapped to 'AM'
-  const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+  const fmtCount = new Intl.NumberFormat('en-US');  // what Number#toLocaleString('en-US') builds on every call
+  const num = (n) => (n == null ? '—' : fmtCount.format(Number(n)));
   // Compact count for tight spaces (system-map node metrics): 1.1M, 352k, 940.
   const compact = (n) => (n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : num(n));
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
@@ -424,6 +433,14 @@
   const reportBroken = (kind, err) => { try { if (typeof window.__tauReport === 'function') window.__tauReport(kind, err); } catch (e) { /* best-effort */ } };
   const apiBroke = (path, write, what) => reportBroken('api', `${write ? 'POST' : 'GET'} ${String(path).split('?')[0].replace(/\/\d+(?=\/|$)/g, '/:id')} ${what}`);
   async function api(path, body, cfg) {
+    // A signed-in shell carries the page's first reads ([{url, body}], app/web/shell_reads.py; boot.js
+    // parks them): the first render takes each in place of that one request, once, instead of waiting a
+    // round trip for it.
+    const carried = body === undefined ? window.__TAU_FIRST__ : null;
+    if (carried) {
+      if (S.gen > 1 || !Array.isArray(carried)) window.__TAU_FIRST__ = null;  // the first page has gone: never an old answer later
+      else { const i = carried.findIndex((r) => r && r.url === path); if (i >= 0) return carried.splice(i, 1)[0].body; }
+    }
     const gen = S.gen, scoped = body === undefined && !(cfg && cfg.keep);
     const opts = { credentials: 'same-origin', headers: {} };
     if (body !== undefined) {
@@ -2214,15 +2231,21 @@
   const loopFamily = (f) => LOOP_FAMILY[f] || (f ? f.charAt(0).toUpperCase() + f.slice(1).replace(/-/g, ' ') : '');
   const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', spec_invalid: 'spec rejected', missing_context: 'needs data we lack', thin_sample: 'too few examples', no_signal: 'no signal', wrong_fit: 'wrong for this market', other: 'other' };
   const loopRate = (r) => (r == null ? '—' : Math.round(r * 100) + '%');
-  const rsiLoop = { board: null, at: 0, inflight: false };
+  const rsiLoop = { board: null, at: 0, req: null };
+  // The board's read, at most once a minute and one at a time. The Research page starts it as it opens,
+  // beside the session list: asked from the list's first paint, it waited a whole round trip for the list.
+  function rsiLoopRead() {
+    if (!rsiLoop.req && Date.now() - rsiLoop.at > 60000) {
+      rsiLoop.req = api('/api/research/scoreboard?days=14', undefined, { keep: true })
+        .then((b) => { rsiLoop.board = b; }, () => { /* keep the last board; the old card still renders */ })
+        .finally(() => { rsiLoop.at = Date.now(); rsiLoop.req = null; });
+    }
+    return rsiLoop.req;
+  }
   async function renderResearchLoop(host, pol, tried) {
     if (!host) return;
-    if (!rsiLoop.inflight && Date.now() - rsiLoop.at > 60000) {
-      rsiLoop.inflight = true;
-      try { rsiLoop.board = await api('/api/research/scoreboard?days=14', undefined, { keep: true }); rsiLoop.at = Date.now(); }
-      catch (e) { rsiLoop.at = Date.now(); /* keep the last board; the old card still renders */ }
-      finally { rsiLoop.inflight = false; }
-    }
+    const reading = rsiLoopRead();
+    if (reading) await reading;
     const b = rsiLoop.board;
     if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }
     const t = b.total, tr = b.trend;
@@ -2374,6 +2397,7 @@
     const me = S.me;
     const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
     shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
+    rsiLoopRead();  // the loop card's board, read beside the session list below
     // /api/me carries the model list, so the page's own reads below don't wait a round trip on it.
     const mdl = (me && me.models) || await api('/api/models').catch(() => ({ models: [], default: '' }));
     // Arriving with ?market= (Explore's "Research <market>") for a market the picker doesn't offer right now
@@ -4085,8 +4109,8 @@
   // The headline names its book and its window: scrolled past the tabs, "+$5.61" alone could be any book's.
   const trBook = (key) => (TR_MODES.find(([k]) => k === key) || [key, key])[1];
   const trFix = (v, dp = 2) => (v == null ? '—' : (+v).toFixed(dp).replace('-', '\u2212'));  // a true minus, as usd() prints
-  const trDay = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
-  const trMonth = (k) => { const [y, m] = k.split('-'); return new Date(Date.UTC(+y, +m - 1, 15)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', timeZone: 'UTC' }); };
+  const trDay = (ts) => (ts ? dateFmt(new Date(ts * 1000), YEAR_DAY) : '—');
+  const trMonth = (k) => { const [y, m] = k.split('-'); return dateFmt(new Date(Date.UTC(+y, +m - 1, 15)), UTC_MONTH); };
   const trCi = (ci, f) => (ci ? `95%: ${f(ci[0])} to ${f(ci[1])}` : 'needs 2+ trades for a range');
   const TR_STATUS = { paused: 'Paused', stopped: 'Stopped' };
   const TR_EDGE = { positive: ['Edge', 'on'], negative: ['Losing', 'live'], unclear: ['Unproven', ''], thin: ['Too few', 'quiet'] };
@@ -4961,6 +4985,7 @@
   // Hot Markets left rail: persistent (open/closed survives page switches), refreshes each minute.
   // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page.
   const hotOpen = () => !phone() && localStorage.getItem('tau_hotrail') !== '0';
+  const hotShown = () => !phone();  // app.css hides the rail under 761px, the width phone() asks
   let hotLoop = false;
   let apLoop = false, apReq = null;
 
@@ -6168,18 +6193,32 @@
   }
   // Resolves false when the read failed. The rail is repainted anyway, so its age line counts on from
   // the last snapshot's own time instead of saying "just now" for as long as reads fail.
-  async function refreshHot() {
-    try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
+  // One read at a time: a page that paints its shell twice (the instant switch, then its content) mounts
+  // the rail twice, and Research asked for the same snapshot twice on every load.
+  let hotReq = null;
+  function refreshHot() {
+    if (!hotReq) {
+      hotReq = (async () => {
+        try { S.hot = await api('/api/explore/hot', undefined, { keep: true }); S.hotFail = false; renderHotRail(); return true; } catch (e) { S.hotFail = true; renderHotRail(); return false; }
+      })();
+      hotReq.then(() => { hotReq = null; });
+    }
+    return hotReq;
   }
+  // The rail is read only while it shows (hotShown), on mounting, each minute and when it comes into view.
+  // Hidden, nothing on the page uses the snapshot, and it was one of every page's first reads on a phone.
+  const hotSoon = () => { if (hotShown() && (!S.hot || !S.hotAt || Date.now() - S.hotAt > 55000)) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); };
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
     document.body.classList.toggle('hot-open', hotOpen());
     if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; document.body.appendChild(a); }
     renderHotRail();
-    const stale = !S.hot || !S.hotAt || Date.now() - S.hotAt > 55000;
-    if (stale) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); });
-    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail')) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
-      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && S.hotFail) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }); }
+    hotSoon();
+    if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
+      wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown() && S.hotFail) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); });
+      // A window widened past phone width shows the rail: it reads then.
+      const wide = window.matchMedia && window.matchMedia('(max-width: 760px)');
+      if (wide && wide.addEventListener) wide.addEventListener('change', () => { if (document.getElementById('hotrail')) hotSoon(); }); }
   }
 
   const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Credits from Tau support' };
@@ -6414,13 +6453,13 @@
     return '';
   }
   // The time of a line, or the span of a session's calls that day, in the viewer's clock.
-  const clockAt = (iso, zone) => { const d = new Date(iso || NaN); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(zone ? { timeZoneName: 'short' } : {}) }) : '—'; };
+  const clockAt = (iso, zone) => { const d = new Date(iso || NaN); return Number.isFinite(d.getTime()) ? dateFmt(d, zone ? CLOCK_ZONE : CLOCK) : '—'; };
   const lineWhen = (r) => r.first_at && r.first_at !== r.created_at ? `${clockAt(r.first_at)}–${clockAt(r.created_at, true)}` : clockAt(r.created_at, true);
   // A statement day ('2026-10-26', the viewer's day from the server) as a heading: "Today" or "Mon, Oct 26".
   const ledgerDay = (day) => {
     const [y, m, dd] = String(day).split('-').map(Number), d = new Date(y, m - 1, dd);
     if (!Number.isFinite(d.getTime())) return esc(day);
-    return d.toDateString() === new Date().toDateString() ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    return d.toDateString() === new Date().toDateString() ? 'Today' : dateFmt(d, WEEKDAY_DAY);
   };
   // How the balance came to be over the statement's days (/api/billing math): the balance then, plus
   // credits bought, plus other credits, minus agent usage, is the balance now. The server sends cents

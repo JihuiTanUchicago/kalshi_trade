@@ -4,7 +4,8 @@
    only records the choice. Otherwise (signed out on this device) it goes by the theme saved in
    localStorage: the Tau stylesheet is linked by default, and for Meridian it swaps the href before
    loading Meridian's bundle. The app keeps localStorage in step with the account. It also hands the
-   app the account the signed-in shell carries (window.__TAU_ME__). */
+   app the account the signed-in shell carries (window.__TAU_ME__), and the page's first reads when
+   the shell carries those too (window.__TAU_FIRST__). */
 (function () {
   // A signed-in shell carries the account (/api/me's reply) in a JSON data block; the app takes it
   // from here once, at its first render, instead of starting with a round trip to read it.
@@ -12,6 +13,11 @@
     var me = document.getElementById('tau-me');
     if (me) { window.__TAU_ME__ = JSON.parse(me.textContent); me.remove(); }
   } catch (e) { /* unreadable: the app reads /api/me itself */ }
+  // It may carry the page's first reads too ([{url, body}], app/web/shell_reads.py): api() takes each once.
+  try {
+    var first = document.getElementById('tau-first');
+    if (first) { window.__TAU_FIRST__ = JSON.parse(first.textContent); first.remove(); }
+  } catch (e) { /* unreadable: the page asks for it itself */ }
   var b = document.getElementById('tau-boot');
   if (!b) return;
   // Only Tau has the Terms and Privacy pages; Meridian used to bounce them to the dashboard.

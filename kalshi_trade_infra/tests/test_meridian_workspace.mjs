@@ -16,6 +16,7 @@ import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
+import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
@@ -235,6 +236,7 @@ strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend,
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
 explorePageCases({name: 'Meridian', frontend});
 researchFormCases({name: 'Meridian', frontend});
+phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -3083,6 +3085,21 @@ test('boot.js hands the app the account a signed-in shell carries, once, and sur
     assert.deepEqual(context.window.__TAU_ME__ === undefined ? undefined : JSON.parse(JSON.stringify(context.window.__TAU_ME__)), expected);
     assert.equal(node.removed, expected !== undefined);
     assert.equal(context.window.__TAU_UI__, 'meridian');  // the theme choice runs either way
+  }
+});
+
+test("boot.js hands the app the page's first read the shell carries, once, apart from the account", () => {
+  for (const [text, expected] of [['[{"url":"/api/deployments","body":{"v":"x","t":"\\u003c/script\\u003e"}}]', [{url: '/api/deployments', body: {v: 'x', t: '</script>'}}]], ['{not json', undefined]]) {
+    const me = {textContent: '{"user":{"id":7}}', remove() { this.removed = true; }};
+    const node = {textContent: text, removed: false, remove() { this.removed = true; }};
+    const dataset = {ui: 'tau', tauJs: '/static/app.js?v=t', tauVer: 't', merJs: '/static/app.meridian.js?v=m', merVer: 'm', merCss: '/static/app.meridian.css?v=m'};
+    const context = {window: {}, location: {pathname: '/deploy'}, localStorage: {getItem: () => null, setItem() {}},
+      document: {getElementById: id => id === 'tau-first' ? node : id === 'tau-me' ? me : id === 'tau-boot' ? {dataset} : null,
+        createElement: () => ({}), body: {appendChild() {}}}};
+    vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+    assert.deepEqual(context.window.__TAU_FIRST__ === undefined ? undefined : JSON.parse(JSON.stringify(context.window.__TAU_FIRST__)), expected);
+    assert.equal(node.removed, expected !== undefined);
+    assert.deepEqual(JSON.parse(JSON.stringify(context.window.__TAU_ME__)), {user: {id: 7}}, 'a broken first read leaves the account');
   }
 });
 
