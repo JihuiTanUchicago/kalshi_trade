@@ -1681,6 +1681,7 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 /* A market page's next step: research the market, or open your strategies on it. */
 .mk-next { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 0; }
 .m.fig-behind .sub-fig { color: var(--loss-ink); }
+.mk-spot-note { max-width: 72ch; margin-top: 10px; }
 .mk-rules { max-width: 72ch; margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* ---------- Floating autopilot window (bottom-right) ---------- */
