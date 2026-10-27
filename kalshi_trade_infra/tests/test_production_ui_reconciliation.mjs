@@ -253,6 +253,34 @@ test('a queued or running review reads as in progress, not as a review that alre
   assert.doesNotMatch(source, /Working the operation/);
 });
 
+// Seen in Meridian right after turning autopilot off: "Last check-in 37m ago" stayed under "Off: it only suggests
+// ideas". Check-ins are the autopilot's own, so the figure follows the switch: gone while a flip to off saves, gone
+// once it lands (before the next status read), and gone in an off status read; back when it is on again.
+test('the check-in figure follows the autopilot switch, live', async () => {
+  const saving = deferred(), reading = deferred(), at = new Date(Date.now() - 37 * 60000).toISOString();
+  const f = frontend(path => path === '/api/models' ? response(catalog) : path === '/api/settings' ? saving.promise : reading.promise);
+  f.S.me.user.autopilot = true;
+  f.apBuildShell(f.box); await flush();
+  const stats = () => f.box.querySelector('#apf-stats').innerHTML;
+  f.S.ap = status({last_review_at: at}); f.apUpdate(f.box, f.S.ap);
+  assert.match(stats(), /<dt>Last check-in<\/dt><dd>37m ago<\/dd>/);
+  const sw = f.box.querySelector('#apf-apswitch'); sw.checked = false;
+  const flip = sw.onchange(); await flush();
+  // A status read that left before the write lands still says on: the switch, flipped off, wins.
+  f.apUpdate(f.box, status({last_review_at: at}));
+  assert.doesNotMatch(stats(), /check-in/i);
+  saving.resolve(response({ok: true})); await flip; await flush();
+  assert.doesNotMatch(stats(), /check-in/i, 'repainted as the switch lands, not on the next status read');
+  assert.match(f.box.querySelector('#apf-ap-copy').innerHTML, /Off: it only suggests ideas/);
+  for (const off of [{last_review_at: at}, {reviewing: true, last_review_at: at}, {review_wait: {state: 'queued', seconds: 900}}]) {
+    f.apUpdate(f.box, status({autopilot: false, mode: 'off', ...off}));
+    assert.doesNotMatch(stats(), /check-in/i);
+  }
+  f.apUpdate(f.box, status({autopilot: true, last_review_at: at}));
+  assert.match(stats(), /<dt>Last check-in<\/dt><dd>37m ago<\/dd>/);
+  reading.resolve(response(status({autopilot: false, mode: 'off', last_review_at: at})));
+});
+
 test('the autopilot pulse and Review figure say how long a run has waited once past the reaper limit', async () => {
   try {
     chatReply = {messages: [], agent_busy: true, agent_wait: null};
