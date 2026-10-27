@@ -247,6 +247,18 @@ def tournament_reason(text: Optional[str]) -> Optional[str]:
     return s
 
 
+# What rebalance stores as the reason on a deployment it stops ("Tournament: retired, <verdict>"), which a removed
+# deployment's row and its strategy page show as its status reason.
+_RETIRED_REASON = re.compile(r"^Tournament: retired, (.+)$", re.S)
+
+
+def tournament_status(text: Optional[str]) -> Optional[str]:
+    """A deployment's stored "Tournament: retired, <reason>" as "The paper tournament removed it: <reason>" in
+    plain words (tournament_reason); any other reason as given."""
+    m = _RETIRED_REASON.match(str(text or ""))
+    return "The paper tournament removed it: " + tournament_reason(m.group(1)) if m else text
+
+
 def tournament_standings(st: Optional[Dict]) -> Optional[Dict]:
     """tournament.standings as the Research page reads it: each strategy's reason for coming off paper
     (``verdict``) in plain words (tournament_reason). In place; the standings' figures are as computed."""

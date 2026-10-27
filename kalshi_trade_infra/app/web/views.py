@@ -389,7 +389,8 @@ def _status_why(d: Dict, demo_key_back: bool = False) -> Optional[str]:
     if d.get("status") == "paused" and demo_key_back and _DEMO_KEY_PAUSE in raw:
         return "Your Kalshi demo key wasn't connected when it paused. It is now, so you can resume it"
     if raw not in ("By you", "Approved agent proposal", "Kill switch") and not re.search(r"% >= (?:stop|limit) ", raw):
-        why = customer_text.clean(raw, "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")
+        why = customer_text.clean(customer_text.tournament_status(raw),
+                                  "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")
         guard = _LOSS_GUARD.match(raw)
         if (guard and d.get("status") == "paused" and d.get("realized_pnl") is not None
                 and float(d["realized_pnl"]) < -float(guard.group(1).replace(",", ""))):
