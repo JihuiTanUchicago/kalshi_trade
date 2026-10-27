@@ -53,16 +53,21 @@ def _strategy_card(s: Dict) -> Dict:
 
 def _mark_fields(p: Dict) -> Dict:
     """Live mark-to-market for one open position from the engine-stamped mark_price (the YES bid
-    on a YES position, the YES ask on a NO one). None until the engine's first mark after entry."""
+    on a YES position, the YES ask on a NO one). None until the engine's first mark after entry.
+    `at_cost` (contracts x entry price) and `cost` (plus the entry fee) are the position's money to the
+    cent, rounded as the books' open figures are: the pages multiplied them out themselves, and a
+    float product a hair under a half cent (5 x 30.1¢) read $1.50 beside the dashboard's $1.51."""
     qty = int(p["qty"])
-    cost = qty * float(p["entry_price"]) + float(p.get("entry_fee") or 0)
+    at_cost = Decimal(qty) * Decimal(str(p["entry_price"]))
+    cost = at_cost + Decimal(str(p.get("entry_fee") or 0))
+    money = {"at_cost": cents(at_cost), "cost": cents(cost)}
     mark = p.get("mark_price")
     if mark is None:
-        return {"mark": None, "value": None, "unrealized": None, "mark_ts": None}
+        return {**money, "mark": None, "value": None, "unrealized": None, "mark_ts": None}
     mark = float(mark)
     # A YES contract sells at the YES bid (mark); a NO contract at its own bid, 1 - yes_ask (1 - mark).
     value = cents(qty * (mark if p["side"] == "yes" else 1.0 - mark))
-    return {"mark": mark, "value": value, "unrealized": cents(value - cost), "mark_ts": p.get("mark_ts")}
+    return {**money, "mark": mark, "value": value, "unrealized": cents(Decimal(str(value)) - cost), "mark_ts": p.get("mark_ts")}
 
 
 def _with_marks(rows: List[Dict]) -> List[Dict]:

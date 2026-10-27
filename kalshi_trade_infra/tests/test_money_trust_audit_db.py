@@ -104,7 +104,7 @@ def _seed(cur):
     closed("A1", "paper", 0.1105, "sim:a1-2", today)  # a part-sold round trip, now complete
     closed("A1", "paper", 0.1100, "sim:a1-2", today)
     closed("A1", "paper", 0.0450, "sim:a1-3", today)  # a part-sold trade whose rest is still held
-    held("A1", "paper", "sim:a1-3", 5, 0.3015)
+    held("A1", "paper", "sim:a1-3", 5, 0.3010)  # $1.5050 at cost, and 5 x 0.301 is 1.50499.. as a float
     closed("A1", "paper", 0.1720, None, today)  # an instant fill: in the book, not in the evidence
     deploy("A2", "alpha", "paper")
     closed("A2", "paper", 0.0050, "sim:a2-1", lately)
@@ -212,6 +212,11 @@ def test_every_page_shows_one_number_per_figure(conn, quiet):
         assert dash[m]["open_positions"] == fb[m]["open_positions"] == len(held) == 1, m
         assert sum(1 for p in board["open_positions"] if p["mode"] == m) == 1, m
         assert dash[m]["open_at_cost"] == fb[m]["open_at_cost"] == record[m]["open_at_cost"] == cost, m
+        # Each open row carries its own cost, rounded as the book's figure is (the pages multiplied it out).
+        for listed in (dash["open_positions"], board["open_positions"]):
+            [p] = [p for p in listed if p["mode"] == m]
+            assert p["at_cost"] == cost and p["cost"] == _c(p["qty"] * p["entry_price"] + p["entry_fee"]), m
+    assert dash["paper"]["open_at_cost"] == 1.51 and round(5 * 0.301, 2) == 1.5
     assert ap["paper_open"] == dash["paper"]["open_positions"]
     assert dash["paper"]["equity"] == funds["paper"]["equity"] and dash["paper"]["cash"] == funds["paper"]["cash"]
 

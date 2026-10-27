@@ -219,6 +219,23 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     assert.doesNotMatch(g.root.querySelector('main').innerHTML, /Past deployments/);
   });
 
+  // 5 contracts at 30.1¢ cost $1.5050, which the float 5 * 0.301 holds as 1.50499..: the board's own
+  // product read $1.50 beside the dashboard's $1.51. It shows the server's cost for the row.
+  test(`${name}: the Deploy board's open position shows the server's cost, not its own product`, async () => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/deployments') return response({deployments: [dep()], open_positions: [{id: 5, deployment_id: 1, title: 'Dep one',
+        mode: 'paper', ticker: 'KXBTC15M-26OCT27-T98', side: 'yes', qty: 5, entry_price: 0.301, entry_fee: 0, at_cost: 1.51, cost: 1.51,
+        unrealized: null, market_close_time: '2026-10-28T08:00:00Z'}]});
+      return response({});
+    }});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const html = f.root.querySelector('#openpos').innerHTML;
+    assert.match(html, /data-lab="Cost \+ fee">\$1\.51</);
+    assert.doesNotMatch(html, /\$1\.50/);
+    f.clearTimers();
+  });
+
   // Two paper deployments that made $0.0050 each: each row reads $0.01, so adding the rows read $0.02,
   // beside the strategies list's $0.01 (the exact $0.0100). The page shows the server's per-book total
   // (book_totals), the list's own figure, never its own sum of rounded rows.
