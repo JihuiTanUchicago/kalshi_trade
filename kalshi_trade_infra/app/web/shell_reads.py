@@ -17,8 +17,8 @@ change, a trip) names a URL the page doesn't ask, and the page asks as before. I
 account Stripe has no cards to list for: the saved-card list waits on Stripe, and a slow Stripe must
 never hold the whole shell blank (the page's own read keeps it behind a skeleton instead).
 
-Funds is carried by the same rule, always: its read asks Kalshi for the live and demo cash of an account
-with a key (unless the server read it in the last minute), so the shell carries a version that never asks.
+Funds is carried by the same rule, always: its read never asks Kalshi (nor do the dashboard's and the
+autopilot's, whether the shell, an in-app visit or a poll asks them; only /api/funds/cash does).
 Everything from our own database (each book, its positions, P&L and history) is as /api/funds answers it;
 a key's cash comes from its memo when kept, else is marked pending, with the last figure read and its age
 if the memo holds one. The page draws it as "checking" (never $0) and asks /api/funds/cash?book= for it.

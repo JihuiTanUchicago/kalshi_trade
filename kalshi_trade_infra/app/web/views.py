@@ -4,6 +4,7 @@ verbatim from app.server, which re-imports every name."""
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional, Tuple
@@ -60,20 +61,40 @@ def _paper_equity(balance: float, open_pos: List[Dict]) -> Decimal:
     return exact(balance) + _open_cost(open_pos, "paper")
 
 
-def _live_balance(cur, uid: int) -> Dict:
+# A page's follow-up cash read (/api/funds/cash) asks Kalshi once a memo is no longer kept (memo_kept), so
+# the read a poll marked pending fetches a fresh figure, not the memo's last few seconds.
+FOLLOW_UP_TTL = kalshi_account._BALANCE_TTL - kalshi_account.KEPT_MARGIN
+
+
+def _live_balance(cur, uid: int, ttl: float = FOLLOW_UP_TTL) -> Dict:
     """The user's REAL Kalshi cash (cached, best-effort) + where to deposit. We can't mint
     real money, so an unconnected key or a failed fetch degrades to a connect/unavailable
-    state. The live key is never logged or echoed — only the resulting balance is surfaced."""
+    state. The live key is never logged or echoed — only the resulting balance is surfaced.
+    May wait on Kalshi (one read per user at a time, kalshi_account.single_flight): only the page's
+    follow-up asks it; the dashboard's and Funds' own reads take the memo (funds.kalshi_cash). Display only."""
     key = repo.get_kalshi_key(cur, uid)
     out = {"connected": key is not None, "balance": None, "funding_url": kalshi_account.KALSHI_FUNDING_URL}
     if key is not None:
         try:
-            out["balance"] = kalshi_account.balance_cached(uid, kalshi_account.credentials_from_row(uid, key))
+            out["balance"] = kalshi_account.balance_cached(uid, kalshi_account.credentials_from_row(uid, key), ttl)
         except Exception:
             out["balance"] = None
         if out["balance"] is not None:
             out["balance_at"] = kalshi_account.balance_read_at(uid)  # the figure is up to a minute old
     return out
+
+
+def _demo_cash(cur, uid: int, ttl: Optional[float] = None) -> Optional[float]:
+    """The demo account's cash, the cached demo GET (demo_twins.balance_cached, at most `ttl` old, its own
+    minute by default), with one demo read per user at a time (kalshi_account.single_flight): pages that
+    miss the memo together share it. Display only: the demo-copy sync reads the demo cash its own way."""
+    from app.trading import demo_twins
+
+    ttl = demo_twins.BALANCE_TTL if ttl is None else ttl
+    hit = demo_twins._BALANCE_CACHE.get(uid)
+    if hit and time.monotonic() - hit[0] < ttl:
+        return hit[1]
+    return kalshi_account.single_flight(("demo", uid), lambda: demo_twins.balance_cached(cur, uid, ttl))
 
 
 def _gate_lines(fn, *args) -> List[Dict]:
@@ -127,9 +148,10 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None,
       - demo_funds: the Kalshi demo account holds less than one stake, so Kalshi refuses its orders.
     `deps` are deployment rows (with spec). `stake` asks about a strategy that could go on demo but
     isn't there yet (the strategy page's next rung), so funds are checked even with nothing running.
-    The balance read is the cached demo GET (demo_twins.balance_cached); unknown is never a problem.
-    With ask_kalshi False (a page shell's first read) it never waits on Kalshi: when that read would ask,
-    it answers DEMO_HEALTH_PENDING, and the page asks again once the demo cash is read."""
+    The balance read is the cached demo GET (_demo_cash: demo_twins.balance_cached, one at a time per user);
+    unknown is never a problem. With ask_kalshi False (the dashboard's and the autopilot status' reads) it
+    never waits on Kalshi: when that read would ask, it answers DEMO_HEALTH_PENDING, and the page asks
+    /api/funds/cash?book=demo, then again once the demo cash is read."""
     from app.trading import demo_twins
 
     demo = [d for d in deps if d["mode"] == "demo"]
@@ -150,7 +172,7 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None,
     if not stakes:
         return None
     if ask_kalshi:
-        cash = demo_twins.balance_cached(cur, uid)
+        cash = _demo_cash(cur, uid)
     else:  # the memo alone, as Funds' shell read takes it
         hit = kalshi_account.memo_peek(demo_twins._BALANCE_CACHE, uid) if demo_twins.balance_kept(uid) else None
         if hit is None:

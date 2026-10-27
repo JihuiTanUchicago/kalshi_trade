@@ -1235,6 +1235,12 @@
     const { pending, last_balance, last_balance_at, ...kept } = b;
     return { ...kept, connected: c.connected !== false, balance: c.balance == null ? null : c.balance, balance_at: c.balance_at };
   }, () => ({ ...b, pending: false, failed: true }));
+  // The demo cash a pending demo-funds check waits on (the dashboard's demo health, the autopilot's idle line):
+  // one ask at a time, shared, so the two read it once (on a first load, the read boot.js started). Resolves
+  // once it is back, read or not; the check is then read again, from the server's memo.
+  let demoAsk = null;
+  const demoCashRead = () => demoAsk || (demoAsk = api('/api/funds/cash?book=demo', undefined, { keep: true })
+    .catch(() => {}).then(() => { demoAsk = null; }));
   const dirTag = () => '';
   // quiet: the words go out through announce(), so the notice leaves off its own live role (read once).
   const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
@@ -2198,7 +2204,8 @@
     const visitAt = visitStart();
     let kept = null;  // the last full answer, whose version the poll sends back (pollAnswer)
     // `filled`: the kept answer with its pending cash filled in (fillCash); else /api/dashboard is read.
-    const load = async (cfg, filled) => {
+    // `afterDemo`: this read follows a demo cash read (fillCash), so a demo check still pending waits for the poll.
+    const load = async (cfg, filled, afterDemo) => {
       const q = [visitAt ? 'since=' + visitAt : '', kept && kept.v ? 'v=' + encodeURIComponent(kept.v) : ''].filter(Boolean).join('&');
       const got = filled || await api('/api/dashboard' + (q ? '?' + q : ''), undefined, cfg);
       const d = followLive(pollAnswer(kept, got));
@@ -2330,13 +2337,15 @@
       if (settlementsFocused && d.recent_closed.length) root.querySelector('#recent-settlements > summary').focus({ preventScroll: true });
       const dd = root.querySelector('#dash-deps');
       if (dd) bindDeploymentActions(dd, load);  // pause/resume/stop from the dashboard, same as Deploy
+      if (!filled && !got.same) fillCash(got, afterDemo);  // every fresh answer: the first, a visit's, the poll's
     };
-    // The shell's read never waits on Kalshi (shell_reads.py): a live cash the server hadn't read in the last
-    // minute comes pending, drawn as Checking\u2026 (never $0; an older figure only with its age). Once drawn,
-    // the cash is asked on its own (boot.js has started that read beside the bundle) and filled in; one that
-    // fails says so in plain words. A demo-funds check that waited on the demo cash (the demo health here, the
-    // autopilot's idle line) is read again once that cash is back. A newer poll answer supersedes all of it.
-    const fillCash = (first) => {
+    // /api/dashboard never waits on Kalshi (the shell's read, a visit's and the 15s poll's alike): a live cash
+    // the server hadn't read in the last minute comes pending, drawn as Checking\u2026 (never $0; an older figure
+    // only with its age). Once drawn, the cash is asked on its own (on a first load boot.js has started that
+    // read beside the bundle) and filled in; one that fails says so in plain words. A demo-funds check that
+    // waited on the demo cash is read again once that cash is back (the autopilot's idle line does the same in
+    // refreshAutopilot). A newer poll answer supersedes all of it.
+    const fillCash = (first, afterDemo) => {
       if (!first || first.same) return;
       const asks = [];
       if (first.live && first.live.pending) {
@@ -2346,18 +2355,15 @@
           return (live.connected ? load(null, { ...first, live }) : load()).catch(() => {});
         }));
       }
-      if (!(first.demo && first.demo.health_pending) && !(S.ap && S.ap.idle_pending)) return;
-      asks.push(api('/api/funds/cash?book=demo').catch(() => {}));
+      if (!(first.demo && first.demo.health_pending) || afterDemo) return;
+      asks.push(demoCashRead());
       Promise.all(asks).then(() => {
-        if (gen !== S.gen) return;
-        if (first.demo && first.demo.health_pending && kept && kept.v === first.v) load().catch(() => {});
-        if (S.ap && S.ap.idle_pending) refreshAutopilot(document.getElementById('autopilot-float'));
+        if (gen === S.gen && kept && kept.v === first.v) load(undefined, undefined, true).catch(() => {});
       });
     };
     await load();
     if (gen !== S.gen) return;
     poll(load, 15000, 'dash-stale');
-    fillCash(kept);
     dashTrackRecord(trFirst);
   }
 
@@ -2949,7 +2955,9 @@
     }
   }
   // Resolves true when the status read landed. The loop backs off on false; other callers ignore it.
-  async function refreshAutopilot(box, share = false, cfg) {
+  // The status never waits on Kalshi: an idle line that needs the demo cash comes idle_pending, and is read
+  // again once that cash is back (demoCashRead), once (`afterDemo`); a check still pending waits for the poll.
+  async function refreshAutopilot(box, share = false, cfg, afterDemo) {
     // Pages that paint the shell twice (instant switch, then content) share one in-flight read;
     // a refresh after a change always reads fresh.
     let req = share && apReq;
@@ -2960,6 +2968,7 @@
       // reads S.me.user.autopilot, like the empty paper track record, follows it through syncApCopy.
       if (S.me && S.me.user && typeof S.ap.autopilot === 'boolean') S.me.user.autopilot = S.ap.autopilot;
       renderAutopilot(box, S.ap); paintDashAp(); bellTick();
+      if (S.ap.idle_pending && !afterDemo) demoCashRead().then(() => refreshAutopilot(document.getElementById('autopilot-float'), false, undefined, true));
     }
     catch (e) { S.apFailing = true; apPaintStale(); return false; }  // best-effort: never block the app
     return true;

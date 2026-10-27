@@ -111,10 +111,10 @@ window.TauPage('funds', (T) => {
       const perpsHost = root.querySelector('#kalshi-perps-live');
       if (gen === S.gen && !S.perps && window.TAU_PERPS_LIVE && perpsHost) S.perps = window.TAU_PERPS_LIVE.mount(perpsHost, {api, proposalId: new URLSearchParams(location.search).get('perps_proposal')});
     };
-    // The shell's read marks a key's cash pending when the server hadn't read it in the last minute. Once the
-    // page has drawn, each book's cash is asked for on its own (neither waits on the other's Kalshi read) and
-    // drawn into the figures and its spots in the panels. One that fails says so. A later full read (a write,
-    // the poll) supersedes it.
+    // /api/funds never waits on Kalshi: a key's cash the server hadn't read in the last minute comes pending, in
+    // the shell's read, a visit's and the poll's alike. Once the page has drawn, each book's cash is asked for
+    // on its own (neither waits on the other's Kalshi read) and drawn into the figures and its spots in the
+    // panels. One that fails says so. A later full read (a write, the poll) supersedes it.
     let shown = null;
     const fillCash = (d) => [['live', 'kalshi'], ['demo', 'kalshi_dev']].forEach(([book, key]) => {
       const b = d[key];
@@ -281,11 +281,11 @@ window.TauPage('funds', (T) => {
       if (dvc) dvc.onclick = () => armed(dvc, 'Confirm remove', () => holdFocus('#kalshi-dev [name="key_id"]', () => busy(dvc, async () => {
         try { await api('/api/kalshi-dev-key/delete', {}); S.me.kalshi_dev_connected = false; const fresh = await refreshed(load()); flash('#kdflash', 'Demo key removed. Tau deleted its copy; delete the key on demo.kalshi.co too if you’re done with it.' + (fresh ? '' : BEHIND), 'good'); } catch (err) { flash('#kdflash', err.message, 'bad'); }
       })));
+      if (!got) fillCash(d);  // every fresh read: the first, a visit's, the poll's and a write's
       return d;
     };
-    const first = await load();
+    await load();
     poll(load, 30000, 'funds-stale');
-    if (first) fillCash(first);
   }
 
   return {viewFunds};

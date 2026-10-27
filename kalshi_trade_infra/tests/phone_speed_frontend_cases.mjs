@@ -383,6 +383,79 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     f.clearTimers();
   });
 
+  // /api/dashboard, /api/funds and the autopilot status never wait on Kalshi, whoever asks: an in-app visit and
+  // every poll get a cash the server hadn't read in the last minute as pending, and the page fills it in from
+  // /api/funds/cash, the one read that may wait on Kalshi.
+  test(`${name}: an in-app dashboard visit and each poll fill a pending Kalshi cash from its own read`, async () => {
+    const at = new Date(Date.now() - 70000).toISOString();
+    let answer = {...keyedDash({last_balance: 900, last_balance_at: at}), v: 'p1'};
+    let cash = 1234.56;
+    const f = dashFrontend((path) => path.startsWith('/api/dashboard')
+      ? response(path.includes('v=' + answer.v) ? {v: answer.v, same: true, marks: {}, unrealized: {}} : answer)
+      : path === '/api/funds/cash?book=live' ? response({book: 'live', connected: true, balance: cash, balance_at: new Date().toISOString()})
+        : response({}));
+    await f.viewDashboard(); await settle();  // no shell read: the page asks /api/dashboard itself
+    assert.equal(asked(f, '/api/dashboard'), 1);
+    assert.equal(asked(f, '/api/funds/cash?book=live'), 1, 'the visit asked for the pending cash');
+    assert.match(dashCash(f), /Kalshi cash ?\$1,234\.56/);
+    assert.doesNotMatch(dashCash(f), /[Cc]hecking/);
+    const tick = async () => { for (const t of [...f.intervals.values()]) t(); await settle(); };
+    await tick();  // unchanged: "same", nothing more to ask
+    assert.equal(asked(f, '/api/dashboard'), 2);
+    assert.equal(asked(f, '/api/funds/cash?book=live'), 1);
+    // A minute on, the memo ran out: the poll's answer is new (its version moved) and pending again.
+    answer = {...keyedDash({last_balance: 1234.56, last_balance_at: at}), v: 'p2'};
+    cash = 1500;
+    await tick();
+    assert.equal(asked(f, '/api/funds/cash?book=live'), 2, 'one follow-up for the new pending answer');
+    assert.match(dashCash(f), /Kalshi cash ?\$1,500\.00/);
+    // A cash read since then: the poll's version moves and the page repaints it, with no follow-up.
+    answer = {...keyedDash({pending: undefined, balance: 1600, balance_at: new Date().toISOString()}), v: 'k3'};
+    await tick();
+    assert.match(dashCash(f), /Kalshi cash ?\$1,600\.00/);
+    assert.equal(asked(f, '/api/funds/cash?book=live'), 2);
+    f.clearTimers();
+  });
+
+  test(`${name}: a demo check pending in a poll reads the demo cash once and the dashboard once more, never in a loop`, async () => {
+    const pendingDemo = {...keyedDash({pending: undefined, balance: 10, balance_at: new Date().toISOString()}, {health_pending: true}), v: 'd1'};
+    const f = dashFrontend((path) => path.startsWith('/api/dashboard') ? response({...pendingDemo, v: 'd' + asked(f, '/api/dashboard')})
+      : path === '/api/funds/cash?book=demo' ? response({book: 'demo', connected: true, balance: 0}) : response({}));
+    await f.viewDashboard(); await settle();
+    // Still pending after the demo read (the server's memo missed it): read once more, then left to the poll.
+    assert.equal(asked(f, '/api/funds/cash?book=demo'), 1);
+    assert.equal(asked(f, '/api/dashboard'), 2);
+    f.clearTimers();
+  });
+
+  test(`${name}: an in-app Funds visit and its poll fill each pending cash from its own read`, async () => {
+    let n = 0;
+    const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response(keyed({kalshi: {last_balance: 900, last_balance_at: new Date(Date.now() - 70000).toISOString()}}))
+      : path === '/api/funds/cash?book=live' ? response({book: 'live', connected: true, balance: 1000 + ++n, balance_at: new Date().toISOString()})
+        : path === '/api/funds/cash?book=demo' ? response({book: 'demo', connected: true, balance: 500, balance_at: new Date().toISOString()}) : response({})});
+    f.location.pathname = '/funds';
+    await f.viewFunds(); await settle();
+    assert.equal(asked(f, '/api/funds/cash?book=live'), 1);
+    assert.equal(asked(f, '/api/funds/cash?book=demo'), 1);
+    assert.match(liveFig(f), /Kalshi cash\s*\$1,001\.00/);
+    for (const t of [...f.intervals.values()]) t();
+    await settle();
+    assert.equal(asked(f, '/api/funds/cash?book=live'), 2, 'the poll came pending too: asked again');
+    assert.match(liveFig(f), /Kalshi cash\s*\$1,002\.00/);
+    assert.doesNotMatch(liveFig(f), /[Cc]hecking/);
+    f.clearTimers();
+  });
+
+  test(`${name}: an autopilot status whose idle line waits on the demo cash is read again once that cash is in, once`, async () => {
+    const f = frontend({fetchImpl: (path) => path === '/api/autopilot/status' ? response({autopilot: true, mode: 'paper', idle: null, idle_pending: true})
+      : path === '/api/funds/cash?book=demo' ? response({book: 'demo', connected: true, balance: 0}) : response({})});
+    const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+    await f.refreshAutopilot(box); await settle();
+    assert.equal(asked(f, '/api/funds/cash?book=demo'), 1);
+    assert.equal(asked(f, '/api/autopilot/status'), 2, 'read again once the demo cash was in, and not again while still pending');
+    f.clearTimers();
+  });
+
   test(`${name}: past the passes the server judges, the since strip's counts read as at least that many`, async () => {
     const f = frontend({fetchImpl: () => response({})});
     const since = {at: '2026-10-19T08:00:00+00:00', first: false, books: {}, autopilot: {}, runs: {},

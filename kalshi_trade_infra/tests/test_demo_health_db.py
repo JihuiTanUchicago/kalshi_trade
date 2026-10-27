@@ -111,13 +111,22 @@ def _ctx(conn, uid, params=()):
 
 
 def _seen(conn, uid, sid):
-    """What each page says about demo: dashboard bucket, Deploy board, autopilot idle, strategy page."""
+    """What each page says about demo: dashboard bucket, Deploy board, autopilot idle, strategy page. The
+    dashboard's and the autopilot's reads never ask Kalshi: a check that needs the demo cash is marked
+    pending, and, as the page does, the demo cash follow-up (/api/funds/cash?book=demo) is read before
+    they are read again, from its memo."""
+    from app import repository as repo
     from app import server
 
     c = _ctx(conn, uid)
-    return {"dashboard": server.dashboard(c)["demo"]["health"],
+    dash, ap = server.dashboard(c), server.autopilot_status(c)
+    if dash["demo"].get("health_pending") or ap.get("idle_pending"):
+        server.funds_cash(server.Ctx(conn, repo.get_user(conn.cursor(), uid), (), {"book": "demo"}, {}, None))
+        dash, ap = server.dashboard(c), server.autopilot_status(c)
+    assert not dash["demo"].get("health_pending") and not ap.get("idle_pending")
+    return {"dashboard": dash["demo"]["health"],
             "deploy": server.list_deployments(c)["demo_health"],
-            "autopilot": server.autopilot_status(c)["idle"],
+            "autopilot": ap["idle"],
             "strategy": server.get_strategy(_ctx(conn, uid, (sid,)))["demo_health"]}
 
 
@@ -170,6 +179,7 @@ def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_s
 
     # The dashboard shell's reads never wait on Kalshi: with the demo cash memo kept they say the same; without it
     # the check is marked pending (never a "Demo isn't trading" from an unknown figure) and the page asks again.
+    from app import server
     from app.trading import demo_twins
     from app.web import shell_reads
 
@@ -184,6 +194,12 @@ def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_s
     assert dash["demo"]["health"] is None and dash["demo"]["health_pending"] is True
     assert ap["idle_pending"] is True and (ap["idle"] or {}).get("code") != "demo_funds"
     assert shell_reads.then_reads("/api/autopilot/status", ap) == ["/api/funds/cash?book=demo"]
+    # So do the routes themselves, as an in-app visit and each poll ask them: memo gone, pending, no Kalshi read.
+    routes = {p.pattern: fn for m, p, fn, _ in server.ROUTES if m == "GET"}
+    for path in ("/api/dashboard", "/api/autopilot/status"):
+        got = routes["^%s$" % path](_ctx(conn, uid))
+        assert (got["demo"]["health_pending"] if path == "/api/dashboard" else got["idle_pending"]) is True, path
+    assert routes["^/api/funds$"](_ctx(conn, uid))["kalshi_dev"]["pending"] is True
 
 
 def test_each_demo_state_says_one_plain_thing(conn, offline):

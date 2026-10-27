@@ -188,7 +188,7 @@ def test_live_balance_surfaces_cached_value_when_connected(monkeypatch):
 
     monkeypatch.setattr(repo, "get_kalshi_key", lambda cur, uid: {"key_id": "abcd1234", "private_key_enc": b""})
     monkeypatch.setattr(kalshi_account, "credentials_from_row", lambda uid, row: ("abcd1234", object()))
-    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: 150.25)
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds, ttl: 150.25)
     out = server._live_balance(object(), 5)
     assert out["connected"] is True
     assert out["balance"] == 150.25
@@ -216,9 +216,9 @@ def test_live_balance_says_when_it_was_read_only_when_it_was(monkeypatch):
     monkeypatch.setattr(repo, "get_kalshi_key", lambda cur, uid: {"key_id": "abcd1234", "private_key_enc": b""})
     monkeypatch.setattr(kalshi_account, "credentials_from_row", lambda uid, row: ("abcd1234", object()))
     monkeypatch.setattr(kalshi_account, "balance_read_at", lambda uid: "T")
-    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: 150.25)
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds, ttl: 150.25)
     assert server._live_balance(object(), 5)["balance_at"] == "T"
-    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: None)  # Kalshi didn't answer
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds, ttl: None)  # Kalshi didn't answer
     assert "balance_at" not in server._live_balance(object(), 5)
 
 

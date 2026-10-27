@@ -281,15 +281,18 @@ def test_funds_cash_reads_one_books_cash_in_cents(monkeypatch):
     kalshi_account, demo_twins = _funds_db(monkeypatch)
     asked = []
     monkeypatch.setattr(kalshi_account, "credentials_from_row", lambda uid, row: ("id", None))
-    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: asked.append("live") or 1234.5649)
+    ttls = []
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds, ttl: ttls.append(ttl) or asked.append("live") or 1234.5649)
     monkeypatch.setattr(kalshi_account, "balance_read_at", lambda uid: datetime(2026, 10, 27, 9, 0))
-    monkeypatch.setattr(demo_twins, "balance_cached", lambda cur, uid: asked.append("demo") or 500.0)
+    monkeypatch.setattr(demo_twins, "balance_cached", lambda cur, uid, ttl: ttls.append(ttl) or asked.append("demo") or 500.0)
     ask = lambda book: funds_routes.funds_cash(SimpleNamespace(cur=None, uid=7, query={"book": book} if book else {}))  # noqa: E731
     assert ask("live") == {"book": "live", "connected": True, "balance": 1234.56, "balance_at": datetime(2026, 10, 27, 9, 0)}
     assert asked == ["live"]
     demo = ask("demo")
     assert demo["book"] == "demo" and demo["balance"] == 500.0 and asked == ["live", "demo"]
-    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: None)  # Kalshi didn't answer
+    # It reads Kalshi again once the memo is no longer kept, the moment a poll's read marks the cash pending.
+    assert ttls == [60.0 - kalshi_account.KEPT_MARGIN] * 2
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds, ttl: None)  # Kalshi didn't answer
     assert ask("live") == {"book": "live", "connected": True, "balance": None}
     with pytest.raises(ApiError) as e:
         ask(None)
@@ -429,6 +432,180 @@ def test_a_memo_counts_as_kept_only_with_time_to_spare(monkeypatch):
     assert not kalshi_account.memo_kept(cache, 7, 60.0)
     cache[7] = (now - 61.0, 12.5)
     assert not kalshi_account.memo_kept(cache, 7, 60.0)
+
+
+def _route(path):
+    """The handler the server runs for GET `path`, called as it calls it (the context alone)."""
+    return next(fn for m, p, fn, _ in server.ROUTES if m == "GET" and p.match(path))
+
+
+def test_the_dashboard_and_funds_never_ask_kalshi_whoever_asks_and_a_cash_read_moves_the_poll(monkeypatch):
+    # The 15s dashboard poll and the 30s Funds poll, and an in-app visit to either, ask the same routes as the
+    # shell, which waited on Kalshi (up to its timeout) each time a memo ran out. Kalshi's client raises here.
+    import inspect
+
+    from app.web.routes import chat as chat_routes
+    kalshi_account, demo_twins = _dashboard_db(monkeypatch, deps=[DEMO_DEP])
+    ctx = lambda q=None: SimpleNamespace(cur=None, uid=7, query=dict(q or {}))  # noqa: E731
+    now = kalshi_account.time.monotonic()
+    kalshi_account._BALANCE_CACHE[7] = (now - 70, 1234.5649)  # read a minute ago: past the memo
+    demo_twins._BALANCE_CACHE[7] = (now - 70, 0.0)
+    dash = _route("/api/dashboard")(ctx())
+    assert dash["live"]["pending"] is True and dash["live"]["last_balance"] == 1234.56 and dash["live"]["balance"] is None
+    assert dash["demo"]["health_pending"] is True and dash["demo"]["health"] is None
+    funds = _route("/api/funds")(ctx())
+    assert funds["kalshi"]["pending"] is True and funds["kalshi"]["last_balance"] == 1234.56
+    assert funds["kalshi_dev"]["pending"] is True and funds["kalshi_dev"]["last_balance"] == 0.0
+    # The autopilot status the panel polls on every page reads the demo cash the same way (its idle line).
+    assert _route("/api/autopilot/status") is chat_routes.autopilot_status
+    assert inspect.signature(chat_routes.autopilot_status).parameters["ask_kalshi"].default is False
+    # The poll's version: unchanged while the memo is, so the page's poll is told "same"...
+    v = dash["v"]
+    assert _route("/api/dashboard")(ctx({"v": v})).get("same") is True
+    # ...and moved by a cash read: the follow-up's (kept now, same figure, a new read time), then a new figure.
+    kalshi_account._BALANCE_CACHE[7] = (kalshi_account.time.monotonic() - 1, 1234.5649)
+    kept = _route("/api/dashboard")(ctx({"v": v}))
+    assert not kept.get("same") and kept["v"] != v and kept["live"]["balance"] == 1234.56 and "pending" not in kept["live"]
+    assert _route("/api/dashboard")(ctx({"v": kept["v"]})).get("same") is True
+    kalshi_account._BALANCE_CACHE[7] = (kalshi_account._BALANCE_CACHE[7][0], 1500.0)
+    moved = _route("/api/dashboard")(ctx({"v": kept["v"]}))
+    assert not moved.get("same") and moved["live"]["balance"] == 1500.0
+
+
+def _cash_reads(monkeypatch, delay=0.2):
+    """/api/funds/cash for user 7 with a live and a demo key, each Kalshi read taking `delay` and counted."""
+    import threading
+    import time
+
+    from app.adapters.kalshi import kalshi_account
+    from app.trading import demo_twins
+    from app.web.routes import funds as funds_routes
+
+    class Reads(dict):
+        at_once = None  # [in flight now, most at once]
+    reads = Reads(live=0, demo=0)
+    reads.at_once = [0, 0]
+    lock = threading.Lock()
+
+    def slow(book, value):
+        with lock:
+            reads[book] += 1
+            reads.at_once[0] += 1
+            reads.at_once[1] = max(reads.at_once)
+        time.sleep(delay)
+        with lock:
+            reads.at_once[0] -= 1
+        return value
+    monkeypatch.setattr(funds_routes.repo, "get_kalshi_key", lambda cur, uid: {"key_id": "LIVEKEY-ABCD-1234"})
+    monkeypatch.setattr(funds_routes.repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEVKEY-WXYZ-5678"})
+    monkeypatch.setattr(kalshi_account, "credentials_from_row", lambda uid, row: ("id", None))
+    monkeypatch.setattr(kalshi_account, "balance", lambda creds: slow("live", 1234.5))
+    monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: slow("demo", 500.0))
+    monkeypatch.setattr(kalshi_account, "_BALANCE_CACHE", {})
+    monkeypatch.setattr(demo_twins, "_BALANCE_CACHE", {})
+    return reads, lambda book: funds_routes.funds_cash(SimpleNamespace(cur=None, uid=7, query={"book": book}))
+
+
+def _together(n, fn):
+    """fn() from n threads released at once; their answers."""
+    import threading
+
+    gate, out = threading.Barrier(n), []
+
+    def run():
+        gate.wait()
+        out.append(fn())
+    threads = [threading.Thread(target=run) for _ in range(n)]
+    [t.start() for t in threads]
+    [t.join(10) for t in threads]
+    return out
+
+
+def test_concurrent_cash_reads_make_one_kalshi_read_per_book(monkeypatch):
+    # Two tabs, or a poll's follow-up beside another's, the moment the memo runs out: each was a Kalshi read.
+    from app.adapters.kalshi import kalshi_account
+    from app.trading import demo_twins
+    reads, ask = _cash_reads(monkeypatch)
+    for book, figure in (("live", 1234.5), ("demo", 500.0)):
+        got = _together(8, lambda: ask(book))
+        assert len(got) == 8 and {g["balance"] for g in got} == {figure}, book
+        assert reads[book] == 1, (book, reads)
+    assert reads.at_once[1] == 1
+    assert kalshi_account._FLIGHTS == {}
+    # Kept now: no read at all; once it runs out (as a minute on), one read again for all of them.
+    _together(8, lambda: ask("live"))
+    assert reads == {"live": 1, "demo": 1}
+    kalshi_account._BALANCE_CACHE[7] = (kalshi_account._BALANCE_CACHE[7][0] - 60, 1234.5)
+    demo_twins._BALANCE_CACHE[7] = (demo_twins._BALANCE_CACHE[7][0] - 60, 500.0)
+    _together(6, lambda: ask("live")) + _together(6, lambda: ask("demo"))
+    assert reads == {"live": 2, "demo": 2}
+    assert kalshi_account._FLIGHTS == {}
+    # A live read never waits on a demo one (one flight per user and book): the two run at once.
+    kalshi_account._BALANCE_CACHE.clear()
+    demo_twins._BALANCE_CACHE.clear()
+    books = iter(("live", "demo"))
+    _together(2, lambda: ask(next(books)))
+    assert reads == {"live": 3, "demo": 3} and reads.at_once[1] == 2
+
+
+def test_a_single_flight_hands_its_answer_or_its_error_to_whoever_waited_and_then_clears(monkeypatch):
+    import threading
+
+    from app.adapters.kalshi import kalshi_account
+    started, release, calls = threading.Event(), threading.Event(), []
+
+    def read():
+        calls.append(1)
+        started.set()
+        release.wait(5)
+        raise RuntimeError("kalshi down")
+    errors = []
+
+    def lead():
+        try:
+            kalshi_account.single_flight(("live", 9), read)
+        except RuntimeError as e:
+            errors.append(str(e))
+    leader = threading.Thread(target=lead)
+    leader.start()
+    started.wait(5)
+    follower = threading.Thread(target=lead)
+    follower.start()
+    release.set()
+    leader.join(5)
+    follower.join(5)
+    assert calls == [1] and errors == ["kalshi down", "kalshi down"]
+    assert kalshi_account.single_flight(("live", 9), lambda: 3.5) == 3.5 and kalshi_account._FLIGHTS == {}
+
+
+def test_a_live_read_in_flight_never_overwrites_the_cash_of_a_key_saved_meanwhile(monkeypatch):
+    from app.adapters.kalshi import kalshi_account
+    monkeypatch.setattr(kalshi_account, "_BALANCE_CACHE", {})
+
+    def balance(creds):
+        kalshi_account.remember_balance(7, 99.0)  # a new key verified while the old key's read was out
+        return 5.0
+    monkeypatch.setattr(kalshi_account, "balance", balance)
+    assert kalshi_account.balance_cached(7, None) == 5.0
+    assert kalshi_account._BALANCE_CACHE[7][1] == 99.0
+
+
+def test_reads_that_size_or_gate_orders_still_read_kalshi_as_before(monkeypatch):
+    # Only the pages' display reads go through the memo and the single flight. Verifying a key still reads Kalshi
+    # every time, with a memo kept; the demo-copy sync (which opens demo deployments only on a funded demo
+    # account) still reads the demo cash itself, uncached, with its own timeout.
+    import inspect
+
+    from app.adapters.kalshi import kalshi_account
+    from app.trading import demo_twins
+    calls = []
+    monkeypatch.setattr(kalshi_account, "balance", lambda creds: calls.append(creds) or 42.0)
+    monkeypatch.setattr(kalshi_account, "parse_private_key", lambda pem: "parsed")
+    monkeypatch.setattr(kalshi_account, "_BALANCE_CACHE", {7: (kalshi_account.time.monotonic(), 1.0)})
+    assert kalshi_account.verify("key-1", "pem") == 42.0 and kalshi_account.verify("key-1", "pem") == 42.0
+    assert calls == [("key-1", "parsed")] * 2 and kalshi_account._FLIGHTS == {}
+    sync = inspect.signature(demo_twins.sync).parameters["balance"].default
+    assert sync is demo_twins._read_balance and inspect.signature(sync).parameters["timeout"].default == 15
 
 
 @pytest.mark.parametrize("cookie,tz", [(None, None), ("", None), ("abc", None), ("240", 240), ("-330", -330), ("0", 0),

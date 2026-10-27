@@ -23,6 +23,7 @@ pytestmark = pytest.mark.skipif(os.getenv("APP_TEST_MYSQL") != "1", reason="need
 NOW = datetime(2026, 10, 26, 12, 0, 0)
 CLOCK = [NOW]
 LIVE_CASH, DEMO_CASH = [250.0], [100.0]
+READ_AT, KEPT = [NOW], [True]
 SAME_KEYS = {"v", "same", "marks", "unrealized", "freshness", "since_at"}
 HEAVY = ("SUM(pnl) OVER (PARTITION BY deployment_id", "LEFT JOIN (SELECT p.deployment_id", "AS paper_all",
          "GROUP BY DATE(closed_at)", "SUM(amount)")
@@ -67,7 +68,13 @@ def world(monkeypatch):
     monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds, ttl=0: LIVE_CASH[0])
     monkeypatch.setattr(kalshi_account, "balance_read_at", lambda uid: NOW)
     monkeypatch.setattr(demo_twins, "balance_cached", lambda cur, uid, ttl=0: DEMO_CASH[0])
-    CLOCK[0], LIVE_CASH[0], DEMO_CASH[0] = NOW, 250.0, 100.0
+    # The dashboard's poll never asks Kalshi: it reads each cash memo (what the page's follow-up last read, and
+    # when), kept or not (KEPT): the figures the test sets, read at READ_AT.
+    monkeypatch.setattr(kalshi_account, "memo_peek", lambda cache, uid: (
+        DEMO_CASH[0] if cache is demo_twins._BALANCE_CACHE else LIVE_CASH[0], READ_AT[0]))
+    monkeypatch.setattr(kalshi_account, "balance_kept", lambda uid: KEPT[0])
+    monkeypatch.setattr(demo_twins, "balance_kept", lambda uid: KEPT[0])
+    CLOCK[0], LIVE_CASH[0], DEMO_CASH[0], READ_AT[0], KEPT[0] = NOW, 250.0, 100.0, NOW, True
     book_memo.clear()
     yield
     book_memo.clear()
@@ -242,6 +249,11 @@ def test_a_polled_money_page_is_same_only_while_every_figure_it_shows_is_unchang
         ("live mismatch flagged", ("dashboard",), lambda: repo.upsert_reconcile(cur, uid, "KXBTC15M-26OCT2612-T98", "qty", 3, 4)),
         ("demo capital reloaded", ("dashboard",), lambda: repo.reload_demo(cur, uid, 400.0)),
         ("Kalshi cash read", ("dashboard",), lambda: LIVE_CASH.__setitem__(0, 312.5)),
+        # The poll reads the memo alone: once it runs out the cash is pending (the page asks /api/funds/cash),
+        # and the follow-up's read, even of the same figure, is a new read time. Each moves the version.
+        ("Kalshi cash memo ran out", ("dashboard",), lambda: KEPT.__setitem__(0, False)),
+        ("Kalshi cash read again, same figure", ("dashboard",), lambda: (KEPT.__setitem__(0, True),
+                                                                          READ_AT.__setitem__(0, NOW + timedelta(seconds=61)))),
         ("demo cash below a stake", both, lambda: DEMO_CASH.__setitem__(0, 1.0)),
         ("paper account reset", both, lambda: (repo.close_position(cur, opens["paper"], 0.5, 0.02, 0.3, "take_profit"),
                                                          repo.reset_paper_account(cur, uid, 1000.0))),
