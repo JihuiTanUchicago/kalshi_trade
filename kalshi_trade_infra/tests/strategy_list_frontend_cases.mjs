@@ -194,17 +194,31 @@ export function strategyListCases({name, frontend, detailStrategy}) {
   test(`${name}: a row says what its removed deployments made, each book on its own line`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const html = row(f, {deployed: false, past: {paper: {pnl: -13.56, trades: 9, deployments: 1}, demo: {pnl: 0, trades: 0, deployments: 1}}});
-    assert.match(html, /Removed from paper: <span class="[^"]*">−\$13\.56<\/span> · 9 trades/);
+    assert.match(html, /Removed from paper: <span class="[^"]*">−\$13\.56<\/span> · 9 trades/);
     assert.match(html, /Removed from demo: no closed trades/);
     assert.ok(html.indexOf('Removed from paper') < html.indexOf('Removed from demo'));
     // Beside an active record it stays apart: never added into "since deploying".
     const both = row(f, {deployed: true, books: ['paper'], real: {pnl: 4, trades: 2, open: 0, mode: 'paper'}, past: {paper: {pnl: 2.25, trades: 4, deployments: 1}}});
-    assert.match(both, /\+\$4\.00<\/span> on paper since deploying · 2 trades/);
-    assert.match(both, /Removed from paper: <span class="[^"]*">\+\$2\.25<\/span> · 4 trades/);
+    assert.match(both, /\+\$4\.00<\/span> on paper since deploying · 2 trades/);
+    assert.match(both, /Removed from paper: <span class="[^"]*">\+\$2\.25<\/span> · 4 trades/);
     assert.doesNotMatch(both, /\$6\.25/);
     assert.doesNotMatch(row(f, {}), /Removed from/);
     // A research-only strategy never shows a book record, even if one leaks in.
     assert.doesNotMatch(row(f, {kind: 'code', research_only: true, past: {paper: {pnl: 1, trades: 1}}}), /Removed from/);
+  });
+
+  test(`${name}: a removed paper book says how many of its trades were instant fills, as the track record leaves them out`, () => {
+    // Walk 2026-10-27: "Removed from paper: +$0.75 · 3 trades" said nothing of the instant fills among them, which the
+    // track record leaves out. The server's past.paper.instant_fills says how many; demo never carries one.
+    const f = frontend({fetchImpl: () => response({})});
+    const fig = (paper, demo) => row(f, {deployed: false, past: {paper, ...(demo ? {demo} : {})}});
+    assert.match(fig({pnl: 0.75, trades: 3, deployments: 1, instant_fills: 1}),
+      /Removed from paper: <span class="[^"]*">\+\$0\.75<\/span>\u00a0· 3 trades, 1 of them an instant fill, left out of the track record</);
+    assert.match(fig({pnl: 0.75, trades: 3, deployments: 1, instant_fills: 2}), /3 trades, 2 of them instant fills, left out of the track record</);
+    assert.match(fig({pnl: 0.75, trades: 2, deployments: 1, instant_fills: 2}), /2 trades, all instant fills, left out of the track record</);
+    assert.match(fig({pnl: 0.75, trades: 1, deployments: 1, instant_fills: 1}), /1 trade, an instant fill, left out of the track record</);
+    assert.doesNotMatch(fig({pnl: 0.75, trades: 3, deployments: 1}), /instant/);
+    assert.doesNotMatch(fig({pnl: 0, trades: 0, deployments: 1}, {pnl: 1, trades: 2, deployments: 1, instant_fills: 2}), /instant/);
   });
 
   // Walk 2026-10-27: a strategy whose only paper trades were instant fills read "+$3.80 on paper since deploying ·
@@ -213,30 +227,45 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const f = frontend({fetchImpl: () => response({})});
     const real = {pnl: 3.8, trades: 2, open: 0, mode: 'paper', instant_only: true};
     const html = row(f, {deployed: true, books: ['paper'], real});
-    assert.match(html, /All 2 of its trades were instant fills, left out of the track record · <span class="[^"]*">\+\$3\.80<\/span> on paper · after Kalshi fees and the spread/);
+    assert.match(html, /All 2 of its trades were instant fills, left out of the track record · <span class="[^"]*">\+\$3\.80<\/span> on paper · after Kalshi fees and the spread/);
     assert.doesNotMatch(html, /since deploying/);
     assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, trades: 1}}), /Its only trade was an instant fill, left out of the track record/);
     // A demo book beside it keeps its own line, never added in.
     const demo = row(f, {deployed: true, books: ['paper', 'demo'], real: {...real, demo: {pnl: 0.5, trades: 1, open: 0}}});
-    assert.match(demo, /Demo: <span class="[^"]*">\+\$0\.50<\/span> · 1 trade/);
+    assert.match(demo, /Demo: <span class="[^"]*">\+\$0\.50<\/span> · 1 trade/);
     assert.doesNotMatch(demo, /\$4\.30/);
     // Unflagged, or with no closed trade yet, the row reads as before.
-    assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, instant_only: false}}), /\+\$3\.80<\/span> on paper since deploying · 2 trades/);
+    assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, instant_only: false}}), /\+\$3\.80<\/span> on paper since deploying · 2 trades/);
     assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, trades: 0, pnl: 0}}), /No closed paper trades yet/);
   });
 
   // Walk 2026-10-27: a strategy whose paper trades were only partly instant fills still read "+$1.30 on paper since
   // deploying · 2 trades", while the track record counted 1 trade and said 1 instant fill was left out.
+  test(`${name}: a row's figures and market end each line on "·", never start one with it`, () => {
+    // Walk 2026-10-27, 390px and 1280px: "· +$3.80 on paper", "· 3 trades, 1 of them an instant fill" and "· Momentum"
+    // began lines. Each separator takes a no-break space before its "·" and a plain one after.
+    const f = frontend({fetchImpl: () => response({})});
+    const rows = [row(f, {deployed: true, books: ['paper'], real: {pnl: 3.8, trades: 2, open: 0, mode: 'paper', instant_only: true, instant_fills: 2}}),
+      row(f, {deployed: true, books: ['paper', 'demo'], real: {pnl: 1.3, trades: 2, open: 0, mode: 'paper', instant_fills: 1, demo: {pnl: 0.5, trades: 1, open: 0}},
+        past: {paper: {pnl: 0.75, trades: 3, deployments: 1, instant_fills: 1}, demo: {pnl: 1, trades: 1, deployments: 1}}})];
+    for (const html of rows) {
+      const figs = [...html.matchAll(/<div class="sub-fig real-fig[^"]*">([\s\S]*?)<\/div>/g)].map((m) => m[1]);
+      const market = html.match(/<td data-lab="Market"><span class="tick">([^<]*)</)[1];
+      assert.ok(figs.length && figs.every((t) => t.includes(' · ') && !/ ·/.test(t)), figs.join('\n'));
+      assert.ok(market.includes(' · ') && !/ ·/.test(market), market);
+    }
+  });
+
   test(`${name}: a paper row whose trades were partly instant fills says how many, as the track record does`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const real = {pnl: 1.3, trades: 2, open: 0, mode: 'paper', instant_fills: 1};
     const html = row(f, {deployed: true, books: ['paper'], real});
-    assert.match(html, /\+\$1\.30<\/span> on paper since deploying ·\s2 trades, 1 of them an instant fill, left out of the track record ·\safter Kalshi fees and the spread/);
+    assert.match(html, /\+\$1\.30<\/span> on paper since deploying\s·\s2 trades, 1 of them an instant fill, left out of the track record\s·\safter Kalshi fees and the spread/);
     assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, trades: 5, instant_fills: 3}}), /5 trades, 3 of them instant fills, left out of the track record/);
     // All of them: the instant-only line, unchanged. A demo book beside it is never counted, nor added in.
     assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, instant_fills: 2, instant_only: true}}), /All 2 of its trades were instant fills/);
     const demo = row(f, {deployed: true, books: ['paper', 'demo'], real: {...real, demo: {pnl: 0.5, trades: 1, open: 0}}});
-    assert.match(demo, /Demo: <span class="[^"]*">\+\$0\.50<\/span> ·\s1 trade ·\safter Kalshi fees/);
+    assert.match(demo, /Demo: <span class="[^"]*">\+\$0\.50<\/span>\s·\s1 trade\s·\safter Kalshi fees/);
     assert.doesNotMatch(demo, /\$1\.80/);
     // A live or demo row never carries it, even if one leaks in.
     assert.doesNotMatch(row(f, {deployed: true, books: ['demo'], real: {...real, mode: 'demo'}}), /instant/);

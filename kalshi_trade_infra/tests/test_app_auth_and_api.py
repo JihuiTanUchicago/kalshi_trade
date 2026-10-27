@@ -726,6 +726,15 @@ def test_strategies_list_says_what_removed_deployments_made_per_book(monkeypatch
     # A deployed strategy keeps its active record and its removed one apart.
     assert cards[2]["real"]["pnl"] == 4 and cards[2]["past"] == {"paper": {"pnl": 2.25, "trades": 4, "deployments": 1}}
     assert "past" not in cards[3]
+    # Removed paper trades partly or all instant fills: the book says how many (its trades less `sim_trades`), so
+    # "Removed from paper: 4 trades" no longer reads as the track record's count. Demo never carries one.
+    for t, sim in zip(totals, (0, 3, 0)):
+        t["sim_trades"] = sim
+    cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
+    assert cards[1]["past"]["paper"]["instant_fills"] == 1 and cards[2]["past"]["paper"]["instant_fills"] == 4
+    assert "instant_fills" not in cards[1]["past"]["demo"] and cards[1]["past"]["paper"]["trades"] == 4
+    totals[1]["sim_trades"] = 4
+    assert "instant_fills" not in {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}[1]["past"]["paper"]
     # No removed deployment on the page: no extra read.
     rows[:] = [{"id": 3, "deployed": False, "removed_deps": 0}]
     asked.clear()
@@ -738,7 +747,9 @@ def test_removed_totals_by_strategy_sums_each_book_apart():
     server.repo.removed_totals_by_strategy(cur, 7, [3, 2, 3])
     assert "d.status='stopped'" in cur.sql and "GROUP BY d.strategy_id, d.mode" in cur.sql
     assert "p.status='closed'" in cur.sql and "FORCE INDEX (idx_pos_dep)" in cur.sql
-    assert cur.params == [7, 2, 3]
+    # The paper rows through the simulated venue ride the same read (the rest are instant fills).
+    assert "COUNT(CASE WHEN p.mode='paper' AND p.order_ref LIKE %s THEN 1 END) AS sim_trades" in cur.sql
+    assert cur.params == ["sim:%", 7, 2, 3]
 
 
 

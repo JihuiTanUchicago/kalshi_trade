@@ -877,8 +877,8 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
 
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money ·\u00a0after Kalshi fees ·\u00a0\+\$2\.00 on paper from the deployments listed, counted apart/]]) {
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments, open_positions: []}); }});
     await f.viewDeploy(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;
@@ -5460,7 +5460,11 @@ test('Meridian: turning autopilot on updates the last-24-hours row at once, not 
 test('Meridian Overview says the paper portfolio is practice money', async () => {
   const f = apDashboard(dashboardData(), apStatus);
   await f.viewDashboard(); await flush();
-  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · Realized P&amp;L, all time \+\$98\.40/);
+  // Walk 2026-10-27 at 390px: "· Realized P&L, all time", "· after Kalshi fees" and "· Download trades (CSV)" each began
+  // a line. Each "·" has a no-break space before it and a plain one after, so it ends its line.
+  const sub = f.root.querySelector('.paper-summary .portfolio-return').innerHTML;
+  assert.ok(!/ ·/.test(sub) && sub.includes('</span> · <span class="nobr">Realized'), sub);
+  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · Realized P&amp;L, all time \+\$98\.40/);
 });
 
 // A new account's paper book read "Realized P&L, all time $0.00" and "Realized today (UTC) $0.00": results it never had.
@@ -5469,7 +5473,7 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   const f = apDashboard(dashboardData({paper: fresh}), apStatus);
   await f.viewDashboard(); await flush();
   const paper = f.root.querySelector('.paper-summary').textContent;
-  assert.match(paper, /Practice money, not real ·\s?no paper strategies yet/);
+  assert.match(paper, /Practice money, not real\s·\s?no paper strategies yet/);
   assert.match(paper, /Realized today \(UTC\)None yet/);
   assert.doesNotMatch(paper, /Realized P&amp;L, all time/);
   // "Open at cost + fees $0.00" read as a figure too, for a book nothing has ever been open in.
@@ -6084,9 +6088,10 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
 test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / trade"', async () => {
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Both', stake: 5, max_positions: 3})]);
-  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*· Stake not set<\/span>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*Stake not set · Max 3 open<\/span>/);
-  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\$5 \/ trade · Max 3 open<\/span>/);
+  // Walk 2026-10-27 at 390px: "Max 2" ended a line and "open" began the next. Stake and cap each stay whole.
+  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*\u00a0· <span class="nobr">Stake not set<\/span><\/span>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">Stake not set<\/span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
+  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">\$5 \/ trade<\/span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
   assert.doesNotMatch(html, /\$ \/ trade|Max\s+open|null|NaN/);
   const f = frontend();
   const none = f.deploymentMonitor(nullStakeDep({status: 'paused', status_why: 'You paused it'}));
@@ -6200,6 +6205,25 @@ test('the hot rail wraps a market’s name instead of cutting its close hour, an
   assert.equal(f.root.querySelector('.hot-title strong').textContent, 'BTC above $X at 5pm ET', 'the whole name, its hour included');
   // A pause reason's "the Funds page" in a Deploy row is underlined; the row's strategy name still isn't.
   assert.match(css, /\n\.t-dep td\.name \.sub-fig a, \.monitor-limits a \{ text-decoration: underline;/);
+});
+
+test('an Overview paper monitor says how many of its closed trades were instant fills', async () => {
+  // Walk 2026-10-27: a paper monitor read "Closed / open 2 / 0" with no word that the track record and the count of
+  // realistic paper trades toward live leave its instant fills out. The server's `instant_fills` says how many.
+  const deployments = [{...dashboardDeployment('paper'), id: 93, closed_trades: 2, instant_fills: 1},
+    {...dashboardDeployment('paper'), id: 94, closed_trades: 2, instant_fills: 2},
+    {...dashboardDeployment('paper'), id: 95, closed_trades: 1, instant_fills: 1},
+    {...dashboardDeployment('paper'), id: 96, closed_trades: 2},
+    {...dashboardDeployment('demo'), id: 97, closed_trades: 2, instant_fills: 2}];
+  const f = frontend({fetchImpl: () => response(dashboardData({deployments}))});
+  await f.viewDashboard();
+  const monitors = f.root.querySelectorAll('#dash-deps article.dep-monitor'); assert.equal(monitors.length, 5);
+  const line = (m) => { const el = m.querySelector('.monitor-config .dep-instant'); return el ? el.innerHTML : null; };
+  const tail = ', left out of the track record and of the count of realistic paper trades toward live.';
+  assert.deepEqual(monitors.map(line), ['1 of its 2 closed trades was an instant fill' + tail, 'All 2 of its closed trades were instant fills' + tail,
+    'Its 1 closed trade was an instant fill' + tail, null, null]);
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\n\.monitor-config \.dep-instant \{ margin: 4px 0 10px; white-space: normal; \}/);
 });
 
 test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" with its figure', async () => {

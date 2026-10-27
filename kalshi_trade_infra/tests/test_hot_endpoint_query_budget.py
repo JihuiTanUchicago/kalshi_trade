@@ -77,7 +77,10 @@ BUDGET = {"autopilot_status": 9, "me": 5, "get_run": 6, "dashboard": 14}  # dash
 # board's Realized can name what it leaves out and the strategy page list its past deployments (+1 each).
 # The strategy page's 8th counts its paper book's closed trades through the simulated venue, only when that
 # book has one, so it can say how many were instant fills, which the track record leaves out.
-BUDGET.update({"list_deployments": 9, "get_strategy": 8})
+# The board's 10th counts its paper rows' closed trades through the simulated venue (book_memo's kept
+# realistic_paper_closed, the Strategies list's read), only when a paper row has a closed trade, so the row can
+# say how many were instant fills, which its count toward live leaves out. Cold only: a poll keeps it.
+BUDGET.update({"list_deployments": 10, "get_strategy": 8})
 # The track record (cached a minute per user; a returning user pays it cold) and the Strategies page.
 # The Strategies page's last two are its strategies' later verdicts (Missed final test, Held back): their
 # experiments' holdout, paper and forward rows, and, for a passed one stored without its experiment id,
@@ -648,7 +651,8 @@ def test_the_research_scoreboard_reads_the_same_for_two_paper_strategies_as_for_
 VERSION = "COALESCE(MAX(id),0) AS top FROM app_positions"  # repo.positions_version (the paper ledger has its own)
 HEAVY = ("SUM(pnl) OVER (PARTITION BY deployment_id", "LEFT JOIN (SELECT p.deployment_id", "AS paper_all",
          "GROUP BY DATE(closed_at)", "SELECT t.strategy_id, COUNT(*) AS trips", "COUNT(DISTINCT SUBSTRING(p.ticker",
-         "TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at))", "SELECT d.strategy_id, p.order_ref, SUM(p.pnl)", "AS pnl_sq")
+         "TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at))", "SELECT d.strategy_id, p.order_ref, SUM(p.pnl)", "AS pnl_sq",
+         "AND mode='paper' AND order_ref LIKE %s GROUP BY deployment_id")
 STRATEGIES = "SELECT id, strategy_id FROM app_deployments WHERE user_id=%s"
 
 
@@ -660,7 +664,8 @@ def _panel_rows(strategy_of_4=8):
 # (cold, kept) statements with these rows and a book of positions: cold pays the version read (and, for
 # the reads grouped by strategy, the deployments' strategies once); kept drops every heavy sum.
 # The board's removed deployments are read every poll (one is removed without a position changing): +1.
-KEPT_BUDGET = {"dashboard": (16, 14), "list_deployments": (10, 7), "get_track_record": (3, 2), "autopilot_status": (13, 8)}
+# A paper row with a closed trade also counts its instant fills (book_memo.realistic_paper_closed), cold only: +1.
+KEPT_BUDGET = {"dashboard": (17, 14), "list_deployments": (11, 7), "get_track_record": (3, 2), "autopilot_status": (13, 8)}
 KEPT_PAGES = [("dashboard", {}, _board_rows), ("list_deployments", {}, _board_rows),
               ("get_track_record", {}, _book_rows),
               ("autopilot_status", {}, _panel_rows)]

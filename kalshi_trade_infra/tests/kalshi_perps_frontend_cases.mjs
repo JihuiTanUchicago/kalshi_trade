@@ -195,8 +195,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
   test(`${name}: a deployed strategy row shows its real P&L beside the backtest`, async () => {
     const f = frontend({fetchImpl: () => response({})});
     const row = s => f.strategySlip(detailStrategy({id: 46, title: 'Row fixture', ...s}), null, {});
-    assert.match(row({deployed: true, real: {pnl: 1.67, trades: 5, open: 1}}), /\+\$1\.67<\/span> since deploying ·\u00a05 trades/);
-    assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying ·\u00a01 trade ·\u00a0after Kalshi fees</);
+    assert.match(row({deployed: true, real: {pnl: 1.67, trades: 5, open: 1}}), /\+\$1\.67<\/span> since deploying\u00a0· 5 trades/);
+    assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying\u00a0· 1 trade\u00a0· after Kalshi fees</);
     assert.match(row({deployed: true, real: {pnl: 0, trades: 0, open: 2}}), /No closed trades yet/);
     assert.doesNotMatch(row({}), /real-fig/);
     assert.match(row({deployed: true, real: {pnl: -12, trades: 9, open: 0, paused: true}}), /Deployed<\/span> <span class="mk armed">Paused<\/span>/);
@@ -209,10 +209,10 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = frontend({fetchImpl: () => response({})});
     const row = real => f.strategySlip(detailStrategy({id: 48, title: 'Books fixture', deployed: true, real}), null, {});
     const both = row({pnl: 1, trades: 3, open: 1, mode: 'paper', demo: {pnl: -0.5, trades: 2, open: 0}});
-    assert.match(both, /\+\$1\.00<\/span> on paper since deploying ·\u00a03 trades/);
-    assert.match(both, /Demo: <span class="[^"]*">−\$0\.50<\/span> ·\u00a02 trades/);
+    assert.match(both, /\+\$1\.00<\/span> on paper since deploying\u00a0· 3 trades/);
+    assert.match(both, /Demo: <span class="[^"]*">−\$0\.50<\/span>\u00a0· 2 trades/);
     assert.doesNotMatch(both, /\$0\.50<\/span> since deploying/);
-    assert.match(row({pnl: 2, trades: 1, open: 0, mode: 'demo'}), /\+\$2\.00<\/span> on demo since deploying ·\u00a01 trade ·\u00a0after Kalshi fees</);
+    assert.match(row({pnl: 2, trades: 1, open: 0, mode: 'demo'}), /\+\$2\.00<\/span> on demo since deploying\u00a0· 1 trade\u00a0· after Kalshi fees</);
     assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'demo'}), /No closed demo trades yet/);
     // Paper says so too, so a paper figure is never read as real money beside a plain "Deployed" badge.
     assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'paper'}), /No closed paper trades yet/);
@@ -256,8 +256,9 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
       const html = f.trackRecordPanel(m, key, th);
       assert.ok(html.includes(`${book} net P&amp;L`), key);
       // Paper says what its fills include (customer_text.PAPER_NET); live and demo are real fills.
-      assert.ok(html.includes(key === 'paper' ? 'after Kalshi fees and the spread ($1.26 in fees)<button' : `after $1.26 in fees · since ${day}`), key);
-      assert.ok(html.includes(`</button> · since ${day}`) === (key === 'paper'), key);
+      // Walk 2026-10-27 at 390px: "· since Oct 25, 2026" began a line; the "·" now has a no-break space before it.
+      assert.ok(html.includes(key === 'paper' ? 'after Kalshi fees and the spread ($1.26 in fees)<button' : `after $1.26 in fees · since ${day}`), key);
+      assert.ok(html.includes(`</button> · since ${day}`) === (key === 'paper'), key);
     }
     assert.doesNotMatch(f.trackRecordPanel({...m, first_trade_at: null}, 'paper', th), /since/);  // no date, no window claimed
   });
@@ -536,13 +537,38 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
       dep(1, r), dep(2, {...r, running: false, eta_days: null}, 'paused'), dep(3, {...r, trades: 40, events: 30, failing: ['edge', 'demo']}),
       dep(4, {...r, trades: 40, events: 30, failing: []}), dep(5, null)], open_positions: []}) : response({})});
     await f.viewDeploy(); await flush(); await flush();
-    const lines = f.root.querySelectorAll('.road-line').map((el) => el.innerHTML.replace(/ /g, ' '));
+    const html = f.root.querySelectorAll('.road-line').map((el) => el.innerHTML);
+    const lines = html.map((h) => h.replace(/<[^>]+>/g, '').replace(/ /g, ' '));
     f.clearTimers && f.clearTimers();
     assert.equal(lines.length, 4, 'paper rows only');
+    // Walk 2026-10-27 at 390px: a line began "· 10/20 events". Each "12/30 trades" piece is one unbreakable span
+    // and each "·" ends its line: a no-break space before it, a plain space after it.
+    assert.ok(html.includes('Its paper record toward live: <span class="nobr">12/30\u00a0trades</span>\u00a0· <span class="nobr">10/20\u00a0events</span>\u00a0· enough in about 2 days at its pace'), html.join('\n'));
+    assert.ok(html.every((h) => !/ ·/.test(h)), html.join('\n'));
     assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · enough in about 2 days at its pace'), lines.join('\n'));
     assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · paused, so not growing'));
     assert.ok(lines.includes('Its paper record toward live: trades, events and hours are in; 2 checks left: edge, demo record'));
     assert.ok(lines.includes('Its paper record toward live: every check cleared. Live money only if you deploy it there'));
+  });
+
+  test(`${name}: a paper row on Deploy says how many of its closed trades were instant fills, beside its count toward live`, async () => {
+    // Walk 2026-10-27: a row read "2 closed" beside "0/30 trades" toward live with no reason given. The server's
+    // `instant_fills` (its closed trades less those through the simulated order book) says how many, just above the
+    // road line. A demo row, or a paper row with none, says nothing of the sort.
+    const r = {trades: 0, trades_needed: 30, events: 0, events_needed: 20, span_hours: 0, span_needed_hours: 48, running: true, eta_days: null};
+    const dep = (id, mode, closed, instant) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+      realized_pnl: 1.3, closed_trades: closed, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5,
+      max_positions: 1, backtest: {}, road: mode === 'paper' ? r : null, ...(instant == null ? {} : {instant_fills: instant})});
+    const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [
+      dep(1, 'paper', 2, 2), dep(2, 'paper', 3, 1), dep(3, 'paper', 1, 1), dep(4, 'paper', 2), dep(5, 'demo', 2, 2)], open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const notes = f.root.querySelectorAll('.dep-instant').map((el) => el.innerHTML);
+    const cell = f.root.querySelectorAll('td.name')[0].innerHTML;
+    f.clearTimers && f.clearTimers();
+    const tail = ', left out of the track record and of the count of realistic paper trades toward live.';
+    assert.deepEqual(notes, ['All 2 of its closed trades were instant fills' + tail, '1 of its 3 closed trades was an instant fill' + tail,
+      'Its 1 closed trade was an instant fill' + tail]);
+    assert.ok(cell.indexOf('dep-instant') < cell.indexOf('road-line'), cell);  // right above "0/30 trades"
   });
 
   test(`${name}: a demo row on Deploy says it is the sandbox, what it copies, and why its fills differ from paper's`, async () => {

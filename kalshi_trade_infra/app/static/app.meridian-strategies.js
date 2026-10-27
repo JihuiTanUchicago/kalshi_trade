@@ -415,11 +415,17 @@ window.TauPage('strategies', (T) => {
       const p = ds.find((d) => d.status === 'paused');
       return p ? `<p class="real-paused"><b>Paused</b>${(p.status_why || p.status_reason) ? ': ' + fundsLinked(esc((p.status_why || p.status_reason).replace(/\.$/, ''))) + '.' : ''} <a href="/deploy">Resume or remove it on Deploy</a></p>` : '';
     };
+    // Paper counts its realistic fills only (each deployment's closed trades less its `instant_fills`), as the
+    // server's backtest check and the count toward live do: "2 trades would have made" counted the instant fill
+    // the note above says the track record leaves out. A book of instant fills alone has no line.
     const pace = (ds, n) => {
       if (!n || !oos || !(+oos.trades > 0) || !(stake > 0)) return '';
       const per = (+oos.pnl || 0) / +oos.trades;
-      const exp = ds.reduce((a, d) => a + (+d.closed_trades || 0) * per * ((+d.stake || stake) / stake), 0);
-      return `<p class="sub-fig real-pace">At the backtest's unseen-data pace, ${n} trade${n === 1 ? '' : 's'} would have made ${usd(exp, true)}${n < 10 ? ' ·\u00a0too few trades to judge yet' : ''}</p>`;
+      const real = (d) => Math.max(0, (+d.closed_trades || 0) - (d.mode === 'paper' ? +d.instant_fills || 0 : 0));
+      const m = ds.reduce((a, d) => a + real(d), 0);
+      if (!m) return '';
+      const exp = ds.reduce((a, d) => a + real(d) * per * ((+d.stake || stake) / stake), 0);
+      return `<p class="sub-fig real-pace">At the backtest's unseen-data pace, ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? ' ·\u00a0too few trades to judge yet' : ''}</p>`;
     };
     // A server that compares each book with the backtest sends backtest_checks; it replaces the pace line.
     const checks = Array.isArray(s.backtest_checks) ? s.backtest_checks : null;
