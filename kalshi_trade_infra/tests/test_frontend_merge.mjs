@@ -22,6 +22,7 @@ import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
+import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -5033,4 +5034,5 @@ chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k)
 a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))}), billingPage, cardedBilling,
   source, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: funds});
 creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
+writeWaitCases({name: 'Tau', frontend, billingPage, cardedBilling, postRequests, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});

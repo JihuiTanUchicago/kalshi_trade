@@ -374,7 +374,10 @@ test('a rejected focus change restores the previous choice', async () => {
 // that are easy to drop on one side only.
 test('this bundle keeps the keyboard and screen-reader contracts of the main flows', () => {
   // A control that goes disabled is blurred by the browser: busy() hands focus back to it.
-  assert.match(source, /async function busy\(btn, fn\) \{\n\s*const had = document\.activeElement === btn;/);
+  assert.match(source, /async function busy\(btn, fn, waited = waitNote\(btn\)\) \{\n\s*const had = document\.activeElement === btn;/);
+  // A write that hangs says so beside its control after 20s, and the word goes when the write answers.
+  assert.match(source, /const WAIT_NOTE_MS = 20000;\n\s*const WAIT_NOTE = 'Still waiting for Tau to confirm…';/);
+  assert.match(source, /try \{ return await fn\(\); \} finally \{\n\s*waited\(\);/);
   assert.match(source, /if \(had && btn\.isConnected && \(!a \|\| a === document\.body\) && btn\.focus\) btn\.focus\(\{ preventScroll: true \}\);/);
   // Turning autopilot on or off is said out loud (the switch, its copy and the card change silently).
   assert.match(source, /announce\('Autopilot is on\. It researches and trades on paper by itself; every move shows up in the autopilot panel\.'\);/);

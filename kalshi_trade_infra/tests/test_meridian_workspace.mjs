@@ -23,6 +23,7 @@ import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
+import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -5894,4 +5895,5 @@ chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
 a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling, source, strategyFrontend, detailStrategy,
   dashboard: dashboardData, fundsData: funds});
 creditsCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
+writeWaitCases({name: 'Meridian', frontend, billingPage, cardedBilling, postRequests, storageFor: m => m});
 declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});

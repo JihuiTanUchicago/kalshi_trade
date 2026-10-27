@@ -1166,14 +1166,36 @@
       if (document.querySelector('[data-armed="1"], [data-armed="wait"]')) e.preventDefault();
     }, true);
   }
+  // A write that hangs (Tau hasn't answered; the edge gives up with a 504 after a minute) kept its spinner
+  // with no word. After WAIT_NOTE_MS the pressed control's area says Tau hasn't confirmed yet. Display
+  // only: it cancels, aborts and retries nothing, and goes the moment the write answers. waitNote(el)
+  // starts the clock and returns what takes the note away; its place(twin) moves it to a repainted copy.
+  const WAIT_NOTE_MS = 20000;
+  const WAIT_NOTE = 'Still waiting for Tau to confirm…';
+  function waitNote(el) {
+    const notes = [];
+    let anchor = el, shown = false;
+    const place = (at) => {
+      const host = at && at.isConnected && at.parentElement;
+      if (!host || notes.some((n) => n.isConnected && n.parentElement === host)) return;
+      const n = document.createElement('span');
+      n.className = 'wait-note'; n.textContent = WAIT_NOTE;
+      host.appendChild(n); notes.push(n);
+    };
+    const tid = setTimeout(() => { shown = true; place(anchor); announce(WAIT_NOTE); }, WAIT_NOTE_MS);
+    const stop = () => { clearTimeout(tid); shown = false; notes.splice(0).forEach((n) => n.remove()); };
+    stop.place = (at) => { anchor = at; if (shown) place(at); };
+    return stop;
+  }
   // A control that goes disabled is blurred by the browser, which dropped keyboard focus to the top of
   // the page on every busy action (Turn on autopilot, Buy credits, Start session, Verify and connect):
   // focus goes back to the button once it is enabled again, unless the action moved focus itself or
   // repainted the button away.
-  async function busy(btn, fn) {
+  async function busy(btn, fn, waited = waitNote(btn)) {
     const had = document.activeElement === btn;
     btn.classList.add('busy'); btn.disabled = true;
     try { return await fn(); } finally {
+      waited();
       btn.classList.remove('busy'); btn.disabled = false;
       const a = document.activeElement;
       if (had && btn.isConnected && (!a || a === document.body) && btn.focus) btn.focus({ preventScroll: true });
@@ -1623,12 +1645,13 @@
   // on its way draws that deployment's buttons locked, the pressed one still busy: they read as idle
   // before, and a press on them did nothing.
   const depSending = new Map();  // deployment id -> the action on its way
+  const depWaits = new Map();  // deployment id -> its action's waitNote, so a repainted button keeps the note
   function bindDeploymentActions(scope, after) {
     scope.querySelectorAll('[data-dep]').forEach((btn) => {
       const going = depSending.get(btn.dataset.dep);
       if (going) {
         if (!btn.disabled) { btn.disabled = true; btn.dataset.sending = '1'; }
-        if (going === btn.dataset.act) btn.classList.add('busy');
+        if (going === btn.dataset.act) { btn.classList.add('busy'); if (depWaits.has(btn.dataset.dep)) depWaits.get(btn.dataset.dep).place(btn); }
       }
       btn.onclick = () => {
         const id = btn.dataset.dep, act = btn.dataset.act;
@@ -1636,14 +1659,16 @@
         const run = async () => {
           if (depSending.has(id)) return;
           depSending.set(id, act);
+          const waited = waitNote(btn);
+          depWaits.set(id, waited);
           let fresh = null;
           try {
             await busy(btn, async () => {
-              try { await api(`/api/deployments/${id}/${act}`, {}); } catch (e) { alert0(e.message); return; }
+              try { await api(`/api/deployments/${id}/${act}`, {}).finally(waited); } catch (e) { alert0(e.message); return; }
               fresh = await refreshed(after());
-            });
+            }, waited);
           } finally {
-            depSending.delete(id);
+            depSending.delete(id); depWaits.delete(id);
             root.querySelectorAll(`[data-dep="${id}"]`).forEach((b) => {
               b.classList.remove('busy');
               if (b.dataset.sending) { delete b.dataset.sending; b.disabled = false; }
@@ -3509,7 +3534,8 @@
       cf.dataset.sending = '1';
       apErr(box, '');
       try {
-        await busy(cf.querySelector('button'), async () => { try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; keepDraft(''); await apLoadChat(box, false, undefined, 'end'); } catch (err) { apErr(box, sendUnsure(err) ? CHAT_UNSURE : err.message, err.status === 402); } });
+        const send = cf.querySelector('button'), waited = waitNote(send);
+        await busy(send, async () => { try { await api('/api/chat', { content }).finally(waited); ta.value = ''; ta.style.height = ''; keepDraft(''); await apLoadChat(box, false, undefined, 'end'); } catch (err) { apErr(box, sendUnsure(err) ? CHAT_UNSURE : err.message, err.status === 402); } }, waited);
       } finally { delete cf.dataset.sending; }
     };
     apLoadChat(box, true);
@@ -3882,7 +3908,7 @@
     pct, PERPS_SCENARIO, phone, poll, realTrades, refreshed, registry, render, researchBadge, researchOnly,
     roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S, serial, sessionNo,
     sessionTitle, settleAt, shell, smooth, strategySlip, strategyTable, stripeFail, syncMeBilling, tone,
-    topupCharge, tradePrice, trDay, tzName, usd, waitSpan, WEEKDAY_DAY, when, whyFailedHtml,
+    topupCharge, tradePrice, trDay, tzName, usd, waitNote, waitSpan, WEEKDAY_DAY, when, whyFailedHtml,
     wireMarketPicker
   }, { get: (all, k) => { if (!(k in all)) throw new Error('A page file asks for ' + String(k) + ', which this build does not share.'); return all[k]; } }));
   // A page file calls this as it runs: make(shared()) returns the file's views. Once per name.

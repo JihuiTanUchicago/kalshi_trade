@@ -6,7 +6,7 @@ window.TauPage('billing', (T) => {
   const {
     alert0, api, armed, BEHIND, boardTitle, busy, cardFormFail, CLOCK, CLOCK_ZONE, dateFmt, esc, fig, flash,
     halfUp, ICON, KIND_LABEL, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
-    root, runwayLabel, S, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd,
+    root, runwayLabel, S, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote,
     WEEKDAY_DAY
   } = T;
 
@@ -114,15 +114,16 @@ window.TauPage('billing', (T) => {
       amt.oninput = upd; upd();
       root.querySelector('#topup-btn').onclick = (e) => {
         if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', 'Add a card first.', 'bad'); return; }
+        const waited = waitNote(e.currentTarget);
         busy(e.currentTarget, async () => {
           const credits = +amt.value;
           try {
-            const r = await api('/api/billing/topup', { amount: credits });
+            const r = await api('/api/billing/topup', { amount: credits }).finally(waited);
             if (gen !== S.gen) return;
             const fresh = await refreshed(load());  // refresh balance + ledger, then confirm into the fresh panel
             if (gen === S.gen) flash('#topup-flash', `Added ${usd(credits)} in credits. You paid ${usd(r.charged != null ? r.charged : topupCharge(credits, d.topup_fee_pct))} — ${usd(credits)} plus the ${d.topup_fee_pct}% fee. New balance is ${usd(r.balance)}.` + (fresh ? '' : BEHIND), 'good');
           } catch (err) { if (gen === S.gen) flash('#topup-flash', err.message, 'bad'); }
-        });
+        }, waited);
       };
       const arBox = root.querySelector('#autoreload'), arAmt = root.querySelector('#reload-amt'), arThr = root.querySelector('#reload-thr');
       const arEdit = root.querySelector('#autorel-edit'), arCfg = root.querySelector('#autorel-config'), arSum = root.querySelector('#autorel-sum');
@@ -149,8 +150,9 @@ window.TauPage('billing', (T) => {
         const threshold = Math.max(d.min_reload_threshold, +arThr.value || d.min_reload_threshold);
         arPaint(on, amount, threshold);
         [arBox, arAmt, arThr].forEach((x) => { x.disabled = true; });
+        const waited = waitNote(arBox.closest('.switch') || arBox);
         try {
-          const r = await api('/api/billing/auto-reload', { on, amount, threshold });
+          const r = await api('/api/billing/auto-reload', { on, amount, threshold }).finally(waited);
           arSaved = { on, amount, threshold };
           // The autopilot card and the research form read the saved auto-reload from S.me (a Billing read
           // refreshes it): a save refreshes it too, or they said the old amount until the next read.
