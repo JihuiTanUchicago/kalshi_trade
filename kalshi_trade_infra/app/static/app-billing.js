@@ -15,7 +15,8 @@ window.TauPage('billing', (T) => {
     shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token for the model you pick. Paper and live trading themselves are free. The <a href="/research">research form</a> shows what a session usually costs before you start.') +
       '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl><p class="hint bill-split" id="bsplit"></p><p class="stale-note" id="bill-stale" role="status"></p>', loading(360));
     let stripe = null, card = null;
-    // Below the research floor no new research starts, so the balance reads as a problem, not a gain.
+    // Below the research floor no new research starts, so the balance reads as a problem. Otherwise it is
+    // neutral: credits are not profit, and wore the green a P&L gain wears.
     const isLow = (d) => d.configured && d.min_run_balance != null && d.balance < d.min_run_balance;
     // Out of credits (under the floor a research session needs): say what stopped and the next step.
     const lowNote = (d) => {
@@ -29,7 +30,7 @@ window.TauPage('billing', (T) => {
       paint(root.querySelector('#bfigs'),
         // Until a card was ever charged for credits (the server's card_charged), the balance is free credits: a
         // new user read $19.16 with no word that their card hadn't been charged.
-        fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : (d.balance > 0 ? 1 : 0), small: d.card_charged === false && d.balance > 0 ? 'free credits so far: your card hasn’t been charged' : undefined }) +
+        fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0, small: d.card_charged === false && d.balance > 0 ? 'free credits so far: your card hasn’t been charged' : undefined }) +
         fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(' · ') }) +
         // How long it lasts means until research pauses (under min_run_balance; with payments off nothing
         // pauses, so until $0), and with auto-reload on, when the card is next charged and for how much:
@@ -42,7 +43,7 @@ window.TauPage('billing', (T) => {
           ? fig(d.configured ? 'Research pauses in' : 'Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}${d.configured && d.min_run_balance != null ? `, when credits fall under ${usd(d.min_run_balance)}` : ''}` })
           : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? fig('Credits last', 'Too soon to tell', { small: 'your first day of research sets the pace' })
           : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' })));
-      const split = spendSplit(d.spent_7d_by);
+      const split = spendSplit(d.spent_7d_by, d.spent_7d_under_cent);
       paint(root.querySelector('#bsplit'), split ? `Last 7 days: ${split}.` : '');
       const note = root.querySelector('#blow'); if (note) paint(note, lowNote(d));
     };
@@ -260,10 +261,17 @@ window.TauPage('billing', (T) => {
     if (!f || !f.text) return '';
     return `<div class="notice bad autorel-fail" id="autorel-fail" role="status"${d.auto_reload ? '' : ' hidden'}>${ICON.warn}<span><b>Auto-reload failed</b> <time datetime="${esc(f.at)}">${settleAt(f.at)}</time>. ${esc(f.text)}<button type="button" class="btn sm" id="autorel-fix">Update card</button></span></div>`;
   }
-  // The week's usage by what spent it (/api/billing spent_7d_by), biggest first; '' when nothing did.
+  // The week's usage by what spent it (/api/billing spent_7d_by), biggest first; '' when nothing did. The server
+  // sends the parts in cents that add up to "Spent, last 7 days" (rounded each on its own they read $38.85 +
+  // $0.18 + $0.18 under $39.22), and names a part that spent something but rounds to $0.00 in
+  // spent_7d_under_cent: it reads "under $0.01", last, instead of being left out.
   const SPEND_SOURCE = { research: 'your research sessions', autopilot_research: 'autopilot research', autopilot_review: 'autopilot check-ins', chat: 'chat', other: 'other agent calls' };
-  const spendSplit = (by) => Object.entries(by || {}).filter(([k, v]) => SPEND_SOURCE[k] && +v >= 0.005)
-    .sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SPEND_SOURCE[k]} ${usd(v)}`).join(' \u00b7\u00a0');
+  const spendSplit = (by, under) => {
+    const tiny = (Array.isArray(under) ? under : []).filter((k) => SPEND_SOURCE[k] && !(+(by || {})[k] >= 0.005));
+    return [...Object.entries(by || {}).filter(([k, v]) => SPEND_SOURCE[k] && +v >= 0.005)
+      .sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SPEND_SOURCE[k]} ${usd(v)}`),
+    ...tiny.map((k) => `${SPEND_SOURCE[k]} under $0.01`)].join(' \u00b7\u00a0');
+  };
   // Billing's statement (/api/billing ledger): the last days, newest first, under a heading per day that
   // says what the day used and added. Each usage line is one session's model calls that day.
   // Usage in cents that add up (largest remainder): each day's "used" is the sum of the lines under it, and the

@@ -2,15 +2,20 @@
 
 Billing's week split read "autopilot research $59.07 · your research sessions $40.94" while the
 autopilot card rounded the research total once and said $100.00: a cent apart. The card's research is
-now the sum of Billing's two parts, each rounded half up first, and its check-ins are Billing's part.
-Each part keeps its own half-up rounding, so one charge still reads the same on every surface
+now the sum of Billing's two parts as Billing rounds them, and its check-ins are Billing's part.
+
+Billing's parts add up to the week it shows (credit_split, largest remainder): rounded half up each on
+its own they read $38.85 + $0.18 + $0.18 under $39.22, and a part under half a cent was dropped. It is
+now named, and the page says "under $0.01". A lone charge still reads the same on every surface
 (test_spend_visibility). Synthetic inputs; nothing stored or charged changes.
 """
 from decimal import ROUND_HALF_UP, Decimal
 from types import SimpleNamespace
 
+from app import server
+from app.web.routes import billing as billing_routes
 from app.web.routes import chat as chat_routes
-from app.web.views import credit_usd
+from app.web.views import credit_split, credit_usd
 
 # A heavy week as the ledger holds it (the billing walk's numbers, to six places).
 WEEK = {'research': 40.936666, 'autopilot_research': 59.066899, 'autopilot_review': 0.0882, 'chat': 0.074, 'other': 0.0}
@@ -22,7 +27,7 @@ def _c(v):
 
 def test_the_autopilot_cards_research_is_billings_two_research_parts():
     credits = {'research': WEEK['research'] + WEEK['autopilot_research'], 'by_source': dict(WEEK)}
-    billing_split = {k: credit_usd(v) for k, v in WEEK.items()}  # billing_state's spent_7d_by
+    billing_split = credit_split(WEEK, sum(WEEK.values()))  # billing_state's spent_7d_by
     assert (billing_split['research'], billing_split['autopilot_research']) == (40.94, 59.07)
     assert credit_usd(credits['research']) == 100.0  # rounded once: the card's old figure
     assert chat_routes._research_cents(credits) == 100.01
@@ -56,3 +61,57 @@ def test_the_week_says_whether_a_card_was_ever_charged_only_when_the_credit_read
         credits = {'research': 0.84, 'by_source': dict(WEEK), 'card_charged': charged}
         assert chat_routes._autopilot_week(object(), 7, {}, reads, credits, None)['card_charged'] is charged
     assert chat_routes._autopilot_week(object(), 7, {}, reads, None, None)['card_charged'] is None
+
+
+# A week Billing showed as $38.85 + $0.18 + $0.18 under $39.22, each part rounded half up on its own, with
+# $0.0004 of other agent calls dropped (under half a cent).
+SHORT = {'research': 0.0, 'autopilot_research': 38.854, 'autopilot_review': 0.1849, 'chat': 0.1849, 'other': 0.0004}
+
+
+def _billing_week(monkeypatch, by, spent):
+    """billing_state over a week that spent `by`, payments off, every read synthetic."""
+    monkeypatch.setattr(billing_routes.billing, 'configured', lambda: False)
+    monkeypatch.setattr(billing_routes.repo, 'get_stripe_customer', lambda *a: None)
+    monkeypatch.setattr(billing_routes.repo, 'credit_totals', lambda *a: {
+        'bonus': {'all': 60.0, 'n': 1, 'since': 60.0, 'n_since': 1},
+        'usage': {'all': -spent, 'n': 9, 'since': -spent, 'n_since': 9}})
+    monkeypatch.setattr(billing_routes.repo, 'credit_spent_total', lambda *a: spent)
+    monkeypatch.setattr(billing_routes.repo, 'credit_statement', lambda *a: [])
+    monkeypatch.setattr(billing_routes.repo, 'usage_by_source', lambda *a: dict(by))
+    ctx = server.Ctx(SimpleNamespace(cursor=lambda: object()), {'id': 7, 'email': 'trader@example.invalid', 'autopilot': 1},
+                     (), {}, {}, SimpleNamespace())
+    return server.billing_state(ctx)
+
+
+def test_billings_week_split_adds_up_to_the_week_it_shows_and_names_a_part_under_a_cent(monkeypatch):
+    state = _billing_week(monkeypatch, SHORT, sum(SHORT.values()))
+    assert state['spent_7d'] == 39.22
+    by = state['spent_7d_by']
+    assert sum(_c(v) for v in by.values()) == _c(state['spent_7d'])  # the parts shown are the week shown
+    assert by == {'research': 0.0, 'autopilot_research': 38.85, 'autopilot_review': 0.19, 'chat': 0.18, 'other': 0.0}
+    # Every part within a cent of its exact amount; one that spent nothing stays $0 and isn't named.
+    assert all(abs(_c(by[k]) - Decimal(str(v))) < Decimal('0.01') for k, v in SHORT.items())
+    assert state['spent_7d_under_cent'] == ['other']
+    # The heavy week rounds as before: the card's pinned $40.94 and $59.07.
+    heavy = _billing_week(monkeypatch, WEEK, sum(WEEK.values()))
+    assert (heavy['spent_7d_by']['research'], heavy['spent_7d_by']['autopilot_research']) == (40.94, 59.07)
+    assert heavy['spent_7d_under_cent'] == []
+
+
+def test_the_cards_research_and_check_ins_are_billings_parts_when_rounding_each_alone_would_not_add_up(monkeypatch):
+    # $10.004 + $10.004 of research and $0.004 of check-ins is $20.01 for the week: half up each, Billing read
+    # $10.00 + $10.00 under it and the card said $20.00 of research.
+    week = {'research': 10.004, 'autopilot_research': 10.004, 'autopilot_review': 0.004, 'chat': 0.0, 'other': 0.0}
+    state = _billing_week(monkeypatch, week, sum(week.values()))
+    by = state['spent_7d_by']
+    assert state['spent_7d'] == 20.01 and sum(_c(v) for v in by.values()) == Decimal('20.01')
+    assert state['spent_7d_under_cent'] == ['autopilot_review']
+    credits = {'research': week['research'] + week['autopilot_research'], 'by_source': dict(week)}
+    assert chat_routes._research_cents(credits) == 20.01
+    assert _c(chat_routes._research_cents(credits)) == _c(by['research']) + _c(by['autopilot_research'])
+    monkeypatch.setattr(chat_routes.billing, 'configured', lambda: True)
+    monkeypatch.setattr(chat_routes.repo, 'autopilot_paper_week', lambda *a: {'started': 0, 'pnl': 0.0, 'trades': 0})
+    reads = SimpleNamespace(customer=lambda: None, balance=lambda: 39.99)
+    card = chat_routes._autopilot_week(object(), 7, {'cost_7d': chat_routes._research_cents(credits)}, reads, credits, None)
+    assert card['checkin_credits'] == by['autopilot_review'] == 0.0
+    assert _c(card['research_credits']) + _c(card['checkin_credits']) == _c(state['spent_7d'])

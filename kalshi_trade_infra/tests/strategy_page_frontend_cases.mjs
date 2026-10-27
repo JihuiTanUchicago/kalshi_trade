@@ -311,6 +311,25 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(lines.join(' '), /\$5\.52|\$4\.36/);
   });
 
+  test(`${name}: past deployments say which money each was and that fees are in, as the lines above do`, async () => {
+    // "Demo Sep 28–Oct 1, −$1.50 over 1 closed trade" said neither that it was Tau's demo book (not real money)
+    // nor that Kalshi's fees were taken off, where the "Since deploying" line above it now says both.
+    const past_deployments = [
+      {id: 9, mode: 'live', created_at: '2026-10-02T08:00:00+00:00', removed_at: '2026-10-20T08:00:00+00:00', realized_pnl: 3.25, closed_trades: 4},
+      {id: 8, mode: 'demo', created_at: '2026-09-28T08:00:00+00:00', removed_at: '2026-10-01T08:00:00+00:00', realized_pnl: -1.5, closed_trades: 1},
+      {id: 7, mode: 'paper', created_at: '2026-09-20T08:00:00+00:00', removed_at: '2026-09-21T08:00:00+00:00', realized_pnl: 5.72, closed_trades: 14}];
+    const f = await open({status: 'passed', deployments: [], past_deployments});
+    const text = f.root.querySelector('.past-deps').textContent.replace(/\s+/g, ' ');
+    const parts = text.replace(/^Past deployments: /, '').split(' · ');
+    assert.equal(parts.length, 3);
+    assert.match(parts[0], /^Live Oct 2–Oct 20, \+\$3\.25 over 4 closed trades, real money, after Kalshi fees$/);
+    assert.match(parts[1], /^Demo Sep 28–Oct 1, −\$1\.50 over 1 closed trade, after Kalshi fees, in Tau’s demo book: not real money$/);
+    assert.match(parts[2], /^Paper Sep 20–Sep 21, \+\$5\.72 over 14 closed trades, after Kalshi fees and the spread$/);
+    assert.doesNotMatch(parts[2], /real money|demo book/);
+    // Each book apart: never one figure across them.
+    assert.doesNotMatch(text, /\$7\.47|\$1\.75|\$4\.22/);
+  });
+
   test(`${name}: Road to live that didn't load says why and offers Try again, which fills it`, async () => {
     const road = {ready: false, deployment_candidate: true, live_autopilot: {ok: false},
       paper: {trades: 12, trades_needed: 30, net_pnl: 3.4, events: 12, events_needed: 20, span_hours: 50, span_needed_hours: 48,

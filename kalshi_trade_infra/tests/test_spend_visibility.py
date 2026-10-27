@@ -355,7 +355,9 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
                   run_kind="research", brief=1, prompt="Idea", market="btc15m", direction="momentum")]
     _billing(monkeypatch, rows, _totals(bonus=20.0, usage=-usd), configured=True)
     monkeypatch.setattr(server.repo, "credit_spent_total", lambda *a: usd)
-    by_source = {"research": 0.0, "autopilot_research": usd, "autopilot_review": usd, "chat": 0.0, "other": 0.0}
+    # The one charge is the week's only spend. The week's parts add up to the week (credit_split), so the
+    # check-in figure is read from a week whose one charge was a check-in, below, not from this one's.
+    by_source = {"research": 0.0, "autopilot_research": usd, "autopilot_review": 0.0, "chat": 0.0, "other": 0.0}
     monkeypatch.setattr(server.repo, "usage_by_source", lambda *a: dict(by_source))
     run = {"id": 42, "kind": "research", "status": "succeeded", "run_forever": 0, "direction": "momentum", "market": "btc15m"}
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {42: usd})
@@ -386,6 +388,8 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
     state = server.billing_state(_ctx())
     research = server._research_activity(None, 7)
     week = server._autopilot_week(None, 7, research, reads)
+    checkin_week = server._autopilot_week(None, 7, research, reads, {"by_source": dict(by_source, autopilot_research=0.0,
+                                                                                    autopilot_review=usd)})
     ctx = _ctx()
     ctx.params = ("42",)
     estimate = server.research_estimate(_ctx())
@@ -397,7 +401,7 @@ def test_one_charge_reads_the_same_on_every_surface(monkeypatch, charge, cents):
         "Billing: autopilot research this week": state["spent_7d_by"]["autopilot_research"],
         "Autopilot panel: research spent": research["cost_7d"],
         "Autopilot scorecard: credits spent on research": week["research_credits"],
-        "Autopilot scorecard: check-ins": week["checkin_credits"],
+        "Autopilot scorecard: check-ins": checkin_week["checkin_credits"],
         "Dashboard: spent since your last visit": server._since_visit(None, 7, at, False, {})["spent"]["since"],
         "Research list: session cost": server.list_runs(_ctx())["runs"][0]["spent_usd"],
         "Run page: session cost": server.get_run(ctx)["run"]["spent_usd"],
