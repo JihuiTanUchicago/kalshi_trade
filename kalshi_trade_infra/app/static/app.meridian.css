@@ -2785,6 +2785,11 @@ body.landing-body .apf { display: none; }
   .lbrand { padding-block: 7px; margin-block: -7px; }
   .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
   .demo-bar .replay { min-height: 40px; }
+  .dispatch-go .ex-run { min-height: 40px; }
+  /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
+     the autopilot card's figures, a held contract's ticker): 40px tall, the line box left alone. */
+  .since-row dd a, .apcard-figs dd a, .tick a { padding-block: 12px; margin-block: -12px; }
+  a.apcard-alt { padding-block: 8px; margin-block: -8px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */
