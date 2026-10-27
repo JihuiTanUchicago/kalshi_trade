@@ -1623,26 +1623,37 @@ _RATION_MIN_DROPS, _RATION_MIN_MARKETS = 6, 3
 # The same holds for a mechanism that keeps dying on THIS market. With research Bitcoin-only (#465)
 # there are only two crypto markets to learn from, so the sibling rule rarely fires and btc15m kept
 # re-testing options IV variants it had already killed (prod 2026-10-26).
+# Unlike a sibling-dead one, it gets no free try per run: runs propose one idea per mechanism, so
+# "one try per chunk" set nothing aside and btc15m still paid for a Polymarket-basis idea every run
+# (prod 2026-10-27: 9 of 56 drops in 3h, 0 set aside). The proposer is told and proposes another.
 _RATION_MIN_OWN = 4
 _NEVER_RATIONED = ("generic learned recalibration (logistic / multi-factor)",)
 
 
-def _rationed_mechanisms(dropped: Optional[List[Dict]], run: Dict) -> Dict[str, int]:
-    """{mechanism: drops} for the mechanisms to ration on this run (dead on the siblings, or dropped
-    _RATION_MIN_OWN times on this market), leaving out the catch-all bucket and whatever the run's
-    own prompt asks to study. Ideas set aside untested don't count as drops."""
+def _own_dead_mechanisms(dropped: Optional[List[Dict]], run: Dict) -> Dict[str, int]:
+    """{mechanism: drops} for mechanisms dropped _RATION_MIN_OWN times on this market (its recent
+    runs and this one), minus the catch-all bucket and what the run's prompt asks to study. Ideas
+    set aside untested don't count as drops."""
     from app.research import rsi
     asked = rsi.mechanism(run.get("prompt") or "")
-    out = {m: len(v) for m, v in _sibling_dead(dropped or [], _RATION_MIN_DROPS, _RATION_MIN_MARKETS)}
     own: Dict[str, int] = defaultdict(int)
     for d in dropped or []:
         mech = not d.get("market") and not (d.get("why") or "").startswith("not developed") \
             and rsi.mechanism(d.get("title"))
         if mech:
             own[mech] += 1
-    for m, c in own.items():
-        if c >= _RATION_MIN_OWN:
-            out[m] = out.get(m, 0) + c
+    return {m: c for m, c in own.items() if c >= _RATION_MIN_OWN and m not in _NEVER_RATIONED and m != asked}
+
+
+def _rationed_mechanisms(dropped: Optional[List[Dict]], run: Dict) -> Dict[str, int]:
+    """{mechanism: drops} for the mechanisms to ration on this run: dead on the siblings (one try
+    per chunk) or on this market itself (_own_dead_mechanisms, no try), leaving out the catch-all
+    bucket and whatever the run's own prompt asks to study."""
+    from app.research import rsi
+    asked = rsi.mechanism(run.get("prompt") or "")
+    out = {m: len(v) for m, v in _sibling_dead(dropped or [], _RATION_MIN_DROPS, _RATION_MIN_MARKETS)}
+    for m, c in _own_dead_mechanisms(dropped, run).items():
+        out[m] = out.get(m, 0) + c
     return {m: c for m, c in out.items() if m not in _NEVER_RATIONED and m != asked}
 
 
@@ -2197,15 +2208,18 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             if not batch:
                 break  # agent is out of fresh ideas this chunk
         rationed = _rationed_mechanisms(dropped, run)
+        own_dead = _own_dead_mechanisms(dropped, run)
         developed = attempts
         for i, h in enumerate(batch):
             checkpoint()
             _save(batch[i:])  # this thesis and the rest, until each lands
             mech = _mechanism_of(h) if rationed else None
             if mech in rationed:
-                if mech in spent:
-                    why = ("not developed: %s already died %d times on this market or its siblings and this "
-                           "run spent its one try on it" % (mech, rationed[mech]))
+                if mech in spent or mech in own_dead:
+                    why = (("not developed: %s already died %d times on this market recently; propose a "
+                            "different mechanism" % (mech, own_dead[mech])) if mech in own_dead else
+                           ("not developed: %s already died %d times on this market or its siblings and this "
+                            "run spent its one try on it" % (mech, rationed[mech])))
                     log("step", "Set aside untested: %s (%s)" % (h.get("title"), why),
                         {"phase": "proposing", "rationed": mech})
                     dropped.insert(0, {"title": h.get("title") or "", "why": why})
