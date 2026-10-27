@@ -7,7 +7,7 @@ window.TauPage('research', (T) => {
     alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
-    runWaitLine, S, sessionNo, sessionTitle, shell, strategySlip, strategyTable, tzName, usd, waitSpan, when,
+    runWaitLine, S, SEP, sessionNo, sessionTitle, shell, strategySlip, strategyTable, tzName, usd, waitSpan, when,
     whyFailedHtml, wireMarketPicker
   } = T;
 
@@ -24,7 +24,7 @@ window.TauPage('research', (T) => {
     const body = pol.evolved
       ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
          ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
-         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' ·\u00a0adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? `${SEP}adopted ` + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
       : `<p>New search policies are scored against the current policy over shuffled history. Only an improvement is adopted.</p>`;
     // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
     const expanded = !!host.querySelector('details[open]');
@@ -64,35 +64,35 @@ window.TauPage('research', (T) => {
     const delta = tr ? `<span class="rsi-score">${loopRate(tr.before.gate_reach_rate)} <span class="rsi-arrow">→</span> ${loopRate(tr.after.gate_reach_rate)}</span>` : '';
     const tag = tr ? (tr.better ? '<span class="rsi-tag">Improving</span>' : '<span class="rsi-tag quiet">Not improving yet</span>') : '<span class="rsi-tag quiet">Learning</span>';
     const perIdea = t.explored ? usd(t.cost_usd / t.explored) : '—';
-    const figs = `<dl class="figures measure loop-figs">${fig('Ideas tried', t.explored, { small: `${t.runs} session${t.runs === 1 ? '' : 's'} ·\u00a014 days` })}${fig('Reached the gate', t.gated, { small: `${loopRate(t.gate_reach_rate)} of ideas` })}${fig('Passed', t.passed, { small: t.holdout_passed ? `${t.holdout_passed} held out` : 'every gate' })}${fig('Spend', usd(t.cost_usd), { small: `${perIdea} per idea` })}${fig('Killed by our pipeline', loopRate(t.pipeline_death_share), { small: 'of dropped ideas' })}</dl>`;
+    const figs = `<dl class="figures measure loop-figs">${fig('Ideas tried', t.explored, { small: `${t.runs} session${t.runs === 1 ? '' : 's'}${SEP}14 days` })}${fig('Reached the gate', t.gated, { small: `${loopRate(t.gate_reach_rate)} of ideas` })}${fig('Passed', t.passed, { small: t.holdout_passed ? `${t.holdout_passed} held out` : 'every gate' })}${fig('Spend', usd(t.cost_usd), { small: `${perIdea} per idea` })}${fig('Killed by our pipeline', loopRate(t.pipeline_death_share), { small: 'of dropped ideas' })}</dl>`;
     const trendP = tr
       ? `<p class="loop-trend">${tr.better ? 'Getting better.' : 'Not better yet.'} The newer ${tr.after.runs} session${tr.after.runs === 1 ? '' : 's'} took ${loopRate(tr.after.gate_reach_rate)} of ${tr.after.explored} ideas to the statistical gate, against ${loopRate(tr.before.gate_reach_rate)} of ${tr.before.explored} before.</p>`
       : `<p class="loop-trend">Each session's ideas are counted from first draft to final verdict. A before/after trend appears once there are 16 ideas to compare.</p>`;
     const maxIdeas = Math.max(1, ...(b.days || []).map((d) => d.explored));
     const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${d.explored} ideas, ${d.gated} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
     const pt = b.paper && b.paper.total, byPb = (b.paper && b.paper.by_playbook) || {};
-    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper at the market’s real prices: ${pt.strategies} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${pt.trading} trading, ${pt.round_trips} closed trade${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? ` ·\u00a0${pt.live_ready} ready for live` : ''}.</p>` : '';
+    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper at the market’s real prices: ${pt.strategies} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${pt.trading} trading, ${pt.round_trips} closed trade${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? `${SEP}${pt.live_ready} ready for live` : ''}.</p>` : '';
     const fams = {};
     (b.playbooks || []).forEach((p) => { (fams[p.family] = fams[p.family] || {})[p.status] = p; });
     const pbRows = Object.keys(fams).sort().map((f) => {
       const a = fams[f].active, c = fams[f].candidate;
-      const paper = (p) => { const q = byPb[p.id] || byPb[String(p.id)]; return q && q.round_trips ? ` ·\u00a0on paper ${q.round_trips} closed trade${q.round_trips === 1 ? '' : 's'}, ${usd(q.net_pnl, true)}` : ''; };
+      const paper = (p) => { const q = byPb[p.id] || byPb[String(p.id)]; return q && q.round_trips ? `${SEP}on paper ${q.round_trips} closed trade${q.round_trips === 1 ? '' : 's'}, ${usd(q.net_pnl, true)}` : ''; };
       const rec = (p) => (p.ideas ? `${p.reached} of ${p.ideas} ideas reached the gate` : 'no ideas yet') + paper(p);
-      const act = a ? `<b>v${a.version}</b> in use${a.version ? '' : ' (no lessons yet)'} ·\u00a0${rec(a)}` : '';
-      const cand = c ? `<br><b>v${c.version}</b> on trial ·\u00a0${rec(c)}${c.p_better != null ? ` ·\u00a0${Math.round(c.p_better * 100)}% likely better` : ''}${c.changes ? `<span class="loop-why">What changed: ${esc(c.changes)}</span>` : ''}` : '';
+      const act = a ? `<b>v${a.version}</b> in use${a.version ? '' : ' (no lessons yet)'}${SEP}${rec(a)}` : '';
+      const cand = c ? `<br><b>v${c.version}</b> on trial${SEP}${rec(c)}${c.p_better != null ? `${SEP}${Math.round(c.p_better * 100)}% likely better` : ''}${c.changes ? `<span class="loop-why">What changed: ${esc(c.changes)}</span>` : ''}` : '';
       const text = (c && c.text) || (a && a.text) || '';
       return `<li><span class="loop-k">${esc(loopFamily(f))}</span><span class="loop-v">${act}${cand}${text ? `<details class="loop-pb"><summary>Read the playbook</summary><pre>${esc(text)}</pre></details>` : ''}</span></li>`;
     }).join('');
-    const scout = (b.scout || []).slice(0, 5).map((s) => `<li><span class="loop-k">${esc(marketShort(s.market))}</span><span class="loop-v">${esc(s.best_what || '')} ·\u00a0${s.best_net_c != null ? (s.best_net_c > 0 ? '+' : '') + s.best_net_c.toFixed(1) + '¢' : ''} net per contract ·\u00a0${s.best_z != null ? s.best_z.toFixed(1) : '—'} SE</span></li>`).join('');
+    const scout = (b.scout || []).slice(0, 5).map((s) => `<li><span class="loop-k">${esc(marketShort(s.market))}</span><span class="loop-v">${esc(s.best_what || '')}${SEP}${s.best_net_c != null ? (s.best_net_c > 0 ? '+' : '') + s.best_net_c.toFixed(1) + '¢' : ''} net per contract${SEP}${s.best_z != null ? s.best_z.toFixed(1) : '—'} SE</span></li>`).join('');
     const fixes = (b.fix_list || []).slice(0, 5).map((x) => `<li><span class="loop-k">${esc(marketShort(x.market))}</span><span class="loop-v"><b>${esc(LOOP_TAG[x.tag] || x.tag)}</b> × ${x.count}${x.example ? `<span class="loop-why">${esc(String(x.example).slice(0, 180))}</span>` : ''}</span></li>`).join('');
     const REQ_KIND = { history: 'more settled history', micro: 'order-book feature', ticks: 'per-second data' };
     const REQ_STATE = { open: 'collecting', ready: 'data arrived', requeued: 'idea re-tested', expired: 'gave up' };
-    const reqs = (b.data_requests || []).slice(0, 6).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${esc(REQ_KIND[r.kind] || r.kind)}${r.need ? ' ·\u00a0' + esc(r.need) : ''}</b> ·\u00a0${esc(REQ_STATE[r.status] || r.status)}${r.requeued_run_id ? ` ·\u00a0<a href="/research/${r.requeued_run_id}">session</a>` : ''}${r.idea_title ? `<span class="loop-why">For: ${esc(r.idea_title)}</span>` : ''}${r.status !== 'requeued' && r.note ? `<span class="loop-why">${esc(r.note)}</span>` : ''}</span></li>`).join('');
+    const reqs = (b.data_requests || []).slice(0, 6).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${esc(REQ_KIND[r.kind] || r.kind)}${r.need ? SEP + esc(r.need) : ''}</b>${SEP}${esc(REQ_STATE[r.status] || r.status)}${r.requeued_run_id ? `${SEP}<a href="/research/${r.requeued_run_id}">session</a>` : ''}${r.idea_title ? `<span class="loop-why">For: ${esc(r.idea_title)}</span>` : ''}${r.status !== 'requeued' && r.note ? `<span class="loop-why">${esc(r.note)}</span>` : ''}</span></li>`).join('');
     const sect = (h, sub, items) => items ? `<div class="loop-sect"><h4>${h}</h4><p class="loop-sub">${sub}</p><ul class="loop-list">${items}</ul></div>` : '';
     const tn = b.tournament, tnEnt = tn ? (tn.entrants || []).filter((r) => r.strategy_id).sort((x, y) => y.weight - x.weight) : [];
     const tnCash = tn ? (tn.entrants || []).find((r) => !r.strategy_id) : null;
-    const tnRows = tnEnt.slice(0, 8).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${Math.round(r.weight * 100)}% of the book</b> ·\u00a0${esc(r.title || '')} ·\u00a0${r.trips} bet${r.trips === 1 ? '' : 's'}, ${usd(r.net_pnl, true)} ·\u00a0${Math.round((r.p_positive || 0) * 100)}% likely to make money${r.verdict ? `<span class="loop-why">Falling short: ${esc(r.verdict)}</span>` : ''}</span></li>`).join('')
-      + (tnEnt.length && tnCash ? `<li><span class="loop-k">Cash</span><span class="loop-v"><b>${Math.round(tnCash.weight * 100)}% of the book</b> ·\u00a0held back until a strategy shows it makes money</span></li>` : '');
+    const tnRows = tnEnt.slice(0, 8).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${Math.round(r.weight * 100)}% of the book</b>${SEP}${esc(r.title || '')}${SEP}${r.trips} bet${r.trips === 1 ? '' : 's'}, ${usd(r.net_pnl, true)}${SEP}${Math.round((r.p_positive || 0) * 100)}% likely to make money${r.verdict ? `<span class="loop-why">Falling short: ${esc(r.verdict)}</span>` : ''}</span></li>`).join('')
+      + (tnEnt.length && tnCash ? `<li><span class="loop-k">Cash</span><span class="loop-v"><b>${Math.round(tnCash.weight * 100)}% of the book</b>${SEP}held back until a strategy shows it makes money</span></li>` : '');
     const tnSub = tn && tn.pooled ? `Every strategy on paper takes part at once, and a ${usd(tn.book.capital).replace(/\.00$/, '')} practice book shifts toward the ones that earn. Together they have ${tn.pooled.trips} of the ${tn.pooled.target} separate bets it takes to judge them${tn.pooled.days_to_target != null ? `, about ${Math.round(tn.pooled.days_to_target)} days to go at ${tn.pooled.per_day} a day` : ''}${tn.pooled.mean_return != null ? `, averaging ${pct(tn.pooled.mean_return)} of the stake a bet` : ''}. ${tn.book.trips ? `Practice book so far: ${usd(tn.book.pnl, true)} over ${tn.book.trips} trade${tn.book.trips === 1 ? '' : 's'}.` : 'The practice book has no trades yet.'}` : '';
     const body = figs + trendP + days + paperP
       + sect('Paper tournament', tnSub, tnRows)
@@ -100,7 +100,7 @@ window.TauPage('research', (T) => {
       + sect('Where it looks next', 'A free scan of every market for prices that disagree with how they settle, after fees. Leads steer research; they still have to pass on unseen data.', scout)
       + sect('Ideas our pipeline killed', 'Dropped because of missing data or features, not because the market said no. This is the fix list.', fixes)
       + sect('Data it asked for', 'Crypto ideas that died for lack of data start a collection, and the idea is re-tested once the data exists (autopilot on, at most once each).', reqs)
-      + (pol && pol.evolved ? `<p class="rsi-last">Finalist policy evolved from your history${pol.base_score != null && pol.score != null ? ` ·\u00a0score ${pol.base_score} → ${pol.score}` : ''}.</p>` : '');
+      + (pol && pol.evolved ? `<p class="rsi-last">Finalist policy evolved from your history${pol.base_score != null && pol.score != null ? `${SEP}score ${pol.base_score} → ${pol.score}` : ''}.</p>` : '');
     const open = !!host.querySelector('details.rsidisc[open]');
     const focused = !!host.querySelector('details.rsidisc > summary:focus');
     const inner = [...host.querySelectorAll('details.loop-pb')].map((d) => d.open);
@@ -128,7 +128,7 @@ window.TauPage('research', (T) => {
   // than a single tall column); the row wraps on narrow screens, stacks at phone width.
   const fstage = (phase, nodes) => `<section class="flow-stage">${fphase(phase)}<div class="flow-row">${nodes.join(flowLink)}</div></section>`;
   function pipelineFigure() {
-    const gates = ['Bootstrap CI', 'PSR', 'DSR ·\u00a0deflated by trial count', 'Placebo / null', 'LORD++ FDR budget', 'Purged walk-forward', 'Benjamini–Hochberg'];
+    const gates = ['Bootstrap CI', 'PSR', `DSR${SEP}deflated by trial count`, 'Placebo / null', 'LORD++ FDR budget', 'Purged walk-forward', 'Benjamini–Hochberg'];
     return `<details class="pipefig">
       <summary class="pipecap"><span class="pipecap-t">Research process</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="flow">
@@ -276,7 +276,7 @@ window.TauPage('research', (T) => {
       const pick = [...form.querySelectorAll('input[name=market]')].find((r) => r.checked);
       const row = pick && pick.value ? pick.closest('.mktrow') : null, nm = row && row.querySelector('.mktrow-name');
       optsSum.textContent = [mo ? mo.textContent.trim() : '', rfx && rfx.checked ? 'runs until you stop it' : `${(mhx && mhx.value) || 10} strategies`,
-        nm ? nm.textContent.trim() : notOpen ? `agent\u2019s choice of market (${notOpen})` : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
+        nm ? nm.textContent.trim() : notOpen ? `agent\u2019s choice of market (${notOpen})` : 'agent\u2019s choice of market'].filter(Boolean).join(SEP);
     };
     form.addEventListener('change', syncOpts); syncOpts();
     // A field the browser won't accept (0 or 5,000 strategies) inside folded Options: it can't show its
@@ -383,7 +383,7 @@ window.TauPage('research', (T) => {
       const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested, all time` : 'No strategies tested';
       // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
       // each says its window.
-      paint(rfigs, fig(gl('Passed', 'gate'), passed, { small: [ALL_TIME, fell ? `${num(fell)} more passed but ${fell === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : ''].filter(Boolean).join(' ·\u00a0') }) + fig('Tested', tried, { small: ALL_TIME }));
+      paint(rfigs, fig(gl('Passed', 'gate'), passed, { small: [ALL_TIME, fell ? `${num(fell)} more passed but ${fell === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : ''].filter(Boolean).join(SEP) }) + fig('Tested', tried, { small: ALL_TIME }));
       if (rfigs.getAttribute('title') !== rtitle) rfigs.setAttribute('title', rtitle);
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       const active = d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused');
@@ -406,7 +406,7 @@ window.TauPage('research', (T) => {
       // The heading counts what it lists: "Recent sessions 1" sat over two rows, the example one of them. The user's
       // own count stays bare and the example is named apart ("1 · 1 example"), as Tau's "1 session · 1 example".
       const examples = history.length - own;
-      paint(root.querySelector('#rcount'), [own ? String(own) : '', examples ? `${examples} example${examples > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '));
+      paint(root.querySelector('#rcount'), [own ? String(own) : '', examples ? `${examples} example${examples > 1 ? 's' : ''}` : ''].filter(Boolean).join(SEP));
       // The newest of all (the active one when one runs: then no older row offers Add credits).
       const newest = d.runs.find((r) => !r.example);
       paintRows(root.querySelector('#runs'), history.map((r) => [r.id, runRow(r, r === newest)]),
@@ -423,7 +423,7 @@ window.TauPage('research', (T) => {
   // default model); run_forever is the form's "Let it run until I stop it", else its strategy count.
   const runSetup = (r) => [r.model_label ? esc(r.model_label) : '',
     r.run_forever ? (runLive(r) ? 'Runs until you stop it' : 'Ran until stopped')
-      : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' \u00b7\u00a0');
+      : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(SEP);
   const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
@@ -465,7 +465,7 @@ window.TauPage('research', (T) => {
     // status band: a thin color rule so passed/void/failed reads at a glance; only a real error is `fail`
     const band = r.status === 'succeeded' ? (ok ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? SEP + EXAMPLE_NOTE : r.spent_usd != null ? SEP + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
   }
 
@@ -506,13 +506,13 @@ window.TauPage('research', (T) => {
     const row = (k, v) => (v == null || v === '') ? '' : `<dt>${k}</dt><dd>${esc(v)}</dd>`;
     const c = (v) => Math.round(v * 100) + '¢';
     const sz = spec.sizing || {};
-    const sizing = `$${sz.stake != null ? sz.stake : 5} per trade ·\u00a0up to ${sz.max_positions != null ? sz.max_positions : 20} at once`;
-    const codeFig = (src) => `<figure class="hx-code"><figcaption>Strategy code <span>Python ·\u00a0research sandbox only</span></figcaption><pre><code>${esc(src)}</code></pre></figure>`;
+    const sizing = `$${sz.stake != null ? sz.stake : 5} per trade${SEP}up to ${sz.max_positions != null ? sz.max_positions : 20} at once`;
+    const codeFig = (src) => `<figure class="hx-code"><figcaption>Strategy code <span>Python${SEP}research sandbox only</span></figcaption><pre><code>${esc(src)}</code></pre></figure>`;
 
     // Code strategy: an arbitrary fitted model in the sandbox, not threshold fields. Show it as
     // one, keep the real source (and note the frozen fit, if the research run froze params in).
     if (spec.code) {
-      const fit = (spec.params != null && spec.params !== '') ? ' ·\u00a0fit on research, frozen' : '';
+      const fit = (spec.params != null && spec.params !== '') ? `${SEP}fit on research, frozen` : '';
       return `<dl class="hx-spec"><dt>Signal</dt><dd class="hx-model">custom code model${fit}</dd>
         ${row('Sizing', sizing)}</dl>${codeFig(spec.code)}`;
     }
@@ -541,14 +541,14 @@ window.TauPage('research', (T) => {
       const coef = Array.isArray(m.coef) ? m.coef : [];
       // Compact fitted weights, only when they are present and line up with the named features.
       const weights = (coef.length && coef.length === feats.length && coef.every((n) => typeof n === 'number'))
-        ? `<dt>Fitted weights</dt><dd class="hx-weights">${feats.map((f, i) => `<span class="hx-feat">${esc(f)}</span> ×${coef[i].toFixed(2)}`).join(' ·\u00a0')}${typeof m.intercept === 'number' ? ` ·\u00a0intercept ${m.intercept.toFixed(2)}` : ''}</dd>`
+        ? `<dt>Fitted weights</dt><dd class="hx-weights">${feats.map((f, i) => `<span class="hx-feat">${esc(f)}</span> ×${coef[i].toFixed(2)}`).join(SEP)}${typeof m.intercept === 'number' ? `${SEP}intercept ${m.intercept.toFixed(2)}` : ''}</dd>`
         : '';
       return `<dl class="hx-spec">
         ${side}
         <dt>Signal</dt><dd class="hx-model">${signal}${edge ? ' — enter when ' + edge : ''}</dd>
         ${weights}
-        ${row('Only when', bounds.join(' ·\u00a0'))}
-        ${row('Exit', exit.join(' ·\u00a0') || 'hold to settlement')}
+        ${row('Only when', bounds.join(SEP))}
+        ${row('Exit', exit.join(SEP) || 'hold to settlement')}
         ${row('Regime filter', filters)}
         ${row('Sizing', sizing)}</dl>`;
     }
@@ -559,8 +559,8 @@ window.TauPage('research', (T) => {
     entry.push(...bounds);
     return `<dl class="hx-spec">
       ${side}
-      ${row('Enter when', entry.join(' ·\u00a0') || 'any priced contract')}
-      ${row('Exit', exit.join(' ·\u00a0') || 'hold to settlement')}
+      ${row('Enter when', entry.join(SEP) || 'any priced contract')}
+      ${row('Exit', exit.join(SEP) || 'hold to settlement')}
       ${row('Regime filter', filters)}
       ${row('Sizing', sizing)}</dl>`;
   }
@@ -600,7 +600,7 @@ window.TauPage('research', (T) => {
     const li = document.createElement('li');
     li.className = 'ln lane-action hx';
     const stat = (ins && ins.trades != null)
-      ? `<span class="say-stat">On the history it searched: ${usd(ins.pnl, true)} ·\u00a0${ins.trades} trade${ins.trades === 1 ? '' : 's'}${glo('insample')}</span>` : '';
+      ? `<span class="say-stat">On the history it searched: ${usd(ins.pnl, true)}${SEP}${ins.trades} trade${ins.trades === 1 ? '' : 's'}${glo('insample')}</span>` : '';
     const home = [mechHtml(d.mechanism), specHtml(d.spec),
       d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
       d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
@@ -618,7 +618,7 @@ window.TauPage('research', (T) => {
         const dec = (e2.data || {}).decision || 'review';
         const reason = strip(strip(e2.message, /^Challenger\s+\w+\s+[-–]\s*/i), new RegExp('^' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*'));
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Skeptic’s review ·\u00a0${esc(REVIEW_SAID[dec] || dec)}</span>${esc(reason)}</p>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Skeptic’s review${SEP}${esc(REVIEW_SAID[dec] || dec)}</span>${esc(reason)}</p>`);
       },
       verdict(e2) {
         const dd = e2.data || {};
@@ -652,7 +652,7 @@ window.TauPage('research', (T) => {
   function stageHtml(dd) {
     const why = whyFailedHtml(dd.why_failed), ok = !why && !dd.skipped;
     const name = dd.phase === 'holdout' ? 'Locked holdout' : 'Adds something new';
-    return `<div class="hx-verdict"><span class="hx-tag ${ok ? 'pass' : 'void'}">${name} ·\u00a0${ok ? 'held' : dd.skipped ? 'not run' : 'missed'}</span>${why || (dd.note ? `<span class="hx-vtext">${esc(dd.note)}</span>` : '')}</div>`;
+    return `<div class="hx-verdict"><span class="hx-tag ${ok ? 'pass' : 'void'}">${name}${SEP}${ok ? 'held' : dd.skipped ? 'not run' : 'missed'}</span>${why || (dd.note ? `<span class="hx-vtext">${esc(dd.note)}</span>` : '')}</div>`;
   }
 
   // A live "thinking" card: the proposer's reasoning streams in as the agent writes it, with a
@@ -1172,7 +1172,7 @@ window.TauPage('research', (T) => {
       r.out_of_credits = outOfCredits && !active;
       // The 2s poll repaints only what changed: rewriting the same title and figures each time made
       // the phone lay the page out again (and the autopilot pill re-check what it covers).
-      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${runKind(r)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`));
+      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))}${SEP}${runKind(r)}${r.example ? SEP + EXAMPLE_NOTE : runSetup(r) ? SEP + runSetup(r) : ''}`));
       const worked = runWorked(r, pauses);
       const late = r.wait && r.wait.overdue ? r.wait : null;
       const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
@@ -1221,9 +1221,9 @@ window.TauPage('research', (T) => {
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
-               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' ·\u00a0adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? `${SEP}adopted ` + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
             : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can't overfit).</p>
-               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' ·\u00a0' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
+               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? SEP + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
           </div></details>`);
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
       }

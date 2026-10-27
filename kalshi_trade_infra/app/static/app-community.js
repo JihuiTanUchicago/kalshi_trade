@@ -5,7 +5,7 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, boardTitle, busy, clock, esc, flash, ICON, liveWaitMark, loading,
-    marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, shell,
+    marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP, shell,
     statusMark, tone, trDay, usd, when
   } = T;
 
@@ -22,14 +22,14 @@ window.TauPage('community', (T) => {
     }
     if (snap.kind === 'strategy') {
       const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
-        <div class="snap-meta">${esc(marketShort(snap.market))} ·\u00a0backtest on unseen data${overDays(snap.days)}: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? ' ·\u00a0' + realTrades(snap.trades) : ''}${snap.win_rate != null ? ' ·\u00a0' + pct(snap.win_rate, false) + ' win' : ''}</div>`;
+        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}backtest on unseen data${overDays(snap.days)}: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
       return owner ? `<div class="snap">${head}<div class="snap-note">Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
         : `<a class="snap" href="/strategies/${snap.id}">${head}</a>`;
     }
     if (snap.kind === 'deployment') {
       const book = snap.mode === 'live' ? 'live' : snap.mode === 'demo' ? 'demo' : 'paper';
       return `<div class="snap"><div class="snap-head"><b>${esc(snap.title)}</b>${book === 'live' ? '<span class="mk live">Live</span>' + liveWaitMark() : book === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>'}</div>
-        <div class="snap-meta">${esc(marketShort(snap.market))} ·\u00a0${book} ·\u00a0realized ${usd(snap.realized_pnl, true)}${snap.closed_trades != null ? ' ·\u00a0' + realTrades(snap.closed_trades) : ''}${snap.since ? ' since ' + trDay(Date.parse(snap.since) / 1000) : ''}</div></div>`;
+        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}${book}${SEP}realized ${usd(snap.realized_pnl, true)}${snap.closed_trades != null ? SEP + realTrades(snap.closed_trades) : ''}${snap.since ? ' since ' + trDay(Date.parse(snap.since) / 1000) : ''}</div></div>`;
     }
     return '';
   }
@@ -66,7 +66,7 @@ window.TauPage('community', (T) => {
     return `<article class="post${grouped ? ' grouped' : ''}" data-id="${p.id}">
       <div class="post-gutter">${grouped ? `<time class="gutter-time">${clock(p.created_at)}</time>` : avatar(p.picture, p.author)}</div>
       <div class="post-col">
-        ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? ' ·\u00a0edited' : ''}</span></div>`}
+        ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? `${SEP}edited` : ''}</span></div>`}
         <div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
         ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
         ${postSnapshot(p.snapshot, snapOwner(p))}</div>
@@ -212,7 +212,7 @@ window.TauPage('community', (T) => {
             try {
               await api(`/api/community/${pid}/edit`, { body: nb });
               bodies.set(pid, nb); bodyEl.innerHTML = mdLite(nb); bodyEl.hidden = false; ef.remove();
-              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += ' ·\u00a0edited';
+              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += `${SEP}edited`;
             } catch (err) { flash(ef.querySelector('.form-flash'), err.message, 'bad'); }
           });
         };

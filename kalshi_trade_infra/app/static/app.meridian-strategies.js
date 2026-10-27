@@ -9,7 +9,7 @@ window.TauPage('strategies', (T) => {
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, S, settleAt, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
+    researchOnly, roadDays, root, rpUnderwater, S, SEP, settleAt, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -215,8 +215,8 @@ window.TauPage('strategies', (T) => {
     if (exp.primary_metric) pre.push(['Primary metric', rpPlain(exp.primary_metric)]);
     if (exp.planned_test) pre.push(['Planned test', rpPlain(exp.planned_test)]);
     if (exp.min_sample != null) pre.push(['Minimum sample', exp.min_sample + ' trades']);
-    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ' planned tests ·\u00a0' : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
-    if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${rpCost(v)}`).join(' ·\u00a0')]);
+    if (exp.planned_n_tests != null || exp.correction_method) pre.push(['Multiple-testing control', `${exp.planned_n_tests != null ? exp.planned_n_tests + ` planned tests${SEP}` : ''}${exp.correction_method ? (exp.correction_method === 'BH' ? 'Benjamini–Hochberg (a false-discovery control across the ideas tested together)' : rpPlain(exp.correction_method) + (/LORD/.test(exp.correction_method) ? LORD_WORDS : '')) : '—'}`]);
+    if (exp.cost_assumptions && typeof exp.cost_assumptions === 'object') pre.push(['Cost assumptions', Object.entries(exp.cost_assumptions).map(([k, v]) => `${rpHuman(k)}: ${rpCost(v)}`).join(SEP)]);
     if (pre.length) {
       const reg = exp.registered_at ? `<p class="rp-reg">Pre-registered <b>${esc(rpStamp(exp.registered_at))}</b> — before any validation number was computed. The frozen rule and its test could not be changed after the results came in.</p>` : '';
       parts.methodology += sub('The pre-registered test', `<dl class="rp-grid">${pre.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${rpText(v)}</dd></div>`).join('')}</dl>${reg}`);
@@ -232,7 +232,7 @@ window.TauPage('strategies', (T) => {
       const stat = (k, val, cls, sb) => `<div class="rp-stat"><div class="k">${esc(k)}</div><div class="val${cls ? ' ' + cls : ''}">${val}</div>${sb ? `<div class="sub">${esc(sb)}</div>` : ''}</div>`;
       const ciTxt = (v.ci_lo != null && v.ci_hi != null) ? `90% CI ${rpRet(v.ci_lo)} to ${rpRet(v.ci_hi)}` : '';
       const stats = [
-        stat('Net return per trade', rpRet(v.mean_net_return), tint('validation', 'mean_net_return'), 'average, as % of its stake' + (ciTxt ? ' ·\u00a0' + ciTxt : '')),
+        stat('Net return per trade', rpRet(v.mean_net_return), tint('validation', 'mean_net_return'), 'average, as % of its stake' + (ciTxt ? SEP + ciTxt : '')),
         stat('Bootstrap p-value', rpProb(v.p_value), tint('validation', 'p_value'), 'chance a rule with no edge does this well; lower is better'),
         stat('PSR', rpProb(v.psr), '', 'probability its true risk-adjusted return (Sharpe) is above 0'),
         stat('DSR', rpProb(v.dsr), tint('validation', 'dsr'), 'the same, discounted for the many ideas tried'),
@@ -257,7 +257,7 @@ window.TauPage('strategies', (T) => {
     parts.verdict += `<div class="paper-sub"><h4 class="paper-h">Where it reached on the ladder</h4>${rpLadder(exp.classification, exp.validation && exp.validation.classification, exp.holdout ? 'on the locked holdout' : '')}</div>`;
     const h = exp.holdout;
     const holdBody = h ? `<div class="rp-stats">
-      <div class="rp-stat"><div class="k">Net return per trade</div><div class="val${tint('holdout', 'mean_net_return') ? ' sig' : ''}">${rpRet(h.mean_net_return)}</div><div class="sub">average, as % of its stake${h.ci_lo != null && h.ci_hi != null ? ' ·\u00a090% CI ' + rpRet(h.ci_lo) + ' to ' + rpRet(h.ci_hi) : ''}</div></div>
+      <div class="rp-stat"><div class="k">Net return per trade</div><div class="val${tint('holdout', 'mean_net_return') ? ' sig' : ''}">${rpRet(h.mean_net_return)}</div><div class="sub">average, as % of its stake${h.ci_lo != null && h.ci_hi != null ? `${SEP}90% CI ` + rpRet(h.ci_lo) + ' to ' + rpRet(h.ci_hi) : ''}</div></div>
       <div class="rp-stat"><div class="k">Bootstrap p-value</div><div class="val${tint('holdout', 'p_value') ? ' sig' : ''}">${rpProb(h.p_value)}</div></div>
       <div class="rp-stat"><div class="k">Trades</div><div class="val${tint('holdout', 'n_trades') ? ' sig' : ''}">${rpInt(h.n_trades)}</div></div>
       <div class="rp-stat"><div class="k">Holdout</div><div class="val">${h.consumed ? 'Consumed' : 'Open'}</div><div class="sub">${h.consumed ? 'used once, as designed: it can’t be re-run on this data' : 'not used yet'}</div></div>
@@ -344,7 +344,7 @@ window.TauPage('strategies', (T) => {
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
       const anyPassed = list.some(bulkDeployable);
       slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed })).join(''), anyPassed)
-        + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)} ·\u00a0${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
+        + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)}${SEP}${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
       slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => {
         sp = +b.dataset.sp;
         const u = new URLSearchParams(location.search);
@@ -367,7 +367,7 @@ window.TauPage('strategies', (T) => {
         try { await depWrite('/api/deployments', { strategy_id: id, mode: 'paper' }); ok++; } catch (e) { errs.push(depSaid(e, 'deploy')); }
       }
       if (ok && !errs.length) { go('/deploy'); return; }
-      flash('#bulkflash', `${ok} deployed${errs.length ? ` ·\u00a0${errs.length} failed: ${errs[0]}` : ''}`, errs.length ? 'bad' : 'good');
+      flash('#bulkflash', `${ok} deployed${errs.length ? `${SEP}${errs.length} failed: ${errs[0]}` : ''}`, errs.length ? 'bad' : 'good');
       if (ok) load();
     };
     const syncBar = () => {
@@ -425,7 +425,7 @@ window.TauPage('strategies', (T) => {
       const m = ds.reduce((a, d) => a + real(d), 0);
       if (!m) return '';
       const exp = ds.reduce((a, d) => a + real(d) * per * ((+d.stake || stake) / stake), 0);
-      return `<p class="sub-fig real-pace">At the backtest’s ${!s.experiment && ['passed', 'backtest-only'].includes(s.status) ? 'later-period' : 'unseen-data'} pace, ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? ' ·\u00a0too few trades to judge yet' : ''}</p>`;
+      return `<p class="sub-fig real-pace">At the backtest’s ${!s.experiment && ['passed', 'backtest-only'].includes(s.status) ? 'later-period' : 'unseen-data'} pace, ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? `${SEP}too few trades to judge yet` : ''}</p>`;
     };
     // A server that compares each book with the backtest sends backtest_checks; it replaces the pace line.
     const checks = Array.isArray(s.backtest_checks) ? s.backtest_checks : null;
@@ -440,7 +440,7 @@ window.TauPage('strategies', (T) => {
       const { pnl, trades: n, open, instant, slip } = bookTotal(s, mode, ds);
       // "deployed Oct 18" stays whole (.nobr): at 390px in Meridian "deployed" ended a line and "Oct 18" began the next.
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? ` ·\u00a0<span class="nobr">deployed ${when(since)}</span>` : ''}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? `${SEP}${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? `${SEP}<span class="nobr">deployed ${when(since)}</span>` : ''}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together), and,
@@ -455,7 +455,7 @@ window.TauPage('strategies', (T) => {
     const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—');
     // Deployed and removed the same day read "Oct 27–Oct 27" (walked 2026-10-27): one date says it.
     const daySpan = (from, to) => (day(from) === day(to) ? day(from) : `${day(from)}\u2013${day(to)}`);
-    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${daySpan(p.created_at, p.removed_at)}, ${pastFig(p)}`).join(' ·\u00a0')}${past.length > 3 ? ` ·\u00a0${num(past.length - 3)} earlier` : ''}</p>` : '';
+    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${daySpan(p.created_at, p.removed_at)}, ${pastFig(p)}`).join(SEP)}${past.length > 3 ? `${SEP}${num(past.length - 3)} earlier` : ''}</p>` : '';
     return lines || pastLine ? `<section class="real-record" aria-label="Since deploying"><h2 class="paper-h">Since deploying</h2>${lines}${pastLine}</section>` : '';
   }
   // Road to live in words, from the checks the server sends (live-readiness): what is left, each with
@@ -517,14 +517,14 @@ window.TauPage('strategies', (T) => {
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
       const { trades: n, pnl, instant } = bookTotal(s, m, ds);
-      const stats = `${num(n)} closed trade${n === 1 ? '' : 's'} ·\u00a0${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
+      const stats = `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
-      if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats} ·\u00a0${demoHealthLine(s.demo_health)}</p>`;
+      if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats}${SEP}${demoHealthLine(s.demo_health)}</p>`;
       const runs = ds.some((d) => d.status === 'running');
       // Its demo check is still reading the demo cash (demo_health_pending): not "running" until that is in.
       const state = !runs ? 'paused' : m === 'live' && !liveOpen() ? 'waiting: live trading isn\u2019t open yet, so it places no orders'
         : m === 'demo' && s.demo_health_pending ? 'checking your Kalshi demo account\u2026' : 'running';
-      return `<p><span class="mk ${cls}">${label}</span> ${state} ·\u00a0${stats}</p>${m === 'paper' ? instantNote(instant, n, 'hint rung-instant') : ''}`;
+      return `<p><span class="mk ${cls}">${label}</span> ${state}${SEP}${stats}</p>${m === 'paper' ? instantNote(instant, n, 'hint rung-instant') : ''}`;
     });
     // Paper proves the edge, demo the order path: say so under the demo book, with its settled demo
     // orders against what the live check needs once Road to live is in.
@@ -627,10 +627,10 @@ window.TauPage('strategies', (T) => {
     // never saw", a row's "on unseen data"): this page alone said "Out-of-sample P&L" (walked 2026-10-27).
     const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, 'Unseen-data P&L') : fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
       fig('In-sample P&L', r.in_sample ? usd(r.in_sample.pnl, true) : '—', { v: r.in_sample && r.in_sample.pnl, small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
-      fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: [r.out_of_sample && overDays(r.out_of_sample.days) ? (splitOnly ? 'After the split date' : 'Unseen data') + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(' ·\u00a0') }) +
+      fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: [r.out_of_sample && overDays(r.out_of_sample.days) ? (splitOnly ? 'After the split date' : 'Unseen data') + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) +
       fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
-    root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${statusMark(s)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
+    root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(marketShort(s.market))}${SEP}${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${statusMark(s)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
     // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
     // profitable idea with too few trades is rejected on sample size, not for "losing money".
@@ -660,7 +660,7 @@ window.TauPage('strategies', (T) => {
       if (m.win_rate === 1) r.push('100% win rate — an overfit signature, not an edge');
       if (typeof m.profit_factor === 'number' && m.profit_factor >= 99) r.push('no losing trades in sample — profit factor is meaningless');
       if (typeof m.sharpe === 'number' && m.sharpe >= 3) r.push(`Sharpe ${m.sharpe} is implausibly high for a real net edge`);
-      return r.length ? `<p class="hint luck-flag">⚠ ${esc(r.join(' ·\u00a0'))}</p>` : '';
+      return r.length ? `<p class="hint luck-flag">⚠ ${esc(r.join(SEP))}</p>` : '';
     };
     const metricRows = (m) => m ? `<dl>
         <dt>P&amp;L after fees</dt><dd class="${tone(m.pnl)}">${usd(m.pnl, true)}</dd>
@@ -783,7 +783,7 @@ window.TauPage('strategies', (T) => {
             const bookLine = (xs) => {
               const marked = xs.filter((p) => p.unrealized != null), unreal = marked.reduce((a, p) => a + p.unrealized, 0);
               const lead = books.length > 1 ? ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ' : '';
-              return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` ·\u00a0unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' ·\u00a0awaiting first mark'}.`;
+              return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : `${SEP}awaiting first mark`}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             // Beside a Live or Demo row a paper one says Paper too: untagged, it read as the real-money book.
@@ -794,7 +794,7 @@ window.TauPage('strategies', (T) => {
           })() : ''}
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
-            ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `${bookName(d)} ·\u00a0${esc(depIdle(d) ? depIdle(d).state.toLowerCase() : d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
+            ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `${bookName(d)}${SEP}${esc(depIdle(d) ? depIdle(d).state.toLowerCase() : d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${missed && s.verdict ? `<div class="notice bad">${ICON.warn}<span>${heldBack(s) ? 'Held back' : 'Missed the final test'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict). It wasn’t cleared to trade, so it can’t go live, and putting it on paper is your call.</span></div>` : ''}
                 ${s.status !== 'passed' && !(missed && s.verdict) ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}

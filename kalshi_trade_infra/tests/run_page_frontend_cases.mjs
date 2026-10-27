@@ -209,7 +209,7 @@ export function runPageCases({name, frontend}) {
     assert.match(log, /Plan: try up to 6 ideas/); assert.doesNotMatch(log, /in-sample|gate the best/);
     assert.match(log, /<b>Bitcoin<\/b>/);  // a step without a note keeps its own (markdown) words
     assert.match(log, /1 of 2 ideas passed every check\./); assert.doesNotMatch(log, /passed every gate/);
-    assert.match(f.root.querySelector('#log').querySelector('[data-review]').innerHTML, /Skeptic’s review · approved<\/span>plausible/);
+    assert.match(f.root.querySelector('#log').querySelector('[data-review]').innerHTML, /Skeptic’s review · approved<\/span>plausible/);
     assert.match(log, /Skeptic’s review<\/span>revised - Other: tighten it/);
     assert.doesNotMatch(log, />Challenger/);
   });
@@ -291,9 +291,9 @@ export function runPageCases({name, frontend}) {
       const tested = cell({status, out_of_sample: null, in_sample: m(2.1)});
       assert.match(tested, /<span class="pnl-nopass">\+\$2\.10<\/span>/, status);
       assert.doesNotMatch(tested, /class="gain"/, status);
-      assert.match(tested, /on the history it searched · did not pass/, status);
+      assert.match(tested, /on the history it searched · did not pass/, status);
       const unseen = cell({status, out_of_sample: m(3), in_sample: m(2.1)});
-      assert.match(unseen, /<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig">on unseen data · did not pass<\/div>/, status);
+      assert.match(unseen, /<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig">on unseen data · did not pass<\/div>/, status);
     }
     // Passed and backtest-only keep the money tone and say nothing of the kind.
     assert.match(cell({status: 'passed', out_of_sample: m(3)}), /^<span class="gain">\+\$3\.00<\/span><div class="sub-fig">on unseen data<\/div>$/);

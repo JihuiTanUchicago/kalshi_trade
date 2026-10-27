@@ -5,7 +5,7 @@ window.TauPage('admin', (T) => {
   'use strict';
   const {
     adminViewOn, alert0, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loading, num, phone, poll, root,
-    S, shell, usd, when
+    S, SEP, shell, usd, when
   } = T;
 
   // ---------- admin ----------
@@ -24,8 +24,8 @@ window.TauPage('admin', (T) => {
   const ceBuild = (v) => (v && v.length ? `build ${esc(v[0])}${v.length > 1 ? ` +${v.length - 1}\u00a0older` : ''}` : 'build unknown');
   const clientErrorTable = (rows) => (!rows || !rows.length ? '<p class="hint">No page errors reported in the last 24 hours.</p>'
     : `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Error</th><th>Page, theme, build</th><th class="num">Count</th><th>Last seen</th></tr></thead><tbody>${rows.map((r) => `<tr>
-      <td class="name" data-lab="Error">${esc(r.message)}<div class="sub-fig">${esc(CE_KIND[r.kind] || r.kind)}${r.at ? ` \u00b7\u00a0${esc(r.at)}` : ''}</div></td>
-      <td data-lab="Page, theme, build">${esc(r.path)}<div class="sub-fig">${esc((r.themes || []).join(', ') || '\u2014')} \u00b7\u00a0${ceBuild(r.versions)}</div></td>
+      <td class="name" data-lab="Error">${esc(r.message)}<div class="sub-fig">${esc(CE_KIND[r.kind] || r.kind)}${r.at ? `${SEP}${esc(r.at)}` : ''}</div></td>
+      <td data-lab="Page, theme, build">${esc(r.path)}<div class="sub-fig">${esc((r.themes || []).join(', ') || '\u2014')}${SEP}${ceBuild(r.versions)}</div></td>
       <td class="num" data-lab="Count">${+r.n || 0}${+r.signed_out ? `<div class="sub-fig">${+r.signed_out} signed out</div>` : ''}</td>
       <td class="hint" data-lab="Last seen">${when(r.last_seen)}<div class="sub-fig">first ${when(r.first_seen)}</div></td></tr>`).join('')}</tbody></table></div>`);
   async function viewAdmin() {
@@ -64,7 +64,7 @@ window.TauPage('admin', (T) => {
       root.querySelector('#ucount').textContent = `${d.users.length} shown`;
       root.querySelector('#o-state').textContent = orphanLine(d.orphaned_open);
       const ce = d.client_errors || [];
-      root.querySelector('#ce-count').textContent = ce.length ? `last 24h \u00b7\u00a0${ce.reduce((a, r) => a + (+r.n || 0), 0)} reports` : 'last 24h';
+      root.querySelector('#ce-count').textContent = ce.length ? `last 24h${SEP}${ce.reduce((a, r) => a + (+r.n || 0), 0)} reports` : 'last 24h';
       root.querySelector('#client-errors').innerHTML = clientErrorTable(ce);
       root.querySelector('#users').innerHTML = `<div class="sheet"><table class="table stack t-dep"><thead><tr><th>Email</th><th>Name</th><th>Joined</th><th class="num">Balance</th></tr></thead><tbody>${d.users.map((u) => `<tr>
         <td class="name" data-lab="Email">${esc(u.email)}</td><td data-lab="Name">${esc(u.name || '')}</td>
@@ -127,15 +127,15 @@ window.TauPage('admin', (T) => {
   const SYS_NODES = [
     { id: 'kalshi', x: 40, y: 40, w: 150, label: 'Kalshi API', sub: 'markets + order book', ext: 1 },
     { id: 'coinbase', x: 40, y: 150, w: 150, label: 'Coinbase', sub: 'BTC spot price', ext: 1 },
-    { id: 'bedrock', x: 40, y: 330, w: 150, label: 'Claude ·\u00a0Bedrock', sub: 'the research agent', ext: 1 },
+    { id: 'bedrock', x: 40, y: 330, w: 150, label: `Claude${SEP}Bedrock`, sub: 'the research agent', ext: 1 },
     { id: 'stripe', x: 40, y: 460, w: 150, label: 'Stripe', sub: 'cards + credits', ext: 1 },
     { id: 'forward', x: 250, y: 30, w: 158, label: 'Forward collector', sub: 'Kalshi book → DB' },
     { id: 'cb_coll', x: 250, y: 150, w: 158, label: 'Coinbase collector', sub: '1-minute candles' },
     { id: 'features', x: 250, y: 270, w: 158, label: 'Feature builder', sub: 'per-minute features' },
-    { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: 'app.server ·\u00a0SPA + API' },
+    { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: `app.server${SEP}SPA + API` },
     { id: 'db', x: 490, y: 205, w: 150, label: 'Database', sub: 'RDS MySQL', big: 1 },
     // Its count takes two lines ("12 running · 30 queued" over "1,204 done"): on one it ran past the box's edge.
-    { id: 'agents', x: 720, y: 40, w: 158, h: 82, lines: 2, label: 'Research agents', sub: 'app.worker ·\u00a0hypotheses', mine: 'your research sessions' },
+    { id: 'agents', x: 720, y: 40, w: 158, h: 82, lines: 2, label: 'Research agents', sub: `app.worker${SEP}hypotheses`, mine: 'your research sessions' },
     { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'honest, out-of-sample', mine: 'your strategies' },
     { id: 'sim_engine', x: 720, y: 300, w: 158, label: 'Paper engine', sub: 'simulated fills', mine: 'your paper strategies' },
     { id: 'live_engine', x: 720, y: 460, w: 158, label: 'Live engine', sub: 'real Kalshi orders', mine: 'your live and demo' },
@@ -250,7 +250,7 @@ window.TauPage('admin', (T) => {
       return codePanel('component=' + encodeURIComponent(id), (d) =>
         crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules' }]) +
         `<h2>Modules</h2><ul class="sys-list">${d.modules.map((m) =>
-          `<li><a href="#" data-mod="${esc(m.path)}">${esc(m.name)}</a> <span class="sys-dim">${m.symbols} defs ·\u00a0${m.lines} lines</span>${m.doc ? `<div class="hint">${esc(m.doc)}</div>` : ''}</li>`).join('')}</ul>`);
+          `<li><a href="#" data-mod="${esc(m.path)}">${esc(m.name)}</a> <span class="sys-dim">${m.symbols} defs${SEP}${m.lines} lines</span>${m.doc ? `<div class="hint">${esc(m.doc)}</div>` : ''}</li>`).join('')}</ul>`);
     };
     const openModule = (id, mod) => {
       codeState = { id, module: mod };
@@ -272,7 +272,7 @@ window.TauPage('admin', (T) => {
         `<li><a href="#" data-fn="${esc(r.qual)}" data-fnmod="${esc(r.module)}">${esc(r.qual)}</a> <span class="sys-dim">${esc(modName(r.module))}</span></li>`).join('')}</ul>` : '<p class="hint">None found in the mapped source.</p>';
       return codePanel('module=' + encodeURIComponent(mod) + '&func=' + encodeURIComponent(qual), (d) =>
         crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules', a: `data-code-open="${esc(id)}"` }, { t: modName(mod), a: `data-mod="${esc(mod)}"` }, { t: d.name }]) +
-        `<h2><code>${esc(d.qual)}</code></h2><p class="hint">${esc(modName(mod))} ·\u00a0line ${d.lineno}</p>` +
+        `<h2><code>${esc(d.qual)}</code></h2><p class="hint">${esc(modName(mod))}${SEP}line ${d.lineno}</p>` +
         `<pre class="sys-src"><code>${esc(d.source)}</code></pre>` +
         `<h3 style="margin-top:14px">Calls (callees)</h3>${refs(d.callees)}` +
         `<h3 style="margin-top:14px">Called by (callers)</h3>${refs(d.callers)}`);
@@ -293,25 +293,25 @@ window.TauPage('admin', (T) => {
     });
     const fresh = (age) => age == null ? 'down' : age < 75 ? 'live' : age < 300 ? 'warn' : 'down';
     // The research box's count as its two lines; every other box's is one.
-    const metricLines = (id, L) => (id === 'agents' && L ? [`${num(L.running)} running ·\u00a0${num(L.queued)} queued`, `${num(L.done)} done`] : [metricText(id, L)]);
+    const metricLines = (id, L) => (id === 'agents' && L ? [`${num(L.running)} running${SEP}${num(L.queued)} queued`, `${num(L.done)} done`] : [metricText(id, L)]);
     function metricText(id, L) {
       if (!L) return '';
       const n = sysNode(id);
       if (n && n.ext) {
-        if (id === 'kalshi' && L.markets) return `${num(L.markets)} markets ·\u00a0${L.series} series`;
+        if (id === 'kalshi' && L.markets) return `${num(L.markets)} markets${SEP}${L.series} series`;
         return 'connected';
       }
-      if (id === 'db') return `${L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : num(L.size_mb) + ' MB'} ·\u00a0${compact(L.rows)} rows`;
-      if (id === 'web') return L.users != null ? `${num(L.users)} users ·\u00a0serving` : 'online ·\u00a0serving';
-      if (id === 'agents') return metricLines(id, L).join(' ·\u00a0');
+      if (id === 'db') return `${L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : num(L.size_mb) + ' MB'}${SEP}${compact(L.rows)} rows`;
+      if (id === 'web') return L.users != null ? `${num(L.users)} users${SEP}serving` : `online${SEP}serving`;
+      if (id === 'agents') return metricLines(id, L).join(SEP);
       if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
       if (L.ext) return 'connected';
       const a = L.age == null ? '—' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
-      if (id === 'forward') return `${num(L.rows)} ${L.unit} ·\u00a0${a}`;
-      if (id === 'cb_coll' || id === 'features') return `${num(L.rows)} ${L.unit} ·\u00a0${a}`;
+      if (id === 'forward') return `${num(L.rows)} ${L.unit}${SEP}${a}`;
+      if (id === 'cb_coll' || id === 'features') return `${num(L.rows)} ${L.unit}${SEP}${a}`;
       // Running deployments per mode (the reader's own; every user's for the operator): live money and demo are named apart, never summed.
-      if (id === 'sim_engine') return `${num(L.paper)} paper running ·\u00a0${a}`;
-      if (id === 'live_engine') return `${num(L.live)} live ·\u00a0${num(L.demo)} demo ·\u00a0${a}`;
+      if (id === 'sim_engine') return `${num(L.paper)} paper running${SEP}${a}`;
+      if (id === 'live_engine') return `${num(L.live)} live${SEP}${num(L.demo)} demo${SEP}${a}`;
       return a;
     }
     // A verdict reads as the run page's plain note (server gate_explain.event_note) when it has one,

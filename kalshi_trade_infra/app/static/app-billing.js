@@ -6,7 +6,7 @@ window.TauPage('billing', (T) => {
   const {
     alert0, api, armed, BEHIND, boardTitle, busy, cardFormFail, CLOCK, CLOCK_ZONE, dateFmt, esc, fig, flash,
     halfUp, ICON, KIND_LABEL, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
-    root, runwayLabel, S, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote,
+    root, runwayLabel, S, SEP, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote,
     WEEKDAY_DAY
   } = T;
 
@@ -31,7 +31,7 @@ window.TauPage('billing', (T) => {
         // Until a card was ever charged for credits (the server's card_charged), the balance is free credits: a
         // new user read $19.16 with no word that their card hadn't been charged.
         fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0, small: d.card_charged === false && d.balance > 0 ? 'free credits so far: your card hasn’t been charged' : undefined }) +
-        fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(' · ') }) +
+        fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(SEP) }) +
         // How long it lasts means until research pauses (under min_run_balance; with payments off nothing
         // pauses, so until $0), and with auto-reload on, when the card is next charged and for how much:
         // "Credits last about 2 days" in red beside auto-reload read as a stop that auto-reload prevents,
@@ -160,7 +160,7 @@ window.TauPage('billing', (T) => {
           Object.assign(d, { auto_reload: on, autoreload_amount: amount, autoreload_threshold: threshold },
             r && r.autoreload_charge != null ? { autoreload_charge: r.autoreload_charge } : {});
           syncMeBilling(d);
-          flash('#autorel-flash', on ? `On ·\u00a0reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
+          flash('#autorel-flash', on ? `On${SEP}reloads ${usd(amount)} at ${usd(threshold)}.` : 'Auto-reload off.', 'good');
         } catch (err) { arPaint(arSaved.on, arSaved.amount, arSaved.threshold); flash('#autorel-flash', err.message, 'bad'); }
         finally { [arBox, arAmt, arThr].forEach((x) => { x.disabled = false; }); }
       };
@@ -223,12 +223,12 @@ window.TauPage('billing', (T) => {
     if (r.kind === 'usage') {
       const model = r.model ? esc(r.model) : r.memo && !r.item ? esc(r.memo.replace(USAGE_PREFIX, '')) : '';
       return [r.session ? `<a href="/research/${+r.session.id}">${esc(sessionTitle(r.session))}</a>` : '', model,
-        +r.calls > 1 ? `${num(r.calls)} model calls` : ''].filter(Boolean).join(' · ');
+        +r.calls > 1 ? `${num(r.calls)} model calls` : ''].filter(Boolean).join(SEP);
     }
     if (r.kind === 'topup' || r.kind === 'autoreload') {
       const paid = r.card_charge != null ? `Card charged ${usd(r.card_charge)}` : 'Card charged';
       return (feePct != null ? `${paid}: ${usd(r.amount)} credits plus the ${esc(feePct)}% purchase fee` : paid)
-        + (r.stripe_ref ? ` · Stripe ref <span class="ref">${esc(r.stripe_ref)}</span>` : '');
+        + (r.stripe_ref ? `${SEP}Stripe ref <span class="ref">${esc(r.stripe_ref)}</span>` : '');
     }
     return '';
   }
@@ -270,7 +270,7 @@ window.TauPage('billing', (T) => {
     const tiny = (Array.isArray(under) ? under : []).filter((k) => SPEND_SOURCE[k] && !(+(by || {})[k] >= 0.005));
     return [...Object.entries(by || {}).filter(([k, v]) => SPEND_SOURCE[k] && +v >= 0.005)
       .sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SPEND_SOURCE[k]} ${usd(v)}`),
-    ...tiny.map((k) => `${SPEND_SOURCE[k]} under $0.01`)].join(' \u00b7\u00a0');
+    ...tiny.map((k) => `${SPEND_SOURCE[k]} under $0.01`)].join(SEP);
   };
   // Billing's statement (/api/billing ledger): the last days, newest first, under a heading per day that
   // says what the day used and added. Each usage line is one session's model calls that day.
@@ -323,7 +323,7 @@ window.TauPage('billing', (T) => {
       const micros = (rows) => rows.reduce((s, r) => s + Math.round(r.amount * 1e6), 0) / 1e6;
       const used = cents ? cents.get(g) / 100 : -micros(g.rows.filter((r) => r.kind === 'usage'));
       const added = micros(g.rows.filter((r) => r.kind !== 'usage'));
-      return `<tr class="ledger-day"><td colspan="3" data-lab="Day"><b>${ledgerDay(g.day)}</b><span class="day-sum">${[used >= 0.005 ? `${usd(used)} used` : '', added ? `${usd(added, true)} credits` : ''].filter(Boolean).join(' · ')}</span></td></tr>`;
+      return `<tr class="ledger-day"><td colspan="3" data-lab="Day"><b>${ledgerDay(g.day)}</b><span class="day-sum">${[used >= 0.005 ? `${usd(used)} used` : '', added ? `${usd(added, true)} credits` : ''].filter(Boolean).join(SEP)}</span></td></tr>`;
     };
     const key = d.math ? `Last ${d.math.days} days, newest first. Each research line is one session's model calls that day; open it to see the session. Lines are rounded to the cent so they add up to their day; the receipt has every call and every card charge, exactly.`
       : 'Newest first. The receipt has every line, with exact amounts.';

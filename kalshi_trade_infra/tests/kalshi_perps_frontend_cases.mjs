@@ -95,11 +95,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     await f.viewStrategy(42); await flush();
     const html = f.root.querySelector('#main').innerHTML;
     assert.match(html, /Since deploying/);
-    assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades, after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button> ·\u00a02 open/);
+    assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades, after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>\u00a0· 2 open/);
     assert.match(html, /Demo<\/span> No closed trades yet/);
     assert.ok(html.indexOf('>Demo<') < html.indexOf('>Paper<'), 'demo before paper');
     // Unseen-data backtest: +$12 over 6 trades at a $5 stake = $2 a trade, so 7 paper trades -> +$14.
-    assert.match(html, /backtest’s unseen-data pace, 7 trades would have made \+\$14\.00 ·\u00a0too few trades to judge yet/);
+    assert.match(html, /backtest’s unseen-data pace, 7 trades would have made \+\$14\.00\u00a0· too few trades to judge yet/);
     assert.equal((html.match(/real-pace/g) || []).length, 1, 'no pace line for a mode with no closed trades');
     // Scaled to each deployment's own stake: 10 trades at $10 a trade -> 10 x $2 x 2 = +$40, enough to judge.
     const big = strategyFrontend(detailStrategy({deployments: [{id: 4, mode: 'live', status: 'running', realized_pnl: 30, closed_trades: 10, open_positions: 0, stake: 10}]}));
@@ -272,15 +272,15 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     await f.viewStrategy(42); await flush();
     const main = f.root.querySelector('#main').innerHTML;
     const hint = main.slice(main.indexOf('<p class="hint" style="margin-top:8px">'), main.indexOf('</p>', main.indexOf('<p class="hint" style="margin-top:8px">')));
-    assert.match(hint, /Live: 1 open position at cost \+ fees \$0\.80 ·\u00a0unrealized (?:<span[^>]*>)?\+\$0\.20/);
-    assert.match(hint, /Demo: 1 open position at cost \+ fees \$8\.00 ·\u00a0unrealized (?:<span[^>]*>)?−\$3\.00/);
-    assert.match(hint, /Paper: 2 open positions at cost \+ fees \$6\.00 ·\u00a0unrealized (?:<span[^>]*>)?\+\$1\.00/);
+    assert.match(hint, /Live: 1 open position at cost \+ fees \$0\.80\u00a0· unrealized (?:<span[^>]*>)?\+\$0\.20/);
+    assert.match(hint, /Demo: 1 open position at cost \+ fees \$8\.00\u00a0· unrealized (?:<span[^>]*>)?−\$3\.00/);
+    assert.match(hint, /Paper: 2 open positions at cost \+ fees \$6\.00\u00a0· unrealized (?:<span[^>]*>)?\+\$1\.00/);
     assert.doesNotMatch(hint, /4 open positions|\$14\.80|−\$1\.80/);  // the cross-book totals it used to print
     f.clearTimers && f.clearTimers();
     // One book alone reads as before, with no label.
     const g = strategyFrontend(detailStrategy({holdings: [h('paper', 4, 1)], deployed: true, deployments: [{id: 1, mode: 'paper', status: 'running'}]}));
     await g.viewStrategy(42); await flush();
-    assert.match(g.root.querySelector('#main').innerHTML, />1 open position at cost \+ fees \$4\.00 ·\u00a0unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
+    assert.match(g.root.querySelector('#main').innerHTML, />1 open position at cost \+ fees \$4\.00\u00a0· unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
     g.clearTimers && g.clearTimers();
   });
 
@@ -444,8 +444,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     };
     const both = await ladder({deployments: [d(1, 'paper', 12, 3.4), d(2, 'demo', 5, -1.2), d(3, 'paper', 2, 1, 'paused')]}, readiness);
     // Paper's own trades and P&L (the paused paper deployment is still paper's book), demo's apart.
-    assert.match(both, /<span class="mk ">Paper<\/span> running ·\u00a014 closed trades ·\u00a0(?:<span[^>]*>)?\+\$4\.40/);
-    assert.match(both, /<span class="mk dep">Demo<\/span> running ·\u00a05 closed trades ·\u00a0(?:<span[^>]*>)?−\$1\.20/);
+    assert.match(both, /<span class="mk ">Paper<\/span> running\u00a0· 14 closed trades\u00a0· (?:<span[^>]*>)?\+\$4\.40/);
+    assert.match(both, /<span class="mk dep">Demo<\/span> running\u00a0· 5 closed trades\u00a0· (?:<span[^>]*>)?−\$1\.20/);
     assert.doesNotMatch(both, /19 closed|\$3\.20|\$5\.60/);  // what a sum across books would read
     // The live rung counts what is left and names the first, with its denominator (never the server's lone first refusal).
     assert.match(both, /Next rung, live: 3 checks left, first 18 more paper trades \(12 of 30\)\./);
@@ -468,14 +468,14 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     }
     // Paper only: the next rung is demo, and it names the missing demo key.
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness, {kalshi_dev_connected: false}),
-      /Paper<\/span> running ·\u00a00 closed trades[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
+      /Paper<\/span> running\u00a0· 0 closed trades[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /Next rung, demo: nothing needed\. Deploy it on demo below\. Demo runs the same rules on Kalshi’s sandbox with play money, to prove its orders place, fill and book before live money\./);
     assert.doesNotMatch(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /rung-demo/);  // nothing on demo yet
     // A paused book is still on its rung and says paused: deploying it there again would double its positions.
     const idle = await ladder({deployments: [d(1, 'paper', 2, 1, 'paused')]}, readiness);
-    assert.doesNotMatch(idle, /running/); assert.match(idle, /Paper<\/span> paused ·\u00a02 closed trades/);
+    assert.doesNotMatch(idle, /running/); assert.match(idle, /Paper<\/span> paused\u00a0· 2 closed trades/);
     assert.doesNotMatch(idle, /Next rung, paper/); assert.match(idle, /Next rung, demo/);
-    assert.match(await ladder({deployments: [d(1, 'paper', 1, 1), d(4, 'live', 3, 0.5)]}, readiness), /Live<\/span> running ·\u00a03 closed trades[\s\S]*Top rung: it trades live money\./);
+    assert.match(await ladder({deployments: [d(1, 'paper', 1, 1), d(4, 'live', 3, 0.5)]}, readiness), /Live<\/span> running\u00a0· 3 closed trades[\s\S]*Top rung: it trades live money\./);
     // Research-only strategies have no ladder at all.
     assert.equal(await ladder({research_only: true, deployments: [d(1, 'paper', 1, 1)]}, readiness), null);
   });
@@ -624,11 +624,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const both = [d(1, 'paper', 4, 1.9), d(2, 'demo', 0, 0)];
     const refused = await ladder({deployments: both, demo_health: demoFunds});
     // Demo keeps its own trades and P&L, then says why it isn't trading; paper still reads running.
-    assert.match(refused, /<span class="mk dep">Demo<\/span> 0 closed trades ·\u00a0(?:<span[^>]*>)?\+?\$0\.00(?:<\/span>)? realized ·\u00a0<span class="demo-health">/);
+    assert.match(refused, /<span class="mk dep">Demo<\/span> 0 closed trades\u00a0· (?:<span[^>]*>)?\+?\$0\.00(?:<\/span>)? realized\u00a0· <span class="demo-health">/);
     assert.match(refused, fundsLine);
-    assert.doesNotMatch(refused, /Demo<\/span> running/); assert.match(refused, /Paper<\/span> running ·\u00a04 closed trades/);
-    assert.match(await ladder({deployments: both, demo_health: demoKey}), /Demo<\/span> 0 closed trades[^<]*(?:<span[^>]*>[^<]*<\/span>)?[^<]* ·\u00a0<span class="demo-health">Demo isn&#39;t trading: your Kalshi demo key isn&#39;t connected\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a><\/span>/);
-    assert.match(await ladder({deployments: both, demo_health: null}), /Demo<\/span> running ·\u00a00 closed trades/);
+    assert.doesNotMatch(refused, /Demo<\/span> running/); assert.match(refused, /Paper<\/span> running\u00a0· 4 closed trades/);
+    assert.match(await ladder({deployments: both, demo_health: demoKey}), /Demo<\/span> 0 closed trades[^<]*(?:<span[^>]*>[^<]*<\/span>)?[^<]*\u00a0· <span class="demo-health">Demo isn&#39;t trading: your Kalshi demo key isn&#39;t connected\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a><\/span>/);
+    assert.match(await ladder({deployments: both, demo_health: null}), /Demo<\/span> running\u00a0· 0 closed trades/);
     // Only on paper, key saved, demo account empty: the next rung names the funds and where to add them.
     const paperOnly = await ladder({deployments: [d(1, 'paper', 4, 1.9)], demo_health: demoFunds});
     assert.match(paperOnly, /Next rung, demo: needs demo funds: your Kalshi demo account has \$0\.00\. <a href="https:\/\/demo\.kalshi\.co" target="_blank" rel="noopener">Open Kalshi demo ↗<\/a>/);

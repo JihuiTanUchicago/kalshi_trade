@@ -111,6 +111,10 @@
 
   // ---------- formatting ----------
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  // The separator between pieces of one line: a no-break space, "·", then a plain space, so a line that wraps ends on
+  // "·" and the next never starts with it (" ·\u00a0" glued it to what followed: "· 3 trades" began lines at 390px).
+  // Joins (`.join(SEP)`) and template pieces (`${a}${SEP}${b}`) on every page use it; page files get it from shared().
+  const SEP = '\u00a0\u00b7 ';
   // Inline markdown on ALREADY-ESCAPED text (so there is never raw HTML in the output).
   // Each marker needs its closing partner to fire, so a half-typed `**foo` or `` `foo `` from a
   // mid-stream token stays literal until it closes — the property the streaming feed relies on.
@@ -441,7 +445,7 @@
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
   // The server's title for a session whose prompt is an instruction to the agent (the autopilot's research
   // floor), else the idea as typed.
-  const sessionTitle = (r) => r.title ? r.title : (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7\u00a0' + marketShort(r.market));
+  const sessionTitle = (r) => r.title ? r.title : (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + SEP + marketShort(r.market));
   // A session's number among the user's own (the server's `seq`: 1 is their first), never the global run
   // id, which read "Session 8" on someone's first session. The example and an answer without it get none.
   const sessionNo = (r) => r && +r.seq > 0 ? `Session ${num(+r.seq)}` : '';
@@ -485,7 +489,7 @@
     const dir = dC > 0 ? 'pos' : dC < 0 ? 'neg' : '';
     face.querySelector('[data-spark]').innerHTML = hotChart(tr);
     face.querySelector('[data-last]').innerHTML = `<b class="fig sm">${m.mid == null ? '\u2014' : cents(m.mid)}</b>${dC ? `<span class="mktrow-delta ${dir}">${dC > 0 ? '+' : '\u2212'}${Math.abs(dC)}\u00a2</span>` : ''}`;
-    face.querySelector('[data-vol]').textContent = `${kfmt(m.vol24)} vol \u00b7\u00a024h`;
+    face.querySelector('[data-vol]').textContent = `${kfmt(m.vol24)} vol${SEP}24h`;
     face.dataset.live = '1';
   }
   // Ready markets (has_data) with nothing in the live feed right now: say so plainly instead
@@ -777,7 +781,7 @@
     const h = root.querySelector('h1'), tab = root.querySelector('.services [aria-current="page"]');
     // The signed-out landing keeps the plain product name; its headline is not a page name.
     const name = root.querySelector('.services') ? ((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
-    document.title = name ? `${name.length > 60 ? name.slice(0, 59) + '\u2026' : name} \u00b7\u00a0Tau` : 'Tau';
+    document.title = name ? `${name.length > 60 ? name.slice(0, 59) + '\u2026' : name}${SEP}Tau` : 'Tau';
     const moved = shownPath !== null && shownPath !== path;
     shownPath = path;
     const a = document.activeElement, top = pageStart();
@@ -1003,7 +1007,7 @@
     const parts = BELL_SUM.filter(([k]) => by[k] > 0).map(([k, say]) => say(+by[k]));
     const rest = Object.entries(by).filter(([k]) => !BELL_SUM.some(([b]) => b === k)).reduce((a, [, n]) => a + n, 0);
     if (rest) parts.push(`${num(rest)} other${rest === 1 ? '' : 's'}`);
-    return `<p class="bell-sum">${num(d.unread)} new: ${parts.join(' \u00b7\u00a0')}</p>`;
+    return `<p class="bell-sum">${num(d.unread)} new: ${parts.join(SEP)}</p>`;
   }
   async function wireBell() {
     const wrap = root.querySelector('.bell-wrap');
@@ -1168,7 +1172,7 @@
     root.querySelector('#main').innerHTML = `
       <div class="chips dl-tabs" role="group" aria-label="Dev Logs view">
         <button class="chip" type="button" data-dltab="planned" aria-pressed="${tab === 'planned'}">Up next</button>
-        <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped ·\u00a0${shippedCount}</button>
+        <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped${SEP}${shippedCount}</button>
       </div>
       <section class="sect dl-panel" data-dlpanel="planned"${tab === 'planned' ? '' : ' hidden'}><div class="sect-head"><h2>Shipping next</h2></div>
         <ul class="dl-list">${planned || '<li class="hint">Nothing queued.</li>'}</ul></section>
@@ -1617,7 +1621,7 @@
       const right = i < curve.length - 1 ? (px + x(curve[i + 1][0])) / 2 : W - R;
       const boxX = Math.max(L, Math.min(W - R - boxWidth, px + 8));
       const boxY = py < T + 32 ? T + 8 : T;
-      const label = `${day(t)} ·\u00a0${usd(value, true)}`;
+      const label = `${day(t)}${SEP}${usd(value, true)}`;
       return `<g class="chart-sample" data-time="${t}" tabindex="0" role="img" aria-label="${esc(label)}">
         <rect x="${left}" y="${T}" width="${Math.max(0, right - left)}" height="${H - T - B}" fill="transparent"/>
         <g class="chart-reading" aria-hidden="true"><line x1="${px}" x2="${px}" y1="${T}" y2="${H - B}" stroke="var(--rule-2)" stroke-dasharray="2 3"/><circle cx="${px}" cy="${py}" r="3" fill="var(--ink)"/>
@@ -1718,7 +1722,7 @@
   const AP_STRAT_TAG = `<span class="mk quiet ap-run-tag" title="Found in a research session the autopilot started.">Autopilot</span>`;
   const runTag = (r) => r.example ? ' ' + EXAMPLE_TAG : +r.by_autopilot ? ' ' + AP_RUN_TAG : '';
   // The run page's kind of session: its direction, and who started it when the autopilot did.
-  const runKind = (r) => +r.by_autopilot && !r.example ? (r.direction ? dirLabel(r.direction) + ' \u00b7\u00a0' : '') + 'Started by autopilot' : dirLabel(r.direction);
+  const runKind = (r) => +r.by_autopilot && !r.example ? (r.direction ? dirLabel(r.direction) + SEP : '') + 'Started by autopilot' : dirLabel(r.direction);
   // What each figure is net of, as the dashboard and Deploy say it: "+$1.00 on paper since deploying" left out that
   // Kalshi's fees (and, on paper, the spread) were already taken off.
   const realNet = (mode) => (mode === 'paper' ? PAPER_NET : 'after Kalshi fees');
@@ -1767,7 +1771,7 @@
     // over figures from the history the agent searched, marked only "tested only". A strategy researched
     // since the locked holdout keeps its unseen numbers with the gatekeeper, so most rows are that kind.
     // And over how long: "+$6.20 on unseen data" beside "58% win" said neither period nor pace (its page says both).
-    const pnlSub = [m.pnl == null ? '' : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(' \u00b7\u00a0');
+    const pnlSub = [m.pnl == null ? '' : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const missed = Array.isArray(opts.missed) && opts.missed.length ? `<div class="slip-missed">${whyFailedHtml(opts.missed.slice(0, 1))}${opts.missed.length > 1 ? `<a class="sub-fig" href="/strategies/${s.id}">${opts.missed.length - 1} more check${opts.missed.length > 2 ? 's' : ''} on its page</a>` : ''}</div>` : '';
@@ -1803,13 +1807,13 @@
   const backtestPace = (d) => {
     const oos = d.backtest && d.backtest.out_of_sample, n = +d.closed_trades || 0;
     if (!oos || !(+oos.trades > 0) || !n) return '';
-    return `Backtest estimate ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'} ·\u00a0`;
+    return `Backtest estimate ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'}${SEP}`;
   };
   // Each fact keeps its label with its value (.dep-fact never wraps inside): "· Deployed" ended one line and
   // "Oct 18" began the next, on a phone and in the Deploy table's name column on a desktop.
   // A strategy from a research session keeps its unseen result with the gatekeeper, not in its backtest: its row read
   // "Unseen P&L —" as though it had none. The fact shows only with a backtest figure to give.
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact">Unseen P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span> ·\u00a0` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact">Unseen P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   // One plain line on how a book is doing against its backtest, written by the server
   // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
   // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.
@@ -1882,7 +1886,7 @@
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${depState(d, live)}</span></header>
-      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketFull(d.market))} ·\u00a0${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? ' \u00b7\u00a0' + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}${depInstant(d)}</div>
+      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketFull(d.market))}${SEP}${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? SEP + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? SEP + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}${depInstant(d)}</div>
       <dl class="monitor-metrics">
         <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${PAPER_NET}${glo('paperfills')}</dd>` : ''}</div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}</dd></div>
@@ -2356,7 +2360,7 @@
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
       // The figure above it is Kalshi's cash for the whole account; this line is Tau's own trades.
-      const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${b.open_positions} open${b.open_positions ? ' (not in cash)' : ''} ·\u00a0${usd(b.realized_pnl, true)} realized all time ·\u00a0${usd(b.today_pnl, true)} realized today (UTC)` : zero;
+      const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${b.open_positions} open${b.open_positions ? ' (not in cash)' : ''}${SEP}${usd(b.realized_pnl, true)} realized all time${SEP}${usd(b.today_pnl, true)} realized today (UTC)` : zero;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
       const paperWorkspace = !hasLive && d.open_positions.concat(d.recent_closed, d.deployments).every(x => x.mode === 'paper');
       const sharedPaperRunning = d.deployments.length > 0 && d.deployments.every(x => x.mode === 'paper' && x.status === 'running');
@@ -2387,9 +2391,9 @@
       // deployment, the usual case while live is closed), it sits under the paper figure as its own figure, never
       // added to it, and says when Kalshi was read, as Tau's dashboard does. Only a missing key stays in the menu.
       const cashInBand = !hasLive && lv.connected;
-      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>') + tradesCsv('live', lv) });
-      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]} \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : [cashAt(lv), `${money(lv.realized_pnl)} realized all time by Tau trades`].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(lv)}, not in cash</span><strong>${openFig(lv)}</strong></div></div></dd></div>`;
-      const demoFigure = (demoKeyless(d.demo) ? fig(DEMO_BOOK, 'No demo key', { small: DEMO_NO_KEY }) : fig(DEMO_BOOK, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
+      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>') + tradesCsv('live', lv) });
+      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]}${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : [cashAt(lv), `${money(lv.realized_pnl)} realized all time by Tau trades`].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(lv)}, not in cash</span><strong>${openFig(lv)}</strong></div></div></dd></div>`;
+      const demoFigure = (demoKeyless(d.demo) ? fig(DEMO_BOOK, 'No demo key', { small: DEMO_NO_KEY }) : fig(DEMO_BOOK, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${d.demo.open_positions} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital${SEP}No demo deployments`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
       // newcomer could take it for real money.
       // A book that has never been used has no realized P&L yet (Tau's dashboard says "no paper strategies yet"):
@@ -2414,7 +2418,7 @@
         const close = r.market_close_time && new Date(r.market_close_time);
         const expiry = close && Number.isFinite(close.getTime()) ? close.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }) : '';
         return `<tr class="${closed ? 'settled-position' : 'open-position'}">
-        <td class="name"><details class="position-details" data-position="${closed ? 'closed' : 'open'}-${esc(r.id)}"><summary aria-label="${esc(name)} ·\u00a0${esc(r.title)} ·\u00a0${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'Demo' : 'Paper'}">${ICON.chev}<span class="position-title vh">${esc(r.title)}</span><span class="position-mode">${r.mode === 'live' ? '<span class="mk live">LIVE</span>' : r.mode === 'demo' ? 'Demo' : 'Paper'}</span><span class="position-market">${esc(name)}</span></summary><div class="sub-fig">${kalshiRef(r.ticker)} ·\u00a0${esc(r.title)}<span class="position-opened">${closed ? 'Closed' : 'Opened'} ${when(closed ? r.closed_at : r.opened_at)}</span>${r.why ? `<span class="position-why">${esc(r.why)}</span>` : ''}${close && Number.isFinite(close.getTime()) ? `<span class="position-absolute">Expires ${esc(close.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23' }))}</span>` : ''}${!closed && r.unrealized == null ? '<span class="position-mark-note">Unrealized P&amp;L unavailable</span>' : ''}</div></details></td>
+        <td class="name"><details class="position-details" data-position="${closed ? 'closed' : 'open'}-${esc(r.id)}"><summary aria-label="${esc(name)}${SEP}${esc(r.title)}${SEP}${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'Demo' : 'Paper'}">${ICON.chev}<span class="position-title vh">${esc(r.title)}</span><span class="position-mode">${r.mode === 'live' ? '<span class="mk live">LIVE</span>' : r.mode === 'demo' ? 'Demo' : 'Paper'}</span><span class="position-market">${esc(name)}</span></summary><div class="sub-fig">${kalshiRef(r.ticker)}${SEP}${esc(r.title)}<span class="position-opened">${closed ? 'Closed' : 'Opened'} ${when(closed ? r.closed_at : r.opened_at)}</span>${r.why ? `<span class="position-why">${esc(r.why)}</span>` : ''}${close && Number.isFinite(close.getTime()) ? `<span class="position-absolute">Expires ${esc(close.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23' }))}</span>` : ''}${!closed && r.unrealized == null ? '<span class="position-mark-note">Unrealized P&amp;L unavailable</span>' : ''}</div></details></td>
         <td class="position-size-cell"><span class="position-size"><span class="position-side">${esc(r.side.toUpperCase())}</span><span aria-hidden="true"> × </span><span class="position-quantity"><span class="vh">Quantity </span>${esc(r.qty)}</span></span></td>
         <td class="position-expiry-cell">${expiry ? `<time class="position-expiry" datetime="${esc(close.toISOString())}">${esc(expiry)}</time>` : '<span class="unavailable" title="Expiry unavailable"><span aria-hidden="true">—</span><span class="vh">Expiry unavailable</span></span>'}</td>
         <td class="num position-entry">${cents(+r.entry_price)}</td>
@@ -2463,7 +2467,7 @@
       const periodCurve = days.map(day => [Date.parse(day.d + 'T12:00:00Z') / 1000, periodPnl += +day.pnl]);
       const paperPlot = (width) => equityChart(periodCurve, null, null, { width: Math.max(280, width || root.querySelector('#main').clientWidth), height: 180, paper: true, endLabel: false, label: `Cumulative closed paper profit and loss from ${days[0].d} through ${days[days.length - 1].d}; ends at ${usd(periodPnl, true)}` });
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
-      const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper ·\u00a0</span>cumulative, ${PAPER_NET}</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
+      const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper${SEP}</span>cumulative, ${PAPER_NET}</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
       const main = `${apFirst ? '' : sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-paused') : ''}<div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
         <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure + (cashInBand ? liveFigure : '')}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
         <section class="positions-ledger" id="dash-open"><div class="sect-head"><h2>Open positions <span class="section-count">${openHead.n}</span>${openHead.book}</h2></div>
@@ -2600,7 +2604,7 @@
       const liveOn = !!(S.me && S.me.live_trading_available) || liveDeps.length > 0;
       const openSplit = ['paper', 'demo', 'live'].map((m) => [m, d.open_positions.filter((p) => (p.mode || 'paper') === m).length])
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
-      paint(root.querySelector('#dfigs'), fig('Running', active.length, { small: `${d.deployments.length - running.length} paused${idle ? ` ·\u00a0${idle} placing no orders` : ''}` }) +
+      paint(root.querySelector('#dfigs'), fig('Running', active.length, { small: `${d.deployments.length - running.length} paused${idle ? `${SEP}${idle} placing no orders` : ''}` }) +
         (liveDeps.length
           ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}${noneLine('live', liveDeps)}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
           : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}${noneLine('paper', paperDeps)}\u00a0· ${PAPER_NET}${glo('paperfills')}` }) : '') +
@@ -2716,11 +2720,11 @@
     const good = s.level === 'solid' && s.edge === 'positive';
     const figs = `<dl class="figures measure tr-figs">
       ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `${key === 'paper' ? `${PAPER_NET} (${usd(m.fees)} in fees)${glo('paperfills')}` : `after ${usd(m.fees)} in fees`}${m.first_trade_at ? `\u00a0\u00b7 since ${trDay(m.first_trade_at)}` : ''}${key === 'paper' ? slipEst(m.slippage_estimate) : ''}` })}
-      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? ` ·\u00a0${pct(m.annualized_return)} a year` : ''}` })}
+      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? `${SEP}${pct(m.annualized_return)} a year` : ''}` })}
       ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
-      ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)} ·\u00a0Sortino ${trFix(m.sortino)}` })}
+      ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)}${SEP}Sortino ${trFix(m.sortino)}` })}
       ${fig('Win rate', pct(m.win_rate, false), { small: trCi(m.win_rate_ci, (v) => pct(v, false)) })}
-      ${fig('Trades', num(m.trades), { small: `${num(m.wins)} won ·\u00a0${num(m.losses)} lost` })}
+      ${fig('Trades', num(m.trades), { small: `${num(m.wins)} won${SEP}${num(m.losses)} lost` })}
       ${fig('Avg trade', usd(m.avg_trade, true), { v: m.avg_trade, small: trCi(m.avg_trade_ci, (v) => usd(v, true)) })}
       ${fig('Profit factor', trFix(m.profit_factor), { small: 'winning trades ÷ losing trades, after fees' })}
     </dl>`;
@@ -2741,7 +2745,7 @@
       const [tag, cls] = r.instant_only ? ['Left out', 'quiet'] : TR_EDGE[r.edge] || TR_EDGE.unclear;
       // A removed or deleted strategy stays in the table (and every figure); it says so instead of
       // reading like one still trading. A deleted one has no page left to link to.
-      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}removed from ${esc(key)}, then deleted` : TR_STATUS[r.status] ? TR_STATUS[r.status](esc(key)) : '';
+      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))}${SEP}` : ''}removed from ${esc(key)}, then deleted` : TR_STATUS[r.status] ? TR_STATUS[r.status](esc(key)) : '';
       return `<tr><td class="name" data-lab="Strategy">${r.removed ? esc(r.title) : `<a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a>`}${st ? `<div class="sub-fig">${st}</div>` : ''}${trRowLeft(r)}</td>
         <td data-lab="Read"><span class="mk ${cls}">${tag}</span></td>
         <td class="num" data-lab="Trades">${num(r.trades)}${r.open_trades ? ` <span class="sub-fig">+${num(r.open_trades)} open</span>` : ''}</td>
@@ -2759,7 +2763,7 @@
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
-      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Removed ones included ·\u00a0“Too few” means under ${th.min_trades} trades</p></div>
+      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Removed ones included${SEP}“Too few” means under ${th.min_trades} trades</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Read</th><th class="num">Trades</th><th class="num">Net P&amp;L</th><th class="num">Win rate</th><th class="num">Avg trade</th><th class="num">Max drawdown</th><th class="num">Last trade</th></tr></thead><tbody>${strats}</tbody></table></div></section>`;
   }
   // Lives on the dashboard (Todd, 2026-10-25): its own request below the live board, so the 15s
@@ -2774,7 +2778,7 @@
     // note, so a record the minute poll could no longer refresh read as current. A failing poll says so under the tabs.
     host.innerHTML = `<div class="section-head"><h2>Track record</h2><p>Realized results from closed trades. Nothing here is a backtest. <span class="tr-asof">Figures as of ${esc(settleAt(new Date(d.generated_at * 1000).toISOString()))}</span></p></div>
       <div class="chips tr-tabs" role="group" aria-label="Money type">
-        ${TR_MODES.map(([k, label]) => `<button class="chip" type="button" data-trtab="${k}" aria-pressed="${k === tab}">${label} ·\u00a0${num(d.modes[k].trades)}</button>`).join('')}
+        ${TR_MODES.map(([k, label]) => `<button class="chip" type="button" data-trtab="${k}" aria-pressed="${k === tab}">${label}${SEP}${num(d.modes[k].trades)}</button>`).join('')}
       </div>
       <p class="stale-note" id="tr-stale" role="status"></p>
       <div class="trpanel"></div>
@@ -2840,7 +2844,7 @@
   // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
   // above $200000 by Jan 1…? · Above $200000" repeated the title. A contract the feed sends untitled is named
   // as a position is (contractName: its market's words, else "Kalshi contract"), never by its raw ticker.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} ·\u00a0${s}` : s) : (t || contractName(m.t)); };
+  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
   const compactCondition = label => label.replace(/^(\$[\d,]+(?:\.\d+)?) or above$/i, '≥ $1').replace(/^(\$[\d,]+(?:\.\d+)?) or below$/i, '≤ $1').replace(/^Above (\$[\d,]+(?:\.\d+)?)$/i, '> $1').replace(/^Below (\$[\d,]+(?:\.\d+)?)$/i, '< $1');
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
@@ -2891,8 +2895,8 @@
       const op = xs.filter((p) => p.status === 'open'), cl = xs.filter((p) => p.status !== 'open');
       const marked = op.filter((p) => p.unrealized != null);
       const lastMark = marked.map((p) => p.mark_ts).filter(Boolean).sort().pop();
-      const sum = [op.length ? `${op.length} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` ·\u00a0unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : ' ·\u00a0awaiting first mark'}` : '',
-        cl.length ? `${cl.length} closed ·\u00a0realized ${money(cl.reduce((a, p) => a + (+p.pnl || 0), 0))}` : ''].filter(Boolean).join(' ·\u00a0');
+      const sum = [op.length ? `${op.length} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}awaiting first mark`}` : '',
+        cl.length ? `${cl.length} closed${SEP}realized ${money(cl.reduce((a, p) => a + (+p.pnl || 0), 0))}` : ''].filter(Boolean).join(SEP);
       const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? '—' : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? `Open, settles ${settleAt(p.market_close_time)}` : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
@@ -2948,7 +2952,7 @@
     const line = m15 || (k && k.from === 'title') ? 'target price' : 'strike', Line = line[0].toUpperCase() + line.slice(1);
     const v = stored ? (s.vs && s.vs.side ? s.vs : null) : k && sp ? lineVs(+sp.price, k.value) : null;
     const bucket = k && k.kind === 'range', edges = bucket && k.lo != null && k.hi != null;
-    const now = sp ? fig('Bitcoin now', btcUsd(sp.price), sp.stale ? { small: `Spot feed is ${spotOld(+sp.age_s || 0)} old`, cls: 'fig-behind' } : { small: `Coinbase · ${spotAge(+sp.age_s || 0)}` })
+    const now = sp ? fig('Bitcoin now', btcUsd(sp.price), sp.stale ? { small: `Spot feed is ${spotOld(+sp.age_s || 0)} old`, cls: 'fig-behind' } : { small: `Coinbase${SEP}${spotAge(+sp.age_s || 0)}` })
       : fig('Bitcoin now', '—', { small: 'No stored price in the last day' });
     const strike = !k ? fig(Line, '—', { small: m15 ? 'This window’s start price isn’t stored yet' : 'Not stored for this contract' })
       : edges ? fig('Bucket', `${btcUsd(k.lo)} to ${btcUsd(k.hi)}`, { small: 'Yes if Bitcoin settles inside it' })
@@ -2961,9 +2965,9 @@
     const yes = v && v.yes === true ? 'on the Yes side' : v && v.yes === false ? 'on the No side' : '';
     // Measured from an old price, the label says so beside the figure, not only under Bitcoin's.
     const lab = (l) => (sp && sp.stale ? `${l}, ${spotAge(+sp.age_s || 0)}` : l);
-    const vs = !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor · ${usd(v.to_hi)} below its top · on the Yes side` })
+    const vs = !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor${SEP}${usd(v.to_hi)} below its top${SEP}on the Yes side` })
       : v.side === 'at' ? fig(lab('Spot vs ' + line), 'At the ' + line, { small: yes })
-      : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line), usd(v.diff, true), { small: [`${Math.abs(+v.pct || 0).toFixed(2)}% ${where}`, yes].filter(Boolean).join(' · ') });
+      : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line), usd(v.diff, true), { small: [`${Math.abs(+v.pct || 0).toFixed(2)}% ${where}`, yes].filter(Boolean).join(SEP) });
     const left = s.secs_left == null ? fig('Time left', '—') : fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed', { small: s.close_time ? 'closes ' + settleAt(s.close_time) : '' });
     return `<dl class="figures measure">${now}${strike}${vs}${left}</dl><p class="hint mk-spot-note">Kalshi settles on the CF Benchmarks Bitcoin index averaged over the last minute before the close; Coinbase’s price usually sits within a few dollars of it.</p>`;
   }
@@ -3001,11 +3005,11 @@
     // and when it was read; the Explore feed's snapshot (Kalshi unreachable) says how old it is.
     const bid = +d.yes_bid, ask = +d.yes_ask;
     const priceSub = [mid == null ? '' : `≈\u00a0${Math.round(mid * 100)}% chance of Yes`, bid > 0 && ask > 0 ? `bid ${cents(bid)} / ask ${cents(ask)}` : '',
-      d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as of ${settleAt(d.as_of)}`) : ''].filter(Boolean).join(' ·\u00a0');
+      d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as of ${settleAt(d.as_of)}`) : ''].filter(Boolean).join(SEP);
     const settled = d.result === 'yes' || d.result === 'no';
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
     // The line under the name says what the code is, as a position does (kalshiRef): "Kalshi contract KX…", not a bare ticker.
-    shell('/explore', boardTitle(label, esc([contractMarket(d.ticker), MKT_STATUS[d.status] || d.status || 'Market'].filter(Boolean).join(' ·\u00a0')) + (d.ticker ? ' ·\u00a0' + kalshiRef(d.ticker) : '')) +
+    shell('/explore', boardTitle(label, esc([contractMarket(d.ticker), MKT_STATUS[d.status] || d.status || 'Market'].filter(Boolean).join(SEP)) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
@@ -3014,11 +3018,11 @@
       <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(d.rules)}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(d.rules_more)}</p>` : ''}`
           : `<p class="hint mk-rules">Kalshi’s settlement rules didn’t come with this snapshot. <a href="${kalshiLink}" target="_blank" rel="noopener">Read them on Kalshi ↗</a></p>`}</section>
-      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : ` ·\u00a0Kalshi ${gran} candles`}</p></div>
+      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : `${SEP}Kalshi ${gran} candles`}</p></div>
         <div class="pchart-wrap">${d.history_unavailable
           ? '<div class="empty"><h3>Price history didn’t load</h3><p>Kalshi didn’t send it just now. The figures above are from the latest market snapshot.</p><button class="btn sm" type="button" id="mk-retry">Try again</button></div>'
           : priceChart(d.points)}</div></section>
-      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${d.history_unavailable ? 'Not loaded' : `${num(d.points.length)} ${gran} points${d.points.length ? ' ·\u00a0newest first' : ''}`}</p></div>
+      <section class="sect"><div class="sect-head"><h2>Raw data</h2><p>${d.history_unavailable ? 'Not loaded' : `${num(d.points.length)} ${gran} points${d.points.length ? `${SEP}newest first` : ''}`}</p></div>
         <div id="rawsect"></div></section>
       <div class="xpage"><a class="btn sm" href="/explore">← Back to Explore</a>
         <span class="xpage-acts"><button class="btn sm" id="dl-csv" ${d.points.length ? '' : 'disabled'}>Download CSV</button>
@@ -3034,7 +3038,7 @@
       const pages = Math.max(1, Math.ceil(pts.length / PER));
       const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
       rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (${esc(tzName() || 'local')})</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <div class="xpage">${pg > 0 ? `<button class="btn sm" data-rp="${pg - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${pg + 1} of ${num(pages)} ·\u00a0${num(pts.length)} points</span>${pg + 1 < pages ? `<button class="btn sm" data-rp="${pg + 1}">Next →</button>` : '<span></span>'}</div>`;
+        <div class="xpage">${pg > 0 ? `<button class="btn sm" data-rp="${pg - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${pg + 1} of ${num(pages)}${SEP}${num(pts.length)} points</span>${pg + 1 < pages ? `<button class="btn sm" data-rp="${pg + 1}">Next →</button>` : '<span></span>'}</div>`;
       rawEl.querySelectorAll('[data-rp]').forEach((b) => b.onclick = () => { pg = +b.dataset.rp; renderRaw(); window.scrollTo({ top: rawEl.offsetTop - 80, behavior: smooth() }); });
     };
     renderRaw();
@@ -3058,7 +3062,7 @@
   // its market page says it): a stored one read "Spot vs strike" on Explore beside "Target price" on its page.
   const vsTarget = (m) => !!((m.vs && m.vs.from === 'title') || M15_CONTRACT.test(m.t || ''));
   const vsText = (v, m) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (vsTarget(m || { vs: v }) ? 'at the target price' : 'at the strike')
-    : `${+v.diff < 0 ? '−' : '+'}$${num(Math.round(Math.abs(+v.diff)))} · ${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
+    : `${+v.diff < 0 ? '−' : '+'}$${num(Math.round(Math.abs(+v.diff)))}${SEP}${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
   const vsLab = (m) => (vsTarget(m) ? 'Spot vs target price' : /^KXBTC-.+-B[\d.]+$/.test(m.t) ? 'Spot vs bucket' : 'Spot vs strike');
   const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, m)}</b></span>` : '');
   // The line names what the rows shown measure from: a list of 15-minute windows only said "Distances to the strike"
@@ -3155,8 +3159,8 @@
         // Explore chips it, then when the contract closes. The raw ticker (KXBTCD-26OCT2812-T112999.99) carries the
         // series key, so a row never prints it, as Tau's rows don't: the market page names it on its own line.
         const chip = contractShort(m.t), closes = m.ct ? 'Closes ' + settleAt(m.ct) : '';
-        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc([label, chip, closes].filter(Boolean).join(' ·\u00a0'))}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? `<span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${closes ? `<span class="market-close">${esc(closes)}</span>` : ''}</a>${vsHtml(m)}`;
-        return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(' ·\u00a0'))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
+        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc([label, chip, closes].filter(Boolean).join(SEP))}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? `<span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${closes ? `<span class="market-close">${esc(closes)}</span>` : ''}</a>${vsHtml(m)}`;
+        return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(SEP))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
           <td class="num yes-price" data-lab="YES Price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="YES Bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="YES Ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
       });
@@ -3361,7 +3365,7 @@
     // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
     const found = s.own_sessions === false && !pass.n && !fwd.length ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
       ? `${num(pass.n)}${atLeast} ${pass.n === 1 && !atLeast ? 'strategy' : 'strategies'} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length || atLeast ? `, <a href="/strategies">${num(pass.n - pass.items.length)}${atLeast} more</a>` : ''}`
-      : fwd.length ? fwdText : 'Nothing new passed') + (started ? ` <span class="since-sub">· ${plural(started, 'research session', 'research sessions')} started, ${sinceRunsState(runs, started, !pass.n)}</span>` : '') + '.' + (pass.n && fwd.length ? ` ${fwdText}.` : '') + fellText);
+      : fwd.length ? fwdText : 'Nothing new passed') + (started ? `<span class="since-sub">${SEP}${plural(started, 'research session', 'research sessions')} started, ${sinceRunsState(runs, started, !pass.n)}</span>` : '') + '.' + (pass.n && fwd.length ? ` ${fwdText}.` : '') + fellText);
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', k === 'research' ? plural(ap[k], 'research session', 'research sessions') : num(ap[k])));
@@ -3410,7 +3414,7 @@
     const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
     const bought = !charges ? '' : `; ${reloads === charges ? `auto-reload charged your card ${charges === 1 ? 'once' : charges === 2 ? 'twice' : num(charges) + ' times'} for`
       : reloads ? `${plural(charges, 'card charge', 'card charges')} (${num(reloads)} by auto-reload) bought` : 'you bought'} <b>${usd(spent.bought)}</b> of credits`;
-    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub"> \u00b7\u00a0${paid} \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
+    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub">${SEP}${paid}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
       <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>
@@ -3502,7 +3506,7 @@
     const cells = [
       d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>`],
       ['Strategies running', `${running ? String(running) : 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
-      d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
+      d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${PAPER_COUNT_WHY}</small>`]
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
     ].filter(Boolean);
@@ -3603,7 +3607,7 @@
   // is paper-only or no money at all); the live modes keep their label, so LIVE always shows.
   function apPillLabel(d, m) {
     const doing = d && d.mode === 'paper' ? apDoing(d) : '';
-    return doing ? 'Autopilot ·\u00a0' + doing : m.label;
+    return doing ? `Autopilot${SEP}` + doing : m.label;
   }
   // Why autopilot isn't trading right now (the server's d.idle): one plain line, plus the action to
   // take when there is one (a link, or the focus control). The card and the panel both lead with it.
@@ -3662,10 +3666,10 @@
       && !+w.tested && !+w.passed && !+w.not_cleared && !+w.paper_started && !trades && !pnl;
     if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>Last 7 days:</b> nothing yet. Its research, paper strategies and credits spent show here once it starts.</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? ` ·\u00a0plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
-      <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
+      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? `${SEP}plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
+      <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
-      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>
+      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>
     </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot’s. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
@@ -3839,9 +3843,9 @@
   const AP_PENDING_ON = { label: 'Autopilot on', cls: 'paper' };  // switch on, mode not read yet
   const AP_MODE = {
     off: { label: 'Autopilot off', cls: '' },
-    paper: { label: 'Autopilot ·\u00a0paper', cls: 'paper' },
-    'live-armed': { label: 'Autopilot ·\u00a0live armed', cls: 'live' },
-    live: { label: 'Autopilot ·\u00a0LIVE', cls: 'live' },
+    paper: { label: `Autopilot${SEP}paper`, cls: 'paper' },
+    'live-armed': { label: `Autopilot${SEP}live armed`, cls: 'live' },
+    live: { label: `Autopilot${SEP}LIVE`, cls: 'live' },
   };
   // The open panel (its controls, the activity feed and the chat) is in app.meridian-autopilot.js,
   // fetched the first time it opens (page files, at the end of this file): every page draws the pill,
@@ -3958,12 +3962,12 @@
   const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
   function hotRowHtml(m) {
     const compactName = contractShort(m.t) || (m.ti || '').trim() || contractName(m.t);
-    const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m)} ${vsText(m.vs, m)}` : '');
+    const when = (m.ct ? `${SEP}Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? `${SEP}${vsLab(m)} ${vsText(m.vs, m)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
-    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(' ·\u00a0'))} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours${when} ·\u00a0Opens Kalshi in a new tab">
+    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(SEP))}${SEP}${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? `${SEP}${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''}${SEP}${kfmt(m.v24)} volume over 24 hours${when}${SEP}Opens Kalshi in a new tab">
       <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span>${esc(compactCondition(m.su))}</span>` : ''}</span><span class="hot-price" title="Midpoint quote"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
-      <span class="hot-foot"><span class="hot-meta"><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)} ·\u00a024h</span></span><span class="vh">Opens Kalshi in a new tab</span></span>${hotWhen(m)}</a>`;
+      <span class="hot-foot"><span class="hot-meta"><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)}${SEP}24h</span></span><span class="vh">Opens Kalshi in a new tab</span></span>${hotWhen(m)}</a>`;
   }
   function renderHotRail() {
     const rail = document.getElementById('hotrail'); if (!rail) return;
@@ -3974,7 +3978,7 @@
     rail.classList.toggle('is-stale', !!d && (snapshotAge == null || snapshotAge > 180));
     // The narrow rail says its rows are a few reads old in place of their age line, not in a line of its own.
     const stale = hotStaleText();
-    const freshness = stale ? `<span class="hot-freshness is-old" id="hot-stale" role="status">${esc(stale)}</span>` : d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? ' ·\u00a0More than 3 minutes old' : ''}">${snapshotAge == null ? 'Update time unavailable' : `${snapshotAge > 180 ? 'Behind ·\u00a0updated' : 'Updated'} ${esc(sinceMin(d.at))}`}</span>` : '';
+    const freshness = stale ? `<span class="hot-freshness is-old" id="hot-stale" role="status">${esc(stale)}</span>` : d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? `${SEP}More than 3 minutes old` : ''}">${snapshotAge == null ? 'Update time unavailable' : `${snapshotAge > 180 ? `Behind${SEP}updated` : 'Updated'} ${esc(sinceMin(d.at))}`}</span>` : '';
     const rows = d && d.markets && d.markets.length ? hotSpotNote(d) + d.markets.map(hotRowHtml).join('')
       : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying shortly.' : loading(120)}</div>`;
     const control = root.querySelector('.market-control');
@@ -4143,7 +4147,7 @@
   // drawing with undefined, and its page fails with Try again.
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
-    actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
+    actionLink, adminViewOn, alert0, announce, SEP, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,

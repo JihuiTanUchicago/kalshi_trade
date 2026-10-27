@@ -7,7 +7,7 @@ window.TauPage('autopilot', (T) => {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
     apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, go, ICON, mdLite,
-    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
+    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, refreshAutopilot, S, SEP, settleAt, sinceMin, usd, waitNote, waitSpan,
     wakers
   } = T;
 
@@ -23,7 +23,7 @@ window.TauPage('autopilot', (T) => {
     const label = d.toDateString() === today.toDateString() ? 'Today' : d.toDateString() === yest.toDateString() ? 'Yesterday'
       : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     li.className = 'ap-day';
-    li.textContent = label + (tzShort() ? ' ·\u00a0times in ' + tzShort() : '');
+    li.textContent = label + (tzShort() ? `${SEP}times in ` + tzShort() : '');
     return li;
   }
   // A send or a decision that failed says why just above the composer. alert0 put it at the top of the
@@ -224,7 +224,7 @@ window.TauPage('autopilot', (T) => {
   // `spoken` leaves out how long ago the last move was, for the pulse's live region.
   function apIdleLine(box, spoken) {
     const d = S.ap, la = d && d.last_action;
-    const last = la && la.at && !spoken ? ' ·\u00a0last move ' + sinceMin(la.at) : '';
+    const last = la && la.at && !spoken ? `${SEP}last move ` + sinceMin(la.at) : '';
     if (!(d ? d.autopilot : apSwitchOn())) return 'Off: it acts only when you message it' + last;
     const now = apNowWord(d);
     return now + last + (now === 'Idle' ? ' — reviews run on a schedule' : '');
@@ -234,10 +234,10 @@ window.TauPage('autopilot', (T) => {
     if (!d) return 'Idle';
     if (d.billing_blocked) return 'Paused until it can pay for research';
     const names = apMarketNames(d), picked = names.filter((n) => n !== AP_PICKING);
-    if (names.length) return picked.length ? 'Researching ' + picked.join(' ·\u00a0') : 'Picking a market to research';
+    if (names.length) return picked.length ? 'Researching ' + picked.join(SEP) : 'Picking a market to research';
     if (d.reviewing) return 'Reviewing the markets';
     // Between reviews with strategies on paper is not idle: they trade on their own between its moves.
-    return d.paper_running ? `Between reviews ·\u00a0${d.paper_running} on paper` : 'Idle';
+    return d.paper_running ? `Between reviews${SEP}${d.paper_running} on paper` : 'Idle';
   }
   // The open panel is a full-screen sheet under this width (app.css: `.apf.open { inset: 0 }`), which is
   // not phone(): between the two it still sits beside the page.
@@ -499,7 +499,7 @@ window.TauPage('autopilot', (T) => {
     // Short figures share a row (as many columns as there are figures, two on a phone, the odd
     // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
     const short = [
-      `<dt>Running</dt><dd>${runTotal ? runParts.join(' ·\u00a0') : 'None'}</dd>`,
+      `<dt>Running</dt><dd>${runTotal ? runParts.join(SEP) : 'None'}</dd>`,
       // With nothing on paper and nothing realized today, there is no day's P&L to show: "$0.00" read as a result.
       // The figure says which money it is and that fees are in, as the dashboard card and Deploy say it.
       `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : `${usd(pnl, true)} <small class="apf-note">${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>`}</dd>`,
@@ -514,8 +514,8 @@ window.TauPage('autopilot', (T) => {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${budgetShown ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
-      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${+d.research.not_cleared_7d ? `, ${Number(d.research.not_cleared_7d).toLocaleString('en-US')} not cleared` : ''}${+d.research.cost_7d >= 0.005 ? ', ' + usd(d.research.cost_7d) + ' spent' : (+d.research.cost_7d > 0 || d.research.cost_7d_under_cent) ? ', under $0.01 spent' : ''}</dd></div>` : ''}
-      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)} net on them. <small>${PAPER_COUNT_WHY_SAID}</small></dd></div>` : ''}`;
+      ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(SEP)) : 'Not researching right now'}${SEP}${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${+d.research.not_cleared_7d ? `, ${Number(d.research.not_cleared_7d).toLocaleString('en-US')} not cleared` : ''}${+d.research.cost_7d >= 0.005 ? ', ' + usd(d.research.cost_7d) + ' spent' : (+d.research.cost_7d > 0 || d.research.cost_7d_under_cent) ? ', under $0.01 spent' : ''}</dd></div>` : ''}
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a>${SEP}${paperCount(d.paper_progress)}${SEP}${usd(d.paper_progress.net_pnl, true)} net on them. <small>${PAPER_COUNT_WHY_SAID}</small></dd></div>` : ''}`;
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.

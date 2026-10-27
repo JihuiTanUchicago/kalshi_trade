@@ -37,11 +37,11 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
   test(`${name}: the pre-registered cost assumptions read in words, never the stored codes`, async () => {
     const f = await open({status: 'passed', experiment: {classification: 'deployment_candidate', null_hypothesis: 'No edge.',
       cost_assumptions: {fee: 'kalshi_taker', fill: 'ask/bid'}}});
-    assert.match(main(f), /<dt>Cost assumptions<\/dt><dd>Fee: Kalshi(?:’|&#39;|')s taker fee on every fill ·\u00a0Fill: buys at the ask, sells at the bid<\/dd>/);
+    assert.match(main(f), /<dt>Cost assumptions<\/dt><dd>Fee: Kalshi(?:’|&#39;|')s taker fee on every fill\u00a0· Fill: buys at the ask, sells at the bid<\/dd>/);
     assert.doesNotMatch(main(f), /kalshi_taker|ask\/bid/);
     const perp = await open({status: 'passed', experiment: {classification: 'deployment_candidate', null_hypothesis: 'No edge.',
       cost_assumptions: {fill: 'next_open', funding: 'finalized_payments_as_cost_only', scenario: 'some_new_code', lookback_minutes: 60}}});
-    assert.match(main(perp), /Fill: the next bar’s open ·\u00a0Funding: settled funding payments, counted only as a cost ·\u00a0Scenario: some new code ·\u00a0Lookback minutes: 60/);
+    assert.match(main(perp), /Fill: the next bar’s open\u00a0· Funding: settled funding payments, counted only as a cost\u00a0· Scenario: some new code\u00a0· Lookback minutes: 60/);
     assert.doesNotMatch(main(perp), /next_open|finalized_payments|some_new_code/);
   });
 
@@ -95,7 +95,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const labels = f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent);
     assert.deepEqual(labels, ['Unseen-data P&L', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
     assert.match(figs, /<dd class="sub-fig">6 trades over 15 days the agent never saw<\/dd>/);
-    assert.match(figs, /<dd class="sub-fig">Unseen data over 15 days · \$100 at risk at most<\/dd>/);
+    assert.match(figs, /<dd class="sub-fig">Unseen data over 15 days · \$100 at risk at most<\/dd>/);
     assert.match(figs, /<dd class="sub-fig">in the session that found it; this is the one that passed\. More ideas tried, more chance one passes by luck \(multiple testing\)\.<\/dd>/);
     assert.match(html, /On unseen data the agent never touched while iterating, it returned \$12\.00 over 6 trades, and cleared the gate as one of 5 ideas tested this run\./);
     assert.match(html, /<h4>Tested on \(in-sample\)<\/h4>/); assert.match(html, /<h4>Never seen \(out-of-sample\)<\/h4>/);
@@ -146,7 +146,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.doesNotMatch(gateText, /unseen/i);
       assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
       assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it: not held out/);
-      assert.match(figs.innerHTML, /After the split date over 15 days ·\u00a0\$100 at risk at most/);
+      assert.match(figs.innerHTML, /After the split date over 15 days\u00a0· \$100 at risk at most/);
       assert.match(html, /After the backtest’s split date it returned \$12\.00 over 6 trades\. That later slice is what picked it, so it isn’t held-out evidence\./);
       assert.match(html, /<h4>After the split date \(not held out\)<\/h4>/);
       assert.match(html, /<dt>Split date<\/dt>/); assert.match(html, /The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out\./);
@@ -227,12 +227,12 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     }
     assert.match(html, /average net return per trade, after fees/);
     assert.match(html, /one-sided bootstrap test \(resamples its trades in blocks\), significance bar from LORD\+\+/);
-    assert.match(html, /37 planned tests · LORD\+\+ \(a false-discovery control: it keeps count of every idea tested, so lucky passes stay rare\)/);
+    assert.match(html, /37 planned tests · LORD\+\+ \(a false-discovery control: it keeps count of every idea tested, so lucky passes stay rare\)/);
     assert.match(html, /chance a rule with no edge does this well; lower is better/);
     assert.match(html, /p-value needed<\/div><div class="val">0\.0500<\/div><div class="sub">the bar its p-value had to clear; it cleared it/);
     assert.match(html, /used once, as designed: it can’t be re-run on this data/);
     const bh = await open({status: 'passed', experiment: {classification: 'statistically_supported', correction_method: 'BH', planned_n_tests: 4}});
-    assert.match(main(bh), /4 planned tests · Benjamini–Hochberg/);
+    assert.match(main(bh), /4 planned tests · Benjamini–Hochberg/);
   });
 
   test(`${name}: the ladder keeps the rung validation reached when the holdout then failed`, async () => {
@@ -436,9 +436,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       return el ? el.textContent : null;
     };
     // 1 realistic trade at $5 (+$2) and 1 at $10 (+$4): 2 trades, +$6.00; the instant fill is left out.
-    assert.equal(await pace(deployments, 1), "At the backtest’s unseen-data pace, 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
+    assert.equal(await pace(deployments, 1), "At the backtest’s unseen-data pace, 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
     // None instant: the line is as before, over all 3 trades.
-    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest’s unseen-data pace, 3 trades would have made +$8.00 · too few trades to judge yet");
+    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest’s unseen-data pace, 3 trades would have made +$8.00 · too few trades to judge yet");
     // Every one an instant fill: no realistic trade to hold against the backtest, so no line.
     assert.equal(await pace([{...deployments[0], instant_fills: 2}], 2), null);
   });
@@ -447,7 +447,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     // Walk 2026-10-27: at 390px in Meridian a book's line ended "· deployed" and "Oct 18" began the next line.
     const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 1.3, closed_trades: 2, open_positions: 0, created_at: '2026-10-18T08:00:00Z'}];
     const f = await open({status: 'passed', deployments});
-    assert.match(f.root.querySelector('.real-record').innerHTML, /·\u00a0<span class="nobr">deployed [^<]+<\/span>/);
+    assert.match(f.root.querySelector('.real-record').innerHTML, /\u00a0· <span class="nobr">deployed [^<]+<\/span>/);
   });
 
   test(`${name}: past deployments say which money each was and that fees are in, as the lines above do`, async () => {

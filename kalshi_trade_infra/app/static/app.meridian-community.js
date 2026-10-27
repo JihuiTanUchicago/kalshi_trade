@@ -5,7 +5,7 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, busy, clock, deploymentMode, esc, flash, ICON,
-    liveWaitMark, loading, marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S,
+    liveWaitMark, loading, marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP,
     shell, statusMark, tone, trDay, usd, when
   } = T;
 
@@ -61,7 +61,7 @@ window.TauPage('community', (T) => {
     const replies = p.comments || 0;
     return `<article class="post${grouped ? ' grouped' : ''}${p.picture ? ' post-photo' : ''}" data-id="${p.id}">
       <div class="post-gutter">${grouped ? `<time class="gutter-time">${clock(p.created_at)}</time>` : avatar(p.picture, p.author)}</div>
-      ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? ' ·\u00a0edited' : ''}</span></div>`}
+      ${grouped ? '' : `<div class="post-head"><b>${authorLine(p.author, p.username)}</b><span class="when">${when(p.created_at)}${p.edited ? `${SEP}edited` : ''}</span></div>`}
       <div class="post-col">
         <div class="post-main"><div class="post-body">${mdLite(p.body)}</div>
         ${p.image ? `<a class="post-img" href="${esc(p.image)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>` : ''}
@@ -211,7 +211,7 @@ window.TauPage('community', (T) => {
             try {
               await api(`/api/community/${pid}/edit`, { body: nb });
               bodies.set(pid, nb); bodyEl.innerHTML = mdLite(nb); bodyEl.hidden = false; ef.remove();
-              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += ' ·\u00a0edited';
+              const w = art.querySelector('.post-head .when'); if (w && !/edited/.test(w.textContent)) w.textContent += `${SEP}edited`;
             } catch (err) { flash(ef.querySelector('.form-flash'), err.message, 'bad'); }
           });
         };

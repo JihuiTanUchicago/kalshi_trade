@@ -642,7 +642,7 @@ test('the seeded example session is listed as an example, not counted as the use
     hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};
   const mine = {id: 6, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Mine',
     hypotheses_tried: 3, strategies_passed: 1, spent_usd: 0.42, created_at: '2026-10-25T08:00:00Z'};
-  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 session ·\u00a01 example']]) {
+  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 session\u00a0· 1 example']]) {
     const own = runs.filter((r) => !r.example);
     const f = frontend({fetchImpl: path => {
       if (path === '/api/models') return response({models: [], default: ''});
@@ -784,8 +784,8 @@ test('the dashboard offers one-click autopilot, and once on shows what it is doi
   await card().querySelector('[data-apcard="on"]').onclick(); await flush(); await flush();
   assert.equal(f.S.me.user.autopilot, true);
   const html = card().innerHTML;
-  assert.match(html, /Autopilot ·\u00a0paper/); assert.match(html, /&lt;b&gt;BTC&lt;\/b&gt;/);
-  assert.match(html, /\+\$12\.50/); assert.match(html, /1,234 tested ·\u00a00 passed/); assert.match(html, /<a href="\/strategies\/3"[^>]*>4 of 30 realistic paper trades<\/a>/);
+  assert.match(html, /Autopilot\u00a0· paper/); assert.match(html, /&lt;b&gt;BTC&lt;\/b&gt;/);
+  assert.match(html, /\+\$12\.50/); assert.match(html, /1,234 tested\u00a0· 0 passed/); assert.match(html, /<a href="\/strategies\/3"[^>]*>4 of 30 realistic paper trades<\/a>/);
   // The most trades on paper, which may be losing: 'Closest to live' overstated it.
   assert.match(html, /Furthest on paper/); assert.doesNotMatch(html, /Closest to live/);
   assert.doesNotMatch(html, /undefined|NaN|<b>BTC/);
@@ -955,9 +955,9 @@ test('paper P&L on the card and the autopilot card is realized all time, the fig
 
 test('the dashboard demo card says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
-    [{equity: 1000, capital: 1000}, /\$1,000\.00 capital ·\u00a0no demo strategies yet ·\u00a0real fills on Kalshi’s sandbox, not real money/],
-    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 40}, /\$500\.00 capital ·\u00a00 open ·\u00a0\+\$12\.00 realized since reload ·\u00a0real fills/],
-    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 0}, /\+\$12\.00 realized all time ·\u00a0real fills/],
+    [{equity: 1000, capital: 1000}, /\$1,000\.00 capital\u00a0· no demo strategies yet\u00a0· real fills on Kalshi’s sandbox, not real money/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 40}, /\$500\.00 capital\u00a0· 0 open\u00a0· \+\$12\.00 realized since reload\u00a0· real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 0}, /\+\$12\.00 realized all time\u00a0· real fills/],
   ]) {
     const f = frontend({fetchImpl: path => {
       if (path === '/api/dashboard') return response({...emptyDashboard(), demo});
@@ -1013,7 +1013,7 @@ test('the live card says it is Kalshi cash, apart from what Tau trades realized'
   const board = f.root.querySelector('#boardbody').innerHTML;
   // The balance is Kalshi's cash for the whole account; the line under it is Tau's own book.
   assert.match(board, /<span class="mk live">Real<\/span> Kalshi cash/); assert.match(board, /\$250\.00/);
-  assert.match(board, /Tau trades: 2 open \(not in cash\) ·\u00a0\+\$17\.00 realized all time ·\u00a0−\$2\.00 realized today \(UTC\)/);  // a day figure says which day: it resets at 00:00 UTC
+  assert.match(board, /Tau trades: 2 open \(not in cash\)\u00a0· \+\$17\.00 realized all time\u00a0· −\$2\.00 realized today \(UTC\)/);  // a day figure says which day: it resets at 00:00 UTC
   assert.match(board, /Live money on: \+\$17\.00 realized all time/);
   // The autopilot card's day figure is the same booked P&L, and says so.
   f.S.me.user.autopilot = true; f.S.ap = {...apOn, live_running: 1, today_live_pnl: -2}; f.paintDashAp();
@@ -1038,10 +1038,10 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Your real cash at Kalshi, read 5m ago\. 2 open live positions \(\$8\.25 at cost \+ fees\) not included/);
-  assert.match(figs, /\$1,000\.00 capital ·\u00a01 open \(\$3\.11 at cost \+ fees, all of it in Tau’s demo book\) ·\u00a0needs a demo key ·\u00a0real fills/);
+  assert.match(figs, /\$1,000\.00 capital\u00a0· 1 open \(\$3\.11 at cost \+ fees, all of it in Tau’s demo book\)\u00a0· needs a demo key\u00a0· real fills/);
   // Paper is the dashboard's figure (cash + open at their price), never cash alone under another name; its open
   // positions are named at cost + fees, with the part the balance holds.
-  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
   // Each book stays its own figure: no sum of live, demo and paper anywhere.
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);
   // Nothing open says so; Kalshi not answering says what to do instead of a bare "Unavailable".
@@ -1065,8 +1065,8 @@ test('Funds paper history says prices in cents, a lost settlement as lost, and e
   const f = frontend({fetchImpl: () => { const d = funds(); d.paper.ledger = ledger; return response(d); }});
   await f.viewFunds(); await flush();
   const rows = [...f.root.querySelectorAll('.t-ledger tbody tr')].map((tr) => tr.innerHTML);
-  assert.match(rows[0], /KXBTC15M-L settled NO<span class="hint"> ·\u00a0lost, paid \$0<\/span>[\s\S]*\$0\.00/);
-  assert.match(rows[1], /settled YES<span class="hint"> ·\u00a0won, paid \$1 a contract<\/span>[\s\S]*\+\$25\.00/);
+  assert.match(rows[0], /KXBTC15M-L settled NO<span class="hint">\u00a0· lost, paid \$0<\/span>[\s\S]*\$0\.00/);
+  assert.match(rows[1], /settled YES<span class="hint">\u00a0· won, paid \$1 a contract<\/span>[\s\S]*\+\$25\.00/);
   assert.match(rows[2], /Sold 8\/25 YES KXBTC15M-P at 25¢ \(stop loss, partial\)/);
   assert.match(rows[3], /Paper replay: 10 YES KXBTC15M-R at 40¢ → 55¢ \(take profit\)/);
   assert.match(rows[4], /Bought 25 YES KXBTC15M-W at 40¢<\/td>[\s\S]*−\$10\.42/);
@@ -1090,8 +1090,8 @@ test('Funds says what each book has made, realized, never summed, and when a new
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Your real cash at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time, after Kalshi fees\. 1 open live position/);
-  assert.match(figs, /1 open \(\$10\.00 at cost \+ fees\) ·\u00a0\+\$5\.61 realized all time, after Kalshi fees and the spread ·\u00a0practice money/);
-  assert.match(figs, /\+\$9\.77 realized since reload, after Kalshi fees ·\u00a0needs a demo key/);  // demo's P&L restarts at a reload
+  assert.match(figs, /1 open \(\$10\.00 at cost \+ fees\)\u00a0· \+\$5\.61 realized all time, after Kalshi fees and the spread\u00a0· practice money/);
+  assert.match(figs, /\+\$9\.77 realized since reload, after Kalshi fees\u00a0· needs a demo key/);  // demo's P&L restarts at a reload
   assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
   // A book with no closed trade says when its P&L shows, instead of a $0.00 that reads as flat.
   const g = frontend({fetchImpl: () => { const d = funds();
@@ -1100,7 +1100,7 @@ test('Funds says what each book has made, realized, never summed, and when a new
   await g.viewFunds();
   const empty = g.root.querySelector('#ffigs').innerHTML;
   assert.match(empty, /Tau’s live P&amp;L shows once a live trade closes\./);
-  assert.match(empty, /P&amp;L shows once a demo trade closes/); assert.match(empty, /P&amp;L shows once a paper trade closes ·\u00a0practice money/);
+  assert.match(empty, /P&amp;L shows once a demo trade closes/); assert.match(empty, /P&amp;L shows once a paper trade closes\u00a0· practice money/);
   assert.doesNotMatch(empty, /realized all time/);
 });
 
@@ -1115,8 +1115,8 @@ test('dashboard: Kalshi cash says when it was read, keeps Tau\'s own trades when
     }});
     await f.viewDashboard(); await flush();
     const board = f.root.querySelector('#boardbody').innerHTML;
-    if (balance) assert.match(board, /Read from Kalshi just now ·\u00a0Tau trades: 2 open \(not in cash\)/);
-    else assert.match(board, /Couldn’t read your Kalshi balance just now ·\u00a0Tau trades: 2 open \(not in cash\) ·\u00a0\+\$17\.00 realized all time/);
+    if (balance) assert.match(board, /Read from Kalshi just now\u00a0· Tau trades: 2 open \(not in cash\)/);
+    else assert.match(board, /Couldn’t read your Kalshi balance just now\u00a0· Tau trades: 2 open \(not in cash\)\u00a0· \+\$17\.00 realized all time/);
     assert.match(f.root.querySelector('#main').innerHTML, /<span>worth \$5\.64 \(<span class="gain">\+\$0\.48<\/span>\)<\/span>/);
   }
 });
@@ -1349,9 +1349,9 @@ test('Explore tells same-titled markets from different events apart by market an
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   await f.viewExplore(); await flush();
   const tags = f.root.querySelector('#xbody').querySelectorAll('td.name').map((td) => (td.querySelector('.mk') || {textContent: ''}).textContent);
-  assert.match(tags[0], /^BTC above \$X at noon ET ·\u00a0closes /); assert.doesNotMatch(tags[0], /5pm/, 'the noon contract is not the 5pm market');
-  assert.match(tags[1], /^BTC above \$X at 5pm ET ·\u00a0closes /);
-  assert.notEqual(tags[0], tags[1].replace('BTC above $X at 5pm ET ·\u00a0', ''));
+  assert.match(tags[0], /^BTC above \$X at noon ET\u00a0· closes /); assert.doesNotMatch(tags[0], /5pm/, 'the noon contract is not the 5pm market');
+  assert.match(tags[1], /^BTC above \$X at 5pm ET\u00a0· closes /);
+  assert.notEqual(tags[0], tags[1].replace('BTC above $X at 5pm ET\u00a0· ', ''));
   assert.equal(tags[2], '', 'an event with no hour and no market here gets no chip rather than its raw key');
   assert.doesNotMatch(f.root.querySelector('#xbody').innerHTML, /KXBTCD-26OCT25(12|17)<|KXNBAGAME-26OCT25MINDEN</);
 });
@@ -1366,7 +1366,7 @@ test('Explore drops a yes subtitle that only repeats the title', async () => {
   await f.viewExplore(); await flush();
   const html = f.root.querySelector('#xrows').innerHTML;
   assert.match(html, />Minnesota wins</); assert.match(html, />Will Bitcoin be above \$200000 by Jan 1, 2027\?</);
-  assert.match(html, />Bitcoin price on Oct 25, 2026\? ·\u00a0\$80,500 or above</);
+  assert.match(html, />Bitcoin price on Oct 25, 2026\?\u00a0· \$80,500 or above</);
 });
 
 test('Explore shows tenth-of-a-cent prices instead of rounding them to 0¢', async () => {
@@ -1433,9 +1433,9 @@ test('a market page says what its price is, how it settles and when, and the rea
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
-  assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
+  assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
   assert.match(html, new RegExp('Closes</dt><dd><span class="fig ">[^<]*' + readerZone));
   assert.match(html, new RegExp('Result expected [^<]*' + readerZone)); assert.match(f.root.querySelector('#rawsect').innerHTML, new RegExp('Time \\(' + readerZone + '\\)'));
@@ -1446,7 +1446,7 @@ test('a market page says what its price is, how it settles and when, and the rea
   const paper = html.slice(html.indexOf('<span class="mk">Paper</span> paper money, not real'));
   assert.ok(live.length > 0 && paper.length > 0);
   assert.match(live, /1 open at cost \+ fees \$1\.06/); assert.match(live, /\+\$0\.04/); assert.doesNotMatch(live, /\$4\.50/);
-  assert.match(paper, /1 open at cost \+ fees \$4\.50/); assert.match(paper, /1 closed · realized <span class="gain">\+\$0\.24/);
+  assert.match(paper, /1 open at cost \+ fees \$4\.50/); assert.match(paper, /1 closed · realized <span class="gain">\+\$0\.24/);
   assert.match(paper, /Closed \(take-profit\) @ 75¢/); assert.match(paper, /Deleted strategy/);
   assert.doesNotMatch(html, /\$5\.56|\$0\.84/);  // live + paper cost, live + paper unrealized
   assert.match(live, /<a href="\/strategies\/4">Daily close drift<\/a>/);
@@ -1471,7 +1471,7 @@ test('a settled market shows its result in place of a live price', async () => {
   const f = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'no'});
   await f.ready;
   assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><dd class="sub-fig">each No contract paid \$1/);
-  assert.match(f.root.innerHTML, /Settled ·\u00a0<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
+  assert.match(f.root.innerHTML, /Settled\u00a0· <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });
 
 // Every page the server serves the app shell for (app/server.py SPA_ROUTES). A path with no route
@@ -1542,7 +1542,7 @@ test('a strategy that does not exist links to the list instead of offering Try a
 test('a shared demo deployment says demo, not paper', () => {
   const f = frontend();
   const snap = (mode) => f.postSnapshot({kind: 'deployment', id: 1, title: 'Fade', market: 'btc15m', mode, realized_pnl: 1.5, closed_trades: 3});
-  assert.match(snap('demo'), /·\u00a0demo ·/); assert.match(snap('paper'), /·\u00a0paper ·/); assert.match(snap('live'), /·\u00a0live ·/);
+  assert.match(snap('demo'), /\u00a0· demo\u00a0· /); assert.match(snap('paper'), /\u00a0· paper\u00a0· /); assert.match(snap('live'), /\u00a0· live\u00a0· /);
 });
 
 test('a shared deployment wears its own book’s badge and says since when', () => {
@@ -1561,7 +1561,7 @@ test('another trader’s shared strategy says whose it is instead of linking to 
   host.innerHTML = f.postSnapshot(strat, '@bob');
   assert.equal(host.querySelector('a'), null);
   assert.equal(host.querySelector('.snap-note').textContent, 'Only @bob can open this strategy. Ask them to share a copy from its page.');
-  assert.match(host.querySelector('.snap-meta').textContent, /backtest on unseen data over 9 days: \+\$42\.17 .*23 trades .*61\.0% win$/);
+  assert.match(host.querySelector('.snap-meta').textContent, /backtest on unseen data over 9 days: \+\$42\.17\u00a0· 23 trades\u00a0· 61\.0% win$/);
   host.innerHTML = f.postSnapshot(strat, '');
   assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42'); assert.equal(host.querySelector('.snap-note'), null);
   host.innerHTML = f.postSnapshot(strat, '<img src=x>');
@@ -1766,7 +1766,7 @@ test('Tau: research counts a paused session as paused, not as researching', asyn
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
   const said = f.root.querySelector('#rstatus .said').innerHTML, figs = f.root.querySelector('#rfigs').innerHTML;
-  assert.match(said, /<em>1<\/em> agent researching now · <em>1<\/em> paused — /);
+  assert.match(said, /<em>1<\/em> agent researching now · <em>1<\/em> paused — /);
   assert.match(figs, /Researching now<\/dt><dd><span class="fig ">1<\/span><\/dd><dd class="sub-fig">1 paused<\/dd>/);
   f.clearTimers();
   // Only a paused one: nothing is researching, and the line still says one is paused.
@@ -1788,10 +1788,10 @@ test('Tau: a run names its model and says it runs until stopped, or how many str
     return deck;
   };
   // The default model's key is null: the server sends its customer name, never the internal id.
-  assert.match(await page({model: null, model_label: 'Claude Opus 4.6', run_forever: 1, max_hypotheses: 10}), /Claude Opus 4\.6 · Runs until you stop it/);
-  assert.match(await page({model: 'sonnet-4-6', model_label: 'Claude Sonnet 4.6', run_forever: 0, max_hypotheses: 25}), /Claude Sonnet 4\.6 · Up to 25 strategies/);
+  assert.match(await page({model: null, model_label: 'Claude Opus 4.6', run_forever: 1, max_hypotheses: 10}), /Claude Opus 4\.6 · Runs until you stop it/);
+  assert.match(await page({model: 'sonnet-4-6', model_label: 'Claude Sonnet 4.6', run_forever: 0, max_hypotheses: 25}), /Claude Sonnet 4\.6 · Up to 25 strategies/);
   assert.match(await page({model_label: 'Claude Sonnet 4.6', run_forever: 0, max_hypotheses: 1}), /Up to 1 strategy</);
-  assert.match(await page({status: 'stopped', model_label: 'Claude Opus 4.6', run_forever: true}), /Claude Opus 4\.6 · Ran until stopped/);
+  assert.match(await page({status: 'stopped', model_label: 'Claude Opus 4.6', run_forever: true}), /Claude Opus 4\.6 · Ran until stopped/);
   const deck = await page({model: 'sonnet-4-6', model_label: '<b>x</b>', run_forever: 1});
   assert.doesNotMatch(deck, /sonnet-4-6|<b>x/);
   // The seeded example says it is an example, not a model.
@@ -1834,7 +1834,7 @@ test('a queued run counts its wait from the server, and past the reaper limit sa
   let f = at({state: 'queued', seconds: 200, overdue: false});
   await f.viewRun(9);
   [...f.intervals.values()].forEach(tick => tick());
-  assert.match(f.root.querySelector('#runpulse [data-plabel]').textContent, /^Queued ·\u00a020\ds$/);
+  assert.match(f.root.querySelector('#runpulse [data-plabel]').textContent, /^Queued\u00a0· 20\ds$/);
   assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
   assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, false);  // not overdue: the phase line stays
   f.clearTimers();
@@ -2029,9 +2029,9 @@ test('the autopilot card and panel show the last 7 days with real credits and pa
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
   assert.match(card, /<h3>Last 7 days<\/h3>/);
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money<\/small><\/dd>/);
-  assert.match(card, /<dt>Ideas<\/dt><dd>1,234 tested ·\u00a02 passed<\/dd>/);
+  assert.match(card, /<dt>Ideas<\/dt><dd>1,234 tested\u00a0· 2 passed<\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>1 strategy <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a04 closed trades<\/small><\/dd>/);
+  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 4 closed trades<\/small><\/dd>/);
   assert.match(card, /The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here/);
   assert.doesNotMatch(card, /\$3\.80|\$10\.72/);  // never netted or summed
   assert.doesNotMatch(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);  // the scorecard says it
@@ -2363,7 +2363,7 @@ test('Tau phone polish: a glossary marker keeps its last word, one rule where bo
 
 test('Tau: separators wrap with the item after them, the phone tabs show which edge has more, stacked cells are named', () => {
   const f = frontend();
-  // Every " · " in the bundle binds to the next item (" · "), so a wrapped line never ends on a dot.
+  // Every " · " in the bundle binds to the next item (" · "), so a wrapped line never ends on a dot.
   // Only comments and the line that splits Kalshi's own titles on the plain separator keep it.
   const loose = source.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l) && !l.includes('split(') && / · | \\u00b7 /.test(l.replace(/\s\/\/\s.*$/, '')));
   assert.deepEqual(loose, []);
@@ -2389,7 +2389,7 @@ test('the floating autopilot pill also steps aside from a figure under it', () =
   const f = frontend(), body = f.root.parent;
   f.root.innerHTML = '<div id="boardbody"><dl class="figures"><div class="m"><dt>Kalshi cash</dt><dd><span class="fig">Not connected</span></dd></div></dl></div><main id="main"><table class="stack"><tbody><tr><td class="num" data-lab="Trades">12</td></tr></tbody></table></main>';
   const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
-  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot ·\u00a0paper</button>';
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot\u00a0· paper</button>';
   const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
   const none = rect(0, 0, 0, 0);
   box.querySelector('.apf-pill').getBoundingClientRect = rect(220, 794, 380, 834);   // 390x844 phone
@@ -2446,9 +2446,9 @@ test('the autopilot says the market it researches by its label, never a raw key 
   // A listed market reads by its full label, as Billing's research lines and every position name it, by key,
   // series or label alike; a key only the app knows (eth15m, not in this catalog) by its short one.
   f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi', 'eth15m']}};
-  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it’s still picking"]}};
-  assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
   // The server sends a listed market's catalog label; it reads as it is.
   f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin above $X at 5pm ET');
@@ -2459,7 +2459,7 @@ test('the autopilot says the market it researches by its label, never a raw key 
   assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching Bitcoin up or down in 15 minutes and Bitcoin above \$X at 5pm ET\.<\/p>/);
   assert.doesNotMatch(box.querySelector('#apf-story').innerHTML, /btc15m|KXBTCD/);
   f.apUpdate(box, {...d, story: []});
-  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching Bitcoin up or down in 15 minutes · Bitcoin above \$X at 5pm ET/);
+  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching Bitcoin up or down in 15 minutes · Bitcoin above \$X at 5pm ET/);
   assert.doesNotMatch(box.querySelector('#apf-stats').innerHTML + box.querySelector('#apf-story').innerHTML, /BTC 15-min|BTC above/);
   assert.doesNotMatch(source, /esc\(\(d\.story && d\.story\[0\]\)|\(d\.story \|\| \[\]\)\.map|\[\.\.\.new Set\(d\.research\.active\)\]/);
 });
@@ -2526,7 +2526,7 @@ test('Tau: a running session counts its ideas and passes live, and a set-size on
 
 test('Tau: a running session quiet for hours reads its age in minutes and hours, not raw seconds', async () => {
   const ago = (s) => new Date(Date.now() - s * 1000).toISOString();
-  for (const [secs, said] of [[3 * 3600 + 40, 'Last step 3 hr ago ·\u00a0still working'], [5 * 60 + 2, 'Last step 5 min ago ·\u00a0still working'], [20, 'active 20s ago']]) {
+  for (const [secs, said] of [[3 * 3600 + 40, 'Last step 3 hr ago\u00a0· still working'], [5 * 60 + 2, 'Last step 5 min ago\u00a0· still working'], [20, 'active 20s ago']]) {
     const f = await RUN_AT({status: 'running', started_at: ago(secs + 60)}, [{id: 1, kind: 'step', message: 'Loading data…', created_at: ago(secs)}]);
     const said0 = f.root.querySelector('#rsiobs [data-livetext]').textContent;
     assert.equal(said0, said);
@@ -2657,7 +2657,7 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   await f.viewStrategy(42); await flush();
   const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days the agent never saw/);
-  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
+  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
   assert.match(html, /Already deployed: Demo \(running\), Paper \(paused\)\./);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
@@ -2706,13 +2706,13 @@ test('Research folds model, depth and market behind Options on a phone, open on 
     assert.equal(opts.contains(form.querySelector('button[type=submit]')), false);
     const sum = () => form.querySelector('#ropts-sum').textContent;
     const model = form.querySelector('#rmodel'); model.value = 'opus'; form.dispatchEvent({type: 'change'});  // the fake select has no default value
-    assert.equal(sum(), 'Opus · runs until you stop it · agent’s choice of market');
+    assert.equal(sum(), 'Opus · runs until you stop it · agent’s choice of market');
     model.value = 'haiku';
     form.querySelector('#runforever').checked = false; form.querySelector('#maxhyp').value = '25';
     form.querySelectorAll('input[name=market]').forEach((r) => { r.checked = r.getAttribute('value') === 'btc15m'; });
     form.dispatchEvent({type: 'change'});
     const row = form.querySelector('.mktrow[data-key="btc15m"] .mktrow-name').textContent.trim();
-    assert.equal(sum(), 'Haiku · 25 strategies · ' + row); assert.doesNotMatch(row, /choice/);
+    assert.equal(sum(), 'Haiku · 25 strategies · ' + row); assert.doesNotMatch(row, /choice/);
   }
 });
 
@@ -2727,7 +2727,7 @@ test('a hypothesis in the log says its search-data result and verdict in plain w
   const log = f.root.querySelectorAll('li').map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('');
   assert.doesNotMatch(log, /Gatekeeper/);
   assert.match(log, /class="hx-tag pass">Verdict/);
-  assert.match(log, /On the history it searched: \+\$4\.50 · 8 trades<button type="button" class="info" data-glo="insample"/);
+  assert.match(log, /On the history it searched: \+\$4\.50 · 8 trades<button type="button" class="info" data-glo="insample"/);
 });
 
 test('on a phone, sessions come before the form, except when they came to start one (?new=1)', async () => {
@@ -3154,14 +3154,14 @@ test('Billing statement: a heading per day, one line per session a day that link
   assert.match(main, /<p class="hint ledger-key">Last 30 days, newest first\./);
   const rows = f.root.querySelectorAll('.t-ledger tbody tr').map((r) => r.innerHTML);
   assert.equal(rows.length, 6);  // two day headings and four lines
-  assert.match(rows[0], /<td colspan="3" data-lab="Day"><b>[A-Z][a-z]{2}, Jan 15<\/b><span class="day-sum">\$12\.95 used ·\u00a0\+\$25\.00 credits<\/span><\/td>/);
+  assert.match(rows[0], /<td colspan="3" data-lab="Day"><b>[A-Z][a-z]{2}, Jan 15<\/b><span class="day-sum">\$12\.95 used\u00a0· \+\$25\.00 credits<\/span><\/td>/);
   assert.match(rows[1], /<time datetime="2026-01-15T08:50:00Z">\d\d:\d\d–\d\d:\d\d/);  // the span of the session's calls
-  assert.match(rows[1], /Research session<div class="sub-fig"><a href="\/research\/108">&lt;b&gt;Fade&lt;\/b&gt; the open<\/a> ·\u00a0Claude Opus 4\.6 ·\u00a057 model calls<\/div>[\s\S]*−\$12\.95/);
-  assert.match(rows[2], /Auto-reload<div class="sub-fig">Card charged \$26\.38: \$25\.00 credits plus the 5\.5% purchase fee ·\u00a0Stripe ref <span class="ref">pi_3Synthetic&lt;x&gt;<\/span><\/div>[\s\S]*\+\$25\.00/);
-  assert.match(rows[3], /<b>[A-Z][a-z]{2}, Jan 14<\/b><span class="day-sum">\$0\.01 used ·\u00a0\+\$10\.00 credits<\/span>/);
-  assert.match(rows[4], /Autopilot check-in<div class="sub-fig">Claude Haiku 4\.5 ·\u00a03 model calls<\/div>/);
+  assert.match(rows[1], /Research session<div class="sub-fig"><a href="\/research\/108">&lt;b&gt;Fade&lt;\/b&gt; the open<\/a>\u00a0· Claude Opus 4\.6\u00a0· 57 model calls<\/div>[\s\S]*−\$12\.95/);
+  assert.match(rows[2], /Auto-reload<div class="sub-fig">Card charged \$26\.38: \$25\.00 credits plus the 5\.5% purchase fee\u00a0· Stripe ref <span class="ref">pi_3Synthetic&lt;x&gt;<\/span><\/div>[\s\S]*\+\$25\.00/);
+  assert.match(rows[3], /<b>[A-Z][a-z]{2}, Jan 14<\/b><span class="day-sum">\$0\.01 used\u00a0· \+\$10\.00 credits<\/span>/);
+  assert.match(rows[4], /Autopilot check-in<div class="sub-fig">Claude Haiku 4\.5\u00a0· 3 model calls<\/div>/);
   assert.doesNotMatch(rows[4], /href=/);  // a check-in has no session page
-  assert.match(rows[5], /Added credits<div class="sub-fig">Card charged \$10\.55: \$10\.00 credits plus the 5\.5% purchase fee ·\u00a0Stripe ref <span class="ref">pi_3SyntheticTopup<\/span>/);
+  assert.match(rows[5], /Added credits<div class="sub-fig">Card charged \$10\.55: \$10\.00 credits plus the 5\.5% purchase fee\u00a0· Stripe ref <span class="ref">pi_3SyntheticTopup<\/span>/);
   assert.match(main, /Older days are in the receipt\./);  // the line cap left days out, and says where they are
   assert.doesNotMatch(main, /list price|markup|us\.anthropic/i);
 });
@@ -3455,7 +3455,7 @@ test('Tau: a run says its ledger lines in plain words, with the zone of its time
   assert.doesNotMatch(log, /classification=|gatekeeper-held|control arm|VOID/);
   assert.match(log, /Went straight to ideas, with no scan of the data first\./);
   assert.match(log, /Passed every check on data it never saw \(88 trades\)\./);
-  assert.match(log, /Locked holdout · held<\/span><span class="hx-vtext">Held up on the locked holdout/);
+  assert.match(log, /Locked holdout · held<\/span><span class="hx-vtext">Held up on the locked holdout/);
   assert.match(log, /DROPPED<\/b> <b>Thin<\/b> — every variant took 0 trades/);
   assert.match(log, /<time datetime="2026-10-17T10:01:00Z" title="[^"]+">/);
   f.clearTimers();
@@ -3471,7 +3471,7 @@ test('Tau: the System page\'s research box sets its count on two lines that fit 
   await f.viewSystem(); await flush();
   const g = f.root.querySelector('.sys-node[data-id="agents"]'), m = g.querySelector('[data-m="agents"]');
   const spans = m.querySelectorAll('tspan');
-  assert.deepEqual(spans.map((t) => t.textContent), ['12 running · 30 queued', '1,204 done']);
+  assert.deepEqual(spans.map((t) => t.textContent), ['12 running · 30 queued', '1,204 done']);
   const w = +g.querySelector('rect').getAttribute('width'), h = +g.querySelector('rect').getAttribute('height');
   // About 5 units a character at the map's 10.5px narrow face: each line keeps clear of the box's right edge.
   for (const t of spans) assert.ok(12 + t.textContent.length * 5 <= w - 8, `"${t.textContent}" in a ${w}-wide box`);
@@ -3484,7 +3484,7 @@ test('Tau: the System page\'s research box sets its count on two lines that fit 
   assert.match(edge.getAttribute('d'), new RegExp(`^M878,${40 + h / 2} `));
   // The detail panel reads the count as one line.
   g.dispatchEvent({type: 'click'});
-  assert.match(f.root.querySelector('#sys-detail').innerHTML, /12 running · 30 queued · 1,204 done/);
+  assert.match(f.root.querySelector('#sys-detail').innerHTML, /12 running · 30 queued · 1,204 done/);
   f.clearTimers();
 });
 
@@ -3528,7 +3528,7 @@ test('Tau: a run lists each idea it tested with its outcome and first missed che
   assert.match(ideas, /<h2>Ideas tested<\/h2>/);
   assert.ok(ideas.indexOf('Lean in') < ideas.indexOf('Fade'), 'passed first');
   assert.match(ideas, /<span class="hx-stamp pass">Passed<\/span><button type="button" class="ri-title" data-goto="42">Lean in<\/button><span class="ri-why"><a href="\/strategies\/42">/);
-  assert.match(ideas, new RegExp(`<span class="hx-stamp void">Void</span><button type="button" class="ri-title" data-goto="41">Fade &lt;b&gt;</button><span class="ri-why">Too few trades to judge \\(18 of 30\\) · 1 more check</span>`));
+  assert.match(ideas, new RegExp(`<span class="hx-stamp void">Void</span><button type="button" class="ri-title" data-goto="41">Fade &lt;b&gt;</button><span class="ri-why">Too few trades to judge \\(18 of 30\\) · 1 more check</span>`));
   assert.ok(f.root.querySelector('#log').children.some((li) => li.dataset && String(li.dataset.sid) === '41'), 'the card is the jump target');
   f.clearTimers();
   // One the autopilot is about to put on paper itself says so instead of asking for a deploy by hand.
@@ -3631,7 +3631,7 @@ test('Tau: a hot-markets row keeps its chip and volume on one line, the chip giv
   const f = frontend();
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   const html = f.hotRowHtml({t: 'KXBTC-26OCT2700-B114750', s: 'KXBTC', ti: 'Bitcoin price range?', su: '$114,500 to $114,999.99', bid: .11, ask: .13, v24: 1234567, h: [.15, .12]});
-  assert.match(html, /<span class="hot-foot"><span class="mk quiet">BTC range at midnight ET<\/span><span class="hot-vol">1\.2M vol · 24h<\/span><svg/);
+  assert.match(html, /<span class="hot-foot"><span class="mk quiet">BTC range at midnight ET<\/span><span class="hot-vol">1\.2M vol · 24h<\/span><svg/);
 });
 
 test('Tau: a hot-markets row for an hourly Bitcoin contract carries its own hour, never the 5pm chip', () => {
@@ -3655,10 +3655,10 @@ test('Tau: the dashboard says where the sessions it counts are, and points finis
   };
   const base = {at: '2026-10-25T08:00:00+00:00', first: false, books: {paper: {pnl: 0, trades: 0}}, autopilot: {}};
   assert.match(await at({...base, passed: {n: 0, items: []}, runs: {succeeded: 2}}),
-    /Nothing new passed <span class="since-sub">· 2 research sessions started, all finished, <a href="\/research">see what each idea missed<\/a><\/span>\./);
+    /Nothing new passed<span class="since-sub">\u00a0· 2 research sessions started, all finished, <a href="\/research">see what each idea missed<\/a><\/span>\./);
   // A session still queued or running hasn't judged any idea yet: the line says where it is instead.
   const queued = await at({...base, passed: {n: 0, items: []}, runs: {queued: 1}});
-  assert.match(queued, /· 1 research session started, still queued, <a href="\/research">follow it on Research<\/a><\/span>\./);
+  assert.match(queued, /<span class="since-sub">\u00a0· 1 research session started, still queued, <a href="\/research">follow it on Research<\/a><\/span>\./);
   assert.doesNotMatch(queued, /see what each idea missed/);
   assert.match(await at({...base, passed: {n: 0, items: []}, runs: {running: 2}}), /2 research sessions started, all running, <a href="\/research">follow them on Research<\/a>/);
   assert.match(await at({...base, passed: {n: 0, items: []}, runs: {running: 1, succeeded: 2, cancelled: 1}}),
@@ -3821,15 +3821,15 @@ test('autopilot walk: the last move says what and when, the pill says what it is
   assert.match(t('Started a fresh research session on sol15m — same gates as any run (pre-registration, holdout, diversification).'), /^Started a fresh research session on (?!sol15m)\S/);
   assert.equal(f.apMoveText(null), '');
   // The pill: in paper mode the word for what it is doing; LIVE keeps its label.
-  const paper = {label: 'Autopilot · paper'}, live = {label: 'Autopilot · LIVE'};
+  const paper = {label: 'Autopilot · paper'}, live = {label: 'Autopilot · LIVE'};
   const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
-  assert.equal(f.apPillLabel({...ap, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · researching');
-  assert.equal(f.apPillLabel({...ap, reviewing: true}, paper), 'Autopilot · reviewing');
-  assert.equal(f.apPillLabel({...ap, paper_running: 2}, paper), 'Autopilot · 2 on paper');
-  assert.equal(f.apPillLabel({...ap, billing_blocked: true, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · paused');
-  assert.equal(f.apPillLabel(ap, paper), 'Autopilot · paper');
-  assert.equal(f.apPillLabel({...ap, mode: 'live', research: {active: ['Bitcoin 15-minute']}}, live), 'Autopilot · LIVE');
-  assert.equal(f.apPillLabel(null, paper), 'Autopilot · paper');
+  assert.equal(f.apPillLabel({...ap, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · researching');
+  assert.equal(f.apPillLabel({...ap, reviewing: true}, paper), 'Autopilot · reviewing');
+  assert.equal(f.apPillLabel({...ap, paper_running: 2}, paper), 'Autopilot · 2 on paper');
+  assert.equal(f.apPillLabel({...ap, billing_blocked: true, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · paused');
+  assert.equal(f.apPillLabel(ap, paper), 'Autopilot · paper');
+  assert.equal(f.apPillLabel({...ap, mode: 'live', research: {active: ['Bitcoin 15-minute']}}, live), 'Autopilot · LIVE');
+  assert.equal(f.apPillLabel(null, paper), 'Autopilot · paper');
   // The feed's pulse follows the status read: researching, off, or idle on its schedule.
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute']}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute');
@@ -3933,12 +3933,12 @@ test('a trade the dashboard poll sees open or close re-reads the track record no
     await poll();
     assert.equal(reads(), 1);  // nothing moved: the record keeps its own minute
     const paperChip = () => f.root.querySelector('#track-record [data-trtab="paper"]').textContent;
-    assert.equal(paperChip(), 'Paper ·\u00a00');
+    assert.equal(paperChip(), 'Paper\u00a0· 0');
     // The first trade closes: the board's poll sees it, and the record below follows it at once.
     dash = {...emptyDashboard(), paper: {...emptyDashboard().paper, closed_trades: 1}};
     tr = {...tr, generated_at: 2, modes: {...tr.modes, paper: {...empty('Paper'), trades: 1}}};
     await poll();
-    assert.equal(reads(), 2); assert.equal(paperChip(), 'Paper ·\u00a01');
+    assert.equal(reads(), 2); assert.equal(paperChip(), 'Paper\u00a0· 1');
     await poll();
     assert.equal(reads(), 2);  // once per move
   } finally {
@@ -3989,7 +3989,7 @@ test('Tau: a page change names the tab, and a deployment control names its strat
   }});
   f.location.pathname = '/deploy';
   await f.render(); await flush(); await flush();
-  assert.equal(f.document.title, 'Deploy · Tau');
+  assert.equal(f.document.title, 'Deploy · Tau');
   // Every row's Pause and Remove read the same; the hidden strategy name tells them apart.
   assert.match(f.root.querySelector('#deps [data-act="pause"]').innerHTML, /^Pause<span class="vh"> Dep &lt;1&gt;<\/span>$/);
   // The live regions are in the page before anything is said, and each message goes out through them.
@@ -4124,8 +4124,8 @@ test('Billing shows the spend pace, what spent it, and what each line was for, n
     ledger: [{kind: 'usage', amount: -0.2104, memo: 'Autopilot research · Claude Opus 4.6', item: 'Autopilot research', model: 'Claude Opus 4.6', created_at: '2026-10-25T17:00:00Z'}]}));
   await f.viewBilling(); await flush();
   const figs = f.root.querySelector('#bfigs').innerHTML;
-  assert.match(figs, /Spent, last 7 days[\s\S]*\$9\.80[\s\S]*\$1\.40 in the last 24 hours ·\u00a0\$47\.58 all time/);
-  assert.equal(f.root.querySelector('#bsplit').innerHTML, 'Last 7 days: autopilot research $5.10 ·\u00a0your research sessions $4.20 ·\u00a0autopilot check-ins $0.50.');
+  assert.match(figs, /Spent, last 7 days[\s\S]*\$9\.80[\s\S]*\$1\.40 in the last 24 hours\u00a0· \$47\.58 all time/);
+  assert.equal(f.root.querySelector('#bsplit').innerHTML, 'Last 7 days: autopilot research $5.10\u00a0· your research sessions $4.20\u00a0· autopilot check-ins $0.50.');
   const row = f.root.querySelector('.t-ledger tbody tr').innerHTML;
   assert.match(row, /Autopilot research<div class="sub-fig">Claude Opus 4\.6<\/div>/);
   assert.match(row, /<time datetime="2026-10-25T17:00:00Z">[^<]*\d\d:\d\d [A-Z+\-0-9:]+<\/time>/);  // a time, with its zone
@@ -4189,7 +4189,7 @@ test('the autopilot card puts credits left and the only limit beside its spend, 
   f.S.me.user.autopilot = true; f.S.ap = {...apOn, week};
   await f.viewDashboard(); await flush();
   const card = f.root.querySelector('#dash-ap').innerHTML;
-  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money ·\u00a0plus \$0\.42 on its check-ins<\/small><\/dd>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money\u00a0· plus \$0\.42 on its check-ins<\/small><\/dd>/);
   assert.match(card, /Credits left: <b>\$23\.40<\/b>, about 6 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
   f.S.ap = {...apOn, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
@@ -4297,7 +4297,7 @@ test('a bell that filled up while the user was away opens with what it holds, by
   await f.viewDashboard(); await flush(); await flush();
   const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig');
   const list = wrap.querySelector('#bell-list');
-  assert.match(list.innerHTML, /^<p class="bell-sum">8 new: 5 strategies put on paper ·\s1 paused ·\s1 passed its paper test ·\s1 other<\/p>/);
+  assert.match(list.innerHTML, /^<p class="bell-sum">8 new: 5 strategies put on paper\u00a0· 1 paused\u00a0· 1 passed its paper test\u00a0· 1 other<\/p>/);
   assert.equal(wrap.querySelectorAll('.notif').length, 7);  // every line still listed under it
   await trig.onclick({stopPropagation() {}});
   assert.ok(list.querySelector('.bell-sum'), 'the summary stays while the list is open');
@@ -4355,8 +4355,8 @@ test('a new account\'s paper card says nothing is on paper yet instead of "$0.00
     }});
     await f.viewDashboard(); await flush();
     const board = f.root.querySelector('#boardbody').innerHTML;
-    if (empty) { assert.match(board, /\$1,000\.00 of practice money ·\u00a0no paper strategies yet/); assert.doesNotMatch(board, /at cost/); }
-    else assert.match(board, /\$1,000\.00 cash ·\u00a0\$0\.00 at cost \+ fees ·\u00a0<span class="amt">\$0\.00<\/span> realized all time/);  // a strategy on paper: its book, zeros and all
+    if (empty) { assert.match(board, /\$1,000\.00 of practice money\u00a0· no paper strategies yet/); assert.doesNotMatch(board, /at cost/); }
+    else assert.match(board, /\$1,000\.00 cash\u00a0· \$0\.00 at cost \+ fees\u00a0· <span class="amt">\$0\.00<\/span> realized all time/);  // a strategy on paper: its book, zeros and all
   }
 });
 
@@ -4398,7 +4398,7 @@ test('Funds says what demo proves, where it sits on the ladder, and why a small 
   assert.match(none.main, /to prove the order path before live money\. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job\./);
   assert.doesNotMatch(none.main, /slippage is realistic/);
   assert.match(none.main, /Demo is the step between paper and live: it proves orders place, fill and book/);
-  assert.match(none.figs, /needs a demo key ·\u00a0real fills on Kalshi’s sandbox/);
+  assert.match(none.figs, /needs a demo key\u00a0· real fills on Kalshi’s sandbox/);
   const dev = {connected: true, key_id: 'DEVK…1234', copies_from: 100};
   const low = await view({...dev, balance: 40});
   assert.doesNotMatch(low.figs, /needs a demo key/);
@@ -4561,7 +4561,7 @@ test('track record: stopped and removed strategies stay in the table and say so;
   assert.match(html, /<a href="\/strategies\/4">Fade<\/a><\/td>/);  // a running one needs no label
   // A deleted strategy has no page left: no dead link, and its market says which one it was.
   assert.doesNotMatch(html, /\/strategies\/7/);
-  assert.match(html, /Deleted strategy<div class="sub-fig">NYC high temp · removed from paper, then deleted<\/div>/);
+  assert.match(html, /Deleted strategy<div class="sub-fig">NYC high temp · removed from paper, then deleted<\/div>/);
   // Every trade's P&L is net of fees, so the ratio isn't "gross" beside the gross-before-fees line.
   assert.match(html, /winning trades ÷ losing trades, after fees/); assert.doesNotMatch(html, /gross wins/);
   assert.match(html, /−1\.25/); assert.match(html, /Sortino −2\.50/); assert.doesNotMatch(html, />-1\.25</);
@@ -4636,11 +4636,11 @@ test('the admin page lists the last day of page errors, grouped, with every fiel
     if (expect) { assert.match(html, expect); f.clearTimers(); continue; }
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt; is not a function/);
     assert.doesNotMatch(html, /<img|<b>v/);
-    assert.match(html, /Uncaught error \u00b7\u00a0app\.js:12:5/);
-    assert.match(html, /data-lab="Page, theme, build">\/strategies\/:id<div class="sub-fig">meridian, tau \u00b7\u00a0build &lt;b&gt;v&lt;\/b&gt; \+1\u00a0older<\/div>/);
+    assert.match(html, /Uncaught error\u00a0\u00b7 app\.js:12:5/);
+    assert.match(html, /data-lab="Page, theme, build">\/strategies\/:id<div class="sub-fig">meridian, tau\u00a0\u00b7 build &lt;b&gt;v&lt;\/b&gt; \+1\u00a0older<\/div>/);
     assert.match(html, /data-lab="Count">3<div class="sub-fig">1 signed out<\/div>/);
     assert.match(html, /data-lab="Last seen">.+<div class="sub-fig">first .+<\/div><\/td><\/tr>/);
-    assert.equal(f.root.querySelector('#ce-count').textContent, 'last 24h \u00b7\u00a03 reports');
+    assert.equal(f.root.querySelector('#ce-count').textContent, 'last 24h\u00a0\u00b7 3 reports');
     f.clearTimers();
   }
 });
@@ -4679,15 +4679,15 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   };
   const text = await strip({});
   // What it cost: its own row, real money, never added to the paper book above it.
-  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
+  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
   // No card ever charged: the credits spent were free ones, and the row says the card is untouched.
   const free = await strip({since: {...since, spent: {...since.spent, card_charged: false}}});
-  assert.match(free, /of credits spent<span class="since-sub"> ·\sfree credits so far: your card hasn’t been charged ·\s\$7\.15 left ·\s/);
+  assert.match(free, /of credits spent<span class="since-sub">\u00a0· free credits so far: your card hasn’t been charged\u00a0· \$7\.15 left\u00a0· /);
   assert.doesNotMatch(free, /real money/);
-  assert.match(await strip({since: {...since, spent: {...since.spent, card_charged: true}}}), /of credits spent<span class="since-sub"> ·\sreal money ·\s/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, card_charged: true}}}), /of credits spent<span class="since-sub">\u00a0· real money\u00a0· /);
   // A card charged while they were away says so, with the credits it bought (never netted with the spend).
   const reload = (extra) => strip({since: {...since, spent: {...since.spent, card_charged: true, ...extra}}});
-  assert.match(await reload({bought: 20, charges: 1, reloads: 1}), /<b>\$27\.45<\/b> of credits spent; auto-reload charged your card once for <b>\$20\.00<\/b> of credits<span class="since-sub"> ·\sreal money/);
+  assert.match(await reload({bought: 20, charges: 1, reloads: 1}), /<b>\$27\.45<\/b> of credits spent; auto-reload charged your card once for <b>\$20\.00<\/b> of credits<span class="since-sub">\u00a0· real money/);
   assert.match(await reload({bought: 60, charges: 3, reloads: 3}), /auto-reload charged your card 3 times for <b>\$60\.00<\/b> of credits/);
   assert.match(await reload({bought: 40, charges: 2, reloads: 2}), /auto-reload charged your card twice for <b>\$40\.00<\/b> of credits/);  // "twice", not "2 times"
   assert.match(await reload({bought: 45, charges: 2, reloads: 1}), /spent; 2 card charges \(1 by auto-reload\) bought <b>\$45\.00<\/b> of credits/);
@@ -4702,7 +4702,7 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$12\.65<\/span>/);
   assert.doesNotMatch(text, /\$40\.10|−\$14\.80|\$14\.80/);  // paper and credits never summed or netted
   // The forward-test pass leads New results when nothing else passed, named from the page's deployments.
-  assert.match(text, /<dt>New results<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> passed its paper forward test: a candidate for live <span class="since-sub">/);
+  assert.match(text, /<dt>New results<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> passed its paper forward test: a candidate for live<span class="since-sub">\u00a0· /);
   assert.doesNotMatch(text, /Nothing new passed/);
   // Live-ready is the week's next step, first under Needs you; the runway warns before the pause.
   assert.match(text, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> is ready for live trading\. Going live is your call\./);

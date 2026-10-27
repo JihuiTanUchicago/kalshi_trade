@@ -3,7 +3,7 @@
    this function what the bundle shares with its page files (shared()); the router calls the views it returns. */
 window.TauPage('legal', (T) => {
   'use strict';
-  const {api, clearTimers, ICON, root, S} = T;
+  const {api, clearTimers, ICON, root, S, SEP} = T;
 
   // ---------- public legal pages (viewable signed in OR out) ----------
   const LEGAL_CONTACT = 'tanjihui@tau-trading.com';
@@ -21,7 +21,7 @@ window.TauPage('legal', (T) => {
       <main class="legal" id="main">
         <h1>${title}</h1><p class="legal-updated">Last updated ${LEGAL_UPDATED}</p>
         ${bodyHtml}
-        <footer class="legal-foot"><a href="/terms">Terms of Service</a> ·\u00a0<a href="/privacy">Privacy Policy</a> ·\u00a0<span>© 2026 Tau</span></footer>
+        <footer class="legal-foot"><a href="/terms">Terms of Service</a>${SEP}<a href="/privacy">Privacy Policy</a>${SEP}<span>© 2026 Tau</span></footer>
       </main></div>`;
     // Public pages skip the boot /api/me, so a signed-in reader was offered "Sign in". Ask quietly
     // (a 401 here never redirects) and point the link at the dashboard when there is a session.

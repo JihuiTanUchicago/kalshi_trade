@@ -28,7 +28,7 @@ export function fundsWalkCases({name, frontend, fundsData}) {
     await f.viewFunds(); await settle();
     const rows = [...f.root.querySelectorAll('.t-ledger tbody tr')].map((tr) => tr.innerHTML);
     const what = (r) => r.replace(/<span class="kalshi-ref">[\s\S]*?<\/span><\/span>/g, '');
-    assert.match(rows[0], /Bitcoin above \$114,999\.99 at 5pm ET settled YES<span class="hint"> ·\u00a0won, paid \$1 a contract<\/span>/);
+    assert.match(rows[0], /Bitcoin above \$114,999\.99 at 5pm ET settled YES<span class="hint">\u00a0· won, paid \$1 a contract<\/span>/);
     assert.match(rows[1], /Sold 8 YES Bitcoin up or down in 15 minutes at 58¢ \(take profit\)/);
     assert.match(rows[2], /Bought 5 YES Bitcoin up or down in 15 minutes at 30¢/);
     // The ticker is still there to find the contract on Kalshi, on its own small line, never the headline.
