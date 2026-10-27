@@ -337,7 +337,9 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
         # A backtest-only strategy's out_of_sample is its old backtest's later slice, which picked it: the row
         # says "later-period", never "unseen" (the strategy's status, from the row's own read; display only).
-        "backtest_only": d.get("strategy_status") == "backtest-only",
+        # So is a "passed" one with no gatekeeper record (the same read's no_gatekeeper_record), as its page
+        # says: the Overview's details called its figure "Unseen P&L" beside a page saying "Later-period P&L".
+        "backtest_only": d.get("strategy_status") == "backtest-only" or bool(d.get("no_gatekeeper_record")),
     }
 
 

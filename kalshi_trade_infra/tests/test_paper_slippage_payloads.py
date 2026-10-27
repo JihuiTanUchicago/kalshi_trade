@@ -154,6 +154,16 @@ def test_a_backtest_only_strategys_deploy_row_says_so_from_its_own_read():
     assert views._deployment_out(row, [])["backtest_only"] is False  # a read without it (the gates') claims nothing
 
 
+def test_a_passed_strategy_with_no_gatekeeper_record_says_later_period_like_its_page():
+    """Its page calls the backtest's later slice "Later-period P&L"; the row's own read says it has no record
+    (no_gatekeeper_record, MySQL's 1/0), so the row's details say the same, not "Unseen P&L"."""
+    row = dict(_dep(7, "paper", "1.2000", 2, 8, 1), title="t", direction=None, market="btc15m", status_reason=None, wins=1,
+               created_at=None, result={"out_of_sample": {"pnl": 6.0, "trades": 40}})
+    assert views._deployment_out(dict(row, strategy_status="passed", no_gatekeeper_record=1), [])["backtest_only"] is True
+    assert views._deployment_out(dict(row, strategy_status="passed", no_gatekeeper_record=0), [])["backtest_only"] is False
+    assert views._deployment_out(dict(row, strategy_status="passed", no_gatekeeper_record=None), [])["backtest_only"] is False
+
+
 def test_the_autopilots_day_and_week_sum_their_fills_in_the_reads_they_already_make():
     cur = _Rows([{"mode": "paper", "p": Decimal("1.2340"), "f": 12}, {"mode": "live", "p": Decimal("-2.0000"), "f": 40}])
     pnl, fills = position_repository.realized_pnl_by_mode(cur, 7, ("live", "paper"), datetime(2026, 10, 27), fills=True)

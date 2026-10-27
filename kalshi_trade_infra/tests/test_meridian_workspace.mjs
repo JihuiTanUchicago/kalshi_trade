@@ -6318,6 +6318,21 @@ test('a backtest-only strategy’s Deploy row says "Later-period P&L", never "Un
   assert.equal((html.match(/Unseen P&amp;L/g) || []).length, 1, 'only the strategy with a gatekeeper record says unseen');
 });
 
+test('an Overview monitor’s details say "Later-period P&L" for a strategy whose page does, never "Unseen P&L"', async () => {
+  // Walk 2026-10-27: a passed strategy with no gatekeeper record, whose page reads "Later-period P&L … after the split
+  // date, which picked it: not held out", had "Unseen P&L +$0.90" in its Overview details. The server's backtest_only
+  // now covers it (and backtest-only ones); a strategy with a record keeps "Unseen P&L".
+  const bt = {backtest: {out_of_sample: {pnl: 0.9, trades: 60}}};
+  const deployments = [{...dashboardDeployment('paper'), id: 81, ...bt, backtest_only: true},
+    {...dashboardDeployment('paper'), id: 82, ...bt, backtest_only: false}];
+  const f = frontend({fetchImpl: () => response(dashboardData({deployments}))});
+  await f.viewDashboard();
+  const facts = [...f.root.querySelectorAll('#dash-deps article.dep-monitor .dep-evidence')].map((d) => d.textContent);
+  assert.equal(facts.length, 2);
+  assert.match(facts[0], /Later-period P&(amp;)?L \+\$0\.90/); assert.doesNotMatch(facts[0], /Unseen/);
+  assert.match(facts[1], /Unseen P&(amp;)?L \+\$0\.90/);
+});
+
 test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" with its figure', async () => {
   // Walk 2026-10-27: "· Deployed" ended one line of a row's details and "Oct 18" began the next, at 390px and in
   // the 1280px table's name column. Each fact is one .dep-fact span, which never wraps inside.

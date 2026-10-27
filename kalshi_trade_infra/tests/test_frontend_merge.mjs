@@ -712,6 +712,22 @@ test('a backtest-only strategy’s Deploy row says its backtest estimate is late
     'What these same closed trades would have made at the backtest’s average per trade on unseen data']);
 });
 
+test('an Overview row’s backtest estimate says later-period for a strategy whose page does', async () => {
+  // Walk 2026-10-27: the Overview's rows read their backtest pace "on unseen data" for a passed strategy with no
+  // gatekeeper record, whose page says later-period. The server's backtest_only covers it; the Overview uses it as Deploy does.
+  const dep = (id, o) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+    backtest: {out_of_sample: {pnl: 12, trades: 6}}, ...o});
+  const f = frontend({fetchImpl: (path) => path === '/api/dashboard'
+    ? response({...emptyDashboard(), deployments: [dep(1, {backtest_only: true}), dep(2, {backtest_only: false})]})
+    : path === '/api/autopilot/status' ? response({autopilot: false, mode: 'off'}) : response({})});
+  await f.viewDashboard(); await flush(); await flush();
+  const cells = [...f.root.querySelector('#dash-deps').innerHTML.matchAll(/<td class="num" data-lab="Backtest estimate" title="([^"]*)">/g)].map((m) => m[1]);
+  assert.equal(cells.length, 2);
+  assert.match(cells[0], /after its split date \(later-period, which picked it: not held out\)$/);
+  assert.match(cells[1], /on unseen data$/);
+});
+
 test('an Explore row’s chip breaks only at its "·", never inside the market’s name or its close', async () => {
   // Walk 2026-10-27 at 390px: "BTC above $X at 5pm ET · closes Oct 28, 02:45" filled a line and "UTC" sat alone on the next.
   const m = {t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price on Oct 27, 2026 at 5pm EDT?', su: '$113,000 or above', bid: .48, ask: .52,
