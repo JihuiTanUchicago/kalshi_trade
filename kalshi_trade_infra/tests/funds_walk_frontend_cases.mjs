@@ -76,4 +76,30 @@ export function fundsWalkCases({name, frontend, fundsData}) {
     assert.deepEqual(marks, ['Paper', 'Demo', 'Live']);
     f.clearTimers();
   });
+
+  test(`${name}: Deploy's Realized says "None yet" for a book with no closed trade, never a $0.00 that reads as flat`, async () => {
+    // A new account's Deploy said "Realized $0.00 · paper money, not real" before any trade had closed, while the
+    // dashboard and the autopilot say "None yet" for the same book.
+    const dep = (id, mode, closed, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+      realized_pnl: pnl, closed_trades: closed, open_positions: 1, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5,
+      max_positions: 1, backtest: {out_of_sample: null}});
+    const figs = async (body) => {
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/deployments') ? response({open_positions: [], ...body}) : response({})});
+      f.location.pathname = '/deploy';
+      await f.viewDeploy(); await settle(); f.clearTimers();
+      return f.root.querySelector('#dfigs').innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+    };
+    const fresh = await figs({deployments: []});
+    assert.match(fresh, /Realized None yet paper money, not real · shows once a paper trade closes/);
+    assert.doesNotMatch(fresh, /\$0\.00/);
+    assert.match(await figs({deployments: [dep(1, 'paper', 0, 0)]}), /Realized, deployments listed below None yet paper money, not real · shows once a paper trade closes/);
+    assert.match(await figs({deployments: [dep(1, 'demo', 0, 0)]}), /Demo realized, deployments listed below None yet [^·]*not real money · shows once a demo trade closes/);
+    // A book that has closed trades keeps its figure, even an even $0.00.
+    const even = await figs({deployments: [dep(1, 'paper', 2, 0)]});
+    assert.match(even, /Realized, deployments listed below \$0\.00 paper money/);
+    assert.doesNotMatch(even, /None yet|shows once/);
+    // A book whose closed trades are all on removed deployments has a figure too.
+    const removed = await figs({deployments: [dep(1, 'paper', 0, 0)], realized_by_book: {paper: {listed: 0, removed: 1.5, removed_deployments: 1, all: 1.5}}});
+    assert.doesNotMatch(removed, /None yet/);
+  });
 }
