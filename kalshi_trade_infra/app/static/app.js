@@ -2896,7 +2896,14 @@
     return s.length <= 110 ? s : s.slice(0, 110).replace(/\s+\S*$/, '') + '\u2026';
   };
   // The strip's Autopilot row when it made no moves: just the switch, which syncApCopy keeps current.
-  const sinceApWord = (on) => on ? 'On. It made no changes.' : 'Off.';
+  // Its newest move being the switch itself (the status read's last_action) means it was switched on and
+  // has made no move yet: "On. It made no changes." read as a dud the moment the switch was pressed.
+  const sinceApWord = (on) => {
+    if (!on) return 'Off.';
+    const la = S.ap && S.ap.autopilot ? S.ap.last_action : null;
+    return la && la.at && apMoveText(la) === 'Autopilot switched on'
+      ? `Switched on ${sinceMin(la.at)}. Its moves show up here as it makes them.` : 'On. It made no changes.';
+  };
   // Where the sessions counted in "N research sessions started" are now (the server sends {status: n}),
   // so a session still queued isn't offered as if its ideas had been judged: "still queued", "all
   // running", "1 running, 2 finished". `point` (nothing passed) adds the link: what each idea missed

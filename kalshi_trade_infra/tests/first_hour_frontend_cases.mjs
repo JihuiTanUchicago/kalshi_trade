@@ -113,4 +113,30 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     }
     f.clearTimers();
   });
+
+  test(`${name}: switched on a moment ago, the strip's Autopilot row says so instead of "It made no changes"`, async () => {
+    const flip = {text: 'Autopilot is ON: the agent may research, deploy and tune paper strategies.', at: new Date().toISOString()};
+    let status = {...apStatus, autopilot: false, mode: 'off', last_action: null};
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response({...dashboard(), since: {at: '2026-10-25T08:00:00+00:00', first: true,
+        books: {}, passed: {n: 0, items: []}, autopilot: {}, runs: {}, own_sessions: false}});
+      if (path === '/api/settings') return response({ok: true});
+      if (path === '/api/autopilot/status') return response(status);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = false; f.S.ap = null;
+    await f.viewDashboard(); await flush();
+    const row = () => f.root.querySelector('#dash-since [data-since-ap]').textContent;
+    assert.equal(row(), 'Off.');
+    status = {...apStatus, autopilot: true, last_action: flip};
+    await f.root.querySelector('#dash-ap [data-apcard="on"]').onclick(); await flush(); await flush();
+    assert.equal(row(), 'Switched on just now. Its moves show up here as it makes them.');
+    // Once it has made a move of its own, the switch is no longer the news.
+    status = {...status, last_action: {text: 'Started a fresh research session on Bitcoin.', at: flip.at}};
+    f.S.ap = status; f.paintDashAp();
+    assert.equal(row(), 'On. It made no changes.');
+    f.clearTimers();
+  });
 }
