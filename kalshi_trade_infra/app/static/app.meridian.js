@@ -2369,6 +2369,22 @@
         </tr>`;
       }).join('');
       const paperOnly = (rows) => rows.length && rows.every(r => r.mode === 'paper');
+      // Which books a list of positions covers, beside its count. It sits under the Paper portfolio band, beside the
+      // band's paper-only "Open at cost + fees": "Open positions 3" with a Demo row among them read as three paper
+      // positions. One book names it; more than one says "All books" and counts each book apart, never one
+      // count across books (as Deploy's "Open positions" figure does). Only counts: no money is added up here.
+      const BOOK_WORD = { paper: 'Paper', demo: 'Demo', live: 'Live' };
+      const bookCount = (rows) => {
+        const modes = [...new Set(rows.map((r) => r.mode))];
+        if (modes.length <= 1) return { n: num(rows.length), book: BOOK_WORD[modes[0]] || '' };
+        const split = ['paper', 'demo', 'live'].map((m) => [m, rows.filter((r) => r.mode === m).length]).filter(([, n]) => n)
+          .map(([m, n]) => `${num(n)}\u00a0${m}`);
+        const other = rows.filter((r) => !BOOK_WORD[r.mode]).length;
+        if (other) split.push(`${num(other)}\u00a0other`);
+        return { n: split.join('\u00a0\u00b7 '), book: 'All books' };
+      };
+      const bookHead = (rows) => { const c = bookCount(rows); return { n: c.n, book: c.book ? ` <span class="position-group-mode">${c.book}</span>` : '' }; };
+      const openHead = bookHead(d.open_positions), closedHead = bookHead(d.recent_closed);
       const positionTable = (rows, closed) => {
         const onlyPaper = !!paperOnly(rows);
         const widths = closed ? [332, 100, 160, 88, 128] : [300, 92, 112, 80, 96, 128];
@@ -2396,9 +2412,9 @@
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper ·\u00a0</span>cumulative, ${PAPER_NET}</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
       const main = `${apFirst ? '' : sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-paused') : ''}<div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
         <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure + (cashInBand ? liveFigure : '')}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
-        <section class="positions-ledger" id="dash-open"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
+        <section class="positions-ledger" id="dash-open"><div class="sect-head"><h2>Open positions <span class="section-count">${openHead.n}</span>${openHead.book}</h2></div>
           ${d.open_positions.length ? positionTable(d.open_positions, false) : '<p class="hint">No open positions.</p>'}
-          ${d.recent_closed.length ? `<details class="recent-settlements" id="recent-settlements"${settlementsOpen ? ' open' : ''}><summary>Recent settlements <span>${d.recent_closed.length}</span>${paperOnly(d.recent_closed) ? ' <span class="position-group-mode">Paper</span>' : ''}</summary>${positionTable(d.recent_closed, true)}</details>` : ''}
+          ${d.recent_closed.length ? `<details class="recent-settlements" id="recent-settlements"${settlementsOpen ? ' open' : ''}><summary>Recent settlements <span>${closedHead.n}</span>${closedHead.book}</summary>${positionTable(d.recent_closed, true)}</details>` : ''}
         </section><div class="dash-analysis">${performance}<section class="sect deployed-monitor${sharedPaperRunning ? ' shared-paper-running' : ''}"><div class="sect-head"><div class="monitor-heading"><h2>Deployed strategies <span class="section-count">${d.deployments.length}</span></h2>${sharedPaperRunning ? '<span class="monitor-context">Paper</span>' : ''}${d.deployments.length ? '<a href="/research?new=1" class="btn">New research</a>' : ''}</div></div><div id="dash-deps">${deps}</div></section></div></div></div>`;
       paint(root.querySelector('#boardbody'), board);  // the 15s poll repaints only what changed
       if (accountsFocused) root.querySelector('#other-accounts > summary').focus({ preventScroll: true });
