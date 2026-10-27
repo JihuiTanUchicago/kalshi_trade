@@ -442,6 +442,8 @@ window.TauPage('strategies', (T) => {
   // trades (the server's `pace`). Real money never follows on its own: it takes the user's own step.
   // Three places, so a p of 0.104 never reads "0.10" beside "needs 0.10 or lower".
   const roadP = (v) => v == null ? '—' : v < 0.001 ? 'under 0.001' : (+v).toFixed(3);
+  // A signed figure in the sentence stays on one line: "(now \u2212$13.56)" broke between the minus and the $ on a phone.
+  const roadAmt = (v) => `<span class="amt">${usd(v, true)}</span>`;
   const roadClear = (r) => !!(r.deployment_candidate && r.paper && r.paper.ready);
   function roadLeft(r, s) {
     const p = r.paper, c = p.checks || {}, left = [];
@@ -449,12 +451,12 @@ window.TauPage('strategies', (T) => {
     const demoOn = (s.deployments || []).some((d) => d.mode === 'demo' && d.status !== 'stopped');
     if (!r.deployment_candidate) left.push('the gatekeeper’s clearance');
     if (c.realistic_trades === false) left.push(more(+p.trades, +p.trades_needed, 'paper trades'));
-    if (c.legacy_pnl === false) left.push(`paper P&amp;L with every fill at $0 or above (now ${usd(p.legacy_pnl, true)})`);
+    if (c.legacy_pnl === false) left.push(`paper P&amp;L with every fill at $0 or above (now ${roadAmt(p.legacy_pnl)})`);
     if (c.events === false) left.push(more(+p.events, +p.events_needed, 'events'));
-    if (c.net_pnl === false) left.push(`net P&amp;L above $0 (now ${usd(p.net_pnl, true)})`);
+    if (c.net_pnl === false) left.push(`net P&amp;L above $0 (now ${roadAmt(p.net_pnl)})`);
     if (c.span === false) left.push(`${num(Math.ceil(p.span_needed_hours - p.span_hours))}h more of record (${num(Math.floor(p.span_hours))}h of ${num(p.span_needed_hours)}h)`);
     if (c.edge === false) left.push(p.p_value == null ? 'the edge test, run once the trades and events are in' : `a clearer edge (p ${roadP(p.p_value)}, needs ${p.p_value_needed.toFixed(2)} or lower)`);
-    if (c.recent === false) left.push(`its newer trades above $0 (now ${usd(p.recent_net_pnl, true)})`);
+    if (c.recent === false) left.push(`its newer trades above $0 (now ${roadAmt(p.recent_net_pnl)})`);
     if (c.demo === false) {
       left.push(+p.demo_orders < +p.demo_orders_needed ? more(+p.demo_orders, +p.demo_orders_needed, 'demo orders') + (demoOn ? '' : ' on a demo deployment')
         : p.demo_unresolved ? `${num(p.demo_unresolved)} lost demo order${p.demo_unresolved === 1 ? '' : 's'} accounted for`

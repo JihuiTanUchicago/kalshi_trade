@@ -135,6 +135,14 @@ def closed_totals(memo: BookMemo, deployment_ids: List[int]) -> Dict[int, Tuple[
     return memo.get("closed_totals", ids, lambda: repo.deployment_closed_totals(memo.cur, list(ids)))
 
 
+def realistic_paper_closed(memo: BookMemo, deployment_ids: List[int]) -> Dict[int, int]:
+    """repo.realistic_paper_closed for the listed deployments (their own closed positions), kept."""
+    ids = tuple(sorted({int(i) for i in deployment_ids}))
+    if not ids:
+        return {}
+    return memo.get("realistic_paper_closed", ids, lambda: repo.realistic_paper_closed(memo.cur, list(ids)))
+
+
 def removed_deployments(memo: BookMemo, strategy_id: Optional[int] = None) -> List[Dict]:
     """repo.removed_deployments (the deployments alone, read every time: one is removed without any
     position changing), each with its closed trades and realized P&L from closed_totals, kept for that

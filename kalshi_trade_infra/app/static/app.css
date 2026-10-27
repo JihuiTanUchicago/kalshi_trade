@@ -290,7 +290,10 @@ th .info { vertical-align: 0; }
 .board-title { padding-top: 22px; }
 /* The board title carries the session's prompt verbatim (up to 1000 chars, and a pasted idea
    can be one unbroken token or URL) — break it so a pathological prompt can't force page scroll. */
-h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -.02em; margin: 22px 0 3px; overflow-wrap: anywhere; }
+/* A page title wraps between words, never inside one: break-word keeps its longest word whole when it
+   sits beside controls in a flex row (Meridian's Strategies read "Strategie / s" at 390px under anywhere),
+   and max-width keeps a single overlong token (a pasted prompt or URL) inside the column, broken there. */
+h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -.02em; margin: 22px 0 3px; overflow-wrap: break-word; max-width: 100%; }
 .deck { color: var(--ink-3); font-size: 14px; max-width: 72ch; margin-bottom: 2px; overflow-wrap: anywhere; }
 .lede { color: var(--ink-2); max-width: 70ch; }
 

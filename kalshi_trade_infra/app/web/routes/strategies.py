@@ -184,7 +184,9 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     under "demo" rather than added in. One query, and only when the page has a deployed strategy."""
     if not any(c.get("deployed") for c in cards):
         return
-    real = _book_totals(book_memo.deployments_for_display(book_memo.BookMemo(cur, uid)))
+    memo = book_memo.BookMemo(cur, uid)
+    deps = book_memo.deployments_for_display(memo)
+    real = _book_totals(deps)
     for c in cards:
         books = real.get(c["id"]) if c.get("deployed") else None
         if books:
@@ -198,6 +200,22 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
             if mode == "paper" and "demo" in books:
                 dm = books["demo"]
                 c["real"]["demo"] = {"pnl": dm["pnl"], "trades": dm["trades"], "open": dm["open"]}
+    _flag_instant_only(memo, cards, deps)
+
+
+def _flag_instant_only(memo, cards: List[Dict], deps: List[Dict]) -> None:
+    """Stamp `instant_only` on a card whose shown paper book's closed trades were all instant fills (none
+    through the simulated venue, order_ref 'sim:'), as the track record tells them apart: it leaves those
+    trades out and names the strategy on a row saying so, while the list's "+$3.80 on paper since
+    deploying · 2 trades" read as a record. One kept read (book_memo), only for paper rows with trades."""
+    paper = {c["id"]: c["real"] for c in cards if (c.get("real") or {}).get("mode") == "paper" and c["real"].get("trades")}
+    if not paper:
+        return
+    dep_ids = {sid: [d["id"] for d in deps if d["strategy_id"] == sid and d["mode"] == "paper" and d.get("id")] for sid in paper}
+    sim = book_memo.realistic_paper_closed(memo, [i for ids in dep_ids.values() for i in ids])
+    for sid, r in paper.items():
+        if not any(sim.get(i) for i in dep_ids[sid]):
+            r["instant_only"] = True
 
 
 BOOK_ORDER = ("live", "paper", "demo")

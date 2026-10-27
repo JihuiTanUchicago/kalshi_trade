@@ -206,4 +206,22 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     // A research-only strategy never shows a book record, even if one leaks in.
     assert.doesNotMatch(row(f, {kind: 'code', research_only: true, past: {paper: {pnl: 1, trades: 1}}}), /Removed from/);
   });
+
+  // Walk 2026-10-27: a strategy whose only paper trades were instant fills read "+$3.80 on paper since deploying ·
+  // 2 trades" here, while the track record gave it a row saying all its trades were instant fills, left out of it.
+  test(`${name}: a paper row whose trades were all instant fills says so, as the track record does`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const real = {pnl: 3.8, trades: 2, open: 0, mode: 'paper', instant_only: true};
+    const html = row(f, {deployed: true, books: ['paper'], real});
+    assert.match(html, /All 2 of its trades were instant fills, left out of the track record · <span class="[^"]*">\+\$3\.80<\/span> on paper · after Kalshi fees and the spread/);
+    assert.doesNotMatch(html, /since deploying/);
+    assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, trades: 1}}), /Its only trade was an instant fill, left out of the track record/);
+    // A demo book beside it keeps its own line, never added in.
+    const demo = row(f, {deployed: true, books: ['paper', 'demo'], real: {...real, demo: {pnl: 0.5, trades: 1, open: 0}}});
+    assert.match(demo, /Demo: <span class="[^"]*">\+\$0\.50<\/span> · 1 trade/);
+    assert.doesNotMatch(demo, /\$4\.30/);
+    // Unflagged, or with no closed trade yet, the row reads as before.
+    assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, instant_only: false}}), /\+\$3\.80<\/span> on paper since deploying · 2 trades/);
+    assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, trades: 0, pnl: 0}}), /No closed paper trades yet/);
+  });
 }
