@@ -58,6 +58,31 @@ export function moneyDisplayCases({name, frontend, strategyFrontend, detailStrat
     assert.doesNotMatch(html, />Kalshi contract<\/a>/);
   });
 
+  test(`${name}: another hour of the 5pm Bitcoin ladder says its own close, never the 5pm market's name or none`, async () => {
+    // KXBTCD runs every hour; btc_daily keeps to its 5pm close. The noon, 9am and midnight contracts had no chip
+    // on the hot rail, and one held under a btc_daily strategy took "at 5pm ET" from its strategy's market.
+    const row = (t, ti) => ({t, s: 'KXBTCD', ti, su: '$113,000 or above', bid: .5, ask: .52, v24: 10, oi: 1, h: [.5, .51]});
+    const f = frontend(); f.S.me.markets = BTC;
+    const rail = hotRail(f, [row('KXBTCD-26OCT2812-T112999.99', 'Bitcoin price at 12pm EDT?'), row('KXBTCD-26OCT2809-T112999.99', 'Bitcoin price at 9am EDT?'),
+      row('KXBTCD-26OCT2900-T112999.99', 'Bitcoin price at 12am EDT?'), row('KXBTCD-26OCT2817-T112999.99', 'Bitcoin price at 5pm EDT?')]);
+    for (const at of ['noon', '9am', 'midnight', '5pm']) assert.match(rail, new RegExp(`>BTC above \\$X at ${at} ET<`));
+    assert.equal((rail.match(/>BTC above \$X at 5pm ET</g) || []).length, 1, 'only the 5pm contract takes the 5pm market');
+    assert.doesNotMatch(rail, />KXBTCD</);
+    // Held under a btc_daily strategy, the noon contract is named by its own close and strike.
+    const s = strategyFrontend(detailStrategy({market: 'btc_daily', holdings: [pos({ticker: 'KXBTCD-26OCT2712-T68499.99', mode: 'paper'})]}), () => response({}));
+    s.S.me.markets = BTC;
+    await s.viewStrategy(42); await flush();
+    const held = s.root.querySelector('#main').innerHTML;
+    assert.match(held, /<a href="\/explore\?m=KXBTCD-26OCT2712-T68499\.99">Bitcoin above \$68,499\.99 at noon ET<\/a>/);
+    assert.doesNotMatch(held, /T68499\.99">[^<]*5pm/);
+    // An open position on the Deploy board, under no deployment: its own close, not "Kalshi contract".
+    const g = frontend({fetchImpl: (path) => path === '/api/deployments'
+      ? response({deployments: [], open_positions: [pos({ticker: 'KXBTCD-26OCT2709-T68499.99'})]}) : response({})});
+    g.S.me.markets = BTC;
+    await g.viewDeploy(); await flush(); await flush();
+    assert.match(g.root.querySelector('#openpos').innerHTML, />Bitcoin above \$68,499\.99 at 9am ET<\/a>/);
+  });
+
   test(`${name}: with holdings in more than one book, the strategy page tags a paper holding Paper as it tags Demo and Live`, async () => {
     const paper = pos({mode: 'paper'}), demo = pos({mode: 'demo', ticker: 'KXBTCD-26OCT2617-T68999.99'});
     const list = async (holdings) => {

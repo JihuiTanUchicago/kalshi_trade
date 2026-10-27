@@ -83,7 +83,6 @@ from app.web.views import (  # noqa: F401  (shared presenters)
     RUN_OVERDUE_SECONDS,
     _DEMO_KEY_PAUSE,
     _auto_reload_terms,
-    _demo_health,
     _deployment_out,
     _gate_lines,
     _gate_tints,

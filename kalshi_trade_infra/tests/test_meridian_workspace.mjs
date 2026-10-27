@@ -829,8 +829,9 @@ test('Overview Kalshi cash says when it was read, and keeps Tau\'s realized line
     const f = apDashboard(dashboardData({deployments: [dashboardDeployment('live')], live: {connected: true, balance, balance_at: new Date().toISOString(), open_positions: 2}}), {...apStatus});
     await f.viewDashboard(); await flush();
     const text = f.root.querySelector('.live-summary').textContent;
-    if (balance) assert.match(text, /\+\$17\.00 realized all time by Tau trades ·\u00a0cash read from Kalshi just now/);
+    if (balance) assert.match(text, /Read from Kalshi just now ·\u00a0\+\$17\.00 realized all time by Tau trades/);  // Tau's words (cashAt)
     else assert.match(text, /Couldn’t read your Kalshi balance just now ·\u00a0\+\$17\.00 realized all time by Tau trades/);
+    assert.doesNotMatch(text, /cash read from Kalshi/);
   }
 });
 
@@ -2585,14 +2586,14 @@ test('Explore says when a timed contract closes, and nothing for an event with n
   assert.equal(links[1].querySelector('.market-close'), null);
 });
 
-test('Hot Markets names a 5pm Bitcoin contract by its market, an hourly one by its own title', () => {
+test('Hot Markets names a 5pm Bitcoin contract by its market, an hourly one by the same words at its own hour', () => {
   const f = frontend();
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   const row = (t, ti) => ({t, s: 'KXBTCD', ti, su: '$113,000 or above', bid: .5, ask: .52, v24: 10, oi: 0});
   f.root.innerHTML = '<aside id="hotrail"></aside>';
   f.S.hot = {at: new Date().toISOString(), markets: [row('KXBTCD-26OCT2717-T112999.99', 'Bitcoin price at 5pm EDT?'), row('KXBTCD-26OCT2700-T112999.99', 'Bitcoin price at 12am EDT?')]};
   f.renderHotRail();
-  assert.deepEqual(f.root.querySelectorAll('.hot-row').map(r => r.querySelector('.hot-title strong').textContent), ['BTC above $X at 5pm ET', 'Bitcoin price at 12am EDT?']);
+  assert.deepEqual(f.root.querySelectorAll('.hot-row').map(r => r.querySelector('.hot-title strong').textContent), ['BTC above $X at 5pm ET', 'BTC above $X at midnight ET']);
 });
 
 test('Explore bid and ask preserve decimal strings, zero and independently missing or malformed quote sides', async () => {

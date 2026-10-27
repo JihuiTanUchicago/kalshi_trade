@@ -190,10 +190,12 @@ def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_s
         raise AssertionError("the shell's read asked Kalshi")
     monkeypatch.setattr(demo_twins, "_read_balance", no_read)
     c = _ctx(conn, uid)
-    assert shell_reads.dashboard_without_kalshi(c)["demo"]["health"] == seen["dashboard"]
-    assert shell_reads.autopilot_without_kalshi(c)["idle"] == seen["autopilot"]
+    shell = {url: fn for url, fn, _, _ in shell_reads.first_requests("/", "", {})}  # the dashboard's carried reads
+    dashboard, autopilot = shell["/api/dashboard"], shell["/api/autopilot/status"]
+    assert dashboard(c)["demo"]["health"] == seen["dashboard"]
+    assert autopilot(c)["idle"] == seen["autopilot"]
     demo_twins._BALANCE_CACHE.clear()
-    dash, ap = shell_reads.dashboard_without_kalshi(c), shell_reads.autopilot_without_kalshi(c)
+    dash, ap = dashboard(c), autopilot(c)
     assert dash["demo"]["health"] is None and dash["demo"]["health_pending"] is True
     assert ap["idle_pending"] is True and (ap["idle"] or {}).get("code") != "demo_funds"
     assert shell_reads.then_reads("/api/autopilot/status", ap) == ["/api/funds/cash?book=demo"]
