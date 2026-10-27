@@ -1584,8 +1584,12 @@ a.snap:hover { border-color: var(--ink-3); }
 /* ── Hot Markets left rail — the engagement spine (Kursbuch: ruled, no shadow) ───── */
 :root { --rail: 38px; }
 body.hot-open { --rail: 306px; }
-body:not(.landing-body) { padding-left: var(--rail); transition: padding-left .22s var(--ease); }
-.hotrail { position: fixed; left: 0; top: 0; bottom: 0; width: var(--rail); background: var(--stock-raised); border-right: 1px solid var(--rule); z-index: 40; overflow: hidden; display: flex; transition: width .22s var(--ease); }
+body:not(.landing-body) { padding-left: var(--rail); }
+.hotrail { position: fixed; left: 0; top: 0; bottom: 0; width: var(--rail); background: var(--stock-raised); border-right: 1px solid var(--rule); z-index: 40; overflow: hidden; display: flex; }
+/* It slides only while you open or close it (app.js sets hot-moving for the toggle). Opened by the app on
+   every load, it slid the whole page sideways each time: a layout shift of 0.7-2.3 on a desktop. */
+body.hot-moving:not(.landing-body) { transition: padding-left .22s var(--ease); }
+body.hot-moving .hotrail { transition: width .22s var(--ease); }
 /* collapsed spine */
 .hot-tab { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 38px; height: 100%; border: 0; background: none; cursor: pointer; padding: 15px 0; color: var(--ink-2); }
 .hot-tab:hover { color: var(--ink); background: var(--stock); }
@@ -1644,7 +1648,7 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
   .hotrail { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  body:not(.landing-body), .hotrail { transition: none; }
+  body.hot-moving:not(.landing-body), body.hot-moving .hotrail { transition: none; }
   .hot-dot { animation: none; }
 }
 

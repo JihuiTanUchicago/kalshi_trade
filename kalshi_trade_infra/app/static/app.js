@@ -2409,6 +2409,10 @@
     const wantMkt = new URLSearchParams(location.search).get('market');
     const wantRow = wantMkt ? (me.markets || []).find((m) => m.key === wantMkt) : null;
     const notOpen = wantMkt && !wantRow ? `${MKT_SHORT[wantMkt] || 'The market you picked'} isn\u2019t open for research right now` : '';
+    // Under the credits a session needs to start, the form says so up top. Start refused for it (402) moves
+    // that note beside Start instead of adding the server's own words under it: the same warning twice.
+    const lowSaid = `You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start.`;
+    const lowNote = (kind) => `<div class="notice${kind ? ' ' + kind : ''}" id="rlow" role="${kind === 'bad' ? 'alert' : 'status'}">${ICON.warn}<span>${lowSaid} ${me.reload_failed ? 'Auto-reload couldn’t charge your card. <a href="/billing">Update your card and add credits →</a>' : '<a href="/billing">Add credits →</a>'}</span></div>`;
     // Models you can't pick yet go after the ones you can, and say "coming soon": they led the list as
     // "(access pending)", four greyed-out rows above the default.
     const modelOpts = (mdl.models || []).filter((m) => m.available !== false).concat((mdl.models || []).filter((m) => m.available === false))
@@ -2419,7 +2423,7 @@
       <form class="panel dispatch" id="dispatch">
         <h3>${ICON.spark2}New research session</h3>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
-        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? `<div class="notice" role="status">${ICON.warn}<span>You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start. ${me.reload_failed ? 'Auto-reload couldn’t charge your card. <a href="/billing">Update your card and add credits →</a>' : '<a href="/billing">Add credits →</a>'}</span></div>` : ''}
+        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <details class="dispatch-opts" id="ropts"${phone() ? '' : ' open'}><summary><span class="dispatch-opts-t">Options</span><span class="dispatch-opts-sum" id="ropts-sum"></span></summary><div class="dispatch-opts-body">
@@ -2538,10 +2542,11 @@
           draft.drop();
           go('/research/' + r.id);
         } catch (err) {
-          flash('#dflash', err.message, 'bad');
+          const said = form.querySelector('#dflash'), low = err.status === 402 && form.querySelector('#rlow');
+          if (low && said) { low.remove(); said.innerHTML = lowNote('bad'); announce(lowSaid, true); }
+          else flash('#dflash', err.message, 'bad');
           // The error sits under the cost lines: on a phone that is below the fold, so Start looked
           // like it did nothing (out of credits, two sessions already going). Bring it into view.
-          const said = form.querySelector('#dflash');
           if (said && said.scrollIntoView) said.scrollIntoView({ block: 'nearest' });
         }
       });
@@ -4994,7 +4999,7 @@
   // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page.
   const hotOpen = () => !phone() && localStorage.getItem('tau_hotrail') !== '0';
   const hotShown = () => !phone();  // app.css hides the rail under 761px, the width phone() asks
-  let hotLoop = false;
+  let hotLoop = false, hotMoving = 0;
   let apLoop = false, apReq = null;
 
   // ---------- floating autopilot window ----------
@@ -5017,8 +5022,6 @@
         if (b && !document.hidden && (!S.apAt || Date.now() - S.apAt > 18000)) refreshAutopilot(b, true);
       });
       // Re-check the pill against the page's buttons once a frame at most, as the page moves under it.
-      let yieldQueued = false;
-      const yieldSoon = () => { if (yieldQueued) return; yieldQueued = true; requestAnimationFrame(() => { yieldQueued = false; apYield(); }); };
       addEventListener('scroll', yieldSoon, { passive: true }); addEventListener('resize', yieldSoon);
       document.addEventListener('toggle', yieldSoon, true); document.addEventListener('input', yieldSoon, true);
       // Tabbing onto a stepped-aside pill brings it back (apYield keeps a focused pill shown).
@@ -5763,7 +5766,7 @@
         <span class="apf-dot" aria-hidden="true"></span><span class="apf-pill-label">${esc(apPillLabel(d, m))}</span>${ICON.chev || ''}</button>`;
       // The 20s status read repaints the pill only when it changed (a screen reader re-read a focused pill
       // each time), and a repaint or the panel closing leaves focus on the pill.
-      if (box.apPill === pill && box.querySelector('.apf-pill')) { apYield(); return; }
+      if (box.apPill === pill && box.querySelector('.apf-pill')) { yieldSoon(); return; }
       box.apPill = pill;
       if (box.removeAttribute) { box.removeAttribute('role'); box.removeAttribute('aria-label'); }
       const a = document.activeElement, hadFocus = !!(a && a !== document.body && box.contains && box.contains(a));
@@ -5771,7 +5774,7 @@
       const pb = box.querySelector('.apf-pill');
       if (hadFocus && pb && pb.focus) pb.focus({ preventScroll: true });
       box.querySelector('[data-ap]').onclick = (e) => apAction(box, 'toggle', e);
-      apYield();
+      yieldSoon();
       return;
     }
     if (box.dataset.shell !== 'expanded') apBuildShell(box);
@@ -5790,6 +5793,16 @@
   const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
     '.figures .m', '.fig', 'td.num', 'dd', '#dash-ap'];
   const AP_UNDER_SEL = AP_UNDER.join(', ');
+  // apYield hit-tests the page (elementsFromPoint), which lays it out and pre-paints it then and there. Run
+  // from the pill's render, inside a page's first render, it fixed Research half drawn on a phone: the list
+  // that moves above the form a moment later counted as a layout shift of 0.68, though no frame showed
+  // it. It runs once a frame at most, once the page has drawn.
+  let yieldQueued = false;
+  const yieldSoon = () => {
+    if (yieldQueued) return;
+    yieldQueued = true;
+    (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (f) => setTimeout(f, 16))(() => { yieldQueued = false; apYield(); });
+  };
   function apYield() {
     const box = document.getElementById('autopilot-float'), pill = box && box.querySelector('.apf-pill');
     if (!pill || !pill.getBoundingClientRect) { if (box) box.classList.remove('yield'); return; }
@@ -6203,6 +6216,8 @@
     rail.querySelectorAll('[data-hot="toggle"]').forEach((b) => b.onclick = (e) => {
       if (e.currentTarget.classList.contains('hot-tab') && open) return; // the spine only expands
       const next = !hotOpen(); localStorage.setItem('tau_hotrail', next ? '1' : '0');
+      // It slides only when you open or close it (hot-moving, app.css): a page load draws it where it is.
+      document.body.classList.add('hot-moving'); clearTimeout(hotMoving); hotMoving = setTimeout(() => document.body.classList.remove('hot-moving'), 300);
       document.body.classList.toggle('hot-open', next); renderHotRail();
       const to = rail.querySelector(next ? '.hot-x' : '.hot-tab'); if (to && to.focus) to.focus({ preventScroll: true });
     });

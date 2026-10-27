@@ -1179,6 +1179,58 @@ test('the floating autopilot pill steps aside while it would cover a primary or 
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
+test('the floating autopilot pill hit-tests the page a frame after it renders, never inside a page render', () => {
+  // elementsFromPoint lays out and pre-paints the page on the spot: run from the pill's render, inside
+  // Research's first render, it fixed the form where it stood before the session list moved above it on
+  // a phone, and Chrome counted that move as a layout shift of 0.68.
+  const frames = [];
+  const f = frontend({globals: {requestAnimationFrame: (cb) => frames.push(cb)}}), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><form id="dispatch"><button class="btn primary go" type="submit">Start session</button></form></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  const go = f.root.querySelector('#dispatch .go');
+  let hits = 0;
+  f.document.elementsFromPoint = () => { hits++; return [go]; };
+  f.renderAutopilot(box, {mode: 'off'});
+  assert.equal(hits, 0, 'no hit test inside the render');
+  assert.equal(frames.length, 1);
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);   // 390x844 phone
+  go.getBoundingClientRect = rect(31, 798, 359, 840);
+  f.renderAutopilot(box, {mode: 'off'});  // the same pill again (the 20s poll): still one check queued
+  assert.equal(frames.length, 1);
+  frames.shift()();
+  assert.ok(hits > 0);
+  assert.equal(box.classes.has('yield'), true, 'the pill still steps aside, a frame later');
+});
+
+test('the hot-markets rail slides only while you open or close it, never as a page loads', async () => {
+  // The app opens it on every desktop load (body.hot-open); with the slide always on, the whole page slid
+  // 268px sideways each time: a layout shift of 0.7-2.3 on every Tau page at 1280x900.
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /\nbody:not\(\.landing-body\) \{[^}]*transition/);
+  assert.doesNotMatch(css, /\n\.hotrail \{[^}]*transition/);
+  assert.match(css, /\nbody\.hot-moving:not\(\.landing-body\) \{ transition: padding-left/);
+  assert.match(css, /\nbody\.hot-moving \.hotrail \{ transition: width/);
+  const saved = new Map([['tau_hotrail', '1']]);
+  const bill = {configured: false, balance: 12.5, spent: 40, spent_7d: 3, spent_24h: 1, pace_days: 7, free_bonus: 20, topup_fee_pct: 5.5,
+    cards: [], default_pm: null, auto_reload: false, min_run_balance: 1, spent_7d_by: {}, ledger: [], ledger_cut: false,
+    math: {days: 30, start: 20, bought: 0, purchases: 0, other: 0, usage: 7.5, end: 12.5}};
+  const f = frontend({storage: {getItem: (k) => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v)},
+    fetchImpl: (path) => response(path.startsWith('/api/billing') ? bill : {markets: []})});
+  f.location.pathname = '/billing';
+  await f.viewBilling(); await flush();
+  const body = f.document.body, rail = body.querySelector('#hotrail');
+  assert.equal(body.classList.contains('hot-open'), true, 'drawn open, as saved');
+  assert.equal(body.classList.contains('hot-moving'), false, 'and not slid there');
+  const close = rail.querySelector('.hot-x');
+  close.onclick({currentTarget: close});
+  assert.equal(body.classList.contains('hot-open'), false);
+  assert.equal(body.classList.contains('hot-moving'), true, 'your click slides it');
+  f.elapse(300);
+  assert.equal(body.classList.contains('hot-moving'), false, 'until it has moved');
+  f.clearTimers();
+});
+
 test('the floating autopilot pill steps aside from the Agent log header buttons on the run page', () => {
   const f = frontend(), body = f.root.parent;
   f.root.innerHTML = '<main id="main"><section><div class="section-head"><h2>Agent log</h2><span id="runact"><span class="runact"><button class="btn small" id="pause">Pause</button><button class="btn danger small" id="cancel">Cancel</button></span></span></div></section></main>';

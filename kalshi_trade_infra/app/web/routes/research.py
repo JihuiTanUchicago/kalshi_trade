@@ -14,7 +14,7 @@ from app.research import agent, dreaming
 from app.services import customer_text, research_list, run_stop
 from app.services import markets as market_service
 from app.trading.markets import MARKETS
-from app.web.caches import _shared
+from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.explore import _efloat, _explore_feed, _feed_mid
 from app.web.routes.strategies import _owned_strategy, _strategy_card
@@ -421,11 +421,20 @@ def research_scoreboard(ctx: Ctx):
     uid = ctx.uid
     # 4.4s p50 on prod (every run's verdict events re-read and re-classified per request), so the
     # board is memoized per (user, days) and refreshed in the background: at most a minute stale.
-    return _shared("rsi_board:%s:%s" % (uid, days), SCOREBOARD_TTL_S,
+    return _shared(_board_key(uid, days), SCOREBOARD_TTL_S,
                    lambda cur: _research_scoreboard(cur, uid, days), ctx.cur)
 
 
 SCOREBOARD_TTL_S = 60.0
+
+
+def _board_key(uid: int, days: int) -> str:
+    return "rsi_board:%s:%s" % (uid, days)
+
+
+def scoreboard_kept(uid: int, days: int) -> bool:
+    """Whether research_scoreboard answers (uid, days) from memory now, without working the board out."""
+    return _shared_kept(_board_key(uid, days))
 
 
 def _research_scoreboard(cur, uid: int, days: int) -> Dict:

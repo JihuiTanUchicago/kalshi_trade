@@ -3105,6 +3105,20 @@ test("boot.js hands the app the page's first read the shell carries, once, apart
   }
 });
 
+test("boot.js keeps the browser's UTC offset in the tau_tz cookie, the one Billing's read names, and survives blocked cookies", () => {
+  for (const [protocol, blocked] of [['https:', false], ['http:', false], ['https:', true]]) {
+    const written = [], dataset = {ui: 'tau', tauJs: '/static/app.js?v=t', tauVer: 't', merJs: '/static/app.meridian.js?v=m', merVer: 'm', merCss: '/static/app.meridian.css?v=m'};
+    const document = {getElementById: id => id === 'tau-boot' ? {dataset} : null, createElement: () => ({}), body: {appendChild() {}}};
+    Object.defineProperty(document, 'cookie', {set: (v) => { if (blocked) throw new Error('Synthetic blocked cookies'); written.push(v); }});
+    const context = {window: {}, location: {pathname: '/', protocol}, localStorage: {getItem: () => null, setItem() {}}, document};
+    vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+    const tz = vm.runInNewContext('new Date().getTimezoneOffset()');
+    // The same digits as the page's '/api/billing?tz=' + new Date().getTimezoneOffset() (shell_reads.billing_tz reads them).
+    assert.deepEqual(written, blocked ? [] : [`tau_tz=${tz}; Path=/; Max-Age=34560000; SameSite=Lax${protocol === 'https:' ? '; Secure' : ''}`]);
+    assert.equal(context.window.__TAU_UI__, 'tau', 'the theme choice runs either way');
+  }
+});
+
 test('a research session that does not exist links to the list instead of offering Try again', async () => {
   const f = frontend({fetchImpl: path => (path.startsWith('/api/runs/9') ? {ok: false, status: 404, json: async () => ({error: 'No such research run.'})} : {ok: true, status: 200, json: async () => ({})})});
   f.location.pathname = '/research/9';
