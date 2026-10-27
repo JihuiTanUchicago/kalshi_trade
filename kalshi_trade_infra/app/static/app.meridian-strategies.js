@@ -427,8 +427,14 @@ window.TauPage('strategies', (T) => {
     // newest first, each with its own book, dates and realized P&L (books never added together), and,
     // as the lines above, which money it was and what it is net of (BOOK_NET).
     const past = Array.isArray(s.past_deployments) ? s.past_deployments : [];
+    // One with no closed trades has no P&L to net of fees: it says so, as the lines above do, and which money
+    // it was, instead of "$0.00 over 0 closed trades" with no book.
+    const BOOK_MONEY = { live: 'real money', demo: `in ${DEMO_BOOK}: not real money`, paper: 'not real money' };
+    const pastFig = (p) => (+p.closed_trades
+      ? `${money(p.realized_pnl)} over ${num(p.closed_trades)} closed trade${+p.closed_trades === 1 ? '' : 's'}${BOOK_NET[p.mode] ? `, ${BOOK_NET[p.mode]}` : ''}`
+      : `no closed trades${BOOK_MONEY[p.mode] ? `, ${BOOK_MONEY[p.mode]}` : ''}`);
     const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—');
-    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${day(p.created_at)}\u2013${day(p.removed_at)}, ${money(p.realized_pnl)} over ${num(p.closed_trades)} closed trade${p.closed_trades === 1 ? '' : 's'}${+p.closed_trades && BOOK_NET[p.mode] ? `, ${BOOK_NET[p.mode]}` : ''}`).join(' ·\u00a0')}${past.length > 3 ? ` ·\u00a0${num(past.length - 3)} earlier` : ''}</p>` : '';
+    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${day(p.created_at)}\u2013${day(p.removed_at)}, ${pastFig(p)}`).join(' ·\u00a0')}${past.length > 3 ? ` ·\u00a0${num(past.length - 3)} earlier` : ''}</p>` : '';
     return lines || pastLine ? `<section class="real-record" aria-label="Since deploying"><h2 class="paper-h">Since deploying</h2>${lines}${pastLine}</section>` : '';
   }
   // Road to live in words, from the checks the server sends (live-readiness): what is left, each with
