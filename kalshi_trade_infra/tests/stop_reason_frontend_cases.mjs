@@ -91,7 +91,9 @@ export function stopReasonCases({name, frontend}) {
     const said = f.root.querySelector('#rstatus .said');
     if (said) {  // Tau's sentence over the figures
       assert.match(words(said.innerHTML), /kept 1 that beat every gate \( 2 more passed but weren’t cleared to trade\)/);
-      assert.match(figs, /\b5(\.0)?% pass rate/);  // 1 of 20, not 3 of 20
+      assert.match(figs, /\b5(\.0)?% of ideas tested/);  // 1 of 20, not 3 of 20
+      // It says what it is a rate of: Strategies' pass rate is of the strategies it lists, a different figure.
+      assert.doesNotMatch(figs, /pass rate/);
     }
     f.clearTimers();
     // One: singular. None uncleared: the headline reads as before.

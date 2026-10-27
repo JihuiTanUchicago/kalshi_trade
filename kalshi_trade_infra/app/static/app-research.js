@@ -392,7 +392,7 @@ window.TauPage('research', (T) => {
           : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
       paint(root.querySelector('#rstatus .said'), said);
       paint(root.querySelector('#rfigs'), fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
-        fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: [tried ? `${pct(passed / tried, false)} pass rate` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(' · ') }));
+        fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: [tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(' · ') }));
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
       const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;

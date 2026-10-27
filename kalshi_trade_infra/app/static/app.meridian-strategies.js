@@ -319,8 +319,10 @@ window.TauPage('strategies', (T) => {
       // a meaningless 100%: it is left out there rather than shown.
       const rate = total && !f.deployed ? c('passed') / total : null;
       root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed'), { small: c('not_cleared') ? `${num(c('not_cleared'))} more passed but ${c('not_cleared') === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : '' }) + fig(gl('Void on unseen data', 'void'), c('failed')) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
-        fig('Pass rate', rate != null ? pct(rate, false) : '—', { small: f.deployed ? 'not with Deployed on: only passed strategies deploy' : '' });
-      root.querySelector('#strategy-passrate').textContent = rate != null ? `${pct(rate, false)} pass rate` : 'Research results';
+        // Its denominator said: Research's rate is of every idea tested (most never become a strategy), so the
+        // two pages read 8.6% and 12.0% for one account with nothing saying why.
+        fig('Pass rate', rate != null ? pct(rate, false) : '—', { small: f.deployed ? 'not with Deployed on: only passed strategies deploy' : rate != null ? `of the ${num(total)} strateg${total === 1 ? 'y' : 'ies'} here` : '' });
+      root.querySelector('#strategy-passrate').textContent = rate != null ? `${pct(rate, false)} pass rate, of the ${num(total)} strateg${total === 1 ? 'y' : 'ies'} here` : 'Research results';
       const kept = total - c('failed') - c('rejected');
       root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; if (v === 'not_cleared') b.hidden = !c(v) && f.status !== v; });
       const depChip = root.querySelector('[data-toggle="deployed"]');
