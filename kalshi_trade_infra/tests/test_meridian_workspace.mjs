@@ -2122,8 +2122,8 @@ test('Research index shows the research loop scoreboard, escaped, and keeps it o
   assert.match(html, /8% <span class="rsi-arrow">→<\/span> 33%/);
   assert.match(html, /v2<\/b> on trial ·\u00a02 of 6 ideas reached the gate ·\u00a081% likely better/);
   assert.match(html, /feature missing/); assert.match(html, /calibration &lt;4h/);
-  assert.match(html, /On paper against the live book: 2 passed strategies, 1 trading, 12 round trips, net −\$1\.50, losing money where the backtest expected a profit/);
-  assert.match(html, /3 of 20 ideas reached the gate ·\u00a0on paper 12 trips, −\$1\.50/);
+  assert.match(html, /On paper at the market’s real prices: 2 passed strategies, 1 trading, 12 closed trades, net −\$1\.50, losing money where the backtest expected a profit/);
+  assert.match(html, /3 of 20 ideas reached the gate ·\u00a0on paper 12 closed trades, −\$1\.50/);
   assert.match(html, /order-book feature ·\u00a0flow_imb_60s<\/b> ·\u00a0idea re-tested ·\u00a0<a href="\/research\/44">session<\/a>/);
   assert.match(html, /For: Flow &lt;b&gt;leads&lt;\/b&gt;/);
   assert.ok(html.includes('&lt;script&gt;')); assert.doesNotMatch(html, /<script>/);

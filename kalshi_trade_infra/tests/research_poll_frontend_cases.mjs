@@ -92,12 +92,44 @@ export function researchPollCases({name, frontend}) {
     const card = f.root.querySelector('#rsimo').innerHTML;
     const at = card.indexOf('Paper tournament'), sect = card.slice(at, card.indexOf('</ul>', at));
     assert.ok(at > 0, 'the section is on the page');
-    assert.match(sect, /Every strategy on paper takes part at once, and a \$100\.00 practice book shifts toward the ones that earn\. Together they have 31 of the 400 separate bets it takes to judge them/);
+    assert.match(sect, /Every strategy on paper takes part at once, and a \$100 practice book shifts toward the ones that earn\. Together they have 31 of the 400 separate bets it takes to judge them/);
     assert.match(sect, /Falling short: after 31 paper events it is 93% likely to be losing money per event</);
     assert.match(sect, /Falling short: no trade in 7 days, as its entry rule never fired on the market’s real prices</);
     assert.match(sect, /held back until a strategy shows it makes money/);
     assert.match(sect, /Practice book so far: /);
     assert.doesNotMatch(sect, /Retiring|entrant|bandit|near miss|forward sample|posterior|live book|beats zero/i);
+    f.clearTimers();
+  });
+
+  // Walked 2026-10-27 at 390px and 1280px: the loop card's paper line said "On paper against the live book ... 37 round
+  // trips"; the tournament's book read "$10,000.00", its average "-9.0%" with a hyphen beside the "−$18.40" figures,
+  // and a book with nothing in it "$0.00 over 0 trades"; Tau's headline said "Hypotheses tested" over "of ideas tested".
+  test(`${name}: the Research page's loop card and headline say their figures plainly`, async () => {
+    const board = {total: {runs: 3, explored: 12, gated: 3, gate_reach_rate: 0.25, passed: 1, holdout_passed: 0, cost_usd: 2, pipeline_death_share: 0.2},
+      days: [], trend: null, playbooks: [], scout: [], fix_list: [], data_requests: [],
+      paper: {total: {strategies: 4, trading: 2, round_trips: 37, net_pnl: -16.6, live_ready: 0, realization: -0.5}, by_playbook: {}},
+      tournament: {pooled: {trips: 37, target: 400, per_day: 3.7, days_to_target: 98, mean_return: -0.09},
+        book: {capital: 10000, pnl: 0, trips: 0},
+        entrants: [{strategy_id: 42, market: 'btc15m', title: 'Fade', weight: 0.6, trips: 31, net_pnl: -18.4, p_positive: 0.13, verdict: null},
+          {strategy_id: 0, title: 'Cash', weight: 0.4}]}};
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/runs')) return response({runs: [run({id: 8})], counts, policy: null, totals: {tried: 21, passed: 3}, v: 'v1'});
+      if (path.startsWith('/api/research/scoreboard')) return response(board);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      return response({});
+    }});
+    f.S.me.user.autopilot = false;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    const card = f.root.querySelector('#rsimo').innerHTML;
+    assert.match(card, /On paper at the market’s real prices: 4 passed strategies, 2 trading, 37 closed trades, net −\$16\.60/);
+    assert.match(card, /and a \$10,000 practice book shifts/);
+    assert.match(card, /averaging −9\.0% of the stake a bet\. The practice book has no trades yet\./);
+    assert.doesNotMatch(card, /live book|round trip|\$10,000\.00|-9\.0%|over 0 trades/);
+    const top = f.root.querySelector('#rfigs').innerHTML + ((f.root.querySelector('#rstatus .said') || {}).innerHTML || '');
+    assert.doesNotMatch(top, /[Hh]ypothes/);
     f.clearTimers();
   });
 }

@@ -612,10 +612,10 @@ test('the research headline uses all-time totals, not the 50 newest runs', async
   }});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> hypotheses and kept <em>4<\/em>/);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> ideas and kept <em>4<\/em>/);
 });
 
-test('Tau: a new user\'s first idea reads "1 hypothesis tested", not "1 hypotheses"', async () => {
+test('Tau: a new user\'s first idea reads "1 idea tested", not "1 ideas"', async () => {
   const at = (counts) => frontend({fetchImpl: path => {
     if (path === '/api/models') return response({models: [], default: ''});
     if (path === '/api/research/context') return response({markets: []});
@@ -627,12 +627,12 @@ test('Tau: a new user\'s first idea reads "1 hypothesis tested", not "1 hypothes
   let f = at({research_running: 1, research_queued: 0});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— all time, <em>1<\/em> hypothesis tested, <em>0<\/em> through every gate\./);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— all time, <em>1<\/em> idea tested, <em>0<\/em> through every gate\./);
   f.clearTimers();
   f = at({research_running: 0, research_queued: 0});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1<\/em> hypothesis and kept <em>0<\/em>/);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1<\/em> idea and kept <em>0<\/em>/);
   f.clearTimers();
 });
 
@@ -658,7 +658,7 @@ test('the seeded example session is listed as an example, not counted as the use
     assert.equal(f.root.querySelector('#rcount').textContent, count);
     assert.match(list, /Example<\/span>/); assert.match(list, /An example Tau ran for you when you signed up\. It cost you nothing\./);
     assert.doesNotMatch(list, /Cost: \$0\.00/);
-    if (own.length) { assert.match(said, /tested <em>3<\/em> hypotheses/); assert.match(list, /Cost: \$0\.42/); }
+    if (own.length) { assert.match(said, /tested <em>3<\/em> ideas/); assert.match(list, /Cost: \$0\.42/); }
     else assert.doesNotMatch(said, /Your engine has tested/);
   }
 });
