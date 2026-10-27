@@ -8,13 +8,106 @@
 //   that a screen reader skipped, so the kind of money is read with the figure.
 // - The research and autopilot logs are lists that announce additions (aria-live), not role="log" on
 //   the <ol>, which took away the list and its items.
+// - Every signed-in page's h1 and money figures sat in #boardbody, outside <main>, so Skip to content and
+//   the focus a page change hands over both landed past the heading. <main> holds the board and the page
+//   (#main), and both land on the h1.
+// - Asides with no name: Tau's Dashboard (positions) and the strategy page (deploy and gates) were two
+//   unnamed complementary landmarks beside an unnamed hot-markets rail. Every <aside> is named.
+// - Heading levels that skipped: Funds' panels and Tau's research form were h3 under the page's h1, the
+//   track record's figure titles h5 under its h2, and Meridian's "Since deploying" h3 under the h1.
+// - The pulse's idle line ends "last move 3m ago", and the chat poll rewrote it each minute, so the live
+//   region said the whole line again once a minute. The minutes tick in a shown line hidden from the
+//   reader; the live words leave them out and change only with the status.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling}) {
+// Each heading's level against the one before it, in document order: a step down of more than one
+// (h1 then h3) is a skip a screen reader's heading list shows as a missing level.
+const headingSkips = (host) => {
+  const levels = host.querySelectorAll('h1, h2, h3, h4, h5, h6').map((h) => [+h.tag.slice(1), h.textContent.trim()]);
+  return levels.filter(([level], i) => level > (i ? levels[i - 1][0] : 0) + 1).map(([level, text]) => `h${level} ${text}`);
+};
+
+export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling, source, strategyFrontend, detailStrategy, dashboard, fundsData}) {
+  test(`${name}: <main> starts at the page's heading and figures, and a page change and Skip to content land there`, async () => {
+    const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
+    f.location.pathname = '/deploy';
+    await f.render(); await flush(); await flush();
+    const mains = f.root.querySelectorAll('main');
+    assert.equal(mains.length, 1, 'one main landmark, with none inside it');
+    assert.ok(mains[0].querySelector('#boardbody h1'), 'the page heading is in <main>');
+    assert.ok(mains[0].querySelector('#boardbody') && mains[0].querySelector('#main'), 'so are the board and the page under it');
+    assert.equal(mains[0].querySelector('h1').focusOptions, undefined, 'the first page of a visit leaves focus to the browser');
+    f.location.pathname = '/settings';
+    await f.render(); await flush(); await flush();
+    const heading = f.root.querySelector('main h1'), page = f.root.querySelector('#main');
+    assert.equal(heading.textContent, 'Settings');
+    assert.equal(heading.getAttribute('tabindex'), '-1');
+    assert.equal(heading.focusOptions.preventScroll, true, 'a page change focuses the heading');
+    assert.equal(page.focusOptions, undefined, 'not the page under the figures');
+    // Skip to content (the shell's first link) goes to the same heading.
+    heading.focusOptions = undefined; heading.scrollIntoView = () => { heading.scrolled = true; };
+    heading.hasAttribute = (key) => heading.getAttribute(key) != null;
+    const skip = f.document.createElement('a'); skip.className = 'skip'; skip.setAttribute('href', '#main'); f.document.body.appendChild(skip);
+    let prevented = false;
+    for (const [type, listener] of f.documentListeners) if (type === 'click') listener({target: skip, preventDefault: () => { prevented = true; }});
+    assert.equal(prevented, true);
+    assert.equal(heading.scrolled, true); assert.equal(heading.focusOptions.preventScroll, true);
+    assert.equal(page.focusOptions, undefined);
+    f.clearTimers();
+  });
+
+  test(`${name}: every <aside> has a name of its own, on Dashboard and the strategy page as everywhere`, async () => {
+    const names = (f) => f.root.querySelectorAll('aside').map((a) => a.getAttribute('aria-label'));
+    const d = frontend({fetchImpl: (path) => path.startsWith('/api/dashboard') ? response(dashboard()) : response({})});
+    await d.viewDashboard(); await flush();
+    const s = strategyFrontend(undefined, () => response({}));
+    await s.viewStrategy(42); await flush();
+    for (const f of [d, s]) {
+      for (const label of names(f)) assert.ok(label && label.trim(), 'a named aside');
+      assert.equal(new Set(names(f)).size, names(f).length, 'no two with the same name');
+    }
+    const own = (f) => names(f).filter((n) => n !== 'Hot markets');  // Meridian's shell draws the rail
+    assert.deepEqual(own(d), name === 'Tau' ? ['Positions'] : []);
+    assert.deepEqual(own(s), ['Deploy and gates']);
+    d.clearTimers(); s.clearTimers();
+    // Every aside the bundle draws, the hot-markets rail it makes in script included, carries its name.
+    assert.deepEqual(source.match(/<aside(?![^>]*aria-label=)[^>]*>/g), null);
+    assert.deepEqual(source.match(/createElement\('aside'\)(?![^;]*;[^;]*;[^;]*; a\.setAttribute\('aria-label')/g), null);
+  });
+
+  test(`${name}: Funds, the research form, the track record and a deployed strategy's page skip no heading level`, async () => {
+    const funds = frontend({fetchImpl: (path) => path === '/api/funds' ? response(fundsData()) : response({})});
+    await funds.viewFunds(); await flush();
+    assert.ok(funds.root.querySelector('#main h2'), 'Funds has its section headings');
+    assert.deepEqual(headingSkips(funds.root), []);
+    const research = frontend({fetchImpl: (path) => {
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/runs')) return response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: null, v: 'v1'});
+      return response({});
+    }});
+    research.S.me.user.autopilot = false; research.location.pathname = '/research';
+    await research.viewResearch(); for (let i = 0; i < 6; i++) await flush();
+    assert.ok(research.root.querySelector('#dispatch'), 'the research form is on the page');
+    assert.deepEqual(headingSkips(research.root), []);
+    research.clearTimers();
+    // The track record mounts under its own h2 (dashTrackRecord); its figure titles come next.
+    const record = frontend({fetchImpl: () => response({})}), host = record.document.createElement('section');
+    host.innerHTML = '<h1>Dashboard</h1><h2>Track record</h2>' + record.trackRecordPanel({trades: 3, wins: 2, losses: 1, label: 'Paper', net_pnl: 4, fees: 0.2,
+      monthly: [], strategies: [], curve: [], sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge.'}}, 'paper', {min_sharpe_days: 14, min_trades: 30});
+    assert.ok(host.querySelectorAll('h3').some((h) => h.textContent === 'Equity curve'));
+    assert.deepEqual(headingSkips(host), []);
+    const deployments = [{id: 1, mode: 'paper', status: 'running', realized_pnl: 2.5, closed_trades: 4, open_positions: 1, created_at: '2026-10-20T08:00:00Z'}];
+    const deployed = strategyFrontend(detailStrategy({deployments}), () => response({}));
+    await deployed.viewStrategy(42); await flush();
+    assert.match(deployed.root.querySelector('#main').innerHTML, /Since deploying/);
+    assert.deepEqual(headingSkips(deployed.root), []);
+    deployed.clearTimers();
+  });
+
   test(`${name}: the autopilot pulse is written only when its words change, not on every chat poll`, async () => {
     let chat = {messages: [], agent_busy: false};
     const store = new Map([['tau_ap_open', '1']]);
@@ -45,6 +138,44 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     await f.apLoadChat(box, false); await flush();
     assert.equal(pulse.writes, writes + 2);
     assert.match(pulse.innerHTML, /Between reviews/);
+  });
+
+  test(`${name}: the pulse's minutes tick on screen without being said again; a status change is said once`, async () => {
+    let chat = {messages: [], agent_busy: false};
+    const store = new Map([['tau_ap_open', '1']]);
+    const f = frontend({storage: storageFor(store), fetchImpl: (path) => {
+      if (path.startsWith('/api/chat?')) return response(chat);
+      if (path === '/api/models') return response({models: [], default: ''});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    const at = new Date(Date.now() - 3 * 60000).toISOString();
+    f.S.me = {...f.S.me, user: {...(f.S.me && f.S.me.user), id: 7, autopilot: true}};
+    f.S.ap = {...f.S.ap, autopilot: true, mode: 'paper', paper_running: 2, last_action: {at, text: 'Autopilot is ON: …'}};
+    const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+    f.renderAutopilot(box, null); await flush(); await flush();
+    const pulse = box.querySelector('#apf-pulse');
+    const shown = () => pulse.querySelector('[data-ap-shown]').textContent, said = () => pulse.querySelector('.vh').textContent;
+    assert.equal(pulse.getAttribute('aria-live'), 'polite');
+    assert.equal(pulse.querySelector('[data-ap-shown]').getAttribute('aria-hidden'), 'true');
+    assert.match(shown(), /^Between reviews ·\u00a02 on paper ·\u00a0last move 3m ago/);
+    assert.equal(said(), 'Between reviews ·\u00a02 on paper');
+    const writes = pulse.writes;
+    // A minute on, from the chat poll and then from the status read: the shown line counts, nothing is said.
+    f.shiftClock(60000); await f.apLoadChat(box, false); await flush();
+    assert.match(shown(), /last move 4m ago/); assert.equal(said(), 'Between reviews ·\u00a02 on paper'); assert.equal(pulse.writes, writes);
+    f.shiftClock(60000); f.apUpdate(box, {...f.S.ap});
+    assert.match(shown(), /last move 5m ago/); assert.equal(said(), 'Between reviews ·\u00a02 on paper'); assert.equal(pulse.writes, writes);
+    // A real change of status is written, once.
+    f.S.ap = {...f.S.ap, paper_running: 3}; await f.apLoadChat(box, false); await f.apLoadChat(box, false); await flush();
+    assert.equal(pulse.writes, writes + 1); assert.equal(said(), 'Between reviews ·\u00a03 on paper');
+    // A long wait counts its minutes on screen too, said once.
+    chat = {messages: [], agent_busy: true, agent_wait: {state: 'running', seconds: 400}};
+    await f.apLoadChat(box, false); await flush();
+    assert.equal(pulse.writes, writes + 2); assert.equal(said(), 'No word from it for longer than usual');
+    const waited = shown();
+    chat = {...chat, agent_wait: {state: 'running', seconds: 700}};
+    await f.apLoadChat(box, false); await flush();
+    assert.notEqual(shown(), waited); assert.match(shown(), /^No word from it for .+, longer than usual$/); assert.equal(pulse.writes, writes + 2);
   });
 
   test(`${name}: a research session's seconds count is not read out each second; a change of state is said once`, async () => {

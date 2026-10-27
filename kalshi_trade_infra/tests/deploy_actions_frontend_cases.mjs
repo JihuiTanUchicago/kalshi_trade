@@ -118,7 +118,7 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     assert.equal(stopped, 0); assert.equal(stop.textContent, 'Confirm stop');
     f.elapse(500); stop.onclick(); await settle();  // a deliberate second press confirms
     assert.equal(stopped, 1);
-    const main = f.root.querySelector('main').innerHTML;
+    const main = f.root.querySelector('#main').innerHTML;
     assert.match(main, /class="notice good"[\s\S]*Deployment stopped\. The page didn’t refresh, so reload to see it\./);
     assert.doesNotMatch(main, /notice bad|busy/);
     assert.ok(f.root.querySelector('[data-retry]'));
@@ -216,7 +216,7 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     // None removed: no line.
     const g = strategyFrontend(detailStrategy({status: 'passed', deployments: [], past_deployments: []}), () => response({}));
     await g.viewStrategy(42); await settle();
-    assert.doesNotMatch(g.root.querySelector('main').innerHTML, /Past deployments/);
+    assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /Past deployments/);
   });
 
   // 5 contracts at 30.1¢ cost $1.5050, which the float 5 * 0.301 holds as 1.50499..: the board's own

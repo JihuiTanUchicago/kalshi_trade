@@ -87,7 +87,7 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
   });
 
   test(`${bundle}: only focus a script hands to a page or section drops its ring; every control keeps the ink ring`, () => {
-    // <main> takes focus after a page change and a Skip to content target after the jump (tabindex -1); a
+    // A page's heading takes focus after a page change and after Skip to content (tabindex -1); a
     // ring round the whole page says nothing. No other rule may switch the outline off for a control.
     assert.match(css, /^:focus-visible \{ outline: 2px solid var\(--ink\); outline-offset: 2px; \}$/m);
     const off = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{[^}]*outline: none/g)].map((m) => m[1].trim());

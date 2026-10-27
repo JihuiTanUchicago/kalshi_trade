@@ -557,8 +557,9 @@
   document.addEventListener('click', (e) => {
     // In-page "#id" links scroll to their target: letting the hash navigate fires popstate, whose
     // re-render dropped the reader back at the top of the page.
+    // Skip to content goes to where the page's content starts, its heading (pageStart).
     const h = e.target.closest('a[href^="#"]');
-    const to = h && h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1));
+    const to = h && (h.classList.contains('skip') ? pageStart() : h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1)));
     if (to) {
       e.preventDefault(); to.scrollIntoView({ behavior: smooth(), block: 'start' });
       // Focus follows the scroll (Skip to content), so the next Tab starts from the target, not from the link.
@@ -632,7 +633,7 @@
     } catch (e) { /* best-effort */ }
   }
 
-  // A new page in the app names itself in the tab title and puts keyboard focus at its top (<main>), as a
+  // A new page in the app names itself in the tab title and puts keyboard focus on its heading, as a
   // full page load would: a screen reader says where it landed, and Tab starts from the page instead of
   // from the link the repaint removed. The first page of a visit and a repaint of the same page leave
   // focus alone, and so does a page that already put focus somewhere (a field it opened).
@@ -644,8 +645,16 @@
     document.title = name ? `${name.length > 60 ? name.slice(0, 59) + '\u2026' : name} \u00b7\u00a0Tau` : 'Tau';
     const moved = shownPath !== null && shownPath !== path;
     shownPath = path;
-    const a = document.activeElement, main = document.getElementById('main');
-    if (moved && main && main.focus && (!a || a === document.body)) main.focus({ preventScroll: true });
+    const a = document.activeElement, top = pageStart();
+    if (moved && top && top.focus && (!a || a === document.body)) top.focus({ preventScroll: true });
+  }
+  // Where a page's content starts: the h1 that opens <main>, above the page's money figures, made
+  // focusable for a script. A page with no h1 in <main> (the landing) starts at #main.
+  function pageStart() {
+    const h = root.querySelector('main h1');
+    if (!h) return document.getElementById('main');
+    if (h.getAttribute('tabindex') == null) h.setAttribute('tabindex', '-1');
+    return h;
   }
   async function render() {
     clearTimers();
@@ -721,7 +730,7 @@
     dlg.className = 'wl-modal pay-modal';
     dlg.innerHTML = `
       <div class="pay-split">
-        <aside class="pay-show">
+        <aside class="pay-show" aria-label="What Tau does">
           <div class="pay-show-top">${ICON.mark}<span>Tau</span></div>
           <div class="pay-stage-wrap"><div class="pay-dot-head"><span></span><span></span><span></span></div><div class="pay-stage" id="pay-stage"></div></div>
           <div class="pay-cap" id="pay-cap"></div>
@@ -904,16 +913,17 @@
     const adminToggle = isAdmin()
       ? `<button class="admin-toggle" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="admin-track"><span class="admin-knob"></span></span>Admin</button><span class="sep">\u00b7</span>`
       : '';
+    // <main> starts at the board, the page's h1 and its money figures, and #main is the page below them.
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
         <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
-      <div class="wrap">
+      <main class="wrap">
         <div id="boardbody">${board}</div>
-        <main id="main" tabindex="-1">${main}</main>
-      </div>`;
+        <div id="main" tabindex="-1">${main}</div>
+      </main>`;
     root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => {
       if (await signOut(signOutNote())) return go('/signin');
       // The menu closes so the note under it shows, and keyboard focus goes back to the menu's button.
@@ -954,7 +964,7 @@
   async function viewDevLog() {
     shell('/devlog', boardTitle('Dev Logs', 'What we’ve shipped, and what’s next. Updated as we build.'), loading(260));
     let d;
-    try { d = await api('/api/devlog'); } catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad'); return; }
+    try { d = await api('/api/devlog'); } catch (e) { root.querySelector('#main').innerHTML = notice(e.message, 'bad'); return; }
     const planned = (d.planned || []).map((p) => `<li class="dl-item planned">
         <span class="dl-dot" aria-hidden="true"></span>
         <div class="dl-body"><h3 class="dl-what">${esc(p.title)}</h3>${p.detail ? `<p class="dl-detail">${mdLite(p.detail)}</p>` : ''}</div>
@@ -966,7 +976,7 @@
     const shippedCount = (d.shipped || []).length;
     let tab; try { tab = localStorage.getItem('tau_devlog_tab'); } catch (e) { /* private mode */ }
     if (tab !== 'shipped') tab = 'planned';  // default to what's next
-    root.querySelector('main').innerHTML = `
+    root.querySelector('#main').innerHTML = `
       <div class="chips dl-tabs" role="group" aria-label="Dev Logs view">
         <button class="chip" type="button" data-dltab="planned" aria-pressed="${tab === 'planned'}">Up next</button>
         <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped ·\u00a0${shippedCount}</button>
@@ -1161,7 +1171,10 @@
   function paint(el, html) {
     if (!el || painted.get(el) === html) return;
     painted.set(el, html);
+    // A poll that redraws the page's heading while it holds focus (pageStart) leaves focus on the new one.
+    const a = document.activeElement, top = !!(a && a.tagName === 'H1' && el.contains && el.contains(a));
     el.innerHTML = html;
+    if (top && !a.isConnected) { const h = pageStart(); if (h && h.focus) h.focus({ preventScroll: true }); }
   }
   // A list repaints row by row: while its rows are the same ones in the same order, only a row whose
   // markup changed is rewritten (a running session's spend moved, and the other 49 sessions stay as they
@@ -1283,7 +1296,7 @@
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
   // Draw at the column's real width on a narrow screen: a 760-wide chart shrunk to a phone has 4px labels.
-  const chartWidth = () => { const m = root.querySelector('main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
+  const chartWidth = () => { const m = root.querySelector('#main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
   function equityChart(curve, cutoffIso, devCurve, options = {}) {
     const W = options.width || 760, H = 236, L = 52, R = 10, T = 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
@@ -1800,7 +1813,7 @@
   // An action's error notice replaces the last one: a run page's Pause failing on each press stacked
   // a new notice per press. #flash holds one notice; on a page without it, the last one is removed.
   function alert0(msg, kind = 'bad') {
-    const host = root.querySelector('#flash') || root.querySelector('main');
+    const host = root.querySelector('#flash') || root.querySelector('#main');
     if (!host) return;
     if (host.id === 'flash') host.innerHTML = notice(msg, kind, true);
     else {
@@ -2111,7 +2124,7 @@
     // The track record is its own read: asked for now, beside the board, instead of after the board
     // has painted (it waited the whole dashboard read before it started). Drawn below the board, so
     // asked only where dashTrackRecord can put it.
-    const trWrap = root.querySelector('main') && root.querySelector('main').parentNode;
+    const trWrap = root.querySelector('#main') && root.querySelector('#main').parentNode;
     const trFirst = trWrap && trWrap.appendChild ? api('/api/track-record', undefined, { keep: true }) : null;
     if (trFirst) trFirst.catch(() => {});  // a failure is drawn by dashTrackRecord, with its retry
     S.trReread = null;  // set by dashTrackRecord once this view's record is mounted
@@ -2190,13 +2203,13 @@
           <div>
             <section class="sect"><div class="sect-head"><h2>Deployed</h2></div><div id="dash-deps">${deps}</div></section>
           </div>
-          <aside>
+          <aside aria-label="Positions">
             <section class="panel" id="dash-open"><h3>Open positions</h3>${stubs(d.open_positions.slice(0, DASH_ROWS), false)}${more(d.open_positions.length, 'open positions')}</section>
             <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed.slice(0, DASH_ROWS), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
           </aside>
         </div></div>`;
       paint(root.querySelector('#boardbody'), board);  // the 15s poll repaints only what changed
-      paint(root.querySelector('main'), main);
+      paint(root.querySelector('#main'), main);
       S.dashPaper = p;
       paintDashAp();
       const dd = root.querySelector('#dash-deps');
@@ -2424,7 +2437,7 @@
       ${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}
       <div id="rexample"></div>
       <form class="panel dispatch" id="dispatch">
-        <h3>${ICON.spark2}New research session</h3>
+        <h2>${ICON.spark2}New research session</h2>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
         <label class="field"><span>Describe your idea</span>
@@ -3833,7 +3846,7 @@
     const quickPaper = canDeploy && s.status === 'passed' && hasExp && !activeDeps.some((d) => d.mode === 'paper');
     const quickHtml = quickPaper ? `<div class="strat-quick" id="strat-quick"><button class="btn primary" id="dep-paper-quick">Deploy on paper</button><p class="hint">Paper trades with pretend money against live prices, so nothing real is at risk. Demo and live are in Deploy, further down.</p><div id="depflash-quick"></div></div>` : '';
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
-    root.querySelector('main').innerHTML = `
+    root.querySelector('#main').innerHTML = `
       <div id="flash"></div>
       <div class="detail">
         <div>
@@ -3860,7 +3873,7 @@
             </div>
           </article>
         </div>
-        <aside>
+        <aside aria-label="Deploy and gates">
           ${!restricted && s.holdings && s.holdings.length ? (() => {
             // One summary per money book: a strategy can hold on paper and demo (or live) at once, and
             // their cost and unrealized P&L are never added together. A single book reads as before.
@@ -4222,9 +4235,9 @@
     }).join('');
     return `${notice(s.text, good ? 'good' : '')}${cav}${figs}
       <div class="rp-figs">
-        <div class="rp-fig wide"><h5>Equity curve</h5>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">${trCurveCap(m)}</div></div>
-        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(trCurve(m.curve), m.underwater && trCurve(m.underwater))}</div>
-        <div class="rp-fig"><h5>Risk and trade detail</h5>${risk}</div>
+        <div class="rp-fig wide"><h3>Equity curve</h3>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">${trCurveCap(m)}</div></div>
+        <div class="rp-fig"><h3>Drawdown (underwater)</h3>${rpUnderwater(trCurve(m.curve), m.underwater && trCurve(m.underwater))}</div>
+        <div class="rp-fig"><h3>Risk and trade detail</h3>${risk}</div>
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
@@ -4259,11 +4272,11 @@
     setTab(tab);
   }
   async function dashTrackRecord(pending) {
-    const gen = S.gen, mainEl = root.querySelector('main'), wrap = mainEl && mainEl.parentNode;
+    const gen = S.gen, mainEl = root.querySelector('#main'), wrap = mainEl && mainEl.parentNode;
     if (!wrap || !wrap.appendChild) return;
     const host = document.createElement('section');
     host.className = 'sect dash-track'; host.id = 'track-record'; host.innerHTML = loading(260);
-    wrap.appendChild(host);  // after <main>, its last child, so the board's repaint never touches it
+    wrap.appendChild(host);  // after #main, the page's last child, so the board's repaint never touches it
     const last = { at: null };
     // A failed first read offers a retry; before, the record stayed an error until a reload.
     const first = async () => {
@@ -4363,10 +4376,10 @@
       root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}practice money` });
-      root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
+      root.querySelector('#main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
-          <h3>Kalshi account (live money)</h3>
+          <h2>Kalshi account (live money)</h2>
           ${k.connected ? `
             ${keyOk(k.balance, 'live', k.balance_at)}<dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">This is your real Kalshi balance. Deposits and withdrawals happen at Kalshi, in your own account — we never hold your money. Tau only places trades for strategies you deploy live. To use a different key, disconnect this one and connect the new one.</p>
@@ -4385,7 +4398,7 @@
           <div id="kflash" style="margin-top:10px"></div>
         </section>
         <section class="panel">
-          <h3>Kalshi demo (sandbox) account</h3>
+          <h2>Kalshi demo (sandbox) account</h2>
           <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
           <p class="lede" style="margin-bottom:14px">Demo places real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is ours to set: reload it to any amount; this never touches your Kalshi demo account’s balance. A reload starts realized P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
@@ -4409,7 +4422,7 @@
           <div id="kdflash" style="margin-top:10px"></div>
         </section>
         <section class="panel">
-          <h3>Paper account (simulation)</h3>
+          <h2>Paper account (simulation)</h2>
           <p class="lede" style="margin-bottom:14px">App-controlled practice money. Add funds, take some out, or reset to a fresh starting balance. Paper strategies trade the real market with it, so results are realistic, but nothing real is at stake.</p>
           <form id="paper" class="amount">
             <label class="field"><span>Amount</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="500"></label>
@@ -4423,7 +4436,7 @@
         </div>
         <div class="funds-col funds-history">
         <section class="panel">
-          <h3>Paper history</h3>
+          <h2>Paper history</h2>
           <p class="hint ledger-how">${LEDGER_HOW}${d.paper.ledger.length >= 50 ? ' The latest 50 entries.' : ''}</p>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
             ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
@@ -4907,7 +4920,7 @@
     let d;
     try { d = await api('/api/explore/market?ticker=' + encodeURIComponent(ticker)); }
     catch (e) {
-      root.querySelector('main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><button class="btn sm" type="button" id="mk-retry">Try again</button> <a class="btn sm" href="/explore">← Back to Explore</a></p>`;
+      root.querySelector('#main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><button class="btn sm" type="button" id="mk-retry">Try again</button> <a class="btn sm" href="/explore">← Back to Explore</a></p>`;
       root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
       return;
     }
@@ -5745,16 +5758,22 @@
       const w = d.agent_wait;
       // The pulse is a polite live region and this runs on every chat poll (3s): rewriting the same words
       // made a screen reader say "Between reviews · 2 on paper" again each time. Only a change is written.
+      // What it says leaves out the minutes that tick ("last move 4m ago", "for 6m"): the shown line, hidden
+      // from the reader, keeps counting, and its words go out only when the status itself changes.
+      const waitWho = w && (w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it');
       const idle = !w && !d.agent_busy ? apIdleLine(box) : null;
-      const say = w ? `${w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it'} for ${waitSpan(w.seconds)}, longer than usual`
-        : d.agent_busy ? 'Working on its next move' : 'idle:' + idle;
+      const shown = w ? `${waitWho} for ${waitSpan(w.seconds)}, longer than usual` : idle;
+      const say = w ? `${waitWho} for longer than usual` : d.agent_busy ? 'Working on its next move' : apIdleLine(box, true);
       if (pulse.apSaid !== say) {
         pulse.apSaid = say;
         pulse.innerHTML = w
-          ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${say}</span>`
+          ? `<span class="apf-idle-dot" aria-hidden="true"></span><span data-ap-shown aria-hidden="true">${shown}</span><span class="vh">${say}</span>`
           : d.agent_busy
           ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
-          : `<span class="apf-idle-dot" aria-hidden="true"></span><span data-ap-idle>${esc(idle)}</span>`;
+          : `<span class="apf-idle-dot" aria-hidden="true"></span><span data-ap-idle data-ap-shown aria-hidden="true">${esc(idle)}</span><span class="vh">${esc(say)}</span>`;
+      } else {
+        const tick = pulse.querySelector('[data-ap-shown]');
+        if (tick && shown != null && tick.textContent !== shown) tick.textContent = shown;
       }
     }
     if (stick) msgs.scrollTop = msgs.scrollHeight; else if (follow === 'keep') msgs.scrollTop = kept[0];
@@ -5763,9 +5782,10 @@
   }
   // Idle pulse copy: lead with the autopilot's most recent move (from the status poll, always
   // available even if chat is slow), else a plain "on a schedule" line.
-  function apIdleLine(box) {
+  // `spoken` leaves out how long ago the last move was, for the pulse's live region.
+  function apIdleLine(box, spoken) {
     const d = S.ap, la = d && d.last_action;
-    const last = la && la.at ? ' ·\u00a0last move ' + sinceMin(la.at) : '';
+    const last = la && la.at && !spoken ? ' ·\u00a0last move ' + sinceMin(la.at) : '';
     if (!(d ? d.autopilot : apSwitchOn())) return 'Off: it acts only when you message it' + last;
     const now = apNowWord(d);
     return now + last + (now === 'Idle' ? ' — reviews run on a schedule' : '');
@@ -6119,8 +6139,11 @@
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.
+    // The shown line takes the new minutes; the spoken one changes only with the status.
     const idleEl = box.querySelector('[data-ap-idle]'), idleLine = idleEl && apIdleLine(box);
-    if (idleEl && idleEl.textContent !== idleLine) { idleEl.textContent = idleLine; box.querySelector('#apf-pulse').apSaid = 'idle:' + idleLine; }
+    if (idleEl && idleEl.textContent !== idleLine) idleEl.textContent = idleLine;
+    const pulseEl = idleEl && box.querySelector('#apf-pulse'), idleSay = pulseEl && apIdleLine(box, true), sayEl = pulseEl && pulseEl.querySelector('.vh');
+    if (sayEl && pulseEl.apSaid !== idleSay) { pulseEl.apSaid = idleSay; sayEl.textContent = idleSay; }
     const lastEl = box.querySelector('#apf-last'); if (lastEl) lastEl.innerHTML = d.autopilot ? apLastHtml(d.last_action) : '';
     const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week, d) : '';
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
@@ -6270,7 +6293,7 @@
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
     document.body.classList.toggle('hot-open', hotOpen());
-    if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; document.body.appendChild(a); }
+    if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; a.setAttribute('aria-label', 'Hot markets'); document.body.appendChild(a); }
     renderHotRail();
     hotSoon();
     if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
@@ -6390,7 +6413,7 @@
               </section>
               <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d)}</section>
             </div>
-            <aside>
+            <aside aria-label="Add credits">
               <section class="panel"><h3>Add credits</h3>
                 <label class="field"><span>Amount (USD)</span><input class="input" id="topup-amt" type="number" min="${d.min_topup}" max="${d.max_topup}" step="1" value="20"></label>
                 <p class="hint" id="topup-note" style="margin-top:8px">${feeNote}</p>
@@ -6400,7 +6423,7 @@
               </section>
             </aside>
           </div>`;
-      root.querySelector('main').innerHTML = `<div id="flash"></div>${main}`;
+      root.querySelector('#main').innerHTML = `<div id="flash"></div>${main}`;
       if (!d.configured) return;
       // top-up fee preview
       const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');
@@ -6595,7 +6618,7 @@
           <section class="sect"><div class="sect-head"><h2>Page errors</h2><span id="ce-count" class="sect-note"></span></div><div id="client-errors">${loading(80)}</div></section>
           <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>
         </div>
-        <aside>
+        <aside aria-label="Operator controls">
           <form class="panel" id="grant"><h3>Grant credits</h3>
             <label class="field"><span>User email</span><input class="input" id="g-email" type="email" placeholder="someone@example.com" required></label>
             <label class="field" style="margin-top:10px"><span>Amount (USD, can be negative)</span><input class="input" id="g-amt" type="number" step="1" value="25" required></label>
@@ -6724,7 +6747,7 @@
     shell('/system', boardTitle('System', 'A live map of the pipeline — every box is a real part of the codebase, every line is data flowing. It refreshes on its own so you can see what’s running.'),
       `<div class="sysmap">
          <div class="sys-wrap"><svg viewBox="0 0 900 540" preserveAspectRatio="xMidYMid meet" id="syssvg" aria-label="System map">${edges}${nodes}</svg></div>
-         <aside class="sys-side">
+         <aside class="sys-side" aria-label="Details and live activity">
            <section class="panel" id="sys-detail"><h3>Pick a box</h3><p class="hint">Click any part of the system to see what it does and what it’s doing right now.</p></section>
            <section class="sect" style="margin-top:16px"><div class="sect-head"><h2>Live activity</h2><span class="sys-live" id="sys-stamp"></span></div><ol class="log sys-feed" id="sys-feed"></ol></section>
          </aside>

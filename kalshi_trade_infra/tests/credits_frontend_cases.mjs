@@ -49,7 +49,7 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
       reload_failed: {at: '2026-10-26T21:49:00Z', text: FAILED}}));
     await f.viewBilling(); await flush();
     assert.match(f.root.querySelector('#bfigs').textContent, /Research\s*Paused\s*a session needs \$1\.00 to start/);
-    const main = f.root.querySelector('main').textContent;
+    const main = f.root.querySelector('#main').textContent;
     assert.match(main, /Auto-reload couldn’t charge your card \(see below\)\. Update the card first, then add credits here: they go on the same card\./);
     assert.doesNotMatch(main, /hasn’t topped you up/);
   });

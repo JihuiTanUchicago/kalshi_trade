@@ -62,6 +62,7 @@ class Element {
   get id() { return this.attributes.id; }
   set id(value) { this.attributes.id = value; }
   get parentElement() { return this.parent || null; }
+  get tagName() { return this.tag.toUpperCase(); }
   get open() { return 'open' in this.attributes; }
   set open(value) { if (value) this.attributes.open = ''; else delete this.attributes.open; }
   get innerHTML() { return this.html || ''; }
@@ -156,9 +157,9 @@ class Element {
 }
 
 function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia = () => ({matches: false}), storage = new Map(), session, theme = 'meridian', build, notifications, win = {}, globals = {}} = {}) {
-  const root = new Element('div', {id: 'app'}), body = new Element('body');
+  const root = new Element('div', {id: 'app'}), body = new Element('body'), documentListeners = [];
   const document = {body, activeElement: body, hidden: false,
-    getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {},
+    getElementById: id => body.querySelector('#' + id), addEventListener: (name, callback) => documentListeners.push([name, callback]), removeEventListener() {},
     createElement: tag => { const element = new Element(tag); element.ownerDocument = document; return element; }};
   body.ownerDocument = document; body.appendChild(root);
   const intervals = new Map(), timeouts = new Map(), windowListeners = new Map(), requests = [], navigations = [], reloads = [];
@@ -202,7 +203,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, win: context.window, root, document, window: context.window, location, intervals, timeouts, elapse, windowListeners, requests, navigations, reloads, storage, shiftClock};
+  return {...api, win: context.window, root, document, window: context.window, location, intervals, timeouts, elapse, windowListeners, documentListeners, requests, navigations, reloads, storage, shiftClock};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -256,7 +257,7 @@ test('a strategy from the seeded example session carries the Example tag and not
 
 test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
   const f = strategyFrontend(); await f.viewStrategy(42); await flush();
-  const output = f.root.querySelector('main').innerHTML;
+  const output = f.root.querySelector('#main').innerHTML;
   for (const label of ['aria-label="Strategy hypothesis"', 'Mechanism &amp; hypothesis', 'Methodology', 'Results', 'Verdict']) assert.ok(output.includes(label));
   assert.match(output, /class="sheet-doc paper"/);
   assert.match(output, /&lt;b&gt;Counterparty&lt;\/b&gt;/);
@@ -391,7 +392,7 @@ test('deployment readiness retains separate demo, live and NO-side gates', async
   await f.viewStrategy(42);
   assert.equal(f.root.querySelector('#dep-demo').getAttribute('aria-disabled'), 'true');
   assert.equal(f.root.querySelector('#dep-live').getAttribute('aria-disabled'), 'true');
-  assert.match(f.root.querySelector('main').innerHTML, /failed the unseen-data gate/);
+  assert.match(f.root.querySelector('#main').innerHTML, /failed the unseen-data gate/);
   await f.root.querySelector('#dep-demo').onclick();
   f.root.querySelector('#dep-live').onclick();
   assert.equal(f.root.querySelector('#live-confirm').hidden, true); assert.equal(postRequests(f).length, 0);
@@ -486,7 +487,7 @@ test('deployment refresh leaves focus outside the refreshed host alone', () => {
 });
 
 for (const [label, view, endpoint, selector] of [
-  ['Overview', 'viewDashboard', '/api/dashboard', 'main'],
+  ['Overview', 'viewDashboard', '/api/dashboard', '#main'],
   ['Deploy', 'viewDeploy', '/api/deployments', '#deps'],
 ]) {
   test(`${label} polling preserves deployment disclosure state and focus through reordering and removal`, async () => {
@@ -599,7 +600,7 @@ test('Overview empty paper track record follows the autopilot switch when a stat
   }});
   f.S.me.user.autopilot = false;
   await f.viewDashboard(); await flush(); await flush();
-  // The dashboard mounts the record after <main>; mount it the same way on a host of its own here.
+  // The dashboard mounts the record after #main; mount it the same way on a host of its own here.
   const host = new Element('section'); f.root.appendChild(host);
   await f.mountTrackRecord(host, {at: null});
   const panel = () => host.querySelector('.trpanel').innerHTML;
@@ -668,7 +669,7 @@ test('Overview offers each mode its own trades CSV only when that mode has close
     }});
     await f.viewDashboard(); await flush();
     // Paper (or live, once real money runs) sits in the account band; the other accounts in the menu.
-    const html = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('main').innerHTML;
+    const html = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#main').innerHTML;
     for (const mode of ['paper', 'demo', 'live']) {
       const link = `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>`;
       assert.equal(html.includes(link), counts[mode] > 0, `${mode} ${JSON.stringify(counts)}`);
@@ -692,7 +693,7 @@ test('Funds demo labels say "since reload" only after a reload, and that demo pr
   for (const before_reload of [0, 40]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
     await f.viewFunds(); await flush();
-    const main = f.root.querySelector('main').innerHTML;
+    const main = f.root.querySelector('#main').innerHTML;
     assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
     assert.match(main, before_reload ? /<dt>Realized since reload<\/dt>/ : /<dt>Realized all time<\/dt>/);
     assert.match(main, /to prove the order path before live money\. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job\. The money is simulated\./);
@@ -832,7 +833,7 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
   assert.equal(why('closed-3').textContent, exitWhy.replace('<', '&lt;'));
   assert.equal(why('closed-4').textContent, 'Held to settlement: &lt;img src=x&gt;');
   assert.ok(f.root.querySelector('#recent-settlements').contains(why('closed-3')));
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /<img/);
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /<img/);
   const pos = {title: 'Rain fade', ticker: 'KXRAINNYC-T1', side: 'no', qty: 4, entry_price: .37, entry_fee: .02, unrealized: null,
     market_close_time: '2026-10-25T17:30:00Z', mode: 'paper', why: openWhy};
   const d = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments: [], open_positions: [pos, {...pos, ticker: 'KXRAINNYC-T2', why: null}]}); }});
@@ -842,7 +843,7 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
   const holdings = [{ticker: 'KXBTC15M-A', side: 'yes', qty: 2, entry_price: 0.35, cost: 0.7, unrealized: null, mode: 'paper',
     market_close_time: '2026-10-25T07:45:00Z', why: openWhy}];
   const s = strategyFrontend(detailStrategy({holdings})); await s.viewStrategy(42); await flush();
-  const list = s.root.querySelector('main').innerHTML;
+  const list = s.root.querySelector('#main').innerHTML;
   assert.match(list, new RegExp('<ul class="holdlist">[\\s\\S]*<div class="sub-fig pos-why">' + openWhy.replace(/[+.*?()]/g, '\\$&') + '</div></li>'));
   assert.equal(postRequests(f).length + postRequests(d).length, 0);
 });
@@ -1212,8 +1213,8 @@ test('a late initial or polled Dashboard read cannot repaint the next page or re
     const loading = f.viewDashboard();
     if (phase === 'poll') { await loading; f.intervals.get(f.S.timers.at(-1))(); }
     f.clearTimers(); f.S.gen++;
-    f.root.innerHTML = '<div id="boardbody">Next board</div><main><div class="paper-plot">Next page</div></main>';
-    const board = f.root.querySelector('#boardbody'), main = f.root.querySelector('main'), plot = main.querySelector('.paper-plot');
+    f.root.innerHTML = '<div id="boardbody">Next board</div><div id="main"><div class="paper-plot">Next page</div></div>';
+    const board = f.root.querySelector('#boardbody'), main = f.root.querySelector('#main'), plot = main.querySelector('.paper-plot');
     const writes = [f.root.writes, board.writes, main.writes, plot.writes], intervals = [...f.intervals.keys()], requestCount = f.requests.length;
     pending.resolve(response(data)); await flush(); await flush();
     f.windowListeners.get('resize').forEach(callback => callback());
@@ -1635,7 +1636,7 @@ test('Funds preserves account controls and history without mounting unavailable 
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return response(funds()); },
     brokerMount: (host, options) => { mounts.push({host, options}); }});
   await f.viewFunds();
-  const output = f.root.querySelector('main').innerHTML;
+  const output = f.root.querySelector('#main').innerHTML;
   assert.match(output, /funds-col funds-manage/); assert.match(output, /funds-col funds-history/);
   assert.match(output, /Paper history/); assert.match(output, /&lt;script&gt;ledger&lt;\/script&gt;/);
   assert.match(output, /class="table stack t-ledger"/);  // statement rows on a phone, like the credit ledger
@@ -1649,8 +1650,8 @@ test('a late Funds read cannot replace the next page or mount stale broker contr
   const pending = deferred(); let mounts = 0;
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return pending.promise; }, brokerMount: () => mounts++});
   const loading = f.viewFunds();
-  f.S.gen++; f.root.innerHTML = '<main>Next page</main>';
-  const writes = f.root.writes, main = f.root.querySelector('main');
+  f.S.gen++; f.root.innerHTML = '<div id="main">Next page</div>';
+  const writes = f.root.writes, main = f.root.querySelector('#main');
   // A read for a page the user has left never settles (api drops it), so wait for the event loop, not the view.
   pending.resolve(response(funds())); await flush(); await flush();
   assert.equal(f.root.writes, writes); assert.equal(main.writes, 0);
@@ -2600,18 +2601,18 @@ test('Explore ignores superseded requests and responses from a departed route, i
   older.resolve(response(payload('Superseded result', 10))); await flush();
   assert.deepEqual([body.writes, figures.writes], writes); assert.equal(f.document.activeElement, focused);
   f.root.querySelector('[data-sort="v24"]').onclick();
-  f.S.gen++; f.root.innerHTML = '<main>Another route</main>';
+  f.S.gen++; f.root.innerHTML = '<div id="main">Another route</div>';
   departed.resolve(response(payload('Old route result', 30))); await flush();
-  assert.equal(f.root.querySelector('main').textContent, 'Another route'); assert.deepEqual([body.writes, figures.writes], writes);
+  assert.equal(f.root.querySelector('#main').textContent, 'Another route'); assert.deepEqual([body.writes, figures.writes], writes);
   assert.equal(reads, 4); assert.equal(postRequests(f).length, 0);
 
   const initial = deferred(), g = frontend({fetchImpl: path => { assert.equal(path, '/api/explore?q=&sort=v24&page=0'); return initial.promise; }});
   const opening = g.viewExplore(), initialBody = g.root.querySelector('#xbody'), initialFigures = g.root.querySelector('#xfigs');
   const initialWrites = [initialBody.writes, initialFigures.writes];
-  g.S.gen++; g.root.innerHTML = '<main>New route before first result</main>';
+  g.S.gen++; g.root.innerHTML = '<div id="main">New route before first result</div>';
   // A read for a page the user has left never settles (api drops it), so wait for the event loop, not the view.
   initial.resolve(response(payload('Late first result'))); await flush(); await flush();
-  assert.equal(g.root.querySelector('main').textContent, 'New route before first result');
+  assert.equal(g.root.querySelector('#main').textContent, 'New route before first result');
   assert.deepEqual([initialBody.writes, initialFigures.writes], initialWrites);
   assert.equal(g.S.timers.length, 0); assert.equal(postRequests(g).length, 0); assert.deepEqual(g.navigations, []);
 });
@@ -2768,9 +2769,9 @@ const billingData = (overrides = {}) => ({balance: 10, spent: 2, free_bonus: 3, 
   topup_fee_pct: 5, autoreload_amount: 20, autoreload_threshold: 5, min_reload_amount: 5, min_reload_threshold: 1,
   min_topup: 5, max_topup: 1000, publishable_key: 'synthetic-only', ...overrides});
 const systemData = () => ({nodes: {}, events: [], now: '2026-10-20T16:00:00Z'});
-function leaveView(f, html = '<main>Next page</main>') {
+function leaveView(f, html = '<div id="main">Next page</div>') {
   f.S.gen++; f.clearTimers(); f.root.innerHTML = html;
-  return {rootWrites: f.root.writes, main: f.root.querySelector('main')};
+  return {rootWrites: f.root.writes, main: f.root.querySelector('#main')};
 }
 function stripeFixture(confirmSetup = async () => ({setupIntent: {payment_method: 'synthetic-pm'}})) {
   const calls = {constructed: 0, mounted: 0};
@@ -2939,7 +2940,7 @@ for (const stage of ['confirmation', 'card-added']) for (const failure of [false
     await f.viewBilling();
     const save = f.root.querySelector('#save-card'), saving = save.onclick({currentTarget: save});
     await flush();
-    const next = leaveView(f, '<main><div id="card-flash">Fresh card panel</div></main>');
+    const next = leaveView(f, '<div id="main"><div id="card-flash">Fresh card panel</div></div>');
     if (stage === 'confirmation') pending.resolve(failure ? {error: {message: 'Synthetic confirmation failure'}} : {setupIntent: {payment_method: 'synthetic-pm'}});
     else pending.resolve(failure ? response({error: 'Synthetic card record failure'}, 503) : response({ok: true}));
     await saving;
@@ -2973,7 +2974,7 @@ for (const label of ['Billing topup', 'Funds demo reload', 'Admin credit grant']
     }
     await flush();
     const host = {'Billing topup': 'topup-flash', 'Funds demo reload': 'dmflash', 'Admin credit grant': 'g-flash'}[label];
-    const next = leaveView(f, `<main><div id="${host}">Fresh action panel</div></main>`);
+    const next = leaveView(f, `<div id="main"><div id="${host}">Fresh action panel</div></div>`);
     pending.resolve(failure ? response({error: 'Synthetic departed action failure'}, 503) : response({balance: 20, email: 'synthetic@example.invalid'}));
     await flush();
     assert.equal(reads, 1); assert.equal(f.root.querySelector('#' + host).innerHTML, 'Fresh action panel');
@@ -3360,7 +3361,7 @@ const sparkPayload = () => ({...dashboardData(), deployments: [
   sparkDeployment(2, 'live', 2, [[1760000000, -1], [1760003600, -3]]),
   sparkDeployment(3, 'paper', 1, [[1760000000, 1]]),
 ]});
-for (const [label, view, endpoint, selector] of [['Overview', 'viewDashboard', '/api/dashboard', 'main'], ['Deploy', 'viewDeploy', '/api/deployments', '#deps']]) {
+for (const [label, view, endpoint, selector] of [['Overview', 'viewDashboard', '/api/dashboard', '#main'], ['Deploy', 'viewDeploy', '/api/deployments', '#deps']]) {
   test(`${label} draws a cumulative P&L sparkline per deployment, by mode, with a labelled sign`, async () => {
     const f = frontend({fetchImpl: path => {
       if (path === endpoint) return response(sparkPayload());
@@ -3416,7 +3417,7 @@ for (const [kind, [fail, perTry]] of Object.entries(staleFail)) {
     await f.viewDashboard(); await flush(); await flush();
     const tick = f.intervals.get(f.S.timers[0]);
     const note = () => f.root.querySelector('#dash-stale').textContent;
-    const figures = () => f.root.querySelector('main').innerHTML;
+    const figures = () => f.root.querySelector('#main').innerHTML;
     const reads = () => f.requests.filter(r => r.path === '/api/dashboard').length;
     assert.equal(note(), '');
     down = true;
@@ -3606,7 +3607,7 @@ test('Meridian: a finished session ends with the way on: another idea or autopil
     return f;
   };
   let f = await at({status: 'succeeded'}, [{id: 43, title: 'Fade', status: 'failed'}, {id: 44, title: 'Lean', status: 'rejected'}]);
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.ok(main.indexOf('id="run-artifacts"') < main.indexOf('id="runend"') && main.indexOf('id="runend"') < main.indexOf('id="rsibox"'));
   const end = f.root.querySelector('#runend').innerHTML;
   assert.match(end, /<a class="btn" href="\/research\?new=1">Try another idea<\/a><p class="research-ap">Rather not write ideas yourself\? <button type="button" data-research-ap>Turn on autopilot<\/button>/);
@@ -3644,7 +3645,7 @@ test('a passed strategy not yet on paper puts Deploy on paper up top as well, th
     return options.method === 'POST' ? pending.promise : response({deployments: [], open_positions: []});
   });
   await f.viewStrategy(42); await flush();
-  const quick = f.root.querySelector('#dep-paper-quick'), html = f.root.querySelector('main').innerHTML;
+  const quick = f.root.querySelector('#dep-paper-quick'), html = f.root.querySelector('#main').innerHTML;
   assert.ok(quick); assert.ok(f.root.querySelector('#dep-paper'));
   assert.equal(quick.textContent, 'Deploy on paper'); assert.ok(quick.classList.contains('primary'));
   assert.ok(html.indexOf('id="dep-paper-quick"') < html.indexOf('id="figs"') || html.indexOf('id="dep-paper-quick"') < html.indexOf('class="paper-abstract"'));
@@ -3672,7 +3673,7 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
     deployments: [{id: 812, mode: 'demo', status: 'running'}, {id: 811, mode: 'paper', status: 'paused'}]});
   const f = strategyFrontend(detail, () => response({deployments: [], open_positions: []}));
   await f.viewStrategy(42); await flush();
-  const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('main').innerHTML;
+  const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days/);
   assert.match(figs, /Out-of-sample over 15 days · \$100 at risk at most/);
   assert.match(html, /Demo · running<br>Paper · paused/);
@@ -3684,7 +3685,7 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   await g.viewStrategy(42); await flush();
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">6 trades<\/dd>/);
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
-  assert.doesNotMatch(g.root.querySelector('main').innerHTML, /paper-again/);
+  assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again/);
 });
 
 test('Research folds model, depth and market behind Options on a phone, open on a wide screen, and says what will run', async () => {
@@ -3766,7 +3767,7 @@ test('a returning user reads what happened since the last visit at the top of th
   assert.match(text, /It put 1 on paper, paused 2, made 1 other change\./);
   assert.match(text, /<a href="#dash-paused">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);
   assert.match(text, /<a href="\/research">1 research session failed<\/a>/);
-  const host = f.root.querySelector('main').innerHTML;
+  const host = f.root.querySelector('#main').innerHTML;
   assert.ok(host.indexOf('id="dash-since"') >= 0 && host.indexOf('id="dash-since"') < host.indexOf('id="dash-ap"'));
   // A quiet stretch says so plainly; no last visit known yet reads as the last 24 hours.
   const quiet = await strip({deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: true, books: {paper: {pnl: 0, trades: 0}},
@@ -3869,7 +3870,7 @@ test('a brand-new user sees "See an example session first" on the dashboard and 
     assert.equal(/No sessions of your own yet\. <a href="\/example" data-example>See an example session first<\/a>/.test(f.root.querySelector('#dash-since').innerHTML), shown);
     // The empty Deployed box no longer repeats it as a second primary button beside the autopilot card's.
     assert.doesNotMatch(f.root.querySelector('#deps-empty').innerHTML, shown ? /class="btn/ : /href="\/example"/, String(own));
-    const page = ['#boardbody', 'main', '#dash-ap'].map((sel) => f.root.querySelector(sel).innerHTML).join('');
+    const page = ['#boardbody', '#main', '#dash-ap'].map((sel) => f.root.querySelector(sel).innerHTML).join('');
     assert.equal((page.match(/href="\/example"/g) || []).length, shown ? 1 : 0, String(own));
     assert.deepEqual(page.match(/class="btn primary[^>]*>[^<]*/g), ['class="btn primary" data-apcard="on">Turn on autopilot'], String(own));
   }
@@ -3976,7 +3977,7 @@ const submitKey = async (f, id, kid, pem) => {
 test('Funds says where each Kalshi key comes from, what to paste, and which key goes where', async () => {
   const f = keyFunds({reads: 0, live: {connected: false}, dev: {connected: false}});
   await f.viewFunds();
-  const live = f.root.querySelector('#kalshi').closest('section').innerHTML, main = f.root.querySelector('main').innerHTML;
+  const live = f.root.querySelector('#kalshi').closest('section').innerHTML, main = f.root.querySelector('#main').innerHTML;
   assert.match(live, /<a href="https:\/\/kalshi\.com\/account\/profile" target="_blank" rel="noopener">your profile<\/a>, find API Keys and click Create New API Key/);
   assert.match(live, /<b>Key ID<\/b> \(like <span class="nobr">a952bcbe-ec3b-…<\/span>\) and downloads a <b>private key<\/b> file \(\.key\), once/);
   assert.match(live, /A key made on demo\.kalshi\.co won’t work here: add it under Demo key\./);
@@ -4015,17 +4016,17 @@ test('connecting a Kalshi key confirms it with the balance: "Connected ✓ (bala
   await f.viewFunds();
   await submitKey(f, 'kalshi', KID, PEM);
   assert.match(f.root.querySelector('#kflash').innerHTML, /Connected ✓ \(balance \$1,234\.50\)\. Kalshi confirmed the key\./);
-  assert.match(f.root.querySelector('main').innerHTML, /<p class="key-ok"><b>Connected ✓<\/b> \(balance \$1,234\.50\)<\/p>/);
+  assert.match(f.root.querySelector('#main').innerHTML, /<p class="key-ok"><b>Connected ✓<\/b> \(balance \$1,234\.50\)<\/p>/);
   await submitKey(f, 'kalshi-dev', KID, PEM);
   assert.match(f.root.querySelector('#kdflash').innerHTML, /Connected ✓ \(balance \$25,000\.00\)\. Kalshi’s demo exchange confirmed the key\./);
-  assert.match(f.root.querySelector('main').innerHTML, /<b>Connected ✓<\/b> \(balance \$25,000\.00\) <span class="hint">in your Kalshi demo account<\/span>/);
+  assert.match(f.root.querySelector('#main').innerHTML, /<b>Connected ✓<\/b> \(balance \$25,000\.00\) <span class="hint">in your Kalshi demo account<\/span>/);
   const sent = postRequests(f).map(({path}) => path);
   assert.deepEqual(sent, ['/api/kalshi-key', '/api/kalshi-dev-key']);
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /MIIE|BEGIN RSA PRIVATE KEY-----\n/);  // the key is never shown back
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /MIIE|BEGIN RSA PRIVATE KEY-----\n/);  // the key is never shown back
   // No balance from Kalshi (down, or the key deleted there) is "saved", never a green check, and says what to do.
   const g = keyFunds({reads: 0, live: {connected: true, balance: null, key_id: 'a952…608c'}, dev: {connected: true, key_id: 'a952…608c', balance: null}});
   await g.viewFunds();
-  const gm = g.root.querySelector('main').innerHTML;
+  const gm = g.root.querySelector('#main').innerHTML;
   assert.doesNotMatch(gm, /Connected ✓/);
   assert.equal((gm.match(/<p class="key-ok key-unread"><b>Key saved<\/b> \(Kalshi didn’t send a balance for it just now\)<\/p>/g) || []).length, 2);
   assert.match(gm, /the key may have been deleted on kalshi\.com: disconnect it and connect a new one\./);
@@ -4037,7 +4038,7 @@ test('a $0 Kalshi demo account is explained, and keys are changed or removed wit
   const state = {reads: 0, live: {connected: true, balance: 1234.5, key_id: 'a952…608c', funding_url: 'https://kalshi.com/account/funding'}, dev: {connected: true, key_id: 'a952…608c', balance: 0}};
   const f = keyFunds(state);
   await f.viewFunds();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /Your Kalshi demo account has \$0\.00, so Kalshi refuses demo orders\. Add demo funds in your account on <a href="https:\/\/demo\.kalshi\.co\/" target="_blank" rel="noopener">demo\.kalshi\.co<\/a>/);
   assert.match(main, /To change keys, disconnect and connect the new one\./);
   assert.match(main, /To change keys, remove this one and connect the new one\./);
@@ -4053,7 +4054,7 @@ test('a $0 Kalshi demo account is explained, and keys are changed or removed wit
   dvc.onclick(); f.elapse(500); await dvc.onclick(); await flush();
   assert.match(f.root.querySelector('#kdflash').innerHTML, /Demo key removed\. Tau deleted its copy; delete the key on demo\.kalshi\.co too/);
   // Both key forms are back, with no autofill and no phone auto-capitalising of the Key ID or the key.
-  const fresh = f.root.querySelector('main').innerHTML;
+  const fresh = f.root.querySelector('#main').innerHTML;
   assert.equal((fresh.match(/name="key_id" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/g) || []).length, 2);
   assert.equal((fresh.match(/name="private_key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/g) || []).length, 2);
   const on = keyFunds(state); on.S.me.perps_live_available = true;
@@ -4138,7 +4139,7 @@ test('Billing says what auto-reload does and when it fires, in the server\'s own
 test('Billing ledger says why each line was charged and where the receipt is; amounts stay the server\'s', async () => {
   const f = billingPage(cardedBilling());
   await f.viewBilling(); await flush();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /<a class="btn sm" href="\/api\/billing\/receipt" download>Download receipt \(CSV\)<\/a>/);
   assert.match(main, /<p class="hint ledger-key">Newest first\. The receipt has every line, with exact amounts\.<\/p>/);
   const rows = f.root.querySelectorAll('.t-ledger tbody tr').map((r) => r.innerHTML);
@@ -4172,7 +4173,7 @@ test('Billing statement: a heading per day, one line per session a day that link
   await f.viewBilling(); await flush();
   // The days are the viewer's: the read says the browser's offset from UTC.
   assert.ok(f.requests.some(({path}) => /^\/api\/billing\?tz=-?\d+$/.test(path)));
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   // The balance 30 days ago, plus credits bought, minus agent usage, is the balance now: the server's cents.
   assert.match(main, /<dl class="bill-math">[\s\S]*Balance 30 days ago<\/dt><dd>\$12\.50<\/dd>[\s\S]*Credits bought \(2 card charges\)<\/dt><dd>\+\$35\.00<\/dd>[\s\S]*Agent usage<\/dt><dd>−\$40\.08<\/dd>[\s\S]*class="total"><dt>Balance now<\/dt><dd>\$7\.42<\/dd>/);
   assert.doesNotMatch(main, /Welcome and other credits/);  // nothing else came in this month
@@ -4289,7 +4290,7 @@ test('a backtest trade\'s exit reads in words, and a sub-cent charge shows its a
     ({ticker: 'KXBTC15M-T' + i, side: 'yes', qty: 2, entry: 0.4, exit: 0.6, pnl: 0.4, reason, opened}));
   const f = strategyFrontend(detailStrategy({recent_trades: recent}), () => response({deployments: [], open_positions: []}));
   await f.viewStrategy(42); await flush();
-  const html = f.root.querySelector('main').innerHTML;
+  const html = f.root.querySelector('#main').innerHTML;
   for (const word of ['take-profit', 'stop-loss', 'edge gone', 'settled', 'brand new reason']) assert.ok(html.includes(`<small class="hint">${word}</small>`), word);
   assert.doesNotMatch(html, /take_profit|stop_loss|edge_gone|brand_new_reason/);
   const b = billingPage(cardedBilling({ledger: [{kind: 'usage', amount: -0.0042, memo: 'Agent usage · sonnet', created_at: '2026-10-25T17:00:00Z'},
@@ -4488,21 +4489,21 @@ test('Meridian: a long session shows its first strategies and folds the rest beh
 
 test('Meridian: the strategy page lists what it missed under Verdict and names the first in the Deploy notice', async () => {
   const f = strategyFrontend(detailStrategy({status: 'failed', why_failed: MISSED})); await f.viewStrategy(42); await flush();
-  const html = f.root.querySelector('main').innerHTML;
+  const html = f.root.querySelector('#main').innerHTML;
   const at = html.indexOf('What it missed, and what to try next');
   assert.ok(at > html.indexOf('Verdict'), 'listed in the Verdict section');
   assert.deepEqual(missedRows(html.slice(at)).slice(0, 2), MISSED_ROWS);
   assert.match(html, /Void: too few trades to judge \(18 of 30\), and 1 more check missed \(see Verdict\)\. It wasn’t validated/);
   assert.doesNotMatch(html, /failed the unseen-data gate|<b>sharpe/);
   const r = strategyFrontend(detailStrategy({status: 'rejected', why_failed: [MISSED[0]]})); await r.viewStrategy(42); await flush();
-  assert.match(r.root.querySelector('main').innerHTML, /Rejected: too few trades to judge \(18 of 30\) \(see Verdict\)\./);
+  assert.match(r.root.querySelector('#main').innerHTML, /Rejected: too few trades to judge \(18 of 30\) \(see Verdict\)\./);
   // Passed, or an older server without the field: nothing extra, and the old notice stands.
   for (const extra of [{why_failed: []}, {}]) {
     const p = strategyFrontend(detailStrategy(extra)); await p.viewStrategy(42); await flush();
-    assert.doesNotMatch(p.root.querySelector('main').innerHTML, /What it missed|class="why-failed"/);
+    assert.doesNotMatch(p.root.querySelector('#main').innerHTML, /What it missed|class="why-failed"/);
   }
   const old = strategyFrontend(detailStrategy({status: 'failed'})); await old.viewStrategy(42); await flush();
-  assert.match(old.root.querySelector('main').innerHTML, /Void: it failed the unseen-data gate\./);
+  assert.match(old.root.querySelector('#main').innerHTML, /Void: it failed the unseen-data gate\./);
 });
 
 // The research paper's figures are red exactly when the gate that judges them missed. The server
@@ -4529,7 +4530,7 @@ test('Meridian: a research-paper figure is red exactly when its gate line says i
     holdout: null,
     gate_tints: {validation: {n_trades: 'fail', p_value: 'fail', mean_net_return: 'fail', dsr: 'pass', placebo_p: 'pass'}}};
   const f = strategyFrontend(detailStrategy({status: 'failed', experiment: failing, why_failed: VAL_LINES})); await f.viewStrategy(42); await flush();
-  const red = tintedFigures(paperSections(f.root.querySelector('main').innerHTML).validation);
+  const red = tintedFigures(paperSections(f.root.querySelector('#main').innerHTML).validation);
   assert.deepEqual(red.sort(), missedFigures(VAL_LINES).sort());
   assert.deepEqual(red.sort(), ['Bootstrap p-value', 'Net return per trade', 'Trades']);
   // Passed validation, failed holdout: the validation figures all pass (DSR 0.60 and placebo 0.02
@@ -4542,14 +4543,14 @@ test('Meridian: a research-paper figure is red exactly when its gate line says i
     gate_tints: {validation: {n_trades: 'pass', p_value: 'pass', mean_net_return: 'pass', dsr: 'pass', placebo_p: 'pass'},
       holdout: {p_value: 'fail', mean_net_return: 'fail'}}};
   const h = strategyFrontend(detailStrategy({status: 'passed', experiment: held, why_failed: HOLD_LINES})); await h.viewStrategy(42); await flush();
-  const hs = paperSections(h.root.querySelector('main').innerHTML);
+  const hs = paperSections(h.root.querySelector('#main').innerHTML);
   assert.deepEqual(tintedFigures(hs.validation), []);
   assert.deepEqual(tintedFigures(hs.holdout).sort(), missedFigures(HOLD_LINES).sort());
   assert.match(hs.holdout, /<div class="k">Holdout<\/div><div class="val">Consumed<\/div>/);
   // An older server without gate_tints judges nothing, so nothing is red, whatever the numbers.
   const old = strategyFrontend(detailStrategy({status: 'failed', experiment: {...failing, holdout: held.holdout, gate_tints: undefined}}));
   await old.viewStrategy(42); await flush();
-  assert.doesNotMatch(old.root.querySelector('main').innerHTML, /class="val sig"/);
+  assert.doesNotMatch(old.root.querySelector('#main').innerHTML, /class="val sig"/);
 });
 
 test('Meridian: the dashboard says where the sessions it counts are, and points finished ones at what each idea missed', async () => {
@@ -4654,7 +4655,7 @@ test('Meridian money pages: open positions name their market, settle with date a
   assert.match(html, /data-lab="Settles">Jan 1[56], \d\d:\d\d [^<\s]+<\/td>/);
   assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
-  const side = s.root.querySelector('main').innerHTML;
+  const side = s.root.querySelector('#main').innerHTML;
   assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
   assert.match(side, /1 open position at cost \+ fees \$9\.41/);
   // The dashboard's expiry column names the zone too.
@@ -4784,7 +4785,7 @@ test('back online, a dashboard poll sitting out its back-off reads at once and c
   (f.windowListeners.get('online') || []).forEach(fn => fn());
   await settleRead(f);
   assert.equal(reads() - before, 1);
-  assert.equal(note(), ''); assert.match(f.root.querySelector('main').innerHTML, /\$1,234\.50/);
+  assert.equal(note(), ''); assert.match(f.root.querySelector('#main').innerHTML, /\$1,234\.50/);
 });
 
 test('a boot whose account read fails offers Try again instead of sending a signed-in user to sign in', async () => {
@@ -4798,7 +4799,7 @@ test('a boot whose account read fails offers Try again instead of sending a sign
   }
 });
 
-test('Meridian: a page change names the tab and puts keyboard focus on the new page, the first page and a repaint do not', async () => {
+test('Meridian: a page change names the tab and puts keyboard focus on the new page\'s heading, the first page and a repaint do not', async () => {
   const f = frontend({fetchImpl: path => {
     if (path === '/api/deployments') return response({deployments: [], open_positions: []});
     return response({});
@@ -4811,8 +4812,24 @@ test('Meridian: a page change names the tab and puts keyboard focus on the new p
   assert.equal(f.document.activeElement, f.document.body);  // the same page again
   f.location.pathname = '/billing';
   await f.render(); await flush(); await flush();
-  const main = f.root.querySelector('main');
-  assert.equal(f.document.activeElement, main); assert.equal(main.focusOptions.preventScroll, true);
+  const heading = f.root.querySelector('main h1');
+  assert.ok(f.document.activeElement === heading); assert.equal(heading.focusOptions.preventScroll, true);
+});
+
+test('Meridian: a dashboard poll that redraws the board leaves focus on the page heading it had', async () => {
+  let data = dashboardData();
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(data); }});
+  await f.viewDashboard(); await flush();
+  const board = f.root.querySelector('#boardbody'), writes = board.writes, heading = f.root.querySelector('main h1');
+  heading.focus();
+  data = dashboardData({demo: {equity: 2300}, live: {connected: true, balance: 41.5}});
+  f.intervals.get(f.S.timers.at(-1))(); await flush();
+  assert.equal(board.writes, writes + 1, 'the board was redrawn');
+  const next = f.root.querySelector('main h1');
+  assert.notEqual(next, heading); assert.equal(heading.isConnected, false);
+  assert.ok(f.document.activeElement === next, 'focus is on the new heading, not dropped to the page');
+  assert.equal(next.getAttribute('tabindex'), '-1'); assert.equal(next.focusOptions.preventScroll, true);
+  f.clearTimers();
 });
 
 test('Meridian: the autopilot pill keeps keyboard focus through a status repaint, and an unchanged read repaints nothing', () => {
@@ -4841,8 +4858,8 @@ test('Billing shows the spend pace, what spent it, and what each line was for, n
   const row = f.root.querySelector('.t-ledger tbody tr').innerHTML;
   assert.match(row, /Autopilot research<div class="sub-fig">Claude Opus 4\.6<\/div>/);
   assert.match(row, /<time datetime="2026-10-25T17:00:00Z">[^<]*\d\d:\d\d [A-Z+\-0-9:]+<\/time>/);  // a time, with its zone
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /anthropic|list price/i);
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /role="status"/);  // enough credits: no out-of-credits notice
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /anthropic|list price/i);
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /role="status"/);  // enough credits: no out-of-credits notice
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
   assert.match(css, /\.bill-detail \.t-dep \{ min-width: 0; \}/);  // Amount stays in view beside Add credits
 });
@@ -4851,13 +4868,13 @@ test('Billing under the research floor says research stopped and the next step',
   const f = billingPage(cardedBilling({balance: 0.4, min_run_balance: 1, auto_reload: false}));
   f.S.me.user.autopilot = true;
   await f.viewBilling(); await flush();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /You have \$0\.40 in credits\. New research needs at least \$1\.00 to start, so none is starting and autopilot is paused\. Add credits here, or turn on auto-reload so it doesn’t stop again\. Autopilot picks up again on its own\./);
   assert.match(f.root.querySelector('#bfigs').innerHTML, /neg/);  // the balance reads as a problem
   assert.match(f.root.querySelector('#autorel-when').innerHTML, /^<b>Off\.<\/b> Below \$1\.00 no new research starts and autopilot pauses; a session already running stops at \$0\./);
   const on = billingPage(cardedBilling({balance: -0.3, min_run_balance: 1}));
   await on.viewBilling(); await flush();
-  assert.match(on.root.querySelector('main').innerHTML, /You’re out of credits\.[\s\S]*Auto-reload is on but hasn’t topped you up: add credits here, or check your card\./);
+  assert.match(on.root.querySelector('#main').innerHTML, /You’re out of credits\.[\s\S]*Auto-reload is on but hasn’t topped you up: add credits here, or check your card\./);
 });
 
 test('run-until-stopped says what an hour costs at recent rates, how long the balance covers, and when it stops', async () => {
@@ -4992,7 +5009,7 @@ test('Funds says when the demo key\'s balance was read, as it does for Kalshi ca
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds');
       return response({...funds(), kalshi_dev: {connected: true, key_id: 'DEVK…1234', balance: 25, balance_at: at}}); }});
     await f.viewFunds();
-    assert.match(f.root.querySelector('main').innerHTML, said);
+    assert.match(f.root.querySelector('#main').innerHTML, said);
   }
 });
 
@@ -5750,7 +5767,7 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
     return response({});
   });
   await f.viewStrategy(42); await flush();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /Since deploying/);
   assert.doesNotMatch(main, /NaN|null|undefined|\$ a trade|unseen-data pace/);
   const whatif = f.root.querySelector('#whatif');
@@ -5764,7 +5781,7 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
   // With a stake, a deployment that has none is scaled at the strategy's own: 4 trades at +$2 each.
   const g = strategyFrontend(detailStrategy({deployments: deps.map((d) => ({...d, stake: null}))}), () => response({}));
   await g.viewStrategy(42); await flush();
-  const real = g.root.querySelector('main').innerHTML;
+  const real = g.root.querySelector('#main').innerHTML;
   assert.match(real, /unseen-data pace, 4 trades would have made \+\$8\.00/);
   assert.doesNotMatch(real, /NaN/);
   assert.ok(g.root.querySelector('#whatif #wk'), 'a strategy with a stake keeps its dial');
@@ -5825,6 +5842,7 @@ test('Meridian: a strategy that did not pass shows its backtest P&L muted, at th
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
-a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling});
+a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling, source, strategyFrontend, detailStrategy,
+  dashboard: dashboardData, fundsData: funds});
 creditsCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
 declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});
