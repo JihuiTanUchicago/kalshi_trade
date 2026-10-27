@@ -4379,6 +4379,37 @@ test('the since strip says what demo needs in a sentence, and a book with nothin
   assert.match(old, /Demo isn.+t trading: your Kalshi demo key isn.+t connected\./); assert.doesNotMatch(old, /trade: \./);
 });
 
+test('the since strip says a demo book paused for its demo key once, beside the link to add it', async () => {
+  const since = {at: '2026-10-25T08:00:00+00:00', first: false, books: {demo: {pnl: 0, trades: 0}},
+    passed: {n: 0, items: []}, autopilot: {}, runs: {}};
+  const dep = (id, title, mode, why) => ({id, strategy_id: id, title, market: 'btc15m', mode, status: 'paused', status_reason: why,
+    stake: 5, max_positions: 2, realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, curve: [], created_at: '2026-10-25T08:00:00Z'});
+  const KEY = 'Add your Kalshi demo (sandbox) key on the Funds page to run this on demo.';
+  const LIVE = 'Add your live Kalshi key on the Funds page to run this on live money.';
+  const strip = async (deployments, health) => {
+    const base = dashboardData();
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...base, deployments, since, demo: {...base.demo, health}});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    return f.root.querySelector('#dash-since').innerHTML;
+  };
+  const health = {code: 'demo_key', need: 'your Kalshi demo key', line: "Demo isn't trading: your Kalshi demo key isn't connected.",
+    action: {label: 'Add it on the Funds page', href: '/funds#connect-kalshi'}};
+  const html = await strip([dep(4, 'Fade <tails>', 'demo', KEY), dep(5, 'Live one', 'live', LIVE)], health);
+  // The demo key is said once, on the demo line with its link; the paused row only names the strategy.
+  assert.match(html, />Fade &lt;tails&gt;<\/a> is paused<br>/);
+  assert.equal((html.match(/demo \(sandbox\) key|your Kalshi demo key/g) || []).length, 1, html);
+  assert.match(html, /Demo can’t trade: it needs your Kalshi demo key\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a>/);
+  // Another reason that sends someone to Funds links "the Funds page", as its Deploy row does.
+  assert.match(html, />Live one<\/a> is paused<span class="since-sub">: Add your live Kalshi key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on live money<\/span>/);
+  // With no demo-key line to say it (an older server), the row keeps its reason, linked.
+  const alone = await strip([dep(4, 'Fade', 'demo', KEY)], null);
+  assert.match(alone, />Fade<\/a> is paused<span class="since-sub">: Add your Kalshi demo \(sandbox\) key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on demo<\/span>/);
+});
+
 test('past its paper-trade target the autopilot card says how many and how many were needed, never "67 of 30"', async () => {
   for (const [trades, said] of [[4, '4 of 30 realistic paper trades'], [67, '67 realistic paper trades (30 needed)'], [30, '30 realistic paper trades (30 needed)']]) {
     const f = frontend({fetchImpl: path => {
