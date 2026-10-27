@@ -370,6 +370,15 @@ def _usd4(v) -> str:
 # the Research list names it; a chat or check-in debit says what it was in its memo). Card charged: what the card
 # paid for credits bought (the credits plus the purchase fee). Stripe reference: that payment's id.
 RECEIPT_HEADER = ["Date (UTC)", "Type", "Amount (USD)", "Memo", "Session", "Card charged (USD)", "Stripe reference"]
+# The Type column in the words Billing's statement uses (the bundles' KIND_LABEL), never the ledger's own kind
+# key: the receipt said "usage", "topup", "autoreload", "bonus" and "admin_grant".
+RECEIPT_TYPE = {"bonus": "Welcome credits", "topup": "Added credits", "autoreload": "Auto-reload",
+                "usage": "Agent usage", "admin_grant": "Credits from Tau support"}
+
+
+def receipt_type(kind: Optional[str]) -> str:
+    """A ledger kind as the receipt's Type column says it; a kind this list doesn't know, in plain words."""
+    return RECEIPT_TYPE.get(kind or "") or (kind or "").replace("_", " ").strip().capitalize()
 
 
 def billing_receipt(ctx: Ctx):
@@ -395,7 +404,7 @@ def billing_receipt(ctx: Ctx):
     for r in ledger:
         card = r["kind"] in _CARD_KINDS
         n = seq.get(int(r["run_id"])) if r["kind"] == "usage" and r.get("run_id") else None
-        row([r["created_at"], r["kind"], _usd4(r["amount_usd"]), _ledger_memo(r),
+        row([r["created_at"], receipt_type(r["kind"]), _usd4(r["amount_usd"]), _ledger_memo(r),
              "Session %d" % n if n else "",
              "%.2f" % (billing.topup_charge_cents(Decimal(str(r["amount_usd"]))) / 100) if card else "",
              (r.get("stripe_ref") or "") if card else ""])

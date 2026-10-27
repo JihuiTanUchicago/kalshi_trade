@@ -242,6 +242,37 @@ def test_the_receipt_says_each_card_charge_its_reference_and_each_debits_session
     assert len(numbers) == 1  # one read of the numbers, only because a research debit is in the file
 
 
+def test_the_receipts_type_column_says_each_line_in_billings_words_never_the_ledger_key(monkeypatch):
+    # Walk 2026-10-27: the receipt's Type column read "usage", "topup", "autoreload", "bonus", "admin_grant",
+    # the ledger's own keys, beside a statement that says "Agent usage", "Added credits", "Auto-reload".
+    import json
+    import re
+    from decimal import Decimal
+    from pathlib import Path
+    monkeypatch.setattr(server.repo, "get_user", lambda cur, uid: {"email": "t@example.invalid"})
+    monkeypatch.setattr(server.repo, "credit_balance", lambda cur, uid: 9.32)
+    monkeypatch.setattr(server.repo, "credit_spent_total", lambda cur, uid: 0.68)
+    line = lambda kind, amount, memo: {"kind": kind, "amount_usd": Decimal(amount), "memo": memo, "created_at": datetime(2026, 10, 25),
+                                       "run_id": None, "stripe_ref": None, "run_kind": None, "run_brief": None}
+    monkeypatch.setattr(server.repo, "credit_rows", lambda cur, uid, limit: [
+        line("usage", "-0.25", "Agent usage · us.anthropic.claude-opus-4-6-v1"), line("autoreload", "25", "Auto-reload $25"),
+        line("topup", "10", "Added $10 credits"), line("admin_grant", "5", "Admin grant by someone"), line("bonus", "20", "Welcome credits"),
+        line("promo_credit", "3", "Promo")])
+    _kind, _name, _ctype, body = server.billing_receipt(_ctx())
+    rows = list(csv.reader(io.StringIO(body)))
+    table = rows[rows.index(billing_routes.RECEIPT_HEADER) + 1:]
+    assert [r[1] for r in table] == ["Agent usage", "Auto-reload", "Added credits", "Credits from Tau support", "Welcome credits",
+                                     "Promo credit"]
+    assert not {"usage", "autoreload", "topup", "admin_grant", "bonus"} & {r[1] for r in table}
+    # The same words as Billing's statement in both bundles (their KIND_LABEL).
+    static = Path(__file__).resolve().parents[1] / "app" / "static"
+    for bundle in ("app.js", "app.meridian.js"):
+        found = re.search(r"const KIND_LABEL = (\{[^}]*\});", (static / bundle).read_text())
+        assert found, bundle
+        labels = json.loads(re.sub(r"(\w+):", r'"\1":', found.group(1)).replace("'", '"'))
+        assert labels == billing_routes.RECEIPT_TYPE, bundle
+
+
 class _Cur:
     def __init__(self, rows):
         self.rows, self.sql = rows, []
