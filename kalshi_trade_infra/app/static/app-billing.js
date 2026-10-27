@@ -15,7 +15,8 @@ window.TauPage('billing', (T) => {
     shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token for the model you pick. Paper and live trading themselves are free. The <a href="/research">research form</a> shows what a session usually costs before you start.') +
       '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl><p class="hint bill-split" id="bsplit"></p><p class="stale-note" id="bill-stale" role="status"></p>', loading(360));
     let stripe = null, card = null;
-    // Below the research floor no new research starts, so the balance reads as a problem, not a gain.
+    // Below the research floor no new research starts, so the balance reads as a problem. Otherwise it is
+    // neutral: credits are not profit, and wore the green a P&L gain wears.
     const isLow = (d) => d.configured && d.min_run_balance != null && d.balance < d.min_run_balance;
     // Out of credits (under the floor a research session needs): say what stopped and the next step.
     const lowNote = (d) => {
@@ -29,7 +30,7 @@ window.TauPage('billing', (T) => {
       paint(root.querySelector('#bfigs'),
         // Until a card was ever charged for credits (the server's card_charged), the balance is free credits: a
         // new user read $19.16 with no word that their card hadn't been charged.
-        fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : (d.balance > 0 ? 1 : 0), small: d.card_charged === false && d.balance > 0 ? 'free credits so far: your card hasn’t been charged' : undefined }) +
+        fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0, small: d.card_charged === false && d.balance > 0 ? 'free credits so far: your card hasn’t been charged' : undefined }) +
         fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(' · ') }) +
         // How long it lasts means until research pauses (under min_run_balance; with payments off nothing
         // pauses, so until $0), and with auto-reload on, when the card is next charged and for how much:

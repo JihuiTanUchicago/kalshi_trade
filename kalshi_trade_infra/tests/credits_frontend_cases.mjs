@@ -52,6 +52,18 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     assert.equal(old.root.querySelector('#bsplit').textContent, 'Last 7 days: your research sessions $1.20.');
   });
 
+  test(`${name}: Billing's credit balance is a neutral figure, not a P&L gain's green, and still red when it stops research`, async () => {
+    // Credits are not profit: Tau's $25.71 balance wore the green a P&L gain wears (tint pos).
+    const tone = async (o) => {
+      const f = billingPage(cardedBilling(o));
+      await f.viewBilling(); await flush();
+      return f.root.querySelector('#bfigs .m:first-child .fig').className;
+    };
+    assert.doesNotMatch(await tone({balance: 25.71, min_run_balance: 1}), /tint|pos|gain/);
+    assert.match(await tone({balance: 0.4, min_run_balance: 1}), /tint neg/);  // under the research floor
+    assert.match(await tone({balance: -0.3, min_run_balance: 1}), /tint neg/);
+  });
+
   test(`${name}: Billing says when auto-reload next charges the card, or when research pauses, not a stop auto-reload prevents`, async () => {
     let f = billingPage(cardedBilling({balance: 25.71, spent_7d: 100.17, runway_days: 1.7, reload_days: 1.4, pace_days: 7,
       autoreload_threshold: 5, autoreload_charge: 26.38, min_run_balance: 1}));
