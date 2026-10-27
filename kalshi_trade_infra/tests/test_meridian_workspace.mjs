@@ -1333,17 +1333,47 @@ test('Overview identifies all-paper groups and keeps every mode explicit in mixe
     if (!poll) { await f.viewDashboard(); poll = f.intervals.get(f.S.timers.at(-1)); }
     else { poll(); await flush(); }
     const ledger = f.root.querySelector('.positions-ledger'), history = ledger.querySelector('#recent-settlements');
-    const heading = ledger.querySelector('h2'), allPaper = openModes.every(mode => mode === 'paper');
-    assert.equal(heading.querySelector('.position-group-mode')?.textContent || '', allPaper ? 'Paper' : '');
+    // One book is named; a mix says "All books" (never a bare count that reads as the band's paper book).
+    const bookOf = (modes) => new Set(modes).size > 1 ? 'All books' : {paper: 'Paper', demo: 'Demo', live: 'Live'}[modes[0]];
+    const heading = ledger.querySelector('h2');
+    assert.equal(heading.querySelector('.position-group-mode')?.textContent || '', bookOf(openModes));
     for (const [host, modes] of [[ledger, openModes], [history, closedModes]]) {
       const table = host.querySelector('table.t-positions'), labels = modes.map(mode => mode === 'live' ? 'LIVE' : mode === 'demo' ? 'Demo' : 'Paper');
       assert.equal(table.getAttribute('data-paper-only'), String(modes.every(mode => mode === 'paper')));
       assert.deepEqual(table.querySelectorAll('.position-mode').map(cell => cell.textContent), labels);
     }
-    assert.equal(history.querySelector('summary .position-group-mode')?.textContent || '',
-      closedModes.every(mode => mode === 'paper') ? 'Paper' : '');
+    assert.equal(history.querySelector('summary .position-group-mode')?.textContent || '', bookOf(closedModes));
     assert.equal(postRequests(f).length, 0);
   }
+});
+
+test('Overview open positions under the Paper portfolio band count each book apart and say they cover all books', async () => {
+  // "Open positions 3" sat under the Paper portfolio band, beside its paper-only "Open at cost + fees $12.90", with a
+  // Demo row among the three: the count read as three paper positions.
+  const data = dashboardData({paper: {open_positions: 2, open_cost: 12.9},
+    open_positions: [dashboardPosition(1), dashboardPosition(2), dashboardPosition(3, {mode: 'demo'})],
+    recent_closed: [dashboardPosition(4), dashboardPosition(5, {mode: 'demo'}), dashboardPosition(6, {mode: 'demo'})],
+    deployments: [dashboardDeployment('paper'), {...dashboardDeployment('demo'), id: 92}]});
+  const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(data); }});
+  await f.viewDashboard();
+  const band = f.root.querySelector('.account-band').textContent;
+  assert.match(band, /Paper portfolio/);
+  const heading = f.root.querySelector('#dash-open h2');
+  assert.equal(heading.querySelector('.section-count').textContent, '2\u00a0paper\u00a0\u00b7 1\u00a0demo');
+  assert.equal(heading.querySelector('.position-group-mode').textContent, 'All books');
+  assert.doesNotMatch(heading.textContent, /\b3\b/, 'never one count across books');
+  const summary = f.root.querySelector('#recent-settlements summary');
+  assert.match(summary.textContent, /Recent settlements 1\u00a0paper\u00a0\u00b7 2\u00a0demo All books/);
+  // No money is added up across books in the heading.
+  assert.doesNotMatch(heading.innerHTML + summary.innerHTML, /\$/);
+  // A single book is named, with its count.
+  const one = dashboardData({open_positions: [dashboardPosition(1, {mode: 'demo'}), dashboardPosition(2, {mode: 'demo'})]});
+  const g = frontend({fetchImpl: () => response(one)});
+  await g.viewDashboard();
+  const h = g.root.querySelector('#dash-open h2');
+  assert.equal(h.querySelector('.section-count').textContent, '2');
+  assert.equal(h.querySelector('.position-group-mode').textContent, 'Demo');
+  assert.equal(postRequests(f).length + postRequests(g).length, 0);
 });
 
 test('Overview paper context follows the whole displayed book through mode changes without obscuring source labels', async () => {
@@ -5376,13 +5406,13 @@ test('track record (Meridian): stopped and removed strategies stay in the table 
     strategies: [row({}), row({strategy_id: 5, title: 'Reversal', status: 'stopped'}), row({strategy_id: 6, status: 'paused'}),
       row({strategy_id: 7, title: 'Deleted strategy', market: 'high_ny', status: 'stopped', removed: true})]};
   const html = f.trackRecordPanel(m, 'paper', th);
-  assert.match(html, /<h2>By strategy<\/h2><p>Stopped ones included/);
-  assert.match(html, /<a href="\/strategies\/5">Reversal<\/a><div class="sub-fig">Stopped<\/div>/);
+  assert.match(html, /<h2>By strategy<\/h2><p>Removed ones included/);
+  assert.match(html, /<a href="\/strategies\/5">Reversal<\/a><div class="sub-fig">Removed from paper<\/div>/);
   assert.match(html, /<a href="\/strategies\/6">Fade<\/a><div class="sub-fig">Paused<\/div>/);
   assert.match(html, /<a href="\/strategies\/4">Fade<\/a><\/td>/);  // a running one needs no label
   // A removed strategy has no page left: no dead link, and its market says which one it was.
   assert.doesNotMatch(html, /\/strategies\/7/);
-  assert.match(html, /Deleted strategy<div class="sub-fig">NYC high temp · stopped, then deleted<\/div>/);
+  assert.match(html, /Deleted strategy<div class="sub-fig">NYC high temp · removed from paper, then deleted<\/div>/);
   // Every trade's P&L is net of fees, so the ratio isn't "gross" beside the gross-before-fees line.
   assert.match(html, /winning trades ÷ losing trades, after fees/); assert.doesNotMatch(html, /gross wins/);
   assert.match(html, /−1\.25/); assert.match(html, /Sortino −2\.50/); assert.doesNotMatch(html, />-1\.25</);

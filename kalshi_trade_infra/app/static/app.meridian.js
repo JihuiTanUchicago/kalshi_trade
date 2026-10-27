@@ -1700,7 +1700,10 @@
   const runTag = (r) => r.example ? ' ' + EXAMPLE_TAG : +r.by_autopilot ? ' ' + AP_RUN_TAG : '';
   // The run page's kind of session: its direction, and who started it when the autopilot did.
   const runKind = (r) => +r.by_autopilot && !r.example ? (r.direction ? dirLabel(r.direction) + ' \u00b7\u00a0' : '') + 'Started by autopilot' : dirLabel(r.direction);
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
+  // What each figure is net of, as the dashboard and Deploy say it: "+$1.00 on paper since deploying" left out that
+  // Kalshi's fees (and, on paper, the spread) were already taken off.
+  const realNet = (mode) => (mode === 'paper' ? PAPER_NET : 'after Kalshi fees');
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)} \u00b7\u00a0${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)} \u00b7\u00a0${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
   const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));
@@ -1944,7 +1947,7 @@
     });
     depNotePlace(scope);
   }
-  const DEP_DONE = { pause: 'Deployment paused.', resume: 'Deployment resumed.', stop: 'Deployment stopped.' };
+  const DEP_DONE = { pause: 'Deployment paused.', resume: 'Deployment resumed.', stop: 'Deployment removed.' };
   // After Pause, Resume or Remove the board is repainted without the pressed button: say what happened,
   // and put focus on that deployment's next control, or at the top of the page once its row is gone.
   // A board that didn't repaint (fresh false) shows it done, with a word to reload.
@@ -2366,6 +2369,22 @@
         </tr>`;
       }).join('');
       const paperOnly = (rows) => rows.length && rows.every(r => r.mode === 'paper');
+      // Which books a list of positions covers, beside its count. It sits under the Paper portfolio band, beside the
+      // band's paper-only "Open at cost + fees": "Open positions 3" with a Demo row among them read as three paper
+      // positions. One book names it; more than one says "All books" and counts each book apart, never one
+      // count across books (as Deploy's "Open positions" figure does). Only counts: no money is added up here.
+      const BOOK_WORD = { paper: 'Paper', demo: 'Demo', live: 'Live' };
+      const bookCount = (rows) => {
+        const modes = [...new Set(rows.map((r) => r.mode))];
+        if (modes.length <= 1) return { n: num(rows.length), book: BOOK_WORD[modes[0]] || '' };
+        const split = ['paper', 'demo', 'live'].map((m) => [m, rows.filter((r) => r.mode === m).length]).filter(([, n]) => n)
+          .map(([m, n]) => `${num(n)}\u00a0${m}`);
+        const other = rows.filter((r) => !BOOK_WORD[r.mode]).length;
+        if (other) split.push(`${num(other)}\u00a0other`);
+        return { n: split.join('\u00a0\u00b7 '), book: 'All books' };
+      };
+      const bookHead = (rows) => { const c = bookCount(rows); return { n: c.n, book: c.book ? ` <span class="position-group-mode">${c.book}</span>` : '' }; };
+      const openHead = bookHead(d.open_positions), closedHead = bookHead(d.recent_closed);
       const positionTable = (rows, closed) => {
         const onlyPaper = !!paperOnly(rows);
         const widths = closed ? [332, 100, 160, 88, 128] : [300, 92, 112, 80, 96, 128];
@@ -2393,9 +2412,9 @@
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper ·\u00a0</span>cumulative, ${PAPER_NET}</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
       const main = `${apFirst ? '' : sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-paused') : ''}<div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
         <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure + (cashInBand ? liveFigure : '')}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
-        <section class="positions-ledger" id="dash-open"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
+        <section class="positions-ledger" id="dash-open"><div class="sect-head"><h2>Open positions <span class="section-count">${openHead.n}</span>${openHead.book}</h2></div>
           ${d.open_positions.length ? positionTable(d.open_positions, false) : '<p class="hint">No open positions.</p>'}
-          ${d.recent_closed.length ? `<details class="recent-settlements" id="recent-settlements"${settlementsOpen ? ' open' : ''}><summary>Recent settlements <span>${d.recent_closed.length}</span>${paperOnly(d.recent_closed) ? ' <span class="position-group-mode">Paper</span>' : ''}</summary>${positionTable(d.recent_closed, true)}</details>` : ''}
+          ${d.recent_closed.length ? `<details class="recent-settlements" id="recent-settlements"${settlementsOpen ? ' open' : ''}><summary>Recent settlements <span>${closedHead.n}</span>${closedHead.book}</summary>${positionTable(d.recent_closed, true)}</details>` : ''}
         </section><div class="dash-analysis">${performance}<section class="sect deployed-monitor${sharedPaperRunning ? ' shared-paper-running' : ''}"><div class="sect-head"><div class="monitor-heading"><h2>Deployed strategies <span class="section-count">${d.deployments.length}</span></h2>${sharedPaperRunning ? '<span class="monitor-context">Paper</span>' : ''}${d.deployments.length ? '<a href="/research?new=1" class="btn">New research</a>' : ''}</div></div><div id="dash-deps">${deps}</div></section></div></div></div>`;
       paint(root.querySelector('#boardbody'), board);  // the 15s poll repaints only what changed
       if (accountsFocused) root.querySelector('#other-accounts > summary').focus({ preventScroll: true });
@@ -2574,7 +2593,9 @@
   const trDay = (ts) => (ts ? dateFmt(new Date(ts * 1000), YEAR_DAY) : '—');
   const trMonth = (k) => { const [y, m] = k.split('-'); return dateFmt(new Date(Date.UTC(+y, +m - 1, 15)), UTC_MONTH); };
   const trCi = (ci, f) => (ci ? `95%: ${f(ci[0])} to ${f(ci[1])}` : 'needs 2+ trades for a range');
-  const TR_STATUS = { paused: 'Paused', stopped: 'Stopped' };
+  // A deployment the user removed is "Removed from paper" here, as on Deploy (its Remove button) and on the
+  // Strategies list: the table called the same thing "Stopped".
+  const TR_STATUS = { paused: () => 'Paused', stopped: (key) => `Removed from ${key}` };
   const TR_EDGE = { positive: ['Edge', 'on'], negative: ['Losing', 'live'], unclear: ['Unproven', ''], thin: ['Too few', 'quiet'] };
   // A first batch of trades often settles in the same second (one 15-minute close), which drew the
   // whole record as a vertical line. When every close falls within a minute, space the points one
@@ -2593,7 +2614,13 @@
     return !v ? '.' : `: ${usd(v, true)}. The realized P&L on the dashboard, Funds and Deploy counts ${n === 1 ? 'it' : 'them'}, so it reads ${usd(Math.abs(v))} ${v > 0 ? 'higher' : 'lower'} than this record.`;
   };
   // A strategy row's share of them, so its figures meet its Strategies list line ("+$74.33 · 27 trades" beside 26 here).
-  const trRowLeft = (r) => (r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
+  // A strategy whose only trades were instant fills (the server's `instant_only`) has a row of its own, last, so it is
+  // named beside what they made instead of only in the book's caveat: none of its figures is in the record's totals.
+  const trInstantOnly = (r) => {
+    const n = +r.excluded_instant_fills || 0;
+    return `<div class="sub-fig">${n === 1 ? 'Its only trade was an instant fill' : `All ${num(n)} of its trades were instant fills`}, left out of this record (${usd(+r.excluded_instant_pnl || 0, true)})</div>`;
+  };
+  const trRowLeft = (r) => (r.instant_only ? trInstantOnly(r) : r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
   // The span a return is over, as the sample line counts it (track_record.sample_read): a return with no period read
   // the same for a week as for a year once the headline's "since" had scrolled away.
   const trOver = (m) => (m.span_days == null ? '' : (() => { const d = Math.max(1, Math.round(+m.span_days)); return ` over ${num(d)} day${d === 1 ? '' : 's'}`; })());
@@ -2656,17 +2683,17 @@
       <td class="num" data-lab="Net P&amp;L">${r.trades ? money(r.pnl) : '<span class="tr-none">No trades</span>'}</td><td class="num" data-lab="Trades">${num(r.trades)}</td>
       <td class="num" data-lab="Win rate">${r.trades ? pct(r.win_rate, false) : '\u2014'}</td></tr>`).join('');
     const strats = m.strategies.map((r) => {
-      const [tag, cls] = TR_EDGE[r.edge] || TR_EDGE.unclear;
-      // A stopped or deleted strategy stays in the table (and every figure); it says so instead of
+      const [tag, cls] = r.instant_only ? ['Left out', 'quiet'] : TR_EDGE[r.edge] || TR_EDGE.unclear;
+      // A removed or deleted strategy stays in the table (and every figure); it says so instead of
       // reading like one still trading. A deleted one has no page left to link to.
-      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}stopped, then deleted` : TR_STATUS[r.status];
+      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}removed from ${esc(key)}, then deleted` : TR_STATUS[r.status] ? TR_STATUS[r.status](esc(key)) : '';
       return `<tr><td class="name" data-lab="Strategy">${r.removed ? esc(r.title) : `<a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a>`}${st ? `<div class="sub-fig">${st}</div>` : ''}${trRowLeft(r)}</td>
         <td data-lab="Read"><span class="mk ${cls}">${tag}</span></td>
         <td class="num" data-lab="Trades">${num(r.trades)}${r.open_trades ? ` <span class="sub-fig">+${num(r.open_trades)} open</span>` : ''}</td>
-        <td class="num" data-lab="Net P&amp;L">${money(r.net_pnl)}</td>
+        <td class="num" data-lab="Net P&amp;L">${r.instant_only ? '<span class="tr-none">Not in the record</span>' : money(r.net_pnl)}</td>
         <td class="num" data-lab="Win rate">${pct(r.win_rate, false)}</td>
         <td class="num" data-lab="Avg trade">${usd(r.avg_trade, true)}</td>
-        <td class="num" data-lab="Max drawdown">${r.max_drawdown ? usd(-r.max_drawdown) : usd(0)}</td>
+        <td class="num" data-lab="Max drawdown">${r.instant_only ? '\u2014' : r.max_drawdown ? usd(-r.max_drawdown) : usd(0)}</td>
         <td class="num" data-lab="Last trade">${trDay(r.last_trade_at)}</td></tr>`;
     }).join('');
     return `${notice(s.text, good ? 'good' : '')}${cav}${figs}
@@ -2677,7 +2704,7 @@
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
-      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Stopped ones included ·\u00a0“Too few” means under ${th.min_trades} trades</p></div>
+      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Removed ones included ·\u00a0“Too few” means under ${th.min_trades} trades</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Read</th><th class="num">Trades</th><th class="num">Net P&amp;L</th><th class="num">Win rate</th><th class="num">Avg trade</th><th class="num">Max drawdown</th><th class="num">Last trade</th></tr></thead><tbody>${strats}</tbody></table></div></section>`;
   }
   // Lives on the dashboard (Todd, 2026-10-25): its own request below the live board, so the 15s
@@ -3173,7 +3200,7 @@
   // The strip itself, from /api/dashboard's `since` block and the page's own deployments: each book's
   // realized P&L (never added together), what passed, what the autopilot changed, and what needs the
   // user, linking to it. `pausedHref` is where this page lists its paused deployments.
-  const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'stopped %s'], ['adjust', 'adjusted %s'], ['research', 'started %s']];
+  const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'removed %s'], ['adjust', 'adjusted %s'], ['research', 'started %s']];
   const CREDITS_WARN_DAYS = 3;  // the strip warns when credits last fewer days than this (server: CREDIT_RUNWAY_WARN_DAYS)
   // A deployment's pause reason, short: no "Autopilot:" prefix, no closing period, cut at a word.
   const shortReason = (r) => {

@@ -51,7 +51,7 @@ METHOD = [
     "P&L is net of all Kalshi fees.",
     # What a paper fill assumes: app.services.customer_text.PAPER_FILLS, word for word (a test pins it).
     "Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second before a real order lands, so live fills can come in slightly worse.",
-    "Stopped strategies, removed deployments and deleted strategies keep their trades in every figure: nothing is dropped for doing badly.",
+    "Strategies removed from paper, demo or live, and strategies deleted after that, keep their trades in every figure: nothing is dropped for doing badly.",
     "Paper trades that filled instantly, without the simulated order book, are left out, because real execution would not get those fills.",
     "Capital is what the record needed: the most money ever at risk at once plus the worst drawdown, so the smallest bankroll that could have taken every trade. Return and drawdown percentages use it.",
     "Sharpe and Sortino use daily P&L from the first closed trade to today, with flat days counted, a 0% risk-free rate and a 365-day year. They are hidden under 14 days.",
@@ -402,7 +402,9 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict], left_out: Iterable[
     deleted after stopping it: both stay in, so the table shows nothing was dropped.
     `left_out` are its instant paper fills (prepare leaves them out of the record): a row counts them and
     their P&L apart (excluded_instant_fills, excluded_instant_pnl), so its figures reconcile with the
-    strategy's realized P&L on its list row and the Deploy board, which count every closed row."""
+    strategy's realized P&L on its list row and the Deploy board, which count every closed row. A strategy
+    whose only trades were instant fills still gets a row (trades 0, `instant_only`), after the others, so it is
+    named beside its excluded P&L instead of only in the book's caveat; the record's totals never count it."""
     groups: Dict[int, Dict] = {}
 
     def group(t):
@@ -418,6 +420,7 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict], left_out: Iterable[
         group(t)["open"] += 1
     left: Dict[int, List[float]] = {}
     for t in left_out:
+        group(t)
         left.setdefault(t["strategy_id"], []).append(t["pnl"])
     rows = []
     for sid, g in groups.items():
@@ -439,8 +442,9 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict], left_out: Iterable[
             "last_trade_at": ts[-1]["closed_ts"] if ts else None,
             "edge": edge_read(ci) if n >= MIN_TRADES else "thin",
             "excluded_instant_fills": len(left.get(sid, ())), "excluded_instant_pnl": cents(sum(left.get(sid, ()))),
+            "instant_only": not n and not g["open"] and bool(left.get(sid)),
         })
-    rows.sort(key=lambda r: (-r["net_pnl"], -r["trades"]))
+    rows.sort(key=lambda r: (r["instant_only"], -r["net_pnl"], -r["trades"]))
     return rows
 
 

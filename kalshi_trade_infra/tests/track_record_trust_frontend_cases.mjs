@@ -42,6 +42,63 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     assert.doesNotMatch(rows[1], /left out/);
   });
 
+  test(`${name}: a strategy whose only paper trades were instant fills has its own row, saying so, outside the record's figures`, () => {
+    // Its trades were named only in the book's caveat: the by-strategy table had no row for it at all.
+    const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
+    const only = stratRow({strategy_id: 8, title: 'Bitcoin hourly fade', trades: 0, open_trades: 0, net_pnl: 0, win_rate: null,
+      avg_trade: null, avg_trade_ci: null, max_drawdown: 0, last_trade_at: null, excluded_instant_fills: 2, excluded_instant_pnl: 3.81,
+      instant_only: true});
+    const book = paperBook({excluded_instant_fills: 3, excluded_instant_pnl: 8.63, strategies: [...paperBook().strategies, only]});
+    const html = f.trackRecordPanel(book, 'paper', TH);
+    const rows = html.match(/<tr><td class="name" data-lab="Strategy">[\s\S]*?<\/tr>/g);
+    assert.equal(rows.length, 3);
+    const row = plain(rows[2]);
+    assert.match(rows[2], /Bitcoin hourly fade<\/a><div class="sub-fig">All 2 of its trades were instant fills, left out of this record \(\+\$3\.81\)<\/div><\/td>/);
+    assert.match(rows[2], /<td data-lab="Read"><span class="mk quiet">Left out<\/span><\/td>/);
+    assert.match(row, /Not in the record/);
+    assert.doesNotMatch(row, /Too few|\$0\.00/, 'no figure reads as a record of $0 on 0 trades');
+    // One fill reads as one; the book's headline figures are the record's alone.
+    const one = plain(f.trackRecordPanel(paperBook({strategies: [stratRow({...only, excluded_instant_fills: 1, excluded_instant_pnl: -1.2})]}), 'paper', TH));
+    assert.match(one, /Its only trade was an instant fill, left out of this record \(−\$1\.20\)/);
+    assert.match(plain(html), /Paper net P&L −\$24\.72/);
+  });
+
+  test(`${name}: a removed deployment is "removed" on the track record, as on Deploy and the Strategies list, never "Stopped"`, () => {
+    // Deploy's button says Remove and the Strategies list "Removed from paper"; the record's by-strategy table called the
+    // same thing "Stopped", so a customer could take them for two different states.
+    const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
+    const book = (o) => paperBook({strategies: [stratRow({status: 'stopped'}), stratRow({strategy_id: 7, title: 'Deleted strategy',
+      market: 'btc15m', status: 'stopped', removed: true}), stratRow({strategy_id: 9, title: 'Held', status: 'paused'})], ...o});
+    const html = f.trackRecordPanel(book(), 'paper', TH);
+    assert.match(html, /<h2>By strategy<\/h2><p>Removed ones included ·/);
+    assert.match(html, /Fade the 15-minute Bitcoin overshoot<\/a><div class="sub-fig">Removed from paper<\/div>/);
+    assert.match(html, /Deleted strategy<div class="sub-fig">[^<]*· removed from paper, then deleted<\/div>/);
+    assert.match(html, /Held<\/a><div class="sub-fig">Paused<\/div>/);
+    assert.doesNotMatch(plain(html), /[Ss]topped/);
+    // Each tab names its own book.
+    assert.match(f.trackRecordPanel(book({label: 'Kalshi demo'}), 'demo', TH), /<div class="sub-fig">Removed from demo<\/div>/);
+    // What the autopilot did since the last visit says it the same way.
+    f.S.me = {...(f.S.me || {}), user: {...((f.S.me || {}).user || {}), autopilot: true}};
+    const d = {deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: false, books: {}, passed: {n: 0, items: []},
+      autopilot: {deploy: 1, stop: 2}, runs: {}}};
+    assert.match(f.sinceStrip(d, '#dash-deps'), /It put 1 on paper, removed 2\./);
+  });
+
+  test(`${name}: the Strategies list's since-deploying figure says fees are taken off, as the dashboard and Deploy do`, () => {
+    // "+$4.00 on paper since deploying" never said Kalshi's fees and the spread were already in it.
+    const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
+    const s = {id: 3, title: 'Fade the 15-minute Bitcoin overshoot', thesis: 'A rule.', market: 'btc15m', direction: 'both', status: 'passed',
+      out_of_sample: {pnl: 6.2, trades: 48, win_rate: 0.58, days: 30.2}, deployed: true, books: ['paper']};
+    const fig = (real) => plain(f.strategySlip({...s, real}, {}).match(/<div class="sub-fig real-fig">[\s\S]*?<\/td>/)[0]);
+    assert.match(fig({pnl: 4, trades: 2, open: 0, mode: 'paper'}), /\+\$4\.00 on paper since deploying · 2 trades · after Kalshi fees and the spread/);
+    assert.match(fig({pnl: -1.5, trades: 1, open: 0, mode: 'demo'}), /−\$1\.50 on demo since deploying · 1 trade · after Kalshi fees(?! and)/);
+    assert.match(fig({pnl: 2, trades: 3, open: 0, mode: 'live'}), /\+\$2\.00 since deploying · 3 trades · after Kalshi fees(?! and)/);
+    // A paper strategy's demo copy beside it says so too, never added in.
+    const both = fig({pnl: 4, trades: 2, open: 0, mode: 'paper', demo: {pnl: -0.5, trades: 2, open: 0}});
+    assert.match(both, /Demo: −\$0\.50 · 2 trades · after Kalshi fees(?! and)/);
+    assert.doesNotMatch(both, /\$3\.50/);
+  });
+
   test(`${name}: the track record says when its figures were worked out, in its head, and when its minute poll stops landing`, async () => {
     // The read time sat at the foot of the closed "How these numbers are computed" note, so a record its poll could no
     // longer refresh read as current.
