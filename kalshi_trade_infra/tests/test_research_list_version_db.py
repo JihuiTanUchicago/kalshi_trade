@@ -9,6 +9,7 @@ test_app_engine_db.py (APP_TEST_MYSQL=1).
 import os
 import uuid
 from datetime import timedelta
+from unittest import mock
 
 import pytest
 
@@ -92,9 +93,11 @@ def test_the_list_version_moves_with_what_the_list_shows_and_nothing_else(conn):
     for i, write in enumerate(writes):
         write()
         conn.commit()
-        got, _ = poll(v)
-        assert not got.get("same") and got["v"] != v, i
-        fresh, _ = poll()
+        # One clock for both polls: a quiet session's wait in seconds must not tick between them.
+        with mock.patch.object(repo, "now_utc", lambda t=repo.now_utc(): t):
+            got, _ = poll(v)
+            assert not got.get("same") and got["v"] != v, i
+            fresh, _ = poll()
         assert got == fresh, i
         v = got["v"]
         assert poll(v)[0] == {"v": v, "same": True}, i
