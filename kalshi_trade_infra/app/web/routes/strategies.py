@@ -111,27 +111,28 @@ def list_strategies(ctx: Ctx):
         page = 0
     per = 50
     counts = repo.count_strategies(ctx.cur, ctx.uid, direction, market, search, deployed)  # true per-status totals, not a capped page
+    # Every pass under these filters, and every void or rejected probation strategy that passed on paper,
+    # is judged for a later check that left it uncleared (Missed final test, Held back), in one read for
+    # all of them, so the chips count every page, not the 50 shown. Those it leaves uncleared count and
+    # list under Not cleared: a pass out of Passed, a probation strategy held back on paper out of Void
+    # or Rejected (it read "Held back" under the Void chip).
+    judged = repo.passed_strategies(ctx.cur, ctx.uid, direction, market, search, deployed,
+                                    paper_passed=gatekeeper.Classification.FORWARD_VALIDATED.value)
+    got = _later_verdicts(ctx.cur, ctx.uid, judged)
+    uncleared = [p for p in judged if p["id"] in got]
+    _split_not_cleared(counts, judged, got)
     # Default ("Kept") view hides rejected/void — the big-run noise — but keeps every row in the
     # DB (the ledger counts them for DSR/FDR). An explicit status chip overrides and shows it.
     hide_noise = status is None
     noise = sum(counts.get(s, 0) for s in repo.NOISE_STATUSES)
-    # Every pass under these filters is judged for a later check that left it uncleared, so the Passed
-    # and Not cleared chips count every page, not the 50 shown. Those two chips list by that verdict, so
-    # it comes first there; otherwise the page's void and rejected rows (a probation strategy held back
-    # after passing on paper) are judged in the same one read as the passes.
-    passes = repo.passed_strategies(ctx.cur, ctx.uid, direction, market, search, deployed)
-    by_verdict = status in ("passed", NOT_CLEARED)
-    got = _later_verdicts(ctx.cur, ctx.uid, passes) if by_verdict else None
-    uncleared = [p["id"] for p in passes if p["id"] in (got or {})]
     # "best": best unseen-data backtest P&L first, across every page (the list is paged server-side).
     sort = "best" if q.get("sort") == "best" else None
-    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, "passed" if by_verdict else status, market, limit=per,
-                                offset=page * per, q=search, deployed=deployed, hide_noise=hide_noise, sort=sort,
-                                only_ids=uncleared if status == NOT_CLEARED else None,
-                                skip_ids=uncleared if status == "passed" else None)
-    if got is None:
-        got = _later_verdicts(ctx.cur, ctx.uid, passes + [s for s in rows if s.get("status") in repo.NOISE_STATUSES])
-    _split_not_cleared(counts, passes, got)
+    keep = [p["id"] for p in uncleared if p["status"] in repo.NOISE_STATUSES] if hide_noise else []
+    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, None if status == NOT_CLEARED else status, market,
+                                limit=per, offset=page * per, q=search, deployed=deployed, hide_noise=hide_noise,
+                                sort=sort, only_ids=[p["id"] for p in uncleared] if status == NOT_CLEARED else None,
+                                skip_ids=[p["id"] for p in uncleared if p["status"] == status] or None,
+                                **({"keep_ids": keep} if keep else {}))
     # The seeded example's strategies are out of the counts but still listed (marked "example").
     ex = counts.get("examples") or {}
     shown_ex = ex.get(status, 0) if status else sum(n for s, n in ex.items() if s not in repo.NOISE_STATUSES)
@@ -158,19 +159,21 @@ def _attach_verdicts(cards: List[Dict], got: Dict[int, Tuple[str, Dict]]) -> Non
 NOT_CLEARED = "not_cleared"
 
 
-def _split_not_cleared(counts: Dict, passes: List[Dict], got: Dict[int, Tuple[str, Dict]]) -> None:
-    """Move the passes `got` has a verdict for out of counts' "passed" and into NOT_CLEARED, the seeded
-    example's under "examples" as count_strategies keeps them, so "Passed (3)" over rows stamped Missed
-    final test and Held back reads "Passed (1)" and "Not cleared (2)". The total is unchanged."""
+def _split_not_cleared(counts: Dict, judged: List[Dict], got: Dict[int, Tuple[str, Dict]]) -> None:
+    """Move the strategies `got` has a verdict for out of their stored status's count and into
+    NOT_CLEARED, the seeded example's under "examples" as count_strategies keeps them, so "Passed (3)"
+    over rows stamped Missed final test and Held back reads "Passed (1)" and "Not cleared (2)", and a
+    probation strategy held back after passing on paper leaves "Void" for "Not cleared" too. The total
+    is unchanged."""
     ex = counts.setdefault("examples", {})
-    for p in passes:
+    for p in judged:
         if p["id"] not in got:
             continue
         into = ex if p.get("direction") == repo.DEMO_DIRECTION else counts
-        into["passed"] = into.get("passed", 0) - 1
+        into[p["status"]] = into.get(p["status"], 0) - 1
         into[NOT_CLEARED] = into.get(NOT_CLEARED, 0) + 1
-    if not ex.get("passed"):
-        ex.pop("passed", None)
+    for k in [k for k, n in ex.items() if not n]:
+        ex.pop(k)
 
 
 def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:

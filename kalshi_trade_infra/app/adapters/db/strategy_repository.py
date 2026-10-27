@@ -107,15 +107,23 @@ def list_strategies(
     cur, user_id: int, direction: Optional[str] = None, status: Optional[str] = None, market: Optional[str] = None,
     run_id: Optional[int] = None, limit: int = 500, offset: int = 0, q: Optional[str] = None, deployed: bool = False,
     hide_noise: bool = False, sort: Optional[str] = None, only_ids: Optional[List[int]] = None,
-    skip_ids: Optional[List[int]] = None,
+    skip_ids: Optional[List[int]] = None, keep_ids: Optional[List[int]] = None,
 ) -> List[Dict]:
     """The user's strategies, filtered as count_strategies counts them. `sort` "best" orders by the
     unseen-data (out-of-sample) backtest P&L, best first; otherwise newest first, rejected last.
     `only_ids` / `skip_ids` narrow it to, or leave out, those strategies (the list's passes a later check
-    left uncleared, from passed_strategies); an empty `only_ids` lists nothing."""
+    left uncleared, from passed_strategies); an empty `only_ids` lists nothing. `keep_ids` lists those
+    void or rejected strategies in the `hide_noise` view anyway (a probation strategy held back after
+    passing on paper, which the list counts as not cleared, not as void)."""
     if only_ids is not None and not only_ids:
         return []
-    where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise)
+    keep = hide_noise and not status and keep_ids
+    where, fparams = _strategy_filter_sql(direction, status, market, run_id, q, deployed, hide_noise and not keep)
+    if keep:
+        where += " AND (s.status NOT IN (%s) OR s.id IN (%s))" % (
+            ",".join(["%s"] * len(NOISE_STATUSES)), ",".join(["%s"] * len(keep_ids)))
+        fparams.extend(NOISE_STATUSES)
+        fparams.extend(int(i) for i in keep_ids)
     for ids, op in ((only_ids, "IN"), (skip_ids, "NOT IN")):
         if ids:
             where += " AND s.id %s (%s)" % (op, ",".join(["%s"] * len(ids)))
@@ -171,15 +179,25 @@ def count_strategies(
 
 def passed_strategies(
     cur, user_id: int, direction: Optional[str] = None, market: Optional[str] = None,
-    q: Optional[str] = None, deployed: bool = False,
+    q: Optional[str] = None, deployed: bool = False, paper_passed: Optional[str] = None,
 ) -> List[Dict]:
     """Every passed strategy count_strategies counts under the same filters, with only what a later
-    verdict is judged on (id, status, market, direction, spec, experiment_id): the list's chips count
-    the passes a later check left uncleared across every page, not the 50 shown. One read through
-    idx_strat_user (user_id, status)."""
-    where, fparams = _strategy_filter_sql(direction, "passed", market, None, q, deployed)
-    cur.execute("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id FROM app_strategies s" + where,
-                [user_id] + fparams)
+    verdict is judged on (id, status, market, direction, spec, experiment_id): the list's
+    chips count the passes a later check left uncleared across every page, not the 50 shown. One read
+    through idx_strat_user (user_id, status).
+    `paper_passed` (the gatekeeper's FORWARD_VALIDATED value) also reads the void and rejected strategies
+    whose experiment has a paper result of that classification (a probation strategy that passed on
+    paper, which the diversification check may then have held back): still one read, the paper row
+    probed through idx_res_exp."""
+    where, fparams = _strategy_filter_sql(direction, None if paper_passed else "passed", market, None, q, deployed)
+    if paper_passed:
+        noise = ",".join(["%s"] * len(NOISE_STATUSES))
+        where += (" AND s.status IN ('passed',%s) AND (s.status='passed' OR EXISTS (SELECT 1 FROM app_experiment_results x"
+                  " WHERE x.experiment_id=s.experiment_id AND x.phase='paper' AND x.classification=%%s))" % noise)
+        fparams.extend(NOISE_STATUSES)
+        fparams.append(paper_passed)
+    cur.execute("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id FROM app_strategies s"
+                + where, [user_id] + fparams)
     return [_strategy_row(r) for r in cur.fetchall()]
 
 

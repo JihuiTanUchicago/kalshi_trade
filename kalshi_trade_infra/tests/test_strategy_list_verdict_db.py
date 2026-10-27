@@ -27,13 +27,14 @@ def conn():
 
 
 class _Counting:
-    """A cursor that counts the statements that read app_experiment_results."""
+    """A cursor that counts the reads of the experiments' later rows (research_repository.later_results).
+    The passes' own read only probes a void or rejected strategy's paper row, through idx_res_exp."""
 
     def __init__(self, cur):
         self.cur, self.later = cur, 0
 
     def execute(self, sql, args=None):
-        self.later += "app_experiment_results" in sql
+        self.later += "LEFT JOIN app_experiment_results" in sql
         return self.cur.execute(sql, args)
 
     def __getattr__(self, name):
@@ -98,12 +99,16 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
         by_id.update({c["id"]: c.get("verdict") for c in listed["strategies"]})
         shown[status] = ({c["id"] for c in listed["strategies"]}, listed["matched"])
         assert counting.later == 1  # every pass's and every listed strategy's later rows in one read
-    # The chips count what the rows stamp, across every page: 5 stored passes, 2 cleared, 3 not.
+    # The chips count what the rows stamp, across every page: 5 stored passes, 2 cleared, 3 not; and of 3
+    # stored void, the probation strategy held back after passing on paper is not cleared either (it is
+    # stamped Held back, so it counted under Void beside rows that never passed anything). Void 3 -> 2,
+    # Not cleared 3 -> 4, and the Kept view lists it (5 -> 6). The total is unchanged.
     assert {k: listed["counts"].get(k) for k in ("passed", "not_cleared", "failed", "total")} == {
-        "passed": 2, "not_cleared": 3, "failed": 3, "total": 8}
+        "passed": 2, "not_cleared": 4, "failed": 2, "total": 8}
     assert shown["passed"] == ({sid["true pass"], sid["awaiting holdout"]}, 2)
-    assert shown["not_cleared"] == ({sid["missed"], sid["held"], sid["legacy held"]}, 3)
-    assert shown[""][1] == 5 and shown["failed"][1] == 3
+    assert shown["not_cleared"] == ({sid["missed"], sid["held"], sid["legacy held"], sid["paper held"]}, 4)
+    assert shown["failed"] == ({sid["paper missed"], sid["void"]}, 2)
+    assert shown[""][1] == 6 and sid["paper held"] in shown[""][0]
     assert {k: by_id[v] for k, v in sid.items()} == {
         "true pass": None, "missed": "missed_final", "held": "held_back", "legacy held": "held_back",
         "awaiting holdout": None, "paper held": "held_back", "paper missed": None, "void": None}
