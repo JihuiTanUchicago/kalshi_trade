@@ -120,6 +120,26 @@ test('Meridian: the research form\'s Options are one column, so the market picke
   assert.equal(decl(all, '.research-compose .dispatch-opts-body > .dispatch-tune', 'grid-row'), 'auto');
 });
 
+test('Tau: with the markets rail open, every Deploy action fits on the board and nothing scrolls the page', () => {
+  // Walked 2026-10-27 at 1024-1440, rail open and closed: at 1100-1280 with the rail open the ~935px board
+  // had 745-920px, so Resume and Remove sat past the sheet's edge ("RESUM", "REMOV"), and their hidden
+  // labels (position: absolute, outside the sheet's clip) scrolled the whole page sideways at 1100.
+  const all = rules(read('app.css'));
+  assert.match(read('app.js'), /const deploymentTable = [^\n]*<div class="sheet dep-sheet"><table class="stack t-dep">/);
+  assert.equal(decl(all, '.dep-sheet', 'container'), 'deployments / inline-size');
+  assert.equal(decl(all, '.dep-sheet', 'position'), 'relative');  // the sheet clips its hidden labels
+  const NARROW = '@container deployments (max-width: 1040px)';
+  // Desktop only: the phone stacks the rows, and its sparkline and cells keep their own sizes.
+  const narrow = all.filter((r) => r.media === NARROW);
+  assert.ok(narrow.length && /@media \(min-width: 761px\) \{\s*@container deployments/.test(read('app.css').replace(/\/\*[\s\S]*?\*\//g, '')));
+  for (const sel of ['.t-dep td[data-lab="Backtest estimate"]', '.t-dep td[data-lab="Since"]', '.t-dep th']) {
+    assert.equal(decl(all, sel, 'white-space', NARROW), 'normal', sel);
+  }
+  assert.ok(parseFloat(decl(all, '.t-dep th', 'padding-left', NARROW)) < 12);
+  assert.ok(parseFloat(decl(all, '.t-dep td.name', 'min-width', NARROW)) >= 10);  // the title still reads
+  assert.ok(parseFloat(decl(all, '.t-dep .spark', 'width', NARROW)) < parseFloat(decl(all, '.spark', 'width')));
+});
+
 test('Tau: the dashboard paper line keeps its all-time figure whole, and a clamped session title has a tooltip', () => {
   const js = read('app.js');
   assert.match(js, /<span class="amt">\$\{usd\(p\.realized_pnl, true\)\}<\/span> realized all time/);

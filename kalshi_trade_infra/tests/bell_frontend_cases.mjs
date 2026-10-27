@@ -3,6 +3,7 @@
 //   text, and moves focus into the list when it opens;
 // - the autopilot status read brings new notices to the bell within a minute, without a reload;
 // - a list that didn't load still opens and says so, with Try again, and the next read fills it;
+// - marking the list read that didn't save puts the dot back, and only the next open tries once more;
 // - a bell link to a post opens the feed at that post with its replies, shows the feed from that post
 //   when it is older than the newest page, and says so when the post is gone.
 import assert from 'node:assert/strict';
@@ -109,6 +110,43 @@ export function bellCases({name, frontend}) {
     g.shiftClock(61e3); [...g.intervals.values()].forEach(tick => tick()); await settle();
     assert.equal(g.root.querySelector('.bell-dot').hidden, false);
     assert.equal(g.root.querySelector('.bell-trig').getAttribute('aria-label'), 'Notifications, 1 unread');
+  });
+
+  test(`${name}: marking the list read that didn't save puts the dot back, and the next open tries once more`, async () => {
+    // The dot cleared on screen and the items came back unread on the next page: the bell said nothing was new.
+    const notes = () => response(structuredClone({unread: 2, items: [
+      {id: 8, kind: 'paused', body: '“Edge” was paused automatically.', link: '/strategies/7', created_at: ago(30e3), read: false, more: 0},
+      {id: 7, kind: 'deploy', body: 'Edge made a trade.', link: '/deploy', created_at: ago(90e3), read: false, more: 0},
+      {id: 2, kind: 'share', body: 'An old notice.', link: null, created_at: ago(2 * 86400e3), read: true, more: 0}]}));
+    let saves = true;
+    const marks = (f) => f.requests.filter(({path}) => path === '/api/notifications/read').length;
+    const f = dashboard(notes, (path) => path === '/api/notifications/read'
+      ? (saves ? response({ok: true}) : response({error: 'Something went wrong on our side.'}, 500)) : undefined);
+    f.location.pathname = '/';
+    await f.render(); await settle();
+    const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig'), dot = wrap.querySelector('.bell-dot');
+    const open = async () => { await trig.onclick({stopPropagation() {}}); await settle(); };
+    assert.equal(dot.hidden, false);
+    saves = false;
+    await open();
+    assert.equal(marks(f), 1);
+    assert.equal(dot.hidden, false);  // back, as the server still has them
+    assert.equal(trig.getAttribute('aria-label'), 'Notifications, 2 unread');
+    await open();  // closes; nothing tries again on its own
+    assert.equal(dot.hidden, false);
+    f.shiftClock(61e3); [...f.intervals.values()].forEach((tick) => tick()); await settle();  // the minute's read
+    assert.equal(marks(f), 1);
+    assert.equal(dot.hidden, false);
+
+    // The next open shows them as new again and tries once more; this time it saves.
+    saves = true;
+    await open();
+    assert.equal(wrap.querySelectorAll('.notif.unread').length, 2);
+    assert.equal(marks(f), 2);
+    assert.equal(dot.hidden, true); assert.equal(trig.getAttribute('aria-label'), 'Notifications');
+    await open(); await open();  // nothing unread: no mark to send
+    assert.equal(marks(f), 2);
+    assert.equal(dot.hidden, true);
   });
 
   const community = (posts, older) => {
