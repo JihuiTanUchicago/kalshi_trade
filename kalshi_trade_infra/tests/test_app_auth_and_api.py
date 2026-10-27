@@ -1189,9 +1189,10 @@ def test_google_sign_in_returns_to_the_page_the_visitor_came_from(monkeypatch):
     assert callback({})[0] == ("redirect", "/")
 
 
-def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypatch):
+def test_since_your_last_visit_reads_the_cookies_time_clamped_to_the_cookies_life(monkeypatch):
     # The page keeps the last visit in a cookie and sends it as ?since= (epoch seconds). Missing or
-    # unreadable: the last 24 hours, marked first. Older than a week: a week. In the future: now.
+    # unreadable: the last 24 hours, marked first. A month away is a month (it read as the last 7 days
+    # under "Since your last visit"); older than the cookie can live (90 days): 90 days. In the future: now.
     from datetime import datetime, timedelta, timezone
     now = datetime(2026, 10, 25, 12, 0)
     monkeypatch.setattr(server.repo, "now_utc", lambda: now)
@@ -1199,7 +1200,8 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypa
     assert server._visit_since(None) == (now - timedelta(hours=24), True)
     assert server._visit_since("yesterday") == (now - timedelta(hours=24), True)
     assert server._visit_since(epoch(now - timedelta(hours=9))) == (now - timedelta(hours=9), False)
-    assert server._visit_since(epoch(now - timedelta(days=30))) == (now - timedelta(days=7), False)
+    assert server._visit_since(epoch(now - timedelta(days=30))) == (now - timedelta(days=30), False)
+    assert server._visit_since(epoch(now - timedelta(days=120))) == (now - timedelta(days=90), False)
     assert server._visit_since(epoch(now + timedelta(days=1))) == (now, False)
     # The strip's block: the books' since-visit sums as read (never added up), passes, autopilot and runs.
     monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: {"autopilot": {"deploy": 1}, "runs": {"failed": 1}, "own_sessions": True})

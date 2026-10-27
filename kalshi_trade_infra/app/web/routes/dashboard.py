@@ -116,7 +116,10 @@ def dashboard(ctx: Ctx):
     }, ctx.query.get("v"))
 
 
-SINCE_MAX = timedelta(days=7)    # an older last visit reads as the last 7 days
+# As old as the visit cookie can be (the page's max-age, 90 days). It was 7 days: back after a month,
+# the strip said "Since your last visit Oct 20" and showed one week, none of the strategies the
+# autopilot had put on paper in the three weeks before.
+SINCE_MAX = timedelta(days=90)
 
 
 SINCE_FIRST = timedelta(hours=24)  # no last visit known (first visit on this device): the last 24h
@@ -124,7 +127,7 @@ SINCE_FIRST = timedelta(hours=24)  # no last visit known (first visit on this de
 
 def _visit_since(raw) -> Tuple[datetime, bool]:
     """The start of "since your last visit" from the dashboard's ?since= (epoch seconds, kept in a
-    cookie by the page), clamped to the last 7 days. Missing or unreadable: the last 24 hours, and
+    cookie by the page), clamped to the last 90 days. Missing or unreadable: the last 24 hours, and
     `first` is True so the strip says "Last 24 hours" instead."""
     now = repo.now_utc()
     try:

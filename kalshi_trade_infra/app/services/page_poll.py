@@ -19,7 +19,7 @@ What moves without a write rides every "same" answer, fresh:
   - each deployment's unrealized P&L (the dashboard sums those marks per deployment).
   - the data ages (`freshness`: seconds since each feed and the engine last wrote), which move every second.
   - the start of the dashboard's "since your last visit" window (`since.at`), which is now less 24 hours
-    on a first visit and never earlier than 7 days ago: what the window holds is in the version, its
+    on a first visit and never earlier than 90 days ago: what the window holds is in the version, its
     moving start is not.
 The page puts them back over its kept answer by position and deployment id (pollAnswer in both bundles);
 the kept answer with them put back is the full answer a fresh poll gets.
