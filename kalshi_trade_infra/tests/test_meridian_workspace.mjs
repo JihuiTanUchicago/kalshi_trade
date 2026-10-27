@@ -18,6 +18,7 @@ import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
+import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
@@ -245,6 +246,7 @@ strategyListCases({name: 'Meridian', frontend, detailStrategy});
 explorePageCases({name: 'Meridian', frontend});
 researchFormCases({name: 'Meridian', frontend});
 phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
+exploreSpotListCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -5411,6 +5413,7 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   const reload = (extra) => strip({since: {...since, spent: {...since.spent, card_charged: true, ...extra}}});
   assert.match(await reload({bought: 20, charges: 1, reloads: 1}), /<b>\$27\.45<\/b> of credits spent; auto-reload charged your card once for <b>\$20\.00<\/b> of credits<span class="since-sub"> ·\sreal money/);
   assert.match(await reload({bought: 60, charges: 3, reloads: 3}), /auto-reload charged your card 3 times for <b>\$60\.00<\/b> of credits/);
+  assert.match(await reload({bought: 40, charges: 2, reloads: 2}), /auto-reload charged your card twice for <b>\$40\.00<\/b> of credits/);  // "twice", not "2 times"
   assert.match(await reload({bought: 45, charges: 2, reloads: 1}), /spent; 2 card charges \(1 by auto-reload\) bought <b>\$45\.00<\/b> of credits/);
   assert.match(await reload({bought: 25, charges: 1, reloads: 0}), /spent; you bought <b>\$25\.00<\/b> of credits/);
   assert.doesNotMatch(text, /auto-reload charged|you bought/);

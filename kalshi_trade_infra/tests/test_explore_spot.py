@@ -1,5 +1,6 @@
 """A Bitcoin contract's market page: /api/explore/spot says where stored Bitcoin spot is against the
-contract's strike (fresh, stale or missing), which side it is on, and the time left, from the DB only."""
+contract's strike (fresh, stale or missing), which side it is on, and the time left, from the DB only;
+Explore's list and hot rail say the same distance per row from one shared spot read."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -196,3 +197,107 @@ def test_a_closed_contract_has_no_time_left(monkeypatch):
     _stub(monkeypatch, spot={"at": _now(), "price": 99000.0},
           record={"floor_strike": 98000.0, "strike_type": "greater", "close_time": _now() - timedelta(minutes=5)})
     assert _get("KXBTCD-26OCT2717-T98000")["secs_left"] == 0
+
+
+# Explore's list and the hot rail: how far stored spot is from each Bitcoin contract's strike, from one
+# shared spot read and the tickers alone (no per-row read, no exchange or Kalshi call).
+def _feed(*tickers, hot=False):
+    return {"at": "2026-10-27T10:55:00Z", "total": len(tickers), "shown": len(tickers),
+            "markets": [{"t": t, "s": t.split("-")[0], "v24": str(100 - i), **({"h": [0.4, 0.5]} if hot else {})}
+                        for i, t in enumerate(tickers)]}
+
+
+def _list(monkeypatch, feed, **query):
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
+    return server.explore_list(server.Ctx(FakeConn(), {"id": 1}, (), query, {}, None))
+
+
+LADDER = ("KXBTCD-26OCT2717-T112999.99", "KXBTCD-26OCT2717-T114000", "KXBTC-26OCT2717-B113250", "KXBTC-26OCT2717-B113750",
+          "KXBTC-26OCT2717-B114250", "KXBTC-26OCT2717-T120000", "KXBTC15M-26OCT262345-45", "KXNBAGAME-26OCT26MINDEN-MIN")
+
+
+def test_the_list_says_how_far_fresh_spot_is_from_each_strike_from_one_read(monkeypatch):
+    reads = []
+    _stub(monkeypatch, spot={"at": _now() - timedelta(seconds=4), "price": 113420.0}, reads=reads)
+    d = _list(monkeypatch, _feed(*LADDER))
+    vs = {m["t"]: m.get("vs") for m in d["markets"]}
+    assert vs["KXBTCD-26OCT2717-T112999.99"] == {"side": "above", "diff": 420.01, "pct": 0.372}
+    assert vs["KXBTCD-26OCT2717-T114000"] == {"side": "below", "diff": -580.0, "pct": -0.509}
+    # The ladder's own tickers give its $500 width: B113250 is $113,000 to $113,499.99, spot sits in it.
+    assert vs["KXBTC-26OCT2717-B113250"] == {"side": "inside", "diff": 0.0, "pct": 0.0}
+    assert vs["KXBTC-26OCT2717-B113750"] == {"side": "below", "diff": -80.0, "pct": -0.07}  # under its $113,500 floor
+    assert vs["KXBTC-26OCT2717-B114250"]["diff"] == -580.0
+    assert vs["KXBTC-26OCT2717-T120000"]["side"] == "below"   # an end contract: the distance to its line
+    assert vs["KXBTC15M-26OCT262345-45"] is None, "a 15-minute window's start price isn't in its ticker"
+    assert vs["KXNBAGAME-26OCT26MINDEN-MIN"] is None
+    assert d["spot"]["price"] == 113420.0 and d["spot"]["stale"] is False and 4 <= d["spot"]["age_s"] <= 6
+    assert [r[0] for r in reads] == ["spot"], "one spot read for the page, never a strike read per row"
+    _list(monkeypatch, _feed(*LADDER), page="0")
+    assert [r[0] for r in reads] == ["spot"], "a second list inside SPOT_TTL_S shares it"
+    assert [m["t"] for m in d["markets"]] == list(LADDER), "the list keeps its order"
+
+
+@pytest.mark.parametrize("state", ["stale", "missing"])
+def test_a_stale_or_missing_spot_gives_no_distances_and_says_its_age(monkeypatch, state):
+    _stub(monkeypatch, spot={"at": _now() - timedelta(minutes=7), "price": 112500.0} if state == "stale" else None)
+    d = _list(monkeypatch, _feed(*LADDER))
+    assert all("vs" not in m for m in d["markets"])
+    if state == "stale":
+        assert d["spot"]["stale"] is True and 420 <= d["spot"]["age_s"] <= 422
+    else:
+        assert d["spot"] is None
+
+
+def test_a_failed_spot_read_gives_no_distances_and_no_raw_error(monkeypatch, capsys):
+    _stub(monkeypatch, spot=RuntimeError("(2013, 'Lost connection to MySQL server during query')"))
+    d = _list(monkeypatch, _feed(*LADDER))
+    assert d["spot"] == {"failed": True} and all("vs" not in m for m in d["markets"])
+    assert "MySQL" not in repr(d) and "Lost connection" in capsys.readouterr().out
+    assert d["markets"][0]["ct"] == "2026-10-27T21:00:00Z", "the rest of the list is untouched"
+
+
+def test_a_list_without_bitcoin_strikes_reads_nothing_and_is_untouched(monkeypatch):
+    reads = []
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0}, reads=reads)
+    d = _list(monkeypatch, _feed("KXNBAGAME-26OCT26MINDEN-MIN", "KXETHD-26OCT2717-T4000", "KXBTC15M-26OCT262345-45"))
+    assert "spot" not in d and all("vs" not in m for m in d["markets"]) and reads == []
+    assert set(d["markets"][0]) == {"t", "s", "v24", "ct"}
+    # A search that leaves only other markets reads nothing either, though the feed holds Bitcoin.
+    _list(monkeypatch, _feed("KXNBAGAME-26OCT26MINDEN-MIN", *LADDER[:2]), q="minden")
+    assert reads == []
+
+
+def test_a_bucket_alone_in_the_feed_gets_no_distance_and_a_gap_in_its_ladder_doesnt_widen_it(monkeypatch):
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0})
+    assert "vs" not in _list(monkeypatch, _feed("KXBTC-26OCT2717-B113250"))["markets"][0], "its edges aren't known"
+    # B113750 dropped out of the feed: the gaps are $1,000 and $500, so the ladder is still $500 wide.
+    d = _list(monkeypatch, _feed("KXBTC-26OCT2717-B113250", "KXBTC-26OCT2717-B114250", "KXBTC-26OCT2717-B114750"))
+    assert d["markets"][1]["vs"] == {"side": "below", "diff": -580.0, "pct": -0.509}
+    # A search for one bucket still measures it against its ladder's width from the whole feed.
+    d = _list(monkeypatch, _feed("KXBTC-26OCT2717-B113250", "KXBTC-26OCT2717-B113750"), q="B113250")
+    assert [m["vs"]["side"] for m in d["markets"]] == ["inside"]
+
+
+def test_bucket_width_and_edges():
+    assert btc_spot.bucket_width([113250, 113750, 114250]) == 500.0
+    assert btc_spot.bucket_width([113250, 114250, 114750, 114750]) == 500.0
+    assert btc_spot.bucket_width([113250]) is None and btc_spot.bucket_width([]) is None
+    k = btc_spot.contract_strike("KXBTC-26OCT2717-B113250")
+    assert btc_spot.with_bucket_edges(k, 500.0) == {**k, "lo": 113000.0, "hi": 113499.99}
+    assert btc_spot.with_bucket_edges(k, None) is k
+    above = btc_spot.contract_strike("KXBTCD-26OCT2717-T98000")
+    assert btc_spot.with_bucket_edges(above, 500.0) is above
+
+
+def test_the_hot_rail_says_when_each_market_closes_and_how_far_spot_is_from_a_strike(monkeypatch):
+    reads = []
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0}, reads=reads)
+    feed = _feed("KXBTCD-26OCT2717-T112999.99", "KXNBAGAME-26OCT26MINDEN-MIN", "KXHIGHNY-26OCT27-B60", hot=True)
+    feed["markets"].append({"t": "KXBTCD-26OCT2717-T1", "v24": "1"})  # no price trace: not on the rail
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
+    d = server.explore_hot(server.Ctx(FakeConn(), {"id": 1}, (), {}, {}, None))
+    assert [m["t"] for m in d["markets"]] == ["KXBTCD-26OCT2717-T112999.99", "KXNBAGAME-26OCT26MINDEN-MIN", "KXHIGHNY-26OCT27-B60"]
+    assert [m["ct"] for m in d["markets"]] == ["2026-10-27T21:00:00Z", None, None]
+    assert d["markets"][0]["vs"]["diff"] == 420.01 and "vs" not in d["markets"][1] and d["spot"]["price"] == 113420.0
+    assert d["markets"][0]["h"] == [0.4, 0.5] and "ct" not in feed["markets"][0], "the cached feed itself is never written to"
+    assert [r[0] for r in reads] == ["spot"]

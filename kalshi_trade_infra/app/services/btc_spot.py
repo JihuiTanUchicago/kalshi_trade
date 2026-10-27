@@ -1,19 +1,21 @@
-"""Where Bitcoin is against a Kalshi Bitcoin contract's strike, for its market page.
+"""Where Bitcoin is against a Kalshi Bitcoin contract's strike, for its market page and Explore's rows.
 
 A Bitcoin contract is one of three ladders: KXBTCD above/below a strike (hourly, and the 5pm ET close),
 KXBTC range buckets (with an open-ended contract at each end), and KXBTC15M "up in the next 15
 minutes", whose strike is the price the window opened at. The strike comes from Kalshi's own record of
 the contract when the collector stored one (floor_strike / cap_strike / strike_type), else from the
 ticker: KXBTCD-26OCT2717-T113499.99 is above $113,499.99 and KXBTC-26OCT2717-B113250 is the bucket
-centred on $113,250 (the ticker gives no bucket width, nor which way a KXBTC T contract points).
+centred on $113,250 (one ticker gives no bucket width, though its ladder's tickers do, nor which way a
+KXBTC T contract points).
 A 15-minute ticker carries no strike at all.
 
 Pure: no I/O, no app imports.
 """
 from __future__ import annotations
 
+import math
 import re
-from typing import Dict, Optional
+from typing import Dict, Iterable, Optional
 
 BTC_SERIES = ("KXBTC15M", "KXBTCD", "KXBTC")
 SPOT_PRODUCT = "BTC-USD"
@@ -56,6 +58,24 @@ def contract_strike(ticker: str, record: Optional[Dict] = None) -> Optional[Dict
         return {"kind": "range", "value": value, "lo": None, "hi": None, "inclusive": True, "from": "ticker"}
     return {"kind": "above" if series == "KXBTCD" else "line", "value": value, "lo": None, "hi": None,
             "inclusive": False, "from": "ticker"}
+
+
+def bucket_width(centres: Iterable[float]) -> Optional[float]:
+    """A KXBTC ladder's bucket width from the centres its tickers carry (B113250, B113750, ...): the
+    largest step every gap between two of them is a whole number of, so a bucket missing between two
+    others doesn't double it. None from fewer than two."""
+    cents = sorted({round(c * 100) for c in centres})
+    gaps = [b - a for a, b in zip(cents, cents[1:])]
+    return math.gcd(*gaps) / 100 if gaps else None
+
+
+def with_bucket_edges(strike: Dict, width: Optional[float]) -> Dict:
+    """A bucket read from its ticker, with its edges from the ladder's width: B113250 in a $500 ladder
+    is $113,000 to $113,499.99. Any other strike, or no width, comes back as it was."""
+    if strike["kind"] != "range" or strike["lo"] is not None or not width:
+        return strike
+    lo = round(strike["value"] - width / 2, 2)
+    return {**strike, "lo": lo, "hi": round(lo + width - 0.01, 2)}
 
 
 def against_strike(price: float, strike: Dict) -> Dict:

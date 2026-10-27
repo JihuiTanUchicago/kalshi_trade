@@ -2610,6 +2610,19 @@
     };
   }
 
+  // Explore's rows and the hot rail say how far stored Bitcoin is from a contract's strike (the server's `vs`,
+  // from one shared spot read): "+$420 · 0.4%" is spot $420 (0.4%) above it, a bucket's is to its nearer
+  // edge, and a bucket spot sits in reads "in range". Without a fresh spot no row carries one, and the line
+  // above the list says why (spotListNote).
+  const vsText = (v) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? 'at the strike'
+    : `${+v.diff < 0 ? '−' : '+'}$${num(Math.round(Math.abs(+v.diff)))} · ${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
+  const vsLab = (t) => (/^KXBTC-.+-B[\d.]+$/.test(t) ? 'Spot vs bucket' : 'Spot vs strike');
+  const vsHtml = (m) => (m.vs ? `<span class="xspot">${vsLab(m.t)} <b>${vsText(m.vs)}</b></span>` : '');
+  const spotListNote = (s) => (s === undefined ? '' : s && s.failed ? 'Bitcoin’s latest stored price didn’t load, so distances to the strike are left out.'
+    : !s ? 'No Bitcoin price stored in the last day, so distances to the strike are left out.'
+    : s.stale ? `Bitcoin’s spot feed is ${spotOld(+s.age_s || 0)} old, so distances to the strike are left out until it catches up.`
+    : `Distances to the strike are from Bitcoin at ${btcUsd(s.price)} (Coinbase, ${spotAge(+s.age_s || 0)}).`);
+
   // Explore's empty and failed states: what happened, and a way to ask again. Each sits directly under the
   // page's h1, so its heading is an h2 (styled as the other empty states' h3).
   const EXPLORE_WAIT = 'The market list refreshes about once a minute and hasn’t come in yet. Try again shortly.';
@@ -2659,15 +2672,15 @@
         const conditionDisplay = compactCondition(separateCondition);
         const titleParts = title.split(' · ');
         const eventDisplay = titleParts.length > 1 ? `<strong>${esc(titleParts[0])}</strong>` : esc(title);
-        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc(label === m.t ? label : label + ' ·\u00a0' + m.t)}" title="${esc(m.t)}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || m.t)}</strong>`}<span class="market-ref">${esc(m.t)}</span>${m.ct ? `<span class="market-close">Closes ${esc(settleAt(m.ct))}</span>` : ''}</a>`;
+        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc(label === m.t ? label : label + ' ·\u00a0' + m.t)}" title="${esc(m.t)}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || m.t)}</strong>`}<span class="market-ref">${esc(m.t)}</span>${m.ct ? `<span class="market-close">Closes ${esc(settleAt(m.ct))}</span>` : ''}</a>${vsHtml(m)}`;
         return `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(' ·\u00a0'))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
           <td class="num yes-price" data-lab="YES Price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="YES Bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="YES Ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
       }).join('');
-      const pages = Math.max(1, Math.ceil(d.matched / d.per));
-      const sortHead = (key, label, criterion = label, rowspan = 1) => `<th scope="col"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} class="num${key === 'last' ? ' quote-head' : ''}" aria-sort="${f.sort === key ? 'descending' : 'none'}"><button type="button" data-sort="${key}" title="Sort by ${criterion.toLowerCase()}" aria-label="Sort by ${criterion.toLowerCase()}">${label}${f.sort === key ? ' <span aria-hidden="true">↓</span>' : ''}</button></th>`;
+      const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot);
+      const sortHead =(key, label, criterion = label, rowspan = 1) => `<th scope="col"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} class="num${key === 'last' ? ' quote-head' : ''}" aria-sort="${f.sort === key ? 'descending' : 'none'}"><button type="button" data-sort="${key}" title="Sort by ${criterion.toLowerCase()}" aria-label="Sort by ${criterion.toLowerCase()}">${label}${f.sort === key ? ' <span aria-hidden="true">↓</span>' : ''}</button></th>`;
       const sortFocused = body.querySelector('[data-sort]:focus')?.dataset.sort;
-      body.innerHTML = `<div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num" aria-label="Link"></th></tr><tr>${sortHead('last', 'Price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody>${rows}</tbody></table></div>
+      body.innerHTML = `${note ? `<p class="hint xspot-note${d.spot && !d.spot.stale && !d.spot.failed ? '' : ' behind'}">${esc(note)}</p>` : ''}<div class="sheet"><table class="t-explore"><colgroup><col style="width:33.3333333333%"><col style="width:13.8888888889%"></colgroup><colgroup><col style="width:9.7222222222%"><col style="width:7.6388888889%"><col style="width:7.6388888889%"></colgroup><colgroup><col style="width:12.5%"><col style="width:12.5%"><col style="width:2.7777777778%"></colgroup><thead><tr><th scope="col" rowspan="2" class="contract-head">Market / contract</th><th scope="col" rowspan="2" title="Additional context from the market title">Context</th><th scope="colgroup" colspan="3" class="price-group">YES</th>${sortHead('v24', '24h volume', '24h volume', 2)}${sortHead('oi', 'Open interest', 'Open interest', 2)}<th scope="col" rowspan="2" class="num" aria-label="Link"></th></tr><tr>${sortHead('last', 'Price')}<th scope="col" class="num quote-head">Bid</th><th scope="col" class="num quote-head quote-head-ask">Ask</th></tr></thead><tbody>${rows}</tbody></table></div>
         ${pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : ''}`;
       body.querySelectorAll('[data-pg]').forEach((b) => b.onclick = () => { f.page = +b.dataset.pg; sync(); window.scrollTo({ top: 0, behavior: smooth() }); load(); });
       body.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { f.sort = b.dataset.sort; f.page = 0; sync(); load(); });
@@ -2878,7 +2891,7 @@
     // A card charged while they were away (the server's charges, reloads of them auto-reload's): the time
     // away's real-money moment, which only Billing's statement told. Credits bought, never netted with spent.
     const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
-    const bought = !charges ? '' : `; ${reloads === charges ? `auto-reload charged your card ${charges === 1 ? 'once' : num(charges) + ' times'} for`
+    const bought = !charges ? '' : `; ${reloads === charges ? `auto-reload charged your card ${charges === 1 ? 'once' : charges === 2 ? 'twice' : num(charges) + ' times'} for`
       : reloads ? `${plural(charges, 'card charge', 'card charges')} (${num(reloads)} by auto-reload) bought` : 'you bought'} <b>${usd(spent.bought)}</b> of credits`;
     const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub"> \u00b7\u00a0${paid} \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
@@ -3825,13 +3838,18 @@
     const pts = h.map((v, i) => `${(i / (h.length - 1) * (W - p * 2) + p).toFixed(1)},${(H - p - (v - lo) / rng * (H - p * 2)).toFixed(1)}`);
     return `<svg class="hot-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
   }
+  // When a hot market closes (`ct`, as Explore's rows say it) and, for a Bitcoin contract, how far spot is
+  // from its strike; a rail with no fresh spot says why above its rows, as the list does.
+  const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? `<span>Closes ${esc(settleAt(m.ct))}</span>` : ''}${vsHtml(m)}</span>` : '');
+  const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot))}</p>` : '');
   function hotRowHtml(m) {
     const compactName = contractShort(m.t) || (m.ti || '').trim() || m.t;
+    const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m.t)} ${vsText(m.vs)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
-    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc(mktLabel(m))} ·\u00a0${esc(m.t)} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours ·\u00a0Opens Kalshi in a new tab">
+    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc(mktLabel(m))} ·\u00a0${esc(m.t)} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours${when} ·\u00a0Opens Kalshi in a new tab">
       <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span>${esc(compactCondition(m.su))}</span>` : ''}</span><span class="hot-price" title="Midpoint quote"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
-      <span class="hot-foot"><span class="hot-meta"><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)} ·\u00a024h</span></span><span class="vh">Opens Kalshi in a new tab</span></span></a>`;
+      <span class="hot-foot"><span class="hot-meta"><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)} ·\u00a024h</span></span><span class="vh">Opens Kalshi in a new tab</span></span>${hotWhen(m)}</a>`;
   }
   function renderHotRail() {
     const rail = document.getElementById('hotrail'); if (!rail) return;
@@ -3841,7 +3859,7 @@
     const snapshotAge = Number.isFinite(snapshotAt) ? Math.max(0, (Date.now() - snapshotAt) / 1000) : null;
     rail.classList.toggle('is-stale', !!d && (snapshotAge == null || snapshotAge > 180));
     const freshness = d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? ' ·\u00a0More than 3 minutes old' : ''}">${snapshotAge == null ? 'Snapshot time unavailable' : `${snapshotAge > 180 ? 'Stale' : 'Snapshot'} ·\u00a0${esc(sinceMin(d.at))}`}</span>` : '';
-    const rows = d && d.markets && d.markets.length ? d.markets.map(hotRowHtml).join('')
+    const rows = d && d.markets && d.markets.length ? hotSpotNote(d) + d.markets.map(hotRowHtml).join('')
       : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying in a minute.' : loading(120)}</div>`;
     const control = root.querySelector('.market-control');
     const toggle = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-controls="hotrail" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}" title="Hot markets"><span class="hot-tab-label">Hot markets</span><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M7.5 4v12"/></svg></button>`;
