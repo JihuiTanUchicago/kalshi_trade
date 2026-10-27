@@ -829,8 +829,9 @@ test('Overview Kalshi cash says when it was read, and keeps Tau\'s realized line
     const f = apDashboard(dashboardData({deployments: [dashboardDeployment('live')], live: {connected: true, balance, balance_at: new Date().toISOString(), open_positions: 2}}), {...apStatus});
     await f.viewDashboard(); await flush();
     const text = f.root.querySelector('.live-summary').textContent;
-    if (balance) assert.match(text, /\+\$17\.00 realized all time by Tau trades ·\u00a0cash read from Kalshi just now/);
+    if (balance) assert.match(text, /Read from Kalshi just now ·\u00a0\+\$17\.00 realized all time by Tau trades/);  // Tau's words (cashAt)
     else assert.match(text, /Couldn’t read your Kalshi balance just now ·\u00a0\+\$17\.00 realized all time by Tau trades/);
+    assert.doesNotMatch(text, /cash read from Kalshi/);
   }
 });
 
