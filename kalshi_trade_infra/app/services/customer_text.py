@@ -135,7 +135,8 @@ def notification_rows(items: List[Dict]) -> List[Dict]:
 
 def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None) -> List[Dict]:
     """The autopilot panel's lines Tau wrote (role system). The user's own lines and the agent's
-    replies are as they were said. A risk or execution change an older line wrote as the setting's
+    replies are as they were said. A once-only line's marker ("[live-ready #12]") is dropped (unmarked).
+    A risk or execution change an older line wrote as the setting's
     key ("max_open_notional=200.0") reads in words, as new lines are written (control_changes).
     The engine's "Paused deployment #N automatically. <why>" reads as the "Last move" line does
     (auto_pause_line), by the strategy's name from ``paused`` ({deployment id: {"title", "mode"}}
@@ -147,8 +148,21 @@ def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None) ->
             dep = auto_paused_id(text)
             if dep is not None:
                 text = auto_pause_line(text, (paused or {}).get(dep))
-            m["content"] = plain_controls(clean(text, CHAT_FALLBACK))
+            m["content"] = plain_controls(clean(unmarked(text), CHAT_FALLBACK))
     return messages
+
+
+# A once-only line (agent.live_ready_notices, auto_paper_probation) leads with a marker that names the
+# strategy's row number, "[live-ready #12]", which repo.chat_contains finds so the line is said once. The
+# stored line keeps it; what a customer reads never does.
+_ONCE_MARKER = re.compile(r"^\[[a-z-]+ #\d+\]\s*")
+
+
+def unmarked(text: Optional[str]) -> Optional[str]:
+    """``text`` without its leading once-only marker ("[live-ready #12] "), else as given."""
+    if not text:
+        return text
+    return _ONCE_MARKER.sub("", str(text), count=1)
 
 
 def auto_paused_ids(messages: List[Dict]) -> List[int]:

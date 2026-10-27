@@ -139,4 +139,19 @@ def test_a_reply_that_calls_paper_live_gets_a_correction(monkeypatch):
     reply = '{"reply":"**Live Trading:** #83 btc15m earning steadily on real money.","actions":[]}'
     agent.run_copilot(Conn(), {"id": 1, "user_id": 7, "kind": "chat"}, model=lambda s, m, on_delta=None: (reply, {"input_tokens": 10, "output_tokens": 5}))
     assert [a[2] for a in saved] == ["agent", "system"]
-    assert saved[1][3] == "Correction: #83 trades paper, not real money. Live deployments right now: none."
+    # The chat line names the deployment by its title, never its row number (the review's context keeps the id).
+    assert saved[1][3] == "Correction: “t” trades paper, not real money. Live deployments right now: none."
+
+
+def test_the_customer_correction_names_titles_and_says_a_live_one_waits_while_live_trading_is_closed(monkeypatch):
+    deps = [dict(_dep(83), title="Fade tails"), dict(_dep(90), title="Fade tails"), dict(_dep(7, mode="live"), title="Daily drift")]
+    monkeypatch.setattr(agent, "_live_switch_open", lambda: False)
+    said = agent.false_live_line("Live: #83 and #90", deps, customer=True)
+    assert said == ("Correction: “Fade tails” trade paper, not real money. Live deployments right now: “Daily drift” "
+                    "(waiting: live trading isn’t open yet).")
+    assert "#" not in said
+    monkeypatch.setattr(agent, "_live_switch_open", lambda: True)
+    assert agent.false_live_line("Live: #83", deps, customer=True).endswith("Live deployments right now: “Daily drift”.")
+    # The review's own fact check keeps the ids it acts on.
+    assert agent.false_live_line("Live: #83", deps) == ("Correction: #83 trades paper, not real money. "
+                                                         "Live deployments right now: #7.")

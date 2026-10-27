@@ -3,6 +3,8 @@ research, but every money/risk value it sets is CLAMPED into a safe envelope, an
 a logged proposal (applied on autopilot, pending otherwise). These tests pin the clamps and the
 proposal/apply discipline so a future change can't quietly let the agent disable a stop, exceed a
 cap, or loosen past a safe maximum."""
+import re
+
 from app.research import agent
 
 
@@ -198,7 +200,9 @@ def test_research_action_skips_a_market_already_running(monkeypatch):
     assert pid is None and rec["runs"] == []            # no duplicate line launched
     assert "already running" in text.lower()
     # The chat line names the market as the app does; the market key stays in the review's context only.
-    assert "already running on Bitcoin up or down in 15 minutes (run #5)" in text and "btc15m" not in text
+    # ...and never the run's row number, which the review's context keeps ("(run #5)").
+    assert "already running on Bitcoin up or down in 15 minutes. I'll hunt" in text and "btc15m" not in text
+    assert "run #" not in text and not re.search(r"\b5\b", text)
 
 
 def test_research_action_skips_a_market_on_cooldown(monkeypatch):
@@ -275,6 +279,18 @@ def test_the_seeded_example_session_puts_no_market_on_cooldown(monkeypatch):
     real = dict(example, id=2, direction=None)
     monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [real, example])
     assert "just researched (run #2" in agent._market_research_recent(None, 1, "btc15m")
+
+
+def test_a_proposed_research_on_a_cooldown_market_is_refused_without_the_runs_number(monkeypatch):
+    _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [
+        {"id": 41, "market": "btc15m", "status": "failed", "finished_at": agent.repo.now_utc()}])
+    text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m", "idea": "Another angle."}, False)
+    assert pid is None
+    assert text == ("I didn't start that — Bitcoin up or down in 15 minutes was just researched and is on a short "
+                    "cooldown. I'll hunt a different market instead of re-running the same line.")
+    # The review's own context keeps the run's number.
+    assert "(run #41, failed)" in agent._market_research_recent(None, 1, "btc15m")
 
 
 def test_research_action_allows_a_different_market(monkeypatch):

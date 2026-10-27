@@ -691,6 +691,8 @@ window.TauPage('strategies', (T) => {
     const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy, apPaper });
     // Already on paper (running or paused): where to find it, beside the button and its second-copy warning.
     const paperHere = onPaper ? `<p class="hint on-paper">${onPaper.status === 'paused' ? 'Its paper deployment is paused. <a href="/deploy">Resume it on Deploy</a>.' : 'It runs on paper. <a href="/deploy">See it on Deploy</a>.'}</p>` : '';
+    // The page heading above the paper says its title, market and direction (boardTitle), so the paper's header
+    // says only when it was filed, under a heading a screen reader's outline keeps; it said the title twice.
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
     root.querySelector('#main').innerHTML = `
       <div id="flash"></div>
@@ -698,8 +700,8 @@ window.TauPage('strategies', (T) => {
         <div>
           <article class="sheet-doc paper">
             <header class="paper-head">
-              <div class="paper-cite"><span>${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}</div>
-              <h2 class="paper-title">${esc(s.title)}</h2>
+              ${filed ? `<div class="paper-cite"><span>Filed ${esc(filed)}</span></div>` : ''}
+              <h2 class="vh">The research</h2>
               <div class="paper-byline">${statusMark(s)}${researchBadge(s)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
             </header>
             ${quickHtml}

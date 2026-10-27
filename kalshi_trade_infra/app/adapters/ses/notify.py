@@ -161,21 +161,28 @@ def mention_notice(to_email: str, name: Optional[str], author: str, body: str,
 
 
 def live_ready_notice(to_email: str, name: Optional[str], title: str, evidence: str, strategy_url: str,
-                      note: str = "") -> bool:
+                      note: str = "", live_open: bool = True) -> bool:
     """Tell a user one of their paper strategies just cleared every paper -> live check. Sent once
-    per strategy (the caller dedups). It never turns anything on: going live stays the user's step."""
+    per strategy (the caller dedups). It never turns anything on: going live stays the user's step.
+    `live_open` is the server's live switch: while it is closed the email says the strategy waits on
+    paper, never that it can be promoted to live now."""
+    next_step = (
+        "Nothing has changed yet. To trade it live, promote it from its strategy page or turn on live "
+        "autopilot. A new live strategy starts at a quarter of its size for its first 20 trades, and "
+        "it is paused automatically if live loses money on average.\n\n") if live_open else (
+        "Nothing has changed: live trading isn’t open yet, so it stays on paper and nothing trades "
+        "real money.\n\n")
     body = (
         "Hi %s,\n\n"
         "Your paper strategy “%s” just cleared every check Tau requires before real money:\n\n"
         "  %s\n\n"
-        "Nothing has changed yet. To trade it live, promote it from its strategy page or turn on live "
-        "autopilot. A new live strategy starts at a quarter of its size for its first 20 trades, and "
-        "it is paused automatically if live loses money on average.\n\n"
+        "%s"
         "%s"
         "  %s\n\n"
         "— Tau"
-    ) % (name or "there", title, evidence, (note + "\n\n") if note else "", strategy_url)
-    return _send(to_email, "“%s” is ready for live trading" % title[:80], body)
+    ) % (name or "there", title, evidence, next_step, (note + "\n\n") if note else "", strategy_url)
+    subject = ("“%s” is ready for live trading" if live_open else "“%s” cleared every paper-to-live check") % title[:80]
+    return _send(to_email, subject, body)
 
 
 def reload_failed_email(to_email: str, name: Optional[str], amount, reason: str) -> bool:

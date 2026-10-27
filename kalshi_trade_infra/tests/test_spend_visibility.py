@@ -229,12 +229,17 @@ def test_the_receipt_says_each_card_charge_its_reference_and_each_debits_session
         {"kind": "bonus", "amount_usd": Decimal("20"), "memo": "Welcome credits", "created_at": datetime(2026, 10, 24),
          "run_id": None, "stripe_ref": None, "run_kind": None, "run_brief": None},
     ])
+    # Run 41 is the user's third research session: the receipt says "Session 3", as the Research list does,
+    # never the global run id.
+    numbers = []
+    monkeypatch.setattr(server.repo, "research_session_numbers", lambda cur, uid: numbers.append(uid) or {12: 1, 30: 2, 41: 3})
     _kind, _name, _ctype, body = server.billing_receipt(_ctx())
     rows = list(csv.reader(io.StringIO(body)))
     head = rows.index(billing_routes.RECEIPT_HEADER)
     assert billing_routes.RECEIPT_HEADER[4:] == ["Session", "Card charged (USD)", "Stripe reference"]
-    assert [r[4:] for r in rows[head + 1:]] == [["41", "", ""], ["", "%.2f" % (server.billing.topup_charge_cents(Decimal("25")) / 100), "pi_3Reload"],
+    assert [r[4:] for r in rows[head + 1:]] == [["Session 3", "", ""], ["", "%.2f" % (server.billing.topup_charge_cents(Decimal("25")) / 100), "pi_3Reload"],
                                                 ["", "", ""]]
+    assert len(numbers) == 1  # one read of the numbers, only because a research debit is in the file
 
 
 class _Cur:

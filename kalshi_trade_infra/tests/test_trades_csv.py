@@ -3,6 +3,7 @@ import csv
 import http.client
 import io
 import os
+import re
 import uuid
 from datetime import datetime, timedelta
 from http.server import ThreadingHTTPServer
@@ -44,11 +45,55 @@ def test_the_file_has_a_header_row_and_one_row_per_closed_trade_oldest_first(mon
     assert rows[0] == ["closed_at_utc", "opened_at_utc", "mode", "strategy", "strategy_title", "ticker", "side",
                        "contracts", "entry_price", "exit_price", "entry_fee", "exit_fee", "realized_pnl",
                        "close_reason", "position_id"]
-    assert rows[1] == ["2026-10-25T13:00:01Z", "2026-10-25T12:00:01Z", "paper", "No. 00042", "Fade late spikes",
+    # The strategy by its title, never its internal id (the file once said "No. 00042").
+    assert rows[1] == ["2026-10-25T13:00:01Z", "2026-10-25T12:00:01Z", "paper", "Fade late spikes", "Fade late spikes",
                        "KXBTCD-26OCT2517-T98000", "yes", "5", "0.4000", "1.0000", "0.0700", "0.0000", "2.9300",
                        "settled", "1"]
     assert rows[2][12] == "-1.5000"  # a loss stays a number, not text
     assert len(rows) == 3
+
+
+def test_two_strategies_with_one_title_are_told_apart_in_plain_words_never_by_id(monkeypatch):
+    made = datetime(2026, 10, 20, 9, 30)
+    trades = [
+        _row(1, strategy_id=42, title="Fade late spikes", strategy_market="btc15m", strategy_created=made),
+        _row(2, strategy_id=43, title="Fade late spikes", strategy_market="eth15m", strategy_created=made),
+        _row(3, strategy_id=44, title="Rain drift", strategy_market="btc15m", strategy_created=made),
+        _row(4, strategy_id=42, title="Fade late spikes", strategy_market="btc15m", strategy_created=made),
+        _row(5, strategy_id=None, title=None),  # its deployment is gone
+    ]
+    monkeypatch.setattr(server.repo, "closed_trades_for_export", lambda cur, uid, mode, limit: list(reversed(trades)))
+    _, rows = _parse(server.trades_csv(_ctx({"mode": "paper"})))
+    assert [r[3] for r in rows[1:]] == [
+        "Fade late spikes (Bitcoin up or down in 15 minutes)", "Fade late spikes (Ethereum up or down in 15 minutes)",
+        "Rain drift", "Fade late spikes (Bitcoin up or down in 15 minutes)", ""]
+    assert [r[4] for r in rows[1:]] == ["Fade late spikes", "Fade late spikes", "Rain drift", "Fade late spikes", ""]
+    # One market: the day each was made; the same day: the minute (UTC); the same minute: their order.
+    same_market = [_row(1, strategy_id=42, title="Fade", strategy_market="btc15m", strategy_created=datetime(2026, 10, 20, 9, 30)),
+                   _row(2, strategy_id=43, title="fade ", strategy_market="btc15m", strategy_created=datetime(2026, 10, 24, 9, 30))]
+    names = billing_routes._strategy_names(same_market)
+    assert names == {42: "Fade (Bitcoin up or down in 15 minutes, made Oct 20, 2026)",
+                     43: "fade (Bitcoin up or down in 15 minutes, made Oct 24, 2026)"}
+    same_day = [dict(same_market[0]), dict(same_market[1], strategy_created=datetime(2026, 10, 20, 17, 5))]
+    assert billing_routes._strategy_names(same_day)[43] == "fade (Bitcoin up or down in 15 minutes, made Oct 20, 2026 17:05 UTC)"
+    twins = [dict(same_market[0], strategy_id=50), dict(same_market[0], strategy_id=51), dict(same_market[0], strategy_id=52,
+                                                                                            title="Other")]
+    assert billing_routes._strategy_names(twins) == {
+        50: "Fade (Bitcoin up or down in 15 minutes, made Oct 20, 2026 09:30 UTC, 1 of 2)",
+        51: "Fade (Bitcoin up or down in 15 minutes, made Oct 20, 2026 09:30 UTC, 2 of 2)", 52: "Other"}
+    # A market no catalog lists is never named by its raw key.
+    odd = [dict(same_market[0], strategy_market="kxweird"), dict(same_market[1], strategy_market="kxweird")]
+    assert all("kxweird" not in n for n in billing_routes._strategy_names(odd).values())
+
+
+def test_no_zero_padded_or_numbered_strategy_id_reaches_the_file(monkeypatch):
+    trades = [_row(i, strategy_id=sid, title=t) for i, (sid, t) in
+              enumerate([(42, "Fade"), (7, "Fade"), (9, None), (None, None), (12345, "Drift")], 1)]
+    monkeypatch.setattr(server.repo, "closed_trades_for_export", lambda cur, uid, mode, limit: trades)
+    _, rows = _parse(server.trades_csv(_ctx({"mode": "live"})))
+    for r in rows[1:]:
+        cells = " ".join(r[:14])  # every cell but position_id
+        assert not re.search(r"No\.\s*\d|#\d|\b0\d{4}\b|\b(42|7|9|12345)\b", cells), r
 
 
 @pytest.mark.parametrize("mode", [None, "", "all", "paper,live", "LIVE'"])
@@ -160,7 +205,7 @@ def test_each_mode_file_holds_only_that_users_trades_in_that_mode_and_adds_up(co
     cur = conn.cursor()
     a = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "a@example.com", "A", None)["id"]
     b = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "b@example.com", "B", None)["id"]
-    _, paper_ids = _book(conn, a, "paper", [1.75, -1.25, 0.5])
+    first, paper_ids = _book(conn, a, "paper", [1.75, -1.25, 0.5])
     _, demo_ids = _book(conn, a, "demo", [-0.8])
     _, other_ids = _book(conn, b, "paper", [9.0])
     files = {}
@@ -175,7 +220,18 @@ def test_each_mode_file_holds_only_that_users_trades_in_that_mode_and_adds_up(co
     assert ids == {"paper": sorted(paper_ids), "demo": sorted(demo_ids), "live": []}
     assert not set(other_ids) & set(ids["paper"])  # another user's trades never appear
     assert all(r[4].startswith("'=1+1") for r in files["paper"])  # the guard holds on stored titles too
-    assert repo.closed_trade_counts(cur, a) == {"paper": 3, "demo": 1}
+    # The strategy column is its stored title, never its id; a second strategy with that title, on the same
+    # market, made another day, is told apart by the day it was made.
+    assert {r[3] for r in files["paper"]} == {"'=1+1 paper"}
+    twin, twin_ids = _book(conn, a, "paper", [0.25])
+    cur.execute("UPDATE app_strategies SET created_at='2026-10-01 08:00:00' WHERE id=%s", (twin,))
+    cur.execute("UPDATE app_strategies SET created_at='2026-10-02 08:00:00' WHERE id=%s", (first,))
+    _, rows = _parse(server.trades_csv(server.Ctx(conn, {"id": a}, (), {"mode": "paper"}, {}, None)))
+    names = {int(r[14]): r[3] for r in rows[1:]}
+    assert names[twin_ids[0]] == "'=1+1 paper (Bitcoin up or down in 15 minutes, made Oct 1, 2026)"
+    assert {names[i] for i in paper_ids} == {"'=1+1 paper (Bitcoin up or down in 15 minutes, made Oct 2, 2026)"}
+    assert not any(re.search(r"No\.\s*\d|#\d|\b0\d{4}\b", r[3]) for r in rows[1:])
+    assert repo.closed_trade_counts(cur, a) == {"paper": 4, "demo": 1}
 
 
 @db

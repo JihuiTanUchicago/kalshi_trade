@@ -122,6 +122,13 @@ _ASKED = {"pause": "to pause %s", "resume": "to resume %s", "adjust": "to tune %
           "set_risk": "to change your risk limits", "set_exec": "to change your execution limits"}
 _BOOK = {"paper": "on paper, with practice money", "demo": "on demo, Kalshi’s sandbox",
          "live": "LIVE, with real money"}
+# A live deployment's decision while live trading is closed (engine.LIVE_TRADING_ENABLED off).
+_LIVE_WAITING_AFTER = {
+    "pause": "It is paused. Live trading isn’t open yet, so Tau can’t sell what it holds in your Kalshi account; "
+             "that stays open until its market settles.",
+    "resume": "It is set to run again on live, but live trading isn’t open yet, so it places no orders.",
+    "adjust": "It now runs the tuned version on live, but live trading isn’t open yet, so it places no orders.",
+}
 
 
 def _decision_line(cur, uid: int, p: Dict, approved: bool) -> str:
@@ -146,6 +153,10 @@ def _decision_line(cur, uid: int, p: Dict, approved: bool) -> str:
         return head + " Nothing changed."
     book = _BOOK.get(mode or "", "")
     changes = customer_text.control_changes(p.get("payload") or {}) if kind in ("set_risk", "set_exec") else ""
+    if mode == "live" and not engine.LIVE_TRADING_ENABLED and kind in _LIVE_WAITING_AFTER:
+        # The server's live switch is closed: a live deployment places no orders and can't sell what it
+        # holds, so the line says it waits, as Deploy does, never that it trades real money.
+        return (head + " " + _LIVE_WAITING_AFTER[kind]).strip()
     after = {
         "pause": "It is paused, and anything it holds%s is sold." % (" in your Kalshi account" if mode == "live" else ""),
         "resume": "It is running again%s." % (", " + book if book else ""),
@@ -358,7 +369,14 @@ def _autopilot_story(d: Dict) -> List[str]:
     if stop_line:
         lines.append(stop_line)
     limit = float(d.get("daily_loss_limit") or 0)
-    if int(d.get("live_running") or 0):
+    # While the server's live switch is closed (live_enabled, engine.LIVE_TRADING_ENABLED) a running live
+    # strategy places no orders: it waits, in the words Deploy and the badges use.
+    live_open = bool(d.get("live_enabled"))
+    if int(d.get("live_running") or 0) and not live_open:
+        n = int(d["live_running"])
+        lines.append("%s live but waiting: live trading isn't open yet, so %s no orders." % (
+            _plural(n, "strategy is", "strategies are"), "it places" if n == 1 else "they place"))
+    elif int(d.get("live_running") or 0):
         lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
     elif limit > 0 and float(d.get("today_live_pnl") or 0) <= -limit:
         # The kill switch turned live autopilot off and paused live deployments; the panel used to
@@ -368,8 +386,9 @@ def _autopilot_story(d: Dict) -> List[str]:
                      % (-float(d["today_live_pnl"]), limit))
     else:
         lines.append("Nothing trades real money until a strategy makes money on paper over at least %d trades "
-                     "from %d separate events and %d hours, and you turn on live autopilot." % (
-                         agent.MIN_REALISTIC_PAPER_TRADES, agent.MIN_PAPER_EVENTS, int(agent.MIN_PAPER_SPAN_HOURS)))
+                     "from %d separate events and %d hours, and you turn on live autopilot.%s" % (
+                         agent.MIN_REALISTIC_PAPER_TRADES, agent.MIN_PAPER_EVENTS, int(agent.MIN_PAPER_SPAN_HOURS),
+                         "" if live_open else " Live trading isn't open yet."))
     return lines
 
 
@@ -592,7 +611,8 @@ def _last_move(la: Optional[Dict], deps: List[Dict]) -> Optional[Dict]:
     its first clause, and cut inside a name it read "I left Fade tails."."""
     if la is None:
         return None
-    out = {"text": la["text"], "at": la["at"]}
+    # A once-only line's marker ("[live-ready #12]") names a row number: the panel never gets it.
+    out = {"text": customer_text.unmarked(la["text"]), "at": la["at"]}
     if "deployment" in la:
         out["text"] = customer_text.auto_pause_line(la["text"], la["deployment"])
     names = {(la.get("deployment") or {}).get("title") or ""} | {d.get("title") or "" for d in deps}

@@ -578,8 +578,13 @@ def test_the_trades_download_stays_in_its_query_budget_and_reads_each_strategy_o
     rows = {"AS v FROM app_positions p": [
                 dict(trade, v="2026-10-25T13:00:00Z,2026-10-25T12:00:00Z,0.4000,1.0000,0.0700,0.0000,2.9300,5,12,5"),
                 dict(trade, v="2026-10-25T11:00:00Z,2026-10-25T10:00:00Z,0.5000,,0.0700,,,3,11,6", close_reason=None),
-                dict(trade, v="2026-10-25T09:00:00Z,2026-10-25T08:00:00Z,0.5000,0.0000,0.0700,0.0000,-1.5700,3,10,5")],
-            "SELECT d.id, d.strategy_id, s.title FROM app_deployments d": [{"id": 5, "strategy_id": 9, "title": "Fade tails"}]}
+                dict(trade, v="2026-10-25T09:00:00Z,2026-10-25T08:00:00Z,0.5000,0.0000,0.0700,0.0000,-1.5700,3,10,5"),
+                dict(trade, v="2026-10-25T07:00:00Z,2026-10-25T06:00:00Z,0.5000,1.0000,0.0700,0.0000,1.4300,3,9,7")],
+            # Two strategies share a title: the file tells them apart by market, from the same one read.
+            "SELECT d.id, d.strategy_id, s.title, s.market AS strategy_market, s.created_at AS strategy_created "
+            "FROM app_deployments d": [
+                {"id": 5, "strategy_id": 9, "title": "Fade tails", "strategy_market": "btc15m", "strategy_created": None},
+                {"id": 7, "strategy_id": 4, "title": "Fade tails", "strategy_market": "eth15m", "strategy_created": None}]}
     log = []
     _, _, _, data = server.trades_csv(_ctx(log, 10.0, query={"mode": "paper"}, extra=rows))
     repeats = sorted({s for s in log if log.count(s) > 1})
@@ -587,13 +592,18 @@ def test_the_trades_download_stays_in_its_query_budget_and_reads_each_strategy_o
     assert len(log) <= BUDGET["trades_csv"], "trades_csv sent %d statements (budget %d):\n  %s" % (
         len(log), BUDGET["trades_csv"], "\n  ".join(s for s, _ in log))
     assert not any("JOIN" in s for s, _ in log if "FROM app_positions" in s)  # the trades are read alone
-    assert [p for s, p in log if "WHERE d.id IN" in s] == [(5, 6)]  # each deployment once, not per trade
-    assert data.splitlines()[1:] == [  # oldest first; deployment 6 is gone, so no strategy
-        "2026-10-25T09:00:00Z,2026-10-25T08:00:00Z,paper,No. 00009,Fade tails,KXBTC15M-26OCT2517-T98,yes,3,"
-        "0.5000,0.0000,0.0700,0.0000,-1.5700,settled,10",
+    assert [p for s, p in log if "WHERE d.id IN" in s] == [(5, 6, 7)]  # each deployment once, not per trade
+    # Oldest first; deployment 6 is gone, so no strategy. The strategy column is the title, never its id.
+    btc, eth = "Fade tails (Bitcoin up or down in 15 minutes)", "Fade tails (Ethereum up or down in 15 minutes)"
+    assert data.splitlines()[1:] == [
+        "2026-10-25T07:00:00Z,2026-10-25T06:00:00Z,paper,%s,Fade tails,KXBTC15M-26OCT2517-T98,yes,3,"
+        "0.5000,1.0000,0.0700,0.0000,1.4300,settled,9" % eth,
+        "2026-10-25T09:00:00Z,2026-10-25T08:00:00Z,paper,%s,Fade tails,KXBTC15M-26OCT2517-T98,yes,3,"
+        "0.5000,0.0000,0.0700,0.0000,-1.5700,settled,10" % btc,
         "2026-10-25T11:00:00Z,2026-10-25T10:00:00Z,paper,,,KXBTC15M-26OCT2517-T98,yes,3,0.5000,,0.0700,,,,11",
-        "2026-10-25T13:00:00Z,2026-10-25T12:00:00Z,paper,No. 00009,Fade tails,KXBTC15M-26OCT2517-T98,yes,5,"
-        "0.4000,1.0000,0.0700,0.0000,2.9300,settled,12"]
+        "2026-10-25T13:00:00Z,2026-10-25T12:00:00Z,paper,%s,Fade tails,KXBTC15M-26OCT2517-T98,yes,5,"
+        "0.4000,1.0000,0.0700,0.0000,2.9300,settled,12" % btc]
+    assert "No. " not in data
     log = []
     server.trades_csv(_ctx(log, 10.0, query={"mode": "live"}))
     assert len(log) == 1  # no trades, no second read

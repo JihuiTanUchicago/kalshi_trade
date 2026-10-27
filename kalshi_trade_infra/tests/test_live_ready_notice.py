@@ -7,9 +7,11 @@ READY = {"ready": True, "why": "", "trades": 31, "trades_needed": 30, "net_pnl":
          "p_value": 0.05, "realization": None}
 
 
-def _patch(monkeypatch, deps, ready=READY, already=(), candidate=True):
+def _patch(monkeypatch, deps, ready=READY, already=(), candidate=True, live_open=True):
     chats, mails = [], []
     bells = []
+    # The server's live switch (engine.LIVE_TRADING_ENABLED), as the notice reads it; never set here.
+    monkeypatch.setattr(agent, "_live_switch_open", lambda: live_open)
     monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: candidate)
     monkeypatch.setattr(agent.repo, "list_deployments", lambda cur, uid: list(deps))
     monkeypatch.setattr(agent.repo, "chat_contains", lambda cur, uid, role, needle: needle in already)
@@ -33,6 +35,42 @@ def test_a_newly_ready_paper_strategy_is_announced_once(monkeypatch):
     assert chats == [("system", lines[0])]
     assert len(mails) == 1 and mails[0][0] == "t@example.invalid" and mails[0][4].endswith("/strategies/7")
     assert bells == [(2, "live_ready", "“Edge” is ready for live trading. Going live is your call.", "/strategies/7")]
+
+
+def test_while_live_trading_is_closed_the_notice_says_it_waits_on_paper_never_go_live_now(monkeypatch):
+    # The server's live switch is closed: a promote is refused and nothing places a live order, so the
+    # chat line, the bell and the email say it stays on paper, in #553's words, not "Going live is your call".
+    chats, mails, bells = _patch(monkeypatch, [dict(DEP, market="nhl_game")], live_open=False)
+    lines = agent.live_ready_notices(None, USER)
+    assert len(lines) == 1 and lines[0].startswith("[live-ready #7] “Edge” cleared every paper-to-live check: ")
+    assert lines[0].endswith("Live trading isn’t open yet, so it stays on paper and nothing trades real money.")
+    assert "Going live" not in lines[0] and "promote" not in lines[0] and "location" not in lines[0]
+    assert bells == [(2, "live_ready", "“Edge” cleared every paper-to-live check. Live trading isn’t open yet, so it "
+                                       "stays on paper and nothing trades real money.", "/strategies/7")]
+    assert len(mails) == 1 and mails[0][5] == "" and mails[0][6] is False
+    # Its line in the panel reads without the once-only marker, which names the strategy's row number.
+    from app.services import customer_text
+    shown = customer_text.chat_rows([{"role": "system", "content": lines[0]}])[0]["content"]
+    assert shown.startswith("“Edge” cleared") and "#7" not in shown
+
+
+def test_while_live_trading_is_closed_the_email_says_it_stays_on_paper(monkeypatch):
+    sent = []
+    monkeypatch.setattr(notify, "_send", lambda to, subj, body: sent.append((subj, body)) or True)
+    notify.live_ready_notice("t@example.invalid", "T", "Edge", "31 trades", "https://x/strategies/7", "", False)
+    notify.live_ready_notice("t@example.invalid", "T", "Edge", "31 trades", "https://x/strategies/7")
+    (subject, body), (open_subject, open_body) = sent
+    assert subject == "“Edge” cleared every paper-to-live check"
+    assert "Nothing has changed: live trading isn’t open yet, so it stays on paper and nothing trades real money." in body
+    assert "promote" not in body and "ready for live trading" not in body and "https://x/strategies/7" in body
+    assert open_subject == "“Edge” is ready for live trading" and "promote it from its strategy page" in open_body
+
+
+def test_a_strategy_with_no_title_is_never_named_by_its_number(monkeypatch):
+    chats, mails, bells = _patch(monkeypatch, [dict(DEP, title=None)])
+    lines = agent.live_ready_notices(None, USER)
+    assert "“Untitled strategy”" in lines[0] and "Strategy 7" not in lines[0]
+    assert "Strategy 7" not in bells[0][2] and mails[0][2] == "Untitled strategy"
 
 
 def test_already_announced_is_not_repeated(monkeypatch):

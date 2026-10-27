@@ -3600,6 +3600,10 @@ RESEARCH_FAIL_WINDOW = timedelta(hours=24)
 RESEARCH_FAIL_LIMIT = int(os.getenv("TAU_RESEARCH_FAIL_LIMIT", "3"))
 
 
+# The run reference _market_research_recent's reasons carry for the review ("(run #41)", "(run #41, failed)").
+_RUN_REF = re.compile(r" \(run #\d+(?:, [a-z]+)?\)")
+
+
 def _market_research_recent(cur, user_id: int, market: str, runs: Optional[List[Dict]] = None) -> Optional[str]:
     """Why the autopilot should NOT open a fresh research line on `market` right now, or None if it's
     clear. Blocks a market that already has an active research run, or one that finished (passed or
@@ -3933,6 +3937,16 @@ def pause_notice(cur, user: Dict, run: Dict) -> bool:
     return added is not None
 
 
+# A strategy that cleared every paper-to-live check while live trading is closed, in #553's words.
+LIVE_READY_WAITING = "Live trading isn’t open yet, so it stays on paper and nothing trades real money."
+
+
+def _live_switch_open() -> bool:
+    """The server's live switch (engine.LIVE_TRADING_ENABLED, from APP_LIVE_TRADING_ENABLED), read only."""
+    from app.trading import engine  # local import: engine imports agent (circular)
+    return bool(engine.LIVE_TRADING_ENABLED)
+
+
 def live_ready_notices(cur, user: Dict) -> List[str]:
     """Once per strategy, tell the user (chat line + email) when a running paper strategy first
     clears every `paper_evidence` check. Read-only toward trading: going live stays a separate step
@@ -3951,7 +3965,7 @@ def live_ready_notices(cur, user: Dict) -> List[str]:
         ev = paper_evidence(cur, user["id"], sid)
         if not ev["ready"]:
             continue
-        title = d.get("title") or "Strategy %d" % sid
+        title = d.get("title") or "Untitled strategy"  # never its row number
         if not _is_deployment_candidate(cur, sid):
             # A probation strategy: strong forward paper, but no live path. Say so instead of
             # inviting a promote that the live gate would refuse.
@@ -3964,22 +3978,27 @@ def live_ready_notices(cur, user: Dict) -> List[str]:
             repo.add_chat(cur, user["id"], "system", line)
             out.append(line)
             continue
-        note = location_attestation_note(d.get("market"))
-        line = ("%s “%s” cleared every paper-to-live check: %s. Going live is your call: promote it, or "
-                "turn on live autopilot." % (marker, title, paper_evidence_line(ev)))
+        # While the server's live switch is closed nothing places a live order and a promote is refused:
+        # the line, the bell and the email say it waits on paper, never that it can go live now.
+        live_open = _live_switch_open()
+        note = location_attestation_note(d.get("market")) if live_open else ""
+        line = "%s “%s” cleared every paper-to-live check: %s. %s" % (
+            marker, title, paper_evidence_line(ev),
+            "Going live is your call: promote it, or turn on live autopilot." if live_open else LIVE_READY_WAITING)
         if note:
             line += " " + note
         repo.add_chat(cur, user["id"], "system", line)
         # The bell too: the chat line only reaches someone who opens the autopilot panel.
         repo.add_notification(cur, user["id"], "live_ready",
-                              "“%s” is ready for live trading. Going live is your call." % title[:120],
+                              ("“%s” is ready for live trading. Going live is your call." % title[:120]) if live_open
+                              else "“%s” cleared every paper-to-live check. %s" % (title[:120], LIVE_READY_WAITING),
                               "/strategies/%d" % sid)
         out.append(line)
         # Optional email, read at send time: off when the user turned it off in Settings.
         to = repo.optional_email_address(cur, user["id"])
         if to:
             notify.live_ready_notice(to, user.get("name"), title, paper_evidence_line(ev),
-                                     "%s/strategies/%d" % (notify.PUBLIC_URL, sid), note)
+                                     "%s/strategies/%d" % (notify.PUBLIC_URL, sid), note, live_open)
     return out
 
 
@@ -4013,11 +4032,14 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             # The agent referenced a deployment that's gone (removed/stopped) — usually one it
             # named in an earlier message. Don't dead-end with a vague "couldn't find"; tell it
             # exactly what exists so the next review acts on a real one instead of repeating the miss.
+            # The line is posted to the customer's chat, so it names each one by its title, market and
+            # book, never a row number (the review's context lists the deployment ids it acts on).
             live = repo.list_deployments(cur, user_id)
-            have = ("; ".join("#%d %s (%s, %s)" % (d["id"], d["title"], d["market"], d["status"]) for d in live)
-                    or "none — you have no active deployments, so research a new edge or deploy a proven one instead of adjusting")
-            return ("Deployment #%s no longer exists (removed or stopped). Your current deployments are: %s."
-                    % (action.get("deployment_id"), have), None)
+            have = "; ".join(_deployment_words(d) for d in live)
+            return ("That deployment no longer exists (removed or stopped). %s"
+                    % ("Your current deployments: %s." % have if have else
+                       "You have no active deployments: research a new edge or deploy a proven one instead of adjusting."),
+                    None)
         if kind != "pause" and specmod.has_perpetual_market(dep.get("spec") or {}, dep.get("market")):
             return "Bitcoin perpetuals are research-only; their deployments cannot be resumed or adjusted.", None
     if kind == "adjust":
@@ -4237,6 +4259,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             if why and (not autopilot or why.startswith("a research line is already running")):
                 # `why` names the market by its key for the review's context; the customer reads its label.
                 said = why.replace(market, MARKETS[market].label, 1) if market in MARKETS else why
+                # ...and never the run's row number ("(run #41)"), which the review's context keeps.
+                said = _RUN_REF.sub("", said)
                 return ("I didn't start that — %s. I'll hunt a different market instead of "
                         "re-running the same line." % said), None
             if why:
@@ -4356,16 +4380,42 @@ def live_claim_ids(text: str) -> List[int]:
     return out
 
 
-def false_live_line(text: str, deps: List[Dict]) -> Optional[str]:
-    """A correction when `text` calls a deployment live that isn't, else None."""
+def false_live_line(text: str, deps: List[Dict], customer: bool = False) -> Optional[str]:
+    """A correction when `text` calls a deployment live that isn't, else None. The review's own context
+    names deployments by id, which it acts on; `customer` is the chat line the user reads, which names
+    them by title and never by a row number, and says a live one waits while live trading is closed."""
     live = {int(d["id"]) for d in deps if d.get("mode") == "live" and d.get("status") != "stopped"}
     known = {int(d["id"]) for d in deps}
     wrong = [i for i in live_claim_ids(text) if i in known and i not in live]
     if not wrong:
         return None
+    if customer:
+        by_id = {int(d["id"]): d for d in deps}
+
+        def named(ids: List[int]) -> str:
+            return ", ".join(dict.fromkeys("“%s”" % (by_id[i].get("title") or "Untitled strategy") for i in ids))
+        waits = " (waiting: live trading isn’t open yet)" if live and not _live_switch_open() else ""
+        return ("Correction: %s %s paper, not real money. Live deployments right now: %s."
+                % (named(wrong), "trades" if len(wrong) == 1 else "trade",
+                   named(sorted(live)) + waits if live else "none"))
     return ("Correction: %s %s paper, not real money. Live deployments right now: %s."
             % (", ".join("#%d" % i for i in wrong), "trades" if len(wrong) == 1 else "trade",
                ", ".join("#%d" % i for i in sorted(live)) if live else "none"))
+
+
+def _market_words(key: Optional[str]) -> str:
+    """A market as a customer reads it: its label, never its raw key."""
+    return MARKETS[key].label if key in MARKETS else "an unlisted market"
+
+
+def _deployment_words(d: Dict) -> str:
+    """A deployment as a customer reads it in a chat line: “title” (market, book, state), no row number.
+    A running live one while live trading is closed waits."""
+    state = d.get("status") or ""
+    if d.get("mode") == "live" and state == "running" and not _live_switch_open():
+        state = "waiting: live trading isn’t open yet"
+    return "“%s” (%s, %s, %s)" % (d.get("title") or "Untitled strategy", _market_words(d.get("market")),
+                                 d.get("mode") or "paper", state)
 
 
 def _copilot_context(cur, user: Dict) -> str:
@@ -4810,7 +4860,7 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
         if run["kind"] != "review" or (out["actions"] and refused < len(out["actions"])):
             repo.add_chat(cur, user["id"], "agent", out["reply"])
             try:
-                wrong = false_live_line(out["reply"], repo.list_deployments(cur, user["id"]))
+                wrong = false_live_line(out["reply"], repo.list_deployments(cur, user["id"]), customer=True)
             except Exception:  # best-effort: a lookup hiccup must not fail the run after it replied
                 wrong = None
             if wrong:

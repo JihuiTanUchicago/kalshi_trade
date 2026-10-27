@@ -7,7 +7,7 @@ window.TauPage('autopilot', (T) => {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apMarketNames, apReloadFailed, apShowFocus,
     apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, go, ICON, mdLite,
-    liveIdleCount, liveOpen, paced, paintDashAp, paperCount, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
+    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
     wakers
   } = T;
 
@@ -444,14 +444,17 @@ window.TauPage('autopilot', (T) => {
     // today $0.00" and a loss budget that can't apply to it, and nothing about the paper book it has.
     const liveInPlay = !!(d.autopilot_live || d.live_running);
     const pnl = (liveInPlay ? d.today_live_pnl : d.today_paper_pnl) || 0;
+    // The live loss budget stops live trading; while live trading is closed nothing live trades, so it isn't shown
+    // (a live position still settling counts in Live realized today).
+    const budgetShown = liveInPlay && liveOpen();
     const stats = box.querySelector('#apf-stats');
     // Count running strategies across every mode, not just paper — a lone demo strategy
     // used to read as "0 paper", which looked like nothing was running. Match the dashboard.
     // A live one while live trading is closed places no orders, and says so, as Deploy's Money figure does.
     const runParts = [
-      d.live_running ? (liveOpen() ? `<span class="apf-live">${d.live_running} live</span>` : liveIdleCount(d.live_running)) : '',
-      d.demo_running ? `${d.demo_running} demo` : '',
-      d.paper_running ? `${d.paper_running} paper` : '',
+      d.live_running ? (liveOpen() ? `<span class="apf-live">${d.live_running} live</span>` : liveIdleShort(d.live_running)) : '',
+      d.demo_running ? `${d.demo_running}\u00a0demo` : '',
+      d.paper_running ? `${d.paper_running}\u00a0paper` : '',
     ].filter(Boolean);
     const runTotal = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
     // The figures sit above the story so "is it making money?" reads first, and the Research row only
@@ -461,7 +464,7 @@ window.TauPage('autopilot', (T) => {
     const short = [
       `<dt>Running</dt><dd>${runTotal ? runParts.join(' ·\u00a0') : 'None'}</dd>`,
       `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${usd(pnl, true)}</dd>`,
-    ].concat(liveInPlay ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
+    ].concat(budgetShown ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
       // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.
       .concat(d.review_wait ? [`<dt>Check-in</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
@@ -469,7 +472,7 @@ window.TauPage('autopilot', (T) => {
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
-      ${liveInPlay ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
+      ${budgetShown ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${+d.research.not_cleared_7d ? `, ${Number(d.research.not_cleared_7d).toLocaleString('en-US')} not cleared` : ''}${d.research.cost_7d ? ', ' + usd(d.research.cost_7d) + ' spent' : ''}</dd></div>` : ''}
       ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)} net on them</dd></div>` : ''}`;
     }

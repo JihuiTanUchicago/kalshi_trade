@@ -1707,6 +1707,7 @@ body.landing-body .apf { display: none; }
 .apf-stats dd.neg { color: #8A1021; }
 .apf-stats dd.pos { color: #0E5C33; }
 .apf-live { color: var(--signal); font-weight: 600; }
+.apf-live-wait { white-space: nowrap; }  /* "1 live (waiting)" breaks at its " · ", never inside */
 .apf-story { margin: 12px 0; }
 .apf-story:empty { display: none; }
 .apf-story p { margin: 0 0 6px; font-size: 14px; line-height: 1.45; color: var(--ink); }
