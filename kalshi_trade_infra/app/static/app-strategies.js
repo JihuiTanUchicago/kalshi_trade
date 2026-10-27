@@ -449,8 +449,17 @@ window.TauPage('strategies', (T) => {
     // One with no closed trades has no P&L to net of fees: it says so, as the lines above do, and which money
     // it was, instead of "$0.00 over 0 closed trades" with no book.
     const BOOK_MONEY = { live: 'real money', demo: `in ${DEMO_BOOK}: not real money`, paper: 'not real money' };
+    // A removed paper deployment whose closed trades were partly or all instant fills (the server's `instant_fills`)
+    // says so, in the Strategies list's words for its "Removed from paper" line: "3 closed trades" read as its record
+    // while the track record leaves those out.
+    const pastInstant = (p) => {
+      const k = +p.instant_fills || 0, n = +p.closed_trades || 0;
+      if (p.mode !== 'paper' || !(k > 0) || !(n > 0)) return '';
+      return k >= n ? `, ${n === 1 ? 'an instant fill' : 'all instant fills'}, left out of the track record`
+        : `, ${num(k)} of them ${k === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record`;
+    };
     const pastFig = (p) => (+p.closed_trades
-      ? `${money(p.realized_pnl)} over ${num(p.closed_trades)} closed trade${+p.closed_trades === 1 ? '' : 's'}${BOOK_NET[p.mode] ? `, ${BOOK_NET[p.mode]}` : ''}`
+      ? `${money(p.realized_pnl)} over ${num(p.closed_trades)} closed trade${+p.closed_trades === 1 ? '' : 's'}${pastInstant(p)}${BOOK_NET[p.mode] ? `, ${BOOK_NET[p.mode]}` : ''}`
       : `no closed trades${BOOK_MONEY[p.mode] ? `, ${BOOK_MONEY[p.mode]}` : ''}`);
     const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—');
     // Deployed and removed the same day read "Oct 27–Oct 27" (walked 2026-10-27): one date says it.

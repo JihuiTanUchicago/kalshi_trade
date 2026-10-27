@@ -363,10 +363,14 @@ def _realized_by_book(listed: List[Dict], removed: List[Dict]) -> Dict[str, Dict
 
 
 def _past_deployment_out(r: Dict) -> Dict:
-    """A removed deployment as its strategy page lists it: book, dates and realized P&L (display only)."""
-    return {"id": r["id"], "mode": r["mode"], "created_at": r["created_at"], "removed_at": r["removed_at"],
-            "realized_pnl": cents(r.get("realized_pnl")),
-            "closed_trades": int(r.get("closed_trades") or 0)}
+    """A removed deployment as its strategy page lists it: book, dates and realized P&L (display only), and
+    a paper one's `instant_fills` when some of its closed trades were (_removed_with_totals)."""
+    out = {"id": r["id"], "mode": r["mode"], "created_at": r["created_at"], "removed_at": r["removed_at"],
+           "realized_pnl": cents(r.get("realized_pnl")),
+           "closed_trades": int(r.get("closed_trades") or 0)}
+    if r.get("instant_fills"):
+        out["instant_fills"] = int(r["instant_fills"])
+    return out
 
 
 # The engine's loss guard pause (engine.loss_guard): "Lost $12.40, more than the $10.00 guard (...)".

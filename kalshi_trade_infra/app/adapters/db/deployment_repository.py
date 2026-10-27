@@ -159,18 +159,25 @@ def removed_totals_by_strategy(cur, user_id: int, strategy_ids: List[int]) -> Li
     return list(cur.fetchall())
 
 
-def deployment_closed_totals(cur, deployment_ids: List[int]) -> Dict[int, Tuple[int, Any]]:
+def deployment_closed_totals(cur, deployment_ids: List[int], sim: bool = False) -> Dict[int, Tuple]:
     """{deployment_id: (closed positions, their summed P&L)}, as list_deployments counts closed_trades
     and realized_pnl, for the given deployments in one read over idx_pos_dep (deployment_id, status).
-    A deployment with no closed position is absent."""
+    A deployment with no closed position is absent. With `sim`, each also carries a third figure from the
+    same rows: its closed paper positions filled through the simulated venue (order_ref 'sim:', as
+    removed_totals_by_strategy counts sim_trades), so the strategy page can say how many of a removed paper
+    deployment's trades were instant fills without another read. Display only."""
     ids = sorted({int(i) for i in deployment_ids})
     if not ids:
         return {}
     cur.execute(
-        "SELECT deployment_id, COUNT(*) AS n, COALESCE(SUM(pnl),0) AS pnl FROM app_positions "
-        "WHERE deployment_id IN (" + ",".join(["%s"] * len(ids)) + ") AND status='closed' GROUP BY deployment_id",
-        tuple(ids),
+        "SELECT deployment_id, COUNT(*) AS n, COALESCE(SUM(pnl),0) AS pnl"
+        + (", COUNT(CASE WHEN mode='paper' AND order_ref LIKE %s THEN 1 END) AS sim_trades" if sim else "")
+        + " FROM app_positions WHERE deployment_id IN (" + ",".join(["%s"] * len(ids)) + ") AND status='closed'"
+        " GROUP BY deployment_id",
+        (("sim:%",) if sim else ()) + tuple(ids),
     )
+    if sim:
+        return {int(r["deployment_id"]): (int(r["n"]), r["pnl"], int(r["sim_trades"] or 0)) for r in cur.fetchall()}
     return {int(r["deployment_id"]): (int(r["n"]), r["pnl"]) for r in cur.fetchall()}
 
 

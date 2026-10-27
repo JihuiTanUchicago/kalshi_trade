@@ -473,6 +473,31 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(same.root.querySelector('.past-deps').textContent.replace(/\s+/g, ' '), /Past deployments: Paper Oct 27, no closed trades, not real money/);
   });
 
+  test(`${name}: a past paper deployment says how many of its trades were instant fills, as the Strategies list does`, async () => {
+    // "Paper Sep 20–Sep 21, +$5.72 over 14 closed trades" read as its record, while the track record leaves its instant
+    // fills out and the Strategies list's "Removed from paper" line says how many (the server's instant_fills).
+    const at = {created_at: '2026-09-20T08:00:00+00:00', removed_at: '2026-09-21T08:00:00+00:00'};
+    const f = await open({status: 'passed', deployments: [], past_deployments: [
+      {id: 7, mode: 'paper', ...at, realized_pnl: 5.72, closed_trades: 14, instant_fills: 3},
+      {id: 6, mode: 'paper', ...at, realized_pnl: 1.1, closed_trades: 2, instant_fills: 2},
+      {id: 5, mode: 'paper', ...at, realized_pnl: 0.4, closed_trades: 1, instant_fills: 1}]});
+    const parts = f.root.querySelector('.past-deps').textContent.replace(/\s+/g, ' ').replace(/^Past deployments: /, '').split(' · ');
+    assert.deepEqual(parts, [
+      'Paper Sep 20–Sep 21, +$5.72 over 14 closed trades, 3 of them instant fills, left out of the track record, after Kalshi fees and the spread',
+      'Paper Sep 20–Sep 21, +$1.10 over 2 closed trades, all instant fills, left out of the track record, after Kalshi fees and the spread',
+      'Paper Sep 20–Sep 21, +$0.40 over 1 closed trade, an instant fill, left out of the track record, after Kalshi fees and the spread']);
+    // One of them an instant fill reads in the singular; none, or another book, says nothing of it.
+    const g = await open({status: 'passed', deployments: [], past_deployments: [
+      {id: 7, mode: 'paper', ...at, realized_pnl: 5.72, closed_trades: 14, instant_fills: 1},
+      {id: 4, mode: 'paper', ...at, realized_pnl: 1, closed_trades: 3},
+      {id: 3, mode: 'demo', ...at, realized_pnl: 1, closed_trades: 3, instant_fills: 3}]});
+    const text = g.root.querySelector('.past-deps').textContent.replace(/\s+/g, ' ');
+    assert.match(text, /14 closed trades, 1 of them an instant fill, left out of the track record, after/);
+    assert.equal(text.match(/instant fill/g).length, 1);
+    // Each separator ends its line: a no-break space before "·", a plain one after.
+    assert.doesNotMatch(g.root.querySelector('.past-deps').innerHTML, / ·/);
+  });
+
   test(`${name}: a past deployment with no closed trades says so, with which money it was, not "$0.00 over 0 closed trades"`, async () => {
     // It read "Demo Sep 28–Oct 1, $0.00 over 0 closed trades" with no book, under lines that say both.
     const past_deployments = [
