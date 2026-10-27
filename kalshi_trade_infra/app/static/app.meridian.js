@@ -2783,7 +2783,9 @@
   }
   // What to do next from a market page: research it (the market picked in the form) or open your
   // strategies on it, when it's one Tau researches; otherwise say so, rather than leave a dead end.
-  function marketNext(ticker) {
+  // "Your <market> strategies" shows only when the server says the reader has one there (`my_markets`): it
+  // showed to a reader with none, and opened an empty list.
+  function marketNext(ticker, mine) {
     const m = contractMkt(ticker);
     // Another hour of a ladder Tau researches at one close (an hourly Bitcoin contract): point at that close.
     const sib = !m && ((S.me && S.me.markets) || []).find((x) => x.series && x.close_hour_et != null && String(ticker || '').startsWith(x.series + '-'));
@@ -2791,7 +2793,8 @@
     if (sib) return `<p class="hint mk-next">Tau researches only the ${hourET(h)} ET close of this ladder, so your strategies don’t trade this contract. <a href="/research?new=1&amp;market=${encodeURIComponent(sib.key)}">Research ${esc(marketShort(sib.key))}</a></p>`;
     if (!m) return '<p class="hint mk-next">Tau doesn’t research this market, so your strategies can’t trade it. <a href="/research?new=1">See the markets it researches</a></p>';
     const k = encodeURIComponent(m.key);
-    return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a><a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a></p>`;
+    const own = (mine || []).includes(m.key) ? `<a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a>` : '';
+    return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a>${own}</p>`;
   }
   // A Bitcoin contract's page says where Bitcoin is against its strike, from the price the collectors
   // stored (/api/explore/spot). It is its own read, started with the market's, and fills its own section,
@@ -2884,7 +2887,7 @@
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker), `${spotReq && !settled ? SPOT_SECT : ''}
+        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? SPOT_SECT : ''}
       <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
       <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(d.rules)}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(d.rules_more)}</p>` : ''}`

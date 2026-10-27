@@ -26,12 +26,19 @@ export function explorePageCases({name, frontend}) {
   };
 
   test(`${name}: a market Tau researches offers to research it, with the market picked, and to open its strategies`, async () => {
-    const f = await open(page());
+    const f = await open(page({my_markets: ['btc_daily']}));
     const next = f.root.querySelector('.mk-next');
     assert.ok(next, 'the market page says what to do next');
     const links = next.querySelectorAll('a');
     assert.deepEqual(links.map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily', '/strategies?market=btc_daily']);
     assert.deepEqual(links.map((a) => a.textContent), ['Research BTC above $X at 5pm ET', 'Your BTC above $X at 5pm ET strategies']);
+    // "Your … strategies" showed to a reader with none on this market (and opened an empty list): it shows only when the
+    // server says they have one there; with none, or that read failed (null), only Research is offered.
+    for (const mine of [[], ['nba_game'], null]) {
+      const g = await open(page({my_markets: mine}));
+      assert.deepEqual(g.root.querySelector('.mk-next').querySelectorAll('a').map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily'], String(mine));
+      assert.doesNotMatch(g.root.querySelector('.mk-next').textContent, /strategies/);
+    }
     // The name line reads the market's name with this contract's strike, its status in words and the contract;
     // never the raw series alone.
     assert.match(f.root.innerHTML, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/);

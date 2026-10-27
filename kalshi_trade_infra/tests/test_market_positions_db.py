@@ -65,3 +65,25 @@ def test_positions_in_one_contract_are_the_readers_own_by_mode_and_since_it_open
     assert [p["id"] for p in got["closed"]] == [settled] and float(got["closed"][0]["pnl"]) == 0.24
     assert all(p["ticker"] == here and p["user_id"] == uid for p in got["open"] + got["closed"])
     assert repo.user_positions_in_ticker(cur, other, elsewhere, opened) == {"open": [], "closed": []}
+
+
+def test_markets_with_strategies_are_the_readers_own_without_the_seeded_example(conn):
+    # A market page offers "Your <market> strategies" only for a market the reader has a strategy on: it showed to
+    # a reader with none there. The seeded example's strategies (btc15m) aren't theirs, and nobody else's count.
+    from app import repository as repo
+    from app.trading import spec as specmod
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "mine@example.com", "M", None)["id"]
+    other = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "theirs@example.com", "O", None)["id"]
+    repo.seed_demo_session(cur, uid)
+    repo.insert_strategy(cur, uid, None, None, "btc_daily", "momentum", "Mine", "t",
+                         specmod.validate({"market": "btc_daily", "side": "yes"}), "rejected", {})
+    repo.insert_strategy(cur, other, None, None, "btc15m", "momentum", "Theirs", "t",
+                         specmod.validate({"market": "btc15m", "side": "yes"}), "passed", {})
+    conn.commit()
+    cur.execute("SELECT COUNT(*) AS n FROM app_strategies WHERE user_id=%s AND market='btc15m'", (uid,))
+    assert cur.fetchone()["n"] > 0, "the seeded example has strategies on btc15m"
+    assert repo.markets_with_strategies(cur, uid, ["btc15m", "btc_daily"]) == ["btc_daily"]
+    assert repo.markets_with_strategies(cur, other, ["btc15m", "btc_daily"]) == ["btc15m"]
+    assert repo.markets_with_strategies(cur, uid, []) == []
