@@ -409,6 +409,7 @@ def not_finalist(in_sample: Optional[Dict[str, Any]]) -> List[Line]:
 
 
 _CORR = re.compile(r"max \|corr\| ([\d.]+) to deployed experiment \S+ exceeds ([\d.]+)")
+_CORR_PEER = re.compile(r"to deployed experiment (\d+) exceeds")
 
 
 def diversification(reason: Optional[str]) -> List[Line]:
@@ -419,6 +420,30 @@ def diversification(reason: Optional[str]) -> List[Line]:
                   "Too similar to a strategy you already run", measured,
                   "%s or less" % (m.group(2) if m else "%.2f" % gatekeeper.CORR_MAX),
                   "Point it at a different market or time of day, so it does not repeat a strategy you already run.")]
+
+
+def corr_peer(reason: Optional[str]) -> Optional[int]:
+    """The experiment id of the deployed strategy a diversification miss names, or None. For the page
+    to look up that strategy's title; the id itself is never shown."""
+    m = _CORR_PEER.search(str(reason or ""))
+    return int(m.group(1)) if m else None
+
+
+def held_back(reason: Optional[str], peer: Optional[str] = None) -> List[Line]:
+    """The check after the one-time holdout, for a strategy that held up there and was not promoted
+    to a deployment candidate: the diversification line, named for the strategy it repeats (`peer`,
+    that strategy's title) when known. `reason` is the run's own verdict event; without a figure
+    there, the line says the check was not recorded rather than guessing one."""
+    m = _CORR.search(str(reason or ""))
+    line = diversification(reason if m else None)[0]
+    if not m:
+        line["measured"] = "not recorded, but it held up on the locked holdout and was not cleared to trade, so this check failed"
+    if peer:
+        name = "“%s”" % str(peer).strip()[:80]
+        line["label"] = "Too similar to " + name
+        if m:
+            line["measured"] = "a %s correlation of daily results with %s" % (m.group(1), name)
+    return [line]
 
 
 # -- the backtest's own gates (strategy result.gates) ----------------------------------------------

@@ -10,10 +10,12 @@ from typing import Dict, List, Optional, Tuple
 
 from app import repository as repo
 from app.adapters.kalshi import kalshi_dev
+from app.research import agent, gatekeeper
 from app.research import research_repository as research_repo
 from app.services import backtest_check, book_memo, gate_explain, trade_why
 from app.trading import backtest, track_record
 from app.trading import spec as specmod
+from app.trading.markets import MARKETS
 from app.web.caches import _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param, _num
 from app.web.views import (
@@ -348,10 +350,64 @@ def _experiment_block(cur, strategy_id: int, experiment_id: Optional[int] = None
         "n_trials_audited": (val or {}).get("n_trials_audited"),
         "validation": val,
         "holdout": hold,
+        # Promoted all the way to a deployment candidate (agent._is_deployment_candidate's own test): a holdout
+        # pass that isn't was held back by the diversification check after it.
+        "promoted": any(r.get("classification") == gatekeeper.Classification.DEPLOYMENT_CANDIDATE.value
+                        for r in results),
         # Prefer the gatekeeper's recorded cross-day folds (validation phase); fall back to any
         # folds embedded in the older rationale JSON so pre-pipeline experiments still render.
         "folds": (val_row or {}).get("folds") or rat["folds"],
     }
+
+
+def _autopilot_puts_on_paper(cur, user: Optional[Dict], strategies: List[Dict]) -> set:
+    """The passed strategies (a session's, or a strategy page's one) the autopilot puts on paper itself
+    at its next check-in, by the tests agent.auto_paper_candidates applies: autopilot on, room under its
+    cap, never on paper before, a deployable market inside the focus, not code, and a gatekeeper
+    deployment candidate. Display only: the pages said "Open it to deploy it on paper" while the
+    autopilot was about to, and a copy deployed by hand as well doubles the positions."""
+    if not (user or {}).get("autopilot"):
+        return set()
+    waiting = [s for s in strategies if s["status"] == "passed" and not s.get("active_deps")
+               and s.get("direction") != repo.DEMO_DIRECTION]
+    if not waiting:
+        return set()
+    deps = repo.list_deployments(cur, user["id"], include_stopped=True)
+    if sum(1 for d in deps if d["status"] != "stopped") >= agent.AUTO_PAPER_MAX_ACTIVE:
+        return set()
+    tried = {d["strategy_id"] for d in deps if d["mode"] == "paper" or d["status"] != "stopped"}
+    focus = agent.focus_tokens(user)
+    out = set()
+    for s in waiting:
+        mkt = MARKETS.get(s["market"])
+        if (s["id"] in tried or mkt is None or not mkt.deployable or not agent.in_focus(s["market"], focus)
+                or specmod.is_code_spec(s["spec"])):
+            continue
+        if agent._is_deployment_candidate(cur, s["id"]):
+            out.add(s["id"])
+    return out
+
+
+def _held_back(cur, uid: int, s: Dict, exp: Optional[Dict]) -> List[Dict]:
+    """gate_explain.held_back for a passed strategy whose one-time holdout held up but which was not promoted
+    to a deployment candidate: the diversification check after the holdout held it back. Its status stays
+    "passed" (validation), and its page said "Passed. It cleared every check". The reason is the run's own
+    verdict event, and the strategy it repeats is named by its title. [] for any other strategy. Display only:
+    nothing is judged again."""
+    hold = (exp or {}).get("holdout") or {}
+    if (s.get("status") != "passed" or not exp or exp.get("promoted")
+            or hold.get("classification") != gatekeeper.Classification.FORWARD_VALIDATED.value
+            or specmod.has_perpetual_market(s["spec"], s.get("market"))):  # research only: never promoted
+        return []
+    own_run = s.get("run_id") and not s.get("shared_from_user_id")
+    ev = repo.forward_verdict(cur, s["run_id"], s["title"]) if own_run else None
+    reason = ev.get("reason") if ev and ev.get("marginal_ok") is False else None
+    peer_eid, peer = gate_explain.corr_peer(reason), None
+    row = research_repo.experiment_row_by_id(cur, peer_eid) if peer_eid else None
+    if row and row.get("strategy_id"):
+        peer_s = repo.get_strategy(cur, uid, int(row["strategy_id"]))
+        peer = peer_s["title"] if peer_s else None
+    return gate_explain.held_back(reason, peer)
 
 
 def get_strategy(ctx: Ctx):
@@ -374,7 +430,8 @@ def get_strategy(ctx: Ctx):
         sample_caution={"min_trades": track_record.MIN_TRADES, "gate_min_oos_trades": backtest.GATES["min_oos_trades"]},
         experiment=exp,
         # One plain line per gate it missed: measured, needed, and what to try next (display only).
-        why_failed=_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
+        why_failed=(_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp)
+                    or _gate_lines(_held_back, ctx.cur, ctx.uid, s, exp)),
         deployments=[_deployment_out(d, [], demo_key_back=key_back, paper_books=_paper_books(deps)) for d in deps],
         # Its deployments summed per book ({mode: {pnl, trades, open, paused}}), as the strategies list sums them.
         book_totals=_book_totals(deps).get(s["id"], {}),
@@ -394,6 +451,11 @@ def get_strategy(ctx: Ctx):
         # Each book's realized per-trade P&L against the backtest's, one line per book (display only).
         # The page shows them under its current deployments, so with none there is nothing to read.
         backtest_checks=_backtest_checks(ctx.cur, ctx.uid, {s["id"]: s}).get(s["id"], []) if deps else [],
+        # The autopilot puts it on paper itself at its next check-in while its switch is on, judged as if on so
+        # the page follows a flip: the page says so in place of Deploy on paper, as a copy by hand doubles it.
+        # Only a promoted strategy can be one, so no other page reads the user's deployments for it.
+        autopilot_paper=bool(exp and exp.get("promoted")) and s["id"] in _autopilot_puts_on_paper(
+            ctx.cur, dict(ctx.user, autopilot=1), [dict(s, active_deps=any(d["status"] != "stopped" for d in deps))]),
     )
     return out
 
