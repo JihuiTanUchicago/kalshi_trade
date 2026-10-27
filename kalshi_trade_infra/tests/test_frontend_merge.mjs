@@ -24,6 +24,7 @@ import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
+import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -124,6 +125,7 @@ class Element {
   addEventListener(name, callback) { this.listeners.set(name, callback); }
   dispatchEvent(event) { this.listeners.get(event.type)?.(event); }
   appendChild(child) { this.children.push(child); child.parent = this; }
+  insertBefore(child, ref) { const at = this.children.indexOf(ref); this.children.splice(at < 0 ? this.children.length : at, 0, child); child.parent = this; }
   insertAdjacentHTML(_position, html) { this.html = (this.html || '') + html; }
   getAttribute(key) { return this.attributes[key] ?? null; }
   setAttribute(key, value) { this.attributes[key] = String(value); }
@@ -5136,3 +5138,4 @@ a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? n
 creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
 writeWaitCases({name: 'Tau', frontend, billingPage, cardedBilling, postRequests, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});
+flakyNetworkCases({name: 'Tau', frontend});

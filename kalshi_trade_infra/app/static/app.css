@@ -2084,6 +2084,8 @@ body.landing-body .apf { display: none; }
    quiet voice of the markets feed's "Updated" line. Empty (the usual case) it takes no room. */
 .stale-note { margin: 8px 0 0; font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); }
 .stale-note:empty { display: none; }
+/* Offline: one line above the page while the phone has no network (netBar); it goes once the network is back. */
+.netbar { position: sticky; top: 0; z-index: 60; padding: 8px var(--gut); background: var(--ink); color: #F1F3ED; font-size: 13px; line-height: 1.4; text-align: center; }
 /* A write Tau hasn't answered after 20s says so beside its control (waitNote): its own line, quiet. */
 .wait-note { display: block; flex-basis: 100%; grid-column: 1 / -1; margin-top: 6px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 :has(> .wait-note) { flex-wrap: wrap; }

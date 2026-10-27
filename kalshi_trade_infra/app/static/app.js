@@ -637,7 +637,22 @@
   // page is gone.
   const wakers = new Set();
   const wake = () => wakers.forEach((w) => { if (w() === false) wakers.delete(w); });
+  // The phone says it has no network (a tunnel, a lift): a line above the page says so at once. A page
+  // only said so a poll or two later ("Last updated 30s ago, retrying"), or as "Something went wrong"
+  // on the next tap. It goes by itself once the network is back.
+  const OFFLINE = 'You’re offline. Tau keeps what it last showed and catches up when you’re back.';
+  const offline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+  function netBar() {
+    let bar = document.getElementById('netbar');
+    if (!offline()) { if (bar) bar.remove(); return; }
+    if (bar || !document.body) return;
+    bar = document.createElement('div');
+    bar.id = 'netbar'; bar.className = 'netbar'; bar.setAttribute('role', 'status'); bar.textContent = OFFLINE;
+    document.body.insertBefore(bar, root);
+  }
+  window.addEventListener('offline', netBar);
   window.addEventListener('online', () => {
+    netBar();
     wake();
     if (document.getElementById('bootretry')) { render(); return; }
     root.querySelectorAll('.load-fail [data-retry]').forEach((b) => b.click());
@@ -734,7 +749,10 @@
         const up = path.replace(/\/\d+$/, ''), label = { '/strategies': 'All strategies', '/research': 'All research sessions' }[up];
         shell('', boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
       } else if (gen === S.gen && e.status !== 401) {
-        shell('', boardTitle('Something went wrong'), loadFail(errText(e)));
+        // Offline, it isn't "something went wrong": the page loads by itself once the network is back
+        // (the online handler presses Try again).
+        const off = e.status === 0 && offline();
+        shell('', boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
       }
     }
@@ -3614,6 +3632,7 @@
 
   setupAnnouncer();
   guardArmedRepeat();
+  netBar();
   setupGlossary();
   render();
 })();
