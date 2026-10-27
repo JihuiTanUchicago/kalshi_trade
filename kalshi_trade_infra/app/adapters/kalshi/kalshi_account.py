@@ -76,6 +76,9 @@ def balance(creds: KalshiCredentials) -> Optional[float]:
 # Kalshi round-trip every tick. Values only (never the key or creds) are cached.
 _BALANCE_CACHE: Dict[int, Tuple[float, Optional[float]]] = {}
 _BALANCE_TTL = 60.0
+# A memo counts as kept only with this long still to run, so a page read that checked it a moment
+# earlier still answers from it.
+KEPT_MARGIN = 5.0
 
 
 def remember_balance(user_id: int, value: Optional[float]) -> None:
@@ -99,6 +102,11 @@ def balance_cached(user_id: int, creds: KalshiCredentials, ttl: float = _BALANCE
     return value
 
 
+def balance_kept(user_id: int) -> bool:
+    """Whether balance_cached would answer from the memo now, never asking Kalshi. Reads the memo only."""
+    return memo_kept(_BALANCE_CACHE, user_id, _BALANCE_TTL)
+
+
 def balance_read_at(user_id: int) -> Optional[datetime]:
     """When the memoized balance was read from Kalshi (naive UTC), so a page can say how old the figure
     is; None when nothing is memoized. Reads the memo only, never Kalshi."""
@@ -113,6 +121,13 @@ def memo_read_at(cache: Dict[int, Tuple[float, Optional[float]]], user_id: int) 
         return None
     age = max(0.0, time.monotonic() - hit[0])
     return (datetime.now(timezone.utc) - timedelta(seconds=age)).replace(tzinfo=None, microsecond=0)
+
+
+def memo_kept(cache: Dict[int, Tuple[float, Optional[float]]], user_id: int, ttl: float) -> bool:
+    """Whether a (monotonic time, value) balance memo holds this user's balance with at least KEPT_MARGIN
+    of its `ttl` to run (a failed read memoized as None counts: it answers from memory too)."""
+    hit = cache.get(user_id)
+    return bool(hit) and time.monotonic() - hit[0] < ttl - KEPT_MARGIN
 
 
 def verify(key_id: str, pem: str) -> float:

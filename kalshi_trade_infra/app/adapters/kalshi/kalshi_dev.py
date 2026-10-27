@@ -20,9 +20,12 @@ is unreachable, or no candlesticks come back for the window, this returns
 from __future__ import annotations
 
 import bisect
+import hashlib
+import json
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
 import requests
@@ -35,20 +38,34 @@ from app.trading.markets import Contract, snapshot
 # the env var. Read-only, unauthenticated candlestick GETs only - never POSTs.
 KALSHI_DEV_API_BASE = os.getenv("KALSHI_DEV_API_BASE", "https://demo-api.kalshi.co/trade-api/v2").rstrip("/")
 # Bound the number of per-contract candlestick calls on a cache miss.
-# ponytail: sequential per-contract fetch, capped to N out-of-sample contracts,
+# ponytail: per-contract fetch (FETCH_WORKERS at a time), capped to N out-of-sample contracts,
 # the strategy's traded contracts first (so slippage/curve always cover the
-# contracts that matter) then first-seen to fill the rest. Raise MAX_CONTRACTS,
-# parallelise the fetch, or persist the realized curve if the full window must be shown.
+# contracts that matter) then first-seen to fill the rest. Raise MAX_CONTRACTS
+# or persist the realized curve if the full window must be shown.
 MAX_CONTRACTS = int(os.getenv("KALSHI_DEV_MAX_CONTRACTS", "60"))
+# Candlestick GETs in flight at once on a cache miss. One after another, 60 contracts were 60 round
+# trips (about 5s at 80ms each) on a strategy page's first load; a 429 is retried (_dev_get).
+FETCH_WORKERS = int(os.getenv("KALSHI_DEV_FETCH_WORKERS", "4"))
 CACHE_TTL_SECONDS = 600
 # Minimum aligned trades before a slippage figure is trustworthy enough to show
 # or feed into the cost model. Below this the block is null (graceful).
 MIN_ALIGNED_TRADES = 3
+# Work out a strategy's replay in the background once it passes (warm), so opening it from its
+# session answers from memory. Off in tests (conftest), which never reach the demo host.
+WARM = os.getenv("KALSHI_DEV_WARM", "1") == "1"
 
 # The contract-independent BTC features; the rest are rebuilt from dev quotes.
 _BTC_FEATURE_KEYS = ("spot", "ret_1m", "ret_5m", "ret_15m", "ret_60m", "vol_15m", "vol_60m")
 
-_cache: Dict[str, Tuple[float, Optional[Dict]]] = {}
+# (strategy id, spec hash) -> (computed at, data version, payload, every contract fetched).
+_cache: Dict[Tuple[int, str], Tuple[float, Tuple, Optional[Dict], bool]] = {}
+# The same key while one thread works it out; others wait for it instead of repeating the replay.
+_inflight: Dict[Tuple[int, str], threading.Event] = {}
+# (series, ticker, start_ts, end_ts, period) -> (fetched at, sorted candles). Every strategy on a
+# market asks for the same unseen-window candles until its history moves on.
+_candles: Dict[Tuple, Tuple[float, Tuple[Tuple[int, float, float], ...]]] = {}
+MAX_CANDLE_ENTRIES = 5000
+_warmed: set = set()
 _lock = threading.Lock()
 # Latest measured per-fill slippage (cents) per market, populated as dev curves
 # are computed, so the research/cost model can read a market-level number
@@ -64,7 +81,11 @@ def unavailable_reason() -> str:
 
 
 def _dev_get(path: str, params: Dict, timeout: int = 15) -> Dict:
-    resp = requests.get(KALSHI_DEV_API_BASE + path, params=params, timeout=timeout)
+    for attempt in range(3):
+        resp = requests.get(KALSHI_DEV_API_BASE + path, params=params, timeout=timeout)
+        if resp.status_code != 429:
+            break
+        time.sleep(0.5 * (attempt + 1))  # paced out by the demo API: wait, don't drop the contract
     if resp.status_code >= 400:
         raise RuntimeError("dev GET %s -> %d" % (path, resp.status_code))
     return resp.json()
@@ -88,6 +109,38 @@ def _dev_candles(series: str, ticker: str, start_ts: int, end_ts: int,
             out.append((int(c["end_period_ts"]), float(bid), float(ask)))
         except (TypeError, ValueError, KeyError):
             continue
+    return out
+
+
+def _fetch_candles(series: str, wanted: List[Tuple[str, int, int]],
+                   period_min: int) -> List[Optional[Tuple[Tuple[int, float, float], ...]]]:
+    """Each (ticker, start_ts, end_ts)'s demo candles, sorted, in the order asked: a fetch from the
+    last CACHE_TTL_SECONDS is reused, the rest are fetched FETCH_WORKERS at a time. None where the
+    host errored (never kept, so the next replay asks again)."""
+    now = time.time()
+    keys = [(series, tk, lo, hi, period_min) for tk, lo, hi in wanted]
+    out: List[Optional[Tuple]] = []
+    with _lock:
+        for k in keys:
+            hit = _candles.get(k)
+            out.append(hit[1] if hit and now - hit[0] < CACHE_TTL_SECONDS else None)
+    todo = [i for i, rows in enumerate(out) if rows is None]
+    if not todo:
+        return out
+
+    def one(i: int) -> Optional[Tuple]:
+        rows = _dev_candles(*keys[i])
+        return None if rows is None else tuple(sorted(rows))
+
+    with ThreadPoolExecutor(max_workers=max(1, min(FETCH_WORKERS, len(todo)))) as ex:
+        fetched = list(ex.map(one, todo))
+    with _lock:
+        if len(_candles) > MAX_CANDLE_ENTRIES:
+            _candles.clear()
+        for i, rows in zip(todo, fetched):
+            out[i] = rows
+            if rows is not None:
+                _candles[keys[i]] = (now, rows)
     return out
 
 
@@ -147,7 +200,8 @@ def _per_fill_cents(block: Optional[Dict]) -> Optional[float]:
     return round((entry + exit_) / 2.0, 2) if exit_ is not None else entry
 
 
-def _compute(spec: Dict, ds: backtest.Dataset) -> Optional[Dict]:
+def _compute(spec: Dict, ds: backtest.Dataset, missed: Optional[List[str]] = None) -> Optional[Dict]:
+    """The replay's page payload, or None. `missed` collects the contracts whose demo fetch errored."""
     cutoff = ds.cutoff_ts
     oos_frames = [(ts, snaps) for ts, snaps in ds.frames if ts >= cutoff]
     if not oos_frames:
@@ -174,13 +228,14 @@ def _compute(spec: Dict, ds: backtest.Dataset) -> Optional[Dict]:
     # from the real demo book.
     quotes: Dict[Tuple[str, int], Tuple[float, float]] = {}
     cand_ts: Dict[str, List[int]] = {}
-    for tk in tickers:
-        c = contracts[tk]
-        rows = _dev_candles(ds.market.series, tk, cutoff, int(c.close_time.timestamp()),
-                            ds.market.candle_minutes)
+    fetched = _fetch_candles(ds.market.series,
+                             [(tk, cutoff, int(contracts[tk].close_time.timestamp())) for tk in tickers],
+                             ds.market.candle_minutes)
+    for tk, rows in zip(tickers, fetched):
         if rows is None:
+            if missed is not None:
+                missed.append(tk)
             continue
-        rows.sort()
         cand_ts[tk] = [r[0] for r in rows]
         for ts, bid, ask in rows:
             quotes[(tk, ts)] = (bid, ask)
@@ -231,31 +286,86 @@ def _compute(spec: Dict, ds: backtest.Dataset) -> Optional[Dict]:
     }
 
 
+def _spec_key(spec: Dict) -> str:
+    return hashlib.sha256(json.dumps(spec, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _data_version(ds: backtest.Dataset) -> Tuple:
+    """The market history a replay read: its window and size. Every reload that took in newer
+    history (it grows every 10 minutes) is a new version."""
+    return (ds.market.key, ds.start_ts, ds.end_ts, ds.contracts, len(ds.frames))
+
+
 def dev_curve_for_strategy(strategy_id: int, spec: Dict, market_key: str) -> Optional[Dict]:
-    """Realized demo-environment OOS curve for one strategy, cached per id.
+    """Realized demo-environment OOS curve for one strategy, cached per (id, spec hash).
+
+    A replay from the last CACHE_TTL_SECONDS is served as it is. After that it is served again
+    while the market's history is the same version and none of its contracts failed to fetch (a
+    settled contract's demo candles don't change, so replaying would answer the same bytes), else
+    replayed. A replay already running for the strategy (another request, or warm) is waited for,
+    not repeated.
 
     Returns None (caller shows no second line) when demo replay is unconfigured
     or unavailable. Never raises on a dev/data problem.
     """
     if not KALSHI_DEV_API_BASE:
         return None
-    key = str(strategy_id)
+    key = (int(strategy_id), _spec_key(spec))
+    while True:
+        with _lock:
+            hit = _cache.get(key)
+            if hit and time.time() - hit[0] < CACHE_TTL_SECONDS:
+                return hit[2]
+            running = _inflight.get(key)
+            if running is None:
+                running = _inflight[key] = threading.Event()
+                break
+        running.wait()
+    try:
+        return _replay(key, spec, market_key, hit)
+    finally:
+        with _lock:
+            _inflight.pop(key, None)
+        running.set()
+
+
+def _replay(key: Tuple[int, str], spec: Dict, market_key: str, hit: Optional[Tuple]) -> Optional[Dict]:
     now = time.time()
-    with _lock:
-        hit = _cache.get(key)
-        if hit and now - hit[0] < CACHE_TTL_SECONDS:
-            return hit[1]
+    version: Optional[Tuple] = None
+    missed: List[str] = []
     try:
         ds = backtest.dataset(market_key)
-        out = _compute(spec, ds)
+        version = _data_version(ds)
+        if hit and hit[1] == version and hit[2] is not None and hit[3]:
+            out = hit[2]
+        else:
+            out = _compute(spec, ds, missed)
     except Exception:
         out = None
     with _lock:
-        _cache[key] = (now, out)
+        _cache[key] = (now, version, out, not missed)
         per_fill = _per_fill_cents(out.get("slippage") if out else None)
         if per_fill is not None:
             _slippage_by_market[market_key] = per_fill
     return out
+
+
+def warm(strategies: List[Tuple[int, Dict, str]]) -> None:
+    """Replay these (strategy id, spec, market key) in the background, one after another (the first
+    loads the market's history, the rest reuse it), each once per process, so opening one of them
+    answers from memory."""
+    if not (WARM and KALSHI_DEV_API_BASE):
+        return
+    with _lock:
+        todo = [s for s in strategies if s[0] not in _warmed]
+        _warmed.update(s[0] for s in todo)
+    if todo:
+        threading.Thread(target=_warm_all, args=(todo,), name="dev-curve-warm", daemon=True).start()
+
+
+def _warm_all(strategies: List[Tuple[int, Dict, str]]) -> None:
+    for strategy_id, spec, market_key in strategies:
+        dev_curve_for_strategy(strategy_id, spec, market_key)
 
 
 def measured_slippage_cents(market_key: str) -> Optional[float]:

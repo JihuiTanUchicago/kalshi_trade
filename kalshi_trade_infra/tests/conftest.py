@@ -8,9 +8,13 @@ reaching for a real database in these tests. That's the point of the DAO
 extraction from Phase 3: engine/risk logic should be testable without a live
 MySQL connection.
 """
+import os
 from contextlib import contextmanager
 
 import pytest
+
+# Tests never start the demo replay's background warm (app.adapters.kalshi.kalshi_dev.warm).
+os.environ.setdefault("KALSHI_DEV_WARM", "0")
 
 
 def patch_intent_passthrough(monkeypatch):
@@ -180,4 +184,11 @@ def _fresh_server_shared_cache():
     chat_routes = sys.modules.get("app.web.routes.chat")  # the autopilot's last move, kept per user id
     if chat_routes is not None:
         chat_routes._LAST_ACTION.clear()
+    # The demo replay's curves and fetched candles are per strategy id and ticker, which tests reuse.
+    kalshi_dev = sys.modules.get("app.adapters.kalshi.kalshi_dev")
+    if kalshi_dev is not None:
+        with kalshi_dev._lock:
+            kalshi_dev._cache.clear()
+            kalshi_dev._candles.clear()
+            kalshi_dev._warmed.clear()
     yield

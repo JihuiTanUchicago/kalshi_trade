@@ -21,6 +21,9 @@ window.TauPage('strategies', (T) => {
   // A per-trade net return (net P&L over what the trade cost) as a percent of its stake: the unit the
   // gatekeeper judges and the "What it missed" lines use. It read as cents ("+3.10¢"), which it isn't.
   const rpRet = (v) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(2) + '%');
+  // Under the equity chart while its demo-replay line loads (seconds on a cold server): the rest of the
+  // page is already drawn, and this says the chart has one more line coming.
+  const DEV_PENDING = `<p class="hint dev-pending" id="dev-pending"><span class="skeleton" aria-hidden="true"></span>Replaying the unseen window against Kalshi's demo book…</p>`;
   const rpProb = (v, d = 3) => (v == null ? '—' : Number(v).toFixed(d));
   const rpInt = (v) => (v == null ? '—' : num(v));
   const rpText = (v) => esc(v == null ? '' : String(v));
@@ -602,7 +605,7 @@ window.TauPage('strategies', (T) => {
       + `<div class="paper-sub">${perpetual ? '<h4 class="paper-h">Perpetual research scenario</h4>' : hasExp ? '<h4 class="paper-h">Backtest &amp; Kalshi demo replay</h4>' : ''}
           ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent\'s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
           <div id="sheet-results">
-            <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) : ''}</div>
+            <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth() }) : ''}${!perpetual && s.equity && oos ? DEV_PENDING : ''}</div>
             <div class="split"><div><h4>In-sample</h4>${s.in_sample ? metricRows(ins) : '<p class="hint">No in-sample result recorded.</p>'}</div><div><h4>Out-of-sample</h4>${metricRows(oos)}</div></div>
           </div></div>`
       + fold('Most recent unseen trades', `<div class="paper-sub"><h4 class="paper-h">Most recent unseen trades</h4>${trades}</div>`);
@@ -721,8 +724,10 @@ window.TauPage('strategies', (T) => {
       </div>`;
     // Second equity line: the strategy's unseen window replayed read-only against
     // the Kalshi demo environment. Fetched after the page so a slow/absent demo
-    // never blocks the view; absent -> the chart simply stays sim-only.
+    // never blocks the view; absent -> the chart simply stays sim-only. Until it answers,
+    // the chart carries its own pending line (DEV_PENDING), gone with or without a curve.
     if (!perpetual && s.equity && oos) (async () => {
+      const pending = root.querySelector('#dev-pending');
       try {
         const r = await api('/api/strategies/' + s.id + '/dev-curve');
         const wrap = root.querySelector('#equity-wrap');
@@ -738,7 +743,7 @@ window.TauPage('strategies', (T) => {
             if (ab && ws) ab.onclick = () => { ws.value = perFill; ws.dispatchEvent(new Event('input')); };
           }
         }
-      } catch (e) { /* demo replay is best-effort; leave the sim-only chart */ }
+      } catch (e) { /* demo replay is best-effort; leave the sim-only chart */ } finally { if (pending) pending.remove(); }
     })();
     // Road to live: the strategy's own checks, the ones the deploy paths enforce (gatekeeper, realistic
     // paper record, demo record), with progress, what is left and when the counts could be in. How it

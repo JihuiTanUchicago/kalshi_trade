@@ -468,16 +468,35 @@ def what_if(ctx: Ctx):
     return {k: res[k] for k in ("in_sample", "out_of_sample", "equity", "gates", "passed", "capital")}
 
 
+def _no_dev_curve(s: Dict) -> Optional[str]:
+    """Why a strategy has no demo replay to draw, or None when it has one."""
+    if specmod.has_perpetual_market(s["spec"], s.get("market")):
+        return "Bitcoin perpetuals are research-only; event-contract demo replay is unavailable."
+    if not (s.get("result") or {}).get("out_of_sample"):
+        return "This hypothesis has no out-of-sample backtest to replay."
+    return None
+
+
+# Passed strategies a session page warms at once (kalshi_dev.warm replays them one after another).
+WARM_DEV_CURVES = 3
+
+
+def warm_dev_curves(strategies: List[Dict]) -> None:
+    """Start the demo replay of a session's passed strategies in the background as they show up on
+    its page, so the one the user opens next draws its second line from memory."""
+    kalshi_dev.warm([(s["id"], s["spec"], s["market"]) for s in strategies
+                     if s["status"] == "passed" and _no_dev_curve(s) is None][:WARM_DEV_CURVES])
+
+
 def strategy_dev_curve(ctx: Ctx):
     """Realized out-of-sample curve replayed READ-ONLY against the Kalshi DEMO
     (dev) environment, for the sim-vs-real second line on the equity chart.
     Degrades to {"dev_curve": None} (no second line) when dev replay is
     unconfigured or the demo host/data is unavailable - it never errors the page."""
     s = _owned_strategy(ctx)
-    if specmod.has_perpetual_market(s["spec"], s.get("market")):
-        return {"dev_curve": None, "reason": "Bitcoin perpetuals are research-only; event-contract demo replay is unavailable."}
-    if not (s.get("result") or {}).get("out_of_sample"):
-        return {"dev_curve": None, "reason": "This hypothesis has no out-of-sample backtest to replay."}
+    reason = _no_dev_curve(s)
+    if reason:
+        return {"dev_curve": None, "reason": reason}
     out = kalshi_dev.dev_curve_for_strategy(s["id"], s["spec"], s["market"])
     if out is None:
         return {"dev_curve": None, "reason": kalshi_dev.unavailable_reason()}

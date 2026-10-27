@@ -504,3 +504,29 @@ def test_feature_block_states_the_window_carries_strikes_and_events():
     assert "Per-contract fields in a code window" in block
     assert "strike (nonzero on 100% of contracts, p10/p50/p90 98/98/98)" in block
     assert "event (40 events" in block
+
+
+def test_concurrent_cold_loads_of_one_window_load_it_once(monkeypatch):
+    """The web's dev curve, what-if and the session page's warm can ask for the same cold market at
+    once; the others wait for the first load instead of reading the history again."""
+    import threading
+    import time
+    monkeypatch.setattr(backtest, "_cache", {})
+    loads, got = [], []
+    ds = _dataset()
+
+    def loader(market, days):
+        loads.append(market.key)
+        time.sleep(0.05)
+        return ds
+
+    threads = [threading.Thread(target=lambda: got.append(backtest.load_dataset("btc15m", loader)))
+               for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+    assert loads == ["btc15m"] and len(got) == 4 and all(g is ds for g in got)
+    # Another window is its own load.
+    backtest.load_dataset("btc15m", loader, history_days=7)
+    assert loads == ["btc15m", "btc15m"]

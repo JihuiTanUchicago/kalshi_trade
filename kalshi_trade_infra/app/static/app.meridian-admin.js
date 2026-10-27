@@ -185,8 +185,8 @@ window.TauPage('admin', (T) => {
       `<div id="sys-error"></div><div class="sysmap">
          <div class="sys-wrap"><svg viewBox="0 0 900 540" preserveAspectRatio="xMidYMid meet" id="syssvg" aria-label="System map">${edges}${nodes}</svg></div>
          <aside class="sys-side" aria-label="Details and live activity">
-           <section class="panel" id="sys-detail"><h3>Select a component</h3></section>
-           <section class="sect" style="margin-top:16px"><div class="sect-head"><h2>Live activity</h2><span class="sys-live" id="sys-stamp"></span></div><ol class="log sys-feed" id="sys-feed"></ol></section>
+           <section class="panel" id="sys-detail"><h2>Select a component</h2></section>
+           <section class="sect" style="margin-top:16px"><div class="sect-head"><h2>Live activity</h2><span class="sys-live" id="sys-stamp"></span></div><ol class="log sys-feed" id="sys-feed" tabindex="0" aria-label="Live activity"></ol></section>
          </aside>
        </div>`);
     const svg = root.querySelector('#syssvg');
@@ -198,7 +198,7 @@ window.TauPage('admin', (T) => {
       codeState = null;
       const n = sysNode(id), L = S.sysLive && S.sysLive[id];
       const open = n.ext ? '' : `<p style="margin-top:12px"><button class="btn sm" data-code-open="${esc(id)}">Open the code ›</button></p>`;
-      detail.innerHTML = `<h3>${esc(n.label)}</h3><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${open}`;
+      detail.innerHTML = `<h2>${esc(n.label)}</h2><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${open}`;
     };
     const modName = (p) => p.split('/').pop();
     const crumbs = (parts) => `<nav class="sys-crumb">${parts.map((p, i) =>
@@ -214,7 +214,7 @@ window.TauPage('admin', (T) => {
       const label = (sysNode(id) || {}).label || id;
       return codePanel('component=' + encodeURIComponent(id), (d) =>
         crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules' }]) +
-        `<h3>Modules</h3><ul class="sys-list">${d.modules.map((m) =>
+        `<h2>Modules</h2><ul class="sys-list">${d.modules.map((m) =>
           `<li><a href="#" data-mod="${esc(m.path)}">${esc(m.name)}</a> <span class="sys-dim">${m.symbols} defs ·\u00a0${m.lines} lines</span>${m.doc ? `<div class="hint">${esc(m.doc)}</div>` : ''}</li>`).join('')}</ul>`);
     };
     const openModule = (id, mod) => {
@@ -224,7 +224,7 @@ window.TauPage('admin', (T) => {
         const fn = (f) => `<li><a href="#" data-fn="${esc(f.qual)}" data-fnmod="${esc(mod)}"><code>${esc(f.signature)}</code></a>${f.doc ? `<div class="hint">${esc(f.doc)}</div>` : ''}</li>`;
         const cls = d.classes.map((c) => `<li class="sys-cls"><code>class ${esc(c.name)}</code>${c.doc ? `<div class="hint">${esc(c.doc)}</div>` : ''}<ul class="sys-list">${c.methods.map(fn).join('')}</ul></li>`).join('');
         return crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules', a: `data-code-open="${esc(id)}"` }, { t: modName(mod) }]) +
-          `<h3>${esc(modName(mod))}</h3>` +
+          `<h2>${esc(modName(mod))}</h2>` +
           (d.functions.length ? `<ul class="sys-list">${d.functions.map(fn).join('')}</ul>` : '') +
           (cls ? `<ul class="sys-list">${cls}</ul>` : '') +
           (d.functions.length || cls ? '' : '<p class="hint">No top-level functions or classes.</p>');
@@ -237,7 +237,7 @@ window.TauPage('admin', (T) => {
         `<li><a href="#" data-fn="${esc(r.qual)}" data-fnmod="${esc(r.module)}">${esc(r.qual)}</a> <span class="sys-dim">${esc(modName(r.module))}</span></li>`).join('')}</ul>` : '<p class="hint">None found in the mapped source.</p>';
       return codePanel('module=' + encodeURIComponent(mod) + '&func=' + encodeURIComponent(qual), (d) =>
         crumbs([{ t: label, a: `data-detail="${esc(id)}"` }, { t: 'modules', a: `data-code-open="${esc(id)}"` }, { t: modName(mod), a: `data-mod="${esc(mod)}"` }, { t: d.name }]) +
-        `<h3><code>${esc(d.qual)}</code></h3><p class="hint">${esc(modName(mod))} ·\u00a0line ${d.lineno}</p>` +
+        `<h2><code>${esc(d.qual)}</code></h2><p class="hint">${esc(modName(mod))} ·\u00a0line ${d.lineno}</p>` +
         `<pre class="sys-src"><code>${esc(d.source)}</code></pre>` +
         `<h3 style="margin-top:14px">Calls (callees)</h3>${refs(d.callees)}` +
         `<h3 style="margin-top:14px">Called by (callers)</h3>${refs(d.callers)}`);

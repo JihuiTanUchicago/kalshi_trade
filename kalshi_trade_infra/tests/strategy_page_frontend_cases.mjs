@@ -5,7 +5,7 @@ import {test} from 'node:test';
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-export function strategyPageCases({name, detailStrategy, strategyFrontend, postRequests}) {
+export function strategyPageCases({name, frontend, detailStrategy, strategyFrontend, postRequests}) {
   const open = async (overrides) => {
     const f = strategyFrontend(detailStrategy(overrides), () => response({}));
     await f.viewStrategy(42); await flush();
@@ -122,5 +122,34 @@ export function strategyPageCases({name, detailStrategy, strategyFrontend, postR
     // A strategy rejected in validation still reads as never advancing.
     const r = await open({status: 'failed', experiment: {classification: 'rejected', validation: {classification: 'rejected', n_trades: 20}}});
     assert.match(main(r), /this hypothesis did not advance the ladder/); assert.doesNotMatch(main(r), /rung lit/);
+  });
+
+  test(`${name}: the page is drawn while the demo replay loads, the chart says its line is coming, then drops that`, async () => {
+    for (const answer of [{dev_curve: [[200, 1], [300, 2]]}, {dev_curve: null, reason: 'unavailable'}, 'fails']) {
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      const f = frontend({fetchImpl: async (path) => {
+        if (path === '/api/strategies/42') return response(detailStrategy({status: 'passed'}));
+        if (path === '/api/strategies/42/dev-curve') {
+          await gate;
+          if (answer === 'fails') return response({error: 'Server error.'}, 500);  // Tau answering: final, no retry
+          return response(answer);
+        }
+        return response({});
+      }});
+      await f.viewStrategy(42); await flush();
+      const pending = f.root.querySelector('#dev-pending');
+      assert.ok(pending, 'pending line under the chart');
+      assert.match(pending.outerHTML || main(f), /Replaying the unseen window against Kalshi's demo book/);
+      assert.match(main(f), /<span class="skeleton" aria-hidden="true"><\/span>/);
+      for (const id of ['equity-wrap', 'gates', 'dep-paper']) assert.ok(f.root.querySelector('#' + id), `#${id} drawn first`);
+      release();
+      for (let i = 0; i < 6; i++) await flush();
+      assert.equal(pending.removed, true, `${JSON.stringify(answer)}: pending line removed`);
+      if (answer.dev_curve) assert.match(f.root.querySelector('#equity-wrap').innerHTML, /Dashed line: the unseen window replayed/);
+    }
+    // No unseen window to replay: no pending line at all.
+    const none = await open({status: 'rejected', out_of_sample: null});
+    assert.equal(none.root.querySelector('#dev-pending'), null);
   });
 }

@@ -139,3 +139,184 @@ def test_no_curve_when_demo_host_unreachable(monkeypatch):
 
     monkeypatch.setattr(kalshi_dev, "_dev_get", boom)
     assert kalshi_dev._compute(s, ds) is None
+
+
+# -- pinned payload --------------------------------------------------------------------------------
+# A realistic replay: a random-walk spot, two strikes per 15-minute window (more unseen contracts than
+# MAX_CONTRACTS, so the cap applies), candles with gaps, and a thin demo book that skips periods, quotes
+# a cent or two worse and errors on one contract. The page's bytes for it are pinned: a speed-up of the
+# replay (fetching, caching) must answer exactly what it answered before.
+
+def _pinned_dataset(windows=120):
+    import random
+    rng = random.Random(11)
+    start = T0 - 7200
+    spot, px = 100000.0, {}
+    for i in range(windows * 15 + 121):
+        spot = round(spot * (1 + rng.gauss(0, 0.0008)), 2)
+        px[start + 60 * i] = spot
+    btc = sorted(px.items())
+    markets, candles = [], []
+    for w in range(windows):
+        open_ts = T0 + w * 900
+        close = datetime.fromtimestamp(open_ts + 900, tz=timezone.utc)
+        for j, off in enumerate((-40.0, 40.0)):
+            strike = round(px[open_ts] + off, 2)
+            ticker = "P%d-%d" % (w, j)
+            markets.append({"ticker": ticker, "strike": strike, "close_time": close,
+                            "result": "yes" if px[open_ts + 900] >= strike else "no"})
+            for m in range(1, 15):
+                if rng.random() < 0.1:
+                    continue  # a missing candle
+                ts = open_ts + 60 * m
+                lean = (px[ts - 60] - strike) / 120.0
+                mid = min(0.95, max(0.05, round(0.5 + lean + rng.gauss(0, 0.06), 2)))
+                candles.append((ticker, ts, round(mid - 0.01, 2), round(mid + 0.01, 2)))
+    return backtest.build_dataset(MARKETS["btc15m"], markets, candles, btc)
+
+
+def _pinned_feed(ds, calls=None):
+    by_ticker = {}
+    for ts, snaps in ds.frames:
+        for sn in snaps:
+            by_ticker.setdefault(sn.contract.ticker, []).append((ts, sn.yes_bid, sn.yes_ask))
+
+    def fake_get(path, params, timeout=15):
+        ticker = path.split("/markets/")[1].split("/")[0]
+        if calls is not None:
+            calls.append(ticker)
+        if ticker == "P100-1":
+            raise RuntimeError("demo host hiccup")
+        worse = 0.01 * (1 + int(ticker.split("-")[1]))
+        return {"candlesticks": [
+            {"end_period_ts": ts, "yes_bid": {"close_dollars": max(0.0, round(bid - worse, 2))},
+             "yes_ask": {"close_dollars": min(0.99, round(ask + worse, 2))}}
+            for k, (ts, bid, ask) in enumerate(by_ticker.get(ticker, []))
+            if params["start_ts"] <= ts <= params["end_ts"] and k % 4 != 3]}
+
+    return fake_get
+
+
+PINNED_SPECS = (
+    {"side": "either", "entry": {"min_edge": 0.03, "max_spread": 0.05}},
+    {"side": "yes", "entry": {"min_edge": 0.02, "max_spread": 0.05},
+     "exit": {"take_profit": 0.7, "stop_loss": 0.2}},
+)
+PINNED_SHA256 = (
+    "30eca4c59f1055d40fc13807a7eefb7262aaa4ce0715bbbc7069b9600f53c21e",
+    "2007398d9195dd2631af8a97ec8b9999b4e102a22307d7213340201624cb8937",
+)
+
+
+def _page_bytes(out):
+    import json
+    from app.web.http import _json_default
+    return json.dumps(out, default=_json_default, separators=(",", ":")).encode("utf-8")
+
+
+def _pinned_env(monkeypatch, ds, calls=None):
+    monkeypatch.setattr(kalshi_dev, "MAX_CONTRACTS", 60)
+    monkeypatch.setattr(kalshi_dev, "KALSHI_DEV_API_BASE", "http://demo.invalid")
+    monkeypatch.setattr(kalshi_dev, "_dev_get", _pinned_feed(ds, calls))
+    monkeypatch.setattr(kalshi_dev.backtest, "dataset", lambda market_key, history_days=None: ds)
+
+
+def test_dev_curve_bytes_are_pinned(monkeypatch):
+    import hashlib
+    ds = _pinned_dataset()
+    _pinned_env(monkeypatch, ds)
+    for k, (raw, want) in enumerate(zip(PINNED_SPECS, PINNED_SHA256)):
+        s = specmod.validate(dict(raw))
+        out = kalshi_dev.dev_curve_for_strategy(-1000 - k, s, "btc15m")
+        assert out is not None and out["capped"] is True and out["slippage"] is not None
+        body = _page_bytes(out)
+        assert hashlib.sha256(body).hexdigest() == want
+        # The cached answer is the same bytes.
+        assert _page_bytes(kalshi_dev.dev_curve_for_strategy(-1000 - k, s, "btc15m")) == body
+
+
+def test_fetched_candles_serve_every_strategy_on_the_market(monkeypatch):
+    ds = _pinned_dataset()
+    calls = []
+    _pinned_env(monkeypatch, ds, calls)
+    a, b = (specmod.validate(dict(raw)) for raw in PINNED_SPECS)
+    kalshi_dev.dev_curve_for_strategy(1, a, "btc15m")
+    first = len(calls)
+    assert first == 60  # one GET per contract, capped
+    kalshi_dev.dev_curve_for_strategy(2, b, "btc15m")
+    # The second strategy asks only for contracts the first didn't, plus the one that errored.
+    again = calls[first:]
+    assert "P100-1" in again and len(again) < first
+
+
+def test_a_lapsed_replay_is_reused_while_the_history_is_the_same(monkeypatch):
+    ds = _pinned_dataset()
+    calls = []
+    _pinned_env(monkeypatch, ds, calls)
+    s = specmod.validate(dict(PINNED_SPECS[0]))
+    computed = []
+    real = kalshi_dev._compute
+    monkeypatch.setattr(kalshi_dev, "_compute", lambda *a: computed.append(1) or real(*a))
+    body = _page_bytes(kalshi_dev.dev_curve_for_strategy(7, s, "btc15m"))
+    key = next(iter(kalshi_dev._cache))
+    lapse = lambda: kalshi_dev._cache.__setitem__(key, (0.0,) + kalshi_dev._cache[key][1:])  # noqa: E731
+    # One contract errored on the demo host, so the lapsed replay is worked out again...
+    lapse()
+    assert _page_bytes(kalshi_dev.dev_curve_for_strategy(7, s, "btc15m")) == body
+    assert len(computed) == 2
+    # ...and once every contract fetched, a lapsed replay on the same history answers from memory.
+    kalshi_dev._cache[key] = kalshi_dev._cache[key][:3] + (True,)
+    lapse()
+    assert _page_bytes(kalshi_dev.dev_curve_for_strategy(7, s, "btc15m")) == body
+    assert len(computed) == 2
+    # Newer history is a new version: replayed.
+    ds.end_ts += 60
+    lapse()
+    kalshi_dev.dev_curve_for_strategy(7, s, "btc15m")
+    assert len(computed) == 3
+
+
+def test_concurrent_requests_share_one_replay(monkeypatch):
+    import threading
+    ds = _pinned_dataset()
+    _pinned_env(monkeypatch, ds)
+    gate, computed = threading.Event(), []
+    monkeypatch.setattr(kalshi_dev, "_compute",
+                        lambda *a: computed.append(1) or gate.wait(5) and {"dev_curve": [[1, 0.0], [2, 1.0]]})
+    s = specmod.validate(dict(PINNED_SPECS[0]))
+    got = []
+    threads = [threading.Thread(target=lambda: got.append(kalshi_dev.dev_curve_for_strategy(9, s, "btc15m")))
+               for _ in range(3)]
+    for t in threads:
+        t.start()
+    gate.set()
+    for t in threads:
+        t.join(5)
+    assert len(computed) == 1 and len(got) == 3 and all(g == got[0] for g in got)
+
+
+def test_warm_replays_passed_strategies_once_in_the_background(monkeypatch):
+    from app.web.routes import strategies as routes
+    ds = _pinned_dataset()
+    _pinned_env(monkeypatch, ds)
+    monkeypatch.setattr(kalshi_dev, "WARM", True)
+    s = specmod.validate(dict(PINNED_SPECS[0]))
+    oos = {"out_of_sample": {"trades": 12}}
+    rows = [{"id": 31, "status": "passed", "market": "btc15m", "spec": s, "result": oos},
+            {"id": 32, "status": "rejected", "market": "btc15m", "spec": s, "result": {}},
+            {"id": 33, "status": "passed", "market": "btc15m", "spec": s, "result": {}}]  # nothing unseen
+    started = []
+    monkeypatch.setattr(kalshi_dev, "_warm_all", lambda todo: started.append([t[0] for t in todo]))
+    routes.warm_dev_curves(rows)
+    routes.warm_dev_curves(rows)  # the session page polls; each strategy is warmed once
+    import time
+    for _ in range(50):
+        if started:
+            break
+        time.sleep(0.01)
+    assert started == [[31]]
+    monkeypatch.setattr(kalshi_dev, "WARM", False)
+    kalshi_dev._warmed.clear()
+    routes.warm_dev_curves(rows)
+    time.sleep(0.05)
+    assert started == [[31]]

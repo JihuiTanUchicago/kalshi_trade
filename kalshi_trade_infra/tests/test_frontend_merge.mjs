@@ -22,6 +22,7 @@ import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
+import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -1558,10 +1559,10 @@ test('Explore with no search and no markets says the list has not arrived, and a
   const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? reply() : response({}))});
   await f.viewExplore(); await flush();
   const body = f.root.querySelector('#xbody');
-  assert.equal(body.querySelector('.empty h3').textContent, 'No markets to show yet'); assert.doesNotMatch(body.innerHTML, /No markets match/);
+  assert.equal(body.querySelector('.empty h2').textContent, 'No markets to show yet'); assert.doesNotMatch(body.innerHTML, /No markets match/);
   reply = () => response({error: 'Server error.'}, 500);
   await body.querySelector('[data-xretry]').onclick(); await flush();
-  assert.equal(body.querySelector('.empty h3').textContent, 'Markets didn’t load');
+  assert.equal(body.querySelector('.empty h2').textContent, 'Markets didn’t load');
   assert.ok(body.querySelector('[data-xretry]'));
 });
 
@@ -5033,4 +5034,5 @@ chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k)
 a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))}), billingPage, cardedBilling,
   source, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: funds});
 creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
+writeWaitCases({name: 'Tau', frontend, billingPage, cardedBilling, postRequests, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});

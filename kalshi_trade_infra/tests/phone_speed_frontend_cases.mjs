@@ -153,6 +153,24 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     f.clearTimers();
   });
 
+  test(`${name}: Funds draws its figures from the read the shell carries, and polls as before`, async () => {
+    // The shell carries it only while every cash figure is already in the server's memo (shell_reads.py).
+    const book = (cash) => ({kalshi: {connected: false}, kalshi_dev: {connected: false}, demo: {capital: 1000, equity: 1001, realized: 1},
+      paper: {cash, equity: cash, ledger: [{created_at: '2026-10-17T10:00:00Z', memo: 'Paper deposit', amount: 1000}]}});
+    const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response(book(1000)) : response({})});
+    f.location.pathname = '/funds';
+    f.window.__TAU_FIRST__ = [{url: '/api/funds', body: book(1234.5)}];
+    await f.viewFunds(); await settle();
+    assert.equal(asked(f, '/api/funds'), 0, 'no round trip for what the shell carried');
+    assert.match(f.root.querySelector('#ffigs').textContent, /\$1,234\.50/);
+    assert.equal(f.window.__TAU_FIRST__.length, 0, 'taken once');
+    for (const tick of [...f.intervals.values()]) tick();
+    await settle();
+    assert.equal(asked(f, '/api/funds'), 1, 'the poll reads it fresh');
+    assert.match(f.root.querySelector('#ffigs').textContent, /\$1,000\.00/);
+    f.clearTimers();
+  });
+
   test(`${name}: a carried read is used only for its own URL and only by the first page`, async () => {
     let f = frontend({fetchImpl: researchTransport()});
     f.location.pathname = '/research';
