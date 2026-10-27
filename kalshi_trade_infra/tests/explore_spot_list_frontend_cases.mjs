@@ -1,7 +1,8 @@
 // Explore's list and the hot-markets rail, run against each bundle's offline DOM/transport harness: a
 // Bitcoin contract's row says how far stored spot is from its strike (the server's `vs`), a bucket spot
 // sits in says "in range", and without a fresh spot the figures are left out under one line that says why.
-// Hot markets also say when they close (`ct`), as Explore's rows do.
+// Hot markets also say when they close (`ct`), as Explore's rows do. Every row, in either list, is named by
+// its title and market chip, never by its raw ticker.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -94,6 +95,51 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     const label = rows[0].getAttribute('aria-label');
     if (label) assert.match(label, /Closes .*Spot vs strike \+\$420 ·\s0\.4%/);
     assert.equal(el.querySelector('.hot-note'), null, 'a fresh spot needs no line');
+    f.clearTimers();
+  });
+
+  // Every row leads with a plain name and the market chip the rest of the app uses, never the raw ticker.
+  // Meridian printed the ticker (KXBTCD-26OCT2812-T112999.99) as a line of each row with no chip, and both
+  // themes named an untitled contract by its ticker (Explore, the hot rail).
+  const NAMED = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', category: 'Crypto', close_hour_et: 17},
+    {key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin 15-minute up/down', category: 'Crypto'}];
+  const NAME_ROWS = [row('KXBTCD-26OCT2812-T112999.99', {ti: 'Bitcoin price at 12pm EDT?', su: '$113,000 or above', ct: '2026-10-28T16:00:00Z'}),
+    row('KXBTCD-26OCT2817-T112999.99', {ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above'}),
+    row('KXBTC-26OCT2817-B113250', {ti: 'Bitcoin price range at 5pm EDT?', su: '$113,000 to 113,499.99'}),
+    row('KXBTC15M-26OCT271145-45', {ti: 'BTC price up in next 15 mins?'}),
+    row('KXFEDDECISION-26DEC-H0', {s: 'KXFEDDECISION', ti: '', su: '', ct: null})];
+  const CHIPS = ['BTC above $X at noon ET', 'BTC above $X at 5pm ET', 'BTC range at 5pm ET', 'BTC 15-min up/down', null];
+  const TICKER = /KX[A-Z0-9]+-\w/;
+
+  test(`${name}: Explore's rows lead with the plain name and the market chip, never the raw ticker or series`, async () => {
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? response({at: new Date().toISOString(), total: 5, shown: 5, matched: 5, page: 0, per: 40, sort: 'v24', markets: NAME_ROWS}) : response({}))});
+    f.S.me.markets = NAMED;
+    f.location.pathname = '/explore'; f.location.search = '';
+    await f.viewExplore(); await settle();
+    const rows = f.root.querySelectorAll('#xbody tbody tr');
+    assert.equal(rows.length, 5);
+    rows.forEach((r, i) => {
+      const cell = r.querySelector('td.name'), link = cell.querySelector('a[href^="/explore?m="]');
+      assert.doesNotMatch(cell.textContent, TICKER, `row ${i} prints no ticker`);
+      assert.doesNotMatch(link.getAttribute('aria-label') || '', TICKER, `row ${i} reads out no ticker`);
+      assert.doesNotMatch(link.getAttribute('title') || '', TICKER);
+      const chip = cell.querySelector('.mk');
+      if (CHIPS[i]) assert.ok(chip && chip.textContent.startsWith(CHIPS[i]), `row ${i} has its market chip`);
+      else assert.equal(chip, null, 'no chip rather than the raw series');
+    });
+    assert.match(rows[4].querySelector('td.name').textContent, /Kalshi contract/, 'an untitled contract is named as a position is');
+    f.clearTimers();
+  });
+
+  test(`${name}: the hot rail names an untitled contract plainly and never reads out its ticker`, async () => {
+    const {f, el} = await rail({markets: NAME_ROWS.map((m) => ({...m, h: [.4, .5]}))});
+    const rows = el.querySelectorAll('.hot-row');
+    assert.equal(rows.length, 5);
+    rows.forEach((r, i) => {
+      assert.doesNotMatch(r.textContent, TICKER, `hot row ${i} shows no ticker`);
+      assert.doesNotMatch(r.getAttribute('aria-label') || '', TICKER, `hot row ${i} reads out no ticker`);
+    });
+    assert.match(rows[4].textContent, /Kalshi contract/);
     f.clearTimers();
   });
 

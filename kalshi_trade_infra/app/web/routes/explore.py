@@ -235,7 +235,7 @@ def explore_market(ctx: Ctx):
                           "status": f.get("st"), "close_time": None, "as_of": feed.get("at"), "snapshot": True}
         if not snap:
             raise ApiError(502, "Kalshi didn't send this market's history just now. Try again in a minute.")
-        return {**snap, "ticker": ticker, "series": series, "title": snap["title"] or ticker, "sub": snap["sub"] or "",
+        return {**snap, "ticker": ticker, "series": series, "title": snap["title"] or "", "sub": snap["sub"] or "",
                 "period_min": None, "points": [], "history_unavailable": True, "mine": _market_mine(ctx, ticker, open_ts)}
     points = []
     for c in cs:
@@ -249,7 +249,7 @@ def explore_market(ctx: Ctx):
             points.append({"t": int(c["end_period_ts"]), "yes": round(yes, 4), "vol": _cnum(c.get("volume_fp")) or 0})
     return {
         "ticker": ticker, "series": series,
-        "title": m.get("title") or ticker, "sub": m.get("yes_sub_title") or m.get("subtitle") or "",
+        "title": m.get("title") or "", "sub": m.get("yes_sub_title") or m.get("subtitle") or "",
         "yes_bid": m.get("yes_bid_dollars"), "yes_ask": m.get("yes_ask_dollars"), "last": m.get("last_price_dollars"),
         "volume_24h": m.get("volume_24h_fp"), "open_interest": m.get("open_interest_fp"),
         "status": m.get("status"), "close_time": m.get("close_time"), "period_min": period, "points": points,

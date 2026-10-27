@@ -1198,6 +1198,28 @@ def test_explore_market_shows_the_market_when_only_its_history_failed(monkeypatc
     assert d["close_time"] == "2026-10-26T03:00:00Z"
 
 
+def test_explore_market_sends_an_untitled_market_with_no_title_never_its_ticker(monkeypatch):
+    # The page heads an untitled contract with a plain name ("Kalshi contract", or its market's words); a title
+    # of the raw ticker (KXFEDDECISION-26DEC-H0) was the heading. The ticker still comes as `ticker`.
+    import data_pipeline.common as common
+    t = "KXFEDDECISION-26DEC-H0"
+    c = server.Ctx(FakeConn(), {"id": 1}, (), {"ticker": t}, {}, None)
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: {"markets": [{"t": t, "s": "KXFEDDECISION", "ti": "", "su": "",
+                                                                                "bid": "0.12", "ask": "0.14", "st": "active"}]})
+
+    def down(path, params=None):
+        raise OSError("Tunnel connection failed: 403 Forbidden")
+    monkeypatch.setattr(common, "api_get", down)
+    d = server.explore_market(c)  # from the feed's snapshot
+    assert d["title"] == "" and d["ticker"] == t
+
+    def kalshi(path, params=None):
+        return {"candles": []} if "/candlesticks" in path else {"market": {"title": "", "status": "active"}}
+    monkeypatch.setattr(common, "api_get", kalshi)
+    d = server.explore_market(c)  # from Kalshi's own record
+    assert d["title"] == "" and d["ticker"] == t and d.get("history_unavailable") is not True
+
+
 def test_explore_market_says_how_it_settles_and_lists_the_readers_positions(monkeypatch):
     # The market page answers: how does it settle, when were the figures read, and what do my strategies hold here.
     import data_pipeline.common as common

@@ -2439,8 +2439,10 @@ test('Explore preserves distinct source counts and search zeroes while omitting 
 
 test('Explore keeps duplicate contracts distinct through row rotation while unique and missing names retain exact accessible identity and quotes', async () => {
   const contract = (t, ti, su, overrides = {}) => Object.freeze({t, ti, su, s: 'KXBTC15M', bid: .51, ask: .53, last: .5, v24: 1200, oi: 4, ...overrides});
-  const a = contract('BTC-26OCT191200', ' Bitcoin price ', ' Above $100,000 ');
-  const b = contract('BTC-26OCT191230', 'Bitcoin price', 'Above $100,000', {bid: .67, ask: .69, v24: 8, oi: 2});
+  // Two contracts with one title and one condition differ by when they close (`ct`), which the row and its
+  // accessible name both say; never by the raw ticker.
+  const a = contract('BTC-26OCT191200', ' Bitcoin price ', ' Above $100,000 ', {ct: '2026-10-19T16:00:00Z'});
+  const b = contract('BTC-26OCT191230', 'Bitcoin price', 'Above $100,000', {bid: .67, ask: .69, v24: 8, oi: 2, ct: '2026-10-19T16:30:00Z'});
   const unique = contract('RAIN-26OCT19', 'Rain in Seattle?', 'At least 1 inch', {s: 'KXRAIN', bid: null, ask: null, last: .25, v24: 0, oi: 0});
   const subtitle = contract('SUB-26OCT19', '  ', ' Subtitle only ', {bid: null, ask: null, last: null, v24: 0, oi: 8});
   const fallback = contract('RAW-26OCT19', '', '', {bid: .11, ask: .13, v24: 2, oi: 9});
@@ -2451,7 +2453,7 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
     [b.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price ·\u00a0Above $100,000', ['68¢', '8', '2'], '&gt; $100,000']],
     [unique.t, ['Rain in Seattle?', 'At least 1 inch', 'Rain in Seattle? ·\u00a0At least 1 inch', ['25¢', '0', '0']]],
     [subtitle.t, ['Subtitle only', null, 'Subtitle only', ['—', '0', '8']]],
-    [fallback.t, [fallback.t, null, fallback.t, ['12¢', '2', '9']]],
+    [fallback.t, ['Kalshi contract', null, 'Kalshi contract', ['12¢', '2', '9']]],
     [hostile.t, ['Price &quot;&lt;img src=x&gt;&quot; &amp; forecast', 'Above &lt;script&gt;unsafe&lt;/script&gt;',
       'Price &quot;&lt;img src=x&gt;&quot; &amp; forecast ·\u00a0Above &lt;script&gt;unsafe&lt;/script&gt;', ['62¢', '12', '5']]],
   ]);
@@ -2467,14 +2469,14 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
       const [title, sub, label, amounts, display] = m === renamed ? ['Bitcoin price', 'Below $100,000', 'Bitcoin price ·\u00a0Below $100,000', ['68¢', '8', '2'], '&lt; $100,000'] : expected.get(m.t);
       const raw = m === hostile ? 'KX&quot;QUOTE&quot;&lt;ticker&gt;&amp;' : m.t;
       assert.equal(link.getAttribute('href'), '/explore?m=' + encodeURIComponent(m.t));
-      assert.equal(link.getAttribute('title'), raw);
-      assert.equal(link.getAttribute('aria-label'), label === raw ? label : `${label} ·\u00a0${raw}`);
+      assert.equal(link.getAttribute('title'), null, 'no raw ticker tooltip');
+      const closes = link.querySelector('.market-close');
+      assert.equal(link.getAttribute('aria-label'), closes ? `${label} ·\u00a0${closes.textContent}` : label);
       assert.equal(link.querySelector('strong').textContent, display || sub || title);
       if (sub) assert.equal(row.querySelector('.market-contract a'), link);
       else assert.equal(row.querySelector('.market-contract'), null);
-      const ref = row.querySelector('.market-ref');
-      assert.ok(ref, 'every source contract retains its full visible raw identifier');
-      assert.equal(ref.textContent, raw);
+      assert.equal(row.querySelector('.market-ref'), null, 'the raw ticker is no line of the row');
+      assert.ok(!row.querySelector('td').textContent.includes(raw), 'nor anywhere in its name cell');
       assert.deepEqual(['.yes-price', '.market-volume', '.market-interest'].map(selector => row.querySelector(selector).textContent), amounts);
       const pair = row.querySelectorAll('.quote-side').map(n => n.textContent);
       assert.deepEqual(pair, m.bid == null ? ['—', '—'] : [Math.round(m.bid * 100) + '¢', Math.round(m.ask * 100) + '¢']);
@@ -2516,13 +2518,11 @@ test('Explore keeps every source event and contract independently legible when t
   assert.deepEqual(rows.map(row => row.querySelector('a.market-name').getAttribute('href')), markets.map(m => '/explore?m=' + encodeURIComponent(m.t)));
   assert.ok(rows.slice(0,5).every(row => !row.querySelector('.market-event').classList.contains('vh')));
   assert.equal(rows[1].querySelector('.market-event').textContent, 'Bitcoin 5pm');
-  assert.equal(rows[1].querySelector('a.market-name').getAttribute('aria-label'), 'Bitcoin 5pm ·\u00a0Above $91,000 ·\u00a0A-2');
+  assert.equal(rows[1].querySelector('a.market-name').getAttribute('aria-label'), 'Bitcoin 5pm ·\u00a0Above $91,000', 'the source wording, never the raw ticker');
   assert.equal(rows[3].querySelector('.market-event').classList.contains('vh'), false);
   assert.equal(rows[4].querySelector('.market-event').classList.contains('vh'), false);
   assert.equal(rows[5].querySelector('a.market-name strong').textContent, 'Bitcoin 5pm');
-  assert.equal(rows[5].querySelector('.market-ref').textContent, 'D-1');
   assert.equal(rows[6].querySelector('a.market-name strong').textContent, 'Subtitle only');
-  assert.equal(rows[6].querySelector('.market-ref').textContent, 'E-1');
   const identityHeaders = f.root.querySelector('.t-explore thead tr').querySelectorAll('th').slice(0, 2);
   assert.deepEqual(identityHeaders.map(th => th.textContent), ['Market / contract', 'Context']);
   assert.ok(identityHeaders.every(th => th.getAttribute('scope') === 'col' && th.getAttribute('rowspan') === '2'));
@@ -2533,7 +2533,8 @@ test('Explore keeps every source event and contract independently legible when t
   assert.equal(unsplit.length, 8);
   assert.equal(unsplit[0].querySelector('.market-event').textContent, 'Bitcoin 5pm', 'retain the entire unsplit source title');
   assert.equal(unsplit[0].querySelector('a.market-name').getAttribute('href'), '/explore?m=A-1');
-  assert.equal(unsplit[0].querySelector('.market-ref').textContent, 'A-1');
+  assert.equal(f.root.querySelectorAll('#xbody .market-ref').length, 0, 'no row prints its raw ticker');
+  assert.ok(rows.every((row, i) => !row.querySelector('td').textContent.includes(markets[i].t)));
   assert.doesNotMatch(unsplit[1].textContent, /5pm|expiry/i, 'do not infer a separate context or expiry from unstructured title text');
   assert.equal(rows[5].querySelector('td').getAttribute('colspan'), '2', 'a single identity fallback spans both identity tracks');
   assert.equal(rows[6].querySelector('td').getAttribute('colspan'), '2');
@@ -2542,7 +2543,7 @@ test('Explore keeps every source event and contract independently legible when t
   assert.equal(contextual[1].textContent, 'Oct 19, 5pm ET ·\u00a0Source context', 'retain every actual context segment without inferring expiry');
   assert.equal(hostile[1].textContent, 'City &lt;script&gt;unsafe&lt;/script&gt; &amp; forecast');
   assert.equal(rows[7].querySelector('.market-event').getAttribute('title'), markets[7].ti);
-  assert.equal(rows[7].querySelector('a.market-name').getAttribute('aria-label'), markets[7].ti + ' ·\u00a0' + markets[7].su + ' ·\u00a0F-1');
+  assert.equal(rows[7].querySelector('a.market-name').getAttribute('aria-label'), markets[7].ti + ' ·\u00a0' + markets[7].su);
   assert.deepEqual(rows.slice(7).map(row => ['.yes-price', '.quote-bid', '.quote-ask', '.market-volume', '.market-interest'].map(selector => row.querySelector(selector).textContent)),
     [['41¢', '40¢', '42¢', '8', '2'], ['41¢', '40¢', '42¢', '8', '2']]);
   assert.doesNotMatch(f.root.querySelector('#xbody').innerHTML, /<script>|<unsafe>/);
@@ -2559,8 +2560,8 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   const links = f.root.querySelectorAll('a.market-name');
   assert.deepEqual(links.map(link => link.querySelector('strong').textContent), displays);
   links.forEach((link, index) => {
-    assert.equal(link.getAttribute('aria-label'), `Bitcoin ·\u00a0${conditions[index]} ·\u00a0CONTRACT-${index}`);
-    assert.equal(link.getAttribute('title'), `CONTRACT-${index}`);
+    assert.equal(link.getAttribute('aria-label'), `Bitcoin ·\u00a0${conditions[index]}`);
+    assert.equal(link.getAttribute('title'), null);
     assert.equal(link.getAttribute('href'), `/explore?m=CONTRACT-${index}`);
   });
   const requests = f.requests.length;
@@ -2570,7 +2571,7 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   assert.deepEqual(quotes.map(row => row.querySelector('.hot-title > span').textContent), displays);
   quotes.forEach((row, index) => {
     assert.equal(row.querySelector('.hot-title').getAttribute('title'), `Bitcoin ·\u00a0${conditions[index]}`);
-    assert.ok(row.getAttribute('aria-label').startsWith(`Bitcoin ·\u00a0${conditions[index]} ·\u00a0CONTRACT-${index} ·\u00a051¢`));
+    assert.ok(row.getAttribute('aria-label').startsWith(`Bitcoin ·\u00a0${conditions[index]} ·\u00a051¢`));
   });
   assert.equal(f.requests.length, requests, 'formatting source conditions performs no lookup');
   assert.equal(JSON.stringify(markets), before); assert.equal(postRequests(f).length, 0);
@@ -2803,12 +2804,13 @@ test('Hot Markets preserves dated contract identity and escapes full accessible 
   for (let index = 0; index < 2; index++) {
     assert.equal(rows[index].querySelector('.hot-title strong').textContent, 'BTC 15-min up/down');
     assert.ok(rows[index].innerHTML.includes('>BTC 15-min up/down<') && !rows[index].innerHTML.includes('>KXBTC15M<'), 'no raw series chip, not even for screen readers');
-    assert.ok(labels[index].includes(markets[index].ti)); assert.ok(labels[index].includes(markets[index].t));
+    assert.ok(labels[index].includes(markets[index].ti)); assert.ok(!labels[index].includes(markets[index].t), 'the raw ticker is not read out as its name');
+    assert.ok(labels[index].includes('BTC 15-min up/down'));
     assert.match(labels[index], /At least \$105,000.*52¢.*\+4¢ across available history.*1\.2k volume over 24 hours.*Opens Kalshi in a new tab/);
     assert.equal(rows[index].getAttribute('target'), '_blank'); assert.equal(rows[index].getAttribute('rel'), 'noopener');
   }
   assert.match(labels[2], /Price &quot;preview&quot; &lt;img/);
-  assert.match(labels[2], /KXBTC15M-&quot;quoted&quot;&lt;contract&gt;&amp;/);
+  assert.doesNotMatch(labels[2], /KXBTC15M-/);
   assert.match(labels[2], /Above &lt;script&gt;unsafe&lt;\/script&gt;.*Quote unavailable.*0 volume over 24 hours/);
   assert.equal(rows[2].getAttribute('onerror'), null); assert.equal(rows[2].querySelector('img'), null); assert.equal(rows[2].querySelector('script'), null);
   assert.equal(JSON.stringify(f.S.hot), before); assert.deepEqual(f.requests, []); assert.deepEqual(f.navigations, []);

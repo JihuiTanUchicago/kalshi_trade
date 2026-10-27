@@ -46,6 +46,12 @@ export function explorePageCases({name, frontend}) {
     assert.doesNotMatch(f.root.innerHTML, /KXFEDDECISION ·/);
   });
 
+  test(`${name}: an untitled contract's page is headed by a plain name, its ticker only on the line under it`, async () => {
+    const f = await open(page({ticker: 'KXFEDDECISION-26DEC-H0', series: 'KXFEDDECISION', title: '', sub: ''}));
+    assert.equal(f.root.querySelector('h1').textContent, 'Kalshi contract', 'never the raw ticker as the heading');
+    assert.match(f.root.querySelector('.board-title .deck').textContent, /Open for trading ·\sKXFEDDECISION-26DEC-H0$/);
+  });
+
   test(`${name}: an hourly contract of the 5pm Bitcoin ladder isn't named the 5pm market, and points at the close Tau researches`, async () => {
     const f = await open(page({ticker: 'KXBTCD-26OCT2700-T112999.99', title: 'Bitcoin price on Oct 27, 2026 at 12am EDT?', sub: '$113,000 or above'}));
     assert.doesNotMatch(f.root.innerHTML, /Bitcoin above \S+ at 5pm ET ·/, 'the midnight contract is not the 5pm market');
