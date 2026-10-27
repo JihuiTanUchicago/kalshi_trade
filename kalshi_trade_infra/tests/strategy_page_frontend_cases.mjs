@@ -293,6 +293,24 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(none.root.querySelector('#figs').textContent, /Ideas tested\s*—\s*Count unavailable\./);
   });
 
+  test(`${name}: since deploying, each book says which money it is and that fees are in, and open positions aren't`, async () => {
+    // Walk 2026-10-27: only the paper line said what its P&L was net of. "Demo +$1.16 realized over 3 closed
+    // trades · 1 open" said neither that it was Tau's demo book (not real money) nor that Kalshi's fees were in.
+    const deployments = [
+      {id: 1, mode: 'demo', status: 'running', realized_pnl: 1.16, closed_trades: 3, open_positions: 1, created_at: '2026-10-27T08:00:00Z'},
+      {id: 2, mode: 'live', status: 'running', realized_pnl: -2.5, closed_trades: 2, open_positions: 2, created_at: '2026-10-27T08:00:00Z'},
+      {id: 3, mode: 'paper', status: 'running', realized_pnl: 6.86, closed_trades: 6, open_positions: 0, created_at: '2026-10-27T08:00:00Z'}];
+    const f = await open({status: 'passed', deployments});
+    const lines = [...f.root.querySelectorAll('.real-record p')].map((p) => p.textContent.replace(/\s+/g, ' '));
+    const line = (mode) => lines.find((t) => t.startsWith(mode)) || '';
+    assert.match(line('Demo'), /^Demo \+\$1\.16 realized over 3 closed trades, after Kalshi fees, in Tau’s demo book: not real money · 1 open, counted once it closes/);
+    assert.match(line('Live'), /−\$2\.50 realized over 2 closed trades, real money, after Kalshi fees · 2 open, counted once they close/);
+    assert.match(line('Paper'), /\+\$6\.86 realized over 6 closed trades, after Kalshi fees and the spread/);
+    assert.doesNotMatch(line('Paper'), /real money|demo book/);
+    // Each book on its own line: never one figure across them.
+    assert.doesNotMatch(lines.join(' '), /\$5\.52|\$4\.36/);
+  });
+
   test(`${name}: Road to live that didn't load says why and offers Try again, which fills it`, async () => {
     const road = {ready: false, deployment_candidate: true, live_autopilot: {ok: false},
       paper: {trades: 12, trades_needed: 30, net_pnl: 3.4, events: 12, events_needed: 20, span_hours: 50, span_needed_hours: 48,
