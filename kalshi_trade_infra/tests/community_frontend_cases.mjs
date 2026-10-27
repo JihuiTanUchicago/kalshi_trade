@@ -129,9 +129,14 @@ export function communityCases({name, frontend}) {
       const html = f.postSnapshot({...card, ...over}, '@maya');
       assert.match(html, /later-period/i, JSON.stringify(over));
       // In the strategy page's words: the split date picked it, so it isn't held out.
-      assert.match(html, /after the split date, which picked it: not held out/);
+      assert.match(html, /after the split date, which picked it: not held out[.,]/);
+      // One colon before the figure: "…not held out: +$5.50" ran the reason into the P&L.
+      assert.doesNotMatch(html, /not held out:/);
       assert.doesNotMatch(html, /unseen|never saw/i, JSON.stringify(over));
     }
+    // The author's own card, a link, says it too.
+    const own = f.postSnapshot({...card, no_gatekeeper_record: true}, '');
+    assert.match(own, /^<a [^>]*href="\/strategies\/42"/); assert.match(own, /Backtest over 9 days after the split date, which picked it: not held out/);
     const kept = f.postSnapshot(card, '@maya');
     assert.match(kept, /unseen|never saw/i); assert.doesNotMatch(kept, /later-period/i);
   });
