@@ -5281,3 +5281,18 @@ test('on a phone the dashboard book figures put their chip above the name, so "T
     assert.ok(source.includes('fig(`' + lab) || source.includes("fig('" + lab), lab);
   }
 });
+
+// Walk 2026-10-27, 390px: the paper's sections read "01 What it does", then the Methodology fold (its numbered
+// title hidden on a phone), then "03 Results": the folded section still counted.
+test('Tau phone: a folded paper section does not count, so the numbered sections run without a gap', async () => {
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const phone = css.slice(css.indexOf('/* Phone: secondary strategy-page sections fold behind their title. */'));
+  const block = phone.slice(phone.indexOf('@media (max-width: 760px)'), phone.indexOf('\n}\n'));
+  assert.match(block, /\.fold > \.paper-sec > \.paper-sec-t[^{]*\{ display: none; \}/);
+  assert.match(block, /\.paper-body > \.fold > \.paper-sec \{ counter-increment: none; \}/);
+  // The fold that rule reaches: Methodology's section, a direct child of the paper's body.
+  const f = strategyFrontend(detailStrategy(), () => response({}));
+  await f.viewStrategy(42); await flush();
+  const body = f.root.querySelector('.paper-body').innerHTML;
+  assert.match(body, /<details class="fold"[^>]*><summary class="fold-h">Methodology<\/summary><section class="paper-sec">/);
+});

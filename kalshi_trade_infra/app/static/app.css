@@ -2192,6 +2192,8 @@ body.landing-body .apf { display: none; }
   .fold > .panel, .fold > .paper-sec, .fold > .paper-sub { border: 0; margin: 0; box-shadow: none; }
   .fold > .panel > h3:first-child, .fold > .paper-sec > .paper-sec-t, .fold > .paper-sub > .paper-h:first-child { display: none; }
   .fold > .paper-sec, .fold > .paper-sub, .fold > .fold-body { padding: 12px 14px; }
+  /* A folded paper section hides its numbered title, so it doesn't count: the paper read 01, Methodology, 03. */
+  .paper-body > .fold > .paper-sec { counter-increment: none; }
 }
 /* ── Phone polish ─────────────────────────────────────────────────────────────── */
 /* A label's last word keeps its glossary marker (gl() in app.js): the marker never wraps alone. */
