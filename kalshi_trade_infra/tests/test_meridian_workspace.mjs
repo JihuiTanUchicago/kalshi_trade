@@ -3165,6 +3165,25 @@ test("boot.js hands the app the page's first read the shell carries, once, apart
   }
 });
 
+test("boot.js starts the reads a carried read names next, once each, and only the app's own", () => {
+  const text = JSON.stringify([{url: '/api/funds', body: {}, then: ['/api/funds/cash?book=live', '/api/funds/cash?book=demo', 'https://elsewhere.example/x', 7]},
+    {url: '/api/autopilot/status', body: {}}]);
+  const node = {textContent: text, remove() {}};
+  const dataset = {ui: 'tau', tauJs: '/static/app.js?v=t', tauVer: 't', merJs: '/static/app.meridian.js?v=m', merVer: 'm', merCss: '/static/app.meridian.css?v=m'};
+  const asked = [];
+  const context = {window: {}, location: {pathname: '/funds'}, localStorage: {getItem: () => null, setItem() {}},
+    fetch: (url, opts) => { asked.push([url, opts.credentials]); return Promise.resolve({url}); },
+    document: {getElementById: id => id === 'tau-first' ? node : id === 'tau-boot' ? {dataset} : null, createElement: () => ({}), body: {appendChild() {}}}};
+  vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+  assert.deepEqual(asked, [['/api/funds/cash?book=live', 'same-origin'], ['/api/funds/cash?book=demo', 'same-origin']]);
+  assert.deepEqual(Object.keys(context.window.__TAU_EARLY__), ['/api/funds/cash?book=live', '/api/funds/cash?book=demo']);
+  // No fetch (an old browser) or no "then": nothing starts, and boot goes on.
+  delete context.fetch; context.window = {};
+  vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
+  assert.equal(context.window.__TAU_EARLY__, undefined);
+  assert.equal(context.window.__TAU_UI__, 'tau');
+});
+
 test("boot.js keeps the browser's UTC offset in the tau_tz cookie, the one Billing's read names, and survives blocked cookies", () => {
   for (const [protocol, blocked] of [['https:', false], ['http:', false], ['https:', true]]) {
     const written = [], dataset = {ui: 'tau', tauJs: '/static/app.js?v=t', tauVer: 't', merJs: '/static/app.meridian.js?v=m', merVer: 'm', merCss: '/static/app.meridian.css?v=m'};

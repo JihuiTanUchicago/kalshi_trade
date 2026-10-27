@@ -191,6 +191,8 @@ def test_funds_shell_carries_its_read_for_an_account_with_kalshi_keys_and_never_
     body = first[0]["body"]
     assert body["kalshi"]["pending"] is True and body["kalshi"]["balance"] is None and "last_balance" not in body["kalshi"]
     assert body["kalshi_dev"]["pending"] is True and body["kalshi_dev"]["balance"] is None
+    # It names the cash reads the page asks next, so boot.js starts them beside the bundle.
+    assert first[0]["then"] == ["/api/funds/cash?book=live", "/api/funds/cash?book=demo"]
     # Our own books come whole, each its own: never added together, P&L apart from cash.
     assert body["paper"]["cash"] == 2001.75 and body["paper"]["realized_pnl"] == 5.61 and body["paper"]["ledger"]
     assert body["demo"]["equity"] == 1003.5 and body["kalshi"]["realized_pnl"] == -1.25
@@ -238,6 +240,26 @@ def test_funds_without_kalshi_for_an_account_with_no_key_is_the_whole_read(monke
     out = shell_reads.funds_without_kalshi(ctx)
     assert out == funds_routes.funds(ctx)
     assert out["kalshi"]["connected"] is False and out["kalshi_dev"] == {"connected": False}
+
+
+def test_then_reads_names_only_funds_pending_cash():
+    pending, kept = {"connected": True, "pending": True, "balance": None}, {"connected": True, "balance": 12.5}
+    assert shell_reads.then_reads("/api/funds", {"kalshi": pending, "kalshi_dev": pending}) == [
+        "/api/funds/cash?book=live", "/api/funds/cash?book=demo"]
+    assert shell_reads.then_reads("/api/funds", {"kalshi": kept, "kalshi_dev": pending}) == ["/api/funds/cash?book=demo"]
+    assert shell_reads.then_reads("/api/funds", {"kalshi": kept, "kalshi_dev": {"connected": False}}) == []
+    assert shell_reads.then_reads("/api/dashboard", {"kalshi": pending}) == []
+    assert shell_reads.then_reads("/api/funds", []) == []
+
+
+def test_a_funds_shell_with_each_cash_kept_names_no_reads_after(web, monkeypatch):
+    kalshi_account, demo_twins = _funds_db(monkeypatch)
+    now = kalshi_account.time.monotonic()
+    kalshi_account._BALANCE_CACHE[7] = (now - 10, 1234.5)
+    demo_twins._BALANCE_CACHE[7] = (now - 10, 250.0)
+    r, html = _shell(web, "/funds")
+    first = _first(html)
+    assert r.status == 200 and "then" not in first[0] and first[0]["body"]["kalshi"]["balance"] == 1234.5
 
 
 def test_funds_cash_reads_one_books_cash_in_cents(monkeypatch):

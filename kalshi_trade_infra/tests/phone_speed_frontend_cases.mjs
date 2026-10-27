@@ -244,6 +244,27 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     f.clearTimers();
   });
 
+  test(`${name}: Funds takes the cash reads the shell started early (boot.js), once each`, async () => {
+    const f = frontend({fetchImpl: () => response({book: 'live', connected: true, balance: 1})});
+    f.location.pathname = '/funds';
+    f.window.__TAU_FIRST__ = [{url: '/api/funds', body: keyed(), then: ['/api/funds/cash?book=live', '/api/funds/cash?book=demo']}];
+    f.window.__TAU_EARLY__ = {
+      '/api/funds/cash?book=live': Promise.resolve(response({book: 'live', connected: true, balance: 1234.56, balance_at: new Date().toISOString()})),
+      '/api/funds/cash?book=demo': Promise.resolve(response({error: 'Traceback: RuntimeError'}, 500)),
+    };
+    await f.viewFunds(); await settle();
+    assert.equal(asked(f, '/api/funds'), 0, 'no request: the page read and both cash reads were started by the shell');
+    assert.match(liveFig(f), /Kalshi cash\s*\$1,234\.56/);
+    assert.match(spot(f, 'demo-ok'), /Tau couldn’t check it just now/, 'an early read that failed reads as any failed one');
+    assert.deepEqual(Object.keys(f.window.__TAU_EARLY__), [], 'taken once');
+    // A later page never takes an early read: it asks for itself, and the rest are dropped.
+    f.window.__TAU_EARLY__ = {'/api/funds/cash?book=live': Promise.resolve(response({book: 'live', connected: true, balance: 99}))};
+    f.S.gen = 2;
+    assert.equal((await f.api('/api/funds/cash?book=live')).balance, 1);
+    assert.equal(f.window.__TAU_EARLY__, null);
+    f.clearTimers();
+  });
+
   test(`${name}: a full Funds read never waits on the follow-up, and the follow-up never paints over it`, async () => {
     let answerLive;
     const liveHeld = new Promise((resolve) => { answerLive = resolve; });

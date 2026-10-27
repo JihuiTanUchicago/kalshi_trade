@@ -469,6 +469,13 @@
       if (S.gen > 1 || !Array.isArray(carried)) window.__TAU_FIRST__ = null;  // the first page has gone: never an old answer later
       else { const i = carried.findIndex((r) => r && r.url === path); if (i >= 0) return carried.splice(i, 1)[0].body; }
     }
+    // A read the shell named to start early (boot.js: a carried read's "then"): the first page's ask takes it,
+    // once, in place of its first fetch; a later page never gets an old answer.
+    let early = null;
+    if (body === undefined && window.__TAU_EARLY__) {
+      if (S.gen > 1) window.__TAU_EARLY__ = null;
+      else if (window.__TAU_EARLY__[path]) { early = window.__TAU_EARLY__[path]; delete window.__TAU_EARLY__[path]; }
+    }
     const gen = S.gen, scoped = body === undefined && !(cfg && cfg.keep);
     const opts = { credentials: 'same-origin', headers: {} };
     if (body !== undefined) {
@@ -488,7 +495,11 @@
     // answers 502/503/504 with its own non-JSON page) retries twice before the page shows an
     // error. A JSON error is Tau itself answering, so it is final. Writes never retry.
     for (let attempt = 0; ; attempt++) {
-      try { res = await fetch(path, opts); }
+      try {
+        res = await (early && attempt === 0
+          ? Promise.race([early, new Promise((_, no) => { if (ctl) ctl.signal.addEventListener('abort', () => no(new Error('timed out'))); })])
+          : fetch(path, opts));
+      }
       catch (e) {
         if (scoped && gen !== S.gen) { if (tid) clearTimeout(tid); return STALE(); }
         if (body === undefined && attempt < 2 && !(ctl && ctl.signal.aborted)) { await sleep(RETRY_MS[attempt]); continue; }
