@@ -169,9 +169,11 @@ window.TauPage('autopilot', (T) => {
     if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; apFeedDay = ''; }
     const empty = msgs.querySelector('.ap-empty'); if (empty && d.messages.length) empty.remove();
     msgs.querySelectorAll('.apf-typing').forEach((n) => n.remove());
+    let moved = false;
     d.messages.forEach((m) => {
       if (m.id <= apChatLastId) return;  // a slow read that lands after a newer one already painted it
       apChatLastId = Math.max(apChatLastId, m.id);
+      if (!full && m.role === 'system') moved = true;
       const day = new Date(m.created_at).toDateString();
       if (day !== apFeedDay) { apFeedDay = day; msgs.appendChild(apDayLi(m.created_at)); }
       const li = apFeedLi(m);
@@ -179,6 +181,10 @@ window.TauPage('autopilot', (T) => {
       msgs.appendChild(li);
     });
     if (d.messages.length) apFeedFirst = false;
+    // A move that just landed in the feed (a change it made from your message, a pause, a sale) changes the
+    // figures above it: they are read again now, not on the next 20s status poll. "Last move 6m ago" and the
+    // old running count sat over a risk change the feed showed seconds before.
+    if (moved) refreshAutopilot(box);
     if ('turn_cost' in d) { apTurnCost = d.turn_cost; apCostPaint(box); }
     if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet.</li>';
     // The live pulse — the research session's "working" signal, scoped to the operation.
@@ -347,6 +353,8 @@ window.TauPage('autopilot', (T) => {
       try {
         const result = await api(`/api/proposals/${pid}/${b.dataset.decide}`, {});
         if (result.review_required && result.review_url === `/funds?perps_proposal=${pid}`) { go(result.review_url); return; }
+        // An approved pause, resume or deploy changes what is running: the figures and the card follow now.
+        refreshAutopilot(box);
       } catch (err) {
         apErr(box, err.message);
         btns.forEach((x) => { x.disabled = false; });
