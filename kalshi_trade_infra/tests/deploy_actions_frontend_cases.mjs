@@ -219,6 +219,19 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     assert.doesNotMatch(g.root.querySelector('main').innerHTML, /Past deployments/);
   });
 
+  // Two paper deployments that made $0.0050 each: each row reads $0.01, so adding the rows read $0.02,
+  // beside the strategies list's $0.01 (the exact $0.0100). The page shows the server's per-book total
+  // (book_totals), the list's own figure, never its own sum of rounded rows.
+  test(`${name}: a strategy page's per-book line is the server's exact total, not its rows added`, async () => {
+    const deps = [dep({id: 3, realized_pnl: 0.01, closed_trades: 1}), dep({id: 4, status: 'paused', realized_pnl: 0.01, closed_trades: 2})];
+    const f = strategyFrontend(detailStrategy({status: 'passed', deployments: deps, past_deployments: [],
+      book_totals: {paper: {pnl: 0.01, trades: 3, open: 0, paused: true}}}), () => response({}));
+    await f.viewStrategy(42); await settle();
+    const html = f.root.querySelector('.real-record').innerHTML;
+    assert.match(html, /\+\$0\.01<\/span> realized over 3 closed trades/);
+    assert.doesNotMatch(html, /\$0\.02/);
+  });
+
   test(`${name}: a research idea typed before the session ran out comes back for the same account on the same page`, async () => {
     const session = memorySession();
     const research = async (uid) => {

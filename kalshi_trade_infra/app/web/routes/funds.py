@@ -12,7 +12,8 @@ from app.services import book_memo
 from app.web.http import ApiError, Ctx, _num
 from app.web.routes.brokers import _perps_live_call
 from app.web.settings import MAX_PAPER_BALANCE, MAX_WAITLIST_PER_MINUTE
-from app.web.views import _live_balance, _open_book
+from app.web.views import _live_balance, _open_book, _paper_equity
+from trading_core.domain.money import cents
 
 
 def funds(ctx: Ctx):
@@ -44,12 +45,12 @@ def funds(ctx: Ctx):
     # open at cost, the dashboard's paper figure. Books are never added together.
     open_pos = repo.user_positions(cur, ctx.uid, "open")
     paper = _open_book(open_pos, "paper")
-    cash = round(repo.paper_balance(cur, ctx.uid), 2)
-    kalshi.update(_open_book(open_pos, "live"), realized_pnl=round(realized["live"][0], 2),
+    balance = repo.paper_balance(cur, ctx.uid)
+    kalshi.update(_open_book(open_pos, "live"), realized_pnl=cents(realized["live"][0]),
                   closed_trades=int(closed.get("live", 0)))
     return {
-        "paper": {"cash": cash, "equity": round(cash + paper["open_at_cost"], 2), **paper,
-                  "realized_pnl": round(realized["paper"][0], 2), "closed_trades": int(closed.get("paper", 0)),
+        "paper": {"cash": cents(balance), "equity": cents(_paper_equity(balance, open_pos)), **paper,
+                  "realized_pnl": cents(realized["paper"][0]), "closed_trades": int(closed.get("paper", 0)),
                   "ledger": repo.ledger_rows(cur, ctx.uid)},
         "demo": {"capital": de["capital"], "equity": de["equity"], "realized": de["realized"],
                  "before_reload": de["before_reload"], "closed_trades": int(closed.get("demo", 0)),

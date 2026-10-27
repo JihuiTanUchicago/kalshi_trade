@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import time
+from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
 from app import repository as repo
@@ -25,6 +26,7 @@ from app.web.views import (
     _past_deployment_out,
     _spec_sizing,
 )
+from trading_core.domain.money import cents
 
 
 def _strategy_card(s: Dict) -> Dict:
@@ -59,8 +61,8 @@ def _mark_fields(p: Dict) -> Dict:
         return {"mark": None, "value": None, "unrealized": None, "mark_ts": None}
     mark = float(mark)
     # A YES contract sells at the YES bid (mark); a NO contract at its own bid, 1 - yes_ask (1 - mark).
-    value = round(qty * (mark if p["side"] == "yes" else 1.0 - mark), 2)
-    return {"mark": mark, "value": value, "unrealized": round(value - cost, 2), "mark_ts": p.get("mark_ts")}
+    value = cents(qty * (mark if p["side"] == "yes" else 1.0 - mark))
+    return {"mark": mark, "value": value, "unrealized": cents(value - cost), "mark_ts": p.get("mark_ts")}
 
 
 def _with_marks(rows: List[Dict]) -> List[Dict]:
@@ -129,13 +131,7 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
     under "demo" rather than added in. One query, and only when the page has a deployed strategy."""
     if not any(c.get("deployed") for c in cards):
         return
-    real: Dict[int, Dict[str, Dict]] = {}
-    for d in book_memo.deployments_for_display(book_memo.BookMemo(cur, uid)):
-        r = real.setdefault(d["strategy_id"], {}).setdefault(d["mode"], {"pnl": 0.0, "trades": 0, "open": 0, "paused": False})
-        r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
-        r["pnl"] += float(d["realized_pnl"] or 0)
-        r["trades"] += int(d["closed_trades"] or 0)
-        r["open"] += int(d["open_positions"] or 0)
+    real = _book_totals(book_memo.deployments_for_display(book_memo.BookMemo(cur, uid)))
     for c in cards:
         books = real.get(c["id"]) if c.get("deployed") else None
         if books:
@@ -145,13 +141,32 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
             r = books[mode]
             # Every book it runs in now, so the row's badge names them ("On paper + demo"), not "Deployed".
             c["books"] = [m for m in BOOK_ORDER if m in books]
-            c["real"] = {**r, "pnl": round(r["pnl"], 2), "live": mode == "live", "mode": mode}
+            c["real"] = {**r, "live": mode == "live", "mode": mode}
             if mode == "paper" and "demo" in books:
                 dm = books["demo"]
-                c["real"]["demo"] = {"pnl": round(dm["pnl"], 2), "trades": dm["trades"], "open": dm["open"]}
+                c["real"]["demo"] = {"pnl": dm["pnl"], "trades": dm["trades"], "open": dm["open"]}
 
 
 BOOK_ORDER = ("live", "paper", "demo")
+
+
+def _book_totals(deps: List[Dict]) -> Dict[int, Dict[str, Dict]]:
+    """{strategy_id: {mode: {pnl, trades, open, paused}}}: each strategy's listed (not removed)
+    deployments summed per book, never across books, the P&L exactly and then rounded once. The
+    strategies list's "since deploying" figure and the strategy page's per-book lines both read this:
+    the page added its deployments' rounded figures, so two deployments in one book could read a
+    cent away from the list."""
+    out: Dict[int, Dict[str, Dict]] = {}
+    for d in deps:
+        r = out.setdefault(d["strategy_id"], {}).setdefault(d["mode"], {"pnl": Decimal(0), "trades": 0, "open": 0, "paused": False})
+        r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
+        r["pnl"] += Decimal(str(d["realized_pnl"] or 0))
+        r["trades"] += int(d["closed_trades"] or 0)
+        r["open"] += int(d["open_positions"] or 0)
+    for books in out.values():
+        for r in books.values():
+            r["pnl"] = cents(r["pnl"])
+    return out
 
 
 def _attach_past_records(cur, uid: int, cards: List[Dict], removed_ids: List[int]) -> None:
@@ -166,7 +181,7 @@ def _attach_past_records(cur, uid: int, cards: List[Dict], removed_ids: List[int
     past: Dict[int, Dict[str, Dict]] = {}
     for r in repo.removed_totals_by_strategy(cur, uid, removed_ids):
         past.setdefault(int(r["strategy_id"]), {})[r["mode"]] = {
-            "pnl": round(float(r["pnl"] or 0), 2), "trades": int(r["trades"] or 0), "deployments": int(r["deployments"] or 0)}
+            "pnl": cents(r["pnl"]), "trades": int(r["trades"] or 0), "deployments": int(r["deployments"] or 0)}
     for c in cards:
         books = past.get(c["id"])
         if books:
@@ -356,12 +371,14 @@ def get_strategy(ctx: Ctx):
         # One plain line per gate it missed: measured, needed, and what to try next (display only).
         why_failed=_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
         deployments=[_deployment_out(d, [], demo_key_back=key_back, paper_books=_paper_books(deps)) for d in deps],
+        # Its deployments summed per book ({mode: {pnl, trades, open, paused}}), as the strategies list sums them.
+        book_totals=_book_totals(deps).get(s["id"], {}),
         # Its removed deployments, newest first: book, dates and realized P&L (they left the list above).
         past_deployments=[_past_deployment_out(r) for r in _removed_with_totals(ctx.cur, ctx.uid, s["id"])],
         holdings=[{
             "ticker": p["ticker"], "side": p["side"], "qty": int(p["qty"]), "mode": p["mode"],
             "entry_price": float(p["entry_price"]),
-            "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p["entry_fee"] or 0), 2),
+            "cost": cents(Decimal(int(p["qty"])) * Decimal(str(p["entry_price"])) + Decimal(str(p["entry_fee"] or 0))),
             "market_close_time": p["market_close_time"], **_mark_fields(p), "why": trade_why.trade_why(p, s["spec"]),
         } for p in held],
         # The Remove button's reason while any deployment of it still holds a position (delete_strategy's guard).

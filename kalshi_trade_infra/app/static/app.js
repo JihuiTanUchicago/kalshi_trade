@@ -3562,6 +3562,15 @@
     load();
   }
 
+  // One book's listed deployments summed: the server's exact total (book_totals, the strategies list's
+  // own figure) when it sends one. Adding the rows' rounded figures here could read a cent off the list.
+  function bookTotal(s, mode, ds) {
+    const t = s.book_totals && s.book_totals[mode];
+    if (t) return { pnl: +t.pnl || 0, trades: +t.trades || 0, open: +t.open || 0 };
+    return { pnl: ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), trades: ds.reduce((a, d) => a + (+d.closed_trades || 0), 0),
+      open: ds.reduce((a, d) => a + (+d.open_positions || 0), 0) };
+  }
+
   // What the strategy has actually done since it was deployed, per mode (live, demo, paper), from
   // its deployments' realized P&L. The page otherwise shows only the backtest.
   function realRecord(s) {
@@ -3585,8 +3594,7 @@
     const lines = order.map((mode) => {
       const ds = (s.deployments || []).filter((d) => d.mode === mode);
       if (!ds.length) return '';
-      const pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0);
-      const open = ds.reduce((a, d) => a + (+d.open_positions || 0), 0);
+      const { pnl, trades: n, open } = bookTotal(s, mode, ds);
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
       return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
@@ -3654,7 +3662,7 @@
     const running = LADDER.filter(([m]) => deps.some((d) => d.mode === m && d.status !== 'stopped'));
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
-      const n = ds.reduce((a, d) => a + (+d.closed_trades || 0), 0), pnl = ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0);
+      const { trades: n, pnl } = bookTotal(s, m, ds);
       const stats = `${num(n)} closed trade${n === 1 ? '' : 's'} ·\u00a0${money(pnl)} realized`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats} ·\u00a0${demoHealthLine(s.demo_health)}</p>`;

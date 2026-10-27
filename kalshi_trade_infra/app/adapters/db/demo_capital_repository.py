@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 from app.adapters.db.paper_ledger_repository import STARTING_PAPER_BALANCE
 from app.adapters.db.position_repository import realized_pnl
+from trading_core.domain.money import cents, exact
 
 
 def demo_account(cur, user_id: int) -> tuple:
@@ -32,13 +33,13 @@ def demo_equity(cur, user_id: int, realized: Optional[float] = None) -> Dict:
     paper's equity convention (open positions valued at cost), so the three buckets line up.
     `realized` is the all-time realized demo P&L when the caller has already read it."""
     capital, base = demo_account(cur, user_id)
-    net = (realized_pnl(cur, user_id, "demo") if realized is None else realized) - base
+    net = exact(realized_pnl(cur, user_id, "demo") if realized is None else realized) - exact(base)
     return {
-        "capital": round(capital, 2),
-        "realized": round(net, 2),
-        "equity": round(capital + net, 2),
-        "roi": round(net / capital, 4) if capital > 0 else None,
+        "capital": cents(capital),
+        "realized": cents(net),
+        "equity": cents(exact(capital) + net),
+        "roi": round(float(net) / capital, 4) if capital > 0 else None,
         # Realized demo P&L from before the last reload, which `realized` leaves out. Nonzero means the
         # shown P&L is "since reload", while the track record still counts every closed demo trade.
-        "before_reload": round(base, 2),
+        "before_reload": cents(base),
     }

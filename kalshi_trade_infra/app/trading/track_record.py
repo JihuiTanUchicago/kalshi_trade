@@ -28,6 +28,7 @@ from typing import Dict, Iterable, List, Optional
 
 from app.trading.quant import max_drawdown
 from app.research.stats import probabilistic_sharpe_ratio
+from trading_core.domain.money import cents
 
 MODES = ("live", "demo", "paper")
 MODE_LABEL = {"live": "Live money", "demo": "Kalshi demo", "paper": "Paper"}
@@ -315,15 +316,16 @@ def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: 
         "losses": len(losses),
         "win_rate": _r(len(wins) / n, 4) if n else None,
         "win_rate_ci": wilson(len(wins), n),
-        "net_pnl": round(net, 2),
-        "fees": round(fees, 2),
-        "gross_pnl": round(net + fees, 2),
+        # Sums of stored money, rounded once as every page rounds them (trading_core.domain.money).
+        "net_pnl": cents(net),
+        "fees": cents(fees),
+        "gross_pnl": cents(net + fees),
         "avg_trade": _r(net / n, 4) if n else None,
         "avg_trade_ci": avg_ci,
         "avg_win": _r(sum(wins) / len(wins), 4) if wins else None,
         "avg_loss": _r(sum(losses) / len(losses), 4) if losses else None,
-        "best": _r(max(pnls), 2) if pnls else None,
-        "worst": _r(min(pnls), 2) if pnls else None,
+        "best": cents(max(pnls)) if pnls else None,
+        "worst": cents(min(pnls)) if pnls else None,
         "profit_factor": _r(sum(wins) / -sum(losses), 2) if losses else None,
         "capital": round(cap, 2),
         "peak_at_risk": round(at_risk, 2),
@@ -342,10 +344,10 @@ def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: 
         "last_trade_at": trades[-1]["closed_ts"] if trades else None,
         "open_trades": len(open_trades),
         # What is still held, at cost: a part-sold trade's sold slice is no longer at risk.
-        "open_at_cost": round(sum(t.get("open_cost", t["cost"]) for t in open_trades), 2),
+        "open_at_cost": cents(sum(t.get("open_cost", t["cost"]) for t in open_trades)),
         # A part-sold trade joins the record when its remainder closes; until then this is what its
         # sold slices already realized, so the record plus this is every closed row's P&L.
-        "open_realized_pnl": round(sum(t["pnl"] for t in open_trades), 2),
+        "open_realized_pnl": cents(sum(t["pnl"] for t in open_trades)),
         "sample": sample_read(n, span_days, avg_ci),
         "curve": thin_min_max(curve),  # display only: every stat above used the full curve
         "underwater": thin_lows(underwater(curve)),  # from the full curve; its low is -max_drawdown
@@ -380,7 +382,7 @@ def monthly(trades: List[Dict], today: Optional[date] = None) -> List[Dict]:
             out.setdefault(k, {"month": k, "pnl": 0.0, "trades": 0, "wins": 0})
     rows = sorted(out.values(), key=lambda m: m["month"], reverse=True)
     for m in rows:
-        m["pnl"] = round(m["pnl"], 2)
+        m["pnl"] = cents(m["pnl"])
         m["win_rate"] = round(m["wins"] / m["trades"], 4) if m["trades"] else None
     return rows
 
@@ -419,7 +421,7 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict]) -> List[Dict]:
         rows.append({
             "strategy_id": sid, "title": g["title"], "market": g["market"], "trades": n,
             "status": g["status"], "removed": g["removed"],
-            "open_trades": g["open"], "net_pnl": round(sum(pnls), 2),
+            "open_trades": g["open"], "net_pnl": cents(sum(pnls)),
             "win_rate": _r(sum(1 for p in pnls if p > 0) / n, 4) if n else None,
             "avg_trade": _r(sum(pnls) / n, 4) if n else None, "avg_trade_ci": ci,
             "max_drawdown": round(max_drawdown(curve), 2),

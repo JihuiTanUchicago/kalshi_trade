@@ -21,10 +21,12 @@ from app.web.views import (
     _live_balance,
     _open_book,
     _paper_books,
+    _paper_equity,
     _silent_before,
     _start_of_day_utc,
     credit_usd,
 )
+from trading_core.domain.money import cents, exact
 
 
 def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day,
@@ -41,8 +43,8 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
         "closed_trades": int((closed or {}).get(mode, 0)),  # > 0: the dashboard offers /api/trades.csv
         **_open_book(open_pos, mode),
         "running": sum(1 for d in deps if d["mode"] == mode and d["status"] == "running"),
-        "realized_pnl": round(total, 2),
-        "today_pnl": round(today, 2),
+        "realized_pnl": cents(total),
+        "today_pnl": cents(today),
     }
 
 
@@ -72,13 +74,13 @@ def dashboard(ctx: Ctx):
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
     # Kalshi balance (money we never hold).
     paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day, realized["paper"], closed)
-    equity = balance + paper["open_at_cost"]
+    equity = _paper_equity(balance, open_pos)
     paper.update(
-        cash=round(balance, 2),
-        equity=round(equity, 2),
-        deposited=round(deposited, 2),
-        total_pnl=round(equity - deposited, 2),
-        roi=round((equity - deposited) / deposited, 4) if deposited > 0 else None,
+        cash=cents(balance),
+        equity=cents(equity),
+        deposited=cents(deposited),
+        total_pnl=cents(equity - exact(deposited)),
+        roi=round(float(equity - exact(deposited)) / deposited, 4) if deposited > 0 else None,
         daily=book_memo.daily_pnl(memo, "paper"),
         # total_pnl restarts at a reset (the ledger is wiped), so its label says "since reset", not
         # "all time", while the track record still counts every closed trade.
@@ -143,7 +145,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
     pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it."""
     act = repo.activity_since(cur, uid, visit)
     return {"at": visit, "first": first,
-            "books": {m: {"pnl": round(pnl, 2), "trades": n} for m, (pnl, n) in recent.items()},
+            "books": {m: {"pnl": cents(pnl), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": repo.passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
             "spent": {k: credit_usd(v) for k, v in act["spent"].items()} if billing.configured() and act.get("spent") else None,
@@ -155,7 +157,7 @@ def _since_by_deployment(by_dep: Dict[Tuple[str, int], Tuple[float, int]]) -> Di
     """{mode: [{deployment_id, pnl, trades}]} for each book, best first; a book is never mixed with another."""
     out: Dict[str, List[Dict]] = {}
     for (mode, dep_id), (pnl, n) in by_dep.items():
-        out.setdefault(mode, []).append({"deployment_id": dep_id, "pnl": round(pnl, 2), "trades": n})
+        out.setdefault(mode, []).append({"deployment_id": dep_id, "pnl": cents(pnl), "trades": n})
     for rows in out.values():
         rows.sort(key=lambda r: (-r["pnl"], r["deployment_id"]))
     return out
