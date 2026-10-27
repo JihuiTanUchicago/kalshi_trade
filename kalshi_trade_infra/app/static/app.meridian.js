@@ -2200,6 +2200,11 @@
     if (trFirst) trFirst.catch(() => {});  // a failure is drawn by dashTrackRecord, with its retry
     S.trReread = null;  // set by dashTrackRecord once this view's record is mounted
     let booksSeen = null;  // each book's closed and open trade counts at the last poll
+    // A new account (no session of its own yet) with the autopilot off: its card, the page's one primary
+    // button, goes above the strip, which has nothing to report yet. Below it, Turn on autopilot sat under
+    // the fold on a phone, behind five rows of "No"s. Decided at the visit's first paint and kept for the
+    // visit, so the card doesn't jump down under the strip once it is switched on.
+    let apFirst = null;
     const gen = S.gen;
     const visitAt = visitStart();
     let kept = null;  // the last full answer, whose version the poll sends back (pollAnswer)
@@ -2213,6 +2218,7 @@
       if (gen !== S.gen) return;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
+      if (apFirst == null) apFirst = S.dashNoSessions && !(S.me.user && S.me.user.autopilot);
       const depsWas = S.dashDeps, paperWas = S.dashOnPaper;
       S.dashDeps = d.deployments.length;  // the empty track record's button reads it (trackRecordPanel)
       S.dashOnPaper = d.deployments.filter((x) => x.mode === 'paper' && x.status === 'running').length;  // and its copy reads this
@@ -2309,7 +2315,7 @@
       const paperPlot = (width) => equityChart(periodCurve, null, null, { width: Math.max(280, width || root.querySelector('#main').clientWidth), height: 180, paper: true, endLabel: false, label: `Cumulative closed paper profit and loss from ${days[0].d} through ${days[days.length - 1].d}; ends at ${usd(periodPnl, true)}` });
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper ·\u00a0</span>cumulative, ${PAPER_NET}</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
-      const main = `${sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
+      const main = `${apFirst ? '' : sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-paused') : ''}<div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
         <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
         <section class="positions-ledger" id="dash-open"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
           ${d.open_positions.length ? positionTable(d.open_positions, false) : '<p class="hint">No open positions.</p>'}

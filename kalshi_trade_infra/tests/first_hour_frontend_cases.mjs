@@ -139,4 +139,41 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     assert.equal(row(), 'On. It made no changes.');
     f.clearTimers();
   });
+
+  test(`${name}: on a new account with the autopilot off, its card comes before the empty strip, and stays there once on`, async () => {
+    const order = async ({own, on}) => {
+      let status = on ? {...apStatus, autopilot: true} : {...apStatus, autopilot: false, mode: 'off'};
+      const f = frontend({fetchImpl: (path) => {
+        if (path.startsWith('/api/dashboard')) return response({...dashboard(), since: {at: '2026-10-25T08:00:00+00:00', first: true,
+          books: {}, passed: {n: 0, items: []}, autopilot: {}, runs: {}, own_sessions: own}});
+        if (path === '/api/settings') { status = {...apStatus, autopilot: true}; return response({ok: true}); }
+        if (path === '/api/autopilot/status') return response(status);
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path.startsWith('/api/chat')) return response({messages: []});
+        return response({});
+      }});
+      f.S.me.user.autopilot = on; f.S.ap = null;
+      await f.viewDashboard(); await flush();
+      // The two sections' places in the markup that holds them both.
+      const html = () => f.root.querySelector('#dash-ap').parentElement.innerHTML, at = () => [html().indexOf('id="dash-ap"'), html().indexOf('id="dash-since"')];
+      return {f, at};
+    };
+    // Brand new and off: Turn on autopilot is the first thing under the status line.
+    const fresh = await order({own: false, on: false});
+    let [ap, since] = fresh.at();
+    assert.ok(ap > 0 && since > ap, 'the card leads');
+    // Switched on, then the board's poll repaints: the card keeps its place for the rest of the visit.
+    await fresh.f.root.querySelector('#dash-ap [data-apcard="on"]').onclick(); await flush(); await flush();
+    for (const tick of [...fresh.f.intervals.values()]) { await tick(); await flush(); }
+    [ap, since] = fresh.at();
+    assert.ok(ap > 0 && since > ap, 'still leads after the switch and a poll');
+    fresh.f.clearTimers();
+    // Anyone with a session of their own, or with the autopilot on, reads the strip first, as before.
+    for (const o of [{own: true, on: false}, {own: false, on: true}]) {
+      const {f, at} = await order(o);
+      [ap, since] = at();
+      assert.ok(since > 0 && ap > since, JSON.stringify(o));
+      f.clearTimers();
+    }
+  });
 }

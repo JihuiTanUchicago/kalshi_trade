@@ -2124,6 +2124,11 @@
     if (trFirst) trFirst.catch(() => {});  // a failure is drawn by dashTrackRecord, with its retry
     S.trReread = null;  // set by dashTrackRecord once this view's record is mounted
     let booksSeen = null;  // each book's closed and open trade counts at the last poll
+    // A new account (no session of its own yet) with the autopilot off: its card, the page's one primary
+    // button, goes above the strip, which has nothing to report yet. Below it, Turn on autopilot sat under
+    // the fold on a phone, behind five rows of "No"s. Decided at the visit's first paint and kept for the
+    // visit, so the card doesn't jump down under the strip once it is switched on.
+    let apFirst = null;
     const gen = S.gen;
     const visitAt = visitStart();
     let kept = null;  // the last full answer, whose version the poll sends back (pollAnswer)
@@ -2136,6 +2141,7 @@
       if (!got.same) kept = got;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
+      if (apFirst == null) apFirst = S.dashNoSessions && !(S.me.user && S.me.user.autopilot);
       const depsWas = S.dashDeps, paperWas = S.dashOnPaper;
       S.dashDeps = d.deployments.length;  // the empty track record's button reads it (trackRecordPanel)
       S.dashOnPaper = d.deployments.filter((x) => x.mode === 'paper' && x.status === 'running').length;  // and its copy reads this
@@ -2181,8 +2187,8 @@
       const board = `
         <h1 class="vh">Dashboard</h1>
         <div class="statusline ${needs ? 'needs' : ''}"><p class="said">${said}</p><a class="btn${S.me.user.autopilot ? ' primary' : ''}" href="/research">New research</a></div>
-        ${sinceStrip(d, '#dash-deps')}
-        <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>
+        ${apFirst ? '' : sinceStrip(d, '#dash-deps')}
+        <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-deps') : ''}
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (liveCf ? liveCf[0] : d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (liveCf ? [liveCf[1], mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : d.live.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : (d.live.balance_at ? `Read from Kalshi ${when(d.live.balance_at)} \u00b7\u00a0` : '') + mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
