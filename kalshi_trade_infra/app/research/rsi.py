@@ -94,9 +94,15 @@ MECHANISMS = (
     ("volatility mispricing (vol scale / regime / GARCH)",
      r"vol(atility)?[ -](mispric|overpric|underpric|overestimat|underestimat|regime|compression|crush|scale"
      r"|decay|expansion|forecast|clustering)|garch|realized vol|vol_scale|vol scale"),
+    # Deribit options and Polymarket features (#163, #198) arrived after the buckets above; their ideas
+    # named none of them, so prod 2026-10-26 re-tested "variant #23" of options IV-vs-Kalshi unrationed.
+    ("cross-venue basis (Polymarket vs Kalshi)", r"polymarket|\bpm(_| )|cross.?venue"),
+    ("options-implied fair value / IV vs Kalshi",
+     r"\bopt_|\biv\b|implied vol|deribit|options?.(kalshi|implied|surface|iv|edge|basis|signal|anchor|fair|stale|lag)"),
     ("mean reversion after a move", r"mean.?revers|revert|reversal|anti.?momentum|overshoot|fade"),
     ("momentum / drift continuation", r"momentum|drift|continuation|trend"),
-    ("cross-asset lead-lag / pairs", r"lead.?lag|\bpairs?\b|cross.?(market|asset)|relative.?value|spread z"),
+    ("cross-asset lead-lag / pairs",
+     r"lead.?lag|\bpairs?\b|cross.?(market|asset)|relative.?value|spread z|decorrelat|eth.?btc|btc.?eth"),
     ("order-book / flow microstructure", r"order.?book|imbalance|\bflow\b|quote|volume burst|bid.?ask size"),
     ("session / time-of-day filter", r"session|overnight|time.?of.?day|weekend|\basia"),
     ("generic learned recalibration (logistic / multi-factor)", r"logistic|classifier|multi.?factor|ridge"),
