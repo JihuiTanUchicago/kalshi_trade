@@ -4273,12 +4273,16 @@ const cardWall = async (billing) => {
 };
 
 test('the card wall says saving the card charges nothing and what auto-reload will charge it, before it is saved', async () => {
-  const dlg = await cardWall({auto_reload: true, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1});
+  const dlg = await cardWall({auto_reload: true, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1, topup_fee_pct: 5.5});
   assert.match(dlg.querySelector('.wl-sub').innerHTML, /Save a card and we'll add \$20 in free credits\./);
   assert.doesNotMatch(dlg.innerHTML, /by the token|list price/i);
   const terms = dlg.querySelector('#pay-terms');
   assert.equal(terms.hidden, false);
-  assert.equal(terms.textContent, 'Saving the card charges nothing. Auto-reload is on: when your credits fall to $5.00, we charge the card $21.10 for $20.00 more. You can turn it off on Billing.');
+  // The card charge is split into credits and the purchase fee, as Billing splits it.
+  assert.equal(terms.textContent, 'Saving the card charges nothing. Auto-reload is on: when your credits fall to $5.00, we charge the card $21.10: $20.00 of credits plus the 5.5% purchase fee. You can turn it off on Billing.');
+  // A server that sends no fee rate keeps the plain words.
+  const old = await cardWall({auto_reload: true, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1});
+  assert.match(old.querySelector('#pay-terms').textContent, /we charge the card \$21\.10 for \$20\.00 more\./);
   // Auto-reload already off on this account: no reload promise.
   const off = await cardWall({auto_reload: false, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1});
   assert.equal(off.querySelector('#pay-terms').textContent, 'Saving the card charges nothing.');

@@ -5147,11 +5147,11 @@ test('track record (Meridian): stopped and removed strategies stay in the table 
 // A newcomer's first hour: what the card wall charges, what the dashboard says right after the switch, and
 // that the paper portfolio's $1,000 is practice money.
 test('Meridian card wall says saving the card charges nothing and what auto-reload will charge it, before it is saved', async () => {
-  for (const [auto_reload, said] of [[true, 'Saving the card charges nothing. Auto-reload is on: when your credits fall to $5.00, we charge the card $21.10 for $20.00 more. You can turn it off on Billing.'],
+  for (const [auto_reload, said] of [[true, 'Saving the card charges nothing. Auto-reload is on: when your credits fall to $5.00, we charge the card $21.10: $20.00 of credits plus the 5.5% purchase fee. You can turn it off on Billing.'],
     [false, 'Saving the card charges nothing.']]) {
     const stripe = stripeFixture();
     const f = frontend({stripeLoader: async () => stripe.Stripe, fetchImpl: path => {
-      if (/^\/api\/billing(\?|$)/.test(path)) return response(billingData({configured: true, auto_reload, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1}));
+      if (/^\/api\/billing(\?|$)/.test(path)) return response(billingData({configured: true, auto_reload, autoreload_threshold: 5, autoreload_amount: 20, autoreload_charge: 21.1, topup_fee_pct: 5.5}));
       assert.equal(path, '/api/billing/setup-intent'); return response({client_secret: 'synthetic-secret'});
     }});
     f.location.pathname = '/'; Object.assign(f.S.me, {needs_card: true, free_bonus: 20});

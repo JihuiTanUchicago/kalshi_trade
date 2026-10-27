@@ -752,9 +752,11 @@
       const state = await api('/api/billing', undefined, { keep: true });
       if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
       // What the card will be charged, before it is saved: nothing now, and auto-reload is on by default.
+      // The charge is split as Billing splits it: "$21.10 for $20.00 more" left the $1.10 unexplained.
       const terms = dlg.querySelector('#pay-terms');
+      const split = state.topup_fee_pct != null ? `: ${usd(state.autoreload_amount)} of credits plus the ${state.topup_fee_pct}% purchase fee` : ` for ${usd(state.autoreload_amount)} more`;
       terms.textContent = 'Saving the card charges nothing.' + (state.auto_reload && state.autoreload_charge
-        ? ` Auto-reload is on: when your credits fall to ${usd(state.autoreload_threshold)}, we charge the card ${usd(state.autoreload_charge)} for ${usd(state.autoreload_amount)} more. You can turn it off on Billing.` : '');
+        ? ` Auto-reload is on: when your credits fall to ${usd(state.autoreload_threshold)}, we charge the card ${usd(state.autoreload_charge)}${split}. You can turn it off on Billing.` : '');
       terms.hidden = false;
       const Stripe = await loadStripe();
       const sp = Stripe(state.publishable_key);
