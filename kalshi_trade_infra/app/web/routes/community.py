@@ -24,7 +24,7 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
     if kind == "strategy":
         strat = repo.get_strategy(cur, user_id, ref_id)
         if strat is None:
-            raise ApiError(404, "That strategy isn't yours or doesn't exist.")
+            raise ApiError(404, "That strategy isn’t yours or doesn’t exist.")
         oos = (strat.get("result") or {}).get("out_of_sample") or {}
         # A later check its status leaves out (Missed final test, Held back) rides as `verdict`, the stamp its
         # page and list show: the card said Passed for a strategy its own page didn't.
@@ -36,7 +36,7 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
     if kind == "deployment":
         dep = repo.get_deployment(cur, user_id, ref_id)
         if dep is None:
-            raise ApiError(404, "That deployment isn't yours or doesn't exist.")
+            raise ApiError(404, "That deployment isn’t yours or doesn’t exist.")
         since = dep.get("created_at")
         return {"kind": "deployment", "id": dep["id"], "title": dep["title"], "market": dep["market"],
                 "mode": dep["mode"], "realized_pnl": cents(dep["realized_pnl"]), "closed_trades": dep["closed_trades"],
@@ -103,7 +103,7 @@ def _decode_image(data_url: str):
     try:
         raw = _b64.b64decode(data_url, validate=True)
     except Exception:
-        raise ApiError(400, "That image couldn't be read.")
+        raise ApiError(400, "That image couldn’t be read.")
     if len(raw) > MAX_IMAGE_BYTES:
         raise ApiError(413, "Images must be under 3 MB.")
     ctype = next((t for magic, t in IMAGE_MAGIC.items() if raw.startswith(magic)), None)
@@ -164,7 +164,7 @@ def create_community_post(ctx: Ctx):
         raise ApiError(400, "Keep posts under 2,000 characters.")
     cur = ctx.cur
     if repo.recent_posts_count(cur, ctx.uid, repo.now_utc() - timedelta(hours=1)) >= MAX_POSTS_PER_HOUR:
-        raise ApiError(429, "You've posted a lot this hour. Give it a minute.")
+        raise ApiError(429, "You’ve posted a lot this hour. Give it a minute.")
     image_id = None
     if image:
         ctype, raw = _decode_image(str(image))
@@ -200,7 +200,7 @@ def _email_community_post_async(author_uid: int, author: str, preview: str, pid:
 def edit_community_post(ctx: Ctx):
     body = str(ctx.body.get("body") or "").strip()
     if not body:
-        raise ApiError(400, "A post can't be empty.")
+        raise ApiError(400, "A post can’t be empty.")
     if len(body) > 2000:
         raise ApiError(400, "Keep posts under 2,000 characters.")
     if not repo.edit_post(ctx.cur, _int_param(ctx), ctx.uid, body):

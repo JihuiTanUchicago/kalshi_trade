@@ -163,7 +163,11 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
       f.location.pathname = '/deploy';
       await f.viewDeploy(); await settle();
       f.clearTimers();
-      return f.root.querySelector('#dfigs').innerHTML;
+      // Each signed amount sits in a no-wrap span (walk 2026-10-27 at 390px: "· −" ended a line, "$0.30 from …" began the
+      // next); the words around it are read without the span.
+      const html = f.root.querySelector('#dfigs').innerHTML;
+      for (const m of html.matchAll(/removed deployments?/g)) assert.match(html.slice(Math.max(0, m.index - 60), m.index), /<span class="nobr">[−+]?\$[\d.,]+<\/span> from \d+ $/);
+      return html.replace(/<span class="nobr">([−+]?\$[\d.,]+)<\/span>/g, '$1');
     };
     const paper = await board({deployments: [dep({realized_pnl: 146.04})],
       realized_by_book: {paper: {listed: 146.04, removed: 5.72, removed_deployments: 2, all: 151.76}}});

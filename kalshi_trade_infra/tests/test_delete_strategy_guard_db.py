@@ -73,7 +73,7 @@ def test_delete_waits_until_every_deployments_positions_close(conn, monkeypatch)
     # Running: the old guard still answers first.
     with pytest.raises(server.ApiError) as running:
         server.delete_strategy(ctx(sid))
-    assert running.value.status == 409 and "Stop this strategy's deployment" in running.value.message
+    assert running.value.status == 409 and "Stop this strategy’s deployment" in running.value.message
     for did in deps.values():
         server.deployment_action(ctx(did, "stop"))
     assert server.list_deployments(ctx())["deployments"] == []  # nothing is deployed any more

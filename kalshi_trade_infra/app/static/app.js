@@ -1606,7 +1606,7 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
-              ${unseenLabel(cx, W - R, T - 10)}` : ''}
+              ${unseenLabel(cx, W - R, T - 10, options.cutLabel)}` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${ticks}${zeroTick}
       <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
@@ -2419,7 +2419,8 @@
       const removedNote = (m) => {
         const b = books[m];
         if (!b || !b.removed_deployments) return '';
-        return `\u00a0· ${usd(b.removed, true)} from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, ${usd(b.all, true)} in all` : ''}`;
+        // A signed amount keeps its sign: at 390px "· −" ended one line and "$0.30 from 1 removed deployment" began the next.
+        return `\u00a0· <span class="nobr">${usd(b.removed, true)}</span> from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, <span class="nobr">${usd(b.all, true)}</span> in all` : ''}`;
       };
       const listedLab = (lab, xs) => (xs.length ? `${lab}, deployments listed below` : lab);
       // A book with no closed trade yet, listed or removed, has no P&L: it says "None yet" and when one shows, as the
@@ -3605,8 +3606,10 @@
   const exitWord = (r) => r == null ? '' : EXIT_WORD[r] || String(r).replace(/_/g, ' ');
   // The equity chart's label over its unseen-data window: the full words when they fit, else
   // "UNSEEN →", pinned to the chart's right edge when even that would run past it.
-  const unseenLabel = (cx, right, y) => {
-    const room = right - cx - 8, text = room >= 150 ? 'UNSEEN BY THE AGENT →' : 'UNSEEN →';
+  // `words` ([full, short]) names another window: a strategy with no gatekeeper record has no unseen window, only
+  // the backtest's later slice, which its loose gate used to pick it.
+  const unseenLabel = (cx, right, y, words = ['UNSEEN BY THE AGENT →', 'UNSEEN →']) => {
+    const room = right - cx - 8, text = room >= 150 ? words[0] : words[1];
     return room >= 64 ? `<text x="${cx + 8}" y="${y}" style="fill:var(--ink-2)">${text}</text>`
       : `<text x="${right}" y="${y}" text-anchor="end" style="fill:var(--ink-2)">${text}</text>`;
   };

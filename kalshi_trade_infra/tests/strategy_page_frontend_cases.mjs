@@ -126,6 +126,55 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(main(never), /rejected before reaching the unseen-data test/);
   });
 
+  // A "passed" row with no gatekeeper record read "Not validated (record missing) … the backtest figures on this page
+  // are in-sample only" right beside "Unseen-data P&L … the agent never saw". Neither was true: such a row is the old
+  // loose backtest gate's (RESEARCH_PIPELINE_DESIGN Leaks 1-2), its out_of_sample the later slice that gate picked it
+  // on. The page calls it the data after the split date, never unseen; with none, there is no unseen-data figure.
+  test(`${name}: a strategy with no gatekeeper record says what its figures are, never "the agent never saw"`, async () => {
+    const oos = {pnl: 12, trades: 6, win_rate: .5, fees: 1, profit_factor: 1.2, max_drawdown: 2, sharpe: .5, roi: .1, days: 15.2};
+    const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 3.8, closed_trades: 2, open_positions: 0, stake: 5,
+      created_at: '2026-10-27T08:00:00Z'}];
+    // The backtest's own gate names, as backtest.gates() stores them.
+    const gates = [{name: 'Makes money on unseen data', threshold: '> $0', ok: true, value: 12},
+      {name: 'Enough unseen trades to judge', threshold: '≥ 10', ok: false, value: 6}];
+    for (const status of ['passed', 'backtest-only']) {
+      const f = await open({status, experiment: null, capital: 100, stake: 5, out_of_sample: oos, recent_trades: [], deployments, gates,
+        book_totals: {paper: {pnl: 3.8, trades: 2, open: 0}}, dataset: {out_of_sample_from: '1970-01-01T00:03:20Z'}});
+      const figs = f.root.querySelector('#figs'), html = main(f);
+      const gateText = f.root.querySelector('#gates').textContent;
+      assert.match(gateText, /Makes money on data after the split date/); assert.match(gateText, /Enough trades after the split date to judge/);
+      assert.doesNotMatch(gateText, /unseen/i);
+      assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
+      assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it: not held out/);
+      assert.match(figs.innerHTML, /After the split date over 15 days ·\u00a0\$100 at risk at most/);
+      assert.match(html, /After the backtest’s split date it returned \$12\.00 over 6 trades\. That later slice is what picked it, so it isn’t held-out evidence\./);
+      assert.match(html, /<h4>After the split date \(not held out\)<\/h4>/);
+      assert.match(html, /<dt>Split date<\/dt>/); assert.match(html, /The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out\./);
+      assert.match(html, /AFTER THE SPLIT DATE →|After the split date →|LATER →|Later →/);
+      assert.match(html, /Replaying the later window against Kalshi’s demo book/);
+      assert.match(html, /Most recent later-period trades/); assert.match(html, /No later-period trades to show\./);
+      assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest’s later-period pace, 2 trades would have made/);
+      assert.doesNotMatch(html, /never saw|never touched|Unseen-data P&|in-sample only|Never seen \(out-of-sample\)|UNSEEN|Unseen by the agent|Unseen →|Unseen \(held out\)|unseen window|unseen trades|unseen-data pace|only ever saw/);
+      if (status === 'passed') {
+        assert.match(html, /Not validated \(record missing\)/);
+        assert.match(html, /so nothing on this page is held-out evidence: its figures come from the history it searched and from the data after the split date, which picked it\. Treat it as unvalidated\./);
+      }
+    }
+    // With no later-period result its only figures are in-sample: no unseen-data figure, and no "rejected before the test".
+    const bare = await open({status: 'passed', experiment: null, out_of_sample: null, recent_trades: []});
+    assert.deepEqual(bare.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['In-sample P&L', 'Return on capital', 'Ideas tested']);
+    assert.match(main(bare), /It has no held-out result: its only figures are from the history it searched\./);
+    assert.match(main(bare), /so nothing on this page is held-out evidence: its only figures are from the history it searched\. Treat it as unvalidated\./);
+    assert.match(main(bare), /No result after the split date recorded: its only figures are from the history it searched\./);
+    assert.doesNotMatch(main(bare) + bare.root.querySelector('#figs').innerHTML, /never saw|Unseen-data P&|Rejected before the unseen test|Not tested on unseen data|not advanced to the unseen-data test|ranked below/);
+    // A strategy with its record keeps its unseen-data words, and an old Void one keeps its own.
+    const kept = await open({status: 'passed', out_of_sample: oos, gates});
+    assert.match(kept.root.querySelector('#figs').innerHTML, /Unseen-data P&amp;L|Unseen-data P&L/);
+    assert.match(kept.root.querySelector('#gates').textContent, /Makes money on unseen data/);
+    const voided = await open({status: 'failed', experiment: null, out_of_sample: oos});
+    assert.match(voided.root.querySelector('#figs').innerHTML, /the agent never saw/);
+  });
+
   test(`${name}: a rejected strategy says the check it missed, not "ranked below the finalists"`, async () => {
     const skeptic = [{gate: 'challenger', label: "The skeptic's review didn't pass it", measured: 'an objection', needed: 'a reason', next: 'Say who pays.'}];
     const f = await open({status: 'rejected', out_of_sample: null, experiment: null, why_failed: skeptic});
@@ -213,13 +262,13 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       await f.viewStrategy(42); await flush();
       const pending = f.root.querySelector('#dev-pending');
       assert.ok(pending, 'pending line under the chart');
-      assert.match(pending.outerHTML || main(f), /Replaying the unseen window against Kalshi's demo book/);
+      assert.match(pending.outerHTML || main(f), /Replaying the unseen window against Kalshi’s demo book/);
       assert.match(main(f), /<span class="skeleton" aria-hidden="true"><\/span>/);
       for (const id of ['equity-wrap', 'gates', 'dep-paper']) assert.ok(f.root.querySelector('#' + id), `#${id} drawn first`);
       release();
       for (let i = 0; i < 6; i++) await flush();
       assert.equal(pending.removed, true, `${JSON.stringify(answer)}: pending line removed`);
-      if (answer.dev_curve) assert.match(f.root.querySelector('#equity-wrap').innerHTML, /Dashed line: the unseen window replayed/);
+      if (answer.dev_curve) assert.match(f.root.querySelector('#equity-wrap').innerHTML, /Dashed line: the unseen window replayed read-only against Kalshi’s demo environment/);
     }
     // No unseen window to replay: no pending line at all.
     const none = await open({status: 'rejected', out_of_sample: null});
@@ -373,7 +422,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
   });
 
   test(`${name}: the backtest pace line counts realistic paper fills only, as the instant-fill note above it says`, async () => {
-    // Walk 2026-10-27: with no backtest_checks from the server, "At the backtest's unseen-data pace, 3 trades would have
+    // Walk 2026-10-27: with no backtest_checks from the server, "At the backtest’s unseen-data pace, 3 trades would have
     // made …" counted the instant fill the note above it says the track record (and the count toward live) leaves out.
     // Each paper deployment's `instant_fills` comes off its own closed trades; the backtest is +$12 over 6 trades at a
     // $5 stake, $2 a trade, scaled to each deployment's stake.
@@ -387,9 +436,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       return el ? el.textContent : null;
     };
     // 1 realistic trade at $5 (+$2) and 1 at $10 (+$4): 2 trades, +$6.00; the instant fill is left out.
-    assert.equal(await pace(deployments, 1), "At the backtest's unseen-data pace, 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
+    assert.equal(await pace(deployments, 1), "At the backtest’s unseen-data pace, 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
     // None instant: the line is as before, over all 3 trades.
-    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest's unseen-data pace, 3 trades would have made +$8.00 · too few trades to judge yet");
+    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest’s unseen-data pace, 3 trades would have made +$8.00 · too few trades to judge yet");
     // Every one an instant fill: no realistic trade to hold against the backtest, so no line.
     assert.equal(await pace([{...deployments[0], instant_fills: 2}], 2), null);
   });

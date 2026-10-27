@@ -308,9 +308,9 @@ def _demo_copy_pause(d: Dict, paper_books: Optional[Dict[int, str]]) -> Optional
         return None
     paper = None if paper_books is None else paper_books.get(d["strategy_id"], "none")
     if paper is None or not demo_twins.DEMO_TWINS:
-        return "Its paper deployment wasn't running, so this demo copy paused with it", None
+        return "Its paper deployment wasn’t running, so this demo copy paused with it", None
     if paper == "running":
-        return "Its paper deployment wasn't running when this paused. It is now, so you can resume it", None
+        return "Its paper deployment wasn’t running when this paused. It is now, so you can resume it", None
     if paper == "paused":
         return ("Waiting on its paper deployment, which is paused. Resume that one and this copy resumes with it",
                 "Resume its paper deployment first: this demo copy resumes with it.")
@@ -387,7 +387,7 @@ def _status_why(d: Dict, demo_key_back: bool = False) -> Optional[str]:
     if raw == "By you" and d.get("status") == "stopped":
         return "You removed it"
     if d.get("status") == "paused" and demo_key_back and _DEMO_KEY_PAUSE in raw:
-        return "Your Kalshi demo key wasn't connected when it paused. It is now, so you can resume it"
+        return "Your Kalshi demo key wasn’t connected when it paused. It is now, so you can resume it"
     if raw not in ("By you", "Approved agent proposal", "Kill switch") and not re.search(r"% >= (?:stop|limit) ", raw):
         why = customer_text.clean(customer_text.tournament_status(raw),
                                   "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")

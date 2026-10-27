@@ -318,6 +318,26 @@ test('populated validation and holdout phase curves render without blocking stra
   assert.equal(JSON.stringify(experiment), before); assert.equal(postRequests(f).length, 0);
 });
 
+// Walk 2026-10-27: a Void strategy's page stamped "Void" in its head and "Void" again as the verdict right under it.
+test('a strategy page stamps its status once: the verdict under the head drops a label that repeats it', async () => {
+  const stamps = (f, said) => [...f.root.querySelector('.strategy-pagehead').querySelectorAll('.mk'), ...f.root.querySelector('article.paper').querySelectorAll('.mk')]
+    .filter(el => el.textContent.trim() === said).length;
+  for (const [status, said, words] of [['failed', 'Void', /It reached the unseen-data gate and failed it/], ['rejected', 'Rejected', /Rejected — /],
+    ['backtest-only', 'Backtest only', /never put through statistical validation/]]) {
+    const f = strategyFrontend(detailStrategy({status, experiment: null}));
+    await f.viewStrategy(42); await flush();
+    assert.equal(stamps(f, said), 1, `${status}: one "${said}" stamp`);
+    const verdict = f.root.querySelector('.legacy-verdict');
+    assert.equal(verdict.querySelector('.mk'), null); assert.match(verdict.textContent, words);
+  }
+  // A pass with no gatekeeper record keeps its verdict's own label: it says what the head's Passed doesn't.
+  const f = strategyFrontend(detailStrategy({status: 'passed', experiment: null}));
+  await f.viewStrategy(42); await flush();
+  assert.equal(stamps(f, 'Passed'), 1);
+  assert.equal(f.root.querySelector('.legacy-verdict .mk').textContent, 'Not validated (record missing)');
+  assert.match(readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8'), /\.legacy-verdict \.rp-verdict p:first-child \{ margin-top: 0; \}/);
+});
+
 test('strategy evidence identifies run-wide trial counts and places missing validation before backtest figures', async () => {
   for (const [count, expected] of [[17, '17'], [0, '0'], [null, '—']]) {
     const detail = detailStrategy({hypotheses_tried: count, experiment: null});
@@ -966,7 +986,9 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.equal(field('Closed').textContent, `${d.closed_trades} / ${d.open_positions}`);
     assert.equal(field('Closed').getAttribute('aria-label'), `${d.closed_trades} closed trades, ${d.open_positions} open positions`);
     const evidence = evidenceFor(monitor, d.id); assert.equal(evidence.tag, 'details'); assert.equal(evidence.open, false);
-    assert.ok(evidence.textContent.includes(`Unseen P&amp;L ${d.status === 'running' ? '—' : d.status === 'paused' ? '$0.00' : '+$7.25'}`));
+    // No backtest figure (a research session's strategy keeps its unseen result with the gatekeeper): no "Unseen P&L —".
+    if (d.status === 'running') assert.ok(!evidence.textContent.includes('Unseen P&amp;L'), evidence.textContent);
+    else assert.ok(evidence.textContent.includes(`Unseen P&amp;L ${d.status === 'paused' ? '$0.00' : '+$7.25'}`));
     assert.ok(evidence.textContent.includes('Deployed ' + new Date(d.created_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})));
     assert.deepEqual(monitor.querySelectorAll('[data-dep]').map(button => button.dataset.act),
       d.status === 'running' ? ['pause', 'stop'] : d.status === 'paused' ? ['resume', 'stop'] : ['stop']);
