@@ -187,6 +187,18 @@ export function explorePageCases({name, frontend}) {
     assert.equal(g.root.querySelector('#mk-spot'), null);
   });
 
+  // With Kalshi unreachable the page draws the Explore snapshot: its close (from the ticker) is a time, and the raw
+  // data section said "Waiting on Kalshi for the candles." under a chart that already said they didn't load.
+  test(`${name}: a market drawn from the snapshot says when it closes and that its candles didn't come, not that it waits`, async () => {
+    const f = await open(page({points: [], period_min: null, history_unavailable: true, snapshot: true, rules: undefined}));
+    assert.match(f.root.innerHTML, /Price history didn’t load/);
+    const raw = f.root.querySelector('#rawsect').innerHTML;
+    assert.match(raw, /None to show: Kalshi didn’t send this market’s candles just now\. Try again under Price history\./);
+    assert.doesNotMatch(raw, /Waiting/);
+    const closes = /<dt class="lab">Closes<\/dt><dd><span class="fig[^"]*">(.*?)<\/span>/.exec(f.root.innerHTML);
+    assert.ok(closes && /21:00/.test(closes[1]) && !/—/.test(closes[1]), closes && closes[1]);
+  });
+
   test(`${name}: Research opened from a market page has that market picked and the options open`, async () => {
     const f = frontend({fetchImpl: (path) => {
       if (path.startsWith('/api/runs')) return response({runs: [], counts: {}, policy: null, totals: {tried: 0, passed: 0}, v: 'v1'});

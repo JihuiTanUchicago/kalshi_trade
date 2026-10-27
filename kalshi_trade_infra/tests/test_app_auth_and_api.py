@@ -1269,6 +1269,25 @@ def test_explore_market_still_shows_when_the_positions_read_fails(monkeypatch, c
     # The page says its positions didn't load (None, not an empty book); the snapshot says it is one, and when.
     assert d["mine"] is None and d["snapshot"] is True and d["as_of"] == "2026-10-26T10:55:00Z" and d["yes_bid"] == "0.50"
     assert "Lost connection" in capsys.readouterr().out
+    assert d["close_time"] is None  # a game's ticker carries no hour: no guessed close
+
+
+def test_explore_market_snapshot_says_when_a_timed_contract_closes(monkeypatch):
+    # Kalshi unreachable, the page drew the feed's snapshot with "Closes —" while its Bitcoin section, reading
+    # the ticker, said "closes 21:00 UTC". The snapshot takes the close from the ticker too (5pm New York, EDT).
+    import data_pipeline.common as common
+    t = "KXBTCD-26OCT2717-T113499.99"
+    c = server.Ctx(FakeConn(), {"id": 7}, (), {"ticker": t}, {}, None)
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: {"at": "2026-10-27T15:57:00Z", "markets": [
+        {"t": t, "s": "KXBTCD", "ti": "Bitcoin price on Oct 27, 2026 at 5pm EDT?", "bid": "0.55", "ask": "0.57"}]})
+
+    def down(path, params=None):
+        raise OSError("Tunnel connection failed: 403 Forbidden")
+    monkeypatch.setattr(common, "api_get", down)
+    monkeypatch.setattr(server.repo, "user_positions_in_ticker", lambda *a, **k: {"open": [], "closed": []})
+    d = server.explore_market(c)
+    assert d["snapshot"] is True and d["history_unavailable"] is True
+    assert d["close_time"] == "2026-10-27T21:00:00Z"
 
 
 @pytest.mark.parametrize("nxt,ok", [

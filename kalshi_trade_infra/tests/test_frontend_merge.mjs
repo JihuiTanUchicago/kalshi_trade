@@ -1395,7 +1395,7 @@ test('a market whose history did not load still shows its figures, with Try agai
   }});
   await f.viewMarketDetail('KXNBAGAME-X'); await flush();
   const main = f.root.querySelector('#main').innerHTML;
-  assert.match(main, /Price history didn’t load/); assert.match(f.root.querySelector('#rawsect').innerHTML, /Waiting on Kalshi for the candles/);
+  assert.match(main, /Price history didn’t load/); assert.match(f.root.querySelector('#rawsect').innerHTML, /Kalshi didn’t send this market’s candles just now/);
   assert.match(f.root.innerHTML, /201,649/);  // the snapshot's open interest still shows
   f.root.querySelector('#mk-retry').onclick(); await flush(); await flush();
   assert.equal(calls, 2); assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /Price history didn’t load/);

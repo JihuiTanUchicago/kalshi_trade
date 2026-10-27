@@ -2888,7 +2888,7 @@
     const PER = 25; let pg = 0;
     const rawEl = root.querySelector('#rawsect');
     const renderRaw = () => {
-      if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'Waiting on Kalshi for the candles.' : 'No candles recorded for this market yet.'}</p></div>`; return; }
+      if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'None to show: Kalshi didn’t send this market’s candles just now. Try again under Price history.' : 'No candles recorded for this market yet.'}</p></div>`; return; }
       const pages = Math.max(1, Math.ceil(pts.length / PER));
       const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
       rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (${esc(tzName() || 'local')})</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
