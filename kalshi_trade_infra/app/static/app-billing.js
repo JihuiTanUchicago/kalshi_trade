@@ -42,7 +42,7 @@ window.TauPage('billing', (T) => {
           ? fig(d.configured ? 'Research pauses in' : 'Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}${d.configured && d.min_run_balance != null ? `, when credits fall under ${usd(d.min_run_balance)}` : ''}` })
           : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? fig('Credits last', 'Too soon to tell', { small: 'your first day of research sets the pace' })
           : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' })));
-      const split = spendSplit(d.spent_7d_by);
+      const split = spendSplit(d.spent_7d_by, d.spent_7d_under_cent);
       paint(root.querySelector('#bsplit'), split ? `Last 7 days: ${split}.` : '');
       const note = root.querySelector('#blow'); if (note) paint(note, lowNote(d));
     };
@@ -260,10 +260,17 @@ window.TauPage('billing', (T) => {
     if (!f || !f.text) return '';
     return `<div class="notice bad autorel-fail" id="autorel-fail" role="status"${d.auto_reload ? '' : ' hidden'}>${ICON.warn}<span><b>Auto-reload failed</b> <time datetime="${esc(f.at)}">${settleAt(f.at)}</time>. ${esc(f.text)}<button type="button" class="btn sm" id="autorel-fix">Update card</button></span></div>`;
   }
-  // The week's usage by what spent it (/api/billing spent_7d_by), biggest first; '' when nothing did.
+  // The week's usage by what spent it (/api/billing spent_7d_by), biggest first; '' when nothing did. The server
+  // sends the parts in cents that add up to "Spent, last 7 days" (rounded each on its own they read $38.85 +
+  // $0.18 + $0.18 under $39.22), and names a part that spent something but rounds to $0.00 in
+  // spent_7d_under_cent: it reads "under $0.01", last, instead of being left out.
   const SPEND_SOURCE = { research: 'your research sessions', autopilot_research: 'autopilot research', autopilot_review: 'autopilot check-ins', chat: 'chat', other: 'other agent calls' };
-  const spendSplit = (by) => Object.entries(by || {}).filter(([k, v]) => SPEND_SOURCE[k] && +v >= 0.005)
-    .sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SPEND_SOURCE[k]} ${usd(v)}`).join(' \u00b7\u00a0');
+  const spendSplit = (by, under) => {
+    const tiny = (Array.isArray(under) ? under : []).filter((k) => SPEND_SOURCE[k] && !(+(by || {})[k] >= 0.005));
+    return [...Object.entries(by || {}).filter(([k, v]) => SPEND_SOURCE[k] && +v >= 0.005)
+      .sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SPEND_SOURCE[k]} ${usd(v)}`),
+    ...tiny.map((k) => `${SPEND_SOURCE[k]} under $0.01`)].join(' \u00b7\u00a0');
+  };
   // Billing's statement (/api/billing ledger): the last days, newest first, under a heading per day that
   // says what the day used and added. Each usage line is one session's model calls that day.
   // Usage in cents that add up (largest remainder): each day's "used" is the sum of the lines under it, and the

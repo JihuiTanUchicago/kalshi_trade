@@ -32,6 +32,26 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     assert.match(f.root.querySelector('#topup-flash').innerHTML, /Added \$19\.00 in credits\. You paid \$20\.05 — \$19\.00 plus the 5\.5% fee\. New balance is \$26\.42\./);
   });
 
+  test(`${name}: Billing's week split adds up to the week shown, and a part under a cent says so instead of vanishing`, async () => {
+    // Walk 2026-10-27: "$38.85 + $0.18 + $0.18" sat under "Spent, last 7 days $39.22", and $0.0004 of other agent
+    // calls was left out. The server now sends the parts in cents that add up (credit_split) and names the one
+    // that rounds to $0.00.
+    const f = billingPage(cardedBilling({spent_7d: 39.22, spent_24h: 3.1, min_run_balance: 1,
+      spent_7d_by: {research: 0, autopilot_research: 38.85, autopilot_review: 0.19, chat: 0.18, other: 0},
+      spent_7d_under_cent: ['other']}));
+    await f.viewBilling(); await flush();
+    const split = f.root.querySelector('#bsplit').textContent;
+    assert.equal(split, 'Last 7 days: autopilot research $38.85 · autopilot check-ins $0.19 · chat $0.18 · other agent calls under $0.01.');
+    const shown = [...split.matchAll(/(?<!under )\$(\d+\.\d\d)/g)].reduce((a, m) => a + Math.round(+m[1] * 100), 0);
+    assert.match(f.root.querySelector('#bfigs').textContent, /Spent, last 7 days\s*\$39\.22/);
+    assert.equal(shown, 3922);  // the parts shown are the week shown
+    assert.doesNotMatch(split, /your research sessions/);  // nothing spent: not named
+    // A server without the field keeps the old split: nothing new is named.
+    const old = billingPage(cardedBilling({spent_7d_by: {research: 1.2, chat: 0}}));
+    await old.viewBilling(); await flush();
+    assert.equal(old.root.querySelector('#bsplit').textContent, 'Last 7 days: your research sessions $1.20.');
+  });
+
   test(`${name}: Billing says when auto-reload next charges the card, or when research pauses, not a stop auto-reload prevents`, async () => {
     let f = billingPage(cardedBilling({balance: 25.71, spent_7d: 100.17, runway_days: 1.7, reload_days: 1.4, pace_days: 7,
       autoreload_threshold: 5, autoreload_charge: 26.38, min_run_balance: 1}));
