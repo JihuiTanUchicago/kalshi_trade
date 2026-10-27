@@ -116,13 +116,14 @@ def _gate_lines(fn, *args) -> List[Dict]:
         return []
 
 
-def _with_gate_lines(events: List[Dict]) -> List[Dict]:
+def _with_gate_lines(events: List[Dict], not_cleared: int = 0) -> List[Dict]:
     """Each verdict event gains `why_failed`: one plain line per gate it missed (measured, needed,
     what to try next), from the numbers the event already carries, and `note`: a plain sentence
     the page shows in place of a message written for the ledger ("gatekeeper-held
     (classification=...)", "Lead scan: control arm"). The model tiering line's internal model id
     is dropped: the page never shows one. A step or done line the agent wrote in the ledger's terms
-    gains `note` too (gate_explain.step_note). Display only; no extra read."""
+    gains `note` too (gate_explain.step_note); the done line counts the `not_cleared` passes apart (the
+    session's passes a later check left uncleared). Display only; no extra read."""
     for ev in events:
         if ev.get("kind") == "verdict":
             data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
@@ -135,7 +136,7 @@ def _with_gate_lines(events: List[Dict]) -> List[Dict]:
             ev["data"] = data
         elif ev.get("kind") in ("step", "done"):
             # The agent's step lines in plain words ("Froze 2 finalists; ... validation budget" read as jargon).
-            note = gate_explain.step_note(ev.get("kind"), ev.get("message"))
+            note = gate_explain.step_note(ev.get("kind"), ev.get("message"), not_cleared)
             if note:
                 data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
                 data["note"] = note

@@ -661,7 +661,10 @@ def event_note(message: Optional[str], data: Optional[Dict[str, Any]]) -> Option
     if phase == "forward":
         return "Adds something new to what you already run." if d.get("marginal_ok") else None
     if d.get("status") == "passed":
-        return "Passed every check on data it never saw%s." % trades
+        # Its first test only: the one-time locked holdout and the diversification check come after it,
+        # and a pass that misses either is stamped Missed final test or Held back. "Passed every check"
+        # here sat right above that holdout's "Missed" on the run page.
+        return "Passed its first test on data it never saw%s." % trades
     if "gatekeeper-held" in msg:
         return "Did not pass on data it never saw%s." % trades
     return None
@@ -719,17 +722,25 @@ _STEP_NOTES: List[Tuple["re.Pattern[str]", Any]] = [
 _DONE = re.compile(r"^(\d+) of (\d+) hypotheses passed( every gate)?(?: \((\d+) dropped on research data\))?\.(.*)$", re.S)
 
 
-def step_note(kind: Optional[str], message: Optional[str]) -> Optional[str]:
+def step_note(kind: Optional[str], message: Optional[str], not_cleared: int = 0) -> Optional[str]:
     """One plain sentence for a run's step or done line written for the ledger ("in-sample",
     "finalist", "gate", "validation budget"), or None when the line already reads plainly. The run page
     shows it in place of the message, which stays as written (the page finds the out-of-credits line by
-    its words). Display only."""
+    its words). `not_cleared`: how many of the done line's passes a later check left uncleared (the
+    session's Missed final test and Held back stamps, which the run page's handler reads). The agent's
+    count holds them, so "1 of 2 ideas passed every check" sat under the page's "Passed 0, 1 not
+    cleared"; the line counts them apart, as the page's figures do. Display only."""
     msg = str(message or "")
     if kind == "done":
         m = _DONE.match(msg)
         if not m:
             return None
         dropped = int(m.group(4) or 0)
+        fell = min(max(0, int(not_cleared or 0)), int(m.group(1)))
+        if fell and m.group(3):
+            return "%d of %s cleared every check%s; %d more passed %s first test, then %s cleared to trade.%s" % (
+                int(m.group(1)) - fell, _ideas(int(m.group(2))), " (%d dropped before testing)" % dropped if dropped else "",
+                fell, "its" if fell == 1 else "their", "wasn't" if fell == 1 else "weren't", m.group(5))
         return "%s of %s passed%s%s.%s" % (m.group(1), _ideas(int(m.group(2))), " every check" if m.group(3) else "",
                                            " (%d dropped before testing)" % dropped if dropped else "", m.group(5))
     if kind != "step":
