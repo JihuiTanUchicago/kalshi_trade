@@ -10,6 +10,7 @@ import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
+import {moneyDisplayCases} from './money_display_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
@@ -1623,14 +1624,17 @@ test('Overview chooses the correct primary money bucket and preserves disconnect
     assert.equal(primary.querySelector('.lab').textContent, livePrimary ? 'Kalshi cash' : 'Paper portfolio', label);
     assert.equal(primary.querySelector('.fig').textContent, primaryBalance, label);
     assert.equal(accounts.tag, 'details'); assert.equal(accounts.open, false);
+    // A connected key's cash is never behind the closed menu: under paper in the band, its own figure.
+    const cashInBand = !livePrimary && !!data.live.connected;
     assert.deepEqual(accounts.querySelectorAll('dt.lab').map(lab => lab.textContent),
-      [livePrimary ? 'Paper portfolio' : 'Kalshi cash', 'Demo balance'], label);
+      livePrimary ? ['Paper portfolio', 'Demo balance'] : cashInBand ? ['Demo balance'] : ['Kalshi cash', 'Demo balance'], label);
     assert.equal(accounts.contains(f.root.querySelector('.paper-summary')), livePrimary, label);
-    if (!livePrimary) assert.equal(accounts.querySelector('.fig').textContent, secondaryLive, label);
+    assert.equal(!!primary.querySelector('.kalshi-cash'), cashInBand, label);
+    if (!livePrimary) assert.equal((cashInBand ? primary.querySelector('.kalshi-cash') : accounts).querySelector('.fig').textContent, secondaryLive, label);
     const paper = f.root.querySelector('.paper-summary');
     for (const amount of ['$1,111.25', '+$98.40', '−$7.50', '$900.00', '$211.25']) assert.ok(paper.textContent.includes(amount), label + ' paper ' + amount);
     assert.match(accounts.textContent, /\$2,222\.50/); assert.match(accounts.textContent, /\$2,200\.00 capital/);
-    const liveHost = livePrimary ? primary : accounts;
+    const liveHost = livePrimary || cashInBand ? primary : accounts;
     if (!data.live.connected) assert.equal(liveHost.querySelector('a').getAttribute('href'), '/funds', label);
     if (data.live.connected && data.live.balance == null) assert.match(liveHost.textContent, /read your Kalshi balance/, label);
     if (livePrimary) {
@@ -1658,7 +1662,8 @@ test('Overview Accounts preserves open and focused summaries across polling and 
     assert.notEqual(next, accounts); assert.equal(oldSummary.isConnected, false); assert.equal(next.open, open);
     assert.equal(f.document.activeElement, summary); assert.equal(summary.focusOptions.preventScroll, true);
     assert.equal(f.root.querySelector('.dashboard-figures').classList.contains('live-primary'), livePrimary);
-    assert.match((livePrimary ? f.root.querySelector('.dashboard-figures') : next).textContent, /\$4,444\.00/);
+    assert.match(f.root.querySelector('.dashboard-figures').textContent, /\$4,444\.00/);
+    assert.doesNotMatch(next.textContent, /\$4,444\.00/);
     accounts = next;
   }
   const outside = f.root.querySelector('.profile-trig'); outside.focus(); accounts.open = true;
@@ -6028,3 +6033,7 @@ declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});
 flakyNetworkCases({name: 'Meridian', frontend});
 deployErrorCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
+moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, hotRail: (f, markets) => {
+  f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
+  return f.root.querySelector('#hotrail').innerHTML;
+}});

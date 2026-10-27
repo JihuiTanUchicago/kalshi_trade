@@ -381,7 +381,23 @@
   // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do,
   // to its last decimal: an XRP strike runs to four (-T2.4599), and num() rounds past three.
   const strikeIn = (label, ticker) => { const k = /-T(\d+)(\.\d+)?$/.exec(String(ticker || '')); return k ? label.replace('$X', '$' + num(k[1]) + (k[2] || '')) : label; };
-  const contractMarket = (ticker) => { const m = contractMkt(ticker); return m ? strikeIn(m.label || marketShort(m.key), ticker) : ''; };
+  // Bitcoin series the app shows (Explore, the hot rail, a market page, a position held at Kalshi) that no
+  // market here covers: KXBTC's hourly price ranges. Each still says its contract and close as the markets above
+  // do, [chip, name], never the raw series or another market's label. Every series of services/btc_spot.py's
+  // BTC_SERIES is a market's or here (test_every_bitcoin_series_the_app_shows_has_a_label).
+  const SERIES_SHORT = { KXBTC: ['BTC range at {h} ET', 'Bitcoin range at {h} ET'] };
+  const seriesLabel = (ticker, i) => {
+    const s = SERIES_SHORT[String(ticker || '').split('-')[0]], h = contractHour(ticker);
+    return s && h != null ? s[i].replace('{h}', `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) : '';
+  };
+  // A range contract's own bucket (-B113250, its centre) or end (-T114999.99) in its name.
+  const rangeName = (ticker) => {
+    const name = seriesLabel(ticker, 1), k = /-([BT])(\d+)(\.\d+)?$/.exec(String(ticker || ''));
+    if (!name || !k) return name;
+    const at = '$' + num(k[2]) + (k[3] || ''), close = name.replace(/^Bitcoin range /, '');
+    return k[1] === 'B' ? `Bitcoin in the bucket around ${at} ${close}` : `Bitcoin range end at ${at}, ${close.replace(/^at /, '')}`;
+  };
+  const contractMarket = (ticker) => { const m = contractMkt(ticker); return m ? strikeIn(m.label || marketShort(m.key), ticker) : rangeName(ticker); };
   // A position's contract as people name it: its market's plain label with its own strike ("Bitcoin above
   // $68,499.99 at 5pm ET"), else the market it was traded on (`key`, its deployment's), else "Kalshi contract".
   // The ticker (KXBTC15M-26OCT262100-00) carries the raw series key, so it is never the headline: kalshiRef
@@ -390,9 +406,9 @@
   // A contract, by its plain name, that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker, key) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(contractName(ticker, key))}</a>`;
   const kalshiRef = (ticker) => `<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${esc(ticker)}</span></span>`;
-  // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"); '' for one no market
-  // here covers, so a chip is left off rather than showing the raw series or another hour's market.
-  const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : ''; };
+  // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"), or its SERIES_SHORT chip
+  // ("BTC range at 5pm ET"); '' for any other, so a chip is left off rather than the raw series or another hour's market.
+  const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : seriesLabel(ticker, 0); };
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };

@@ -736,8 +736,9 @@ window.TauPage('strategies', (T) => {
               return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? ` ·\u00a0unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : ' ·\u00a0awaiting first mark'}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
+            // Beside a Live or Demo row a paper one says Paper too: untagged, it read as the real-money book.
             return `<section class="panel"><h3>Holding right now</h3>
-            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="pos-name">${contractLink(p.ticker, s.market)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div><div class="sub-fig">${kalshiRef(p.ticker)}</div>
+            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="pos-name">${contractLink(p.ticker, s.market)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : books.length > 1 ? '<span class="mk">Paper</span>' : ''}</div><div class="sub-fig">${kalshiRef(p.ticker)}</div>
               <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}

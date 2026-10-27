@@ -381,7 +381,23 @@
   // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do,
   // to its last decimal: an XRP strike runs to four (-T2.4599), and num() rounds past three.
   const strikeIn = (label, ticker) => { const k = /-T(\d+)(\.\d+)?$/.exec(String(ticker || '')); return k ? label.replace('$X', '$' + num(k[1]) + (k[2] || '')) : label; };
-  const contractMarket = (ticker) => { const m = contractMkt(ticker); return m ? strikeIn(m.label || marketShort(m.key), ticker) : ''; };
+  // Bitcoin series the app shows (Explore, the hot rail, a market page, a position held at Kalshi) that no
+  // market here covers: KXBTC's hourly price ranges. Each still says its contract and close as the markets above
+  // do, [chip, name], never the raw series or another market's label. Every series of services/btc_spot.py's
+  // BTC_SERIES is a market's or here (test_every_bitcoin_series_the_app_shows_has_a_label).
+  const SERIES_SHORT = { KXBTC: ['BTC range at {h} ET', 'Bitcoin range at {h} ET'] };
+  const seriesLabel = (ticker, i) => {
+    const s = SERIES_SHORT[String(ticker || '').split('-')[0]], h = contractHour(ticker);
+    return s && h != null ? s[i].replace('{h}', `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`) : '';
+  };
+  // A range contract's own bucket (-B113250, its centre) or end (-T114999.99) in its name.
+  const rangeName = (ticker) => {
+    const name = seriesLabel(ticker, 1), k = /-([BT])(\d+)(\.\d+)?$/.exec(String(ticker || ''));
+    if (!name || !k) return name;
+    const at = '$' + num(k[2]) + (k[3] || ''), close = name.replace(/^Bitcoin range /, '');
+    return k[1] === 'B' ? `Bitcoin in the bucket around ${at} ${close}` : `Bitcoin range end at ${at}, ${close.replace(/^at /, '')}`;
+  };
+  const contractMarket = (ticker) => { const m = contractMkt(ticker); return m ? strikeIn(m.label || marketShort(m.key), ticker) : rangeName(ticker); };
   // A position's contract as people name it: its market's plain label with its own strike ("Bitcoin above
   // $68,499.99 at 5pm ET"), else the market it was traded on (`key`, its deployment's), else "Kalshi contract".
   // The ticker (KXBTC15M-26OCT262100-00) carries the raw series key, so it is never the headline: kalshiRef
@@ -390,9 +406,9 @@
   // A contract, by its plain name, that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker, key) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(contractName(ticker, key))}</a>`;
   const kalshiRef = (ticker) => `<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${esc(ticker)}</span></span>`;
-  // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"); '' for one no market
-  // here covers, so a chip is left off rather than showing the raw series or another hour's market.
-  const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : ''; };
+  // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"), or its SERIES_SHORT chip
+  // ("BTC range at 5pm ET"); '' for any other, so a chip is left off rather than the raw series or another hour's market.
+  const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : seriesLabel(ticker, 0); };
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
@@ -2278,7 +2294,11 @@
       // Drawn from cashNow: a pending cash read under two minutes ago shows as current while its follow-up is out.
       const lv = cashNow(d.live);
       const liveCf = lv.connected && cashFig(lv);
-      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds">Connect Kalshi</a>') + tradesCsv('live', lv) });
+      // A connected key's real cash is never behind the Accounts menu: with paper leading the band (no live
+      // deployment, the usual case while live is closed), it sits under the paper figure as its own figure, never
+      // added to it, and says when Kalshi was read, as Tau's dashboard does. Only a missing key stays in the menu.
+      const cashInBand = !hasLive && lv.connected;
+      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds">Connect Kalshi</a>') + tradesCsv('live', lv) });
       const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]} \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : `${money(lv.realized_pnl)} realized all time by Tau trades${lv.balance_at ? ` \u00b7\u00a0cash read from Kalshi ${when(lv.balance_at)}` : ''}`) : '<a href="/funds">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost, not in cash</span><strong>${usd(lv.open_at_cost)}</strong></div></div></dd></div>`;
       const demoFigure = (demoKeyless(d.demo) ? fig('Demo balance', 'No demo key', { small: DEMO_NO_KEY }) : fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
@@ -2288,7 +2308,7 @@
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
         ${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}
-        <div class="pagehead"><div class="overview-heading"><h1 class="page">Overview</h1></div><div class="page-actions"><details class="other-accounts" id="other-accounts"${accountsOpen ? ' open' : ''}><summary>Accounts ${ICON.chev}</summary><dl>${hasLive ? paperFigure : liveFigure}${demoFigure}</dl></details>${agentsBusy ? `<a class="research-activity" href="/research">${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching</a>` : ''}</div></div>`;
+        <div class="pagehead"><div class="overview-heading"><h1 class="page">Overview</h1></div><div class="page-actions"><details class="other-accounts" id="other-accounts"${accountsOpen ? ' open' : ''}><summary>Accounts ${ICON.chev}</summary><dl>${hasLive ? paperFigure : cashInBand ? '' : liveFigure}${demoFigure}</dl></details>${agentsBusy ? `<a class="research-activity" href="/research">${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching</a>` : ''}</div></div>`;
       const firstPaused = d.deployments.find((x) => x.status === 'paused');
       const depRegs = curveRegs(d.deployments);  // the status line's "paused, needs you" jumps here
       const deps = d.deployments.length
@@ -2336,7 +2356,7 @@
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper ·\u00a0</span>cumulative, ${PAPER_NET}</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
       const main = `${apFirst ? '' : sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-paused') : ''}<div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
-        <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
+        <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure + (cashInBand ? liveFigure : '')}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
         <section class="positions-ledger" id="dash-open"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
           ${d.open_positions.length ? positionTable(d.open_positions, false) : '<p class="hint">No open positions.</p>'}
           ${d.recent_closed.length ? `<details class="recent-settlements" id="recent-settlements"${settlementsOpen ? ' open' : ''}><summary>Recent settlements <span>${d.recent_closed.length}</span>${paperOnly(d.recent_closed) ? ' <span class="position-group-mode">Paper</span>' : ''}</summary>${positionTable(d.recent_closed, true)}</details>` : ''}

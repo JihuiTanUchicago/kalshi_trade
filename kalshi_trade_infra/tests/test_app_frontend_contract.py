@@ -454,6 +454,29 @@ def test_every_market_has_a_short_label(bundle):
 
 
 @pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
+def test_every_bitcoin_series_the_app_shows_has_a_label(bundle):
+    # test_every_market_has_a_short_label walks markets.MARKETS, and KXBTC's hourly price ranges are in no market
+    # (Tau doesn't research them), yet Explore, the hot rail, a market page and a position held at Kalshi show
+    # them: they slipped through with no chip and took another market's name. Every Bitcoin series the app reads
+    # (services/btc_spot.BTC_SERIES) is a market's, with its MKT_SHORT label, or has its own in SERIES_SHORT.
+    import re
+    from pathlib import Path
+    from app.services import btc_spot
+    from app.trading import markets
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / bundle).read_text()
+    block = src[src.index('const MKT_SHORT = {'):]
+    short = dict(re.findall(r"(\w+): '([^']*)'", block[:block.index('};')]))
+    table = src[src.index('const SERIES_SHORT = {'):]
+    own = {k: v for k, v, _ in re.findall(r"(\w+): \['([^']*)', '([^']*)'\]", table[:table.index('};')])}
+    by_series = {m.series: k for k, m in markets.MARKETS.items()}
+    for series in btc_spot.BTC_SERIES:
+        label = short.get(by_series.get(series, '')) or own.get(series)
+        assert label, series
+        assert series not in label and len(label) <= 30 and "·" not in label, (series, label)
+    assert own == {"KXBTC": "BTC range at {h} ET"}
+
+
+@pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
 def test_bitcoin_labels_say_the_contract_and_its_close(bundle):
     # "BTC 5pm" named the coin and an hour, not whether the contract pays above a price, on a range or on
     # up/down. Every Bitcoin market's short and long label says which, short enough for a phone row, with
