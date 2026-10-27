@@ -26,11 +26,14 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import heapq
 import json
 import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+
+import pyarrow.compute as pc
 
 from app.adapters.sim.queue_replay import QueueReplayVenue
 from trading_core.domain import BinaryTerms, Instrument, InstrumentId, InstrumentKind, Portfolio, Quote
@@ -281,31 +284,28 @@ class MakerReplay:
             trades = _only_series(trades, self.series)
             if book is None:
                 continue
-            ev: List[tuple] = []
+            # Book and trade rows stream in time order batch by batch: a busy hour has millions of book
+            # rows, and one Python tuple per row for the whole hour ran the timer out of memory.
+            book = book.select(["rt", "ticker", "kind", "side", "price", "qty"]).sort_by("rt")
             index: Dict[Tuple[str, str, float], List[int]] = defaultdict(list)
+            trade_ev: List[tuple] = []
             if trades is not None:
                 for r, k, px, c, s in zip(trades["rt"].to_pylist(), trades["ticker"].to_pylist(),
                                           trades["yes_price"].to_pylist(), trades["count"].to_pylist(),
                                           trades["taker_side"].to_pylist()):
                     if c is None or px is None or s not in ("yes", "no"):
                         continue
-                    ev.append((r, 0, k, s, float(px), float(c)))
+                    trade_ev.append((r, 0, k, s, float(px), float(c)))
                     ladder = "yes" if s == "no" else "no"
                     index[(k, ladder, round(px if ladder == "yes" else 1 - px, 4))].append(r)
-            subcent = set()
-            for r, k, kind, side, px, q in zip(book["rt"].to_pylist(), book["ticker"].to_pylist(),
-                                               book["kind"].to_pylist(), book["side"].to_pylist(),
-                                               book["price"].to_pylist(), book["qty"].to_pylist()):
-                ev.append((r, 1, k, kind, side, px, q or 0.0))
-                if px is not None and abs(px * 100 - round(px * 100)) > 1e-6:
-                    subcent.add(k)
-            ev.sort(key=lambda e: (e[0], e[1]))
+                trade_ev.sort(key=lambda e: e[0])
             self.venue.set_trade_index({k: sorted(v) for k, v in index.items()})
-            tickers = sorted({e[2] for e in ev})
+            tickers = sorted(set(pc.unique(book["ticker"]).to_pylist()) | {e[2] for e in trade_ev})
+            subcent = _subcent_tickers(book)
             for t in tickers:
                 self._instrument(t, 0.001 if t in subcent else 0.01)
             cur = int(h.timestamp())
-            for e in ev:
+            for e in heapq.merge(trade_ev, _book_events(book), key=lambda e: (e[0], e[1])):
                 sec = e[0] // NS + 1
                 while cur < sec:
                     if s0 < cur <= s1:
@@ -390,10 +390,25 @@ def _num(x) -> Optional[float]:
     return v if math.isfinite(v) else None
 
 
+def _book_events(book, batch: int = 65536):
+    """(rt, 1, ticker, kind, side, price, qty) per book row, converted one batch at a time."""
+    for b in book.to_batches(max_chunksize=batch):
+        cols = [b.column(i).to_pylist() for i in range(6)]
+        for r, k, kind, side, px, q in zip(*cols):
+            yield (r, 1, k, kind, side, px, q or 0.0)
+
+
+def _subcent_tickers(book) -> set:
+    """Tickers quoted off whole cents (a 0.1c tick)."""
+    px = book["price"]
+    cents = pc.multiply(px, 100.0)
+    off = pc.greater(pc.abs(pc.subtract(cents, pc.round(cents))), 1e-6)
+    return set(pc.unique(pc.filter(book["ticker"], pc.fill_null(off, False))).to_pylist())
+
+
 def _only_series(t, series: Sequence[str]):
     if t is None or t.num_rows == 0:
         return None
-    import pyarrow.compute as pc
     mask = None
     for s in series:
         m = pc.starts_with(t["ticker"], s + "-")

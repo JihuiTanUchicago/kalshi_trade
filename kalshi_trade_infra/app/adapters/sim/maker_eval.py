@@ -35,7 +35,7 @@ def evaluate_hour(policy: Dict, hour: datetime, store=None, target_size: float =
     rep = MakerReplay([policy["series"]], to_config(policy), pool_per_hour=1.0, target_size=target_size,
                       fees=MakerFees(), fair_source=policy.get("fair_source", "mid"),
                       move_window_s=int(policy.get("move_window_s", 10)),
-                      tickers_from_markets=policy["series"] != "KXBTC15M")
+                      tickers_from_markets=True)
     rep.run(store, hour, hour + timedelta(hours=1))
     out = rep.report()
     row = next((r for r in out["hours"] if r["hour"] == int(hour.timestamp())), None)

@@ -5,7 +5,7 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=/opt/kalshi
 Nice=15
-MemoryMax=3G
+MemoryMax=4G
 TimeoutStartSec=3h
 Environment=TAU_TICK_CACHE=/opt/kalshi/ticks-cache
 ExecStart=/bin/bash -c 'set -a; . /opt/kalshi/.env.aws; . /opt/kalshi/.env.app; set +a; unset AWS_PROFILE; exec /opt/kalshi/.venv313/bin/python -u -m app.maker_lab_run --series auto >> /opt/kalshi/logs/maker_lab.log 2>&1'
