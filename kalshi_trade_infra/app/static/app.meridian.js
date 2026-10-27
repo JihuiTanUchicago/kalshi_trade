@@ -1711,12 +1711,12 @@
   // A paper book whose closed trades were all instant fills (the server's `instant_only`, counted as the track record
   // counts them) says so: the track record leaves those trades out and names the strategy on a row saying so, while
   // "+$3.80 on paper since deploying \u00b7 2 trades" here read as a record.
-  const realInstant = (r) => `${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record \u00b7\u00a0${money(r.pnl)} on paper \u00b7\u00a0${realNet('paper')}`;
+  const realInstant = (r) => `${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record\u00a0· ${money(r.pnl)} on paper\u00a0· ${realNet('paper')}`;
   // Some of them instant fills (the server's `instant_fills`, the same split): the count says how many, so "2 trades"
   // no longer reads as the record beside a track record that counts 1 and says 1 instant fill was left out.
   const realSome = (r) => (r.mode === 'paper' && +r.instant_fills > 0 && +r.instant_fills < r.trades
     ? `, ${num(+r.instant_fills)} of them ${+r.instant_fills === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record` : '');
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}${realSome(r)} \u00b7\u00a0${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)} \u00b7\u00a0${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
   const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));
@@ -1740,7 +1740,7 @@
   };
   const pastFig = (past) => past && typeof past === 'object' ? ['live', 'paper', 'demo'].filter((m) => past[m]).map((m) => {
     const p = past[m], n = +p.trades || 0;
-    return `<div class="sub-fig real-fig past-fig">Removed from ${m}: ${n ? `${money(+p.pnl || 0)} \u00b7\u00a0${realTrades(n)}${pastInstant(m, p, n)}` : 'no closed trades'}</div>`;
+    return `<div class="sub-fig real-fig past-fig">Removed from ${m}: ${n ? `${money(+p.pnl || 0)}\u00a0· ${realTrades(n)}${pastInstant(m, p, n)}` : 'no closed trades'}</div>`;
   }).join('') : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
@@ -1762,7 +1762,7 @@
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
       <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}${missed}</td>
-      <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))} \u00b7\u00a0${esc(dirLabel(s.direction))}</span></td>
+      <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))}\u00a0· ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub ? `<div class="sub-fig">${pnlSub}</div>` : ''}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>

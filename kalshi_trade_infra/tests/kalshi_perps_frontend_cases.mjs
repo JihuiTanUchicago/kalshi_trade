@@ -195,8 +195,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
   test(`${name}: a deployed strategy row shows its real P&L beside the backtest`, async () => {
     const f = frontend({fetchImpl: () => response({})});
     const row = s => f.strategySlip(detailStrategy({id: 46, title: 'Row fixture', ...s}), null, {});
-    assert.match(row({deployed: true, real: {pnl: 1.67, trades: 5, open: 1}}), /\+\$1\.67<\/span> since deploying ·\u00a05 trades/);
-    assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying ·\u00a01 trade ·\u00a0after Kalshi fees</);
+    assert.match(row({deployed: true, real: {pnl: 1.67, trades: 5, open: 1}}), /\+\$1\.67<\/span> since deploying\u00a0· 5 trades/);
+    assert.match(row({deployed: true, real: {pnl: 0, trades: 1, open: 0}}), /since deploying\u00a0· 1 trade\u00a0· after Kalshi fees</);
     assert.match(row({deployed: true, real: {pnl: 0, trades: 0, open: 2}}), /No closed trades yet/);
     assert.doesNotMatch(row({}), /real-fig/);
     assert.match(row({deployed: true, real: {pnl: -12, trades: 9, open: 0, paused: true}}), /Deployed<\/span> <span class="mk armed">Paused<\/span>/);
@@ -209,10 +209,10 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = frontend({fetchImpl: () => response({})});
     const row = real => f.strategySlip(detailStrategy({id: 48, title: 'Books fixture', deployed: true, real}), null, {});
     const both = row({pnl: 1, trades: 3, open: 1, mode: 'paper', demo: {pnl: -0.5, trades: 2, open: 0}});
-    assert.match(both, /\+\$1\.00<\/span> on paper since deploying ·\u00a03 trades/);
-    assert.match(both, /Demo: <span class="[^"]*">−\$0\.50<\/span> ·\u00a02 trades/);
+    assert.match(both, /\+\$1\.00<\/span> on paper since deploying\u00a0· 3 trades/);
+    assert.match(both, /Demo: <span class="[^"]*">−\$0\.50<\/span>\u00a0· 2 trades/);
     assert.doesNotMatch(both, /\$0\.50<\/span> since deploying/);
-    assert.match(row({pnl: 2, trades: 1, open: 0, mode: 'demo'}), /\+\$2\.00<\/span> on demo since deploying ·\u00a01 trade ·\u00a0after Kalshi fees</);
+    assert.match(row({pnl: 2, trades: 1, open: 0, mode: 'demo'}), /\+\$2\.00<\/span> on demo since deploying\u00a0· 1 trade\u00a0· after Kalshi fees</);
     assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'demo'}), /No closed demo trades yet/);
     // Paper says so too, so a paper figure is never read as real money beside a plain "Deployed" badge.
     assert.match(row({pnl: 0, trades: 0, open: 1, mode: 'paper'}), /No closed paper trades yet/);
