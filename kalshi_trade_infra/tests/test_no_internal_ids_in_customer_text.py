@@ -98,12 +98,24 @@ TOURNAMENT = [
      "the live book. Its slot goes to the next near miss.",
      "Removed “Wick fade NO” from paper: no trade in 7 days, as its entry rule never fired on the market's real "
      "prices. Its place goes to the next strategy that came close to passing research."),
+    ("I left “Fade” running: it is a paper tournament entrant with 3 of 30 independent events ($-1.20 net of fees and "
+     "spread), and the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
+     "only shrinks the forward sample.",
+     "I left “Fade” running: it is in its paper test, with 3 of the 30 separate events it needs (−$1.20 net of fees and "
+     "spread), and it is removed on its own once there are enough to judge it. Paper costs nothing; a pause now only "
+     "cuts its paper test short."),
+    ("I left Fade running: it is a paper tournament entrant with 12 of 30 independent events ($4.50 net of fees and "
+     "spread), and the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
+     "only shrinks the forward sample.",
+     "I left Fade running: it is in its paper test, with 12 of the 30 separate events it needs (+$4.50 net of fees and "
+     "spread), and it is removed on its own once there are enough to judge it. Paper costs nothing; a pause now only "
+     "cuts its paper test short."),
     ("[tournament] Resumed paper entrant “Fade” after a position stop. The stop closed that trade and its loss "
      "counts; pausing would cut the forward sample short.",
      "Resumed “Fade” on paper after a position stop. The stop closed that trade and its loss counts; pausing would "
      "cut its paper test short."),
 ]
-JARGON = re.compile(r"\[tournament\]|entrant|posterior|live book|near miss|forward sample|\bslot\b")
+JARGON = re.compile(r"\[tournament\]|entrant|posterior|live book|near miss|forward sample|\bslot\b|\$-")
 
 
 @pytest.mark.parametrize("stored,shown", TOURNAMENT)
@@ -125,6 +137,12 @@ def test_the_tournament_wording_matches_what_rebalance_writes():
                   "trade and its loss counts; pausing would cut the forward sample short.",
                   "(posterior mean %+.1f%% of stake)", "no trade in %d days on paper: its entry rule never fires on the live book"):
         assert piece in src, piece
+    agent_src = (APP / "research" / "agent.py").read_text(encoding="utf-8")
+    for piece in ('"I left %s running: it is a paper tournament entrant with %d of %d independent events ($%.2f %s), and "',
+                  '"the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "',
+                  '"only shrinks the forward sample."', "customer_text.PAPER_NET_SHORT"):
+        assert piece in agent_src, piece
+    assert customer_text.PAPER_NET_SHORT == "net of fees and spread"
 
 
 def test_the_last_move_says_a_tournament_line_plainly():

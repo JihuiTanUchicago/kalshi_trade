@@ -123,7 +123,8 @@ window.TauPage('autopilot', (T) => {
     // can suggest pausing it, and then this line says "I left it running": under "Reviewed" it read as
     // the same voice taking it back. It is the autopilot's own rule (agent.act), so it is headed as
     // that, and says that your own Pause on Deploy still stops it.
-    const rule = !m.proposal_kind && /^I left .+ running: it (?:has been on paper for only|is a paper tournament entrant)/.test(m.content || '');
+    // (A tournament entrant's line reads "it is in its paper test" since customer_text.tournament_line says it plainly.)
+    const rule = !m.proposal_kind && /^I left .+ running: it (?:has been on paper for only|is a paper tournament entrant|is in its paper test)/.test(m.content || '');
     // The engine's own loss guard or drawdown limit paused a strategy (the server says it by name,
     // customer_text.auto_pause_line): no review ran, so it isn't headed "Reviewed".
     const guard = !m.proposal_kind && /^Paused (?:your (?:paper|demo|live) strategy .+|one of your strategies) automatically\b/.test(m.content || '');

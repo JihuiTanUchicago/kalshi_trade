@@ -190,6 +190,11 @@ export function chatPanelCases({name, frontend, storageFor}) {
     const q = await panel({autopilot: true, chat: () => [{id: 5, role: 'system', created_at: AT, content:
       `I left ${TAILS} running: it is a paper tournament entrant with 3 of 20 independent events ($1.20 net of fees and spread), and the tournament retires it on its own once the data can judge it.`}]});
     assert.deepEqual(q.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent), ['Autopilot’s rule: kept running']);
+    // As the server now sends it (customer_text.tournament_line), in plain words: still the same rule.
+    const r = await panel({autopilot: true, chat: () => [{id: 6, role: 'system', created_at: AT, content:
+      `I left ${TAILS} running: it is in its paper test, with 3 of the 20 separate events it needs (+$1.20 net of fees and spread), and it is removed on its own once there are enough to judge it. Paper costs nothing; a pause now only cuts its paper test short.`}]});
+    assert.deepEqual(r.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent), ['Autopilot’s rule: kept running']);
+    assert.equal(r.box.querySelectorAll('.apf-rule').length, 1);
   });
 
   test(`${name}: the engine's pause in the feed reads by the strategy's name, headed as a pause, not a review`, async () => {

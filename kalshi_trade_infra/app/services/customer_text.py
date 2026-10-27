@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from typing import Callable, Dict, List, Optional
 
+from trading_core.domain.money import cents
+
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 MODEL_ID = re.compile(
     r"(?:\b(?:us|eu|apac|global)\.)?\b(?:anthropic\.claude|amazon\.(?:nova|titan)|meta\.llama|writer\.palmyra"
@@ -206,8 +208,27 @@ _TOURNAMENT_WORDS = (
 )
 
 
+# The autopilot's refusal to pause a tournament entrant (agent._tournament_hold) says it in the same terms, and
+# its net as "$%.2f" ("$-1.20"). The panel heads it "Autopilot's rule: kept running" by its opening words, which
+# the plain line keeps ("I left <title> running: it ").
+_HOLD = re.compile(r"^(I left .+? running: it )is a paper tournament entrant with (\d+) of (\d+) independent events "
+                   r"\(\$(-?\d+(?:\.\d+)?) (net of fees and spread)\), and the tournament retires it on its own once the "
+                   r"data can judge it\. Paper costs nothing; a pause now only shrinks the forward sample\.$")
+
+
+def _signed_usd(v: str) -> str:
+    c = cents(v)
+    return ("−" if c < 0 else "+") + _usd(abs(c))
+
+
 def tournament_line(text: Optional[str]) -> Optional[str]:
-    """A "[tournament] ..." chat line without its marker and in plain words; any other text as given."""
+    """A "[tournament] ..." chat line without its marker and in plain words, and the autopilot's "I left it
+    running" for a tournament entrant the same way; any other text as given."""
+    if text and _HOLD.match(str(text)):
+        m = _HOLD.match(str(text))
+        return ("%sis in its paper test, with %s of the %s separate events it needs (%s %s), and it is removed on "
+                "its own once there are enough to judge it. Paper costs nothing; a pause now only cuts its paper test "
+                "short." % (m.group(1), m.group(2), m.group(3), _signed_usd(m.group(4)), m.group(5)))
     if not text or not _TOURNAMENT.match(str(text)):
         return text
     s = _TOURNAMENT.sub("", str(text), count=1)
