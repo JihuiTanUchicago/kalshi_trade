@@ -4105,6 +4105,30 @@ test('the bell keeps new items marked while it is open, says how many, and clear
   assert.ok(wrap.querySelectorAll('.notif-new').every((e) => e.removed));
 });
 
+test('a bell that filled up while the user was away opens with what it holds, by kind, until it is closed', async () => {
+  // A week away: five strategies put on paper, one paused, one forward-test pass, one unknown kind.
+  const at = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+  const items = [['passed', 3], ['paused', 20], ['deployed', 30], ['deployed', 50], ['deployed', 70], ['deployed', 90], ['deployed', 110]]
+    .map(([kind, h], i) => ({id: 20 - i, kind, body: `${kind} ${i}`, link: `/strategies/${i}`, created_at: at(h), read: false}));
+  const f = bellFrontend({unread: 8, items, unread_kinds: {deployed: 5, paused: 1, passed: 1, digest: 1}});
+  await f.viewDashboard(); await flush(); await flush();
+  const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig');
+  const list = wrap.querySelector('#bell-list');
+  assert.match(list.innerHTML, /^<p class="bell-sum">8 new: 5 strategies put on paper ·\s1 paused ·\s1 passed its paper test ·\s1 other<\/p>/);
+  assert.equal(wrap.querySelectorAll('.notif').length, 7);  // every line still listed under it
+  await trig.onclick({stopPropagation() {}});
+  assert.ok(list.querySelector('.bell-sum'), 'the summary stays while the list is open');
+  await trig.onclick({stopPropagation() {}});  // close: read now, so the summary goes with the marks
+  assert.ok(wrap.querySelectorAll('.bell-sum').every((e) => e.removed));
+  // A few new ones need no summary, nor does a list with nothing new.
+  for (const d of [{unread: 3, items: items.slice(0, 3), unread_kinds: {passed: 1, paused: 1, deployed: 1}},
+    {unread: 0, items: items.map((n) => ({...n, read: true})), unread_kinds: {}}]) {
+    const g = bellFrontend(d);
+    await g.viewDashboard(); await flush(); await flush();
+    assert.equal(g.root.querySelector('.bell-sum'), null);
+  }
+});
+
 test('a bell item older than a day shows its day and clock, and every item its full time on hover', async () => {
   const f = bellFrontend(bellNotes());
   await f.viewDashboard(); await flush(); await flush();
@@ -4478,6 +4502,19 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.match(free, /of credits spent<span class="since-sub"> ·\sfree credits so far: your card hasn’t been charged ·\s\$7\.15 left ·\s/);
   assert.doesNotMatch(free, /real money/);
   assert.match(await strip({since: {...since, spent: {...since.spent, card_charged: true}}}), /of credits spent<span class="since-sub"> ·\sreal money ·\s/);
+  // A card charged while they were away says so, with the credits it bought (never netted with the spend).
+  const reload = (extra) => strip({since: {...since, spent: {...since.spent, card_charged: true, ...extra}}});
+  assert.match(await reload({bought: 20, charges: 1, reloads: 1}), /<b>\$27\.45<\/b> of credits spent; auto-reload charged your card once for <b>\$20\.00<\/b> of credits<span class="since-sub"> ·\sreal money/);
+  assert.match(await reload({bought: 60, charges: 3, reloads: 3}), /auto-reload charged your card 3 times for <b>\$60\.00<\/b> of credits/);
+  assert.match(await reload({bought: 45, charges: 2, reloads: 1}), /spent; 2 card charges \(1 by auto-reload\) bought <b>\$45\.00<\/b> of credits/);
+  assert.match(await reload({bought: 25, charges: 1, reloads: 0}), /spent; you bought <b>\$25\.00<\/b> of credits/);
+  assert.doesNotMatch(text, /auto-reload charged|you bought/);
+  assert.doesNotMatch(await reload({bought: 20, charges: 1, reloads: 1}), /\$7\.45|\$47\.45/);  // never netted or added
+  // A loss guard's pauses are told in the Autopilot row (the engine's, not its moves), resumed ones too.
+  const guarded = await strip({since: {...since, autopilot: {deploy: 3}, auto_paused: [232, 9]}});
+  assert.match(guarded, /<dt>Autopilot<\/dt><dd>It put 3 on paper\. 2 strategies were paused automatically to stop a loss\.<\/dd>/);
+  assert.match(await strip({since: {...since, auto_paused: [9]}}), /<span data-since-ap>On\. It made no changes\.<\/span> 1 strategy was paused automatically to stop a loss\./);
+  assert.doesNotMatch(text, /paused automatically/);
   assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$12\.65<\/span>/);
   assert.doesNotMatch(text, /\$40\.10|−\$14\.80|\$14\.80/);  // paper and credits never summed or netted
   // The forward-test pass leads New results when nothing else passed, named from the page's deployments.

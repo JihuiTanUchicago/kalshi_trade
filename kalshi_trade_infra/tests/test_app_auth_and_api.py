@@ -848,6 +848,7 @@ def test_notifications_endpoint_shape(monkeypatch):
     monkeypatch.setattr(server.repo, "count_unread_notifications", lambda cur, uid: 1)
     out = server.notifications(ctx())
     assert out["unread"] == 1 and out["items"][0]["read"] is False and out["items"][0]["link"] == "/strategies/9"
+    assert out["unread_kinds"] == {"share": 1}
 
 
 def test_slug_and_mention_regex():
@@ -1189,9 +1190,10 @@ def test_google_sign_in_returns_to_the_page_the_visitor_came_from(monkeypatch):
     assert callback({})[0] == ("redirect", "/")
 
 
-def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypatch):
+def test_since_your_last_visit_reads_the_cookies_time_clamped_to_the_cookies_life(monkeypatch):
     # The page keeps the last visit in a cookie and sends it as ?since= (epoch seconds). Missing or
-    # unreadable: the last 24 hours, marked first. Older than a week: a week. In the future: now.
+    # unreadable: the last 24 hours, marked first. A month away is a month (it read as the last 7 days
+    # under "Since your last visit"); older than the cookie can live (90 days): 90 days. In the future: now.
     from datetime import datetime, timedelta, timezone
     now = datetime(2026, 10, 25, 12, 0)
     monkeypatch.setattr(server.repo, "now_utc", lambda: now)
@@ -1199,7 +1201,8 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypa
     assert server._visit_since(None) == (now - timedelta(hours=24), True)
     assert server._visit_since("yesterday") == (now - timedelta(hours=24), True)
     assert server._visit_since(epoch(now - timedelta(hours=9))) == (now - timedelta(hours=9), False)
-    assert server._visit_since(epoch(now - timedelta(days=30))) == (now - timedelta(days=7), False)
+    assert server._visit_since(epoch(now - timedelta(days=30))) == (now - timedelta(days=30), False)
+    assert server._visit_since(epoch(now - timedelta(days=120))) == (now - timedelta(days=90), False)
     assert server._visit_since(epoch(now + timedelta(days=1))) == (now, False)
     # The strip's block: the books' since-visit sums as read (never added up), passes, autopilot and runs.
     monkeypatch.setattr(server.repo, "activity_since", lambda cur, uid, since: {"autopilot": {"deploy": 1}, "runs": {"failed": 1}, "own_sessions": True})
@@ -1208,7 +1211,8 @@ def test_since_your_last_visit_reads_the_cookies_time_clamped_to_a_week(monkeypa
     assert out == {"at": now, "first": False, "books": {"paper": {"pnl": 2.42, "trades": 3}, "demo": {"pnl": -1.0, "trades": 1},
                                                          "live": {"pnl": 0.0, "trades": 0}},
                    "passed": {"n": 1, "items": [{"id": 3, "title": "A"}]}, "autopilot": {"deploy": 1}, "runs": {"failed": 1},
-                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}, "by_deployment": {}}
+                   "own_sessions": True, "spent": None, "milestones": {"passed": [], "live_ready": []}, "auto_paused": [],
+                   "by_deployment": {}}
     # Each book's figure split by the deployment that traded it, best first, books kept apart.
     split = server._since_visit(None, 1, now, False, {"paper": (-24.19, 19), "demo": (-1.0, 1)},
                                 {("paper", 4): (-53.0761, 7), ("paper", 3): (28.8867, 12), ("demo", 5): (-1.0, 1)})
@@ -1234,6 +1238,13 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     act["card_charged"] = False  # free credits only: no card charged yet
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]["card_charged"] is False
     assert out["books"] == {"paper": {"pnl": 12.65, "trades": 36}}  # the books never carry the credits
+    # Auto-reload charged the card twice while they were away: the credits bought ride with the spend,
+    # rounded half up as credits are, and nothing is said when no card was charged.
+    act["bought"] = {"usd": 40.005, "charges": 2, "auto": 2}
+    got = server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]
+    assert got == {"since": 27.45, "week": 27.45, "card_charged": False, "bought": 40.01, "charges": 2, "reloads": 2}
+    act["bought"] = {"usd": 0.0, "charges": 0, "auto": 0}
+    assert "bought" not in server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]
     assert out["milestones"] == {"passed": [232], "live_ready": [232]}
     monkeypatch.setattr(server.billing, "configured", lambda: False)
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"] is None

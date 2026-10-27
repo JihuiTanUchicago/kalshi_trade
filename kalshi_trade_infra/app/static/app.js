@@ -865,6 +865,23 @@
     bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now();
     bellReq.then((d) => bellFresh && bellFresh(d)).catch(() => {});  // best-effort, like the first read
   }
+  // A list that filled up while the user was away opens with what it holds, by kind (the server's
+  // unread_kinds): a week back, seven "Autopilot put ... on paper" lines ran past the first screen
+  // before the pause among them. Shown from BELL_SUM_MIN new notices; the lines below are unchanged.
+  const BELL_SUM_MIN = 4;
+  const BELL_SUM = [['deployed', (n) => `${n === 1 ? '1 strategy' : num(n) + ' strategies'} put on paper`],
+    ['paused', (n) => `${num(n)} paused`], ['passed', (n) => `${num(n)} passed ${n === 1 ? 'its' : 'their'} paper test`],
+    ['live_ready', (n) => `${num(n)} ready for live`], ['reload_failed', () => 'auto-reload couldn\u2019t charge your card'],
+    ['comment', (n) => `${num(n)} comment${n === 1 ? '' : 's'}`], ['mention', (n) => `${num(n)} mention${n === 1 ? '' : 's'}`],
+    ['share', (n) => `${num(n)} shared with you`]];
+  function bellSummary(d) {
+    const by = d.unread_kinds || {};
+    if (!(d.unread >= BELL_SUM_MIN) || !Object.keys(by).length) return '';
+    const parts = BELL_SUM.filter(([k]) => by[k] > 0).map(([k, say]) => say(+by[k]));
+    const rest = Object.entries(by).filter(([k]) => !BELL_SUM.some(([b]) => b === k)).reduce((a, [, n]) => a + n, 0);
+    if (rest) parts.push(`${num(rest)} other${rest === 1 ? '' : 's'}`);
+    return `<p class="bell-sum">${num(d.unread)} new: ${parts.join(' \u00b7\u00a0')}</p>`;
+  }
   async function wireBell() {
     const wrap = root.querySelector('.bell-wrap');
     if (!wrap) return;
@@ -876,7 +893,7 @@
     const close = () => {
       menu.hidden = true; trig.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', onDoc, true);
       list.querySelectorAll('.notif.unread').forEach((n) => n.classList.remove('unread'));
-      list.querySelectorAll('.notif-new').forEach((n) => n.remove());
+      list.querySelectorAll('.notif-new, .bell-sum').forEach((n) => n.remove());
       const c = head.querySelector('.bell-new'); if (c) c.remove();
     };
     const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
@@ -891,7 +908,7 @@
       trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
       head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${d.unread} new</span>` : '');
       // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
-      list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
+      list.innerHTML = d.items.length ? bellSummary(d) + d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
     };
     // A list that didn't load still opens, says so and offers Try again; the next read (bellTick) fills it
     // too. It used to leave the bell dead for the rest of the visit: a tap did nothing and no dot ever came.
@@ -2749,7 +2766,11 @@
     const did = AP_DID.filter(([k]) => ap[k]).map(([k, w]) => w.replace('%s', k === 'research' ? plural(ap[k], 'research session', 'research sessions') : num(ap[k])));
     const other = Object.entries(ap).filter(([k]) => !known.has(k)).reduce((a, [, n]) => a + n, 0);
     if (other) did.push('made ' + plural(other, 'other change', 'other changes'));
-    const auto = did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`;
+    // A loss guard's pause is the engine's, not an autopilot move (the server's auto_paused, from the bell):
+    // said here too, since one resumed or removed since is in no other line of the strip.
+    const guarded = (s.auto_paused || []).length;
+    const auto = (did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`)
+      + (guarded ? ` ${plural(guarded, 'strategy was', 'strategies were')} paused automatically to stop a loss.` : '');
     const needs = (ms.live_ready || []).slice(0, 3).map((sid) => `${named(sid)} is ready for live trading. Going live is your call.`);
     needs.push(...d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
       .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_why || x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_why || x.status_reason))}</span>` : ''}`));
@@ -2775,7 +2796,12 @@
     // Until a card was ever charged (the server's card_charged) every credit spent was a free one, and
     // "real money" beside a new user's first cents read as a charge to their card.
     const paid = spent && spent.card_charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
-    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}<span class="since-sub"> \u00b7\u00a0${paid} \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
+    // A card charged while they were away (the server's charges, reloads of them auto-reload's): the time
+    // away's real-money moment, which only Billing's statement told. Credits bought, never netted with spent.
+    const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
+    const bought = !charges ? '' : `; ${reloads === charges ? `auto-reload charged your card ${charges === 1 ? 'once' : num(charges) + ' times'} for`
+      : reloads ? `${plural(charges, 'card charge', 'card charges')} (${num(reloads)} by auto-reload) bought` : 'you bought'} <b>${usd(spent.bought)}</b> of credits`;
+    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub"> \u00b7\u00a0${paid} \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
       <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>

@@ -55,7 +55,8 @@ def me(ctx: Ctx):
 
 def notifications(ctx: Ctx):
     rows = customer_text.notification_rows(repo.list_notifications(ctx.cur, ctx.uid, limit=bell.READ_ROWS))
-    return {"unread": repo.count_unread_notifications(ctx.cur, ctx.uid), "items": bell.grouped(rows)}
+    return {"unread": repo.count_unread_notifications(ctx.cur, ctx.uid), "items": bell.grouped(rows),
+            "unread_kinds": bell.unread_kinds(rows)}
 
 
 def mark_notifications_read(ctx: Ctx):
