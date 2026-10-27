@@ -106,10 +106,15 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     f.S.ap = {...apStatus, week: {...week, card_charged: false}}; f.paintDashAp();
     assert.match(spent(), /^\$0\.84 free credits so far: your card hasn’t been charged$/);
     assert.doesNotMatch(spent(), /real money/);
-    // Once a card was charged, or from a server that doesn't say: real money, as before.
-    for (const charged of [true, undefined]) {
+    // Once a card was charged: real money.
+    f.S.ap = {...apStatus, week: {...week, card_charged: true}}; f.paintDashAp();
+    assert.match(spent(), /^\$0\.84 real money$/);
+    // A server that doesn't say (payments off: Billing sends no card_charged) is never "real money", nor names
+    // who paid: it says what the spend was. The week called a new user's free-credit research "real money".
+    for (const charged of [undefined, null]) {
       f.S.ap = {...apStatus, week: {...week, card_charged: charged}}; f.paintDashAp();
-      assert.match(spent(), /^\$0\.84 real money$/);
+      assert.match(spent(), /^\$0\.84 research spend$/);
+      assert.doesNotMatch(spent(), /real money|free credits|card/);
     }
     f.clearTimers();
   });

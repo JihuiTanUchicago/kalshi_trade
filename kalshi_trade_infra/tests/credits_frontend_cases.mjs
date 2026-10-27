@@ -143,10 +143,10 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     // of research) for the same week. The server names a figure that spent something but rounds to $0.00.
     const spent = (w) => f.root.querySelector('#dash-ap .ap-week dl dd').textContent.replace(/\s+/g, ' ');
     let f = await apPage({...apStatus, week: {...week, research_credits: 20.01, checkin_credits: 0, checkin_under_cent: true}}, {});
-    assert.match(spent(), /^\$20\.01 real money · plus under \$0\.01 on its check-ins$/);
+    assert.match(spent(), /^\$20\.01 research spend · plus under \$0\.01 on its check-ins$/);
     f.clearTimers();
     f = await apPage({...apStatus, week: {...week, research_credits: 0, research_under_cent: true, checkin_credits: 0.09}}, {});
-    assert.match(spent(), /^under \$0\.01 real money · plus \$0\.09 on its check-ins$/);
+    assert.match(spent(), /^under \$0\.01 research spend · plus \$0\.09 on its check-ins$/);
     assert.doesNotMatch(spent(), /\$0\.00/);
     f.clearTimers();
     // Only a sliver spent, nothing else this week: not "nothing yet" beside Billing's "under $0.01".
@@ -154,11 +154,11 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
       checkin_credits: 0, checkin_under_cent: true, credits_left: 20, runway_days: null, pace_days: 7};
     f = await apPage({...apStatus, week: sliver}, {});
     assert.doesNotMatch(f.root.querySelector('#dash-ap .ap-week').textContent, /nothing yet/);
-    assert.match(spent(), /^\$0\.00 real money · plus under \$0\.01 on its check-ins$/);
+    assert.match(spent(), /^\$0\.00 research spend · plus under \$0\.01 on its check-ins$/);
     f.clearTimers();
     // No flag (nothing spent, or an older server): the figures as before, no check-ins named at $0.
     f = await apPage({...apStatus, week: {...week, checkin_credits: 0}}, {});
-    assert.match(spent(), /^\$100\.01 real money$/);
+    assert.match(spent(), /^\$100\.01 research spend$/);
     f.clearTimers();
   });
 

@@ -164,8 +164,9 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
     """The dashboard's "since your last visit" strip: each book's realized P&L and closed trades
     since then (from the books' one pass; books are never added together), the strategies that
     passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
-    (real money) ride apart from the books, and only while payments are on: with them off nothing
-    is billed; a card charged in the meantime (auto-reload, mostly) rides with them. `milestones` are
+    ride apart from the books, and only while payments are on: with them off nothing is billed; a card
+    charged in the meantime (auto-reload, mostly) rides with them. Their `card_charged` is the read's own
+    answer, None when it has none: the page calls them real money only when it is True. `milestones` are
     the paper forward-gate passes and live-ready strategies since then, `auto_paused` the strategies
     a loss guard paused (strategy ids).
     `by_deployment` splits each book's figure by the deployment that traded it ({mode: [{deployment_id,
@@ -176,7 +177,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
             "books": {m: {"pnl": cents(pnl), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": _passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
-            "spent": {**{k: credit_usd(v) for k, v in act["spent"].items()}, "card_charged": bool(act.get("card_charged", True)),
+            "spent": {**{k: credit_usd(v) for k, v in act["spent"].items()}, "card_charged": act.get("card_charged"),
                       **_bought(act.get("bought"))}
             if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []},

@@ -2102,7 +2102,7 @@ test('the autopilot card and panel show the last 7 days with real credits and pa
   await f.viewDashboard(); await flush();
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
   assert.match(card, /<h3>Last 7 days<\/h3>/);
-  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money<\/small><\/dd>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>research spend<\/small><\/dd>/);
   assert.match(card, /<dt>Ideas<\/dt><dd>1,234 tested\u00a0· 2 passed<\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>1 strategy <small>not counting yours<\/small><\/dd>/);
   assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 4 closed trades<\/small><\/dd>/);
@@ -4297,7 +4297,7 @@ test('the autopilot card puts credits left and the only limit beside its spend, 
   f.S.me.user.autopilot = true; f.S.ap = {...apOn, week};
   await f.viewDashboard(); await flush();
   const card = f.root.querySelector('#dash-ap').innerHTML;
-  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money\u00a0· plus \$0\.42 on its check-ins<\/small><\/dd>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>research spend\u00a0· plus \$0\.42 on its check-ins<\/small><\/dd>/);
   assert.match(card, /Credits left: <b>\$23\.40<\/b>, about 6 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
   f.S.ap = {...apOn, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
@@ -4787,8 +4787,9 @@ test('a returning user reads what the time away cost, the paper forward-test pas
     return f.root.querySelector('#dash-since').innerHTML;
   };
   const text = await strip({});
-  // What it cost: its own row, real money, never added to the paper book above it.
-  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
+  // What it cost: its own row, never added to the paper book above it. With no word on whether a card was ever
+  // charged (card_charged unknown), it never says "real money", nor who paid.
+  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
   // No card ever charged: the credits spent were free ones, and the row says the card is untouched.
   const free = await strip({since: {...since, spent: {...since.spent, card_charged: false}}});
   assert.match(free, /of credits spent<span class="since-sub">\u00a0· free credits so far: your card hasn’t been charged\u00a0· \$7\.15 left\u00a0· /);

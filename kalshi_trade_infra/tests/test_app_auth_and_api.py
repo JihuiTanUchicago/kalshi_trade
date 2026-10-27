@@ -1487,8 +1487,11 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since, **k: {"n": 0, "items": []})
     monkeypatch.setattr(server.billing, "configured", lambda: True)
     out = server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})
-    # Without the probe's answer the row keeps "real money" (card_charged True).
-    assert out["spent"] == {"since": 27.45, "week": 27.45, "card_charged": True}
+    # Without the probe's answer the row claims nothing (card_charged None): it said True, and the page called
+    # the spend "real money" with no read saying a card was ever charged.
+    assert out["spent"] == {"since": 27.45, "week": 27.45, "card_charged": None}
+    act["card_charged"] = True  # a card was charged for credits
+    assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]["card_charged"] is True
     act["card_charged"] = False  # free credits only: no card charged yet
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]["card_charged"] is False
     assert out["books"] == {"paper": {"pnl": 12.65, "trades": 36}}  # the books never carry the credits
