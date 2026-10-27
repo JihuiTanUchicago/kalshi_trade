@@ -187,4 +187,32 @@ export function writeWaitCases({name, frontend, billingPage, cardedBilling, stor
     assert.equal(sw.disabled, false); assert.equal(f.S.me.user.autopilot, false);
     f.clearTimers();
   });
+
+  // The edge gave up on a switch (its 502 page): Tau may have switched it. It said "Reload the page to
+  // check"; the card and the panel read the switch again within half a minute, so the words point there.
+  test(`${name}: an autopilot switch the edge answered with a 502 says Tau didn't confirm and where to look`, async () => {
+    const UNSURE = 'Tau didn’t confirm this, so autopilot may or may not have switched. Its status here updates within half a minute; check it before you try again.';
+    const edge = {p: Promise.resolve({ok: false, status: 502, json: async () => { throw new SyntaxError('not JSON'); }})};
+    const f = frontend({fetchImpl: apFetch(edge, () => ({autopilot: false, mode: 'off'}))});
+    f.S.me = {...f.S.me, user: {...f.S.me.user, autopilot: false}};
+    f.S.ap = {autopilot: false, mode: 'off'};
+    f.location.pathname = '/';
+    await f.viewDashboard(); await settle();
+    await f.root.querySelector('#dash-ap [data-apcard="on"]').onclick(); await settle();
+    assert.equal(f.root.querySelector('#dash-ap .apcard-err').innerHTML, UNSURE);
+    assert.equal(postRequests(f).filter((r) => r.path === '/api/settings').length, 1, 'never sent again');
+    f.clearTimers();
+
+    const store = new Map([['tau_ap_open', '1']]);
+    const g = frontend({storage: storageFor(store), fetchImpl: apFetch(edge, () => ({autopilot: true, mode: 'paper'}))});
+    g.S.me = {...g.S.me, user: {...g.S.me.user, id: 7, autopilot: true}};
+    const box = g.document.createElement('div'); box.id = 'autopilot-float'; g.document.body.appendChild(box);
+    g.renderAutopilot(box, {autopilot: true, mode: 'paper'}); await settle();
+    const sw = box.querySelector('#apf-apswitch');
+    sw.checked = false; await sw.onchange(); await settle();
+    assert.match(box.querySelector('#apf-flash').innerHTML, /Tau didn’t confirm this, so autopilot may or may not have switched\. Its status here updates within half a minute; check it before you try again\./);
+    assert.doesNotMatch(box.querySelector('#apf-flash').innerHTML, /Reload the page/);
+    assert.equal(sw.checked, true, 'back at what Tau last said');
+    g.clearTimers();
+  });
 }

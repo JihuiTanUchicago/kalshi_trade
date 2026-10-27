@@ -105,6 +105,23 @@ export function researchFormCases({name, frontend}) {
     f.clearTimers();
   });
 
+  // A Start Tau didn't confirm (the edge's 502 page, no reply on a train) may have started a session:
+  // it said "Reload the page to check", where the sessions on this page already show it within seconds.
+  test(`${name}: a Start Tau didn't confirm says where the session would show up, keeps the idea, and sends once`, async () => {
+    const asked = [];
+    const f = await form({globals: {FormData}, create: (body) => { asked.push(body); return {ok: false, status: 502, json: async () => { throw new SyntaxError('not JSON'); }}; }});
+    const dispatch = f.root.querySelector('#dispatch'), said = f.root.querySelector('#dflash');
+    said.scrollIntoView = () => {};
+    const idea = f.root.querySelector('textarea[name=prompt]');
+    idea.value = 'Fade the last-minute spike before a 15-minute close';
+    await dispatch.onsubmit({preventDefault() {}}); await settle();
+    assert.equal(asked.length, 1, 'never sent again');
+    assert.match(said.innerHTML, /Tau didn’t confirm the session started\. If it did, it shows up in your sessions on this page within a few seconds; check there before you start it again\./);
+    assert.doesNotMatch(said.innerHTML, /Reload the page/);
+    assert.equal(idea.value, 'Fade the last-minute spike before a 15-minute close');
+    f.clearTimers();
+  });
+
   test(`${name}: arriving from Explore with a market the picker doesn't offer says so instead of quietly letting the agent choose`, async () => {
     const markets = [{key: 'btc15m', label: 'Bitcoin 15-minute', category: 'Crypto', has_data: true},
       {key: 'eth15m', label: 'Ethereum 15-minute', category: 'Crypto', has_data: true}];

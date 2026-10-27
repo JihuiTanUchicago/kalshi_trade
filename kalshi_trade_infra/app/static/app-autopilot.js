@@ -4,7 +4,7 @@
 window.TauPage('autopilot', (T) => {
   'use strict';
   const {
-    alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apFlash, apFloorText,
+    alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apMarketNames, apReloadFailed, apShowFocus,
     apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, go, ICON, mdLite,
     paced, paintDashAp, paperCount, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
@@ -304,7 +304,7 @@ window.TauPage('autopilot', (T) => {
       // Locking the switch blurs it, so focus goes back to it once it unlocks (the panel is the only
       // thing on screen on a phone, and the page behind it is where focus used to land).
       try { await api('/api/settings', { autopilot: on }).finally(waited); S.me.user.autopilot = on; saved = true; }
-      catch (e) { sw.checked = !!(S.me && S.me.user && S.me.user.autopilot); apNote(box, e.message); }
+      catch (e) { sw.checked = !!(S.me && S.me.user && S.me.user.autopilot); apNote(box, apSaid(e)); }
       finally {
         S.apSwitching = null;
         const now = box.querySelector('#apf-apswitch');
