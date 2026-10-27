@@ -2560,6 +2560,9 @@ body.landing-body .apf { display: none; }
   /* Open autopilot is a full-screen sheet: one scroll for controls and session, composer pinned. */
   .apf.open { inset: 0; width: auto; max-width: none; height: 100vh; height: 100dvh; max-height: none; border: 0; border-radius: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
   .apf.open .apf-head { position: sticky; top: 0; z-index: 1; background: var(--stock-raised); padding-top: max(13px, env(safe-area-inset-top)); }
+  /* The close button sits in the sheet's top-right corner (its 44px target reaches 2px from the screen's edge):
+     its focus ring is drawn inside it, where the 2px ring outside it was cut off at the right and top. */
+  .apf.open .apf-x:focus-visible { outline-offset: -3px; }
   .apf.open .apf-session { flex: none; min-height: 55vh; }
   .apf.open .apf-composer-row { position: sticky; bottom: 0; }
   .apf-stats, .apf-stats[data-cols] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
