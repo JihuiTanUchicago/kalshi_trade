@@ -37,6 +37,7 @@ import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
+import {newUserCases} from './new_user_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -5355,3 +5356,4 @@ test('Tau phone: a folded paper section does not count, so the numbered sections
   const body = f.root.querySelector('.paper-body').innerHTML;
   assert.match(body, /<details class="fold"[^>]*><summary class="fold-h">Methodology<\/summary><section class="paper-sec">/);
 });
+newUserCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, billingPage, cardedBilling, apStatus: apOn});

@@ -913,6 +913,9 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .strategy-pagehead .mk { border: 0; padding: 0; background: none; color: var(--ink-2); font-size: 12px; text-transform: none; letter-spacing: 0; }
 .strategy-pagehead .mk.on { color: #365D3B; }
 .detail #figs.measure { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+/* A research session's strategy has three figures (no Return on capital): three columns, no empty fourth slot.
+   Wide screens only: a phone keeps its two columns (the 720px rule further down). */
+@media (min-width: 721px) { .detail #figs.measure[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .detail #figs.measure > .m { padding: 0; }
 .detail #figs .fig { max-width: 100%; overflow-wrap: anywhere; }
 .strategy-deployments { display: grid; gap: 12px; margin-bottom: 12px; }
