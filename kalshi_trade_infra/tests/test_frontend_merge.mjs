@@ -1012,7 +1012,7 @@ test('the live card says it is Kalshi cash, apart from what Tau trades realized'
   assert.match(board, /Live money on: \+\$17\.00 realized all time/);
   // The autopilot card's day figure is the same booked P&L, and says so.
   f.S.me.user.autopilot = true; f.S.ap = {...apOn, live_running: 1, today_live_pnl: -2}; f.paintDashAp();
-  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00/);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00<\/span> <small>real money, after Kalshi fees<\/small>/);
 });
 
 test('Funds names the live figure Kalshi cash, open positions not included', async () => {
