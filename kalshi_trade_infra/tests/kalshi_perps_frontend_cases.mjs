@@ -536,9 +536,14 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
       dep(1, r), dep(2, {...r, running: false, eta_days: null}, 'paused'), dep(3, {...r, trades: 40, events: 30, failing: ['edge', 'demo']}),
       dep(4, {...r, trades: 40, events: 30, failing: []}), dep(5, null)], open_positions: []}) : response({})});
     await f.viewDeploy(); await flush(); await flush();
-    const lines = f.root.querySelectorAll('.road-line').map((el) => el.innerHTML.replace(/ /g, ' '));
+    const html = f.root.querySelectorAll('.road-line').map((el) => el.innerHTML);
+    const lines = html.map((h) => h.replace(/<[^>]+>/g, '').replace(/ /g, ' '));
     f.clearTimers && f.clearTimers();
     assert.equal(lines.length, 4, 'paper rows only');
+    // Walk 2026-10-27 at 390px: a line began "· 10/20 events". Each "12/30 trades" piece is one unbreakable span
+    // and each "·" ends its line: a no-break space before it, a plain space after it.
+    assert.ok(html.includes('Its paper record toward live: <span class="nobr">12/30\u00a0trades</span>\u00a0· <span class="nobr">10/20\u00a0events</span>\u00a0· enough in about 2 days at its pace'), html.join('\n'));
+    assert.ok(html.every((h) => !/ ·/.test(h)), html.join('\n'));
     assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · enough in about 2 days at its pace'), lines.join('\n'));
     assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · paused, so not growing'));
     assert.ok(lines.includes('Its paper record toward live: trades, events and hours are in; 2 checks left: edge, demo record'));

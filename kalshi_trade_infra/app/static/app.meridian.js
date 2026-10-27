@@ -1801,9 +1801,11 @@
     const r = d.road;
     if (!r) return '';
     const parts = [[r.trades, r.trades_needed, 'trades'], [r.events, r.events_needed, 'events'], [Math.floor(r.span_hours), r.span_needed_hours, 'hours']]
-      .filter(([have, need]) => have < need).map(([have, need, unit]) => `${num(have)}/${num(need)}\u00a0${unit}`);
+      .filter(([have, need]) => have < need).map(([have, need, unit]) => `<span class="nobr">${num(have)}/${num(need)}\u00a0${unit}</span>`);
+    // Each "9/30 trades" piece stays whole (.nobr) and each "·" ends its line (a no-break space before it, a
+    // plain one after): at 390px a line began "· 9/20 events".
     let text;
-    if (parts.length) text = parts.join(' ·\u00a0') + (!r.running ? ' ·\u00a0paused, so not growing' : r.eta_days != null ? ` ·\u00a0enough in ${roadDays(r.eta_days)} at its pace` : '');
+    if (parts.length) text = parts.join('\u00a0· ') + (!r.running ? '\u00a0· paused, so not growing' : r.eta_days != null ? `\u00a0· enough in ${roadDays(r.eta_days)} at its pace` : '');
     else if (!r.failing) text = 'trades, events and hours are in';
     else if (!r.failing.length) text = 'every check cleared. Live money only if you deploy it there';
     else {
