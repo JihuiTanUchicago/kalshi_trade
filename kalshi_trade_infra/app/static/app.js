@@ -2434,7 +2434,7 @@
     const strike = !k ? fig('Strike', '—', { small: /^KXBTC15M-/.test(s.ticker || '') ? 'This window’s start price isn’t stored yet' : 'Not stored for this contract' })
       : edges ? fig('Bucket', `${btcUsd(k.lo)} to ${btcUsd(k.hi)}`, { small: 'Yes if Bitcoin settles inside it' })
       : bucket ? fig('Bucket centre', btcUsd(k.value), { small: 'its edges aren’t stored' })
-      : fig('Strike', btcUsd(k.value), { small: k.kind === 'above' ? 'Yes if Bitcoin settles above it' : k.kind === 'below' ? 'Yes if Bitcoin settles below it' : 'Kalshi’s rules say which side pays' });
+      : fig('Strike', btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind} it` : 'Kalshi’s rules say which side pays' });
     // Which side of the strike (or the bucket's edge it is outside of) spot is on, by how much, and which
     // side of the contract that is when the strike says.
     const where = !v ? '' : edges ? (v.side === 'below' ? 'below its floor' : 'above its top') : bucket ? v.side + ' its centre' : v.side + ' the strike';

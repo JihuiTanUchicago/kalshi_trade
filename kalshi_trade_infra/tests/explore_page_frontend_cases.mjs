@@ -95,6 +95,10 @@ export function explorePageCases({name, frontend}) {
     assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the strike · on the Yes side</);
     assert.match(html, />Time left<\/dt>.*>1 hr 12 min<.*closes /);
     assert.doesNotMatch(html, /fig-behind|KXBTCD ·|BTC-USD/);
+    // A 15-minute window's start price pays Yes at or above it (greater_or_equal), and the page says so.
+    const {body: m15} = await openSpot(() => response({...SPOT, strike: {...SPOT.strike, value: 113384.12, inclusive: true, from: 'record'}}),
+      {ticker: 'KXBTC15M-26OCT262345-45', series: 'KXBTC15M'});
+    assert.match(m15().innerHTML, />\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
   });
 
   test(`${name}: a stored spot over two minutes old stays up and says plainly how old the feed is`, async () => {
