@@ -132,5 +132,6 @@ def test_the_strategy_page_says_it_beside_its_paper_record(page):
     src = (STATIC / page).read_text(encoding="utf-8")
     names = re.search(r"const \{(.*?)\} = T;", src, re.S).group(1)
     assert re.search(r"\bPAPER_NET\b", names) and re.search(r"\bglo\b", names)
-    assert "mode === 'paper' ? `, ${PAPER_NET}${glo('paperfills')}`" in src  # Since deploying
+    # Since deploying: each book's line says what its P&L is net of, paper's in PAPER_NET's words with its bubble.
+    assert "paper: PAPER_NET };" in src and ", ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}" in src
     assert "name: 'Net, ' + PAPER_NET" in src  # Road to live
