@@ -9,7 +9,7 @@ import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app import repository as repo
 from app.services import btc_spot
@@ -128,17 +128,19 @@ def explore_list(ctx: Ctx):
     rank = (lambda m: _feed_mid(m) or 0.0) if sort == "last" else (lambda m: _efloat(m.get(sort)))
     markets = sorted(markets, key=rank, reverse=True)
     matched = len(markets)
+    rows, spot = _strike_distances(ctx, [{**{k: v for k, v in m.items() if k != "h"}, "ct": _ticker_close(m.get("t"))}
+                                         for m in markets[page * per:(page + 1) * per]], data.get("markets") or [])
     return {"at": data.get("at"), "total": data.get("total"), "shown": data.get("shown"),
-            "matched": matched, "page": page, "per": per, "sort": sort,
-            "markets": [{**{k: v for k, v in m.items() if k != "h"}, "ct": _ticker_close(m.get("t"))}
-                        for m in markets[page * per:(page + 1) * per]]}
+            "matched": matched, "page": page, "per": per, "sort": sort, "markets": rows, **spot}
 
 
 def explore_hot(ctx: Ctx):
-    """Top markets that carry a price trace, for the Hot Markets sidebar."""
+    """Top markets that carry a price trace, for the Hot Markets sidebar, each with its close time and,
+    for a Bitcoin contract, how far spot is from its strike, as Explore's rows."""
     data = _explore_feed()
-    hot = [m for m in (data.get("markets") or []) if m.get("h")][:16]
-    return {"at": data.get("at"), "markets": hot}
+    hot = [{**m, "ct": _ticker_close(m.get("t"))} for m in (data.get("markets") or []) if m.get("h")][:16]
+    rows, spot = _strike_distances(ctx, hot, data.get("markets") or [])
+    return {"at": data.get("at"), "markets": rows, **spot}
 
 
 def _feed_mid(m: Dict) -> Optional[float]:
@@ -293,6 +295,54 @@ def _strike_record(ctx: Ctx, ticker: str) -> Optional[Dict]:
     return rec
 
 
+def _spot_view(row: Optional[Dict], now: datetime) -> Optional[Dict]:
+    """The stored spot as the page shows it: its price, when it was taken, its age and whether that is stale."""
+    if not row:
+        return None
+    at = row["at"].replace(tzinfo=timezone.utc)
+    age = max(0, int((now - at).total_seconds()))
+    return {"price": row["price"], "at": at.strftime("%Y-%m-%dT%H:%M:%SZ"), "age_s": age, "stale": age > btc_spot.STALE_AFTER_S}
+
+
+def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[List[Dict], Dict]:
+    """Explore's rows with how far stored spot is from each Bitcoin contract's strike (`vs`: side, diff in
+    $, pct), and the spot itself under "spot". Strikes come from the tickers alone, a bucket's edges from
+    its ladder's other tickers in the feed, and spot from the one shared read (_spot_row), so a page of
+    rows costs at most one DB read. A stale, missing or failed spot gives no `vs` and says why in "spot";
+    a page with no Bitcoin strike on it reads nothing and gets no "spot" at all."""
+    strikes = {}
+    for m in rows:
+        k = btc_spot.contract_strike(m["t"]) if btc_spot.is_btc_contract(m.get("t")) else None
+        if k:
+            strikes[m["t"]] = k
+    if not strikes:
+        return rows, {}
+    try:
+        spot = _spot_view(_spot_row(ctx), datetime.now(timezone.utc))
+    except Exception as e:
+        print("[explore] list spot read failed: %r" % (e,), flush=True)
+        return rows, {"spot": {"failed": True}}
+    if not spot or spot["stale"]:
+        return rows, {"spot": spot}
+    ladders = {t.rpartition("-")[0] for t, k in strikes.items() if k["kind"] == "range"}
+    centres: Dict[str, List[float]] = {}
+    if ladders:
+        for m in feed:
+            ev = (m.get("t") or "").rpartition("-")[0]
+            k = btc_spot.contract_strike(m["t"]) if ev in ladders else None
+            if k and k["kind"] == "range":
+                centres.setdefault(ev, []).append(k["value"])
+    out = []
+    for m in rows:
+        k = strikes.get(m["t"])
+        k = k and btc_spot.with_bucket_edges(k, btc_spot.bucket_width(centres.get(m["t"].rpartition("-")[0], ())))
+        if k and (k["kind"] != "range" or k["lo"] is not None):  # a lone bucket's edges aren't known
+            v = btc_spot.against_strike(spot["price"], k)
+            m = {**m, "vs": {"side": v["side"], "diff": v["diff"], "pct": v["pct"]}}
+        out.append(m)
+    return out, {"spot": spot}
+
+
 def explore_spot(ctx: Ctx):
     """Bitcoin against one Bitcoin contract's strike: the newest stored spot and its age (stale past
     btc_spot.STALE_AFTER_S, still shown), the strike, which side of it spot is on and by how much, and
@@ -309,12 +359,7 @@ def explore_spot(ctx: Ctx):
     strike = btc_spot.contract_strike(ticker, rec)
     now = datetime.now(timezone.utc)
     close_at = rec["close_time"].replace(tzinfo=timezone.utc) if rec and rec.get("close_time") else _ticker_close_at(ticker)
-    spot = None
-    if row:
-        at = row["at"].replace(tzinfo=timezone.utc)
-        age = max(0, int((now - at).total_seconds()))
-        spot = {"price": row["price"], "at": at.strftime("%Y-%m-%dT%H:%M:%SZ"), "age_s": age,
-                "stale": age > btc_spot.STALE_AFTER_S}
+    spot = _spot_view(row, now)
     return {"ticker": ticker, "spot": spot, "strike": strike,
             "vs": btc_spot.against_strike(spot["price"], strike) if spot and strike else None,
             "close_time": close_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if close_at else None,
