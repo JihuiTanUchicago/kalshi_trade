@@ -79,6 +79,10 @@ window.TauPage('funds', (T) => {
     : b.closed_trades ? `${usd(pnl, true)} realized ${span}, ${BOOK_NET[mode]} \u00b7\u00a0` : `P&amp;L shows once a ${mode} trade closes \u00b7\u00a0`;
   const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time, ${BOOK_NET.live}.`
     : k.connected ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : '';
+  // Not connected: the Kalshi cash figure links to the live key's form, in Connect Kalshi while no key of either
+  // kind is in (its fold), else in the page. It said "Connect a key to trade real money" with nowhere to go
+  // (Meridian said nothing at all).
+  const connectLive = (kd) => `<a href="${kd.connected ? '#kalshi' : '#connect-kalshi'}">Connect a Kalshi key</a> below to trade real money`;
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
   // A key's cash the shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes
   // pending (the bundle's cashFig and cashRead, which the dashboard shares): it reads Checking\u2026, never $0,
@@ -202,7 +206,7 @@ window.TauPage('funds', (T) => {
       // No demo key and a demo book that never traded: no demo figure (the bundle's demoKeyless).
       const demoNone = demoKeyless(dm, !!kd.connected);
       const cf = k.connected && cashFig(k);
-      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
+      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? connectLive(kd) + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
         (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox ·\u00a0${DEMO_WHAT}` })) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper, true)}${bookPnl(d.paper, 'paper')}practice money` }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the

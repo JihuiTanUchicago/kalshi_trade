@@ -1,6 +1,8 @@
 // Shared cases, run against each bundle's offline DOM/transport harness (Tau and Meridian), from a Bitcoin trader's
 // walk of Funds and Deploy: the paper history names each contract in plain words with its ticker on a small line,
-// and says when cash moved with a clock and its zone.
+// and says when cash moved with a clock and its zone; the autopilot panel says research under half a cent cost
+// "under $0.01"; every open position on Deploy names its book; a book with no closed trade reads "None yet"; and
+// Funds' Kalshi cash, not connected, links to the live key's form.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -101,5 +103,21 @@ export function fundsWalkCases({name, frontend, fundsData}) {
     // A book whose closed trades are all on removed deployments has a figure too.
     const removed = await figs({deployments: [dep(1, 'paper', 0, 0)], realized_by_book: {paper: {listed: 0, removed: 1.5, removed_deployments: 1, all: 1.5}}});
     assert.doesNotMatch(removed, /None yet/);
+  });
+
+  test(`${name}: Funds' Kalshi cash, not connected, links to the live key's form`, async () => {
+    // Tau said "Connect a key to trade real money" with no link and Meridian said nothing: a dead end at the top of
+    // the page. It links to the live key form: in Connect Kalshi (opened) while no key is in, else on the page.
+    for (const [dev, href, target] of [[{connected: false}, '#connect-kalshi', 'connect-kalshi'], [{connected: true, key_id: 'DEVK…5678', balance: 250, balance_at: new Date().toISOString()}, '#kalshi', 'kalshi']]) {
+      const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response({...fundsData(), kalshi_dev: dev}) : response({})});
+      f.location.pathname = '/funds'; f.location.hash = '';
+      await f.viewFunds(); await settle();
+      const link = f.root.querySelector('#ffigs').querySelectorAll('a').find((a) => a.textContent === 'Connect a Kalshi key');
+      assert.ok(link, JSON.stringify(dev));
+      assert.equal(link.getAttribute('href'), href);
+      assert.ok(f.root.querySelector('#' + target), `${href} is on the page`);
+      assert.match(f.root.querySelector('#ffigs').textContent, /Connect a Kalshi key below to trade real money/);
+      f.clearTimers();
+    }
   });
 }
