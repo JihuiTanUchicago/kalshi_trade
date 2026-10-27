@@ -402,7 +402,10 @@ def closed_hour_files(root: str, now: Optional[datetime] = None) -> List[Tuple[s
 MIN_FREE_BYTES = int(float(os.getenv("TAU_TICK_MIN_FREE_GB", "3")) * 1e9)
 CACHE_DIR = os.getenv("TAU_TICK_CACHE", os.path.join(os.path.dirname(TICK_DIR.rstrip("/")) or "/", "tick_cache"))
 CACHE_MAX_AGE_S = 6 * 3600
-FEATURE_LOOKBACK_H = 48
+# 72h, not 48h: the 10-25 23:00Z outage (build OOM-killed under MemoryMax) ran ~55h before the fix.
+FEATURE_LOOKBACK_H = 72
+FEATURE_MAX_PER_RUN = 3  # newest first; a backlog drains over a few runs instead of stalling archiving
+FEATURE_MAX_CRASHES = 3  # a run killed mid-build (OOM) this often on one hour skips that hour, loudly
 FEATURE_STATE = os.path.join(os.path.dirname(TICK_DIR.rstrip("/")) or "/", "tick_features_built.json")
 
 
@@ -447,6 +450,25 @@ def _save_built(built: set) -> None:
     os.replace(FEATURE_STATE + ".tmp", FEATURE_STATE)
 
 
+def _attempts_path() -> str:
+    return FEATURE_STATE.replace("tick_features_built", "tick_features_attempts")
+
+
+def _load_attempts() -> Dict[str, int]:
+    try:
+        with open(_attempts_path()) as fh:
+            return {k: int(v) for k, v in json.load(fh).items()}
+    except Exception:
+        return {}
+
+
+def _save_attempts(att: Dict[str, int]) -> None:
+    path = _attempts_path()
+    with open(path + ".tmp", "w") as fh:
+        json.dump({k: v for k, v in sorted(att.items())[-FEATURE_LOOKBACK_H * 2:] if v}, fh)
+    os.replace(path + ".tmp", path)
+
+
 def _exists(s3, key: str) -> bool:
     try:
         s3.head_object(Bucket=BUCKET, Key=key)
@@ -456,8 +478,11 @@ def _exists(s3, key: str) -> bool:
 
 
 def build_features(s3=None, store=None, now: Optional[datetime] = None, conn=None) -> int:
-    """features_1s for every archived Kalshi hour in the last FEATURE_LOOKBACK_H that lacks it,
-    once its Coinbase hour is archived too (or 2 hours have passed without it)."""
+    """features_1s for archived Kalshi hours in the last FEATURE_LOOKBACK_H that lack it, newest first,
+    at most FEATURE_MAX_PER_RUN per run, once its Coinbase hour is archived too (or 2 hours have
+    passed without it). An hour counts as built only once its features manifest is in S3: the
+    10-25 23:00Z outage was a build killed under the unit's MemoryMax on the oldest missing hour
+    every run, so no later hour was ever reached and nothing said so."""
     from data_pipeline import tick_features
     from data_pipeline.tick_store import TickStore
     if s3 is None:
@@ -465,24 +490,35 @@ def build_features(s3=None, store=None, now: Optional[datetime] = None, conn=Non
         s3 = boto3.client("s3")
     store = store or TickStore(bucket=BUCKET, prefix=PREFIX, cache_dir=CACHE_DIR, s3=s3)
     now = now or utc_now()
-    built = _load_built()
+    built, attempts = _load_built(), _load_attempts()
     top = now.replace(minute=0, second=0, microsecond=0)
-    n = 0
-    for k in range(FEATURE_LOOKBACK_H, 0, -1):
+    n = tried = 0
+    for k in range(1, FEATURE_LOOKBACK_H + 1):
+        if tried >= FEATURE_MAX_PER_RUN:
+            break
         hour = top - timedelta(hours=k)
         tag = hour.strftime("%Y-%m-%d %H")
-        if tag in built:
-            continue
         date, hh = hour.strftime("%Y-%m-%d"), hour.strftime("%H")
+        if tag in built and _exists(s3, f"{PREFIX}/manifest/features_1s/date={date}/{hh}.json"):
+            continue
         if not _exists(s3, f"{PREFIX}/manifest/kalshi/date={date}/{hh}.json"):
             continue
         if not _exists(s3, f"{PREFIX}/manifest/coinbase/date={date}/{hh}.json") and k < 2:
             continue
+        if attempts.get(tag, 0) >= FEATURE_MAX_CRASHES:
+            print(f"[ERROR] features_1s {tag}: skipped, the build died {attempts[tag]} times on this hour "
+                  f"(out of memory?)", flush=True)
+            continue
+        tried += 1
+        attempts[tag] = attempts.get(tag, 0) + 1
+        _save_attempts(attempts)  # left behind only if this process dies mid-build
         tmpdir = tempfile.mkdtemp(prefix="tickfeat_")
         try:
             t0 = utc_now()
             res = tick_features.build_hour(store, hour, tmpdir)
-            if res is not None:
+            if res is None:
+                print(f"[ERROR] features_1s {tag}: no kalshi_markets rows for an archived hour; will retry", flush=True)
+            else:
                 for series, path in res["files"].items():
                     s3.upload_file(path, BUCKET, f"{PREFIX}/v1/features_1s/date={date}/hour={hh}/series={series}/part.parquet")
                 manifest = {"source": "features_1s", "hour_utc": hour.strftime("%Y-%m-%d %H:00:00"),
@@ -500,11 +536,13 @@ def build_features(s3=None, store=None, now: Optional[datetime] = None, conn=Non
                 print(f"features_1s {tag}:00 rows={res['rows']} tickers={res['tickers']} series={len(res['series'])} "
                       f"{manifest['parquet_bytes'] / 1e6:.1f}MB in {manifest['build_s']}s", flush=True)
                 n += 1
-            built.add(tag)
-            _save_built(built)
+                built.add(tag)
+                _save_built(built)
         except Exception as e:
             print(f"[ERROR] features_1s {tag}: {type(e).__name__}: {e}", flush=True)
         finally:
+            attempts.pop(tag, None)  # finished, well or not: only a killed process leaves its count
+            _save_attempts(attempts)
             shutil.rmtree(tmpdir, ignore_errors=True)
     return n
 

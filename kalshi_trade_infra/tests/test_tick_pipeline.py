@@ -330,3 +330,48 @@ def test_kalshi_trailing_newline_is_stripped_and_old_split_lines_are_repaired(tm
     assert rows[0]["messages"] == 3 and rows[0]["bad_lines"] == 0 and rows[0]["tables"]["kalshi_trades"] == 3
     assert "2026-10-24 18" not in tick_archiver._load_built()          # features get rebuilt
     assert tick_archiver.repair_broken_hours(s3=s3, now=H + timedelta(hours=2)) == 0
+
+
+def test_features_backlog_drains_newest_first_and_a_killed_build_does_not_stall_it(tmp_path, monkeypatch):
+    """Prod 10-25 23:00Z: building the oldest missing hour was OOM-killed every run (unit MemoryMax), so
+    no later hour was ever built and nothing logged it. Now: newest first, a few per run, an hour counts
+    as built only once its features manifest exists, and an hour that keeps killing the build is skipped."""
+    from data_pipeline import tick_features
+    lake = tmp_path / "lake"
+
+    class S3(FakeS3):
+        def head_object(self, Bucket, Key):
+            if not os.path.exists(os.path.join(self.root, Key)):
+                raise FileNotFoundError(Key)
+
+    now = H + timedelta(hours=10, minutes=5)
+    hours = [now.replace(minute=0) - timedelta(hours=k) for k in range(1, 9)]
+    for h in hours:
+        for src in ("kalshi", "coinbase"):
+            p = lake / f"ticks/manifest/{src}/date={h:%Y-%m-%d}/{h:%H}.json"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("{}")
+    monkeypatch.setattr(tick_archiver, "FEATURE_STATE", str(tmp_path / "tick_features_built.json"))
+    monkeypatch.setattr(tick_archiver, "write_manifest_row", lambda m, conn=None: None)
+    oldest = hours[-1].strftime("%Y-%m-%d %H")
+    tick_archiver._save_built({oldest})          # marked built by the old code, but never written
+    tick_archiver._save_attempts({hours[0].strftime("%Y-%m-%d %H"): 3})   # the newest killed it 3 times
+    built = []
+
+    def build_hour(store, hour, out_dir):
+        if hour == hours[1]:
+            return None                           # no market metadata: retried, never marked built
+        f = os.path.join(out_dir, "KXBTC15M.parquet")
+        open(f, "w").close()
+        built.append(hour)
+        return {"rows": 1, "tickers": 1, "series": {"KXBTC15M": 1}, "files": {"KXBTC15M": f}}
+
+    monkeypatch.setattr(tick_features, "build_hour", build_hour)
+    s3 = S3(str(lake))
+    assert tick_archiver.build_features(s3=s3, store=object(), now=now) == 2
+    assert built == hours[2:4]                    # newest first, 3 tries per run, the killer skipped
+    assert hours[1].strftime("%Y-%m-%d %H") not in tick_archiver._load_built()
+    while tick_archiver.build_features(s3=s3, store=object(), now=now):
+        pass
+    assert built[-1] == hours[-1]                 # the stale "built" mark was rebuilt
+    assert tick_archiver._load_attempts() == {hours[0].strftime("%Y-%m-%d %H"): 3}
