@@ -2045,14 +2045,17 @@ test('Meridian: Research counts a paused session as paused, not as running', asy
 test('Research lists the seeded example as an example and does not count it as a session', async () => {
   const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};
   const mine = {...researchRun(6, 'succeeded'), example: false, spent_usd: 0.42};
-  for (const [runs, count] of [[[example], ''], [[mine, example], '1']]) {
+  // The heading counts what it lists: "Recent sessions 1" sat over two rows, one of them the example.
+  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 · 1 example'], [[mine], '1']]) {
     const f = researchFrontend(runs);
     await f.viewResearch(); await flush();
     const list = f.root.querySelector('#runs').innerHTML;
     assert.equal(f.root.querySelector('#rcount').textContent, count);
+    assert.equal(f.root.querySelectorAll('#runs a.run-card').length, runs.length, 'one row per thing the heading counts');
+    if (!runs.includes(example)) { f.clearTimers(); continue; }
     assert.match(list, /Example<\/span>/); assert.match(list, /An example Tau ran for you when you signed up\. It cost you nothing\./);
     assert.doesNotMatch(list, /Cost: \$0\.00/);
-    if (count) assert.match(list, /Cost: \$0\.42/);
+    if (runs.includes(mine)) assert.match(list, /Cost: \$0\.42/);
   }
 });
 

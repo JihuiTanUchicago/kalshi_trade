@@ -403,7 +403,10 @@ window.TauPage('research', (T) => {
       // line is up top) it stood alone beside Start and read as a fragment.
       const exRunBtn = root.querySelector('button[data-ex]');
       if (exRunBtn) { const t = exOpen && !exOpen.hidden ? 'or run it yourself' : 'Run the demo idea yourself'; if (exRunBtn.textContent !== t) exRunBtn.textContent = t; }
-      paint(root.querySelector('#rcount'), own ? String(own) : '');
+      // The heading counts what it lists: "Recent sessions 1" sat over two rows, the example one of them. The user's
+      // own count stays bare and the example is named apart ("1 · 1 example"), as Tau's "1 session · 1 example".
+      const examples = history.length - own;
+      paint(root.querySelector('#rcount'), [own ? String(own) : '', examples ? `${examples} example${examples > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '));
       // The newest of all (the active one when one runs: then no older row offers Add credits).
       const newest = d.runs.find((r) => !r.example);
       paintRows(root.querySelector('#runs'), history.map((r) => [r.id, runRow(r, r === newest)]),
