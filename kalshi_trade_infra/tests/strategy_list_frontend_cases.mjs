@@ -143,6 +143,8 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const figs = f.root.querySelector('#sfigs').innerHTML;
     assert.match(figs, /Passed[\s\S]*?<span class="fig ">1<\/span><\/dd><dd class="sub-fig">2 more passed but weren’t cleared to trade<\/dd>/);
     assert.match(figs, /11\.1%/);  // the pass rate counts the one true pass of 9
+    const one = (await open('?status=', {...counts, passed: 2, not_cleared: 1})).root.querySelector('#sfigs').innerHTML;
+    assert.match(one, /1 more passed but wasn’t cleared to trade/);
     // Bulk deploy ticks only the true pass; the others' rows say why on their own pages.
     const picks = f.root.querySelectorAll('.pick');
     assert.deepEqual(picks.map(p => p.dataset.id), ['61']);
