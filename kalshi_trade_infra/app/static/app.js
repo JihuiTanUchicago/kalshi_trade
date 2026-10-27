@@ -899,10 +899,18 @@
     // screen reader carry on from what just opened; Esc brings it back to the bell.
     const focusIn = () => (list.querySelector('a.notif') || menu).focus({ preventScroll: true });
     // An open list is read from here on, also for a repaint that reuses this reply; the marks clear on close.
+    // A mark that didn't save puts the dot back: the server still has them unread, and they came back
+    // unread on the next page while the bell said nothing was new. The next open tries once more; nothing
+    // retries on its own.
     const seen = () => {
       if (menu.hidden || !data || !data.unread) return;
-      data.unread = 0; data.items.forEach((n) => { n.read = true; }); dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
-      api('/api/notifications/read', {}).catch(() => {});
+      const was = data, unread = data.unread, fresh = data.items.filter((n) => !n.read);
+      data.unread = 0; fresh.forEach((n) => { n.read = true; }); dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
+      api('/api/notifications/read', {}).catch(() => {
+        if (data !== was) return;  // a newer read already says what the server has
+        data.unread = unread; fresh.forEach((n) => { n.read = false; });
+        if (menu.hidden) paint(data); else { dot.hidden = false; trig.setAttribute('aria-label', `Notifications, ${unread} unread`); }
+      });
     };
     const load = async () => {
       // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
@@ -916,6 +924,7 @@
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
+      if (data && data.unread && !list.querySelector('.notif.unread')) paint(data);  // a mark that didn't save: new again
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
       focusIn();
       seen();
