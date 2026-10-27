@@ -440,11 +440,12 @@ def test_sibling_drops_steer_a_market_off_mechanisms_its_family_already_killed(m
 
     from app import repository as repo
     seen = {}
-    monkeypatch.setattr(repo, "dropped_theses", lambda cur, uid, m: own)
+    monkeypatch.setattr(repo, "dropped_theses", lambda cur, uid, m, limit: seen.setdefault("limit", limit) and own)
     monkeypatch.setattr(repo, "sibling_dropped_theses",
                         lambda cur, uid, markets: seen.setdefault("m", markets) and sib)
     out = agent._recent_drops(None, 1, "btc15m")
     assert out[0] == own[0] and len(out) == 1 + len(sib)
+    assert seen["limit"] == agent._OWN_DROPS_READ >= 8 * 10                 # ~10 runs, not the prompt's 15
     assert "btc15m" not in seen["m"] and "eth15m" in seen["m"]
     assert all(agent.MARKETS[k].underlying for k in seen["m"])               # crypto siblings only
     monkeypatch.setattr(repo, "sibling_dropped_theses", lambda *a: 1 / 0)
@@ -603,12 +604,18 @@ def test_rationed_mechanisms_skip_the_catch_all_and_what_the_run_asked_for():
 def test_a_mechanism_that_keeps_dying_on_this_market_is_rationed_too():
     # Bitcoin-only research has one sibling, so the sibling rule rarely fires; btc15m's own drops count.
     opt = "options-implied fair value / IV vs Kalshi"
-    own = [{"title": "Options IV variant %d" % i, "why": "t=-3"} for i in range(4)]
-    assert agent._rationed_mechanisms(own, {"prompt": ""}) == {opt: 4}
-    assert agent._rationed_mechanisms(own[:3], {"prompt": ""}) == {}
+    own = [{"title": "Options IV variant %d" % i, "why": "t=-3"} for i in range(5)]
+    assert agent._rationed_mechanisms(own, {"prompt": ""}) == {opt: 5}
+    assert agent._rationed_mechanisms(own[:4], {"prompt": ""}) == {}
     assert agent._rationed_mechanisms(own, {"prompt": "options implied fair value edge"}) == {}
-    aside = own[:3] + [{"title": "Options IV variant 9", "why": "not developed: already died"}]
+    aside = own[:4] + [{"title": "Options IV variant 9", "why": "not developed: already died"}]
     assert agent._rationed_mechanisms(aside, {"prompt": ""}) == {}  # set aside untested is not a drop
+    # The proposer is told before it proposes, so its rounds go to other mechanisms.
+    block = agent._own_dead_block(own + [{"title": "Taker burst", "why": "loses"}], {"prompt": ""})
+    assert "ALREADY DEAD ON THIS MARKET" in block and "%s: dropped 5 times" % opt in block
+    assert "burst" not in block.lower()
+    assert agent._own_dead_block(own[:4], {"prompt": ""}) == ""
+    assert agent._own_dead_block(own, {"prompt": "options implied fair value edge"}) == ""
 
 
 def test_a_sibling_dead_mechanism_gets_one_developed_idea_per_chunk(monkeypatch):
@@ -660,12 +667,12 @@ def test_a_mechanism_dead_on_this_market_gets_no_try_at_all(monkeypatch):
     monkeypatch.setattr(agent, "_develop_thesis", lambda h, *a, **k: developed.append(h["title"]) or None)
     monkeypatch.setattr(agent, "_gate_and_save", lambda *a, **k: 0)
     policy = SimpleNamespace(next_batch=lambda st: SimpleNamespace(width=2))
-    own = [{"title": "Polymarket-Kalshi spread %d" % i, "why": "t=-2"} for i in range(4)]
+    own = [{"title": "Polymarket-Kalshi spread %d" % i, "why": "t=-2"} for i in range(5)]
     agent._explore_and_gate(None, {"market": "btc15m", "user_id": 1, "prompt": "flow"},
                             SimpleNamespace(start_ts=0, cutoff_ts=1), {}, [], None, None,
                             lambda *a: events.append(a), lambda: None, 50, [], policy, dropped=own)
     assert developed == ["Taker burst"]
-    assert any("died 4 times on this market recently" in w for w in prompts[1])
+    assert any("died 5 times on this market recently" in w for w in prompts[1])
 
 
 def test_a_streak_of_drops_stops_proposing_and_gates_what_was_kept(monkeypatch):
