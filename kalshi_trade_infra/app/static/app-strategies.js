@@ -274,7 +274,7 @@ window.TauPage('strategies', (T) => {
         <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['not_cleared', 'Not cleared'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}"${v === 'not_cleared' && f.status !== v ? ' hidden' : ''} aria-pressed="${f.status === v}">${l}</button>`).join('')}
           <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
         ${(() => { const by = {}; S.me.markets.forEach((m) => (by[m.category] || (by[m.category] = [])).push(m)); const cs = Object.keys(by).sort(catOrder); return `<label class="vh" for="strat-market">Market</label><select class="input strat-mkt" id="strat-market" aria-label="Filter by market"><option value="">All markets</option>${cs.map((c) => `<optgroup label="${esc(c)}">${by[c].map((m) => `<option value="${esc(m.key)}"${f.market === m.key ? ' selected' : ''}>${esc(marketShort(m.key))}</option>`).join('')}</optgroup>`).join('')}</select>`; })()}
-        <label class="vh" for="strat-sort">Sort</label><select class="input strat-mkt strat-sort" id="strat-sort" aria-label="Sort strategies">${[['', 'Newest first'], ['best', 'Best on unseen data']].map(([v, l]) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+        <label class="vh" for="strat-sort">Sort</label><select class="input strat-mkt strat-sort" id="strat-sort" aria-label="Sort strategies">${[['', 'Newest first'], ['best', 'P&amp;L on data it never saw']].map(([v, l]) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
         <div class="searchwrap"><input class="input" id="strat-q" type="search" placeholder="Search name or thesis…" value="${esc(f.q)}" aria-label="Search strategies"></div>
       </div>
       <div id="bulkbar" class="bulkbar" hidden></div>
@@ -287,7 +287,8 @@ window.TauPage('strategies', (T) => {
     root.querySelectorAll('[data-f]').forEach((b) => { b.onclick = () => { f[b.dataset.f] = b.dataset.v; applyFilters(); }; });
     const marketSel = root.querySelector('#strat-market');
     if (marketSel) marketSel.onchange = () => { f.market = marketSel.value; applyFilters(); };
-    // "Best on unseen data" orders the whole list server-side (it is paged), and rides in the URL like
+    // "P&L on data it never saw" (highest first: the out-of-sample backtest P&L, gate_explain.step_note's words
+    // for that test) orders the whole list server-side (it is paged), and rides in the URL like
     // the filters, so a reload or a shared link keeps it.
     const sortSel = root.querySelector('#strat-sort');
     if (sortSel) sortSel.onchange = () => { f.sort = sortSel.value === 'best' ? 'best' : ''; applyFilters(); };

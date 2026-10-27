@@ -138,7 +138,7 @@ def list_strategies(
                   LEFT JOIN app_users su ON su.id=s.shared_from_user_id""" + where)
     params: List[Any] = [user_id] + fparams
     if sort == "best":
-        # Best on unseen data first: the out-of-sample backtest P&L the list's Unseen P&L column shows.
+        # The sort "P&L on data it never saw", highest first: the out-of-sample backtest P&L the list's Unseen P&L column shows.
         # One with no unseen test (rejected, tested only) goes last; ties and the rest newest first.
         sql += " ORDER BY (%s IS NULL), %s DESC, s.id DESC LIMIT %%s OFFSET %%s" % (_UNSEEN_PNL_JSON, _UNSEEN_PNL)
     else:

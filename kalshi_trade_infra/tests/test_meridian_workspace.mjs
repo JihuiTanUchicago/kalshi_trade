@@ -6074,6 +6074,19 @@ moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
   return f.root.querySelector('#hotrail').innerHTML;
 }});
 
+test('the strategies sort shows "P&L on data it never saw" whole, and the filter row still fits one line at 1366', () => {
+  // Measured in DM Sans 14px: the label is ~160px of text; at 175px the select cut it. The market filter and the
+  // search give up the 25px, so chips, market, sort and search sum to what they did.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const px = (re) => { const m = css.match(re); return m ? +m[1] : null; };
+  const sort = px(/\n\.stratfilters \.strat-sort \{ flex-basis: (\d+)px; max-width: \1px; \}/);
+  const market = px(/\n\.stratfilters #strat-market \{ flex-basis: (\d+)px; max-width: \1px; \}/);
+  const search = px(/\n\.stratfilters \.searchwrap \{ flex: 0 1 (\d+)px; margin-left: auto; \}/);
+  assert.ok(sort >= 200, String(sort));
+  assert.ok(sort + market + search <= 175 + 175 + 220, `${sort} + ${market} + ${search}`);
+  assert.ok(search >= 205, 'its placeholder, "Search name or thesis…", stays whole');
+});
+
 test('a research row’s Outcome column holds "+12 passed, not cleared" on one line', () => {
   // At 112px the uncleared line took two at 1280px. Measured in DM Sans 12px: "+12 passed, not cleared" is ~130px.
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
