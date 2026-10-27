@@ -84,6 +84,38 @@ export function runPageCases({name, frontend}) {
     assert.match(f.root.querySelector('#runnext').innerHTML, /^<p class="run-next">Passed: <a href="\/strategies\/43">Far-strike fade<\/a>\. Open it to deploy it on paper\. <a href="\/strategies\/42">/);
   });
 
+  test(`${name}: a finished autopilot session says what the autopilot does next, while the switch is on`, async () => {
+    const at = async (apOn, run, strategies = [], events = []) => {
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+        ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, ...run}, events, strategies})
+        : response({})});
+      f.S.me.user.autopilot = apOn;
+      await f.viewRun(9); f.clearTimers();
+      return f;
+    };
+    const said = /The autopilot takes these results into its next ideas and starts its next session on its own\./;
+    const missed = [{id: 42, title: 'Late fade', status: 'failed', market: 'btc15m', direction: 'custom'}];
+    for (const run of [{status: 'succeeded', stop_reason: 'limit'}, {status: 'failed', stop_reason: 'error', error: 'The research model couldn’t be reached just now, so the session stopped.'}]) {
+      const f = await at(true, {...run, by_autopilot: 1}, missed);
+      const next = f.root.querySelector('#runnext').innerHTML;
+      assert.match(next, said, run.status); assert.match(next, /<span data-ap-next>/, run.status);
+      // The switch flips off while the page is open: the line hides, as the research nudge does.
+      f.S.ap = {autopilot: false, mode: 'off'}; f.paintDashAp();
+      const span = f.root.querySelector('[data-ap-next]');
+      assert.ok(span, 'the line is found'); assert.equal(span.hidden, true);
+    }
+    // Off when the page opened: drawn hidden. A session the user started never says it.
+    let f = await at(false, {status: 'succeeded', stop_reason: 'limit', by_autopilot: 1}, missed);
+    assert.match(f.root.querySelector('#runnext').innerHTML, /<span data-ap-next hidden>/);
+    f = await at(true, {status: 'succeeded', stop_reason: 'limit', by_autopilot: 0}, missed);
+    assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, said);
+    // Out of credits: the autopilot can't start another, so the line stays off.
+    f = await at(true, {status: 'succeeded', run_forever: 1, stop_reason: 'complete', by_autopilot: 1}, missed,
+      [ev(1, 'step', 'Paused — out of credits. Add more (or turn on auto-reload) and start a new session to keep researching.')]);
+    assert.match(f.root.querySelector('#runnext').innerHTML, /It stopped when your credits ran out/);
+    assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, said);
+  });
+
   test(`${name}: the example's cost says it was free, not "from your credits"`, async () => {
     let f = await open({status: 'succeeded', example: true, spent_usd: 0});
     assert.match(figs(f), /\$0\.00\s*free: Tau ran it for you/); assert.doesNotMatch(figs(f), /from your credits/);

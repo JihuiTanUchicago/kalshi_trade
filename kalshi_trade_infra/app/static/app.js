@@ -3101,6 +3101,7 @@
     const box = document.getElementById('deps-empty');
     if (box && box.dataset.on !== (on ? '1' : '0')) { box.dataset.on = on ? '1' : '0'; box.innerHTML = depsEmpty(on); }
     if (document.body) document.body.querySelectorAll('.research-ap').forEach((p) => { p.hidden = on; });
+    if (document.body) document.body.querySelectorAll('[data-ap-next]').forEach((n) => { n.hidden = !on; });
     if (document.body) document.body.querySelectorAll('[data-since-ap]').forEach((n) => { n.textContent = sinceApWord(on); });
     if (trAp && trAp.host.isConnected && trAp.on !== apSwitchOn()) trAp.repaint();
   }

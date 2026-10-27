@@ -1049,6 +1049,11 @@ window.TauPage('research', (T) => {
   // Open it to deploy it on paper" over a final test it had failed.
   const laterMissed = (s) => s.status === 'passed' && Array.isArray(s.later_missed) && s.later_missed.length > 0;
   const lcFirst = (t) => String(t).charAt(0).toLowerCase() + String(t).slice(1);
+  // What the autopilot does next, at the end of a session it started: the page ended on "Try another idea"
+  // as if the reader had to. A finished session hands straight back to the autopilot, which starts the next
+  // one itself (worker.enqueue_review_after_research, and the research floor when nothing has started for a
+  // while). Shown only while the switch is on, and syncApCopy follows a flip.
+  const apNext = (r) => +r.by_autopilot && !r.example ? ` <span data-ap-next${S.me && S.me.user && S.me.user.autopilot ? '' : ' hidden'}>The autopilot takes these results into its next ideas and starts its next session on its own.</span>` : '';
   function runNext(r, strategies) {
     if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
     const passed = (strategies || []).filter((s) => s.status === 'passed' && !laterMissed(s));
@@ -1074,12 +1079,12 @@ window.TauPage('research', (T) => {
     // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
     // The server's reason is written for the customer; one that already says the session stopped
     // stands alone ("…stopped on an error. …so the session stopped.").
-    if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`} <a href="/research?new=1">Start a new session</a></p>`;
+    if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`}${apNext(r)} <a href="/research?new=1">Start a new session</a></p>`;
     if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
     const none = !(strategies || []).length;
     if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : `${fellLine ? fellLine + ' ' : ''}${nothing} before then; each strategy below says which check it missed.`}</p>`;
-    if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)} <a href="/research?new=1">Try another idea</a></p>`;
-    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">${fellLine ? fellLine + ' ' : ''}${nothing} this time. Most ideas don’t. Each strategy below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
+    if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)}${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
+    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">${fellLine ? fellLine + ' ' : ''}${nothing} this time. Most ideas don’t. Each strategy below says which check it missed and what to try next.${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
   // The foot of a finished session. The way on sat only above the list and the log: the example's
