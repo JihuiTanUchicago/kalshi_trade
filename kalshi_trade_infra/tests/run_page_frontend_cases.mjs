@@ -333,4 +333,13 @@ export function runPageCases({name, frontend}) {
     f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [row({})]);
     if (/Backtest P&amp;L/.test(list(f))) assert.match(list(f), /on unseen data over 30 days/);
   });
+  test(`${name}: the ideas list says what its count counts`, async () => {
+    // Walk 2026-10-27 (Tau, 390px): its head read "1 · 1 more still being tested", a bare figure beside a counted one.
+    const rows = [{id: 42, title: 'Late', status: 'failed', market: 'btc15m', direction: 'momentum'}];
+    const hyp = (id) => ev(id, 'hypothesis', 'Idea ' + id);
+    const f = await open({status: 'running', max_hypotheses: 6, hypotheses_tried: 1}, [1, 2].map(hyp), rows);
+    const host = f.root.querySelector('#runideas');
+    if (host) assert.match(host.innerHTML, /<p>1 listed · 1 more still being tested · tap one for its story<\/p>/);
+    else assert.match(list(f), /1 more idea still being tested/);
+  });
 }

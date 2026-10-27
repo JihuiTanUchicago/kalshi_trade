@@ -1216,7 +1216,7 @@ window.TauPage('research', (T) => {
       return `<li><span class="hx-stamp ${cls}">${label}</span><button type="button" class="ri-title" data-goto="${s.id}">${esc(s.title)}</button>${said ? `<span class="ri-why">${said}</span>` : ''}</li>`;
     };
     const SHOW = 6;
-    return `<section class="run-ideas"><div class="section-head"><h2>Ideas tested</h2><p>${list.length}${gap}${SEP}tap one for its story</p></div>
+    return `<section class="run-ideas"><div class="section-head"><h2>Ideas tested</h2><p>${num(list.length)} listed${gap}${SEP}tap one for its story</p></div>
       <ol class="ri-list">${list.slice(0, SHOW).map(row).join('')}</ol>${list.length > SHOW
         ? `<details class="ri-rest"${open ? ' open' : ''}><summary>Show all ${list.length}</summary><ol class="ri-list">${list.slice(SHOW).map(row).join('')}</ol></details>` : ''}</section>`;
   }
