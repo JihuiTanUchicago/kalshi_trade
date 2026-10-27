@@ -415,6 +415,19 @@ def test_mechanism_buckets_put_renamed_ideas_together():
     assert rsi.mechanism("Polymarket-Kalshi Spread at Extremes with Fresh Options Anchor") == pm
     assert rsi.mechanism("PM Consensus Fade \u2014 Retail Sentiment Contrary Signal") == pm
     assert rsi.mechanism("ETH-BTC Decorrelation Regime \u2014 Idiosyncratic Move Detection") == "cross-asset lead-lag / pairs"
+    # Prod 2026-10-26/27 BTC titles that named no bucket (193 of 737 drops) and were never rationed.
+    for t, want in (("Ladder Monotonicity Violation \u2014 Cross-Strike Arbitrage Within Event", "cross-strike ladder"),
+                    ("Late-Life Near-Certainty YES Harvest \u2014 LEAD Cell Exploitation", "deep ITM / OTM"),
+                    ("Pooled Daily Crypto Late Deep-ITM \u2014 Structural Settlement Certainty", "deep ITM / OTM"),
+                    ("Multi-Day Stale Pricing \u2014 Far-TTE Contracts Lag Spot Movements", "Kalshi lags spot"),
+                    ("Spread Expansion as Uncertainty Signal \u2014 Wide Markets Reveal Unpriced Information", "order-book"),
+                    ("Thick Bid Depth Institutional Signal \u2014 Size Reveals Conviction", "order-book"),
+                    ("Vol Ratio Regime \u2014 Short-Term Vol Spike Signals Jump Regime", "volatility mispricing"),
+                    ("US Morning Repricing Window \u2014 9-11am ET Information Absorption", "session"),
+                    ("Fitted XGBoost Residual Model \u2014 Nonlinear Feature Interactions", "generic learned"),
+                    ("Options-Confirmed Deep ITM \u2014 Dual Signal Validation", "options-implied")):
+        assert (rsi.mechanism(t) or "").startswith(want), (t, rsi.mechanism(t))
+    assert rsi.mechanism("Research floor: no research started for a while, so pick the most promising") is None
 
 
 def test_sibling_drops_steer_a_market_off_mechanisms_its_family_already_killed(monkeypatch):

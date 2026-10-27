@@ -91,21 +91,36 @@ MECHANISMS = (
     ("favorite-longshot / calibration", r"favou?rite.?longshot|longshot|calibrat"),
     ("terminal pinning / convergence near expiry",
      r"pinning|\bpin\b|terminal|convergence|near.?expiry|(final|last) \d+(-\d+)? min"),
+    # Prod 2026-10-26/27 BTC: 193 of 737 drops named no bucket and were never rationed; the ladder,
+    # extreme-price, stale-quote, spread/depth and vol-ratio families below hold ~170 of them.
+    ("cross-strike ladder shape / monotonicity",
+     r"ladder|cross.?strike|monotonic|adjacent strike|probability mass|\bsmile\b"),
     ("volatility mispricing (vol scale / regime / GARCH)",
      r"vol(atility)?[ -](mispric|overpric|underpric|overestimat|underestimat|regime|compression|crush|scale"
-     r"|decay|expansion|forecast|clustering)|garch|realized vol|vol_scale|vol scale"),
+     r"|decay|expansion|forecast|clustering|ratio|spike|accelerat|spillover|surprise|percentile)|garch"
+     r"|realized vol|vol_scale|vol scale|vol_\d+m|low.?vol|quiet vol|\bvrp\b"),
     # Deribit options and Polymarket features (#163, #198) arrived after the buckets above; their ideas
     # named none of them, so prod 2026-10-26 re-tested "variant #23" of options IV-vs-Kalshi unrationed.
     ("cross-venue basis (Polymarket vs Kalshi)", r"polymarket|\bpm(_| )|cross.?venue"),
     ("options-implied fair value / IV vs Kalshi",
-     r"\bopt_|\biv\b|implied vol|deribit|options?.(kalshi|implied|surface|iv|edge|basis|signal|anchor|fair|stale|lag)"),
+     r"\bopt_|\biv\b|implied vol|deribit|options?.(kalshi|implied|surface|iv|edge|basis|signal|anchor|fair|stale|lag"
+     r"|rv|confirm|mid|blend|age|agree|disagree|premium)"),
+    ("deep ITM / OTM near-certainty harvest (extreme prices)",
+     r"deep.?(itm|otm)|near.?certain|\bcertainty|lottery|lead cell|extreme (moneyness|z)|z.?score extreme"),
+    ("Kalshi lags spot (stale quotes)",
+     r"stale|lags? (spot|information)|repricing lag|spot (move|return|velocity) lead|mid lag"),
     ("mean reversion after a move", r"mean.?revers|revert|reversal|anti.?momentum|overshoot|fade"),
     ("momentum / drift continuation", r"momentum|drift|continuation|trend"),
     ("cross-asset lead-lag / pairs",
-     r"lead.?lag|\bpairs?\b|cross.?(market|asset)|relative.?value|spread z|decorrelat|eth.?btc|btc.?eth"),
-    ("order-book / flow microstructure", r"order.?book|imbalance|\bflow\b|quote|volume burst|bid.?ask size"),
-    ("session / time-of-day filter", r"session|overnight|time.?of.?day|weekend|\basia"),
-    ("generic learned recalibration (logistic / multi-factor)", r"logistic|classifier|multi.?factor|ridge"),
+     r"lead.?lag|\bpairs?\b|cross.?(market|asset|crypto)|relative.?value|spread z|decorrelat|eth.?btc|btc.?eth|\beth\b"),
+    ("order-book / flow microstructure",
+     r"order.?book|imbalance|\bflow\b|quote|volume burst|bid.?ask size|\bbook\b|depth|\bspread\b"
+     r"|trade (count|volume|intensity)|volume surge|vwap|liquidity"),
+    ("session / time-of-day filter",
+     r"session|overnight|time.?of.?day|weekend|\basia|us (market|hours|morning)|market open|afternoon|off.?peak"
+     r"|\bhour \d|\d+(am|pm)\b|\d+-\d+ et\b|calendar"),
+    ("generic learned recalibration (logistic / multi-factor)",
+     r"logistic|classifier|multi.?factor|ridge|xgboost|random forest|gradient.?boost|ensemble|bayesian|\bhmm\b"),
 )
 _MECH_RX = tuple((name, re.compile(rx, re.I)) for name, rx in MECHANISMS)
 
