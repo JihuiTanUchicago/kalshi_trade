@@ -14,7 +14,7 @@ const FRESH_ON = {autopilot: true, mode: 'paper', research: {active: [], tested_
   story: [REVIEWING, 'It sticks to the focus you set: Bitcoin.',
     'Nothing trades real money until a strategy makes money on paper over at least 30 trades from 20 separate events and 48 hours, and you turn on live autopilot.']};
 
-export function freshWalkCases({name, frontend}) {
+export function freshWalkCases({name, frontend, dashboard}) {
   const panel = async (status) => {
     const f = frontend({fetchImpl: () => response({messages: [], models: []})});
     f.S.me.user.autopilot = true;
@@ -36,5 +36,40 @@ export function freshWalkCases({name, frontend}) {
     assert.equal(storyText(await panel(other))[1], REVIEWING);
     // With no idle line, the story is as the server sent it.
     assert.deepEqual(storyText(await panel({...FRESH_ON, idle: null})), FRESH_ON.story);
+  });
+
+  // A new account's autopilot showed "$0.00" for a paper P&L it had never had: "Paper P&L, realized all time $0.00"
+  // on the dashboard card, "Paper realized today (UTC) $0.00" in the panel, and "Autopilot's paper P&L $0.00 · 0
+  // closed trades" in its week once research had spent credits. Each says there is none yet; a used book shows its figure.
+  test(`${name}: a new account's autopilot says its paper P&L is none yet, not $0.00`, async () => {
+    const book = (paper) => ({...dashboard(), paper: {...dashboard().paper, ...paper}});
+    const week = {research_credits: 1.37, checkin_credits: 0, tested: 3, passed: 0, not_cleared: 0, paper_started: 0,
+      paper_trades: 0, paper_pnl: 0, card_charged: false};
+    const card = async (paper, status) => {
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/dashboard' || path.startsWith('/api/dashboard?')) return response(book(paper));
+        if (path === '/api/autopilot/status') return response(status);
+        return response({messages: [], models: []});
+      }});
+      f.S.me.user.autopilot = true; f.S.ap = status;
+      await f.viewDashboard(); await settle();
+      f.S.ap = status; f.paintDashAp();
+      const html = f.root.querySelector('#dash-ap').innerHTML;
+      f.clearTimers();
+      return html;
+    };
+    const fresh = await card({closed_trades: 0, realized_pnl: 0, total_pnl: 0, today_pnl: 0, open_positions: 0}, {...FRESH_ON, week});
+    assert.match(fresh, /<dt>Paper P&amp;L, realized all time<\/dt><dd>None yet<small>no paper trade has closed<\/small><\/dd>/);
+    assert.match(fresh, /<dt>Autopilot's paper P&amp;L<\/dt><dd>None yet <small>none of its paper trades has closed<\/small><\/dd>/);
+    assert.doesNotMatch(fresh, /\$0\.00/);
+    const used = await card({closed_trades: 4, realized_pnl: 1.32, total_pnl: 1.32, today_pnl: 1.32, open_positions: 0},
+      {...FRESH_ON, paper_running: 1, week: {...week, paper_started: 1, paper_trades: 4, paper_pnl: 1.32}});
+    assert.match(used, /<dt>Paper P&amp;L, realized all time<\/dt><dd><span class="gain">\+\$1\.32<\/span><small>/);
+    assert.match(used, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.32<\/span> <small>paper, not real money, [^<]*4 closed trades<\/small>/);
+
+    const today = async (status) => /<dt>Paper realized today \(UTC\)<\/dt><dd[^>]*>(.*?)<\/dd>/.exec((await panel(status)).querySelector('#apf-stats').innerHTML)[1];
+    assert.equal(await today(FRESH_ON), 'Nothing on paper');
+    assert.equal(await today({...FRESH_ON, paper_running: 1}), '$0.00');  // a running paper strategy's day is a figure
+    assert.equal(await today({...FRESH_ON, today_paper_pnl: -0.5}), '−$0.50');
   });
 }

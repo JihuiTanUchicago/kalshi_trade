@@ -3202,8 +3202,10 @@
     const pnl = S.dashPaper ? S.dashPaper.realized_pnl : null;
     // Each cell's note sits on its own line (a block <small>), with a space before it: read as text (a screen
     // reader's line, a copy, a page's text) the figure ran into it, "0 of 30 realistic paper tradesinstant-fill …".
+    // A paper book that has never closed a trade has no P&L yet: "$0.00" read as a result to a new account.
+    const paperNone = pnl != null && !+S.dashPaper.closed_trades && !+pnl;
     const cells = [
-      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : `${money(pnl)} <small>${PAPER_NET}</small>`],
+      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>`],
       ['Strategies running', `${running ? String(running) : 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${PAPER_COUNT_WHY}</small>`]
@@ -3363,7 +3365,7 @@
       <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>${creditsPaid(w.card_charged)}${+w.checkin_credits >= 0.01 ? ` · plus ${usd(w.checkin_credits)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
-      <div><dt>Autopilot's paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>
+      <div><dt>Autopilot's paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>
     </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
