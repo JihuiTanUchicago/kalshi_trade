@@ -176,7 +176,7 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     cur.execute("UPDATE app_users SET autopilot=1 WHERE id=%s", (uid,))
     on = server.autopilot_status(server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None))
     assert (on["week"]["passed"], on["week"]["not_cleared"]) == (2, 3)
-    assert any("and 2 passed, and 3 more passed but weren't cleared to trade." in ln for ln in on["story"]), on["story"]
+    assert any("and 2 passed, and 3 more passed but weren’t cleared to trade." in ln for ln in on["story"]), on["story"]
     cur.execute("UPDATE app_users SET autopilot=0 WHERE id=%s", (uid,))
     # Each page says the same, and a held-back one names what held it back, never an experiment id.
     for name, s in sid.items():
