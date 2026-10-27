@@ -2318,7 +2318,7 @@
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? (r.value != null ? `worth ${usd(r.value)} (${money(r.unrealized)})` : money(r.unrealized)) : openCost({ open_cost: r.cost, open_at_cost: r.at_cost != null ? r.at_cost : r.qty * r.entry_price }))}</span>
-            <small>${esc(r.title)} ·\u00a0<span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : ` ·\u00a0settles ${settleAt(r.market_close_time)}`} ·\u00a0${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'} ·\u00a0${when(closed ? r.closed_at : r.opened_at)}</small>${r.why ? `<small class="stub-why">${esc(r.why)}</small>` : ''}</div>`).join('')
+            <small>${esc(r.title)}\u00a0· <span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : `\u00a0· settles ${settleAt(r.market_close_time)}`}\u00a0· ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'}\u00a0· ${when(closed ? r.closed_at : r.opened_at)}</small>${r.why ? `<small class="stub-why">${esc(r.why)}</small>` : ''}</div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash-wrap"><div class="dash">
           <div>

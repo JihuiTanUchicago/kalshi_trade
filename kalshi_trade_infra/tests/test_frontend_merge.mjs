@@ -744,6 +744,10 @@ test('every trade on the dashboard and Deploy says why it was entered and why it
   assert.deepEqual(lines, ['Entered at 41¢: edge ≥ 3¢ after fees · Exits: +20¢ take-profit, else settlement',
     why.replace('<', '&lt;'), 'Held to settlement: &lt;img src=x&gt;']);  // the row with no reason shows none
   assert.doesNotMatch(html, /<img/);
+  // Walk 2026-10-27 at 390px: a settled trade's line began "· Bitcoin up or down in 15 minutes" and "· PAPER · 7h ago".
+  // Each "·" has a no-break space before it and a plain one after, so it ends its line.
+  const meta = [...html.matchAll(/<small>([\s\S]*?)<\/small>/g)].map((m) => m[1]);
+  assert.ok(meta.length === 4 && meta.every((t) => !/ ·/.test(t) && t.includes(' · ')), meta.join('\n'));
   const d = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions}) : response({})});
   await d.viewDeploy(); await flush(); await flush();
   const table = d.root.querySelector('#openpos').innerHTML;
