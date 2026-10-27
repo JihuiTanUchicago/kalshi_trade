@@ -3321,6 +3321,13 @@ test('Tau: a run lists each idea it tested with its outcome and first missed che
   assert.match(ideas, new RegExp(`<span class="hx-stamp void">Void</span><button type="button" class="ri-title" data-goto="41">Fade &lt;b&gt;</button><span class="ri-why">Too few trades to judge \\(18 of 30\\) · 1 more check</span>`));
   assert.ok(f.root.querySelector('#log').children.some((li) => li.dataset && String(li.dataset.sid) === '41'), 'the card is the jump target');
   f.clearTimers();
+  // One the autopilot is about to put on paper itself says so instead of asking for a deploy by hand.
+  const g = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies: [strategies[0], {...strategies[1], autopilot_next: true}]}) : response({})});
+  await g.viewRun(9); await flush();
+  const auto = g.root.querySelector('#runideas').innerHTML;
+  assert.match(auto, /data-goto="42">Lean in<\/button><span class="ri-why">The autopilot puts it on paper at its next check-in<\/span>/);
+  assert.doesNotMatch(auto, /Open it to deploy on paper/);
+  g.clearTimers();
 });
 
 test('Tau: the strategy page lists what it missed under Verdict and names the first in the Deploy notice', async () => {

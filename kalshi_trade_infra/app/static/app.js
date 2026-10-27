@@ -3304,7 +3304,11 @@
       // The autopilot deploys what it finds on paper itself, and its finished session still said "Open it
       // to deploy it on paper": the strategy page then warned that a second copy doubles the positions.
       const deployed = passed.filter((s) => s.deployed).length;
+      // Before its next check-in the autopilot hasn't deployed them yet, and the line asked for a deploy
+      // by hand all the same. The server marks the ones it will put on paper itself (autopilot_next).
+      const auto = passed.filter((s) => !s.deployed && s.autopilot_next).length;
       const way = deployed === passed.length ? ` ${passed.length === 1 ? 'It is' : 'They are'} already deployed. <a href="/deploy">See ${passed.length === 1 ? 'it' : 'them'} on Deploy</a>.`
+        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
         : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
         : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
       return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}</p>`;
@@ -3346,6 +3350,7 @@
       const [cls, label] = IDEA_STAMP[s.status] || ['', 'Testing'];
       const why = whyBySid.get(s.id) || [];
       const said = s.status === 'passed' ? (s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
+        : s.autopilot_next ? 'The autopilot puts it on paper at its next check-in'
         : `<a href="/strategies/${s.id}">Open it to deploy on paper</a>`)
         : why.length ? `${esc(why[0].label)}${why.length > 1 ? ` ·\u00a0${why.length - 1} more check${why.length > 2 ? 's' : ''}` : ''}` : '';
       return `<li><span class="hx-stamp ${cls}">${label}</span><button type="button" class="ri-title" data-goto="${s.id}">${esc(s.title)}</button>${said ? `<span class="ri-why">${said}</span>` : ''}</li>`;
