@@ -6120,9 +6120,10 @@ test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / 
   assert.doesNotMatch(html, /\$ \/ trade|Max\s+open|null|NaN/);
   const f = frontend();
   const none = f.deploymentMonitor(nullStakeDep({status: 'paused', status_why: 'You paused it'}));
-  assert.match(none, /<p class="monitor-setup">[^<]* · Stake not set<\/p><div class="monitor-limits"><span> · You paused it<\/span>/);
+  // The card's setup and limits lines (inline) keep the stake and the cap whole, each "·" ending its line.
+  assert.match(none, /<p class="monitor-setup">[^<]*\u00a0· <span class="nobr">Stake not set<\/span><\/p><div class="monitor-limits"><span>\u00a0· You paused it<\/span>/);
   assert.doesNotMatch(none, /\$ \/ trade|Max\s+open|null|NaN/);
-  assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/p><div class="monitor-limits"><span> · Max 3 open<\/span>/);
+  assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/span><\/p><div class="monitor-limits"><span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
 });
 
 test('Meridian: a paper card on the dashboard says "after Kalshi fees and the spread" as the small explainer it is elsewhere', () => {
