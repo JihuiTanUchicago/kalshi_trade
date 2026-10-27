@@ -134,10 +134,16 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const oos = {pnl: 12, trades: 6, win_rate: .5, fees: 1, profit_factor: 1.2, max_drawdown: 2, sharpe: .5, roi: .1, days: 15.2};
     const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 3.8, closed_trades: 2, open_positions: 0, stake: 5,
       created_at: '2026-10-27T08:00:00Z'}];
+    // The backtest's own gate names, as backtest.gates() stores them.
+    const gates = [{name: 'Makes money on unseen data', threshold: '> $0', ok: true, value: 12},
+      {name: 'Enough unseen trades to judge', threshold: '≥ 10', ok: false, value: 6}];
     for (const status of ['passed', 'backtest-only']) {
-      const f = await open({status, experiment: null, capital: 100, stake: 5, out_of_sample: oos, recent_trades: [], deployments,
+      const f = await open({status, experiment: null, capital: 100, stake: 5, out_of_sample: oos, recent_trades: [], deployments, gates,
         book_totals: {paper: {pnl: 3.8, trades: 2, open: 0}}, dataset: {out_of_sample_from: '1970-01-01T00:03:20Z'}});
       const figs = f.root.querySelector('#figs'), html = main(f);
+      const gateText = f.root.querySelector('#gates').textContent;
+      assert.match(gateText, /Makes money on data after the split date/); assert.match(gateText, /Enough trades after the split date to judge/);
+      assert.doesNotMatch(gateText, /unseen/i);
       assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
       assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it: not held out/);
       assert.match(figs.innerHTML, /After the split date over 15 days ·\u00a0\$100 at risk at most/);
@@ -162,8 +168,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(main(bare), /No result after the split date recorded: its only figures are from the history it searched\./);
     assert.doesNotMatch(main(bare) + bare.root.querySelector('#figs').innerHTML, /never saw|Unseen-data P&|Rejected before the unseen test|Not tested on unseen data|not advanced to the unseen-data test|ranked below/);
     // A strategy with its record keeps its unseen-data words, and an old Void one keeps its own.
-    const kept = await open({status: 'passed', out_of_sample: oos});
+    const kept = await open({status: 'passed', out_of_sample: oos, gates});
     assert.match(kept.root.querySelector('#figs').innerHTML, /Unseen-data P&amp;L|Unseen-data P&L/);
+    assert.match(kept.root.querySelector('#gates').textContent, /Makes money on unseen data/);
     const voided = await open({status: 'failed', experiment: null, out_of_sample: oos});
     assert.match(voided.root.querySelector('#figs').innerHTML, /the agent never saw/);
   });
