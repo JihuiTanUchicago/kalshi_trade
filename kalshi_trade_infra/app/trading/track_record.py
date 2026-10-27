@@ -23,12 +23,13 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional
 
 from app.trading.quant import max_drawdown
 from app.research.stats import probabilistic_sharpe_ratio
-from trading_core.domain.money import cents
+from trading_core.domain.money import cents, exact
 
 MODES = ("live", "demo", "paper")
 MODE_LABEL = {"live": "Live money", "demo": "Kalshi demo", "paper": "Paper"}
@@ -276,7 +277,8 @@ def _peak_at_risk(trades: List[Dict], open_trades: List[Dict]) -> float:
 def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: int,
               peak_at_risk: Optional[float] = None) -> Dict:
     """Every headline figure for one money bucket. `trades` are closed round trips oldest-first
-    by close time: {pnl, fees, cost, opened_ts, closed_ts}; `open_trades`: {cost, opened_ts}.
+    by close time: {pnl, fees, cost, opened_ts, closed_ts}; `open_trades`: {cost, opened_ts, and open_cost:
+    what is still held, with its entry fees (cost when absent)}.
     `peak_at_risk` is _peak_at_risk(trades, open_trades) when the caller already has it."""
     trades = sorted(trades, key=lambda t: (t["closed_ts"], t["opened_ts"] or 0))
     n = len(trades)
@@ -345,8 +347,9 @@ def summarize(trades: List[Dict], open_trades: List[Dict], today: date, now_ts: 
         "first_trade_at": first_ts,
         "last_trade_at": trades[-1]["closed_ts"] if trades else None,
         "open_trades": len(open_trades),
-        # What is still held, at cost: a part-sold trade's sold slice is no longer at risk.
-        "open_at_cost": cents(sum(t.get("open_cost", t["cost"]) for t in open_trades)),
+        # What is still held, at cost plus its entry fees (a part-sold trade's sold slice is no longer at
+        # risk): the dashboard's and Funds' open_cost for the same book, summed exactly and rounded once.
+        "open_cost": cents(sum((exact(t.get("open_cost", t["cost"])) for t in open_trades), Decimal(0))),
         # A part-sold trade joins the record when its remainder closes; until then this is what its
         # sold slices already realized, so the record plus this is every closed row's P&L.
         "open_realized_pnl": cents(sum(t["pnl"] for t in open_trades)),

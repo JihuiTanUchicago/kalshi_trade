@@ -32,7 +32,7 @@ OLD_TRACK_RECORD_SQL = """
            COALESCE(SUM(p.pnl),0) AS pnl,
            COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0) AS fees,
            COALESCE(SUM(p.qty * p.entry_price),0) AS cost,
-           COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price END),0) AS open_cost,
+           COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price + COALESCE(p.entry_fee,0) END),0) AS open_cost,
            MIN(p.opened_at) AS opened_at, MAX(p.closed_at) AS closed_at
     FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
     LEFT JOIN app_strategies s ON s.id=d.strategy_id

@@ -287,9 +287,9 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = frontend({fetchImpl: () => response({})});
     const th = {min_sharpe_days: 14, min_trades: 30};
     const m = {trades: 4, wins: 2, losses: 2, label: 'Paper', net_pnl: 3, fees: 0, monthly: [], strategies: [], curve: [],
-      open_trades: 1, open_at_cost: 6, open_realized_pnl: -1.66, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
+      open_trades: 1, open_cost: 6, open_realized_pnl: -1.66, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
     assert.match(f.trackRecordPanel(m, 'paper', th),
-      /1 open trade \(\$6\.00 at cost before fees\) joins the record when it closes\. Part of it is already sold: −\$1\.66 realized, not yet in these figures\./);
+      /1 open trade \(\$6\.00 at cost \+ fees\) joins the record when it closes\. Part of it is already sold: −\$1\.66 realized, not yet in these figures\./);
     assert.doesNotMatch(f.trackRecordPanel({...m, open_realized_pnl: 0}, 'paper', th), /already sold/);
   });
 
@@ -297,15 +297,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = frontend({fetchImpl: () => response({})});
     const th = {min_sharpe_days: 14, min_trades: 30};
     const m = {trades: 4, wins: 2, losses: 2, label: 'Paper', net_pnl: 3, fees: 0, monthly: [], strategies: [], curve: [],
-      open_trades: 0, open_at_cost: 0, open_realized_pnl: 0, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
+      open_trades: 0, open_cost: 0, open_realized_pnl: 0, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
     const none = f.trackRecordPanel(m, 'paper', th);
     assert.doesNotMatch(none, /open trade|join the record|joins the record/);
-    const one = f.trackRecordPanel({...m, open_trades: 1, open_at_cost: 6}, 'paper', th);
-    assert.match(one, /1 open trade \(\$6\.00 at cost before fees\) joins the record when it closes\./);
+    const one = f.trackRecordPanel({...m, open_trades: 1, open_cost: 6}, 'paper', th);
+    // The figure has its entry fees, as the dashboard's "at cost + fees" beside it: the record said "before fees".
+    assert.match(one, /1 open trade \(\$6\.00 at cost \+ fees\) joins the record when it closes\./);
+    assert.doesNotMatch(one, /at cost before fees/);
     assert.doesNotMatch(one, /open trades|join the record|they close/);
     for (const n of [2, 12]) {
-      const many = f.trackRecordPanel({...m, open_trades: n, open_at_cost: 9.5, open_realized_pnl: 0.5}, 'paper', th);
-      assert.match(many, new RegExp(`${n} open trades \\(\\$9\\.50 at cost before fees\\) join the record when they close\\. Part of them is already sold`));
+      const many = f.trackRecordPanel({...m, open_trades: n, open_cost: 9.5, open_realized_pnl: 0.5}, 'paper', th);
+      assert.match(many, new RegExp(`${n} open trades \\(\\$9\\.50 at cost \\+ fees\\) join the record when they close\\. Part of them is already sold`));
       assert.doesNotMatch(many, /joins the record|when it closes|Part of it /);
     }
   });

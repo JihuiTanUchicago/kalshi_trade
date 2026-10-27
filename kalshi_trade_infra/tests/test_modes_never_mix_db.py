@@ -212,7 +212,8 @@ def test_paper_demo_and_live_figures_never_mix(conn, monkeypatch):
         assert t["trades"] == 3 and t["open_trades"] == 1, mode
         assert t["net_pnl"] == _money(realized[mode]), mode     # demo's too: the record ignores the reload
         assert _money(t["curve"][-1][1]) == _money(realized[mode]), mode
-        assert t["open_at_cost"] == _money(book[mode]["open_cost"]), mode
+        assert t["open_cost"] == dash[mode]["open_cost"] == _money(book[mode]["open_cost"]
+                                                               + float(book[mode]["held"]["entry_fee"])), mode
         assert t["excluded_instant_fills"] == 0, mode
 
     # -- each CSV ----------------------------------------------------------------------------------

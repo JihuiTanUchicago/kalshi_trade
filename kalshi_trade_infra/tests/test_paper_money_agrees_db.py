@@ -177,7 +177,8 @@ def test_every_paper_money_figure_agrees_to_the_cent(conn, monkeypatch):
     assert tr["net_pnl"] == _money(realized - slice_pnl)
     assert tr["open_realized_pnl"] == _money(slice_pnl)
     assert _money(tr["net_pnl"] + tr["open_realized_pnl"]) == _money(realized)
-    assert tr["open_at_cost"] == _money(open_cost)             # what is still held, not the whole entry
+    # What is still held, not the whole entry, with its entry fee: the dashboard's open_cost.
+    assert tr["open_cost"] == paper["open_cost"] == _money(open_cost + open_fee)
 
     # -- the trades CSV --------------------------------------------------------------------------
     kind, _, _, data = server.trades_csv(server.Ctx(conn, ctx.user, (), {"mode": "paper"}, {}, None))
