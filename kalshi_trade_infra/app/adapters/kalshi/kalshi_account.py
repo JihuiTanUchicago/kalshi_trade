@@ -113,14 +113,28 @@ def balance_read_at(user_id: int) -> Optional[datetime]:
     return memo_read_at(_BALANCE_CACHE, user_id)
 
 
-def memo_read_at(cache: Dict[int, Tuple[float, Optional[float]]], user_id: int) -> Optional[datetime]:
-    """When a (monotonic time, value) balance memo was filled for this user, as naive UTC; None when it
-    holds nothing. The demo balance memo (demo_twins) has the same shape and reads this too."""
+def balance_memo(user_id: int) -> Optional[Tuple[Optional[float], datetime]]:
+    """(cash, when it was read) as the memo holds it, however old, or None when it holds nothing. For a
+    page that must never wait on Kalshi: it shows an old figure with its age, then asks for a fresh one.
+    Reads the memo only, never Kalshi."""
+    return memo_peek(_BALANCE_CACHE, user_id)
+
+
+def memo_peek(cache: Dict[int, Tuple[float, Optional[float]]], user_id: int) -> Optional[Tuple[Optional[float], datetime]]:
+    """(value, when it was read as naive UTC) from a (monotonic time, value) balance memo, however old;
+    None when it holds nothing for this user. The demo balance memo (demo_twins) has the same shape."""
     hit = cache.get(user_id)
     if not hit:
         return None
     age = max(0.0, time.monotonic() - hit[0])
-    return (datetime.now(timezone.utc) - timedelta(seconds=age)).replace(tzinfo=None, microsecond=0)
+    return hit[1], (datetime.now(timezone.utc) - timedelta(seconds=age)).replace(tzinfo=None, microsecond=0)
+
+
+def memo_read_at(cache: Dict[int, Tuple[float, Optional[float]]], user_id: int) -> Optional[datetime]:
+    """When a (monotonic time, value) balance memo was filled for this user, as naive UTC; None when it
+    holds nothing. The demo balance memo (demo_twins) has the same shape and reads this too."""
+    hit = memo_peek(cache, user_id)
+    return None if hit is None else hit[1]
 
 
 def memo_kept(cache: Dict[int, Tuple[float, Optional[float]]], user_id: int, ttl: float) -> bool:

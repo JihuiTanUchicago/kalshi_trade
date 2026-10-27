@@ -151,45 +151,139 @@ def test_billing_shell_never_waits_on_stripe(web, monkeypatch):
     assert len(calls) == 1 and _first(html) == [{"url": "/api/billing?tz=240", "body": {"balance": 12.5}}]
 
 
+def _funds_db(monkeypatch, live_key=True, demo_key=True):
+    """Funds' own-database reads answered without a database, for user 7; its Kalshi client raises, so a
+    read that would ask Kalshi fails the test."""
+    from app.adapters.kalshi import kalshi_account
+    from app.services import book_memo
+    from app.trading import demo_twins
+    from app.web.routes import funds as funds_routes
+
+    def kalshi(*a, **k):
+        raise AssertionError("asked Kalshi")
+    r = funds_routes.repo
+    monkeypatch.setattr(r, "get_kalshi_key", lambda cur, uid: {"key_id": "LIVEKEY-ABCD-1234"} if live_key else None)
+    monkeypatch.setattr(r, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "DEVKEY-WXYZ-5678"} if demo_key else None)
+    monkeypatch.setattr(r, "demo_equity", lambda cur, uid, realized=None: {"capital": 1000, "equity": 1003.5, "realized": 3.5,
+                                                                            "before_reload": 0})
+    monkeypatch.setattr(r, "paper_balance", lambda cur, uid: Decimal("2001.745"))
+    monkeypatch.setattr(r, "ledger_rows", lambda cur, uid: [{"memo": "Paper deposit", "amount": Decimal("1000"),
+                                                             "created_at": datetime(2026, 10, 26, 8, 0)}])
+    monkeypatch.setattr(r, "user_positions", lambda cur, uid, status: [{"mode": "live", "qty": 10, "entry_price": 0.4}])
+    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None: (
+        {"paper": (5.61, 0), "demo": (3.5, 0), "live": (-1.245, 0)}, {"paper": 2, "demo": 1, "live": 1}, {}))
+    for mod, name in ((kalshi_account, "balance"), (kalshi_account, "balance_cached"), (kalshi_account, "credentials_from_row"),
+                      (kalshi_account, "verify"), (demo_twins, "_read_balance"), (demo_twins, "balance_cached")):
+        monkeypatch.setattr(mod, name, kalshi)
+    monkeypatch.setattr(kalshi_account, "_BALANCE_CACHE", {})
+    monkeypatch.setattr(demo_twins, "_BALANCE_CACHE", {})
+    return kalshi_account, demo_twins
+
+
 @pytest.mark.parametrize("path", ["/funds", "/settings/account"])
-def test_funds_shell_carries_its_read_only_while_no_cash_figure_would_ask_kalshi(web, monkeypatch, path):
-    # Its read asks Kalshi for the live and demo cash of an account with a key, unless the server read it in
-    # the last minute: a slow Kalshi would hold the whole shell blank, so then the page asks for itself.
-    answer = {"paper": {"cash": 1000, "ledger": [{"memo": "</script>", "created_at": datetime(2026, 10, 26, 8, 0)}]},
-              "kalshi": {"connected": True, "balance": Decimal("12.5"), "balance_at": datetime(2026, 10, 27, 9, 0)}}
-    calls = _record(monkeypatch, "funds", answer)
-    monkeypatch.setattr(shell_reads, "asks_kalshi", lambda ctx: True)
+def test_funds_shell_carries_its_read_for_an_account_with_kalshi_keys_and_never_asks_kalshi(web, monkeypatch, path):
+    # Kalshi's live and demo cash wait on Kalshi (up to its timeout, per key): the shell carries everything
+    # from our own database and marks the cash pending, for the page to ask /api/funds/cash after it draws.
+    _funds_db(monkeypatch)
     r, html = _shell(web, path)
-    assert r.status == 200 and calls == [] and _first(html) == [] and 'id="tau-me"' in html
-    monkeypatch.setattr(shell_reads, "asks_kalshi", lambda ctx: False)
-    r, html = _shell(web, path)
-    assert r.status == 200 and calls == [((), {}, 7)] and _first(html) == [{"url": "/api/funds", "body": _wire(answer)}]
+    first = _first(html)
+    assert r.status == 200 and [x["url"] for x in first] == ["/api/funds"]
+    body = first[0]["body"]
+    assert body["kalshi"]["pending"] is True and body["kalshi"]["balance"] is None and "last_balance" not in body["kalshi"]
+    assert body["kalshi_dev"]["pending"] is True and body["kalshi_dev"]["balance"] is None
+    # It names the cash reads the page asks next, so boot.js starts them beside the bundle.
+    assert first[0]["then"] == ["/api/funds/cash?book=live", "/api/funds/cash?book=demo"]
+    # Our own books come whole, each its own: never added together, P&L apart from cash.
+    assert body["paper"]["cash"] == 2001.75 and body["paper"]["realized_pnl"] == 5.61 and body["paper"]["ledger"]
+    assert body["demo"]["equity"] == 1003.5 and body["kalshi"]["realized_pnl"] == -1.25
+    assert (body["kalshi"]["open_positions"], body["kalshi"]["open_at_cost"]) == (1, 4.0)
+    assert body["kalshi"]["key_id"] == "LIVE…1234" and "LIVEKEY-ABCD-1234" not in html and "DEVKEY-WXYZ-5678" not in html
     block = html.split('id="tau-first">', 1)[1].split("</script>", 1)[0]
     assert "<" not in block and ">" not in block
 
 
-def test_asks_kalshi_unless_each_keys_cash_is_memoized(monkeypatch):
-    from app.adapters.kalshi import kalshi_account
-    from app.trading import demo_twins
+def test_funds_without_kalshi_reads_each_keys_cash_from_its_memo_alone(monkeypatch):
+    from datetime import timezone
+    kalshi_account, demo_twins = _funds_db(monkeypatch)
+    ctx = SimpleNamespace(cur=None, uid=7)
+    now = kalshi_account.time.monotonic()
+    utc = lambda: datetime.now(timezone.utc).replace(tzinfo=None)  # noqa: E731
+    # Nothing memoized: pending, with no figure at all (the page reads "Checking…", never $0).
+    out = shell_reads.funds_without_kalshi(ctx)
+    assert {k: out["kalshi"][k] for k in ("connected", "balance", "pending")} == {"connected": True, "balance": None, "pending": True}
+    assert out["kalshi_dev"] == {"connected": True, "key_id": "DEVK…5678", "balance": None, "pending": True,
+                                 "copies_from": out["kalshi_dev"]["copies_from"]}
+    # Read 70s ago (past the minute): still pending, carrying that figure and when it was read.
+    kalshi_account._BALANCE_CACHE[7] = (now - 70, 1234.5649)
+    demo_twins._BALANCE_CACHE[7] = (now - 70, None)  # the demo read failed then: nothing to show but pending
+    out = shell_reads.funds_without_kalshi(ctx)
+    k = out["kalshi"]
+    assert k["pending"] is True and k["balance"] is None and k["last_balance"] == 1234.56
+    assert 68 <= (utc() - k["last_balance_at"]).total_seconds() <= 75
+    assert out["kalshi_dev"]["pending"] is True and "last_balance" not in out["kalshi_dev"]
+    # Read 10s ago: kept, so it is the figure, dated, and nothing is pending.
+    kalshi_account._BALANCE_CACHE[7] = (now - 10, 1234.5)
+    demo_twins._BALANCE_CACHE[7] = (now - 10, 250.0)
+    out = shell_reads.funds_without_kalshi(ctx)
+    assert out["kalshi"]["balance"] == 1234.5 and "pending" not in out["kalshi"] and out["kalshi"]["balance_at"]
+    assert out["kalshi_dev"]["balance"] == 250.0 and "pending" not in out["kalshi_dev"]
+    # A failed read still kept answers as /api/funds does: no figure, not pending ("Kalshi didn't answer").
+    kalshi_account._BALANCE_CACHE[7] = (now - 10, None)
+    out = shell_reads.funds_without_kalshi(ctx)
+    assert out["kalshi"]["balance"] is None and "pending" not in out["kalshi"] and "balance_at" not in out["kalshi"]
+
+
+def test_funds_without_kalshi_for_an_account_with_no_key_is_the_whole_read(monkeypatch):
+    _funds_db(monkeypatch, live_key=False, demo_key=False)
     from app.web.routes import funds as funds_routes
     ctx = SimpleNamespace(cur=None, uid=7)
-    keys = {"live": None, "demo": None}
-    monkeypatch.setattr(funds_routes.repo, "get_kalshi_key", lambda cur, uid: keys["live"])
-    monkeypatch.setattr(funds_routes.repo, "get_kalshi_dev_key", lambda cur, uid: keys["demo"])
-    monkeypatch.setattr(kalshi_account, "_BALANCE_CACHE", {})
-    monkeypatch.setattr(demo_twins, "_BALANCE_CACHE", {})
-    assert funds_routes.asks_kalshi(ctx) is False  # no key: nothing to ask Kalshi for
-    keys["live"] = {"key_id": "abcd1234"}
-    assert funds_routes.asks_kalshi(ctx) is True
-    kalshi_account.remember_balance(7, 12.5)
-    assert funds_routes.asks_kalshi(ctx) is False
-    keys["demo"] = {"key_id": "efgh5678"}
-    assert funds_routes.asks_kalshi(ctx) is True
-    demo_twins._BALANCE_CACHE[7] = (demo_twins.time.monotonic(), None)  # a failed read memoized answers from memory too
-    assert funds_routes.asks_kalshi(ctx) is False
-    kalshi_account.remember_balance(8, 3.0)  # another user's memo is not this one's
-    kalshi_account._BALANCE_CACHE.pop(7)
-    assert funds_routes.asks_kalshi(ctx) is True
+    out = shell_reads.funds_without_kalshi(ctx)
+    assert out == funds_routes.funds(ctx)
+    assert out["kalshi"]["connected"] is False and out["kalshi_dev"] == {"connected": False}
+
+
+def test_then_reads_names_only_funds_pending_cash():
+    pending, kept = {"connected": True, "pending": True, "balance": None}, {"connected": True, "balance": 12.5}
+    assert shell_reads.then_reads("/api/funds", {"kalshi": pending, "kalshi_dev": pending}) == [
+        "/api/funds/cash?book=live", "/api/funds/cash?book=demo"]
+    assert shell_reads.then_reads("/api/funds", {"kalshi": kept, "kalshi_dev": pending}) == ["/api/funds/cash?book=demo"]
+    assert shell_reads.then_reads("/api/funds", {"kalshi": kept, "kalshi_dev": {"connected": False}}) == []
+    assert shell_reads.then_reads("/api/dashboard", {"kalshi": pending}) == []
+    assert shell_reads.then_reads("/api/funds", []) == []
+
+
+def test_a_funds_shell_with_each_cash_kept_names_no_reads_after(web, monkeypatch):
+    kalshi_account, demo_twins = _funds_db(monkeypatch)
+    now = kalshi_account.time.monotonic()
+    kalshi_account._BALANCE_CACHE[7] = (now - 10, 1234.5)
+    demo_twins._BALANCE_CACHE[7] = (now - 10, 250.0)
+    r, html = _shell(web, "/funds")
+    first = _first(html)
+    assert r.status == 200 and "then" not in first[0] and first[0]["body"]["kalshi"]["balance"] == 1234.5
+
+
+def test_funds_cash_reads_one_books_cash_in_cents(monkeypatch):
+    # The page's follow-up for a pending figure: one book at a time, so neither waits on the other's Kalshi
+    # read; only that book's cash, never added to another's.
+    from app.web.routes import funds as funds_routes
+    kalshi_account, demo_twins = _funds_db(monkeypatch)
+    asked = []
+    monkeypatch.setattr(kalshi_account, "credentials_from_row", lambda uid, row: ("id", None))
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: asked.append("live") or 1234.5649)
+    monkeypatch.setattr(kalshi_account, "balance_read_at", lambda uid: datetime(2026, 10, 27, 9, 0))
+    monkeypatch.setattr(demo_twins, "balance_cached", lambda cur, uid: asked.append("demo") or 500.0)
+    ask = lambda book: funds_routes.funds_cash(SimpleNamespace(cur=None, uid=7, query={"book": book} if book else {}))  # noqa: E731
+    assert ask("live") == {"book": "live", "connected": True, "balance": 1234.56, "balance_at": datetime(2026, 10, 27, 9, 0)}
+    assert asked == ["live"]
+    demo = ask("demo")
+    assert demo["book"] == "demo" and demo["balance"] == 500.0 and asked == ["live", "demo"]
+    monkeypatch.setattr(kalshi_account, "balance_cached", lambda uid, creds: None)  # Kalshi didn't answer
+    assert ask("live") == {"book": "live", "connected": True, "balance": None}
+    with pytest.raises(ApiError) as e:
+        ask(None)
+    assert e.value.status == 400
+    _funds_db(monkeypatch, live_key=False, demo_key=False)
+    assert ask("live")["connected"] is False and ask("demo") == {"book": "demo", "connected": False, "balance": None}
 
 
 def test_a_memo_counts_as_kept_only_with_time_to_spare(monkeypatch):

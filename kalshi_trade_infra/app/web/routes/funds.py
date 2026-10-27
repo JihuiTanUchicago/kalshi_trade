@@ -3,6 +3,7 @@ waitlist signup. Moved verbatim from app.server, which re-imports every name for
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any, Dict
 
 from app import repository as repo
 from app.adapters.kalshi import kalshi_account, kalshi_dev_exec
@@ -16,23 +17,51 @@ from app.web.views import _live_balance, _open_book, _paper_equity
 from trading_core.domain.money import cents
 
 
-def funds(ctx: Ctx):
+def _cash(v):
+    """A Kalshi cash figure as the page shows it (cents), or None when there is none to show."""
+    return None if v is None else cents(v)
+
+
+def _memo_cash(memo, kept: bool) -> Dict[str, Any]:
+    """One key's cash from its balance memo alone, never Kalshi: the figure when the memo is kept; else
+    pending, carrying the last figure read (and when) if there is one, so the page never shows an old
+    figure without its age, nor a missing one as $0. `memo` is (value, read_at) or None."""
+    if kept and memo is not None:
+        return {"balance": _cash(memo[0]), **({"balance_at": memo[1]} if memo[0] is not None else {})}
+    out: Dict[str, Any] = {"balance": None, "pending": True}
+    if memo is not None and memo[0] is not None:
+        out.update(last_balance=_cash(memo[0]), last_balance_at=memo[1])
+    return out
+
+
+def funds(ctx: Ctx, ask_kalshi: bool = True):
+    """Funds' read. With ask_kalshi False (the page shell's first read) it never waits on Kalshi: a key's
+    cash comes from its memo or is marked pending, and the page asks /api/funds/cash for it."""
+    from app.trading import demo_twins
+
     cur = ctx.cur
     key = repo.get_kalshi_key(cur, ctx.uid)
-    kalshi = _live_balance(cur, ctx.uid)
+    if ask_kalshi or key is None:
+        kalshi = _live_balance(cur, ctx.uid)
+        kalshi["balance"] = _cash(kalshi["balance"])
+    else:
+        kalshi = {"connected": True, "funding_url": kalshi_account.KALSHI_FUNDING_URL,
+                  **_memo_cash(kalshi_account.balance_memo(ctx.uid), kalshi_account.balance_kept(ctx.uid))}
     if key is not None:
         kalshi["key_id"] = key["key_id"][:4] + "…" + key["key_id"][-4:]
     dev = repo.get_kalshi_dev_key(cur, ctx.uid)
-    kalshi_dev_key = {"connected": dev is not None}
+    kalshi_dev_key: Dict[str, Any] = {"connected": dev is not None}
     if dev is not None:
         kalshi_dev_key["key_id"] = dev["key_id"][:4] + "…" + dev["key_id"][-4:]
         # The demo account's cash at Kalshi (the same cached read demo health makes), so Funds can
         # say "Connected ✓ (balance $X)". None when it can't be read just now.
-        from app.trading import demo_twins
-
-        kalshi_dev_key["balance"] = demo_twins.balance_cached(cur, ctx.uid)
-        if kalshi_dev_key["balance"] is not None:
-            kalshi_dev_key["balance_at"] = demo_twins.balance_read_at(ctx.uid)  # up to a minute old, like Kalshi cash
+        if ask_kalshi:
+            kalshi_dev_key["balance"] = _cash(demo_twins.balance_cached(cur, ctx.uid))
+            if kalshi_dev_key["balance"] is not None:
+                kalshi_dev_key["balance_at"] = demo_twins.balance_read_at(ctx.uid)  # up to a minute old, like Kalshi cash
+        else:
+            kalshi_dev_key.update(_memo_cash(kalshi_account.memo_peek(demo_twins._BALANCE_CACHE, ctx.uid),
+                                             demo_twins.balance_kept(ctx.uid)))
         # The demo cash the autopilot's demo copies wait for, so Funds can say why a small balance starts none.
         kalshi_dev_key["copies_from"] = demo_twins.DEMO_TWIN_MIN_BALANCE if demo_twins.DEMO_TWINS else None
     # Each book's realized P&L and closed trades, from the dashboard's read (kept while the positions
@@ -60,14 +89,27 @@ def funds(ctx: Ctx):
     }
 
 
-def asks_kalshi(ctx: Ctx) -> bool:
-    """Whether funds would ask Kalshi for cash: a live key whose cash isn't memoized, or a demo key whose
-    demo cash isn't (each read waits on Kalshi, up to its timeout)."""
+def funds_cash(ctx: Ctx):
+    """The follow-up to a Funds page drawn from its shell's read: one book's cash at Kalshi (?book=live or
+    demo), the figure /api/funds shows, read the same way (memoized a minute; this may ask Kalshi, up to its
+    timeout). Only that book's cash: never added to another book or to paper."""
     from app.trading import demo_twins
 
-    if repo.get_kalshi_key(ctx.cur, ctx.uid) is not None and not kalshi_account.balance_kept(ctx.uid):
-        return True
-    return repo.get_kalshi_dev_key(ctx.cur, ctx.uid) is not None and not demo_twins.balance_kept(ctx.uid)
+    book = ctx.query.get("book")
+    if book == "live":
+        live = _live_balance(ctx.cur, ctx.uid)
+        out: Dict[str, Any] = {"book": "live", "connected": live["connected"], "balance": _cash(live["balance"])}
+        if live.get("balance_at") is not None:
+            out["balance_at"] = live["balance_at"]
+        return out
+    if book == "demo":
+        if repo.get_kalshi_dev_key(ctx.cur, ctx.uid) is None:
+            return {"book": "demo", "connected": False, "balance": None}
+        out = {"book": "demo", "connected": True, "balance": _cash(demo_twins.balance_cached(ctx.cur, ctx.uid))}
+        if out["balance"] is not None:
+            out["balance_at"] = demo_twins.balance_read_at(ctx.uid)
+        return out
+    raise ApiError(400, "Choose live or demo.")
 
 
 def paper_transfer(ctx: Ctx):

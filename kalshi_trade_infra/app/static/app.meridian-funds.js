@@ -65,6 +65,23 @@ window.TauPage('funds', (T) => {
   const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time.`
     : k.connected ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : '';
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
+  // A key's cash the shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes
+  // pending: it reads Checking\u2026, never $0, and a figure the server read earlier shows only with its age.
+  // `failed` is the follow-up read for it not coming back: plain words, never the error.
+  const CASH_FAILED = 'Tau couldn\u2019t check your Kalshi cash just now. Reload in a minute to try again.';
+  const lastRead = (b) => `${usd(b.last_balance)}, read ${when(b.last_balance_at)}`;
+  // The headline figure for a connected key whose cash is pending or failed: [figure, the line under it].
+  const cashFig = (b) => b.pending ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}; checking Kalshi for the latest\u2026`] : ['Checking\u2026', 'Asking Kalshi for your real cash now.'])
+    : b.failed ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}. ${CASH_FAILED}`] : ['Unavailable', CASH_FAILED]) : null;
+  // The key line under a panel title, and the Cash at Kalshi cell, in the same states; keyOk otherwise.
+  const keyLine = (b, kind) => b.pending ? `<p class="key-ok key-unread"><b>Key saved</b> (${b.last_balance != null ? 'balance ' + lastRead(b) + '; checking for the latest' : 'checking your balance at Kalshi'}\u2026)</p>`
+    : b.failed ? `<p class="key-ok key-unread"><b>Key saved</b> (${b.last_balance != null ? 'balance ' + lastRead(b) + '; ' : ''}Tau couldn\u2019t check it just now. Reload in a minute to try again.)</p>`
+    : keyOk(b.balance, kind, b.balance_at);
+  const cashCell = (b) => b.pending ? (b.last_balance != null ? `${lastRead(b)}; checking\u2026` : 'Checking\u2026')
+    : b.failed ? (b.last_balance != null ? `${lastRead(b)}; couldn\u2019t check it just now` : 'Couldn\u2019t check it just now')
+    : b.balance == null ? 'Couldn\u2019t read it just now' : usd(b.balance);
+  // The demo key's line: its $0 or short-balance notice only from a figure Kalshi just sent.
+  const demoLine = (kd) => keyLine(kd, 'demo') + (kd.pending || kd.failed ? '' : demoEmpty(kd.balance, kd.copies_from));
   // A paper history line in plain words. The engine writes prices as dollars ("@ 0.40") and exit reasons as
   // codes ("stop_loss"); a settled row's $0.00 read as nothing happening when the contract lost. Display only:
   // the stored memo and the amount are unchanged.
@@ -98,13 +115,35 @@ window.TauPage('funds', (T) => {
       const perpsHost = root.querySelector('#kalshi-perps-live');
       if (gen === S.gen && !S.perps && window.TAU_PERPS_LIVE && perpsHost) S.perps = window.TAU_PERPS_LIVE.mount(perpsHost, {api, proposalId: new URLSearchParams(location.search).get('perps_proposal')});
     };
-    const load = async (cfg) => {
-      const d = await api('/api/funds', undefined, cfg);
+    // The shell's read marks a key's cash pending when the server hadn't read it in the last minute. Once the
+    // page has drawn, each book's cash is asked for on its own (neither waits on the other's Kalshi read) and
+    // drawn into the figures and its spots in the panels. One that fails says so. A later full read (a write,
+    // the poll) supersedes it.
+    let shown = null;
+    const fillCash = (d) => [['live', 'kalshi'], ['demo', 'kalshi_dev']].forEach(([book, key]) => {
+      const b = d[key];
+      if (!b || !b.pending) return;
+      const fill = (next) => {
+        if (gen !== S.gen || shown !== d) return;
+        d[key] = next;
+        // The key went in the meantime: read it all afresh. Otherwise only the cash changed.
+        (next.connected ? load(null, d) : load()).catch(() => {});
+      };
+      const { pending, last_balance, last_balance_at, ...kept } = b;
+      api('/api/funds/cash?book=' + book).then(
+        (c) => fill({ ...kept, connected: c.connected !== false, balance: c.balance == null ? null : c.balance, balance_at: c.balance_at }),
+        () => fill({ ...b, pending: false, failed: true }));
+    });
+    // `got`: the page's own answer with a key's cash filled in (fillCash); else /api/funds is read.
+    const load = async (cfg, got) => {
+      const d = got || await api('/api/funds', undefined, cfg);
       if (gen !== S.gen) return;
+      shown = d;
       const k = d.kalshi;
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
-      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? livePnl(k).trim() : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
+      const cf = k.connected && cashFig(k);
+      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? livePnl(k).trim() : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}`.replace(/ ·\u00a0$/, '') }));
       const host = root.querySelector('#main'), main = `<div id="flash"></div><div class="funds">
@@ -112,7 +151,7 @@ window.TauPage('funds', (T) => {
         <section class="panel">
           <h2>Kalshi account (live money)</h2>
           ${k.connected ? `
-            ${keyOk(k.balance, 'live', k.balance_at)}<dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
+            <div data-cash="live-ok">${keyLine(k, 'live')}</div><dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd data-cash="live-cell">${cashCell(k)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">Funds stay in your Kalshi account. Manage deposits and withdrawals at Kalshi. To change keys, disconnect and connect the new one.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <a class="btn" href="${esc(k.funding_url)}" target="_blank" rel="noopener">Deposit or withdraw at Kalshi ${ICON.ext}</a>
@@ -139,7 +178,7 @@ window.TauPage('funds', (T) => {
           <div id="dmflash" style="margin-top:10px"></div>
           <h3 style="margin-top:24px">Demo key</h3>
           ${kd.connected ? `
-            ${keyOk(kd.balance, 'demo', kd.balance_at)}${demoEmpty(kd.balance, kd.copies_from)}<dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
+            <div data-cash="demo-ok">${demoLine(kd)}</div><dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">Sandbox orders only. Demo and live keys are stored separately. To change keys, remove this one and connect the new one.</p>
             <button class="btn danger" id="dev-disconnect">Remove demo key</button>` : `
             <p class="lede" style="margin-bottom:12px">Connect a Kalshi <b>demo</b> key for sandbox orders. No real money. Demo is the step between paper and live: it proves orders place, fill and book, and live needs a clean demo record.</p>
@@ -174,6 +213,14 @@ window.TauPage('funds', (T) => {
           </tbody></table>
         </section>
         </div></div>`;
+      if (got) {
+        // Only the cash changed: its spots are filled in place, so what someone is typing, an armed confirm or
+        // the perps box stay as they are.
+        const spots = { 'live-ok': () => keyLine(k, 'live'), 'live-cell': () => cashCell(k), 'demo-ok': () => demoLine(kd) };
+        host.querySelectorAll('[data-cash]').forEach((el) => { const f = spots[el.dataset.cash]; if (f) el.innerHTML = f(); });
+        painted.set(host, main);
+        return d;
+      }
       if (cfg && (painted.get(host) === main || S.perps || inUse(host))) return;
       host.innerHTML = main; painted.set(host, main);
       if (S.perps) { S.perps.destroy(); S.perps = null; }
@@ -243,8 +290,10 @@ window.TauPage('funds', (T) => {
       })));
       return d;
     };
-    try { await load(); } catch (err) { if (gen === S.gen) throw err; }
+    let first;
+    try { first = await load(); } catch (err) { if (gen === S.gen) throw err; }
     if (gen === S.gen) poll(load, 30000, 'funds-stale');
+    if (first && gen === S.gen) fillCash(first);
   }
 
   return {viewFunds};

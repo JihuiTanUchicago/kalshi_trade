@@ -17,9 +17,13 @@ change, a trip) names a URL the page doesn't ask, and the page asks as before. I
 account Stripe has no cards to list for: the saved-card list waits on Stripe, and a slow Stripe must
 never hold the whole shell blank (the page's own read keeps it behind a skeleton instead).
 
-Funds is carried by the same rule: its read asks Kalshi for the live and demo cash of an account with a
-key, unless the server read it in the last minute (the dashboard and Funds' own poll read it too). It is
-carried for an account with no key, or with each key's cash still memoized; otherwise the page asks.
+Funds is carried by the same rule, always: its read asks Kalshi for the live and demo cash of an account
+with a key (unless the server read it in the last minute), so the shell carries a version that never asks.
+Everything from our own database (each book, its positions, P&L and history) is as /api/funds answers it;
+a key's cash comes from its memo when kept, else is marked pending, with the last figure read and its age
+if the memo holds one. The page draws it as "checking" (never $0) and asks /api/funds/cash?book= for it.
+The shell names those asks beside the read ("then"), and boot.js starts them at once, so Kalshi's wait
+runs while the bundle downloads instead of after the page has drawn; the page takes each answer once.
 
 The dashboard also carries the autopilot status: its autopilot card sits above the figures, and drawn
 a round trip after them it pushed them down the screen. Research carries its loop card's board for the
@@ -38,7 +42,7 @@ from app.web.routes.billing import asks_stripe, billing_state
 from app.web.routes.chat import autopilot_status
 from app.web.routes.dashboard import dashboard
 from app.web.routes.deployments import list_deployments
-from app.web.routes.funds import asks_kalshi, funds
+from app.web.routes.funds import funds
 from app.web.routes.research import get_run, list_runs, research_scoreboard, scoreboard_kept
 from app.web.routes.strategies import list_strategies
 
@@ -76,11 +80,18 @@ def billing_without_stripe(ctx: Ctx) -> Dict[str, Any]:
 
 
 def funds_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
-    """Funds' first read, as funds answers it, while every cash figure it shows is memoized (or there is no
-    key to read one for); NotKept when it would ask Kalshi (up to its timeout, per key)."""
-    if asks_kalshi(ctx):
-        raise NotKept
-    return funds(ctx)
+    """Funds' first read, as funds answers it, except that it never asks Kalshi: a key's cash whose memo
+    isn't kept is marked pending (with the last figure read and its age, if any) for the page to ask after."""
+    return funds(ctx, ask_kalshi=False)
+
+
+def then_reads(url: str, body: Dict[str, Any]) -> List[str]:
+    """The reads a page asks right after its carried one, which boot.js starts beside the bundle: Funds'
+    pending Kalshi cash, one ask per book (the page asks them so too). [] for every other read."""
+    if url != "/api/funds" or not isinstance(body, dict):
+        return []
+    return ["/api/funds/cash?book=%s" % book for book, key in (("live", "kalshi"), ("demo", "kalshi_dev"))
+            if isinstance(body.get(key), dict) and body[key].get("pending")]
 
 
 def dashboard_since(cookie: Optional[str], now: Optional[float] = None) -> Optional[int]:
@@ -125,14 +136,19 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
 
 
 def first_reads(path: str, query: str, cookies: Dict[str, str], make_ctx: MakeCtx) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """([{url, body}] for each first read that answered, the cookies they set). A read that fails is
-    left out: the page asks for it itself and shows what it gets."""
+    """([{url, body}] for each first read that answered, with "then": the reads its page asks next, when
+    there are any; the cookies they set). A read that fails is left out: the page asks for it itself and
+    shows what it gets."""
     reads: List[Dict[str, Any]] = []
     set_cookies: List[str] = []
     for url, fn, params, q in first_requests(path, query, cookies):
         try:
             ctx = make_ctx(params, q)
-            reads.append({"url": url, "body": fn(ctx)})
+            read = {"url": url, "body": fn(ctx)}
+            then = then_reads(url, read["body"])
+            if then:
+                read["then"] = then
+            reads.append(read)
             set_cookies += ctx.set_cookies
         except (ApiError, NotKept):
             continue  # a missing session page, say, or a board not worked out yet: the page asks itself

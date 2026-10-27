@@ -19,6 +19,21 @@
     var first = document.getElementById('tau-first');
     if (first) { window.__TAU_FIRST__ = JSON.parse(first.textContent); first.remove(); }
   } catch (e) { /* unreadable: the page asks for it itself */ }
+  // A carried read can name the reads its page asks next ("then": Funds' Kalshi cash, which waits on Kalshi).
+  // They start now, beside the bundle, so that wait runs while it downloads; api() takes each answer once.
+  try {
+    var reads = window.__TAU_FIRST__;
+    for (var i = 0; reads && i < reads.length; i++) {
+      var then = reads[i] && reads[i].then;
+      for (var j = 0; then && j < then.length; j++) {
+        var u = then[j];
+        if (typeof u !== 'string' || u.indexOf('/api/') !== 0 || typeof fetch !== 'function') continue;
+        var early = window.__TAU_EARLY__ || (window.__TAU_EARLY__ = {});
+        early[u] = fetch(u, { credentials: 'same-origin', headers: {} });
+        early[u].catch(function () { /* api() asks afresh */ });
+      }
+    }
+  } catch (e) { /* the page asks for them itself */ }
   // Billing asks for /api/billing?tz=<getTimezoneOffset()> (its statement's days are yours). Only the
   // browser knows that offset: kept in a cookie, a later page shell can carry Billing's read (shell_reads.py).
   try {
