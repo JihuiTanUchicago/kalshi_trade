@@ -406,7 +406,7 @@ window.TauPage('research', (T) => {
       if (exRunBtn) { const t = exOpen && !exOpen.hidden ? 'or run it yourself' : 'Run the demo idea yourself'; if (exRunBtn.textContent !== t) exRunBtn.textContent = t; }
       // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
       const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
-      paint(root.querySelector('#rcount'), esc([own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0')));
+      paint(root.querySelector('#rcount'), esc([own ? `${own} session${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0')));
       const newest = d.runs.find((r) => !r.example);
       paintRows(root.querySelector('#runs'), d.runs.map((r) => [r.id, runRow(r, r === newest)]),
         `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`);

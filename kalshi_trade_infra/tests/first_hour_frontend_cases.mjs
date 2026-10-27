@@ -9,7 +9,7 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const AT = '2026-10-25T10:00:00Z';
 
-export function firstHourCases({name, frontend, billingPage, cardedBilling, dashboard, apStatus}) {
+export function firstHourCases({name, frontend, billingPage, cardedBilling, dashboard, apStatus, fundsData}) {
   const run = async (strategies) => {
     const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
       ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', brief: 1, status: 'succeeded', hypotheses_tried: 2,
@@ -187,5 +187,173 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     // Charged once, from a server that doesn't say, or with nothing left: no such line.
     for (const o of [{card_charged: true}, {}, {card_charged: false, balance: 0}])
       assert.doesNotMatch(await balanceFig(o), /free credits so far/, JSON.stringify(o));
+  });
+
+  test(`${name}: the autopilot card's week is one line until something is in it`, async () => {
+    const zero = {research_credits: 0, tested: 0, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0,
+      checkin_credits: 0, credits_left: 20, runway_days: null, pace_days: 0.01, card_charged: false};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard') return response(dashboard());
+      if (path === '/api/autopilot/status') return response({...apStatus, week: zero});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 20, min_run_balance: 1, auto_reload: null};
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    const week = () => f.root.querySelector('#dash-ap .ap-week');
+    f.S.ap = {...apStatus, week: zero}; f.paintDashAp();
+    assert.equal(week().textContent.trim(), 'Last 7 days: nothing yet. Its research, paper strategies and credits spent show here once it starts.');
+    assert.equal(week().querySelector('dl'), null);
+    assert.equal(week().querySelector('.ap-week-note'), null);
+    // Paused for want of a card: its reason stays in view under the one line.
+    f.S.ap = {...apStatus, week: zero, billing_blocked: true, billing_reason: 'card'}; f.paintDashAp();
+    assert.match(week().textContent, /nothing yet[\s\S]*Research is paused until you add a payment method/);
+    // A first session's cents, or a check-in, fill the block in as before.
+    for (const o of [{research_credits: 0.02}, {tested: 1}, {checkin_credits: 0.01}]) {
+      f.S.ap = {...apStatus, week: {...zero, ...o}}; f.paintDashAp();
+      assert.ok(week().querySelector('dl'), JSON.stringify(o));
+      assert.doesNotMatch(week().textContent, /nothing yet/, JSON.stringify(o));
+    }
+    f.clearTimers();
+  });
+
+  test(`${name}: Explore before the market feed arrives says so instead of counting 0 markets`, async () => {
+    const explore = async (d) => {
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/explore?') ? response(d) : response({})});
+      f.location.pathname = '/explore'; f.location.search = '';
+      await f.viewExplore(); await flush(); await flush();
+      const figs = f.root.querySelector('#xfigs').textContent;
+      f.clearTimers();
+      return figs;
+    };
+    const none = await explore({at: null, total: 0, shown: 0, matched: 0, page: 0, per: 40, markets: []});
+    assert.match(none, /Market feed\s*Not in yet/);
+    assert.doesNotMatch(none, /Markets tracked|In this list|Available markets|Time unavailable|\b0\b/);
+    // Once it is in, the counts and its time are back.
+    const at = new Date(Date.now() - 60000).toISOString();
+    const some = await explore({at, total: 1200, shown: 1, matched: 1, page: 0, per: 40,
+      markets: [{t: 'KXFED-26DEC-T4.00', ti: 'Fed rate above 4%', yb: 0.4, ya: 0.42, v24: 10, oi: 5}]});
+    assert.match(some, /1,200/);
+    assert.doesNotMatch(some, /Not in yet/);
+  });
+
+  test(`${name}: "Furthest on paper" says why it counts fewer trades than the paper book, in the track record's words`, async () => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response(dashboard());
+      if (path === '/api/autopilot/status') return response(apStatus);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      return response({});
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    f.S.ap = {...apStatus, paper_progress: {strategy_id: 3, title: 'Momentum', trades: 0, trades_needed: 30, net_pnl: 0, strategies: 1}};
+    f.paintDashAp();
+    const cell = f.root.querySelector('#dash-ap .apcard-figs').textContent;
+    assert.match(cell, /Furthest on paper\s*0 of 30 realistic paper trades\s*instant-fill paper trades left out \(fills real execution would not get\)/);
+    f.clearTimers();
+    // The track record's own caveat keeps the same words.
+    const record = frontend({fetchImpl: () => response({})}), host = record.document.createElement('section');
+    host.innerHTML = record.trackRecordPanel({trades: 3, wins: 2, losses: 1, label: 'Paper', net_pnl: 4, fees: 0.2, excluded_instant_fills: 12,
+      monthly: [], strategies: [], curve: [], sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge.'}}, 'paper', {min_sharpe_days: 14, min_trades: 30});
+    assert.match(host.innerHTML, /12 instant-fill paper trades left out \(fills real execution would not get\)\./);
+  });
+
+  test(`${name}: Research counts your sessions as sessions, never "runs"`, async () => {
+    const example = {id: 1, seq: 1, status: 'succeeded', market: 'btc15m', direction: 'random_walk', example: true, prompt: 'Random walk',
+      hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};
+    const mine = (id) => ({id, seq: id, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Mine ' + id,
+      hypotheses_tried: 3, strategies_passed: 0, spent_usd: 0.42, created_at: '2026-10-25T08:00:00Z'});
+    for (const [runs, n] of [[[mine(6), example], 1], [[mine(7), mine(6), example], 2]]) {
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path === '/api/runs' || path.startsWith('/api/runs?')) return response({runs, counts: {research_running: 0, research_queued: 0}, policy: null,
+          totals: {tried: 3 * n, passed: 0}});
+        if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+        return response({});
+      }});
+      f.S.me.user.autopilot = false; f.location.pathname = '/research';
+      await f.viewResearch(); for (let i = 0; i < 6; i++) await flush();
+      const said = f.root.querySelector('#rcount').textContent;
+      // Tau names them ("1 session · 1 example"); Meridian's heading carries the bare count.
+      assert.match(said, new RegExp(`^${n}( session${n > 1 ? 's' : ''} · 1 example)?$`), said);
+      assert.doesNotMatch(said, /\bruns?\b/);
+      f.clearTimers();
+    }
+  });
+
+  test(`${name}: an account with no demo key is shown no demo figure, on the dashboard or on Funds`, async () => {
+    const demo = {equity: 4321, capital: 4321, realized_pnl: 0, open_positions: 0, running: 0};
+    const board = async (key) => {
+      const f = frontend({fetchImpl: (path) => {
+        if (path.startsWith('/api/dashboard')) { const d = dashboard(); return response({...d, demo: {...d.demo, ...demo}}); }
+        if (path === '/api/autopilot/status') return response(apStatus);
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path.startsWith('/api/chat')) return response({messages: []});
+        return response({});
+      }});
+      f.S.me.kalshi_dev_connected = key;
+      await f.viewDashboard(); await flush();
+      const html = (f.root.querySelector('#other-accounts') || f.root.querySelector('#boardbody')).innerHTML;  // Meridian keeps it under Accounts
+      f.clearTimers();
+      return html;
+    };
+    // Tau's demo book starts at a capital Tau sets ($1,000 for a new account): without a key it is no balance at all.
+    let html = await board(false);
+    assert.match(html, /No demo key/);
+    assert.match(html, /Connect a Kalshi demo key on <a href="\/funds">Funds<\/a>/);
+    assert.doesNotMatch(html, /\$4,321\.00/);
+    // With a key (or from an /api/me that doesn't say), the figure is shown.
+    for (const key of [true, undefined]) {
+      html = await board(key);
+      assert.match(html, /\$4,321\.00 capital/, String(key));
+      assert.doesNotMatch(html, /No demo key/, String(key));
+    }
+    // Funds: the same, in its figures and its demo panel (no balance, no reload, until a key is in).
+    const funds = async (kalshi_dev, book = {}) => {
+      const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response({...fundsData(), demo: {capital: 4321, equity: 4321, realized: 0, ...book}, kalshi_dev}) : response({})});
+      await f.viewFunds(); await flush();
+      const out = {figs: f.root.querySelector('#ffigs').textContent, reload: f.root.querySelector('#demo'), main: f.root.querySelector('#main').innerHTML};
+      f.clearTimers();
+      return out;
+    };
+    let fd = await funds({connected: false});
+    assert.match(fd.figs, /Demo balance\s*No demo key/);
+    assert.doesNotMatch(fd.figs + fd.main, /4,321/);
+    assert.equal(fd.reload, null);
+    fd = await funds({connected: true, key_id: 'k2', balance: 50});
+    assert.match(fd.figs, /Demo balance\s*\$4,321\.00/);
+    assert.ok(fd.reload, 'the reload is there with a key');
+    // A book that traded, its key since removed, keeps its record and says it needs a key.
+    fd = await funds({connected: false}, {equity: 4326, realized: 5, closed_trades: 2});
+    assert.match(fd.figs, /Demo balance\s*\$4,326\.00[\s\S]*needs a demo key/);
+  });
+
+  test(`${name}: Funds for an account with no Kalshi key leads with Paper and folds the key forms under Connect Kalshi`, async () => {
+    const page = async (o) => {
+      const d = {...fundsData(), ...o};
+      const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response(d) : response({})});
+      await f.viewFunds(); await flush();
+      const html = f.root.querySelector('#main').innerHTML;
+      f.clearTimers();
+      return {f, at: (s) => html.indexOf(s)};
+    };
+    // No key of either kind: Paper first, then one closed Connect Kalshi holding the live and demo forms.
+    const fresh = await page({});
+    const connect = fresh.f.root.querySelector('#connect-kalshi');
+    assert.ok(connect, 'Connect Kalshi is there');
+    assert.ok(!connect.open, 'and closed');
+    assert.match(connect.querySelector('summary').textContent, /^Connect Kalshi/);
+    assert.ok(fresh.at('Paper account (simulation)') >= 0 && fresh.at('Paper account (simulation)') < fresh.at('id="connect-kalshi"'), 'Paper leads');
+    assert.ok(fresh.at('id="connect-kalshi"') < fresh.at('Kalshi account (live money)') && fresh.at('Kalshi account (live money)') < fresh.at('Kalshi demo (sandbox) account'), 'the key forms are in it');
+    assert.ok(connect.querySelector('#kalshi') && connect.querySelector('#kalshi-dev'), 'both key forms sit in the disclosure');
+    // A live key, or a demo key alone: today's order (live, demo, paper), no disclosure.
+    for (const keys of [{kalshi: {connected: true, key_id: 'k1', balance: 12}}, {kalshi_dev: {connected: true, key_id: 'k2', balance: 5}}]) {
+      const keyed = await page(keys);
+      assert.equal(keyed.f.root.querySelector('#connect-kalshi'), null, JSON.stringify(keys));
+      assert.ok(keyed.at('Kalshi account (live money)') < keyed.at('Kalshi demo (sandbox) account') && keyed.at('Kalshi demo (sandbox) account') < keyed.at('Paper account (simulation)'), JSON.stringify(keys));
+    }
   });
 }
