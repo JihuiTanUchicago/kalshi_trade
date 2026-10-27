@@ -1707,7 +1707,11 @@
   // counts them) says so: the track record leaves those trades out and names the strategy on a row saying so, while
   // "+$3.80 on paper since deploying \u00b7 2 trades" here read as a record.
   const realInstant = (r) => `${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record \u00b7\u00a0${money(r.pnl)} on paper \u00b7\u00a0${realNet('paper')}`;
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)} \u00b7\u00a0${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)} \u00b7\u00a0${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
+  // Some of them instant fills (the server's `instant_fills`, the same split): the count says how many, so "2 trades"
+  // no longer reads as the record beside a track record that counts 1 and says 1 instant fill was left out.
+  const realSome = (r) => (r.mode === 'paper' && +r.instant_fills > 0 && +r.instant_fills < r.trades
+    ? `, ${num(+r.instant_fills)} of them ${+r.instant_fills === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record` : '');
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}${realSome(r)} \u00b7\u00a0${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)} \u00b7\u00a0${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
   const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));

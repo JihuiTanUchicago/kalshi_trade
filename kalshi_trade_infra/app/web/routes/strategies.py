@@ -204,17 +204,30 @@ def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
 
 
 def _flag_instant_only(memo, cards: List[Dict], deps: List[Dict]) -> None:
-    """Stamp `instant_only` on a card whose shown paper book's closed trades were all instant fills (none
-    through the simulated venue, order_ref 'sim:'), as the track record tells them apart: it leaves those
-    trades out and names the strategy on a row saying so, while the list's "+$3.80 on paper since
-    deploying · 2 trades" read as a record. One kept read (book_memo), only for paper rows with trades."""
-    paper = {c["id"]: c["real"] for c in cards if (c.get("real") or {}).get("mode") == "paper" and c["real"].get("trades")}
+    """Stamp `instant_fills` (how many) on a card whose shown paper book has closed trades that were instant
+    fills (not through the simulated venue, order_ref 'sim:'), as the track record tells them apart: it leaves
+    those trades out and says how many, while the list's "+$1.30 on paper since deploying · 2 trades" read as
+    a record. `instant_only` when every one was. One kept read (book_memo), only for paper rows with trades."""
+    _stamp_instant_fills(lambda ids: book_memo.realistic_paper_closed(memo, ids), {c["id"]: c["real"] for c in cards
+                                if (c.get("real") or {}).get("mode") == "paper" and c["real"].get("trades")}, deps)
+
+
+def _stamp_instant_fills(read_sim, paper: Dict[int, Dict], deps: List[Dict]) -> None:
+    """For {strategy_id: its listed paper book ({trades, ...}, _book_totals)}: stamp `instant_fills`, its
+    closed paper rows less those filled through the simulated venue (`read_sim`: repo.realistic_paper_closed
+    over the same deployments, kept or not), when any, and `instant_only` when all were. An instant fill has no order_ref, so
+    each is one row and one trade, as track_record.prepare counts the ones it leaves out. Display only:
+    nothing here feeds a gate."""
+    paper = {sid: r for sid, r in paper.items() if r.get("trades")}
     if not paper:
         return
     dep_ids = {sid: [d["id"] for d in deps if d["strategy_id"] == sid and d["mode"] == "paper" and d.get("id")] for sid in paper}
-    sim = book_memo.realistic_paper_closed(memo, [i for ids in dep_ids.values() for i in ids])
+    sim = read_sim([i for ids in dep_ids.values() for i in ids])
     for sid, r in paper.items():
-        if not any(sim.get(i) for i in dep_ids[sid]):
+        n = max(0, int(r["trades"]) - sum(sim.get(i, 0) for i in dep_ids[sid]))
+        if n:
+            r["instant_fills"] = n
+        if n >= int(r["trades"]):
             r["instant_only"] = True
 
 
@@ -581,6 +594,12 @@ def get_strategy(ctx: Ctx):
         demo_health_memo(ctx.cur, ctx.uid, deps, stake=(s["spec"].get("sizing") or {}).get("stake"))
     if demo_pending:
         out["demo_health_pending"] = True
+    books = _book_totals(deps).get(s["id"], {})
+    # How many of its paper book's closed trades were instant fills, which the track record leaves out (one
+    # read over its own paper deployments, only when that book has a closed trade): the page's lines say so.
+    # Display only.
+    if "paper" in books:
+        _stamp_instant_fills(lambda ids: repo.realistic_paper_closed(ctx.cur, ids), {s["id"]: books["paper"]}, deps)
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
@@ -593,7 +612,7 @@ def get_strategy(ctx: Ctx):
         why_failed=(held_back or {}).get(s["id"]) or _gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
         deployments=[_deployment_out(d, [], demo_key_back=key_back, paper_books=_paper_books(deps)) for d in deps],
         # Its deployments summed per book ({mode: {pnl, trades, open, paused}}), as the strategies list sums them.
-        book_totals=_book_totals(deps).get(s["id"], {}),
+        book_totals=books,
         # Its removed deployments, newest first: book, dates and realized P&L (they left the list above).
         past_deployments=[_past_deployment_out(r) for r in _removed_with_totals(ctx.cur, ctx.uid, s["id"])],
         holdings=[{
