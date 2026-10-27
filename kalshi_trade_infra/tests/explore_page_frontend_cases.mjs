@@ -105,6 +105,7 @@ export function explorePageCases({name, frontend}) {
 
   test(`${name}: a Bitcoin contract's page says where Bitcoin is against the strike, how fresh that is, and the time left`, async () => {
     const {asked, body} = await openSpot(() => response(SPOT));
+    assert.equal(body().closest('section').querySelector('h2').textContent, 'Bitcoin vs the strike');
     assert.deepEqual(asked.filter((p) => p.startsWith('/api/explore/spot?')), ['/api/explore/spot?ticker=KXBTCD-26OCT2617-T112999.99']);
     const html = body().innerHTML;
     assert.match(html, /Bitcoin now<\/dt><dd><span class="fig ">\$113,420\.00<\/span><\/dd><dd class="sub-fig">Coinbase · 4s ago</);
@@ -115,7 +116,7 @@ export function explorePageCases({name, frontend}) {
     // A 15-minute window's start price pays Yes at or above it (greater_or_equal), and the page says so.
     const {body: m15} = await openSpot(() => response({...SPOT, strike: {...SPOT.strike, value: 113384.12, inclusive: true, from: 'record'}}),
       {ticker: 'KXBTC15M-26OCT262345-45', series: 'KXBTC15M'});
-    assert.match(m15().innerHTML, />\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
+    assert.match(m15().innerHTML, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
   });
 
   // A 15-minute window's page said "This window's start price isn't stored yet" under a heading reading "Target Price:
@@ -126,27 +127,32 @@ export function explorePageCases({name, frontend}) {
     let {f, body} = await openSpot(() => response(none), M15);
     assert.match(f.root.querySelector('h1').textContent, /Target Price: \$113,512\.08/);
     let html = body().innerHTML;
-    assert.match(html, />Strike<\/dt><dd><span class="fig ">\$113,512\.08<\/span><\/dd><dd class="sub-fig">Target price from the contract’s title</);
+    // The section, the figure and the distance all name it as the title does: "Bitcoin vs the strike" over a "Strike"
+    // beside "Spot vs target price" named one line twice.
+    assert.equal(body().closest('section').querySelector('h2').textContent, 'Bitcoin vs the target price');
+    assert.match(html, />Target price<\/dt><dd><span class="fig ">\$113,512\.08<\/span><\/dd><dd class="sub-fig">Read from the contract’s title</);
     // Spot is measured against it as the server measures a strike line: by how much, never which side pays. It is
     // named as the title names it (and as Explore's list does), "target price", not "strike".
     assert.match(html, />Spot vs target price<\/dt><dd><span class="fig ">−\$92\.08<\/span><\/dd><dd class="sub-fig">0\.08% below the target price</);
-    assert.doesNotMatch(html, /isn’t stored yet|on the (Yes|No) side|Spot vs strike|the strike/);
+    assert.doesNotMatch(html, /isn’t stored yet|on the (Yes|No) side|Spot vs strike|the strike|>Strike</);
     // Spot exactly on it says so in the same words.
     ({body} = await openSpot(() => response({...none, spot: {...SPOT.spot, price: 113512.08}}), M15));
     html = body().innerHTML;
     assert.match(html, />Spot vs target price<\/dt><dd><span class="fig ">At the target price</);
-    // A stored strike still wins over the title, with the server's distance.
+    // A stored start price still wins over the title, with the server's distance; on a 15-minute window it is still
+    // its target price, as Kalshi names it.
     ({body} = await openSpot(() => response({...SPOT, ticker: M15.ticker, strike: {...SPOT.strike, value: 113384.12, inclusive: true, from: 'record'}}), M15));
     html = body().innerHTML;
-    assert.match(html, />\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
-    assert.match(html, /\+\$420\.01/); assert.doesNotMatch(html, /contract’s title|target price/);
-    // A stored strike keeps "strike".
-    assert.match(html, />Spot vs strike<\/dt>/);
+    assert.match(html, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
+    assert.match(html, />Spot vs target price<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the target price ·\son the Yes side</);
+    assert.doesNotMatch(html, /contract’s title|>Strike<|the strike/);
+    // A stored strike on any other market keeps "strike" (the first case above).
     // Neither stored nor in the title: the honest line stays.
     ({body} = await openSpot(() => response(none), {...M15, sub: ''}));
     html = body().innerHTML;
-    assert.match(html, />Strike<\/dt><dd><span class="fig ">—<\/span><\/dd><dd class="sub-fig">This window’s start price isn’t stored yet</);
-    assert.doesNotMatch(html, /Spot vs/);
+    assert.match(html, />Target price<\/dt><dd><span class="fig ">—<\/span><\/dd><dd class="sub-fig">This window’s start price isn’t stored yet</);
+    assert.equal(body().closest('section').querySelector('h2').textContent, 'Bitcoin vs the target price');
+    assert.doesNotMatch(html, /Spot vs|>Strike</);
   });
 
   test(`${name}: a stored spot over two minutes old stays up and says plainly how old the feed is`, async () => {
