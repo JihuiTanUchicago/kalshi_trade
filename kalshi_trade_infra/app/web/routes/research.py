@@ -17,8 +17,8 @@ from app.trading.markets import MARKETS
 from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.explore import _efloat, _explore_feed, _feed_mid, _ticker_close_at
-from app.web.routes.strategies import (HELD_BACK, _autopilot_puts_on_paper, _held_back_lines, _later_verdicts, _owned_strategy,
-                                       _research_pass_verdicts, _strategy_card, warm_dev_curves)
+from app.web.routes.strategies import (HELD_BACK, _attach_no_record, _autopilot_puts_on_paper, _held_back_lines, _later_verdicts,
+                                       _owned_strategy, _research_pass_verdicts, _strategy_card, warm_dev_curves)
 from app.web.settings import MAX_ACTIVE_RESEARCH, MAX_RESEARCH_PER_DAY
 from app.web.views import (_gate_lines, _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd,
                            session_title)
@@ -211,16 +211,21 @@ def get_run(ctx: Ctx):
     mine = [s for s in strategies if s["run_id"] == run["id"]]
     warm_dev_curves(mine)
     auto = _autopilot_puts_on_paper(ctx.cur, ctx.user, mine)
-    later = _later_missed(ctx.cur, ctx.uid, mine)
+    recorded: set = set()  # its passes with a gatekeeper record, from _later_missed's own reads
+    later = _later_missed(ctx.cur, ctx.uid, mine, recorded=recorded)
     # The passes its done line counts that a later check left uncleared (a probation strategy held back
     # after paper was never among them), so that line agrees with the page's Passed figure.
     # Its "N tested so far, M passed" lines count them apart too, each the ones made by the time it was written.
     fell_at = _fell_at(mine, later)
+    cards = [{**_strategy_card(s), **({"autopilot_next": True} if s["id"] in auto else {}),
+              **later.get(s["id"], {})} for s in mine]
+    # A pass with no gatekeeper record (the old loose backtest gate) says its figure is later-period, not unseen,
+    # as on the Strategies list and its own page (#590). The seeded example is never judged, so it claims nothing.
+    _attach_no_record(cards, _judged(mine), recorded)
     return {
         "run": run,
         "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after), len(fell_at), fell_at)),
-        "strategies": [{**_strategy_card(s), **({"autopilot_next": True} if s["id"] in auto else {}),
-                        **later.get(s["id"], {})} for s in mine],
+        "strategies": cards,
         "rsi": _rsi_block(pol, dream),
     }
 
@@ -238,14 +243,20 @@ def uncleared_passes_at(cur, uid: int, run_id: int) -> List:
     return _fell_at(mine, _later_missed(cur, uid, mine))
 
 
-def _later_missed(cur, uid: int, strategies: List[Dict]) -> Dict[int, Dict]:
+def _judged(strategies: List[Dict]) -> List[Dict]:
+    """The strategies a session's later checks are read for: all but the seeded example's, as on its page."""
+    return [s for s in strategies if s.get("direction") != repo.DEMO_DIRECTION]
+
+
+def _later_missed(cur, uid: int, strategies: List[Dict], recorded: Optional[set] = None) -> Dict[int, Dict]:
     """{strategy id: {"verdict", "later_missed"}} for the session's strategies whose stored status leaves out
     a later check (strategies._later_verdicts: a passed one whose one-time locked holdout then failed or that
     the diversification check then held back, or a probation one held back after passing on paper), with
     the lines its strategy page shows: the holdout checks it missed (gate_explain.for_strategy) or the check
     that held it back (strategies._held_back_lines). The session page said "Passed: ... Open it to deploy it
-    on paper" for both. Reads the whole session at once, not each strategy. Display only."""
-    got = _later_verdicts(cur, uid, [s for s in strategies if s.get("direction") != repo.DEMO_DIRECTION])
+    on paper" for both. Reads the whole session at once, not each strategy. `recorded`, when given, is filled
+    as _later_verdicts fills it: the strategies those same reads found a gatekeeper record for. Display only."""
+    got = _later_verdicts(cur, uid, _judged(strategies), recorded=recorded)
     held = _gate_lines(_held_back_lines, cur, uid, [(s, got[s["id"]][1]) for s in strategies
                                                     if s["id"] in got and got[s["id"]][0] == HELD_BACK]) or {}
     out: Dict[int, Dict] = {}

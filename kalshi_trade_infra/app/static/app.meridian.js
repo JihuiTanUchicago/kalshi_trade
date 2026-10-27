@@ -1814,7 +1814,7 @@
     // And over how long: "+$6.20 on unseen data" beside "58% win" said neither period nor pace (its page says both).
     // A backtest-only strategy (the old loose gate) has no gatekeeper record: its out_of_sample is the backtest's
     // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590). So is
-    // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's own reads).
+    // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's or the session page's own reads).
     const pnlSub = [m.pnl == null ? '' : oos && (s.status === 'backtest-only' || s.no_gatekeeper_record) ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
       : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
@@ -2994,6 +2994,10 @@
   // yet" under that heading. With no stored strike it is read from there and says so; which side pays stays with
   // the rules, as for any strike read without its record. Spot is measured against it as the server measures a line.
   const TARGET_IN = /\btarget price:?\s*\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?/i;
+  // A contract name's "Target Price: $113,512.08" stays on one line, label and amount together: the hot rail's
+  // narrow column at 1280px ended a line on "Target Price:" with its amount on the next (or cut it off).
+  // Takes escaped HTML and returns it with the phrase in a .nobr span, its space a no-break one.
+  const glueTarget = (html) => String(html).replace(/\b(target price:?)\s+(\$\s*[\d,]+(?:\.\d+)?)/gi, '<span class="nobr">$1\u00a0$2</span>');
   function titleStrike(d) {
     const t = [d && d.sub, d && d.title].map((x) => TARGET_IN.exec(String(x || ''))).find(Boolean);
     const value = t ? +(t[1].replace(/,/g, '') + (t[2] || '')) : NaN;
@@ -4041,7 +4045,7 @@
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(SEP))}${SEP}${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? `${SEP}${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''}${SEP}${kfmt(m.v24)} volume over 24 hours${plain(when)}${SEP}Opens Kalshi in a new tab">
-      <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span>${esc(compactCondition(m.su))}</span>` : ''}</span><span class="hot-price" title="Midpoint quote"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
+      <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span${TARGET_IN.test(m.su) ? ' class="hot-cond-wide"' : ''}>${glueTarget(esc(compactCondition(m.su)))}</span>` : ''}</span><span class="hot-price" title="Midpoint quote"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
       <span class="hot-foot"><span class="hot-meta"><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)}${SEP}24h</span></span><span class="vh">Opens Kalshi in a new tab</span></span>${hotWhen(m)}</a>`;
   }
   function renderHotRail() {

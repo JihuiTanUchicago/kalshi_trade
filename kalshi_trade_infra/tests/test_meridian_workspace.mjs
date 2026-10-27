@@ -2103,6 +2103,26 @@ test('Meridian: Research counts a paused session as paused, not as running', asy
   f.clearTimers();
 });
 
+test('a session row’s cost keeps its own line in the Market column, and the example’s note sits under its title', async () => {
+  // Walk 2026-10-27 at 1280px: the 120px Market column read "BTC above $X at / 5pm ET · Cost: / $0.06", and the
+  // example's "An example Tau ran f…" was cut there.
+  const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};
+  const mine = {...researchRun(6, 'succeeded'), example: false, spent_usd: 0.06};
+  const f = researchFrontend([mine, example]);
+  await f.viewResearch(); await flush();
+  const [own, ex] = f.root.querySelectorAll('#runs a.run-card').map((a) => a.innerHTML);
+  assert.match(own, /<span class="run-cost"><span class="run-sep"> · <\/span>Cost: \$0\.06<\/span>/);
+  assert.match(ex, /<span class="run-note">An example Tau ran for you when you signed up\. It cost you nothing\.<\/span>/);
+  assert.doesNotMatch(ex.match(/<span class="run-meta">.*?<\/span><span class="run-when">/s)[0], /example Tau ran|Cost/);
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const rule = (sel) => [...css.matchAll(new RegExp('\\n' + sel.replace(/[.()]/g, '\\$&') + ' \\{([^}]*)\\}', 'g'))].map((m) => m[1]).join(';');
+  assert.match(rule('.research-history .run-cost'), /display: block; white-space: nowrap;/);
+  assert.match(rule('.research-history .run-cost .run-sep'), /display: none;/);
+  assert.match(rule('.research-history .run-meta'), /-webkit-line-clamp: none;/);
+  assert.match(rule('.research-history .run-note'), /grid-column: 1; grid-row: 2;/);
+  f.clearTimers();
+});
+
 test('Research lists the seeded example as an example and does not count it as a session', async () => {
   const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};
   const mine = {...researchRun(6, 'succeeded'), example: false, spent_usd: 0.42};
@@ -2849,6 +2869,25 @@ test('Hot Markets reports source snapshot age without changing quotes or perform
   assert.deepEqual([...storage], [['tau_hotrail', '1']]);
   assert.deepEqual(f.requests, []); assert.deepEqual(f.navigations, []);
   assert.equal(f.intervals.size, 0); assert.equal(f.timeouts.size, 0);
+});
+
+test('Hot Markets keeps a 15-minute window’s "Target Price:" with its amount, on a row of its own', () => {
+  // Walk 2026-10-27 at 1280px: the condition sat in the ~80px name column beside the volume, cut to "Target Price:…".
+  const f = frontend({storage: new Map([['tau_hotrail', '1']])});
+  f.root.innerHTML = '<aside id="hotrail"></aside>';
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin'}];
+  f.S.hot = {at: new Date().toISOString(), markets: [
+    {t: 'KXBTC15M-26OCT271830-30', s: 'KXBTC15M', ti: 'Bitcoin price up or down in next 15 mins?', su: 'Target Price: $113,512.08', bid: .54, ask: .56, v24: 10, h: [.4, .5]},
+    {t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above', bid: .5, ask: .52, v24: 10, h: [.4, .5]}]};
+  f.renderHotRail();
+  const rows = f.root.querySelectorAll('.hot-row');
+  assert.match(rows[0].innerHTML, /<span class="hot-cond-wide"><span class="nobr">Target Price: \$113,512\.08<\/span><\/span>/);
+  assert.match(rows[1].innerHTML, /<span>≥ \$113,000<\/span>/);  // a strike keeps its place beside the volume
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const wide = (css.match(/\n\.hot-title > span\.hot-cond-wide \{([^}]*)\}/) || [])[1] || '';
+  for (const want of [/grid-column: 1 \/ -1;/, /white-space: normal;/, /overflow: visible;/]) assert.match(wide, want);
+  assert.match(css, /\n\.hot-row:has\(\.hot-cond-wide\) \.hot-when \{ grid-row: 4; \}/);
+  f.clearTimers();
 });
 
 test('Hot Markets preserves dated contract identity and escapes full accessible quote names', () => {
@@ -6292,3 +6331,12 @@ test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" wi
   assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Unseen P&amp;L \+\$12\.00<\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
 newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});
+
+test('a Share my P&L card lines its Paper and Live labels up at the top', () => {
+  // Walk 2026-10-27: Paper's figure carries "on 17 trades" under it, so with the row aligned to the bottom
+  // "Live (real money)" sat 16px below "Paper".
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\n\.feedwrap \.snap-pnl \.snap-metrics \{ align-items: start; \}/);
+  const f = frontend();
+  assert.match(f.postSnapshot({kind: 'pnl', paper_pnl: 12.34, live_pnl: 0, paper_trades: 17, live_trades: 0}), /^<div class="snap snap-pnl">[\s\S]*<dl class="snap-metrics">/);
+});

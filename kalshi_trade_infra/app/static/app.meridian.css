@@ -1999,6 +1999,10 @@ body.landing-body .apf { display: none; }
 .hot-vol { grid-column: 2 / 4; grid-row: 2; font-size: 12px; line-height: 1.3; letter-spacing: 0; text-align: right; }
 .hot-when { grid-column: 1 / -1; grid-row: 3; display: flex; flex-wrap: wrap; gap: 0 10px; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
 .hot-when .xspot { color: var(--ink-2); }
+/* A 15-minute window's "Target Price: $113,512.08" is too wide for the name column beside the volume: cut to
+   "Target Price:…", its amount was lost. It takes a row of its own, the whole rail wide, label and amount together. */
+.hot-title > span.hot-cond-wide { grid-column: 1 / -1; grid-row: 3; white-space: normal; overflow: visible; text-overflow: clip; }
+.hot-row:has(.hot-cond-wide) .hot-when { grid-row: 4; }
 .hot-note { margin: 8px 0; font-size: 12px; line-height: 1.35; color: #8A5D18; }
 .hot-list { flex: none; overflow-y: auto; padding: 0 14px; max-height: calc(100% - 112px); }
 .hot-ft { margin-top: 4px; padding: 8px 12px; border-top: 0; font-size: 12px; }
@@ -2271,6 +2275,9 @@ body.landing-body .apf { display: none; }
 .feedwrap .snap-kind, .feedwrap .snap-meta { color: var(--ink-2); font-size: 12px; line-height: 18px; }
 .feedwrap .snap-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 4px 16px; margin: 8px 0 0; padding: 0; text-align: left; }
 .feedwrap .snap-evidence-metrics { grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr)); }
+/* Share my P&L: "Paper" carries a trade count under its figure and "Live (real money)" may read "No trades yet",
+   so the two labels line up at the top, not sit at different heights. */
+.feedwrap .snap-pnl .snap-metrics { align-items: start; }
 .feedwrap .snap-metrics > div { min-width: 0; margin: 0; padding: 0; }
 .feedwrap .snap-metrics dt { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 16px; }
 .feedwrap .snap-metrics dd { margin: 2px 0 0; font: 500 20px/24px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; overflow-wrap: anywhere; }
@@ -2353,6 +2360,10 @@ body.landing-body .apf { display: none; }
 .research-history .run-meta, .research-history .run-when { align-self: center; font-size: 13px; line-height: 18px; color: var(--ink-2); letter-spacing: 0; white-space: normal; }
 .research-history .run-meta { grid-column: 2; grid-row: 1 / span 2; }
 .research-history .run-when { grid-column: 3; grid-row: 1 / span 2; }
+.research-history .run-meta { display: block; -webkit-line-clamp: none; }
+.research-history .run-cost { display: block; white-space: nowrap; }
+.research-history .run-cost .run-sep { display: none; }
+.research-history .run-note { display: block; grid-column: 1; grid-row: 2; margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); }
 .research-history .run-state { grid-column: 4; grid-row: 1 / span 2; align-self: center; justify-self: end; text-align: right; font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; }
 .research-history .run-ratio { font: 500 16px/22px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; }
 .research-history .run-ratio b { font: inherit; }
@@ -2504,6 +2515,9 @@ body.landing-body .apf { display: none; }
   .research-history .run-card { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto; gap: 8px 16px; }
   .research-history .run-identity { display: block; grid-column: 1; grid-row: 1; }
   .research-history .run-meta-group { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 12px; margin-top: 4px; }
+  .research-history .run-cost { display: inline; }
+  .research-history .run-cost .run-sep { display: inline; }
+  .research-history .run-note { flex-basis: 100%; }
   .research-history .run-state { grid-column: 2; grid-row: 1; }
   .run-columns { display: none; }
 }

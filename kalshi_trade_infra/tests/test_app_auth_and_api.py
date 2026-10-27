@@ -1031,7 +1031,7 @@ def test_shared_pnl_keeps_each_book_apart_with_its_trade_count(monkeypatch):
 def test_shared_strategy_and_deployment_say_over_what_span(monkeypatch):
     from datetime import datetime
     from app.web.routes import community
-    monkeypatch.setattr(community, "_later_verdicts", lambda cur, uid, rows: {})
+    monkeypatch.setattr(community, "_later_verdicts", lambda cur, uid, rows, **k: {})
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: {
         "id": sid, "title": "Fade", "market": "btc15m", "status": "passed",
         "result": {"out_of_sample": {"pnl": 4.2, "trades": 23, "win_rate": .61, "days": 9.4}}})

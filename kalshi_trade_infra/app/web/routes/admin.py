@@ -203,7 +203,7 @@ def admin_system(ctx: Ctx):
         "bedrock":   {"kind": "ext"},
         "stripe":    {"kind": "ext"},
         "forward":   {"age": age.get("forward_collector_last_snapshot"), "rows": approx_rows("forward_quotes"), "unit": "quote rows"},
-        "cb_coll":   {"age": age.get("coinbase_collector_last_snapshot"), "rows": approx_rows("spot_candles_1m"), "unit": "1m candles"},
+        "cb_coll":   {"age": age.get("coinbase_collector_last_snapshot"), "rows": approx_rows("spot_candles_1m"), "unit": "candles"},
         "features":  {"age": age.get("model_features_1m_last_snapshot"), "rows": approx_rows("model_features_1m"), "unit": "feature rows"},
         "db":        {"rows": approx_rows("forward_quotes") + approx_rows("market_candles"), "size_mb": scalar("SELECT ROUND(SUM(data_length+index_length)/1048576) m FROM information_schema.tables WHERE table_schema=DATABASE()"),
                       **({"top_tables": repo.largest_tables(cur)} if is_admin else {})},
@@ -263,6 +263,14 @@ def _system_event(r: Dict, fell_at=None) -> Dict:
     if kind in ("step", "done"):
         noted = _with_gate_lines([dict(ev, data={})], len(fell_at or []), fell_at)[0]
         ev["message"] = (noted.get("data") or {}).get("note") or msg
+    elif kind == "hypothesis":
+        # The session page heads it "Hypothesis"; here it was a bare title among the other lines.
+        ev["message"] = "New idea: " + msg
+    elif kind == "challenger":
+        # "Challenger approved - X: ..." is the ledger's word; the session page calls it the skeptic's review.
+        m = _CHALLENGER.match(msg)
+        if m:
+            ev["message"] = "Skeptic’s review %s %s" % (_REVIEW_SAID[m.group(1)], m.group(2))
     ev["message"] = (customer_text.event_rows([ev])[0]["message"] or "")[:120]
     if kind != "verdict":
         return ev
@@ -274,9 +282,20 @@ def _system_event(r: Dict, fell_at=None) -> Dict:
     if not isinstance(data, dict):
         return ev
     data = _with_gate_lines([{"kind": "verdict", "message": msg, "data": data}])[0]["data"]
-    if data.get("note"):
-        ev["data"] = {"note": data["note"], "title": data.get("title") or None}
+    note = data.get("note")
+    if not note and data.get("why_failed"):
+        # A verdict whose plain words are its first missed check (the session page shows that line under it):
+        # "REJECTED - X: not a finalist, so never tested on unseen data (research pnl $-0.6 over 48 trades)."
+        # read as written here. It reads as that check's label, after the idea's title.
+        label = str((data["why_failed"][0] or {}).get("label") or "").strip()
+        note = (label if label.endswith((".", "!", "?")) else label + ".") if label else None
+    if note:
+        ev["data"] = {"note": note, "title": data.get("title") or None}
     return ev
+
+
+_CHALLENGER = re.compile(r"^Challenger\s+(approved|revised)\s*[-–]\s*(.*)$", re.S)
+_REVIEW_SAID = {"approved": "approved", "revised": "asked for changes to"}
 
 
 def system_code(ctx: Ctx):

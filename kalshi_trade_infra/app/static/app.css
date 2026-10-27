@@ -1604,7 +1604,8 @@ a.snap:hover { border-color: var(--ink-3); }
 /* A reply or an edit that didn't send says so under its own box. */
 .form-flash:not(:empty) { margin-top: 8px; }
 .cmt-form .input { min-height: 38px; }
-@media (max-width: 680px) { .post-tools .btn { margin-left: 0; } .composer-post:has(textarea:placeholder-shown):has(#post-strat option[value=""]:checked):not(:has(.armed)) .post-hint { display: none; } }
+/* On a phone the strategy picker takes its own row: beside Photo it read "Attach a strategy… (optiona". */
+@media (max-width: 680px) { .post-tools .btn { margin-left: 0; } .post-tools > .post-strat-f { flex-basis: 100%; } .composer-post:has(textarea:placeholder-shown):has(#post-strat option[value=""]:checked):not(:has(.armed)) .post-hint { display: none; } }
 
 /* ===== app fixes for Tau markup on Kursbuch ===== */
 .wordmark a { display: inline-flex; align-items: center; gap: 7px; }

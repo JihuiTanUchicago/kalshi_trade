@@ -38,7 +38,13 @@ def share(monkeypatch):
     monkeypatch.setattr(community.repo, "users_by_usernames", lambda cur, names: [])
     monkeypatch.setattr(community, "_email_community_post_async", lambda *a: None)
     later = {}  # what strategies._later_verdicts finds: (verdict, the experiment block it was judged on)
-    monkeypatch.setattr(community, "_later_verdicts", lambda cur, uid, rows: {r["id"]: later[r["id"]] for r in rows if r["id"] in later})
+    unrecorded = set()  # strategies _later_verdicts' reads find no gatekeeper record for (the old loose gate)
+
+    def later_verdicts(cur, uid, rows, recorded=None):
+        if recorded is not None:
+            recorded.update(r["id"] for r in rows if r["id"] not in unrecorded)
+        return {r["id"]: later[r["id"]] for r in rows if r["id"] in later}
+    monkeypatch.setattr(community, "_later_verdicts", later_verdicts)
 
     def create_post(cur, uid, body, kind, snapshot, image_id=None):
         stored.update(body=body, kind=kind, snapshot=snapshot)
@@ -50,6 +56,7 @@ def share(monkeypatch):
         assert community.create_community_post(ctx) == {"id": 77}
         return dict(stored)
     post.later = later
+    post.unrecorded = unrecorded
     return post
 
 
@@ -92,6 +99,24 @@ def test_a_shared_pass_a_later_check_left_uncleared_says_so_and_nothing_more(sha
     assert snap["status"] == "passed" and snap["verdict"] == "missed_final"
     assert set(snap) == {"kind", "title", "market", "status", "verdict", "pnl", "trades", "win_rate", "days"}
     assert "8123" not in json.dumps(snap) and "holdout" not in json.dumps(snap)
+
+
+def test_a_shared_pass_with_no_gatekeeper_record_says_so_from_the_same_read(share):
+    # A pass from the old loose backtest gate: its figure is the later-period slice that picked it, not held out,
+    # as its page and the Strategies list say (#590). The card said "on unseen data"; it now carries the flag.
+    share.unrecorded.add(4711)
+    snap = _as_read(share("strategy", 4711), mine=False)["snapshot"]
+    assert snap["status"] == "passed" and snap["no_gatekeeper_record"] is True
+    assert "8123" not in json.dumps(snap)
+    share.unrecorded.clear()
+    assert "no_gatekeeper_record" not in _as_read(share("strategy", 4711), mine=False)["snapshot"]
+
+
+def test_a_shared_non_pass_or_example_never_claims_a_missing_record(monkeypatch, share):
+    share.unrecorded.add(4711)
+    for over in ({"status": "failed"}, {"status": "backtest-only"}, {"direction": community.repo.DEMO_DIRECTION}):
+        monkeypatch.setattr(community.repo, "get_strategy", lambda cur, uid, sid, o=over: dict(STRATEGY, **o))
+        assert "no_gatekeeper_record" not in share("strategy", 4711)["snapshot"], over
 
 
 def test_the_author_alone_gets_the_id_their_card_links(share):

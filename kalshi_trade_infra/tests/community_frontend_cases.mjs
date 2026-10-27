@@ -120,4 +120,18 @@ export function communityCases({name, frontend}) {
     assert.match(f.postSnapshot({...card, verdict: 'held_back'}, '@bob'), /<span class="mk quiet">Held back<\/span>/);
     assert.match(f.postSnapshot(card, ''), /<span class="mk on">Passed<\/span>/);
   });
+  test(`${name}: a shared strategy with no gatekeeper record calls its figure later-period, never unseen`, () => {
+    // Walk 2026-10-27: a pass from the old loose gate (the server's no_gatekeeper_record) and a backtest-only
+    // strategy read "on unseen data" / "Unseen-data P&L" on the card, where its page and list say later-period.
+    const f = frontend({fetchImpl: () => response({})});
+    const card = {kind: 'strategy', id: 42, title: 'Loose', market: 'btc15m', status: 'passed', pnl: 5.5, trades: 48, win_rate: 0.58, days: 9};
+    for (const over of [{no_gatekeeper_record: true}, {status: 'backtest-only'}]) {
+      const html = f.postSnapshot({...card, ...over}, '@maya');
+      assert.match(html, /later-period/i, JSON.stringify(over));
+      assert.match(html, /after the split date/); assert.match(html, /not held out/);
+      assert.doesNotMatch(html, /unseen|never saw/i, JSON.stringify(over));
+    }
+    const kept = f.postSnapshot(card, '@maya');
+    assert.match(kept, /unseen|never saw/i); assert.doesNotMatch(kept, /later-period/i);
+  });
 }

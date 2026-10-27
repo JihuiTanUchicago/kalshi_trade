@@ -101,9 +101,9 @@ def test_a_running_sessions_progress_lines_count_the_uncleared_passes_apart(conn
     notes = [(e.get("data") or {}).get("note") for e in page["events"] if e["message"].startswith("Still running")]
     assert notes == [
         "3 tested so far, 1 passed. Looking for more; you can stop it anytime.",
-        "6 tested so far, 1 cleared every check; 1 more passed its first test, then wasn't cleared to trade. "
+        "6 tested so far, 1 cleared every check; 1 more passed its first test, then wasn’t cleared to trade. "
         "Looking for more; you can stop it anytime.",
-        "9 tested so far, 1 cleared every check; 2 more passed their first test, then weren't cleared to trade. "
+        "9 tested so far, 1 cleared every check; 2 more passed their first test, then weren’t cleared to trade. "
         "Looking for more; you can stop it anytime."]
     # The stored lines are unchanged, and the page's own stamps agree with the last line.
     assert all(e["message"].startswith("Still running - ") for e in page["events"] if e["kind"] == "step")
@@ -122,6 +122,6 @@ def test_a_running_sessions_progress_lines_count_the_uncleared_passes_apart(conn
     counting.later = 0
     more = server.get_run(server.Ctx(conn, user, (str(run),), {"after": str(last)}, {}, None))["events"]
     assert [e["data"]["note"] for e in more] == [
-        "12 tested so far, 1 cleared every check; 2 more passed their first test, then weren't cleared to trade. "
+        "12 tested so far, 1 cleared every check; 2 more passed their first test, then weren’t cleared to trade. "
         "Looking for more; you can stop it anytime."]
     assert counting.later == 1

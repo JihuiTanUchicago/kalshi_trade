@@ -454,6 +454,9 @@ window.TauPage('research', (T) => {
   };
   // `newest`: the user's newest session. When it ran out of credits its row offers Add credits, under
   // the row (a link can't sit inside the row's own link); older ones only say so.
+  // Its market, then what it cost: in the desktop Market column the cost takes its own line, whole ("Cost:" ended
+  // one line and "$0.06" began the next), and the example's note sits under its title, where a session's number
+  // goes, instead of cut to "An example Tau ran f…" in that 120px column.
   function runRow(r, newest) {
     const why = RUN_STOP[r.stop_reason] || '', { ok, fell } = runPassed(r);
     // A `stopped` session (interrupted, or a market with nothing to research yet) reads like a
@@ -469,7 +472,7 @@ window.TauPage('research', (T) => {
     const band = r.status === 'succeeded' ? (ok ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     // The example's note sits under its title: in the narrow Market column it was cut to "An example Tau ran f…".
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.example ? `<span class="run-note">${EXAMPLE_NOTE}</span>` : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${!r.example && r.spent_usd != null ? SEP + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.example ? `<span class="run-note">${EXAMPLE_NOTE}</span>` : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${!r.example && r.spent_usd != null ? `<span class="run-cost"><span class="run-sep">${SEP}</span>${runSpent(r)}</span>` : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
   }
 
