@@ -725,7 +725,11 @@ window.TauPage('strategies', (T) => {
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
       };
       const [vt, chip, label, words] = vmap[s.status] || ['quiet', 'quiet', rpHuman(s.status), 'Awaiting a recorded verdict.'];
-      verdictBody = `<div class="rp-verdict ${vt}"><span class="mk ${chip}">${esc(label)}</span><p>${esc(words)}</p></div>`;
+      // The page head already stamps its status (statusMark): a Void strategy read "Void" there and "Void" again as
+      // this verdict's heading, right under it. The verdict keeps its own label only when it says something else
+      // ("Not validated (record missing)" under Passed).
+      const said = String(statusMark(s)).replace(/<[^>]*>/g, '').trim();
+      verdictBody = `<div class="rp-verdict ${vt}">${label === said ? '' : `<span class="mk ${chip}">${esc(label)}</span>`}<p>${esc(words)}</p></div>`;
     }
     if (missed) verdictBody += `<div class="paper-sub"><h4 class="paper-h">What it missed, and what to try next</h4>${whyFailedHtml(missed)}</div>`;
     // On a phone the Deploy panel sits below the whole paper, screens down. A validated passed

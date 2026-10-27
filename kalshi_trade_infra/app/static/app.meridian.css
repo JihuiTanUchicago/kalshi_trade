@@ -928,6 +928,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .legacy-verdict .rp-verdict.quiet { border-left-color: var(--rule-2); }
 .legacy-verdict .rp-verdict .mk { padding: 0; border: 0; background: none; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .legacy-verdict .rp-verdict p { max-width: none; margin-top: 6px; font-size: 13px; line-height: 1.5; }
+.legacy-verdict .rp-verdict p:first-child { margin-top: 0; }
 .paper-sec { margin-top: 28px; }
 .paper-sec-t { font-size: 16px; letter-spacing: 0; text-transform: none; padding-bottom: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--rule); }
 .paper-sec-t::before { content: none; }

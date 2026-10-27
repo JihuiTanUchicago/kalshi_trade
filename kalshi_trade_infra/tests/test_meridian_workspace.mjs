@@ -318,6 +318,26 @@ test('populated validation and holdout phase curves render without blocking stra
   assert.equal(JSON.stringify(experiment), before); assert.equal(postRequests(f).length, 0);
 });
 
+// Walk 2026-10-27: a Void strategy's page stamped "Void" in its head and "Void" again as the verdict right under it.
+test('a strategy page stamps its status once: the verdict under the head drops a label that repeats it', async () => {
+  const stamps = (f, said) => [...f.root.querySelector('.strategy-pagehead').querySelectorAll('.mk'), ...f.root.querySelector('article.paper').querySelectorAll('.mk')]
+    .filter(el => el.textContent.trim() === said).length;
+  for (const [status, said, words] of [['failed', 'Void', /It reached the unseen-data gate and failed it/], ['rejected', 'Rejected', /Rejected — /],
+    ['backtest-only', 'Backtest only', /never put through statistical validation/]]) {
+    const f = strategyFrontend(detailStrategy({status, experiment: null}));
+    await f.viewStrategy(42); await flush();
+    assert.equal(stamps(f, said), 1, `${status}: one "${said}" stamp`);
+    const verdict = f.root.querySelector('.legacy-verdict');
+    assert.equal(verdict.querySelector('.mk'), null); assert.match(verdict.textContent, words);
+  }
+  // A pass with no gatekeeper record keeps its verdict's own label: it says what the head's Passed doesn't.
+  const f = strategyFrontend(detailStrategy({status: 'passed', experiment: null}));
+  await f.viewStrategy(42); await flush();
+  assert.equal(stamps(f, 'Passed'), 1);
+  assert.equal(f.root.querySelector('.legacy-verdict .mk').textContent, 'Not validated (record missing)');
+  assert.match(readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8'), /\.legacy-verdict \.rp-verdict p:first-child \{ margin-top: 0; \}/);
+});
+
 test('strategy evidence identifies run-wide trial counts and places missing validation before backtest figures', async () => {
   for (const [count, expected] of [[17, '17'], [0, '0'], [null, '—']]) {
     const detail = detailStrategy({hypotheses_tried: count, experiment: null});
