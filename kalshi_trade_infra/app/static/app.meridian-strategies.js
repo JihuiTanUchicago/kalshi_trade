@@ -432,8 +432,9 @@ window.TauPage('strategies', (T) => {
       const ds = (s.deployments || []).filter((d) => d.mode === mode);
       if (!ds.length) return '';
       const { pnl, trades: n, open, instant } = bookTotal(s, mode, ds);
+      // "deployed Oct 18" stays whole (.nobr): at 390px in Meridian "deployed" ended a line and "Oct 18" began the next.
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? ` ·\u00a0<span class="nobr">deployed ${when(since)}</span>` : ''}</p>${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together), and,

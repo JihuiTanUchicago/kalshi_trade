@@ -352,6 +352,13 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch((await page(0)).html, /instant fill/);
   });
 
+  test(`${name}: since deploying keeps "deployed" with its date on one line`, async () => {
+    // Walk 2026-10-27: at 390px in Meridian a book's line ended "· deployed" and "Oct 18" began the next line.
+    const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 1.3, closed_trades: 2, open_positions: 0, created_at: '2026-10-18T08:00:00Z'}];
+    const f = await open({status: 'passed', deployments});
+    assert.match(f.root.querySelector('.real-record').innerHTML, /·\u00a0<span class="nobr">deployed [^<]+<\/span>/);
+  });
+
   test(`${name}: past deployments say which money each was and that fees are in, as the lines above do`, async () => {
     // "Demo Sep 28–Oct 1, −$1.50 over 1 closed trade" said neither that it was Tau's demo book (not real money)
     // nor that Kalshi's fees were taken off, where the "Since deploying" line above it now says both.
