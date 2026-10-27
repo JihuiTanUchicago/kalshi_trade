@@ -878,9 +878,11 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({open_positions: open, recent_closed: closed})); }});
   await f.viewDashboard();
   const why = key => positionFor(f.root, key).querySelector('.position-why');
-  assert.equal(why('open-1').textContent, openWhy);
+  // The server joins entry and exit with a plain " · "; drawn, each is SEP, so a wrapped line ends on "·".
+  const drawn = s => s.replace(/ · /g, '\u00a0· ');
+  assert.equal(why('open-1').textContent, drawn(openWhy));
   assert.equal(why('open-2'), null);  // nothing stored to say: no empty line
-  assert.equal(why('closed-3').textContent, exitWhy.replace('<', '&lt;'));
+  assert.equal(why('closed-3').textContent, drawn(exitWhy.replace('<', '&lt;')));
   assert.equal(why('closed-4').textContent, 'Held to settlement: &lt;img src=x&gt;');
   assert.ok(f.root.querySelector('#recent-settlements').contains(why('closed-3')));
   assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /<img/);
@@ -889,12 +891,12 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
   const d = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments: [], open_positions: [pos, {...pos, ticker: 'KXRAINNYC-T2', why: null}]}); }});
   await d.viewDeploy(); await flush();
   const table = d.root.querySelector('#openpos').innerHTML;
-  assert.deepEqual([...table.matchAll(/<div class="sub-fig pos-why">([^<]*)<\/div>/g)].map(m => m[1]), [openWhy]);
+  assert.deepEqual([...table.matchAll(/<div class="sub-fig pos-why">([^<]*)<\/div>/g)].map(m => m[1]), [drawn(openWhy)]);
   const holdings = [{ticker: 'KXBTC15M-A', side: 'yes', qty: 2, entry_price: 0.35, cost: 0.7, unrealized: null, mode: 'paper',
     market_close_time: '2026-10-25T07:45:00Z', why: openWhy}];
   const s = strategyFrontend(detailStrategy({holdings})); await s.viewStrategy(42); await flush();
   const list = s.root.querySelector('#main').innerHTML;
-  assert.match(list, new RegExp('<ul class="holdlist">[\\s\\S]*<div class="sub-fig pos-why">' + openWhy.replace(/[+.*?()]/g, '\\$&') + '</div></li>'));
+  assert.match(list, new RegExp('<ul class="holdlist">[\\s\\S]*<div class="sub-fig pos-why">' + drawn(openWhy).replace(/[+.*?()]/g, '\\$&') + '</div></li>'));
   assert.equal(postRequests(f).length + postRequests(d).length, 0);
 });
 

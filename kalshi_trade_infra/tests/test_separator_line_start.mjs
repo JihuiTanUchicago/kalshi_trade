@@ -72,6 +72,20 @@ for (const bundle of ['app.js', 'app.meridian.js']) {
       LEADING.test(line) && !/^\s*(\/\/|\*)/.test(line) ? [`${f}:${i + 1}: ${line.trim().slice(0, 120)}`] : [])));
     assert.deepEqual(seen, []);
   });
+
+  // A plain " · " (a breakable space on both sides) can start a line too. Only a line that splits a server's or
+  // Kalshi's own text on it keeps one; a server line drawn as is goes through sepLine, which makes each one SEP.
+  test(`${bundle}: the bundle and its page files have no plain " · " separator`, () => {
+    const dir = new URL('../app/static/', import.meta.url);
+    const own = readFileSync(new URL(bundle, dir), 'utf8');
+    const land = own.indexOf('  // ---------- landing (pre-login) ----------'), dash = own.indexOf('  // ---------- dashboard ----------');
+    const files = [[bundle, own.slice(0, land) + own.slice(dash)], ...pageFiles(bundle).map((f) => [f, readFileSync(new URL(f, dir), 'utf8')])];
+    const PLAIN = new RegExp(`[ \\t]${DOT} `);
+    const seen = files.flatMap(([f, src]) => src.split('\n').flatMap((line, i) => (
+      PLAIN.test(line.replace(/\s\/\/\s.*$/, '')) && !/^\s*(\/\/|\*)/.test(line) && !line.includes('.split(') ? [`${f}:${i + 1}: ${line.trim().slice(0, 120)}`] : [])));
+    assert.deepEqual(seen, []);
+    assert.match(own, /\n {2}const sepLine = \(s\) => esc\(s\)\.split\(' \\u00b7 '\)\.join\(SEP\);\n/);
+  });
 }
 
 test('the check finds the old separator, in a page and in source', () => {

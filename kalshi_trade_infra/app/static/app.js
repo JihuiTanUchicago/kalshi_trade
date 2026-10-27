@@ -126,6 +126,10 @@
   // "·" and the next never starts with it (" ·\u00a0" glued it to what followed: "· 3 trades" began lines at 390px).
   // Joins (`.join(SEP)`) and template pieces (`${a}${SEP}${b}`) on every page use it; page files get it from shared().
   const SEP = '\u00a0\u00b7 ';
+  // A server line made of pieces joined by a plain " · " (a position's entry and exit, services/trade_why.py),
+  // escaped, with each of its separators as SEP: at 390px a line began "· Holds to settlement". The API keeps
+  // its plain text, so CSV and other readers are unchanged.
+  const sepLine = (s) => esc(s).split(' \u00b7 ').join(SEP);
   // Inline markdown on ALREADY-ESCAPED text (so there is never raw HTML in the output).
   // Each marker needs its closing partner to fire, so a half-typed `**foo` or `` `foo `` from a
   // mid-stream token stays literal until it closes — the property the streaming feed relies on.
@@ -2367,7 +2371,7 @@
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? (r.value != null ? `worth ${usd(r.value)} (${money(r.unrealized)})` : money(r.unrealized)) : openCost({ open_cost: r.cost, open_at_cost: r.at_cost != null ? r.at_cost : r.qty * r.entry_price }))}</span>
-            <small>${esc(r.title)}\u00a0· <span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : `\u00a0· settles ${settleAt(r.market_close_time)}`}\u00a0· ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'}\u00a0· ${when(closed ? r.closed_at : r.opened_at)}</small>${r.why ? `<small class="stub-why">${esc(r.why)}</small>` : ''}</div>`).join('')
+            <small>${esc(r.title)}\u00a0· <span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : `\u00a0· settles ${settleAt(r.market_close_time)}`}\u00a0· ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'}\u00a0· ${when(closed ? r.closed_at : r.opened_at)}</small>${r.why ? `<small class="stub-why">${sepLine(r.why)}</small>` : ''}</div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash-wrap"><div class="dash">
           <div>
@@ -2523,7 +2527,7 @@
       // card's labels, one more row a position; it sits under its figure, in the Unrealized cell.
       const posUnreal = (p) => `<div class="pos-unreal">${money(p.unrealized)}${posMarked(p)}</div>`;
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unrealized</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : posUnreal(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : posUnreal(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
@@ -4098,7 +4102,7 @@
   // drawing with undefined, and its page fails with Try again.
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
-    actionLink, adminViewOn, alert0, announce, SEP, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
+    actionLink, adminViewOn, alert0, announce, SEP, sepLine, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
