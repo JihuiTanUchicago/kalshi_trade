@@ -450,11 +450,14 @@ window.TauPage('research', (T) => {
   // the card (a link can't sit inside the card's own link); older ones only say so.
   function runRow(r, newest) {
     const why = RUN_STOP[r.stop_reason] || '', late = runLate(r), { ok, fell } = runPassed(r);
-    const unclear = fell ? `, ${num(fell)} not cleared` : '';
+    // Its own item in the state's wrapping row: a bare ", 1 not cleared" became a line of its own that
+    // began with the comma, and "0 of 2 passed, 1 not cleared" read as if nothing had passed. It says the
+    // uncleared ones passed too, as the headline's "2 more passed but weren't cleared to trade" does.
+    const unclear = fell ? `<span class="run-fell">\u00b7\u00a0${num(fell)} more passed but not cleared</span>` : '';
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
       : r.status === 'succeeded' ? `${why ? why + ' \u00b7\u00a0' : ''}<span class="${ok ? 'gain' : ''}">${ok} of ${r.hypotheses_tried} passed</span>${unclear}`
-      : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${ok ? ` ·\u00a0<span class="gain">${ok} passed</span>${unclear}` : fell ? ` ·\u00a0${num(fell)} not cleared` : ''}`
+      : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${ok ? ` ·\u00a0<span class="gain">${ok} passed</span>` : ''}${unclear}`
       : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
     // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
