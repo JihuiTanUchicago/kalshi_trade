@@ -16,8 +16,9 @@ const page = (over) => ({ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD'
   points: Array.from({length: 130}, (_, i) => ({t: 1793012400 + 60 * i, yes: .5, vol: 1})), mine: {open: [], closed: []}, ...over});
 
 export function explorePageCases({name, frontend}) {
-  const open = async (payload) => {
+  const open = async (payload, narrow = false) => {
     const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore/market?') ? response(payload) : response({}))});
+    if (narrow) f.window.matchMedia = (q) => ({matches: /max-width/.test(q), addEventListener() {}, removeEventListener() {}});
     f.S.me.markets = MARKETS;
     f.location.pathname = '/explore'; f.location.search = '?m=' + encodeURIComponent(payload.ticker);
     await f.viewExplore(); await settle();
@@ -51,6 +52,13 @@ export function explorePageCases({name, frontend}) {
     assert.match(next.textContent, /Tau researches only the 5pm ET close of this ladder, so your strategies don’t trade this contract\./);
     assert.deepEqual(next.querySelectorAll('a').map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily']);
     assert.equal(next.querySelector('a.primary'), null, 'no research button that reads as researching this contract');
+  });
+
+  test(`${name}: on a phone the price chart is drawn near the width it shows at, so its labels stay legible`, async () => {
+    const wide = await open(page());
+    assert.match(wide.root.querySelector('.pchart').getAttribute('viewBox'), /^0 0 760 /);
+    const f = await open(page(), true);
+    assert.match(f.root.querySelector('.pchart').getAttribute('viewBox'), /^0 0 340 220$/);
   });
 
   test(`${name}: the market page's raw candles come 25 to a page, so its actions stay within reach`, async () => {
