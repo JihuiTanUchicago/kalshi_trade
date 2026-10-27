@@ -235,10 +235,10 @@ def test_each_demo_state_says_one_plain_thing(conn, offline):
     assert engine.decide(conn, dep, [], {}, engine.Sources(demo_kernel=lambda u: None)) == {"paused": "demo disabled"}
     paused = repo.get_deployment(cur, uid, ids["demo"])
     assert paused["status"] == "paused" and "demo (sandbox) key" in paused["status_reason"]
-    key_line = "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page."
+    key_line = "Demo isn't trading: your Kalshi demo key isn't connected."
     for where, health in _seen(conn, uid, sid).items():
         assert health["code"] == "demo_key" and health["line"] == key_line, where
-        assert health["action"] == {"label": "Add demo key", "href": "/funds#connect-kalshi"}, where
+        assert health["action"] == {"label": "Add it on the Funds page", "href": "/funds#connect-kalshi"}, where
     # Paused by the user, there's nothing demo is failing to do.
     repo.set_deployment_status(cur, uid, ids["demo"], "paused", "By you")
     seen = _seen(conn, uid, sid)

@@ -5,7 +5,7 @@ window.TauPage('autopilot', (T) => {
   'use strict';
   const {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
-    apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apMarketNames, apReloadFailed, apShowFocus,
+    apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
     apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, go, ICON, mdLite,
     liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
     wakers
@@ -501,7 +501,8 @@ window.TauPage('autopilot', (T) => {
         gates.innerHTML = `${pausesIn(d.credits_low_days)} <a href="/billing">Add credits or turn on auto-reload</a>.`;
         gates.classList.add('warn');
       } else {
-        gates.textContent = apLiveBlock(d) || apLiveArmed(d);
+        // The gate's "the Funds page" is a link (apLiveBlockHtml); the armed note stays plain words.
+        gates.innerHTML = apLiveBlock(d) ? apLiveBlockHtml(d) : esc(apLiveArmed(d));
         gates.classList.remove('warn');
       }
     }

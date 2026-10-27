@@ -52,6 +52,18 @@ def test_demo_key_back_reads_the_key_only_for_a_demo_key_pause(monkeypatch):
     assert views._demo_key_back(None, 7, [_dep(mode="demo", status="stopped", status_reason=DEMO_KEY_REASON)]) is False
 
 
+def test_the_demo_key_line_links_to_connect_kalshi_through_its_action(monkeypatch):
+    # Every page renders `line` escaped and `action` as the link after it. The line ended "Add it on the Funds
+    # page." in plain text before a separate "Add demo key" link; now those words are the link.
+    monkeypatch.setattr(views.repo, "get_kalshi_dev_key", lambda cur, uid: None)
+    health = views._health_from(None, 7, [_dep(mode="demo", status="running", status_reason=None)], None,
+                                lambda: pytest.fail("no demo cash read without a key"))
+    assert health == {"code": "demo_key", "need": "your Kalshi demo key",
+                      "line": "Demo isn't trading: your Kalshi demo key isn't connected.",
+                      "action": {"label": "Add it on the Funds page", "href": "/funds#connect-kalshi"}}
+    assert "Funds page" not in health["line"] and "<" not in health["line"]
+
+
 @pytest.mark.parametrize("realized,still", [(-12.40, True), (-10.01, True), (-10.00, False), (-3.0, False), (None, False)])
 def test_a_loss_guard_pause_says_resume_pauses_again_while_the_loss_is_past_the_guard(realized, still):
     why = views._status_why(_dep(status_reason=GUARD_REASON, realized_pnl=realized))

@@ -3718,6 +3718,9 @@
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }
+  // apLiveBlock's line as the panel shows it: "the Funds page" links to Funds' Connect Kalshi. It was plain text,
+  // with nothing to press. The flash a refused press shows (apFlash) keeps the plain words.
+  const apLiveBlockHtml = (d) => esc(apLiveBlock(d)).replace('the Funds page', '<a href="/funds#connect-kalshi">the Funds page</a>');
   // Read out as well as shown: the live switch, the kill switch and an unmet gate answered only in
   // print, so a reader heard nothing after pressing them.
   function apFlash(box, msg, kind) {
@@ -3950,7 +3953,7 @@
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
     actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
-    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
+    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
