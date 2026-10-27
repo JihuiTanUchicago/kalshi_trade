@@ -87,7 +87,7 @@ def admin_waitlist(ctx: Ctx):
     ok = repo.set_waitlist_status(ctx.cur, email, "approved") if action == "approve" \
         else repo.remove_waitlist(ctx.cur, email)
     if not ok:
-        raise ApiError(404, "That email isn't on the waitlist.")
+        raise ApiError(404, "That email isn’t on the waitlist.")
     return {"ok": True, "email": email, "action": action}
 
 

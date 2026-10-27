@@ -236,7 +236,7 @@ def test_billing_shows_the_last_failure_until_an_auto_reload_succeeds(monkeypatc
     monkeypatch.setattr(repo, "last_credit_at", lambda cur, uid, kind: ok_at[0] if kind == "autoreload" else pytest.fail(kind))
     # Read in the bell or not, Billing still says it: it is about the card, not the bell.
     assert billing_routes._reload_failed(object(), UID) == {
-        "at": NOW, "text": "It couldn't add $20.00 in credits. " + billing.CARD_DECLINED}
+        "at": NOW, "text": "It couldn’t add $20.00 in credits. " + billing.CARD_DECLINED}
     for older in (NOW - timedelta(minutes=5), NOW):  # an older success (or one in the same second) keeps it
         ok_at[0] = older
         assert billing_routes._reload_failed(object(), UID)["at"] == NOW

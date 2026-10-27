@@ -3105,7 +3105,7 @@ test('Buying credits says how long the amount lasts at the user\'s own pace', as
   await f.viewBilling(); await flush();
   const note = () => f.root.querySelector('#topup-note').textContent;
   // $20 at $7 a week ($1 a day) -> about 20 days.
-  assert.match(note(), /You'll pay \$21\.00 \(\$20\.00 credits \+ 5% fee\)\. At your pace \(\$7\.00 a week\) that's about 20 days of research\./);
+  assert.match(note(), /You’ll pay \$21\.00 \(\$20\.00 credits \+ 5% fee\)\. At your pace \(\$7\.00 a week\) that’s about 20 days of research\./);
   const amt = f.root.querySelector('#topup-amt'); amt.value = '200'; amt.oninput();
   assert.match(note(), /over 3 months of research/);
   data = billingData({configured: true, spent_7d: 0});

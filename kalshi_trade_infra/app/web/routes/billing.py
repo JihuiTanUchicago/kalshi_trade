@@ -127,7 +127,8 @@ def _reload_failed(cur, uid: int) -> Optional[Dict]:
         ok_at = repo.last_credit_at(cur, uid, "autoreload")
         if ok_at is not None and ok_at > note["created_at"]:  # a tie keeps the failure: hiding one is worse
             return None
-        return {"at": note["created_at"], "text": billing.reload_failed_text(note["body"])}
+        # Stored straight ("couldn't"), as the email says it; the pages write an apostrophe curly.
+        return {"at": note["created_at"], "text": customer_text.curly(billing.reload_failed_text(note["body"]))}
     except Exception as e:  # noqa: BLE001
         print("[billing] auto-reload failure read failed for user %s: %r" % (uid, e), flush=True)
         return None

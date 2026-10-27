@@ -476,7 +476,7 @@ def _require_billing_ready(ctx: Ctx, gerund: str) -> None:
                             "unlock the moment a card is on file — you won't be charged until they run out."
                             % (gerund, int(billing.FREE_BONUS)))
     if billing.configured() and repo.credit_balance(ctx.cur, ctx.uid) <= 0:
-        raise ApiError(402, "You're out of credits. Add credits on the Billing tab to keep %s." % gerund)
+        raise ApiError(402, "You’re out of credits. Add credits on the Billing tab to keep %s." % gerund)
 
 
 # A queued or silent run reads as overdue once it passes the reaper's limit (worker.ABANDONED_AFTER,

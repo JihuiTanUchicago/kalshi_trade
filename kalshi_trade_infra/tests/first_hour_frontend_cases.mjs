@@ -56,7 +56,7 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     figs = f.root.querySelector('#bfigs').textContent;
     assert.match(figs, /Research pauses in\s*About 3 days\s*at \$4\.00 a day so far/);
     const amt2 = f.root.querySelector('#topup-amt'); amt2.value = '20'; amt2.oninput();
-    assert.match(f.root.querySelector('#topup-note').textContent, /At your pace \(\$4\.00 a day so far\) that's about 5 days of research\./);
+    assert.match(f.root.querySelector('#topup-note').textContent, /At your pace \(\$4\.00 a day so far\) that’s about 5 days of research\./);
     // A week-old account (or an older server with no pace_days) keeps the week's words.
     for (const o of [{pace_days: 7}, {}]) {
       f = billingPage(cardedBilling(o));
