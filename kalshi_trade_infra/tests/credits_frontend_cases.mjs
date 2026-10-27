@@ -7,6 +7,7 @@
 // - A credits pause while the auto-reload card is declined names the card as the step, everywhere.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -64,6 +65,29 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     assert.match(await tone({balance: -0.3, min_run_balance: 1}), /tint neg/);
   });
 
+  test(`${name}: the statement's credits added wear their own neutral tone, not a P&L gain's, and a debit still reads as one`, async () => {
+    // Top-ups, auto-reloads and the welcome bonus were drawn in the `gain` class, the one a P&L gain wears.
+    const at = (day) => ({day, created_at: `${day}T09:00:00Z`, first_at: `${day}T09:00:00Z`});
+    const f = billingPage(cardedBilling({ledger_cut: false, ledger: [
+      {kind: 'usage', amount: -1.25, item: 'Autopilot research', model: 'Claude Opus 4.6', calls: 3, ...at('2026-10-26')},
+      {kind: 'autoreload', amount: 25, card_charge: 26.38, ...at('2026-10-26')},
+      {kind: 'topup', amount: 10, card_charge: 10.55, ...at('2026-10-25')},
+      {kind: 'bonus', amount: 20, memo: 'Welcome credits', ...at('2026-10-24')}]}));
+    await f.viewBilling(); await flush();
+    const amounts = [...f.root.querySelectorAll('#bledger tbody tr')].filter((tr) => !tr.querySelector('.day-sum'))
+      .map((tr) => { const m = tr.querySelector('td.num').innerHTML.match(/^<span class="([^"]*)">([^<]*)<\/span>$/) || []; return {cls: m[1], text: m[2]}; });
+    assert.equal(amounts.length, 4);
+    assert.deepEqual(amounts.map((a) => a.cls), ['credit-out', 'credit-in', 'credit-in', 'credit-in']);
+    for (const a of amounts) assert.doesNotMatch(a.cls, /gain|loss|pos|neg/);
+    assert.deepEqual(amounts.map((a) => a.text), ['−$1.25', '+$25.00', '+$10.00', '+$20.00']);
+    // The theme's stylesheet draws both in neutral ink: no P&L green on a credit line.
+    const css = readFileSync(new URL(`../app/static/${name === 'Meridian' ? 'app.meridian.css' : 'app.css'}`, import.meta.url), 'utf8');
+    const rules = css.match(/[^{}]*\.credit-(?:in|out)[^{}]*\{[^}]*\}/g) || [];
+    assert.ok(rules.length);
+    for (const r of rules) assert.doesNotMatch(r, /gain-ink|--pos|--up|#0E5C33|#365D3B/i);
+    assert.match(css, /\.t-ledger \.credit-in, \.t-ledger \.credit-out \{ color: var\(--ink\);/);
+  });
+
   test(`${name}: Billing says when auto-reload next charges the card, or when research pauses, not a stop auto-reload prevents`, async () => {
     let f = billingPage(cardedBilling({balance: 25.71, spent_7d: 100.17, runway_days: 1.7, reload_days: 1.4, pace_days: 7,
       autoreload_threshold: 5, autoreload_charge: 26.38, min_run_balance: 1}));
@@ -111,6 +135,30 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     // With auto-reload on research never pauses at the floor: the card is charged each time instead.
     assert.match(line, /It has no daily spending cap: each time your balance falls to \$5\.00, auto-reload charges your card and research carries on\. With auto-reload off, it pauses when your balance is under \$1\.00\. <a href="\/billing">Billing<\/a> lists every charge\./);
     assert.doesNotMatch(line, /then pauses/);
+    f.clearTimers();
+  });
+
+  test(`${name}: the autopilot card says "under $0.01" for a sliver of spend, as Billing does, not $0.00`, async () => {
+    // Billing's split read "autopilot check-ins under $0.01" while the card dropped the check-ins (or said $0.00
+    // of research) for the same week. The server names a figure that spent something but rounds to $0.00.
+    const spent = (w) => f.root.querySelector('#dash-ap .ap-week dl dd').textContent.replace(/\s+/g, ' ');
+    let f = await apPage({...apStatus, week: {...week, research_credits: 20.01, checkin_credits: 0, checkin_under_cent: true}}, {});
+    assert.match(spent(), /^\$20\.01 real money · plus under \$0\.01 on its check-ins$/);
+    f.clearTimers();
+    f = await apPage({...apStatus, week: {...week, research_credits: 0, research_under_cent: true, checkin_credits: 0.09}}, {});
+    assert.match(spent(), /^under \$0\.01 real money · plus \$0\.09 on its check-ins$/);
+    assert.doesNotMatch(spent(), /\$0\.00/);
+    f.clearTimers();
+    // Only a sliver spent, nothing else this week: not "nothing yet" beside Billing's "under $0.01".
+    const sliver = {research_credits: 0, tested: 0, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0,
+      checkin_credits: 0, checkin_under_cent: true, credits_left: 20, runway_days: null, pace_days: 7};
+    f = await apPage({...apStatus, week: sliver}, {});
+    assert.doesNotMatch(f.root.querySelector('#dash-ap .ap-week').textContent, /nothing yet/);
+    assert.match(spent(), /^\$0\.00 real money · plus under \$0\.01 on its check-ins$/);
+    f.clearTimers();
+    // No flag (nothing spent, or an older server): the figures as before, no check-ins named at $0.
+    f = await apPage({...apStatus, week: {...week, checkin_credits: 0}}, {});
+    assert.match(spent(), /^\$100\.01 real money$/);
     f.clearTimers();
   });
 

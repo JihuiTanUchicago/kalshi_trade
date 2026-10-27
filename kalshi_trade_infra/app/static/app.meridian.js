@@ -3491,11 +3491,15 @@
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
     // A first day's week is all zeros: a block of $0.00 and 0 under two paragraphs explaining them. Until
     // something is in it, it is one line. A paused one keeps its credits line, which says why it paused.
-    const empty = !(+w.research_credits >= 0.005) && !(+w.checkin_credits >= 0.005) && !+w.tested && !+w.passed
-      && !+w.not_cleared && !+w.paper_started && !trades && !pnl;
+    // A figure that spent something but shows $0.00 says "under $0.01", as Billing's split does (the server's
+    // research_under_cent and checkin_under_cent); the figures themselves are Billing's parts.
+    const spend = (v, under) => (under && !(+v >= 0.005) ? 'under $0.01' : usd(v || 0));
+    const checkins = +w.checkin_credits >= 0.01 || !!w.checkin_under_cent;
+    const empty = !(+w.research_credits >= 0.005) && !w.research_under_cent && !(+w.checkin_credits >= 0.005) && !w.checkin_under_cent
+      && !+w.tested && !+w.passed && !+w.not_cleared && !+w.paper_started && !trades && !pnl;
     if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>Last 7 days:</b> nothing yet. Its research, paper strategies and credits spent show here once it starts.</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>${creditsPaid(w.card_charged)}${+w.checkin_credits >= 0.01 ? ` ·\u00a0plus ${usd(w.checkin_credits)} on its check-ins` : ''}</small></dd></div>
+      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? ` ·\u00a0plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot's paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>

@@ -115,3 +115,37 @@ def test_the_cards_research_and_check_ins_are_billings_parts_when_rounding_each_
     card = chat_routes._autopilot_week(object(), 7, {'cost_7d': chat_routes._research_cents(credits)}, reads, credits, None)
     assert card['checkin_credits'] == by['autopilot_review'] == 0.0
     assert _c(card['research_credits']) + _c(card['checkin_credits']) == _c(state['spent_7d'])
+
+
+def test_the_card_names_a_figure_under_a_cent_as_billing_does(monkeypatch):
+    """Billing's split said "autopilot check-ins under $0.01" (spent_7d_under_cent) while the card dropped the
+    check-ins at $0.00, and research of a fraction of a cent read $0.00 there. The card's week now names the
+    same parts, and its figures stay Billing's."""
+    reads = SimpleNamespace(customer=lambda: None, balance=lambda: 19.99)
+
+    def both(week):
+        state = _billing_week(monkeypatch, week, sum(week.values()))
+        monkeypatch.setattr(chat_routes.billing, 'configured', lambda: True)
+        monkeypatch.setattr(chat_routes.repo, 'autopilot_paper_week', lambda *a: {'started': 0, 'pnl': 0.0, 'trades': 0})
+        credits = {'research': week['research'] + week['autopilot_research'], 'by_source': dict(week)}
+        card = chat_routes._autopilot_week(object(), 7, {'cost_7d': chat_routes._research_cents(credits)}, reads, credits, None)
+        return state, card
+
+    state, card = both({'research': 10.004, 'autopilot_research': 10.004, 'autopilot_review': 0.004, 'chat': 0.0, 'other': 0.0})
+    assert state['spent_7d_under_cent'] == ['autopilot_review']
+    assert card['checkin_credits'] == 0.0 and card['checkin_under_cent'] is True
+    assert card['research_credits'] == 20.01 and card['research_under_cent'] is False
+
+    state, card = both({'research': 0.0, 'autopilot_research': 0.003, 'autopilot_review': 0.25, 'chat': 0.0, 'other': 0.0})
+    assert state['spent_7d_under_cent'] == ['autopilot_research']
+    assert card['research_credits'] == 0.0 and card['research_under_cent'] is True
+    assert card['checkin_credits'] == state['spent_7d_by']['autopilot_review'] == 0.25 and card['checkin_under_cent'] is False
+
+    # Nothing spent is not "under $0.01": a part at $0 stays unnamed, on both.
+    state, card = both(dict.fromkeys(WEEK, 0.0))
+    assert state['spent_7d_under_cent'] == []
+    assert card['research_under_cent'] is False and card['checkin_under_cent'] is False
+    # The heavy week: nothing under a cent, the pinned figures unchanged.
+    state, card = both(dict(WEEK))
+    assert (card['research_credits'], card['checkin_credits']) == (100.01, 0.09)
+    assert card['research_under_cent'] is False and card['checkin_under_cent'] is False
