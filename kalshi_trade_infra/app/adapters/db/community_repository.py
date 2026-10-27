@@ -37,6 +37,21 @@ def edit_post(cur, post_id: int, user_id: int, body: str) -> bool:
     return cur.rowcount == 1
 
 
+def delete_post(cur, post_id: int, user_id: int) -> bool:
+    """Remove the author's own post with its replies, likes, reactions and photo, so nothing it shared
+    stays readable. False when the post isn't theirs or is already gone."""
+    cur.execute("SELECT image_id FROM app_posts WHERE id=%s AND user_id=%s", (post_id, user_id))
+    row = cur.fetchone()
+    if not row:
+        return False
+    for table in ("app_post_comments", "app_post_likes", "app_post_reactions"):
+        cur.execute("DELETE FROM %s WHERE post_id=%%s" % table, (post_id,))
+    cur.execute("DELETE FROM app_posts WHERE id=%s AND user_id=%s", (post_id, user_id))
+    if row.get("image_id"):
+        cur.execute("DELETE FROM app_images WHERE id=%s AND user_id=%s", (row["image_id"], user_id))
+    return True
+
+
 def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30, mine_only: bool = False) -> List[Dict]:
     cur.execute(
         """SELECT p.id, p.body, p.kind, p.snapshot_json, p.image_id, p.edited_at, p.likes_count, p.comments_count, p.created_at,

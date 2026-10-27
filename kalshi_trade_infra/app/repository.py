@@ -95,7 +95,7 @@ from app.adapters.db.email_prefs_repository import (  # noqa: F401
     community_email_recipients, mark_community_emailed, optional_email_address, set_email_opt_out,
 )
 from app.adapters.db.community_repository import (  # noqa: F401
-    add_comment, create_post, edit_post, get_image, list_comments, list_posts, post_author, post_exists,
+    add_comment, create_post, delete_post, edit_post, get_image, list_comments, list_posts, post_author, post_exists,
     reactions_for, recent_posts_count, store_image, toggle_like, toggle_reaction,
 )
 

@@ -9,6 +9,7 @@ import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
+import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
@@ -164,7 +165,8 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   const elapse = ms => { for (const [id, run] of [...timeouts]) if ((delays.get(id) || 0) <= ms) { timeouts.delete(id); run(); } };
   let nextId = 0;
   const location = {pathname: '/strategies/42', search, origin: 'http://offline.invalid', reload: () => reloads.push(true)};
-  const navigate = (_state, _title, path) => { navigations.push(path); location.pathname = path; };
+  // A path's query goes to location.search, as in a browser (a sign-in redirect carries ?next=).
+  const navigate = (_state, _title, path) => { navigations.push(path); const [p, q] = String(path).split('?'); location.pathname = p; location.search = q ? '?' + q : ''; };
   const context = vm.createContext({
     Intl, URL, URLSearchParams, AbortController,
     document, testStripeLoader: stripeLoader,
@@ -224,6 +226,7 @@ deployActionCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
 stopReasonCases({name: 'Meridian', frontend});
 trustGlitchCases({name: 'Meridian', frontend});
 bellCases({name: 'Meridian', frontend});
+communityCases({name: 'Meridian', frontend});
 settingsCases({name: 'Meridian', frontend, current: 'meridian', storageFor: m => m, cardWallOpts: () => ({stripeLoader: async () => STRIPE_STUB})});
 researchPollCases({name: 'Meridian', frontend});
 runPageCases({name: 'Meridian', frontend});
@@ -5401,6 +5404,7 @@ test('Meridian Community: Post and Share my P&L send once while either is out, a
   }});
   await f.viewCommunity(); await flush();
   const form = f.root.querySelector('#composer-post'), share = form.querySelector('[data-share="pnl"]'), postBtn = form.querySelector('[type=submit]');
+  share.onclick(); f.elapse(500);  // Share my P&L asks first (community_frontend_cases.mjs); the second press sends
   const first = share.onclick(); await flush();
   assert.deepEqual([share.disabled, postBtn.disabled], [true, true]);
   await share.onclick(); form.onsubmit({preventDefault() {}}); await flush();

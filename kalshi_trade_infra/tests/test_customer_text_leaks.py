@@ -290,7 +290,7 @@ def test_a_comment_notice_never_names_the_commenter_by_email(monkeypatch):
         {"id": 3, "email": "mentioned@example.net", "email_opt_out": 0, "name": "Mo"}])
     monkeypatch.setattr(repo, "add_notification", lambda cur, uid, kind, body, link=None: notes.append(body))
     community.create_comment(_ctx(("1",), body={"body": "hey @mo"}))
-    assert notes == ["Someone mentioned you.", "Someone commented on your post."]
+    assert notes == ["Someone mentioned you in a reply.", "Someone replied to your post."]
     assert [s[0] for s in sent] == ["mentioned@example.net", "author@example.net"]
     for _to, subject, body in sent:
         _no_leak(subject + body.replace(notify.PUBLIC_URL, ""))
