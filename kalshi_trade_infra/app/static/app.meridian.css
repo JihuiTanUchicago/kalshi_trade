@@ -1723,6 +1723,8 @@ body.landing-body .apf { display: none; }
 .apf-stats dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
 .apf-stats dd.neg { color: #8A1021; }
 .apf-stats dd.pos { color: #0E5C33; }
+/* Which money a figure is and what it includes: on its own line, in the label's ink, not the figure's red or green. */
+.apf-stats dd small.apf-note { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--ink-3); }
 .apf-live { color: var(--signal); font-weight: 600; }
 .apf-live-wait { white-space: nowrap; }  /* "1 live (waiting)" breaks at its " · ", never inside */
 .apf-story { margin: 12px 0; }

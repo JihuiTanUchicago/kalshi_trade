@@ -499,7 +499,7 @@ window.TauPage('autopilot', (T) => {
       `<dt>Running</dt><dd>${runTotal ? runParts.join(' ·\u00a0') : 'None'}</dd>`,
       // With nothing on paper and nothing realized today, there is no day's P&L to show: "$0.00" read as a result.
       // The figure says which money it is and that fees are in, as the dashboard card and Deploy say it.
-      `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : `${usd(pnl, true)} <small>${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>`}</dd>`,
+      `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : `${usd(pnl, true)} <small class="apf-note">${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>`}</dd>`,
     ].concat(budgetShown ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
       // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.

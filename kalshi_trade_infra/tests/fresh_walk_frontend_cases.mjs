@@ -71,10 +71,10 @@ export function freshWalkCases({name, frontend, dashboard}) {
     assert.equal(await today(FRESH_ON), 'Nothing on paper');
     // A running paper strategy's day is a figure, and it says which money it is and that fees are in, as the dashboard
     // card's paper P&L does: a bare "$0.00" beside "Furthest on paper ... net on them" said neither.
-    assert.equal(await today({...FRESH_ON, paper_running: 1}), '$0.00 <small>paper, after Kalshi fees and the spread</small>');
-    assert.equal(await today({...FRESH_ON, today_paper_pnl: -0.5}), '−$0.50 <small>paper, after Kalshi fees and the spread</small>');
+    assert.equal(await today({...FRESH_ON, paper_running: 1}), '$0.00 <small class="apf-note">paper, after Kalshi fees and the spread</small>');
+    assert.equal(await today({...FRESH_ON, today_paper_pnl: -0.5}), '−$0.50 <small class="apf-note">paper, after Kalshi fees and the spread</small>');
     const live = /<dt>Live realized today \(UTC\)<\/dt><dd[^>]*>(.*?)<\/dd>/.exec((await panel({...FRESH_ON, autopilot_live: true, today_live_pnl: -2})).querySelector('#apf-stats').innerHTML)[1];
-    assert.equal(live, '−$2.00 <small>real money, after Kalshi fees</small>');
+    assert.equal(live, '−$2.00 <small class="apf-note">real money, after Kalshi fees</small>');
   });
 
   // The System page is in every customer's menu, and its research, backtest and engine boxes read every user's rows:
