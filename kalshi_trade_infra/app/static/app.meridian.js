@@ -396,7 +396,9 @@
     return cut.replace(/[ ,;:.\u2013\u2014-]+$/, '') + '\u2026';
   };
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
-  const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
+  // A market by the catalog's label. A key the catalog no longer lists (a retired market) reads "Unlisted market",
+  // never the raw key, as the autopilot card says one (apMarketName).
+  const marketLabel = (k) => { const m = S.me && (S.me.markets || []).find((x) => x.key === k); return m && m.label ? m.label : 'Unlisted market'; };
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
   const MKT_SHORT = {
