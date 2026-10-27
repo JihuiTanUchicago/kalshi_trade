@@ -5675,6 +5675,10 @@
   }
   // A send or a decision that failed says why just above the composer. alert0 put it at the top of the
   // page, under the panel, and a phone's full-screen sheet hid it altogether.
+  // A send Tau didn't confirm (no reply, or the edge's 5xx) may have landed. Reloading isn't the check: the
+  // chat reads every few seconds while it is open, so a message that went through shows up in it.
+  const sendUnsure = (err) => err instanceof ApiError && err.message === failText(0, true);
+  const CHAT_UNSURE = 'Tau didn\u2019t confirm your message. If it went through, it shows up in the chat in a few seconds; if it doesn\u2019t, send it again.';
   function apErr(box, msg, billing) {
     const el = box.querySelector('#apf-err');
     if (!el) { if (msg) alert0(msg); return; }
@@ -6019,7 +6023,7 @@
       cf.dataset.sending = '1';
       apErr(box, '');
       try {
-        await busy(cf.querySelector('button'), async () => { try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; keepDraft(''); await apLoadChat(box, false, undefined, 'end'); } catch (err) { apErr(box, err.message, err.status === 402); } });
+        await busy(cf.querySelector('button'), async () => { try { await api('/api/chat', { content }); ta.value = ''; ta.style.height = ''; keepDraft(''); await apLoadChat(box, false, undefined, 'end'); } catch (err) { apErr(box, sendUnsure(err) ? CHAT_UNSURE : err.message, err.status === 402); } });
       } finally { delete cf.dataset.sending; }
     };
     apLoadChat(box, true);

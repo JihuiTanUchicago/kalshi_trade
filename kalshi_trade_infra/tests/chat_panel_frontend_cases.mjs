@@ -5,6 +5,8 @@
 //   limits; off: suggest, for your Approve) and, with payments on, that each message is paid from
 //   credits and what the last one cost (the chat read's turn_cost).
 // - Out of credits, the failed send links to Billing and keeps the message.
+// - A send Tau didn't confirm says the message shows in the chat if it went through (the chat's next read
+//   shows it), never to reload the page.
 // - A pause proposal says, before Approve, that pausing sells what the strategy holds.
 // - "Last move" keeps a strategy name that holds " — " whole (it read "I left Fade the late spike."),
 //   using the names the server lists in la.titles, and shows the engine's own pause by name.
@@ -89,6 +91,33 @@ export function chatPanelCases({name, frontend, storageFor}) {
     assert.match(err.innerHTML, /^You&#39;re out of credits\.|^You're out of credits\./);
     assert.match(err.innerHTML, /<a href="\/billing">Open Billing<\/a>$/);
     assert.equal(p.ta.value, 'Anything new?'); assert.equal(store.get(DRAFT), 'Anything new?');
+  });
+
+  test(`${name}: a send Tau didn't confirm says the message shows in the chat if it went through, not to reload`, async () => {
+    // It said "Reload the page to check", but the open chat reads every few seconds and shows the message once it lands.
+    const UNSURE = 'Tau didn’t confirm your message. If it went through, it shows up in the chat in a few seconds; if it doesn’t, send it again.';
+    for (const post of [() => Promise.reject(new TypeError('Failed to fetch')),  // no reply at all
+      () => ({ok: false, status: 502, json: async () => { throw new SyntaxError('Unexpected token <'); }})]) {  // the edge's page
+      let landed = [];
+      const p = await panel({post, chat: () => landed});
+      type(p.ta, 'Pause the BTC fade');
+      await p.form.onsubmit({preventDefault() {}}); await flush();
+      const err = p.box.querySelector('#apf-err');
+      assert.equal(err.hidden, false);
+      assert.equal(err.textContent, UNSURE);
+      assert.doesNotMatch(err.textContent, /[Rr]eload/);
+      assert.equal(p.ta.value, 'Pause the BTC fade');  // kept, for a send again if it never shows
+      // It did land: the chat's next read shows it, as the line said.
+      landed = [{id: 41, role: 'user', content: 'Pause the BTC fade', created_at: AT}];
+      for (const tick of [...p.f.intervals.values()]) tick();
+      await flush(); await flush();
+      assert.ok(p.box.querySelector('#apf-messages').children.some((li) => /Pause the BTC fade/.test(li.innerHTML)));
+    }
+    // Tau's own words for a failure stay as Tau said them.
+    const q = await panel({post: () => response({error: 'Messages are limited to 2,000 characters.'}, 400)});
+    type(q.ta, 'x');
+    await q.form.onsubmit({preventDefault() {}}); await flush();
+    assert.equal(q.box.querySelector('#apf-err').textContent, 'Messages are limited to 2,000 characters.');
   });
 
   test(`${name}: a pause proposal says Approve sells what the strategy holds, in its book`, async () => {
