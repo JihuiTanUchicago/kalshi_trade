@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Sequence
 
@@ -60,8 +61,12 @@ def evaluate(policy: Dict, hours: Sequence[datetime], workers: int = 1, target_s
     jobs = [(policy, int(h.timestamp()), target_size) for h in hours]
     if workers <= 1:
         return [_eval_args(j) for j in jobs]
-    with ProcessPoolExecutor(max_workers=workers) as ex:
-        return list(ex.map(_eval_args, jobs))
+    try:
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            return list(ex.map(_eval_args, jobs))
+    except BrokenProcessPool as e:   # a worker died (out of memory): finish in this process, one hour at a time
+        print("[maker_eval] worker pool broke (%r); rerunning %d hours in-process" % (e, len(jobs)), flush=True)
+        return [_eval_args(j) for j in jobs]
 
 
 def _utc(s: str) -> datetime:

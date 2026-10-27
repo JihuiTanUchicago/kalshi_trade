@@ -331,7 +331,7 @@ def test_spot_fair_value_from_features_keeps_the_rich_side_out():
     rep = MakerReplay(["KXCRYPTOLEAD15M"], MakerConfig(quote_size=500, max_inventory=500, min_edge=0.02), [prog],
                       fair_source="spot")
     out = rep.run(_FeatStore(tables, feats), h, h.replace(minute=20))
-    assert rep.feat[(tk, t0 + 100)][0] == pytest.approx(0.30, abs=1e-3)
+    assert rep.features_at(tk, t0 + 100)[0] == pytest.approx(0.30, abs=1e-3)
     assert out["fills"] == 0
     with pytest.raises(ValueError):
         MakerReplay(["X"], MakerConfig(), fair_source="oracle")

@@ -33,6 +33,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+import numpy as np
 import pyarrow.compute as pc
 
 from app.adapters.sim.queue_replay import QueueReplayVenue
@@ -113,7 +114,12 @@ class MakerReplay:
             raise ValueError("move_window_s must be one of %s" % (sorted(MOVE_WINDOWS),))
         self.series, self.cfg = list(series), cfg
         self.fair_source, self.move_window_s = fair_source, move_window_s
-        self.feat: Dict[Tuple[str, int], Tuple[Optional[float], Optional[float]]] = {}   # (ticker, sec) -> (fair, move bp)
+        # The hour's features as one row per ticker and one column per second (a dict of per-second
+        # tuples took ~750 MB for a KXBTCD hour): ticker -> row, first second, fair[row, s], move bp[row, s].
+        self.feat_row: Dict[str, int] = {}
+        self.feat_t0 = 0
+        self.feat_fair = np.empty((0, 0))
+        self.feat_move = np.empty((0, 0))
         self.pending: Dict[str, List[list]] = defaultdict(list)   # ticker -> [due sec, horizon, hour, outcome, price, qty, fee]
         self.hours: Dict[int, dict] = defaultdict(_hour_row)
         self.tickers_from_markets = tickers_from_markets
@@ -181,7 +187,7 @@ class MakerReplay:
                     self.reward_s[t] += 1
                     self.hours[_hour(sec)]["reward"] += r
                 rewarded.add(yid)
-            fair, move = self.feat.get((t, sec), (None, None))
+            fair, move = self.features_at(t, sec)
             if fair is not None:
                 fairs[yid] = fair
             quotes[yid] = Quote(yid, float(sec), by, ask, v.books[t]["yes"].get(by), v.books[t]["no"].get(bn),
@@ -212,24 +218,44 @@ class MakerReplay:
         cols = ["sec", "ticker", "strike_lo", "strike_hi", "dist_sigma", "dist_sigma_comp", "microprice",
                 MOVE_WINDOWS[self.move_window_s]]
         f = store.features_1s(h, he, tickers=tickers, series=None if tickers else self.series, columns=cols)
-        self.feat = {}
-        if not f or "sec" not in f:
+        self.feat_row, self.feat_fair, self.feat_move = {}, np.empty((0, 0)), np.empty((0, 0))
+        if not f or "sec" not in f or not len(f["sec"]):
             return
-        n = len(f["sec"])
-        nan = [math.nan] * n
-        lo, hi = f.get("strike_lo", nan), f.get("strike_hi", nan)
-        dsc, ds = f.get("dist_sigma_comp", nan), f.get("dist_sigma", nan)
-        micro, mv = f.get("microprice", nan), f.get(MOVE_WINDOWS[self.move_window_s], nan)
-        for i, (sec, t) in enumerate(zip(f["sec"], f["ticker"])):
-            fair = None
-            if self.fair_source == "micro":
-                fair = _num(micro[i])
-            elif self.fair_source == "spot" and (_num(lo[i]) is None) != (_num(hi[i]) is None):
-                d = _num(dsc[i])
-                d = _num(ds[i]) if d is None else d
-                fair = None if d is None else 0.5 * (1.0 + math.erf(d / math.sqrt(2.0)))
-            m = _num(mv[i])
-            self.feat[(t, int(sec))] = (fair, None if m is None else m * 1e4)
+        sec = np.asarray(f["sec"], dtype=np.int64)
+        n = len(sec)
+
+        def col(name):
+            return np.asarray(f[name], dtype=float) if name in f else np.full(n, np.nan)
+
+        if self.fair_source == "micro":
+            fair = col("microprice")
+        elif self.fair_source == "spot":
+            d = col("dist_sigma_comp")
+            d = np.where(np.isnan(d), col("dist_sigma"), d)
+            single = np.isnan(col("strike_lo")) != np.isnan(col("strike_hi"))
+            fair = np.full(n, np.nan)
+            ok = single & np.isfinite(d)
+            fair[ok] = [0.5 * (1.0 + math.erf(x / math.sqrt(2.0))) for x in d[ok]]
+        else:
+            fair = np.full(n, np.nan)
+        move = col(MOVE_WINDOWS[self.move_window_s]) * 1e4
+        names, row = np.unique(np.asarray(f["ticker"], dtype=object), return_inverse=True)
+        self.feat_t0 = int(sec.min())
+        off = sec - self.feat_t0
+        self.feat_fair = np.full((len(names), int(off.max()) + 1), np.nan)
+        self.feat_move = np.full_like(self.feat_fair, np.nan)
+        self.feat_fair[row, off] = fair
+        self.feat_move[row, off] = move
+        self.feat_row = {t: i for i, t in enumerate(names.tolist())}
+
+    def features_at(self, ticker: str, sec: int) -> Tuple[Optional[float], Optional[float]]:
+        """(fair, move bp) of ``ticker`` at ``sec``; None where the hour's features have no value."""
+        r = self.feat_row.get(ticker)
+        k = int(sec) - self.feat_t0
+        if r is None or k < 0 or k >= self.feat_fair.shape[1]:
+            return None, None
+        fair, move = float(self.feat_fair[r, k]), float(self.feat_move[r, k])
+        return (None if math.isnan(fair) else fair), (None if math.isnan(move) else move)
 
     def _track(self, fills, sec: Optional[int]) -> None:
         for f in fills:

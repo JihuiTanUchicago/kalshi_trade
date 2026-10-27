@@ -99,3 +99,27 @@ def test_the_timer_rotates_series_so_each_holdout_window_is_used_once():
     from app.maker_lab_run import auto_series
     picks = [auto_series(H0 + timedelta(hours=h)) for h in range(0, 24, 4)]
     assert picks == ["KXBTCD", "KXBTC15M", "KXBTC"] * 2
+
+
+def test_a_worker_killed_out_of_memory_finishes_the_hours_in_process(monkeypatch):
+    from concurrent.futures.process import BrokenProcessPool
+    from app.adapters.sim import maker_eval
+
+    class Dies:
+        def __init__(self, max_workers):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def map(self, fn, jobs):
+            raise BrokenProcessPool("a child process terminated abruptly")
+
+    monkeypatch.setattr(maker_eval, "ProcessPoolExecutor", Dies)
+    monkeypatch.setattr(maker_eval, "_eval_args", lambda j: {"hour": j[1]})
+    hours = [H0 + timedelta(hours=k) for k in range(3)]
+    rows = maker_eval.evaluate({"series": "KXBTCD"}, hours, workers=2)
+    assert [r["hour"] for r in rows] == [int(h.timestamp()) for h in hours]
