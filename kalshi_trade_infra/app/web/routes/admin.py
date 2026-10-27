@@ -164,10 +164,30 @@ def admin_system(ctx: Ctx):
         cur.execute(q, a); r = cur.fetchone()
         return (list(r.values())[0] if r else 0) or 0
 
-    cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs GROUP BY status")
-    runs = {r["status"]: r["c"] for r in cur.fetchall()}
-    cur.execute("SELECT mode, COUNT(*) c FROM app_deployments WHERE status='running' GROUP BY mode")
-    running = {r["mode"]: int(r["c"]) for r in cur.fetchall()}
+    # The research, backtest and engine boxes count every user's for the operator only. A customer gets their
+    # own, flagged `mine`: fleet-wide they read as theirs ("7 strategies tested" beside one session of their
+    # own), and a small fleet's figures say what other users run. Each is one count through the user's own
+    # index (idx_runs_user, idx_strat_user, idx_dep_user), the seeded example left out as their Research and
+    # Strategies pages leave it out; a finished session of theirs is done however it ended.
+    if is_admin:
+        cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs GROUP BY status")
+        runs = {r["status"]: int(r["c"]) for r in cur.fetchall()}
+        done = runs.get("succeeded", 0) + runs.get("failed", 0)
+        cur.execute("SELECT mode, COUNT(*) c FROM app_deployments WHERE status='running' GROUP BY mode")
+        running = {r["mode"]: int(r["c"]) for r in cur.fetchall()}
+        strategies = scalar("SELECT COUNT(*) c FROM app_strategies")
+        mine = {}
+    else:
+        cur.execute("SELECT status, COUNT(*) c FROM app_agent_runs WHERE user_id=%s AND kind='research'"
+                    " AND (direction IS NULL OR direction<>%s) GROUP BY status", (ctx.uid, repo.DEMO_DIRECTION))
+        runs = {r["status"]: int(r["c"]) for r in cur.fetchall()}
+        done = sum(n for s, n in runs.items() if s not in ("running", "queued", "paused"))
+        cur.execute("SELECT mode, COUNT(*) c FROM app_deployments WHERE user_id=%s AND status='running' GROUP BY mode",
+                    (ctx.uid,))
+        running = {r["mode"]: int(r["c"]) for r in cur.fetchall()}
+        strategies = scalar("SELECT COUNT(*) c FROM app_strategies WHERE user_id=%s AND direction<>%s",
+                            ctx.uid, repo.DEMO_DIRECTION)
+        mine = {"mine": True}
 
     def safe_scalar(q, *a):
         try:
@@ -188,13 +208,13 @@ def admin_system(ctx: Ctx):
         "db":        {"rows": approx_rows("forward_quotes") + approx_rows("market_candles"), "size_mb": scalar("SELECT ROUND(SUM(data_length+index_length)/1048576) m FROM information_schema.tables WHERE table_schema=DATABASE()"),
                       **({"top_tables": repo.largest_tables(cur)} if is_admin else {})},
         "web":       {"up": True, **({"users": scalar("SELECT COUNT(*) c FROM app_users")} if is_admin else {})},
-        "agents":    {"running": runs.get("running", 0), "queued": runs.get("queued", 0), "done": runs.get("succeeded", 0) + runs.get("failed", 0)},
-        "backtest":  {"strategies": scalar("SELECT COUNT(*) c FROM app_strategies")},
+        "agents":    {"running": runs.get("running", 0), "queued": runs.get("queued", 0), "done": done, **mine},
+        "backtest":  {"strategies": strategies, **mine},
         # One process (app/trading/engine.py) runs every mode, so its heartbeat is both boxes' age. Running
         # deployments are counted per mode: "N live" once counted paper and demo ones too.
-        "sim_engine":  {"age": age.get("recursive_engine_last_tick"), "paper": running.get("paper", 0)},
+        "sim_engine":  {"age": age.get("recursive_engine_last_tick"), "paper": running.get("paper", 0), **mine},
         "live_engine": {"age": age.get("recursive_engine_last_tick"), "live": running.get("live", 0),
-                        "demo": running.get("demo", 0)},
+                        "demo": running.get("demo", 0), **mine},
     }
     # Recent activity feed: fleet-wide for the operator, but a normal user only ever
     # sees their OWN agent events — never another user's private strategy names.

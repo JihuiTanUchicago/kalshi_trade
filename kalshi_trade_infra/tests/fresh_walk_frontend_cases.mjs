@@ -72,4 +72,30 @@ export function freshWalkCases({name, frontend, dashboard}) {
     assert.equal(await today({...FRESH_ON, paper_running: 1}), '$0.00');  // a running paper strategy's day is a figure
     assert.equal(await today({...FRESH_ON, today_paper_pnl: -0.5}), '−$0.50');
   });
+
+  // The System page is in every customer's menu, and its research, backtest and engine boxes read every user's rows:
+  // "7 strategies tested" and "1 running · 1 queued · 2 done" beside a customer's one session. The server now counts
+  // a customer's own (`mine`), and each such box says so under its name; the operator's still count every user's.
+  test(`${name}: a customer's System boxes say they count the customer's own; the operator's count every user's`, async () => {
+    const nodes = (mine) => ({agents: {running: 0, queued: 0, done: 1, ...mine}, backtest: {strategies: 3, ...mine},
+      sim_engine: {age: 20, paper: 1, ...mine}, live_engine: {age: 20, live: 0, demo: 0, ...mine}, web: {up: true}, db: {rows: 10, size_mb: 5}});
+    const BOXES = ['agents', 'backtest', 'sim_engine', 'live_engine'];
+    for (const admin of [false, true]) {
+      const f = frontend({fetchImpl: (path) => (path === '/api/admin/system' ? response({nodes: nodes(admin ? {} : {mine: true}), events: [], now: '2026-10-27T16:00:00Z'}) : response({}))});
+      f.S.me.is_admin = admin;
+      await f.viewSystem(); await settle();
+      const sub = (id) => f.root.querySelector(`[data-s="${id}"]`).textContent;
+      const metric = (id) => f.root.querySelector(`[data-m="${id}"]`).textContent;
+      assert.deepEqual(BOXES.map(sub), admin ? ['app.worker · hypotheses', 'honest, out-of-sample', 'simulated fills', 'real Kalshi orders']
+        : ['your research sessions', 'your strategies', 'your paper strategies', 'your live and demo']);
+      assert.equal(metric('agents'), '0 running · 0 queued · 1 done');
+      assert.equal(metric('backtest'), '3 strategies tested');
+      assert.equal(sub('db'), 'RDS MySQL', 'a box of the system itself is the system’s');
+      f.root.querySelector('.sys-node[data-id="backtest"]').dispatchEvent({type: 'click'});
+      const detail = f.root.querySelector('#sys-detail').innerHTML;
+      if (admin) assert.doesNotMatch(detail, /Yours only/);
+      else assert.match(detail, /3 strategies tested<\/p><p class="hint">Yours only: other users’ aren’t counted here\.<\/p>/);
+      f.clearTimers();
+    }
+  });
 }
