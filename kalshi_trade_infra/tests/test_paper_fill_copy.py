@@ -79,9 +79,11 @@ def test_both_themes_carry_the_same_words(bundle):
     assert "paperfills: ['Paper fills', '%s']," % customer_text.PAPER_FILLS in src
     share = re.search(r"const shared = \(\) => shareMap \|\| \(shareMap = new Proxy\(\{(.*?)\}", src, re.S).group(1)
     assert re.search(r"\bPAPER_NET\b", share)
-    # Every paper headline: the dashboard's paper figure, Deploy's paper figure and rows, the track
-    # record's paper tab, the autopilot card's all-time and last-7-days paper P&L, and the paper book
-    # of "Since your last visit" (live and demo say nothing of the kind).
+    # Every paper headline: the dashboard's paper figure, Deploy's paper figure (or, on a board led by
+    # live money, its paper amount), the track record's paper tab, the autopilot card's all-time and
+    # last-7-days paper P&L, and the paper book of "Since your last visit" (live and demo say nothing of
+    # the kind). Deploy's rows don't repeat it under the headline that says it: a row's backtest line
+    # says the short form beside its own per-trade paper figure (tests/deploy_errors_frontend_cases.mjs).
     assert src.count("${PAPER_NET}") >= 7
     assert "m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : ''" in src
 

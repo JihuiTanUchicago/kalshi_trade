@@ -26,6 +26,7 @@ import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
+import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -5098,10 +5099,10 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
 test('a Deploy row with no stake says so instead of "$ a trade, up to  open"', async () => {
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Stake only', stake: 5}), nullStakeDep({id: 4, title: 'Both', stake: 5, max_positions: 3})]);
-  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not set · P&amp;L after Kalshi fees and the spread<\/div>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not set, up to 3 open · P&amp;L after Kalshi fees and the spread<\/div>/);
-  assert.match(html, /Stake only<\/a>\s*<div class="sub-fig">\$5 a trade · P&amp;L after Kalshi fees and the spread<\/div>/);
-  assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open · P&amp;L after Kalshi fees and the spread<\/div>/);
+  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not set<\/div>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not set, up to 3 open<\/div>/);
+  assert.match(html, /Stake only<\/a>\s*<div class="sub-fig">\$5 a trade<\/div>/);
+  assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open<\/div>/);
   assert.doesNotMatch(html, /\$ a trade|up to\s+open|null|NaN/);
 });
 
@@ -5161,3 +5162,4 @@ creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: empt
 writeWaitCases({name: 'Tau', frontend, billingPage, cardedBilling, postRequests, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 flakyNetworkCases({name: 'Tau', frontend});
+deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests});

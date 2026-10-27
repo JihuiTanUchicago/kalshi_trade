@@ -27,6 +27,7 @@ import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
+import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -5929,9 +5930,9 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
 test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / trade"', async () => {
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Both', stake: 5, max_positions: 3})]);
-  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*· Stake not set · P&amp;L after Kalshi fees and the spread<\/span>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*Stake not set · Max 3 open · P&amp;L after Kalshi fees and the spread<\/span>/);
-  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\$5 \/ trade · Max 3 open · P&amp;L after Kalshi fees and the spread<\/span>/);
+  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*· Stake not set<\/span>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*Stake not set · Max 3 open<\/span>/);
+  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\$5 \/ trade · Max 3 open<\/span>/);
   assert.doesNotMatch(html, /\$ \/ trade|Max\s+open|null|NaN/);
   const f = frontend();
   const none = f.deploymentMonitor(nullStakeDep({status: 'paused', status_why: 'You paused it'}));
@@ -5986,3 +5987,4 @@ creditsCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard:
 writeWaitCases({name: 'Meridian', frontend, billingPage, cardedBilling, postRequests, storageFor: m => m});
 declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});
 flakyNetworkCases({name: 'Meridian', frontend});
+deployErrorCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests});

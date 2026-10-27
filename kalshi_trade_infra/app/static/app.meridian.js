@@ -1670,7 +1670,7 @@
     const actions = controls ? `<td class="act" data-lab="">${deploymentActions(d)}</td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="dep-meta"><span class="sub-fig">${[esc(marketShort(d.market)), depStake(d), depCap(d), d.mode === 'paper' ? `P&amp;L ${PAPER_NET}` : ''].filter(Boolean).join(' \u00b7\u00a0')}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</span>
+        <div class="dep-meta"><span class="sub-fig">${[esc(marketShort(d.market)), depStake(d), depCap(d)].filter(Boolean).join(' \u00b7\u00a0')}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</span>
         ${deploymentEvidence(d)}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Status">${d.status === 'running' ? '<span class="deployment-state">Running</span>' : mark(d.status, live)}<div class="sub-fig">${modeTag}</div></td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -1712,8 +1712,47 @@
   // just done, stays locked until the board repaints. A poll that repaints the board while an action is
   // on its way draws that deployment's buttons locked, the pressed one still busy: they read as idle
   // before, and a press on them did nothing.
+  // A Deploy action or a deploy Tau didn't confirm (no reply, the edge's 5xx page, a reply cut off) may
+  // have landed. "Reload the page to check" sent a phone user to reload, and a blind second press could
+  // pause twice or start a second copy (nothing on the server refuses a second deploy): the words say
+  // where the answer shows up. A press while the phone says it is offline never leaves it, so that one
+  // says it wasn't sent. Nothing is ever sent again on its own; a write is never aborted or timed out.
+  const unconfirmed = (e) => e instanceof ApiError && e.message === failText(0, true);
+  const NOT_SENT = 'You\u2019re offline, so this wasn\u2019t sent. Try again once you\u2019re back online.';
+  const DEP_ROW_CHECK = 'This deployment\u2019s row shows what Tau has and reads again within 10 seconds; check it before you press again.';
+  const DEP_UNSURE = {
+    pause: 'Tau didn\u2019t confirm the pause, so it may or may not have gone through. ' + DEP_ROW_CHECK,
+    resume: 'Tau didn\u2019t confirm the resume, so it may or may not have gone through. ' + DEP_ROW_CHECK,
+    stop: 'Tau didn\u2019t confirm the removal, so it may or may not have gone through. If it did, the deployment leaves this list within 10 seconds; check before you press again.',
+    // The strategy page: its Stop deployment, and its Deploy buttons, which go to Deploy once they land.
+    stopAll: 'Tau didn\u2019t confirm the stop, so it may or may not have gone through. Deploy shows whether it is still running; check there before you press again.',
+    deploy: 'Tau didn\u2019t confirm the deploy, so it may or may not have gone through. If it did, it shows on Deploy within a few seconds; check there before you deploy again, since a second deploy runs a second copy.',
+  };
+  const depSaid = (e, act) => (unconfirmed(e) && DEP_UNSURE[act]) || e.message;
+  const depWrite = (path, body) => (offline() ? Promise.reject(new ApiError(0, NOT_SENT)) : api(path, body));
   const depSending = new Map();  // deployment id -> the action on its way
   const depWaits = new Map();  // deployment id -> its action's waitNote, so a repainted button keeps the note
+  // A failed action said why only in #flash, at the top of the board: on a phone, a row pressed a screen
+  // or more below it looked like a press that did nothing. The row says it too (alert0 already announced
+  // it), through the 10s poll's repaints, while the row still offers that action: once the row has moved
+  // on (paused, or gone) the note goes with it, as it does on the row's next press or another page.
+  const depNotes = new Map();  // deployment id -> {act, msg, gen}
+  function depNotePlace(scope) {
+    depNotes.forEach((n, id) => {
+      const btn = scope.querySelector(`[data-dep="${id}"][data-act="${n.act}"]`);
+      if (n.gen !== S.gen || (!btn && scope.querySelector(`[data-dep="${id}"]`))) { depNotes.delete(id); return; }
+      const row = btn && (btn.closest('tr') || btn.closest('.dep-monitor'));
+      const host = row ? row.querySelector('td.name') || row : btn && btn.parentElement;
+      if (!host || host.querySelector('.dep-said')) return;
+      const note = document.createElement('p');
+      note.className = 'dep-said error-text'; note.setAttribute('data-dep-said', id); note.textContent = n.msg;
+      host.appendChild(note);
+    });
+  }
+  function depNoteSay(id, act, msg) {
+    root.querySelectorAll(`[data-dep-said="${id}"]`).forEach((n) => n.remove());
+    if (msg) { depNotes.set(id, { act, msg, gen: S.gen }); depNotePlace(root); } else depNotes.delete(id);
+  }
   function bindDeploymentActions(scope, after) {
     scope.querySelectorAll('[data-dep]').forEach((btn) => {
       const going = depSending.get(btn.dataset.dep);
@@ -1726,13 +1765,20 @@
         if (depSending.has(id) || btn.disabled) return;
         const run = async () => {
           if (depSending.has(id)) return;
+          if (offline()) { alert0(NOT_SENT); depNoteSay(id, act, NOT_SENT); return; }
+          depNoteSay(id, act, '');
           depSending.set(id, act);
           const waited = waitNote(btn);
           depWaits.set(id, waited);
           let fresh = null;
           try {
             await busy(btn, async () => {
-              try { await api(`/api/deployments/${id}/${act}`, {}).finally(waited); } catch (e) { alert0(e.message); return; }
+              try { await api(`/api/deployments/${id}/${act}`, {}).finally(waited); }
+              catch (e) {
+                alert0(depSaid(e, act)); depNoteSay(id, act, depSaid(e, act));
+                if (unconfirmed(e)) Promise.resolve().then(after).catch(() => {});
+                return;
+              }
               fresh = await refreshed(after());
             }, waited);
           } finally {
@@ -1754,6 +1800,7 @@
         else run();
       };
     });
+    depNotePlace(scope);
   }
   const DEP_DONE = { pause: 'Deployment paused.', resume: 'Deployment resumed.', stop: 'Deployment stopped.' };
   // After Pause, Resume or Remove the board is repainted without the pressed button: say what happened,
@@ -2282,10 +2329,10 @@
       // no-break space keeps each "3 paper" whole when the figure wraps on a phone.
       const liveOn = !!(S.me && S.me.live_trading_available) || liveDeps.length > 0;
       const openSplit = ['paper', 'demo', 'live'].map((m) => [m, d.open_positions.filter((p) => (p.mode || 'paper') === m).length])
-        .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join(' ·\u00a0') || 'None';
+        .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
       paint(root.querySelector('#dfigs'), fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
         (liveDeps.length
-          ? fig(listedLab('Live realized', liveDeps), usd(liveRealized, true), { v: liveRealized, small: `real money${removedNote('live')}${paperDeps.length ? ` ·\u00a0${usd(paperRealized, true)} on paper from the deployments listed, counted apart` : ''}` })
+          ? fig(listedLab('Live realized', liveDeps), usd(liveRealized, true), { v: liveRealized, small: `real money${removedNote('live')}${paperDeps.length ? ` ·\u00a0${usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
           : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), usd(paperRealized, true), { v: paperRealized, small: `paper money, not real${removedNote('paper')} ·\u00a0${PAPER_NET}${glo('paperfills')}` }) : '') +
         (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}` }) : '') +
         fig('Open positions', openSplit) +
@@ -3662,7 +3709,7 @@
   // drawing with undefined, and its page fails with Try again.
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
-    actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid,
+    actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,

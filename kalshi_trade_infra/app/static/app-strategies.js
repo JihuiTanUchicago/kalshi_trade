@@ -6,7 +6,7 @@ window.TauPage('strategies', (T) => {
   const {
     actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractMarket, demoHealthLine, DEP_DONE,
-    depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
+    depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
     gl, glo, go, ICON, isPerpetual, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, serial, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
@@ -356,7 +356,7 @@ window.TauPage('strategies', (T) => {
       if (!ids.length) return;
       let ok = 0; const errs = [];
       for (const id of ids) {
-        try { await api('/api/deployments', { strategy_id: id, mode: 'paper' }); ok++; } catch (e) { errs.push(e.message); }
+        try { await depWrite('/api/deployments', { strategy_id: id, mode: 'paper' }); ok++; } catch (e) { errs.push(depSaid(e, 'deploy')); }
       }
       if (ok && !errs.length) { go('/deploy'); return; }
       flash('#bulkflash', `${ok} deployed${errs.length ? ` ·\u00a0${errs.length} failed: ${errs[0]}` : ''}`, errs.length ? 'bad' : 'good');
@@ -841,16 +841,16 @@ window.TauPage('strategies', (T) => {
     for (const [sel, fl] of [['#dep-paper', '#depflash'], ['#dep-paper-quick', '#depflash-quick']]) {
       const depPaper = root.querySelector(sel);
       if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {
-        try { await api('/api/deployments', { strategy_id: s.id, mode: 'paper' }); S.deployed = { mode: 'paper', title: s.title }; go('/deploy'); } catch (e) { flash(fl, e.message, 'bad'); }
+        try { await depWrite('/api/deployments', { strategy_id: s.id, mode: 'paper' }); S.deployed = { mode: 'paper', title: s.title }; go('/deploy'); } catch (e) { flash(fl, depSaid(e, 'deploy'), 'bad'); }
       });
     }
     const depDemo = root.querySelector('#dep-demo');
     if (depDemo) depDemo.onclick = () => { if (demoWhy) return; busy(depDemo, async () => {
-      try { await api('/api/deployments', { strategy_id: s.id, mode: 'demo' }); S.deployed = { mode: 'demo', title: s.title }; go('/deploy'); } catch (e) { flash('#depflash', e.message, 'bad'); }
+      try { await depWrite('/api/deployments', { strategy_id: s.id, mode: 'demo' }); S.deployed = { mode: 'demo', title: s.title }; go('/deploy'); } catch (e) { flash('#depflash', depSaid(e, 'deploy'), 'bad'); }
     }); };
     const stopDep = root.querySelector('#stop-dep');
     if (stopDep) stopDep.onclick = () => armed(stopDep, 'Confirm stop', () => busy(stopDep, async () => {
-      try { for (const d of activeDeps) await api(`/api/deployments/${d.id}/stop`, {}); } catch (e) { flash('#delflash', e.message, 'bad'); return; }
+      try { for (const d of activeDeps) await depWrite(`/api/deployments/${d.id}/stop`, {}); } catch (e) { flash('#delflash', depSaid(e, 'stopAll'), 'bad'); return; }
       // Stopped. The page re-reads to show it; a re-read that fails says the stop landed, not the error.
       const gen = S.gen;
       if (await refreshed(viewStrategy(s.id))) { depActed(null, 'stop'); return; }
@@ -886,7 +886,7 @@ window.TauPage('strategies', (T) => {
     if (lc) lc.onsubmit = (e) => {
       e.preventDefault();
       busy(lc.querySelector('button'), async () => {
-        try { await api('/api/deployments', { strategy_id: s.id, mode: 'live', confirm: lc.confirm.value.trim() }); go('/deploy'); } catch (err) { flash('#depflash', err.message, 'bad'); }
+        try { await depWrite('/api/deployments', { strategy_id: s.id, mode: 'live', confirm: lc.confirm.value.trim() }); go('/deploy'); } catch (err) { flash('#depflash', depSaid(err, 'deploy'), 'bad'); }
       });
     };
     const wi = root.querySelector('#whatif');

@@ -2089,6 +2089,7 @@ body.landing-body .apf { display: none; }
 .netbar { position: sticky; top: 0; z-index: 60; padding: 8px var(--gut); background: var(--ink); color: #F1F3ED; font-size: 13px; line-height: 1.4; text-align: center; }
 /* A write Tau hasn't answered after 20s says so beside its control (waitNote): its own line, quiet. */
 .wait-note { display: block; flex-basis: 100%; grid-column: 1 / -1; margin-top: 6px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.dep-said { display: block; margin: 6px 0 0; line-height: 1.4; }
 :has(> .wait-note) { flex-wrap: wrap; }
 #run-stale { margin-bottom: 14px; }  /* the run page puts a boxed panel right under it */
 
