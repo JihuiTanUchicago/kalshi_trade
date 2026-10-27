@@ -122,8 +122,28 @@ export function runPageCases({name, frontend}) {
       ev(2, 'verdict', 'PASSED - Idea: validation verdict is gatekeeper-held', {title: 'Idea', status: 'passed', strategy_id: 42, stats})]);
     const log = f.root.querySelector('#log').querySelector('[data-review]').innerHTML;
     assert.match(log, /<dt>Trades<\/dt><dd>132<\/dd><\/div><div><dt>Avg per trade after fees<\/dt><dd>\+3\.1%<\/dd>/);
-    assert.match(log, /<dt>90% range<\/dt><dd>0\.6%…5\.8%<\/dd>/);
+    assert.match(log, /<dt>Likely average per trade \(90% <span class="nobr">range\)<button[^>]*data-glo="range90"[^]*?<\/dt><dd>0\.6%…5\.8%<\/dd>/);
     assert.doesNotMatch(log, /95% CI/);
+  });
+
+  test(`${name}: a verdict's figures are named in plain words, each saying what it measures in a bubble and, on a phone, under it`, async () => {
+    const stats = {n_trades: 48, mean_net_return: 0.05, p_value: 0.0042, dsr: 0.97, sharpe: 0.31, ci: {lo: 0.012, hi: 0.094},
+      placebo_p: 0.011, max_drawdown: 3.4};
+    const f = await open({status: 'succeeded', stop_reason: 'limit'}, [ev(1, 'hypothesis', 'Idea'),
+      ev(2, 'verdict', 'PASSED - Idea: validation verdict is gatekeeper-held', {title: 'Idea', status: 'passed', strategy_id: 42, stats})]);
+    const grid = f.root.querySelector('#log').querySelector('[data-review]').innerHTML;
+    const cells = [...grid.matchAll(/<div><dt>([^]*?)<\/dt><dd>([^<]*)<\/dd>(?:<dd class="hx-why">([^<]*)<\/dd>)?<\/div>/g)]
+      .map(([, dt, dd, why]) => [dt.replace(/<button[^]*?<\/button>|<\/?span[^>]*>/g, ''), dd, why || '']);
+    // The same figures as before, in the same order; only their names and explanations are new.
+    assert.deepEqual(cells.map(([dt, dd]) => [dt, dd]), [
+      ['Trades', '48'], ['Avg per trade after fees', '+5.0%'], ['Chance it’s luck (p-value)', '0.004'],
+      ['Edge after correcting for many tries (DSR)', '0.97'], ['Steadiness per trade (Sharpe)', '0.31'],
+      ['Likely average per trade (90% range)', '1.2%…9.4%'], ['Same test on shuffled outcomes (placebo)', '0.011'],
+      ['Worst drop (max drawdown)', '−$3.40']]);
+    // Every term of art carries one line saying what it measures, and an info bubble with the same words.
+    for (const [dt, , why] of cells.slice(2)) assert.ok(why.length > 40 && /\.$/.test(why), dt);
+    assert.equal((grid.match(/<button type="button" class="info" data-glo="(pvalue|dsr|sharpe|range90|placebo|drawdown)"/g) || []).length, 6);
+    assert.doesNotMatch(grid, /<dt>(p-value|DSR|Sharpe|Placebo p|Max drawdown|90% range)<\/dt>/);
   });
 
   test(`${name}: the example's cost says it was free, not "from your credits"`, async () => {

@@ -463,6 +463,19 @@ def test_bitcoin_labels_say_the_contract_and_its_close(bundle):
         assert len(short[k]) <= 30 and "\u00b7" not in short[k] and "\\u00a0" not in short[k]
 
 
+@pytest.mark.parametrize('css', ['app.css', 'app.meridian.css'])
+def test_a_verdict_figures_explanation_sits_under_it_on_a_phone_and_in_its_bubble_elsewhere(css):
+    # The research verdict card says what each figure measures (statGrid's .hx-why). Off a phone the info
+    # bubble carries it; on a phone, where a bubble covers the number it explains, the line shows instead.
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / css).read_text()
+    assert '.hx-stats .hx-why { display: none; }' in src
+    phone = re.search(r'@media \(max-width: 600px\) \{\n((?:  .*\n)+)\}\n', src[src.index('.hx-stats .hx-why { display: none; }'):]).group(1)
+    assert '.hx-stats dt .info { display: none; }' in phone
+    assert re.search(r'\.hx-stats \.hx-why \{ display: block;', phone)
+
+
 def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     # A run-until-stopped session shows what it has taken from credits: the ledger rows billed to
     # the run, read once per response (one grouped query for the list, not one per row).
