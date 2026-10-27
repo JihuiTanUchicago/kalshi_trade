@@ -2045,14 +2045,17 @@ test('Meridian: Research counts a paused session as paused, not as running', asy
 test('Research lists the seeded example as an example and does not count it as a session', async () => {
   const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};
   const mine = {...researchRun(6, 'succeeded'), example: false, spent_usd: 0.42};
-  for (const [runs, count] of [[[example], ''], [[mine, example], '1']]) {
+  // The heading counts what it lists: "Recent sessions 1" sat over two rows, one of them the example.
+  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 · 1 example'], [[mine], '1']]) {
     const f = researchFrontend(runs);
     await f.viewResearch(); await flush();
     const list = f.root.querySelector('#runs').innerHTML;
     assert.equal(f.root.querySelector('#rcount').textContent, count);
+    assert.equal(f.root.querySelectorAll('#runs a.run-card').length, runs.length, 'one row per thing the heading counts');
+    if (!runs.includes(example)) { f.clearTimers(); continue; }
     assert.match(list, /Example<\/span>/); assert.match(list, /An example Tau ran for you when you signed up\. It cost you nothing\./);
     assert.doesNotMatch(list, /Cost: \$0\.00/);
-    if (count) assert.match(list, /Cost: \$0\.42/);
+    if (runs.includes(mine)) assert.match(list, /Cost: \$0\.42/);
   }
 });
 
@@ -5399,17 +5402,20 @@ test('Meridian Overview says the paper portfolio is practice money', async () =>
 
 // A new account's paper book read "Realized P&L, all time $0.00" and "Realized today (UTC) $0.00": results it never had.
 test('Meridian Overview says a never-used paper book has no strategies yet, not $0.00 realized', async () => {
-  const fresh = {total_pnl: 0, realized_pnl: 0, today_pnl: 0, open_at_cost: 0, cash: 1000, equity: 1000, closed_trades: 0, open_positions: 0};
+  const fresh = {total_pnl: 0, realized_pnl: 0, today_pnl: 0, open_at_cost: 0, open_cost: 0, cash: 1000, equity: 1000, closed_trades: 0, open_positions: 0};
   const f = apDashboard(dashboardData({paper: fresh}), apStatus);
   await f.viewDashboard(); await flush();
   const paper = f.root.querySelector('.paper-summary').textContent;
   assert.match(paper, /Practice money, not real ·\s?no paper strategies yet/);
   assert.match(paper, /Realized today \(UTC\)None yet/);
   assert.doesNotMatch(paper, /Realized P&amp;L, all time/);
+  // "Open at cost + fees $0.00" read as a figure too, for a book nothing has ever been open in.
+  assert.match(paper, /Open at cost \+ fees(?:<[^>]*>)*None yet/);
+  assert.doesNotMatch(paper, /\$0\.00/);
   // Once the book has a paper deployment, its figures are figures, $0.00 included.
   const used = apDashboard(dashboardData({paper: fresh, deployments: [dashboardDeployment('paper')]}), apStatus);
   await used.viewDashboard(); await flush();
-  assert.match(used.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \$0\.00[\s\S]*Realized today \(UTC\)\$0\.00/);
+  assert.match(used.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \$0\.00[\s\S]*Realized today \(UTC\)\$0\.00[\s\S]*Open at cost \+ fees\$0\.00/);
 });
 
 // Meridian opens a market page from Explore's ?m= link.

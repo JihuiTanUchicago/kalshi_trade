@@ -179,6 +179,20 @@ def _market_mine(ctx: Ctx, ticker: str, open_ts: Optional[int]) -> Optional[Dict
     return {"open": [{**pick(p), **_mark_fields(p)} for p in rows["open"]], "closed": [pick(p) for p in rows["closed"]]}
 
 
+def _my_strategy_markets(ctx: Ctx, ticker: str) -> Optional[List[str]]:
+    """The markets this contract's series belongs to that the reader has a strategy on, for the market page's
+    "Your <market> strategies" button: it showed to a reader with none there. None when the read failed (the
+    page then offers no such button rather than guess)."""
+    keys = sorted(k for k, m in MARKETS.items() if m.series and ticker.startswith(m.series + "-"))
+    if not keys:
+        return []
+    try:
+        return repo.markets_with_strategies(ctx.cur, ctx.uid, keys)
+    except Exception as e:
+        print("[explore] market %s strategies read failed: %r" % (ticker, e), flush=True)
+        return None
+
+
 def _market_terms(m: Dict) -> Dict:
     """How a contract settles, from Kalshi's market record: its rules, when the result is expected,
     and the result once it has one."""
@@ -238,7 +252,8 @@ def explore_market(ctx: Ctx):
         if not snap:
             raise ApiError(502, "Kalshi didn't send this market's history just now. Try again in a minute.")
         return {**snap, "ticker": ticker, "series": series, "title": snap["title"] or "", "sub": snap["sub"] or "",
-                "period_min": None, "points": [], "history_unavailable": True, "mine": _market_mine(ctx, ticker, open_ts)}
+                "period_min": None, "points": [], "history_unavailable": True, "mine": _market_mine(ctx, ticker, open_ts),
+                "my_markets": _my_strategy_markets(ctx, ticker)}
     points = []
     for c in cs:
         price = (c.get("price") or {})
@@ -256,6 +271,7 @@ def explore_market(ctx: Ctx):
         "volume_24h": m.get("volume_24h_fp"), "open_interest": m.get("open_interest_fp"),
         "status": m.get("status"), "close_time": m.get("close_time"), "period_min": period, "points": points,
         **_market_terms(m), "as_of": _iso_now(), "mine": _market_mine(ctx, ticker, open_ts),
+        "my_markets": _my_strategy_markets(ctx, ticker),
     }
 
 

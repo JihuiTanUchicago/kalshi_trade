@@ -1252,6 +1252,50 @@ def test_explore_market_says_how_it_settles_and_lists_the_readers_positions(monk
     assert "order_ref" not in o and "user_id" not in o  # only what the page shows
 
 
+def test_explore_market_says_which_of_its_markets_the_reader_has_strategies_on(monkeypatch, capsys):
+    # The page offered "Your <market> strategies" to a reader with none there. It now sends the contract's markets
+    # the reader has a strategy on (`my_markets`), read for this reader and this contract's series only; None when
+    # that read fails, and no read at all for a series no market covers.
+    import data_pipeline.common as common
+    monkeypatch.setattr(common, "api_get", lambda path, params=None: {"candlesticks": []} if "/candlesticks" in path
+                        else {"market": {"title": "Bitcoin at 5pm?", "status": "active"}})
+    monkeypatch.setattr(server.repo, "user_positions_in_ticker", lambda *a, **k: {"open": [], "closed": []})
+    asked = []
+    monkeypatch.setattr(server.repo, "markets_with_strategies", lambda cur, uid, keys: asked.append((uid, keys)) or [])
+    page = lambda t: server.explore_market(server.Ctx(FakeConn(), {"id": 7}, (), {"ticker": t}, {}, None))
+    assert page("KXBTCD-26OCT2617-T113499.99")["my_markets"] == []
+    (uid, keys), = asked
+    assert uid == 7 and "btc_daily" in keys
+    assert all(server.MARKETS[k].series == "KXBTCD" for k in keys), "only the markets of this contract's series"
+    asked.clear()
+    assert page("KXFEDDECISION-26DEC-H0")["my_markets"] == [] and asked == []
+    monkeypatch.setattr(server.repo, "markets_with_strategies", lambda *a: ["btc_daily"])
+    assert page("KXBTCD-26OCT2617-T113499.99")["my_markets"] == ["btc_daily"]
+
+    def broken(*a):
+        raise RuntimeError("Lost connection to MySQL server")
+    monkeypatch.setattr(server.repo, "markets_with_strategies", broken)
+    assert page("KXBTCD-26OCT2617-T113499.99")["my_markets"] is None
+    assert "Lost connection" in capsys.readouterr().out
+
+
+def test_markets_with_strategies_reads_the_users_own_without_the_seeded_example():
+    from app.adapters.db import strategy_repository as strategies
+
+    class Cur:
+        def execute(self, sql, params):
+            self.sql, self.params = sql, params
+
+        def fetchall(self):
+            return [{"market": "btc_daily"}]
+
+    cur = Cur()
+    assert strategies.markets_with_strategies(cur, 7, ["btc_daily", "btc_hourly"]) == ["btc_daily"]
+    assert "user_id=%s" in cur.sql and "direction<>%s" in cur.sql and "market IN (%s,%s)" in cur.sql
+    assert cur.params == [7, "random_walk", "btc_daily", "btc_hourly"]
+    assert strategies.markets_with_strategies(object(), 7, []) == []  # no markets, no read
+
+
 def test_explore_market_still_shows_when_the_positions_read_fails(monkeypatch, capsys):
     import data_pipeline.common as common
     c = server.Ctx(FakeConn(), {"id": 7}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)

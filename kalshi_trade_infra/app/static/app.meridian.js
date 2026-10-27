@@ -2331,9 +2331,10 @@
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
       // newcomer could take it for real money.
       // A book that has never been used has no realized P&L yet (Tau's dashboard says "no paper strategies yet"):
-      // "Realized P&L, all time $0.00" and "Realized today $0.00" read as results to a new account.
+      // "Realized P&L, all time $0.00" and "Realized today $0.00" read as results to a new account, and so did
+      // "Open at cost + fees $0.00" beside them: nothing has ever been open. A book that has traded keeps its figure.
       const paperNew = !(p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper'));
-      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span> \u00b7\u00a0${paperNew ? '<span class="nobr">no paper strategies yet</span>' : `<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span> \u00b7\u00a0<span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}`}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${paperNew ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${openFig(p)}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
+      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span> \u00b7\u00a0${paperNew ? '<span class="nobr">no paper strategies yet</span>' : `<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span> \u00b7\u00a0<span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}`}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${paperNew ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : openFig(p)}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
@@ -2782,7 +2783,9 @@
   }
   // What to do next from a market page: research it (the market picked in the form) or open your
   // strategies on it, when it's one Tau researches; otherwise say so, rather than leave a dead end.
-  function marketNext(ticker) {
+  // "Your <market> strategies" shows only when the server says the reader has one there (`my_markets`): it
+  // showed to a reader with none, and opened an empty list.
+  function marketNext(ticker, mine) {
     const m = contractMkt(ticker);
     // Another hour of a ladder Tau researches at one close (an hourly Bitcoin contract): point at that close.
     const sib = !m && ((S.me && S.me.markets) || []).find((x) => x.series && x.close_hour_et != null && String(ticker || '').startsWith(x.series + '-'));
@@ -2790,7 +2793,8 @@
     if (sib) return `<p class="hint mk-next">Tau researches only the ${hourET(h)} ET close of this ladder, so your strategies don’t trade this contract. <a href="/research?new=1&amp;market=${encodeURIComponent(sib.key)}">Research ${esc(marketShort(sib.key))}</a></p>`;
     if (!m) return '<p class="hint mk-next">Tau doesn’t research this market, so your strategies can’t trade it. <a href="/research?new=1">See the markets it researches</a></p>';
     const k = encodeURIComponent(m.key);
-    return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a><a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a></p>`;
+    const own = (mine || []).includes(m.key) ? `<a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a>` : '';
+    return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a>${own}</p>`;
   }
   // A Bitcoin contract's page says where Bitcoin is against its strike, from the price the collectors
   // stored (/api/explore/spot). It is its own read, started with the market's, and fills its own section,
@@ -2803,15 +2807,31 @@
   const spotAge = (s) => (s < 60 ? s + 's ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 172800 ? Math.round(s / 3600) + ' hr ago' : Math.round(s / 86400) + ' days ago');
   const spotOld = (s) => (s < 5400 ? Math.max(2, Math.round(s / 60)) + ' min' : s < 172800 ? Math.round(s / 3600) + ' hr' : Math.round(s / 86400) + ' days');
   const leftText = (s) => (s < 60 ? 'Under a minute' : s < 3600 ? Math.floor(s / 60) + ' min' : s < 172800 ? `${Math.floor(s / 3600)} hr ${Math.floor((s % 3600) / 60)} min` : Math.floor(s / 86400) + ' days');
-  function marketSpot(s) {
-    const sp = s.spot && s.spot.price != null ? s.spot : null, k = s.strike && s.strike.value != null ? s.strike : null;
-    const v = k && s.vs && s.vs.side ? s.vs : null;
+  // A 15-minute window's start price is in the contract's own name ("Target Price: $113,512.08", the title line the
+  // page heads with) before the collector stores its record: the section said "This window's start price isn't stored
+  // yet" under that heading. With no stored strike it is read from there and says so; which side pays stays with
+  // the rules, as for any strike read without its record. Spot is measured against it as the server measures a line.
+  const TARGET_IN = /\btarget price:?\s*\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?/i;
+  function titleStrike(d) {
+    const t = [d && d.sub, d && d.title].map((x) => TARGET_IN.exec(String(x || ''))).find(Boolean);
+    const value = t ? +(t[1].replace(/,/g, '') + (t[2] || '')) : NaN;
+    return value > 0 ? { kind: 'line', value, lo: null, hi: null, inclusive: false, from: 'title' } : null;
+  }
+  const lineVs = (price, value) => {
+    const diff = Math.round((price - value) * 100) / 100;
+    return { side: diff > 0 ? 'above' : diff < 0 ? 'below' : 'at', diff, pct: Math.round(diff / value * 1e5) / 1e3, yes: null };
+  };
+  function marketSpot(s, d) {
+    const sp = s.spot && s.spot.price != null ? s.spot : null, stored = s.strike && s.strike.value != null ? s.strike : null;
+    const k = stored || titleStrike(d);
+    const v = stored ? (s.vs && s.vs.side ? s.vs : null) : k && sp ? lineVs(+sp.price, k.value) : null;
     const bucket = k && k.kind === 'range', edges = bucket && k.lo != null && k.hi != null;
     const now = sp ? fig('Bitcoin now', btcUsd(sp.price), sp.stale ? { small: `Spot feed is ${spotOld(+sp.age_s || 0)} old`, cls: 'fig-behind' } : { small: `Coinbase · ${spotAge(+sp.age_s || 0)}` })
       : fig('Bitcoin now', '—', { small: 'No stored price in the last day' });
     const strike = !k ? fig('Strike', '—', { small: /^KXBTC15M-/.test(s.ticker || '') ? 'This window’s start price isn’t stored yet' : 'Not stored for this contract' })
       : edges ? fig('Bucket', `${btcUsd(k.lo)} to ${btcUsd(k.hi)}`, { small: 'Yes if Bitcoin settles inside it' })
       : bucket ? fig('Bucket centre', btcUsd(k.value), { small: 'its edges aren’t stored' })
+      : k.from === 'title' ? fig('Strike', btcUsd(k.value), { small: 'Target price from the contract’s title' })
       : fig('Strike', btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind} it` : 'Kalshi’s rules say which side pays' });
     // Which side of the strike (or the bucket's edge it is outside of) spot is on, by how much, and which
     // side of the contract that is when the strike says.
@@ -2825,12 +2845,12 @@
     const left = s.secs_left == null ? fig('Time left', '—') : fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed', { small: s.close_time ? 'closes ' + settleAt(s.close_time) : '' });
     return `<dl class="figures measure">${now}${strike}${vs}${left}</dl><p class="hint mk-spot-note">Kalshi settles on the CF Benchmarks Bitcoin index averaged over the last minute before the close; Coinbase’s price usually sits within a few dollars of it.</p>`;
   }
-  function mountSpot(ticker, first) {
+  function mountSpot(ticker, first, d) {
     const path = '/api/explore/spot?ticker=' + encodeURIComponent(ticker);
     const show = (s) => {
       const el = root.querySelector('#mk-spot-body');
       if (!el) return;
-      el.innerHTML = s.failed ? `<p class="hint">${esc(s.failed)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s);
+      el.innerHTML = s.failed ? `<p class="hint">${esc(s.failed)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s, d);
       const b = el.querySelector('[data-spot-retry]');
       if (b) b.onclick = () => spotRead(ticker).then(show);
     };
@@ -2867,7 +2887,7 @@
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker), `${spotReq && !settled ? SPOT_SECT : ''}
+        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? SPOT_SECT : ''}
       <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
       <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(d.rules)}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(d.rules_more)}</p>` : ''}`
@@ -2883,7 +2903,7 @@
         <a class="btn sm" href="${kalshiLink}" target="_blank" rel="noopener">View on Kalshi ↗</a></span></div>`);
     const retry = root.querySelector('#mk-retry');
     if (retry) retry.onclick = () => viewMarketDetail(ticker);
-    if (spotReq && !settled) mountSpot(ticker, spotReq);
+    if (spotReq && !settled) mountSpot(ticker, spotReq, d);
     const pts = d.points.slice().reverse();  // newest first
     const PER = 25; let pg = 0;
     const rawEl = root.querySelector('#rawsect');

@@ -116,11 +116,15 @@ window.TauPage('admin', (T) => {
     { id: 'features', x: 250, y: 270, w: 158, label: 'Feature builder', sub: 'per-minute features' },
     { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: 'app.server ·\u00a0SPA + API' },
     { id: 'db', x: 490, y: 205, w: 150, label: 'Database', sub: 'RDS MySQL', big: 1 },
-    { id: 'agents', x: 720, y: 40, w: 158, label: 'Research agents', sub: 'app.worker ·\u00a0hypotheses' },
-    { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'honest, out-of-sample' },
-    { id: 'sim_engine', x: 720, y: 300, w: 158, label: 'Paper engine', sub: 'simulated fills' },
-    { id: 'live_engine', x: 720, y: 460, w: 158, label: 'Live engine', sub: 'real Kalshi orders' },
+    { id: 'agents', x: 720, y: 40, w: 158, label: 'Research agents', sub: 'app.worker ·\u00a0hypotheses', mine: 'your research sessions' },
+    { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'honest, out-of-sample', mine: 'your strategies' },
+    { id: 'sim_engine', x: 720, y: 300, w: 158, label: 'Paper engine', sub: 'simulated fills', mine: 'your paper strategies' },
+    { id: 'live_engine', x: 720, y: 460, w: 158, label: 'Live engine', sub: 'real Kalshi orders', mine: 'your live and demo' },
   ];
+  // `mine`: the line under a box's name when it counts the reader's own (the server's `mine`: every customer's
+  // view). Fleet-wide, "7 strategies tested" read as theirs beside their one session. Until the first read says,
+  // a customer's boxes are taken to count their own; only the operator's count every user's.
+  const sysSub = (n, L) => (n.mine && (L ? L.mine : !(S.me && S.me.is_admin)) ? n.mine : n.sub);
   const SYS_EDGES = [
     ['kalshi', 'forward'], ['coinbase', 'cb_coll'], ['forward', 'db'], ['cb_coll', 'db'],
     ['forward', 'features'], ['features', 'db'], ['bedrock', 'agents'], ['db', 'agents'],
@@ -157,7 +161,7 @@ window.TauPage('admin', (T) => {
       return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})" tabindex="0" role="button" aria-label="${esc(n.label)}">
         <rect width="${n.w}" height="${h}" rx="${n.ext ? 9 : 3}"></rect>
         <text class="t" x="12" y="23">${esc(n.label)}</text>
-        <text class="s" x="12" y="41">${esc(n.sub)}</text>
+        <text class="s" x="12" y="41" data-s="${n.id}">${esc(sysSub(n))}</text>
         <text class="m" x="12" y="${h - 12}" data-m="${n.id}"></text>
         <circle class="pulse" cx="${n.w - 13}" cy="15" r="4"></circle>
       </g>`;
@@ -185,7 +189,7 @@ window.TauPage('admin', (T) => {
         ? `<div class="sys-tables"><b>Largest tables</b><ul>${L.top_tables.map((t) =>
             `<li><span>${esc(t.table)}</span><span>${t.mb >= 1024 ? (t.mb / 1024).toFixed(1) + ' GB' : num(t.mb) + ' MB'}</span></li>`).join('')}</ul></div>`
         : '';
-      detail.innerHTML = `<h2>${esc(n.label)}</h2><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p><p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${tbls}${open}`;
+      detail.innerHTML = `<h2>${esc(n.label)}</h2><p class="sys-metric" id="sys-dm">${metricText(id, L) || ''}</p>${L && L.mine ? '<p class="hint">Yours only: other users’ aren’t counted here.</p>' : ''}<p class="hint" style="margin-top:8px">${esc(SYS_DESC[id] || '')}</p>${tbls}${open}`;
     };
     const modName = (p) => p.split('/').pop();
     const crumbs = (parts) => `<nav class="sys-crumb">${parts.map((p, i) =>
@@ -259,7 +263,7 @@ window.TauPage('admin', (T) => {
       const a = L.age == null ? '—' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
       if (id === 'forward') return `${num(L.rows)} ${L.unit} ·\u00a0${a}`;
       if (id === 'cb_coll' || id === 'features') return `${num(L.rows)} ${L.unit} ·\u00a0${a}`;
-      // Running deployments per mode (every user's): live money and demo are named apart, never summed.
+      // Running deployments per mode (the reader's own; every user's for the operator): live money and demo are named apart, never summed.
       if (id === 'sim_engine') return `${num(L.paper)} paper running ·\u00a0${a}`;
       if (id === 'live_engine') return `${num(L.live)} live ·\u00a0${num(L.demo)} demo ·\u00a0${a}`;
       return a;
@@ -277,6 +281,7 @@ window.TauPage('admin', (T) => {
       SYS_NODES.forEach((n) => {
         const L = d.nodes[n.id]; const g = svg.querySelector(`.sys-node[data-id="${n.id}"]`);
         const mt = svg.querySelector(`[data-m="${n.id}"]`); if (mt) mt.textContent = metricText(n.id, L);
+        const sb = svg.querySelector(`[data-s="${n.id}"]`), sub = sysSub(n, L); if (sb && sb.textContent !== sub) sb.textContent = sub;
         const st = n.ext ? 'live' : (L && 'age' in L) ? fresh(L.age) : (n.id === 'web' || n.id === 'db') ? 'live' : 'idle';
         g.setAttribute('data-st', st);
       });

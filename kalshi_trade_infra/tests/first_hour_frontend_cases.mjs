@@ -280,8 +280,9 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
       f.S.me.user.autopilot = false; f.location.pathname = '/research';
       await f.viewResearch(); for (let i = 0; i < 6; i++) await flush();
       const said = f.root.querySelector('#rcount').textContent;
-      // Tau names them ("1 session · 1 example"); Meridian's heading carries the bare count.
-      assert.match(said, new RegExp(`^${n}( session${n > 1 ? 's' : ''} · 1 example)?$`), said);
+      // Tau names them ("1 session · 1 example"); Meridian's heading carries the bare count, with the example listed
+      // under it named apart ("1 · 1 example"): "Recent sessions 1" sat over two rows.
+      assert.match(said, new RegExp(`^${n}( session${n > 1 ? 's' : ''})?\\s·\\s1 example$`), said);
       assert.doesNotMatch(said, /\bruns?\b/);
       f.clearTimers();
     }

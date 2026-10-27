@@ -22,6 +22,17 @@ def strategies_passed_since(cur, user_id: int, since) -> int:
     return int((cur.fetchone() or {}).get("n") or 0)
 
 
+def markets_with_strategies(cur, user_id: int, markets: List[str]) -> List[str]:
+    """Which of `markets` (market keys) the user has any strategy on, the seeded example's left out as
+    count_strategies leaves it out: a market page offers "Your <market> strategies" only then. One read
+    through idx_strat_user, a row per market found."""
+    if not markets:
+        return []
+    cur.execute("SELECT DISTINCT market FROM app_strategies WHERE user_id=%%s AND direction<>%%s AND market IN (%s)"
+                % ",".join(["%s"] * len(markets)), [user_id, DEMO_DIRECTION, *markets])
+    return sorted(r["market"] for r in cur.fetchall())
+
+
 def passed_since(cur, user_id: int, since, limit: int = 3) -> Dict:
     """Strategies of the user's own that passed since `since`, newest first: {"n": all of them,
     "items": [{"id", "title", "market", "spec", "experiment_id"}] the newest `limit`}. One read through

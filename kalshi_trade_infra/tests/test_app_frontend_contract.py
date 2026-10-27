@@ -231,6 +231,59 @@ def test_system_engine_boxes_count_running_deployments_per_mode_and_read_the_eng
     assert 'deployments' not in nodes['live_engine']  # no one figure that sums the modes
 
 
+@pytest.mark.parametrize('admin', [False, True])
+def test_system_counts_a_customers_own_sessions_strategies_and_deployments_and_the_fleet_only_for_the_operator(admin):
+    # The System page is in every customer's menu: it read "7 strategies tested" and "1 running · 1 queued · 2 done"
+    # from every user's rows beside a customer's one session. A customer's boxes count their own, flagged `mine`,
+    # with the seeded example left out; the operator keeps the fleet-wide figures.
+    class ReadCursor:
+        def __init__(self):
+            self.queries, self.rows, self.one = [], [], {'n': 0}
+
+        def execute(self, sql, params=()):
+            self.queries.append((sql, tuple(params)))
+            self.rows, self.one = [], {'n': 0}
+            if 'FROM app_agent_runs' in sql and 'GROUP BY status' in sql:
+                self.rows = ([{'status': 'running', 'c': 1}, {'status': 'queued', 'c': 1}, {'status': 'succeeded', 'c': 1},
+                              {'status': 'cancelled', 'c': 1}, {'status': 'paused', 'c': 1}] if 'user_id=%s' in sql else
+                             [{'status': 'running', 'c': 4}, {'status': 'queued', 'c': 2}, {'status': 'succeeded', 'c': 30},
+                              {'status': 'failed', 'c': 5}])
+            elif 'FROM app_deployments' in sql and 'GROUP BY mode' in sql:
+                self.rows = [{'mode': 'paper', 'c': 1}] if 'user_id=%s' in sql else [{'mode': 'paper', 'c': 9}, {'mode': 'live', 'c': 2}]
+            elif 'FROM app_strategies' in sql:
+                self.one = {'c': 3 if 'user_id=%s' in sql else 70}
+
+        def fetchone(self):
+            return self.one
+
+        def fetchall(self):
+            return self.rows
+
+    cur = ReadCursor()
+    ctx = context(admin=admin)
+    ctx.conn.cursor = lambda: cur
+    nodes = server.admin_system(ctx)['nodes']
+    counted = [(sql, params) for sql, params in cur.queries
+               if any(t in sql for t in ('FROM app_agent_runs', 'FROM app_strategies', 'FROM app_deployments')) and 'app_agent_events' not in sql]
+    assert len(counted) == 3
+    if admin:
+        assert all('user_id' not in sql for sql, _ in counted)
+        assert nodes['agents'] == {'running': 4, 'queued': 2, 'done': 35}
+        assert nodes['backtest'] == {'strategies': 70}
+        assert nodes['sim_engine']['paper'] == 9 and nodes['live_engine']['live'] == 2 and 'mine' not in nodes['live_engine']
+        return
+    for sql, params in counted:
+        assert 'user_id=%s' in sql and params[0] == 7, sql
+    runs_sql, runs_params = next(q for q in counted if 'app_agent_runs' in q[0])
+    assert "kind='research'" in runs_sql and runs_params == (7, 'random_walk')  # the seeded example isn't theirs
+    assert next(q for q in counted if 'app_strategies' in q[0])[1] == (7, 'random_walk')
+    # A finished session is done however it ended (a stopped one too); a paused one isn't.
+    assert nodes['agents'] == {'running': 1, 'queued': 1, 'done': 2, 'mine': True}
+    assert nodes['backtest'] == {'strategies': 3, 'mine': True}
+    assert nodes['sim_engine']['paper'] == 1 and nodes['sim_engine']['mine'] is True
+    assert nodes['live_engine']['live'] == 0 and nodes['live_engine']['demo'] == 0 and nodes['live_engine']['mine'] is True
+
+
 def _ap_ctx(monkeypatch, autopilot=1):
     # Minimal Ctx + repo stubs for the autopilot_status handler (deployments/pnl/actions mocked out).
     ctx = server.Ctx(
