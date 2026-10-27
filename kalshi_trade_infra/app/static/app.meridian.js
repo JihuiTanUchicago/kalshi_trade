@@ -1129,9 +1129,17 @@
   const ARM_HOLD = 500;
   const armTurns = new WeakMap();
   function armed(btn, label, fire) {
-    if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.classList.remove('armed'); armTurns.delete(btn); return fire(); }
+    if (btn.dataset.armed === '1') {
+      const t = armTurns.get(btn);
+      btn.dataset.armed = ''; btn.classList.remove('armed'); armTurns.delete(btn);
+      const done = fire();
+      // An action that failed left its button saying "Confirm …", where a press only armed it again: once
+      // the action answers it reads as before, unless the action relabelled it or it was armed again.
+      Promise.resolve(done).finally(() => { if (t && !btn.dataset.armed && btn.textContent === t.label) btn.innerHTML = t.orig; }).catch(() => {});
+      return done;
+    }
     if (btn.dataset.armed === 'wait') return;
-    const orig = btn.innerHTML, turn = {};
+    const orig = btn.innerHTML, turn = { orig, label };
     armTurns.set(btn, turn);
     btn.dataset.armed = 'wait'; btn.classList.add('armed'); btn.textContent = label;
     announce(`${label}: press again within 5 seconds.`);
