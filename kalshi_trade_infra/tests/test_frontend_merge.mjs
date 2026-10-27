@@ -36,6 +36,7 @@ import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
+import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -5269,6 +5270,7 @@ deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postR
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
+slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 
 test('on a phone the dashboard book figures put their chip above the name, so "Tau’s demo book" reads on one line', () => {
   // At 390px the half-width figure had ~164px for "DEMO TAU’S DEMO BOOK" (~179px on one line): "BOOK" wrapped.
