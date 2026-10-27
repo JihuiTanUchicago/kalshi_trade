@@ -123,4 +123,16 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     assert later[sid["held"]]["later_missed"][0]["label"] == "Too similar to “Late fade”"
     assert later[sid["missed"]]["verdict"] == "missed_final"
     assert later[sid["missed"]]["later_missed"][0]["label"] == "The edge could be luck on the locked holdout"
-    assert sid["true pass"] not in later and str(peer_eid) not in str(later)
+    # The peer's experiment id never rides along: no value is that id and no text names an experiment
+    # (a substring check on the id alone matches digits inside a figure like "2.50%").
+    def values(v):
+        if isinstance(v, dict):
+            for x in v.values():
+                yield from values(x)
+        elif isinstance(v, (list, tuple)):
+            for x in v:
+                yield from values(x)
+        else:
+            yield v
+    assert sid["true pass"] not in later and peer_eid not in list(values(later))
+    assert "experiment" not in str(later).lower()
