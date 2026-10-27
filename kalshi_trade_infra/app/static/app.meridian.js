@@ -1995,14 +1995,15 @@
       if (gen !== S.gen) return;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
-      const depsWas = S.dashDeps;
+      const depsWas = S.dashDeps, paperWas = S.dashOnPaper;
       S.dashDeps = d.deployments.length;  // the empty track record's button reads it (trackRecordPanel)
+      S.dashOnPaper = d.deployments.filter((x) => x.mode === 'paper' && x.status === 'running').length;  // and its copy reads this
       // The record below polls once a minute: a trade this poll saw open or close re-reads it now (the
       // server rebuilds a cached record the board has moved past), and a first deployment repaints its
-      // empty copy, which reads S.dashDeps.
+      // empty copy, which reads S.dashDeps and S.dashOnPaper.
       const books = ['paper', 'demo', 'live'].map((m) => (d[m] ? `${d[m].closed_trades}/${d[m].open_positions}` : '')).join(' ');
       if (booksSeen != null && books !== booksSeen && S.trReread) S.trReread();
-      else if (depsWas !== S.dashDeps && trAp && trAp.host.isConnected) trAp.repaint();
+      else if ((depsWas !== S.dashDeps || paperWas !== S.dashOnPaper) && trAp && trAp.host.isConnected) trAp.repaint();
       booksSeen = books;
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
@@ -2243,9 +2244,13 @@
     if (!m.trades) {
       // Paper only: the live and demo tabs keep their own copy.
       const apOn = key === 'paper' && !!(S.me && S.me.user && S.me.user.autopilot);
+      // Something already runs on paper (the dashboard's board counts it): asking for a deploy just made
+      // read as if it hadn't taken. Say it's running and why the record waits.
+      const onPaper = key === 'paper' && !apOn && S.dashOnPaper > 0 ? S.dashOnPaper : 0;
       const how = key === 'live' ? 'Deploy a strategy that has proven itself on paper to live money, and its closed trades show up here.'
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
         : apOn ? 'Autopilot runs the strategies that pass every research test on paper, with pretend money. Every closed trade is recorded here.'
+        : onPaper ? `${onPaper === 1 ? 'Your strategy is' : `${num(onPaper)} strategies are`} running on paper. ${onPaper === 1 ? 'It trades' : 'Each trades'} only when its rule fires, so the first trade can take a while. Every closed trade is recorded here.`
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
       // With nothing deployed (the dashboard's board says so), Deploy is an empty board too and sent a
       // new user Deploy → Strategies → Research; the button goes straight to the step that comes first.
@@ -2254,7 +2259,7 @@
       // record doesn't offer it a second time.
       const go = apOn ? '<a class="btn" href="/research">See its research</a>'
         : first ? (S.dashNoSessions ? '<a class="btn" href="/research?new=1">New session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>')
-        : '<a class="btn" href="/deploy">Go to Deploy</a>';
+        : `<a class="btn" href="/deploy">${onPaper ? 'See it on Deploy' : 'Go to Deploy'}</a>`;
       // Instant-fill paper trades are closed but left out (caveat below): "No closed paper trades" denied
       // trades the user can see on Deploy, so the heading says none count yet instead.
       const none = m.excluded_instant_fills ? `No ${esc(m.label.toLowerCase())} trades in the record yet` : `No closed ${esc(m.label.toLowerCase())} trades yet`;

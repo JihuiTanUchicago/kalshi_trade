@@ -4648,6 +4648,10 @@ test('Meridian first-run funnel: an empty paper track record never sends a user 
   f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/); assert.match(paper(), /Turn on autopilot/);
   f.S.dashDeps = undefined; assert.match(paper(), /Go to Deploy/);
   f.S.dashDeps = 0; assert.match(f.trackRecordPanel({trades: 0, label: 'Demo'}, 'demo', th), /Go to Deploy/);
+  // A strategy just deployed on paper: the record says it's running instead of asking for a deploy.
+  f.S.dashDeps = 1; f.S.dashOnPaper = 1;
+  assert.match(paper(), /Your strategy is running on paper\. It trades only when its rule fires, so the first trade can take a while\./);
+  assert.doesNotMatch(paper(), /Deploy a passed strategy on paper/); assert.match(paper(), /href="\/deploy">See it on Deploy</);
 });
 
 test('Meridian first-run funnel: an empty Deploy board with nothing passed starts a session instead of opening an empty list', async () => {

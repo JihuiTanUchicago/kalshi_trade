@@ -839,6 +839,27 @@ test('the empty paper track record follows the autopilot switch when a status re
   assert.match(panel(), /Autopilot runs the strategies that pass every research test on paper, with pretend money/); assert.doesNotMatch(panel(), /Go to Deploy/);
 });
 
+test('a dashboard with a strategy just deployed on paper says the empty record waits on its first trade', async () => {
+  const empty = (label) => ({trades: 0, label});
+  const tr = {generated_at: 1, default_mode: 'paper', method: [], thresholds: {min_sharpe_days: 14, min_trades: 30},
+    modes: {live: empty('Live money'), demo: empty('Kalshi demo'), paper: empty('Paper')}};
+  const dep = {id: 9, strategy_id: 9, title: 'Sell the far wings into the 5pm close', market: 'btc_daily', mode: 'paper', status: 'running',
+    stake: 5, max_positions: 20, realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, created_at: '2026-10-25T08:00:00Z'};
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), deployments: [dep]});
+    if (path === '/api/track-record') return response(tr);
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); await flush();
+  const host = new Element('section'); f.root.appendChild(host);
+  await f.mountTrackRecord(host, {at: null});
+  const panel = host.querySelector('.trpanel').innerHTML;
+  assert.match(panel, /Your strategy is running on paper\./); assert.doesNotMatch(panel, /Deploy a passed strategy on paper/);
+  assert.equal(f.S.dashPaper.equity, 1000, 'the paper book the autopilot panel reads is left as it was');
+});
+
 test('the empty Deployed box never says autopilot is researching while the card says it is quiet or paused', async () => {
   const quiet = {...apOn, story: ['Right now it’s between research runs. Its last check-in was 3 hours ago, longer than usual.']};
   for (const status of [quiet, {...apOn, billing_blocked: true, billing_reason: 'credits', story: []}]) {
@@ -1562,6 +1583,12 @@ test('an empty paper track record points at autopilot when it is on, live and de
   f.S.me = {user: {autopilot: false}};
   const off = f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
   assert.match(off, /Deploy a passed strategy on paper/); assert.match(off, /Turn on autopilot/); assert.match(off, /Go to Deploy/);
+  f.S.dashOnPaper = 1;
+  const running = f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
+  assert.match(running, /Your strategy is running on paper\. It trades only when its rule fires, so the first trade can take a while\./);
+  assert.doesNotMatch(running, /Deploy a passed strategy on paper/); assert.match(running, /href="\/deploy">See it on Deploy</);
+  f.S.dashOnPaper = 2;
+  assert.match(f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th), /2 strategies are running on paper\. Each trades only when its rule fires/);
 });
 
 test('the retained broker module still rejects a late redirect after its owning view changes', async () => {
