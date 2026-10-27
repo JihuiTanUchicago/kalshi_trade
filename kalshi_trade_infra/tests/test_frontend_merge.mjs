@@ -1088,11 +1088,11 @@ test('saving auto-reload on Billing updates the autopilot card\'s auto-reload li
   const amt = f.root.querySelector('#reload-amt'); amt.value = '50'; await amt.onchange(); await flush();
   assert.deepEqual(posts, [{on: true, amount: 50, threshold: 8}]);
   assert.deepEqual({...f.S.me.auto_reload}, {amount: 50, charge: 52.75, threshold: 8});
-  assert.match(box.querySelector('#apf-week').innerHTML, /auto-reload adds \$50\.00 at \$8\.00/);
+  assert.match(box.querySelector('#apf-week').innerHTML, /each time your balance falls to \$8\.00, auto-reload charges your card \$52\.75 for \$50\.00 more/);
   assert.equal(reads(), before);
   const sw = f.root.querySelector('#autoreload'); sw.checked = false; await sw.onchange(); await flush();
   assert.equal(f.S.me.auto_reload, null);
-  assert.doesNotMatch(box.querySelector('#apf-week').innerHTML, /auto-reload adds/);
+  assert.doesNotMatch(box.querySelector('#apf-week').innerHTML, /auto-reload charges your card/);
 });
 
 test('the autopilot card says what switching it on costs before the click', async () => {

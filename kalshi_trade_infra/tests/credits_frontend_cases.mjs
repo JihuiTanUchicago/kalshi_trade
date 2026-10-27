@@ -76,7 +76,23 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     const line = f.root.querySelector('#dash-ap .ap-week-left').innerHTML;
     assert.match(line, /^Credits left: <b>\$25\.71<\/b>; at this week’s pace auto-reload adds \$25\.00 in about 1 day \(card charged \$26\.38\)\./);
     assert.doesNotMatch(line, /about 2 days at/);
+    // With auto-reload on research never pauses at the floor: the card is charged each time instead.
+    assert.match(line, /It has no daily spending cap: each time your balance falls to \$5\.00, auto-reload charges your card and research carries on\. With auto-reload off, it pauses when your balance is under \$1\.00\. <a href="\/billing">Billing<\/a> lists every charge\./);
+    assert.doesNotMatch(line, /then pauses/);
     f.clearTimers();
+  });
+
+  test(`${name}: on a first day with auto-reload on, the card says the card is charged again and again, not that research pauses`, async () => {
+    const first = {...week, research_credits: 0.42, checkin_credits: 0.02, credits_left: 19.56, runway_days: null, reload_days: null, pace_days: 0.01};
+    const f = await apPage({...apStatus, week: first}, {credit_balance: 19.56, auto_reload: {amount: 20, charge: 21.1, threshold: 5}});
+    const line = f.root.querySelector('#dash-ap .ap-week-left').innerHTML;
+    assert.match(line, /^Credits left: <b>\$19\.56<\/b>, too soon to say how long they last: its first day sets the pace\. It has no daily spending cap: each time your balance falls to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more and research carries on\. With auto-reload off, it pauses when your balance is under \$1\.00\./);
+    assert.doesNotMatch(line, /then pauses|auto-reload adds/);
+    f.clearTimers();
+    // Auto-reload off: the floor is the stop.
+    const g = await apPage({...apStatus, week: first}, {credit_balance: 19.56, auto_reload: null});
+    assert.match(g.root.querySelector('#dash-ap .ap-week-left').innerHTML, /It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\. <a href="\/billing">/);
+    g.clearTimers();
   });
 
   test(`${name}: a credits pause with a declined auto-reload card names the card and then credits as the step`, async () => {
