@@ -1,5 +1,5 @@
 // Strategies list (/strategies) cases, run against each bundle's offline DOM/transport harness.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const flush = () => new Promise(resolve => setImmediate(resolve));

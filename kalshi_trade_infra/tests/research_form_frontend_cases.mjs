@@ -12,7 +12,7 @@
 //   invalid form control is not focusable"). Options unfold so the browser can point at it.
 // - Arriving from Explore with ?market= for a market the picker doesn't offer (perpetuals off) left
 //   Agent's choice picked and said nothing. It says the market isn't open for research right now.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

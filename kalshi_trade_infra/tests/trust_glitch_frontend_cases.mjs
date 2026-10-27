@@ -5,7 +5,7 @@
 // - a session silent past the reaper's limit, which the counts leave out of Running, says Silent, not
 //   Researching beside "Running 0";
 // - a session that ended with no strategy to list says why it stopped, not "each strategy below".
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

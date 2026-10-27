@@ -2,7 +2,7 @@
 // market names at 1024-1920px, without changing the 390px stacked phone tables. Checked in a browser with
 // Playwright at 1024, 1280, 1440, 1920 and 390 against seeded long titles and five-figure P&L; these
 // tests pin the rules that fixed it, read from the stylesheets.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {bundleSource} from './bundle_source.mjs';

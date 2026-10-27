@@ -5,7 +5,7 @@
 // Funds and Billing poll too (every 30s, paused while hidden, backing off and saying how old their figures
 // are while reads fail). Billing's poll reads the figures alone, never the Stripe card list, and the
 // statement only when the balance moved; Funds redraws its panels only while nobody is using them.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

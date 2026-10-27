@@ -2,7 +2,7 @@
 // Meridian). The list polls every 15s (paused while the tab is hidden, read at once on coming back to it) and
 // rewrites only the rows that moved, so focus, the search box and the sort stay; a failed poll keeps the list up
 // and, past two polls, says how old it is. The hot-markets rail polls every 30s and says the same when its reads fail.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

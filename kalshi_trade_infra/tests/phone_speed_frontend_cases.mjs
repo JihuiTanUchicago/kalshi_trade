@@ -1,6 +1,6 @@
 // Shared cases, run against each bundle's offline DOM/transport harness (Tau and Meridian): what a page
 // asks the server for while it loads, so a phone on a slow network waits on as few round trips as it can.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

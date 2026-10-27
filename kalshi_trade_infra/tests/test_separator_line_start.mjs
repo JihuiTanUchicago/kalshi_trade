@@ -3,7 +3,7 @@
 // began "· 3 trades", "· Max 2 open" or "· +$3.80 on paper". This renders every main page of both bundles from
 // the view fuzz's replies (and the whole states it renders: new accounts, older rows) and reads what each page
 // wrote, then checks the bundles' own source, so a page the fixtures don't reach can't bring the pattern back.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {pageFiles} from './bundle_source.mjs';

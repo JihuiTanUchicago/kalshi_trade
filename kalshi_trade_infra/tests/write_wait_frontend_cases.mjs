@@ -2,7 +2,7 @@
 // A write Tau hasn't answered kept its spinner until the edge's 504, with no word. After 20s the pressed
 // control's area says "Still waiting for Tau to confirm…". Display only: the write is never aborted, sent
 // again or given a deadline, and the note goes the moment the write answers.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

@@ -5,7 +5,7 @@
 // - the author can delete their own post (asks once); no one else sees Delete on it;
 // - a signed-out link to a post (/community#post-<id>, from the bell or an email) carries the post
 //   through sign-in as ?post=<id>, and the feed opens that post from either form.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

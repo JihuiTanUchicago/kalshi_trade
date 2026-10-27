@@ -3,7 +3,7 @@
 // sits in says "in range", and without a fresh spot the figures are left out under one line that says why.
 // Hot markets also say when they close (`ct`), as Explore's rows do. Every row, in either list, is named by
 // its title and market chip, never by its raw ticker.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

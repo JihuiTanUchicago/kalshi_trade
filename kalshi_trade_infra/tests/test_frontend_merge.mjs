@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+import assert, {visible} from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
@@ -3397,7 +3397,7 @@ test('Deploy prices a deployment\'s open positions in its row, as the dashboard 
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dep(1, 'paper'), dep(2, 'live'), dep(3, 'paper')],
     open_positions: [pos(10, 1, 'paper', 1.25), pos(11, 1, 'paper', -0.5), pos(12, 2, 'live', 2), pos(13, 3, 'paper', null)]}) : response({})});
   await f.viewDeploy(); await flush(); await flush();
-  const html = f.root.querySelector('#deps').innerHTML;
+  const html = visible(f.root.querySelector('#deps').innerHTML);
   assert.ok(html.includes('+$0.75'), 'paper deployment 1: its two marks');
   assert.ok(html.includes('+$2.00'), 'live deployment 2: its own mark only');
   assert.doesNotMatch(html, /\+\$2\.75/);  // never added across deployments or books

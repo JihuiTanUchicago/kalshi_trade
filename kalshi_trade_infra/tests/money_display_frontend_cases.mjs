@@ -8,7 +8,7 @@
 //   up/down") or "Kalshi contract". They say range, bucket and close.
 // - The strategy page's "Holding right now" tagged Live and Demo rows but not paper ones, so beside a Demo row a
 //   paper position read as the real-money book. With more than one book every row says its book.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

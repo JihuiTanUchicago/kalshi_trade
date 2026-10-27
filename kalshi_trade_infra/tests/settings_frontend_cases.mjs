@@ -8,7 +8,7 @@
 //   had already ended) goes to sign-in.
 // - the card wall's Save tapped before the card form is up says the form is still loading, and never
 //   submits the bare form (which reloaded the page to "/?" and started the form over).
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

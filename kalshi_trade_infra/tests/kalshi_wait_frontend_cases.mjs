@@ -3,7 +3,7 @@
 // demo cash as pending, and ask /api/funds/cash?book=demo, then read again once; a pending cash whose last figure
 // is under two minutes old is drawn as current while its follow-up is out (no "checking" flicker once a minute);
 // a demo key's save says its balance is being checked, then names it.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

@@ -3,7 +3,7 @@
 // and says when cash moved with a clock and its zone; the autopilot panel says research under half a cent cost
 // "under $0.01"; every open position on Deploy names its book; a book with no closed trade reads "None yet"; and
 // Funds' Kalshi cash, not connected, links to the live key's form.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

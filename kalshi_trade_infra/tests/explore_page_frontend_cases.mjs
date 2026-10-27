@@ -1,7 +1,7 @@
 // Explore's market page (/explore?m=TICKER) cases, run against each bundle's offline DOM/transport harness:
 // what to do next from a market, its name without a raw series key, and a raw-data table that leaves the
 // page's own actions within reach on a phone.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

@@ -8,7 +8,7 @@
 // - A position names its market in plain words with its own strike ("Bitcoin above $68,499.99 at 5pm ET");
 //   its Kalshi ticker, which carries the raw series key, only sits on a small "Kalshi contract" line.
 // - A strategy row never shows its zero-padded id.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

@@ -2,7 +2,7 @@
 // figures for what they are (Tau's demo book, the Kalshi demo account's cash); an open position's cost is one figure,
 // with its fee, on the dashboard, Funds, Deploy and the strategy page; /funds#connect-kalshi opens Connect Kalshi, and
 // the links that send someone to add a key go there.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

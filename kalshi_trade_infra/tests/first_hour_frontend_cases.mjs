@@ -2,7 +2,7 @@
 // A first session the autopilot already put on paper does not ask for a second deploy; a credit balance
 // on an account minutes old does not claim "over 3 months at this week's pace", and one a few days old
 // states its pace per day so far; the autopilot panel names its check-in as the dashboard card does.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

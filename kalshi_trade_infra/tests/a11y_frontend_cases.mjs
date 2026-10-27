@@ -18,7 +18,7 @@
 // - The pulse's idle line ends "last move 3m ago", and the chat poll rewrote it each minute, so the live
 //   region said the whole line again once a minute. The minutes tick in a shown line hidden from the
 //   reader; the live words leave them out and change only with the status.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

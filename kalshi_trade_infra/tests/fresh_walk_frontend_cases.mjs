@@ -1,6 +1,6 @@
 // Shared cases from a brand-new Bitcoin trader's first hour, run against each bundle's offline harness (Tau
 // and Meridian): the autopilot panel says what it is doing once, not twice in a row.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

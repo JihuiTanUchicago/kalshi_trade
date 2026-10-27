@@ -1,5 +1,5 @@
 // Shared cases run against each bundle's established offline DOM/transport harness.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

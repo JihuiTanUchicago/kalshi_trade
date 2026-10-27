@@ -1,5 +1,5 @@
 // Reused frozen86 workspace regressions, targeted at Meridian; current Funds behavior is reconciled.
-import assert from 'node:assert/strict';
+import assert, {visible} from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
@@ -989,7 +989,7 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     const evidence = evidenceFor(monitor, d.id); assert.equal(evidence.tag, 'details'); assert.equal(evidence.open, false);
     // No backtest figure (a research session's strategy keeps its unseen result with the gatekeeper): no "Unseen P&L —".
     if (d.status === 'running') assert.ok(!evidence.textContent.includes('Unseen P&amp;L'), evidence.textContent);
-    else assert.ok(evidence.textContent.includes(`Unseen P&amp;L ${d.status === 'paused' ? '$0.00' : '+$7.25'}`));
+    else assert.ok(visible(evidence.textContent).includes(`Unseen P&amp;L ${d.status === 'paused' ? '$0.00' : '+$7.25'}`));
     assert.ok(evidence.textContent.includes('Deployed ' + new Date(d.created_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})));
     assert.deepEqual(monitor.querySelectorAll('[data-dep]').map(button => button.dataset.act),
       d.status === 'running' ? ['pause', 'stop'] : d.status === 'paused' ? ['resume', 'stop'] : ['stop']);
@@ -1693,14 +1693,14 @@ test('Overview chooses the correct primary money bucket and preserves disconnect
     assert.equal(!!primary.querySelector('.kalshi-cash'), cashInBand, label);
     if (!livePrimary) assert.equal((cashInBand ? primary.querySelector('.kalshi-cash') : accounts).querySelector('.fig').textContent, secondaryLive, label);
     const paper = f.root.querySelector('.paper-summary');
-    for (const amount of ['$1,111.25', '+$98.40', '−$7.50', '$900.00', '$211.25']) assert.ok(paper.textContent.includes(amount), label + ' paper ' + amount);
+    for (const amount of ['$1,111.25', '+$98.40', '−$7.50', '$900.00', '$211.25']) assert.ok(visible(paper.textContent).includes(amount), label + ' paper ' + amount);
     assert.match(accounts.textContent, /\$2,222\.50/); assert.match(accounts.textContent, /\$2,200\.00 capital/);
     const liveHost = livePrimary || cashInBand ? primary : accounts;
     if (!data.live.connected) assert.equal(liveHost.querySelector('a').getAttribute('href'), '/funds#connect-kalshi', label);
     if (data.live.connected && data.live.balance == null) assert.match(liveHost.textContent, /read your Kalshi balance/, label);
     if (livePrimary) {
-      for (const amount of ['−$2.00', '$50.00']) assert.ok(primary.textContent.includes(amount), label + ' live ' + amount);
-      if (data.live.connected && data.live.balance != null) assert.ok(primary.textContent.includes('+$17.00'), label + ' realized live P&L');
+      for (const amount of ['−$2.00', '$50.00']) assert.ok(visible(primary.textContent).includes(amount), label + ' live ' + amount);
+      if (data.live.connected && data.live.balance != null) assert.ok(visible(primary.textContent).includes('+$17.00'), label + ' realized live P&L');
     }
     assert.equal(postRequests(f).length, 0);
   }
@@ -3044,7 +3044,7 @@ test('deployment details hold realized P&L against the backtest pace for the sam
   const data = dashboardData({deployments: [dep(1, 5, {pnl: 12, trades: 6}), dep(2, 0, {pnl: 12, trades: 6}), dep(3, 1, {pnl: 3})]});
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(data); }});
   await f.viewDashboard();
-  const text = id => evidenceFor(f.root.querySelector('#dash-deps'), id).textContent;
+  const text = id => visible(evidenceFor(f.root.querySelector('#dash-deps'), id).textContent);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
   assert.ok(text(1).includes('Backtest estimate +$10.00 for the same 5 trades\u00a0· Unseen P&amp;L +$12.00'), text(1));
   assert.ok(!text(2).includes('Backtest estimate')); assert.ok(!text(3).includes('Backtest estimate'));
@@ -4570,7 +4570,7 @@ test('Deploy prices a deployment\'s open positions in its row, as the dashboard 
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dep(1, 'paper'), dep(2, 'live'), dep(3, 'paper')],
     open_positions: [pos(10, 1, 'paper', 1.25), pos(11, 1, 'paper', -0.5), pos(12, 2, 'live', 2), pos(13, 3, 'paper', null)]}) : response({})});
   await f.viewDeploy(); await flush(); await flush();
-  const html = f.root.querySelector('#deps').innerHTML;
+  const html = visible(f.root.querySelector('#deps').innerHTML);
   assert.ok(html.includes('+$0.75'), 'paper deployment 1: its two marks');
   assert.ok(html.includes('+$2.00'), 'live deployment 2: its own mark only');
   assert.doesNotMatch(html, /\+\$2\.75/);  // never added across deployments or books

@@ -1,7 +1,7 @@
 // Shared cases, run against each bundle's offline harness (Tau and Meridian): a phone on a bad connection
 // (a train, a lift). The page says it is offline at once and stops saying so once the network is back,
 // and a page that couldn't load while offline says that, not "Something went wrong".
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

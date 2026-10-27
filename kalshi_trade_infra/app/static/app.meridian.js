@@ -256,12 +256,18 @@
     const r = /e/i.test(s) ? Math.round(a * 10 ** places) : Math.round(Number(s + 'e' + places));
     return Math.sign(+v) * r / 10 ** places;
   };
+  // "−" and "+" may end a line before "$" (both are prefix characters to a line breaker), so "−" ended a line
+  // and "$13.56" began the next. A word joiner (WJ, U+2060: invisible, zero width) keeps the sign on its amount
+  // wherever usd() is drawn. It is for the screen only: an attribute, the tab title and anything copied take
+  // plain() text (copyPlain), and CSV downloads come from the server.
+  const WJ = '\u2060';
+  const plain = (s) => String(s == null ? '' : s).replace(/\u2060/g, '');
   const usd = (v, signed = false) => {
     if (v == null || Number.isNaN(+v)) return '—';
     const n = +v;
     const s = '$' + (Math.abs(n) >= 100000 ? fmt0.format(Math.abs(n)) : fmt2.format(Math.abs(halfUp(n))));
-    if (n < 0) return '−' + s;
-    return signed && n > 0 ? '+' + s : s;
+    if (n < 0) return '−' + WJ + s;
+    return signed && n > 0 ? '+' + WJ + s : s;
   };
   const pct = (v, signed = true) => (v == null ? '—' : (v < 0 ? '−' : signed && v > 0 ? '+' : '') + Math.abs(v * 100).toFixed(1) + '%');
   // Kalshi quotes some markets in tenths of a cent: 0.1¢ read as 0¢ and a 99.9¢ bid as 100¢.
@@ -791,7 +797,8 @@
   function pageArrived(path) {
     const h = root.querySelector('h1'), tab = root.querySelector('.services [aria-current="page"]');
     // The signed-out landing keeps the plain product name; its headline is not a page name.
-    const name = root.querySelector('.services') ? ((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
+    // plain(): the tab title is read and copied as text, so it carries no word joiner (usd()).
+    const name = root.querySelector('.services') ? plain((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
     document.title = name ? `${name.length > 60 ? name.slice(0, 59) + '\u2026' : name}${SEP}Tau` : 'Tau';
     const moved = shownPath !== null && shownPath !== path;
     shownPath = path;
@@ -1369,6 +1376,21 @@
     setTimeout(() => { if (armTurns.get(btn) === turn && btn.dataset.armed === 'wait') btn.dataset.armed = '1'; }, ARM_HOLD);
     setTimeout(() => { if (armTurns.get(btn) === turn && btn.dataset.armed) { btn.dataset.armed = ''; btn.classList.remove('armed'); btn.innerHTML = orig; armTurns.delete(btn); } }, 5000);
   }
+  // Copying from a page copies plain text: usd()'s word joiner stays on the screen, so a pasted "−$13.56" is
+  // just that, never with an invisible character in it that a sheet or a search would trip on.
+  function copyPlain() {
+    if (!document.addEventListener) return;
+    document.addEventListener('copy', (e) => {
+      const sel = window.getSelection && window.getSelection();
+      const text = sel ? String(sel) : '';
+      if (!text.includes(WJ) || !e.clipboardData) return;
+      const box = document.createElement('div');
+      for (let i = 0; i < sel.rangeCount; i++) box.appendChild(sel.getRangeAt(i).cloneContents());
+      e.clipboardData.setData('text/plain', plain(text));
+      e.clipboardData.setData('text/html', plain(box.innerHTML));
+      e.preventDefault();
+    });
+  }
   // Holding Enter on a button repeats its click: the first arms, a repeat past ARM_HOLD would confirm.
   // While any confirm is armed, a repeated Enter (not a fresh press) activates nothing.
   function guardArmedRepeat() {
@@ -1562,7 +1584,7 @@
     const pts = curve.map((p, i) => `${x(p, i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
     const last = curve[curve.length - 1][1], n = trades == null ? curve.length : +trades;
     const label = `Cumulative P&L, ${usd(last, true)} over ${n} trade${n === 1 ? '' : 's'}`;
-    return `<svg class="spark ${last > 0 ? 'up' : last < 0 ? 'down' : 'flat'}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}"><line class="spark-zero" x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" vector-effect="non-scaling-stroke"/><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg>`;
+    return `<svg class="spark ${last > 0 ? 'up' : last < 0 ? 'down' : 'flat'}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" role="img" aria-label="${esc(plain(label))}"><line class="spark-zero" x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" vector-effect="non-scaling-stroke"/><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg>`;
   }
   // devCurve (optional): a second, realized series replayed read-only against
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
@@ -1633,12 +1655,12 @@
       const boxX = Math.max(L, Math.min(W - R - boxWidth, px + 8));
       const boxY = py < T + 32 ? T + 8 : T;
       const label = `${day(t)}${SEP}${usd(value, true)}`;
-      return `<g class="chart-sample" data-time="${t}" tabindex="0" role="img" aria-label="${esc(label)}">
+      return `<g class="chart-sample" data-time="${t}" tabindex="0" role="img" aria-label="${esc(plain(label))}">
         <rect x="${left}" y="${T}" width="${Math.max(0, right - left)}" height="${H - T - B}" fill="transparent"/>
         <g class="chart-reading" aria-hidden="true"><line x1="${px}" x2="${px}" y1="${T}" y2="${H - B}" stroke="var(--rule-2)" stroke-dasharray="2 3"/><circle cx="${px}" cy="${py}" r="3" fill="var(--ink)"/>
           <rect x="${boxX}" y="${boxY}" width="${boxWidth}" height="26" fill="var(--stock-raised)" stroke="var(--rule-2)"/><text x="${boxX + 8}" y="${boxY + 17}">${esc(label)}</text></g></g>`;
     }).join('') : '';
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="${options.paper ? 'group' : 'img'}" aria-label="${esc(options.label || `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}`)}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="${options.paper ? 'group' : 'img'}" aria-label="${esc(plain(options.label || `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}`))}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
               ${unseenLabel(cx, W - R, T - 10, options.cutLabel)}` : ''}
@@ -1670,7 +1692,7 @@
     const curvePts = dd.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
     const area = `${curvePts} ${x(dd[dd.length - 1][0]).toFixed(1)},${y(0).toFixed(1)} ${x(dd[0][0]).toFixed(1)},${y(0).toFixed(1)}`;
     const maxDd = fmt(minDd);
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Underwater drawdown plot from ${day(t0)} to ${day(t1)}; worst drawdown ${maxDd}">
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Underwater drawdown plot from ${day(t0)} to ${day(t1)}; worst drawdown ${plain(maxDd)}">
       <polygon points="${area}" fill="var(--signal-wash)" stroke="none"/>
       <polyline points="${curvePts}" fill="none" stroke="var(--signal)" stroke-width="1.6"/>
       <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
@@ -3084,7 +3106,7 @@
   // its market page says it): a stored one read "Spot vs strike" on Explore beside "Target price" on its page.
   const vsTarget = (m) => !!((m.vs && m.vs.from === 'title') || M15_CONTRACT.test(m.t || ''));
   const vsText = (v, m) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (vsTarget(m || { vs: v }) ? 'at the target price' : 'at the strike')
-    : `${+v.diff < 0 ? '−' : '+'}$${num(Math.round(Math.abs(+v.diff)))}${SEP}${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
+    : `${+v.diff < 0 ? '−' : '+'}${WJ}$${num(Math.round(Math.abs(+v.diff)))}${SEP}${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
   const vsLab = (m) => (vsTarget(m) ? 'Spot vs target price' : /^KXBTC-.+-B[\d.]+$/.test(m.t) ? 'Spot vs bucket' : 'Spot vs strike');
   const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, m)}</b></span>` : '');
   // The line names what the rows shown measure from: a list of 15-minute windows only said "Distances to the strike"
@@ -3991,7 +4013,7 @@
     const when = (m.ct ? `${SEP}Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? `${SEP}${vsLab(m)} ${vsText(m.vs, m)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
-    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(SEP))}${SEP}${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? `${SEP}${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''}${SEP}${kfmt(m.v24)} volume over 24 hours${when}${SEP}Opens Kalshi in a new tab">
+    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(SEP))}${SEP}${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? `${SEP}${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''}${SEP}${kfmt(m.v24)} volume over 24 hours${plain(when)}${SEP}Opens Kalshi in a new tab">
       <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span>${esc(compactCondition(m.su))}</span>` : ''}</span><span class="hot-price" title="Midpoint quote"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
       <span class="hot-foot"><span class="hot-meta"><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)}${SEP}24h</span></span><span class="vh">Opens Kalshi in a new tab</span></span>${hotWhen(m)}</a>`;
   }
@@ -4173,7 +4195,7 @@
   // drawing with undefined, and its page fails with Try again.
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
-    actionLink, adminViewOn, alert0, announce, SEP, gloSep, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
+    actionLink, adminViewOn, alert0, announce, SEP, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
@@ -4247,6 +4269,7 @@
 
   setupAnnouncer();
   guardArmedRepeat();
+  copyPlain();
   netBar();
   setupGlossary();
   render();

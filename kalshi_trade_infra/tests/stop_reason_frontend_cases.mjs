@@ -3,7 +3,7 @@
 //   session that ran out of credits offers Add credits;
 // - a Deploy row says why it is paused in plain words (the server's status_why);
 // - a Funds write repaints the page and keyboard focus comes back to the same control.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

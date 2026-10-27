@@ -1,6 +1,6 @@
 // api() retries a GET through a restart (fetch rejects, or CloudFront answers 502/503/504),
 // and never retries a write. Both bundles share the contract.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';

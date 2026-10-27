@@ -13,7 +13,7 @@
 // - Asked to pause a strategy on paper under a day, the agent's reply can suggest pausing it and the
 //   next line says "I left it running". That line is headed as the autopilot's own rule, not
 //   "Reviewed", and says your own Pause on Deploy still stops it.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
