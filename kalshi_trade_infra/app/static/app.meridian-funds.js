@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_WHAT, demoSpan, esc, fig, flash, holdFocus, ICON, loading, pageAssets,
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, loading, pageAssets,
     paint, painted, poll, refreshed, root, S, shell, tone, usd, when
   } = T;
 
@@ -170,9 +170,11 @@ window.TauPage('funds', (T) => {
       const k = cashNow(d.kalshi);
       const kd = cashNow(d.kalshi_dev || { connected: false });
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
+      // No demo key and a demo book that never traded: no demo figure (the bundle's demoKeyless).
+      const demoNone = demoKeyless(dm, !!kd.connected);
       const cf = k.connected && cashFig(k);
       paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? livePnl(k).trim() : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
-        fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
+        (!demoNone ? fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) : fig('Demo balance', 'No demo key', { small: `Connect a demo key below to trade Kalshi’s sandbox ·\u00a0${DEMO_WHAT}` })) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}`.replace(/ ·\u00a0$/, '') }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
       // key forms fold under Connect Kalshi: it opened on the live-key form and the demo key's steps. An account
@@ -199,6 +201,7 @@ window.TauPage('funds', (T) => {
         </section>`;
       const demoSec = `<section class="${sub}">
           <h2>Kalshi demo (sandbox) account</h2>
+          ${!demoNone ? `
           <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
           <p class="lede" style="margin-bottom:14px">Real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is simulated. Reloading changes Tau’s balance only and starts realized P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
@@ -206,6 +209,9 @@ window.TauPage('funds', (T) => {
             <button class="btn" type="submit">Reload demo</button>
           </form>
           <div id="dmflash" style="margin-top:10px"></div>
+          ` : `
+          <p class="lede" style="margin-bottom:14px">Real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. Tau’s demo balance and its reload show here once a demo key is connected.</p>
+          `}
           <h3 style="margin-top:24px">Demo key</h3>
           ${kd.connected ? `
             <div data-cash="demo-ok">${demoLine(kd)}</div><dl class="kv"><dt>Demo key</dt><dd>${esc(kd.key_id)}</dd></dl>

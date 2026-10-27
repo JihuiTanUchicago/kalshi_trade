@@ -239,6 +239,53 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     assert.doesNotMatch(some, /Not in yet/);
   });
 
+  test(`${name}: an account with no demo key is shown no demo figure, on the dashboard or on Funds`, async () => {
+    const demo = {equity: 4321, capital: 4321, realized_pnl: 0, open_positions: 0, running: 0};
+    const board = async (key) => {
+      const f = frontend({fetchImpl: (path) => {
+        if (path.startsWith('/api/dashboard')) { const d = dashboard(); return response({...d, demo: {...d.demo, ...demo}}); }
+        if (path === '/api/autopilot/status') return response(apStatus);
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path.startsWith('/api/chat')) return response({messages: []});
+        return response({});
+      }});
+      f.S.me.kalshi_dev_connected = key;
+      await f.viewDashboard(); await flush();
+      const html = (f.root.querySelector('#other-accounts') || f.root.querySelector('#boardbody')).innerHTML;  // Meridian keeps it under Accounts
+      f.clearTimers();
+      return html;
+    };
+    // Tau's demo book starts at a capital Tau sets ($1,000 for a new account): without a key it is no balance at all.
+    let html = await board(false);
+    assert.match(html, /No demo key/);
+    assert.match(html, /Connect a Kalshi demo key on <a href="\/funds">Funds<\/a>/);
+    assert.doesNotMatch(html, /\$4,321\.00/);
+    // With a key (or from an /api/me that doesn't say), the figure is shown.
+    for (const key of [true, undefined]) {
+      html = await board(key);
+      assert.match(html, /\$4,321\.00 capital/, String(key));
+      assert.doesNotMatch(html, /No demo key/, String(key));
+    }
+    // Funds: the same, in its figures and its demo panel (no balance, no reload, until a key is in).
+    const funds = async (kalshi_dev, book = {}) => {
+      const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response({...fundsData(), demo: {capital: 4321, equity: 4321, realized: 0, ...book}, kalshi_dev}) : response({})});
+      await f.viewFunds(); await flush();
+      const out = {figs: f.root.querySelector('#ffigs').textContent, reload: f.root.querySelector('#demo'), main: f.root.querySelector('#main').innerHTML};
+      f.clearTimers();
+      return out;
+    };
+    let fd = await funds({connected: false});
+    assert.match(fd.figs, /Demo balance\s*No demo key/);
+    assert.doesNotMatch(fd.figs + fd.main, /4,321/);
+    assert.equal(fd.reload, null);
+    fd = await funds({connected: true, key_id: 'k2', balance: 50});
+    assert.match(fd.figs, /Demo balance\s*\$4,321\.00/);
+    assert.ok(fd.reload, 'the reload is there with a key');
+    // A book that traded, its key since removed, keeps its record and says it needs a key.
+    fd = await funds({connected: false}, {equity: 4326, realized: 5, closed_trades: 2});
+    assert.match(fd.figs, /Demo balance\s*\$4,326\.00[\s\S]*needs a demo key/);
+  });
+
   test(`${name}: Funds for an account with no Kalshi key leads with Paper and folds the key forms under Connect Kalshi`, async () => {
     const page = async (o) => {
       const d = {...fundsData(), ...o};
