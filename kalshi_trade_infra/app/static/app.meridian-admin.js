@@ -323,7 +323,8 @@ window.TauPage('admin', (T) => {
       if (id === 'web') return L.users != null ? `${num(L.users)} users${SEP}serving` : `online${SEP}serving`;
       if (id === 'agents') return metricLines(id, L).join(SEP);
       if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
-      const a = L.age == null ? '—' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
+      // No heartbeat on record (the server's age is null) reads in words: a bare "—" read "2 paper running · —".
+      const a = L.age == null ? 'not seen yet' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
       if (SYS_UNIT[id]) return [aboutRows(L.rows, SYS_UNIT[id]), a].filter(Boolean).join(SEP);
       // Running deployments per mode (the reader's own; every user's for the operator): live money and demo are named apart, never summed.
       if (id === 'sim_engine') return `${num(L.paper)} paper running${SEP}${a}`;
