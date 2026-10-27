@@ -374,7 +374,11 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
     # The removed deployment's money is on the card too, apart from the active one ("Removed from paper"),
     # as the Deploy board and the strategy page count it: together they are the dashboard's paper figure.
     old_rows = paper["by_dep"][p_old]
-    assert cards[sids["paper"]]["past"] == {"paper": {"pnl": stopped, "trades": len(old_rows), "deployments": 1}}
+    # Its instant fill is counted apart (instant_fills), as the track record leaves it out; the figure is unchanged.
+    old_instant = sum(1 for r in old_rows if not str(r["order_ref"] or "").startswith("sim:"))
+    assert old_instant == 1
+    assert cards[sids["paper"]]["past"] == {"paper": {"pnl": stopped, "trades": len(old_rows), "deployments": 1,
+                                                      "instant_fills": old_instant}}
     assert _money(cards[sids["paper"]]["real"]["pnl"] + cards[sids["paper"]]["past"]["paper"]["pnl"]) == dash["paper"]["realized_pnl"]
     assert "past" not in cards[sids["demo"]] and "past" not in cards[sids["live"]]
 
