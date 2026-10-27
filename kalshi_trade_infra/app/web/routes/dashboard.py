@@ -173,7 +173,7 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
             "by_deployment": _since_by_deployment(by_dep or {}, _removed_names(cur, uid, by_dep or {}, listed))}
 
 
-PASSED_READ = 50  # the passes since the visit judged for a later check; the strip names 3 of them
+PASSED_JUDGE = 500  # the passes since the visit judged for a later check; the strip names 3 of them
 
 
 def _passed_since(cur, uid: int, visit: datetime) -> Dict:
@@ -181,12 +181,20 @@ def _passed_since(cur, uid: int, visit: datetime) -> Dict:
     later check left uncleared (strategies._later_verdicts, one read for all of them, only when something
     passed): one whose one-time holdout then failed, or that the diversification check held back. Those
     go under "not_cleared" ([{id, title, verdict}], newest 3) and "not_cleared_n". The strip said
-    "2 strategies passed" for strategies their pages said missed the final test or were held back."""
-    got = repo.passed_since(cur, uid, visit, limit=PASSED_READ)
+    "2 strategies passed" for strategies their pages said missed the final test or were held back.
+    Up to PASSED_JUDGE passes are judged, all of them in one read: only the newest 50 were, so past 50 "n"
+    took off only the uncleared among those 50 and "not_cleared_n" counted those 50 alone. Past
+    PASSED_JUDGE (the read is polled every 15s, ~5ms per 100 passes) "more" is set and both counts are
+    those of the newest PASSED_JUDGE, at least that many: the strip says "500+", never a wrong exact count."""
+    got = repo.passed_since(cur, uid, visit, limit=PASSED_JUDGE)
     items = got.get("items") or []
     later = _later_verdicts(cur, uid, [dict(i, status="passed", spec=i.get("spec") or {}) for i in items]) if items else {}
     name = lambda i: {"id": i["id"], "title": i["title"]}
-    out = {"n": int(got.get("n") or 0) - len(later), "items": [name(i) for i in items if i["id"] not in later][:3]}
+    more = int(got.get("n") or 0) > len(items)
+    out = {"n": (len(items) if more else int(got.get("n") or 0)) - len(later),
+           "items": [name(i) for i in items if i["id"] not in later][:3]}
+    if more:
+        out["more"] = True
     if later:
         out["not_cleared"] = [dict(name(i), verdict=later[i["id"]][0]) for i in items if i["id"] in later][:3]
         out["not_cleared_n"] = len(later)

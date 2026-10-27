@@ -215,3 +215,43 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
             yield v
     assert sid["true pass"] not in later and peer_eid not in list(values(later))
     assert "experiment" not in str(later).lower()
+
+
+def test_the_since_strip_judges_every_pass_since_the_visit_in_one_read(conn):
+    """The dashboard's "since your last visit" judged only the newest 50 passes: with 60, of which the 10
+    oldest then missed their one-time holdout, it said "60 strategies passed" and named none as not cleared.
+    Every pass is judged now, with one read of their experiments' later rows."""
+    from datetime import timedelta
+    from app import repository as repo
+    from app.research import research_repository as rr
+    from app.trading import spec as specmod
+    from app.web.routes import dashboard
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "since60@example.invalid", "S", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": 5.0, "max_positions": 1}})
+    run = repo.create_run(cur, uid, "research", "btc15m", "custom", "idea")
+    curve = [[1761000000 + 3600 * i, 0.05 if i % 3 else -0.04] for i in range(40)]
+    ok = {"p_value": 0.01, "mean_net_return": 0.02, "ci_lo": 0.002, "ci_hi": 0.04}
+    luck = {"p_value": 0.48, "mean_net_return": -0.003, "ci_lo": -0.03, "ci_hi": 0.025}
+    missed = []
+    for i in range(60):
+        sid = repo.insert_strategy(cur, uid, run, None, "btc15m", "custom", "Pass %d" % i, "t", spec, "passed",
+                                   {"classification": "statistically_supported"})
+        eid = rr.preregister(cur, {"user_id": uid, "run_id": run, "strategy_id": sid, "market": "btc15m",
+                                   "hypothesis_hash": uuid.uuid4().hex, "spec": spec, "economic_rationale": "{}",
+                                   "primary_metric": "m", "null_hypothesis": "", "alt_hypothesis": "", "planned_test": "t",
+                                   "falsification_criteria": "", "min_sample": 30, "cost_assumptions": {},
+                                   "research_partition_id": 0, "planned_n_tests": 2, "correction_method": "BH"})
+        rr.append_result(cur, eid, "validation", "statistically_supported", 40, metrics=dict(ok), equity_curve=curve)
+        if i < 10:  # the oldest ten, past the newest 50
+            rr.append_result(cur, eid, "holdout", "inconclusive", 40, metrics=dict(luck, holdout_consumed=True), equity_curve=curve)
+            missed.append(sid)
+        cur.execute("UPDATE app_strategies SET experiment_id=%s WHERE id=%s", (eid, sid))
+    counting = _Counting(cur)
+    got = dashboard._passed_since(counting, uid, repo.now_utc() - timedelta(hours=1))
+    assert counting.later == 1
+    assert got["n"] == 50 and got["not_cleared_n"] == 10 and "more" not in got
+    assert [i["id"] for i in got["not_cleared"]] == missed[::-1][:3]
+    assert {i["verdict"] for i in got["not_cleared"]} == {"missed_final"}
+    assert not {i["id"] for i in got["items"]} & set(missed)

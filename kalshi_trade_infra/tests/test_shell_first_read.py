@@ -396,6 +396,27 @@ def test_the_shell_names_a_follow_up_once_across_its_reads(monkeypatch):
     assert [x.get("then") for x in reads] == [["/api/funds/cash?book=live", "/api/funds/cash?book=demo"], None]
 
 
+def test_the_since_strip_judges_every_pass_past_50_and_says_at_least_past_its_limit(monkeypatch):
+    # The strip judged only the newest 50 passes since the visit: with 120, "n" took off only the uncleared among
+    # those 50. Every pass is judged now, up to PASSED_JUDGE, in one read; past it the counts say "at least".
+    from app.web.routes import dashboard as dashboard_routes
+    rows = [{"id": i, "title": "S%d" % i, "spec": {}, "experiment_id": 1000 + i} for i in range(120, 0, -1)]
+    asked = []
+    monkeypatch.setattr(dashboard_routes.repo, "passed_since",
+                        lambda cur, uid, since, limit=3: {"n": len(rows), "items": rows[:limit]})
+    # Every tenth pass, the oldest ones among them, missed its one-time holdout.
+    monkeypatch.setattr(dashboard_routes, "_later_verdicts", lambda cur, uid, items: asked.append(len(items)) or {
+        i["id"]: ("missed_final", {}) for i in items if i["id"] % 10 == 0})
+    out = dashboard_routes._passed_since(None, 7, datetime(2026, 10, 1))
+    assert asked == [120] and out["n"] == 108 and out["not_cleared_n"] == 12 and "more" not in out
+    assert [i["id"] for i in out["items"]] == [119, 118, 117] and [i["id"] for i in out["not_cleared"]] == [120, 110, 100]
+    rows[:] = [{"id": i, "title": "S%d" % i, "spec": {}, "experiment_id": i} for i in range(700, 0, -1)]
+    asked.clear()
+    out = dashboard_routes._passed_since(None, 7, datetime(2026, 10, 1))
+    assert asked == [dashboard_routes.PASSED_JUDGE] == [500]
+    assert out["more"] is True and out["n"] == 450 and out["not_cleared_n"] == 50  # the newest 500's: at least that many
+
+
 def test_a_memo_counts_as_kept_only_with_time_to_spare(monkeypatch):
     from app.adapters.kalshi import kalshi_account
     now = 1000.0

@@ -383,6 +383,22 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     f.clearTimers();
   });
 
+  test(`${name}: past the passes the server judges, the since strip's counts read as at least that many`, async () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const since = {at: '2026-10-19T08:00:00+00:00', first: false, books: {}, autopilot: {}, runs: {},
+      passed: {n: 375, more: true, items: [{id: 9, title: 'Rain'}, {id: 8, title: 'Fade'}, {id: 7, title: 'Tails'}],
+        not_cleared: [{id: 6, title: 'Gust', verdict: 'missed_final'}], not_cleared_n: 125}};
+    const text = f.sinceStrip({since, deployments: []}, '#dash-deps');
+    assert.match(text, /375\+ strategies passed: .*Tails<\/a>, <a href="\/strategies">372\+ more<\/a>/);
+    assert.match(text, /Not cleared to trade: <a href="\/strategies\/6">Gust<\/a> \(missed the final test\), 124\+ more\./);
+    // Every pass judged: exact counts, as before.
+    const exact = f.sinceStrip({since: {...since, passed: {...since.passed, n: 120, more: undefined, not_cleared_n: 30}}, deployments: []}, '#dash-deps');
+    assert.match(exact, /120 strategies passed: .*<a href="\/strategies">117 more<\/a>/);
+    assert.match(exact, /29 more\./);
+    assert.doesNotMatch(exact, /\+/);
+    f.clearTimers();
+  });
+
   test(`${name}: a carried read is used only for its own URL and only by the first page`, async () => {
     let f = frontend({fetchImpl: researchTransport()});
     f.location.pathname = '/research';
