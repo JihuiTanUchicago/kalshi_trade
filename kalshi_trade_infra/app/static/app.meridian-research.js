@@ -373,7 +373,7 @@ window.TauPage('research', (T) => {
       const d = got.same && kept ? kept : (kept = got);
       // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
       const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
-      const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
+      const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + runPassed(r).ok, 0);
       // A paused session holds one of the two session slots but isn't running: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
       paint(root.querySelector('#research-status'), fig('Running', running) + (paused ? fig('Paused', paused) : '') + fig('Queued', queued));
@@ -385,7 +385,7 @@ window.TauPage('research', (T) => {
       paint(root.querySelector('#active-research'), active ? `<section class="active-research active-${esc(active.status)}">
         <div class="active-head"><h2 class="active-prompt" title="${esc(sessionTitle(active))}">${esc(sessionTitle(active))}</h2></div>
         <div class="active-meta"><div class="active-session"><span class="active-state">${runLate(active) ? lateLabel(runLate(active)) : active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span>${sessionNo(active) ? `<b>${sessionNo(active)}</b>` : ''}${runTag(active)}</div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
-        <aside class="active-aside" aria-label="Session progress"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${active.strategies_passed || 0}</dd></div>${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${usd(active.spent_usd)}</dd></div>` : ''}</dl></aside>
+        <aside class="active-aside" aria-label="Session progress"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${runPassed(active).ok}</dd></div>${runPassed(active).fell ? `<div><dt>Not cleared</dt><dd>${num(runPassed(active).fell)}</dd></div>` : ''}${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${usd(active.spent_usd)}</dd></div>` : ''}</dl></aside>
       </section>` : '');
       const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
       // The seeded example is listed but isn't the user's: it doesn't count as a session of theirs.
@@ -431,20 +431,28 @@ window.TauPage('research', (T) => {
   // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
   // one said "Cancelled" or "Failed" without who or what stopped it.
   const RUN_STOP = { credits: 'Out of credits', user: 'Stopped by you', error: 'Stopped on an error', limit: 'Finished', complete: 'Finished' };
+  // A session's passes as its page counts them: its counter less those a later check left uncleared
+  // (`not_cleared` from the server: the one-time holdout then failed, or the diversification check held it
+  // back, stamped Missed final test and Held back on its page). The row read "2 of 10 passed" over a
+  // session whose page said "Passed 1" and "1 not cleared".
+  const runPassed = (r) => {
+    const all = +r.strategies_passed || 0, fell = Math.min(all, +r.not_cleared || 0);
+    return { ok: all - fell, fell };
+  };
   // `newest`: the user's newest session. When it ran out of credits its row offers Add credits, under
   // the row (a link can't sit inside the row's own link); older ones only say so.
   function runRow(r, newest) {
-    const why = RUN_STOP[r.stop_reason] || '';
+    const why = RUN_STOP[r.stop_reason] || '', { ok, fell } = runPassed(r);
     // A `stopped` session (interrupted, or a market with nothing to research yet) reads like a
     // finished one: it fell through to a red "Failed".
     const late = runLate(r);
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching'
       : r.status === 'queued' ? 'Waiting'
-      : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${r.strategies_passed ? 'gain' : ''}"><span class="run-ratio" aria-label="${esc(r.strategies_passed)} of ${esc(r.hypotheses_tried)}"><b class="run-passed">${r.strategies_passed}</b><span aria-hidden="true">/</span><b class="run-tested">${r.hypotheses_tried}</b></span> <span class="run-denominator">passed</span></span>${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : ''}`
+      : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${ok ? 'gain' : ''}"><span class="run-ratio" aria-label="${esc(ok)} of ${esc(r.hypotheses_tried)}"><b class="run-passed">${ok}</b><span aria-hidden="true">/</span><b class="run-tested">${r.hypotheses_tried}</b></span> <span class="run-denominator">passed${fell ? `, ${num(fell)} not cleared` : ''}</span></span>${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : ''}`
       : r.status === 'paused' ? 'Paused'
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
     // status band: a thin color rule so passed/void/failed reads at a glance; only a real error is `fail`
-    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
+    const band = r.status === 'succeeded' ? (ok ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;

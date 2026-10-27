@@ -537,43 +537,54 @@ def test_strategies_figures_come_from_count_not_the_page(monkeypatch):
 def test_strategies_counts_a_pass_a_later_check_left_uncleared_apart(monkeypatch):
     # A validation pass whose one-time holdout failed, or that the diversification check held back, keeps the
     # status "passed": the chips read "Passed (3)" over rows stamped Missed final test and Held back. Every pass
-    # under the filters is judged (not just the page), and Passed / Not cleared list by that verdict.
+    # under the filters is judged (not just the page), and Passed / Not cleared list by that verdict. A probation
+    # strategy held back after passing on paper keeps the status "failed": it counts and lists under Not cleared
+    # too, not under Void, and the Kept view lists it.
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {
         "passed": 3, "failed": 4, "total": 8, "deployed": 0, "examples": {"passed": 1}})
     passes = [{"id": 1, "status": "passed"}, {"id": 2, "status": "passed"}, {"id": 3, "status": "passed"},
-              {"id": 9, "status": "passed", "direction": server.repo.DEMO_DIRECTION}]
-    seen, judged = [], []
-    monkeypatch.setattr(server.repo, "passed_strategies", lambda cur, uid, d, m, q, dep: [dict(p) for p in passes])
+              {"id": 9, "status": "passed", "direction": server.repo.DEMO_DIRECTION}, {"id": 5, "status": "failed"}]
+    seen, judged, asked = [], [], []
+    monkeypatch.setattr(server.repo, "passed_strategies",
+                        lambda cur, uid, d, m, q, dep, **k: asked.append(k) or [dict(p) for p in passes])
     monkeypatch.setattr(strategy_routes, "_later_verdicts", lambda cur, uid, rows: judged.append(sorted(r["id"] for r in rows))
                         or {i: v for i, v in ((2, ("missed_final", {})), (3, ("held_back", {})), (5, ("held_back", {})))
                             if i in [r["id"] for r in rows]})
 
-    def fake_list(cur, uid, direction=None, status=None, *a, only_ids=None, skip_ids=None, **k):
-        seen.append((status, only_ids, skip_ids))
-        rows = [{"id": i, "status": "passed"} for i in (1, 2, 3, 9)] + [{"id": 5, "status": "failed"}]
+    def fake_list(cur, uid, direction=None, status=None, *a, hide_noise=False, only_ids=None, skip_ids=None,
+                  keep_ids=None, **k):
+        seen.append((status, only_ids, skip_ids, keep_ids if hide_noise else None))
+        rows = [{"id": i, "status": "passed"} for i in (1, 2, 3, 9)] + [{"id": i, "status": "failed"} for i in (5, 6)]
         return [r for r in rows if (status is None or r["status"] == status) and (only_ids is None or r["id"] in only_ids)
-                and r["id"] not in (skip_ids or [])]
+                and r["id"] not in (skip_ids or []) and not (hide_noise and r["status"] == "failed" and r["id"] not in keep_ids)]
     monkeypatch.setattr(server.repo, "list_strategies", fake_list)
     monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: dict(s))
     out = server.list_strategies(ctx(query={}))
+    assert asked == [{"paper_passed": "forward_validated"}]
     assert {k: out["counts"][k] for k in ("passed", "not_cleared", "failed", "total")} == {
-        "passed": 1, "not_cleared": 2, "failed": 4, "total": 8}
+        "passed": 1, "not_cleared": 3, "failed": 3, "total": 8}
     assert out["counts"]["examples"] == {"passed": 1}  # the example's pass is cleared: it stays there
-    assert {c["id"]: c.get("verdict") for c in out["strategies"]} == {1: None, 2: "missed_final", 3: "held_back", 9: None, 5: "held_back"}
-    assert judged == [[1, 2, 3, 5, 9]]  # the page's void row rides in the passes' one read
+    assert {c["id"]: c.get("verdict") for c in out["strategies"]} == {
+        1: None, 2: "missed_final", 3: "held_back", 9: None, 5: "held_back"}
+    # Kept lists the held probation strategy: total 8 less Void 3, plus the example's pass.
+    assert seen == [(None, None, None, [5])] and out["matched"] == 8 - 3 + 1
+    assert judged == [[1, 2, 3, 5, 9]]  # the passes and the paper pass in one read
     seen.clear(), judged.clear()
     out = server.list_strategies(ctx(query={"status": "passed"}))
-    assert seen == [("passed", None, [2, 3])] and [c["id"] for c in out["strategies"]] == [1, 9]
-    assert out["matched"] == 2 and judged == [[1, 2, 3, 9]]
+    assert seen == [("passed", None, [2, 3], None)] and [c["id"] for c in out["strategies"]] == [1, 9]
+    assert out["matched"] == 2 and judged == [[1, 2, 3, 5, 9]]
+    seen.clear()
+    out = server.list_strategies(ctx(query={"status": "failed"}))  # Void leaves the held probation out
+    assert seen == [("failed", None, [5], None)] and [c["id"] for c in out["strategies"]] == [6] and out["matched"] == 3
     seen.clear()
     out = server.list_strategies(ctx(query={"status": "not_cleared"}))
-    assert seen == [("passed", [2, 3], None)] and [c["id"] for c in out["strategies"]] == [2, 3]
-    assert out["matched"] == 2 and [c["verdict"] for c in out["strategies"]] == ["missed_final", "held_back"]
+    assert seen == [(None, [2, 3, 5], None, None)] and [c["id"] for c in out["strategies"]] == [2, 3, 5]
+    assert out["matched"] == 3 and [c["verdict"] for c in out["strategies"]] == ["missed_final", "held_back", "held_back"]
     # Nothing uncleared: the chip lists nothing, and Passed lists every pass.
-    passes[1:3] = []
+    del passes[1:3], passes[-1]
     seen.clear()
     out = server.list_strategies(ctx(query={"status": "not_cleared"}))
-    assert seen == [("passed", [], None)] and out["matched"] == 0 and "not_cleared" not in out["counts"]
+    assert seen == [(None, [], None, None)] and out["matched"] == 0 and "not_cleared" not in out["counts"]
 
 
 def test_list_strategies_narrows_to_or_leaves_out_ids():
@@ -585,8 +596,23 @@ def test_list_strategies_narrows_to_or_leaves_out_ids():
     cur.sql = None
     assert server.repo.list_strategies(cur, 1, only_ids=[]) == [] and cur.sql is None  # no read for nothing
     server.repo.passed_strategies(cur, 1, None, "btc15m", "fade", True)
-    assert cur.sql.startswith("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id FROM app_strategies s")
+    assert cur.sql.startswith("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id, s.run_id "
+                              "FROM app_strategies s")
     assert "s.status=%s AND s.market=%s" in cur.sql and cur.params[:3] == [1, "passed", "btc15m"] and "EXISTS" in cur.sql
+    # With paper_passed, the void and rejected strategies that passed on paper ride the same read.
+    server.repo.passed_strategies(cur, 1, None, "btc15m", None, False, paper_passed="forward_validated")
+    assert ("s.status IN ('passed',%s,%s) AND (s.status='passed' OR EXISTS (SELECT 1 FROM app_experiment_results x"
+            in cur.sql) and "x.phase='paper' AND x.classification=%s" in cur.sql
+    assert cur.params == [1, "btc15m", "rejected", "failed", "forward_validated"]
+    # The research list's sessions only; none, no read.
+    server.repo.passed_strategies(cur, 1, run_ids=[8, 9])
+    assert cur.sql.endswith("AND s.run_id IN (%s,%s)") and cur.params == [1, "passed", 8, 9]
+    cur.sql = None
+    assert server.repo.passed_strategies(cur, 1, run_ids=[]) == [] and cur.sql is None
+    # The Kept view lists a held-back probation strategy beside the kept ones.
+    server.repo.list_strategies(cur, 1, hide_noise=True, keep_ids=[5], limit=50)
+    assert "AND (s.status NOT IN (%s,%s) OR s.id IN (%s))" in cur.sql and cur.params[:4] == [1, "rejected", "failed", 5]
+    assert cur.sql.count("NOT IN") == 1
 
 
 def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):

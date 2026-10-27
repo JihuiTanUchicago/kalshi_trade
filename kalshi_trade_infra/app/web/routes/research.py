@@ -55,6 +55,7 @@ def list_runs(ctx: Ctx):
     runs = repo.list_runs(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, runs)
     _mark_example(runs)
+    _with_not_cleared(ctx.cur, ctx.uid, runs)
     _number_sessions(ctx.cur, ctx.uid, runs)
     for r in runs:  # why a finished session stopped (out of credits, by you, an error, finished): services.run_stop
         r["stop_reason"] = run_stop.stop_reason(r)
@@ -78,6 +79,31 @@ def _mark_example(runs: List[Dict]) -> None:
     it cost them nothing, so the list marks it and the headline leaves it out."""
     for r in runs:
         r["example"] = r.get("direction") == repo.DEMO_DIRECTION
+
+
+def _with_not_cleared(cur, uid: int, runs: List[Dict]) -> None:
+    """Stamp each listed session that counted a pass a later check left uncleared (its one-time holdout
+    then failed, or the diversification check held it back: strategies._later_verdicts, the stamps
+    "Missed final test" and "Held back") with `not_cleared`, how many. Its stored counter still counts
+    them, so a row read "2 of 10 passed" over a session whose page says "Passed 1" and "1 not cleared";
+    the row now takes them off as the session page does. Only sessions whose counter holds a pass are
+    read, the seeded example left out as on its page: their passes in one read (idx_strat_run), then
+    their experiments' later rows in one (later_results), never a read per row. The holdout and the
+    diversification check are judged in the session's own gating transaction, with the pass itself
+    (agent._promote_if_forward_validated), so the counter the list's version reads moves with them.
+    Display only."""
+    ids = [int(r["id"]) for r in runs if int(r.get("strategies_passed") or 0) > 0 and not r.get("example")]
+    if not ids:
+        return
+    passes = repo.passed_strategies(cur, uid, run_ids=ids)
+    got = _later_verdicts(cur, uid, [p for p in passes if p.get("direction") != repo.DEMO_DIRECTION])
+    n: Dict[int, int] = {}
+    for p in passes:
+        if p["id"] in got and p.get("run_id"):
+            n[int(p["run_id"])] = n.get(int(p["run_id"]), 0) + 1
+    for r in runs:
+        if n.get(int(r["id"])):
+            r["not_cleared"] = n[int(r["id"])]
 
 
 def _number_sessions(cur, uid: int, runs: List[Dict]) -> None:

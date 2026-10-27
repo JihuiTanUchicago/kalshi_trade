@@ -378,7 +378,7 @@ window.TauPage('research', (T) => {
       const d = got.same && kept ? kept : (kept = got);
       // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
       const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
-      const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
+      const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + runPassed(r).ok, 0);
       // A paused session holds one of the two session slots but isn't researching: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
       const said = running || paused
@@ -434,19 +434,28 @@ window.TauPage('research', (T) => {
   // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
   // one said "Cancelled" or "Failed" without who or what stopped it.
   const RUN_STOP = { credits: 'Out of credits', user: 'Stopped by you', error: 'Stopped on an error', limit: 'Finished', complete: 'Finished' };
+  // A session's passes as its page counts them: its counter less those a later check left uncleared
+  // (`not_cleared` from the server: the one-time holdout then failed, or the diversification check held it
+  // back, stamped Missed final test and Held back on its page). The row read "2 of 10 passed" over a
+  // session whose page said "Passed 1" and "1 not cleared".
+  const runPassed = (r) => {
+    const all = +r.strategies_passed || 0, fell = Math.min(all, +r.not_cleared || 0);
+    return { ok: all - fell, fell };
+  };
   // `newest`: the user's newest session. When it ran out of credits its card offers Add credits, beside
   // the card (a link can't sit inside the card's own link); older ones only say so.
   function runRow(r, newest) {
-    const why = RUN_STOP[r.stop_reason] || '', late = runLate(r);
+    const why = RUN_STOP[r.stop_reason] || '', late = runLate(r), { ok, fell } = runPassed(r);
+    const unclear = fell ? `, ${num(fell)} not cleared` : '';
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
-      : r.status === 'succeeded' ? `${why ? why + ' \u00b7\u00a0' : ''}<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
-      : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${r.strategies_passed ? ` ·\u00a0<span class="gain">${r.strategies_passed} passed</span>` : ''}`
+      : r.status === 'succeeded' ? `${why ? why + ' \u00b7\u00a0' : ''}<span class="${ok ? 'gain' : ''}">${ok} of ${r.hypotheses_tried} passed</span>${unclear}`
+      : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${ok ? ` ·\u00a0<span class="gain">${ok} passed</span>${unclear}` : fell ? ` ·\u00a0${num(fell)} not cleared` : ''}`
       : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
     // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
     // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
-    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
+    const band = r.status === 'succeeded' ? (ok ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-title"><b title="${esc(sessionTitle(r))}">${esc(sessionTitle(r))}</b>${runTag(r)}</span>
       <span class="run-meta">${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}${r.error ? ' \u00b7\u00a0' + esc(r.error) : ''}</span>

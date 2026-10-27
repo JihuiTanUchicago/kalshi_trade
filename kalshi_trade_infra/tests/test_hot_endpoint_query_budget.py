@@ -342,6 +342,8 @@ def test_an_off_autopilot_panel_skips_the_reads_only_its_story_and_idle_line_use
 # Measured 2026-10-26 on a seeded account of 300 sessions (5 live, 59k events, 7.5k debits) beside five
 # lighter ones: a poll was 4 statements, ~7.5ms of SQL and 21KB of JSON (2.2KB brotli); an unchanged one
 # is 2 statements, ~2.2ms and 36 bytes, and a changed one 5 statements, ~8.5ms.
+# A list whose counters hold a pass reads those sessions' passes and their experiments' later rows (+2, one
+# each for the list), so a row takes off the passes its page says weren't cleared.
 RUNS_BUDGET = (7, 5)
 RUNS_SAME_BUDGET = 2
 
@@ -402,6 +404,36 @@ def test_an_unchanged_research_list_poll_reads_only_the_counts_and_the_version(p
     out = server.list_runs(_ctx([], 10.0, query={"since": first["v"]}, extra={
         **runs(rows), "SELECT kind, status, COUNT(*)": [{"kind": "research", "status": "queued", "n": 1}]}))
     assert not out.get("same") and out["counts"]["research_queued"] == 1
+
+
+def test_the_research_list_takes_off_uncleared_passes_in_two_reads_for_the_page(production):
+    """A session row says how many of its passes a later check left uncleared (its holdout failed, or the
+    diversification check held it back), as its page does: the listed sessions' passes in one read and
+    their experiments' later rows in one, never a read per row, and only when a listed counter holds a pass."""
+    base = {"market": "btc15m", "direction": None, "prompt": "p", "hypotheses_tried": 10, "error": None,
+            "created_at": None, "started_at": None, "finished_at": None, "heartbeat_at": None, "run_forever": 0,
+            "out_of_credits": 0}
+    rows = [dict(base, id=i, status="succeeded", strategies_passed=2) for i in (9, 8, 7)] + [
+        dict(base, id=6, status="succeeded", strategies_passed=0)]
+    passed = [{"id": 100 + i, "run_id": r, "status": "passed", "market": "btc15m", "direction": None,
+               "spec_json": "{}", "experiment_id": 500 + i} for i, r in enumerate((9, 9, 8, 8, 7, 7))]
+    fell = {"phase": "holdout", "classification": "inconclusive", "n_trades": 40, "p_value": 0.48, "ci_lo": -0.03,
+            "ci_hi": 0.025, "mean_net_return": -0.003, "verdict_at": None}
+    later = [dict(fell, experiment_id=500 + i, min_sample=30, id=900 + i) for i in (0, 2, 3)]
+    log = []
+    out = server.list_runs(_ctx(log, 10.0, extra={"FROM app_agent_runs r WHERE r.user_id=%s": [dict(r) for r in rows],
+                                                  "s.run_id FROM app_strategies s WHERE": passed,
+                                                  "LEFT JOIN app_experiment_results r": later}))
+    assert {r["id"]: r.get("not_cleared") for r in out["runs"]} == {9: 1, 8: 2, 7: None, 6: None}
+    reads = [p for s, p in log if "s.run_id FROM app_strategies s WHERE" in s]
+    assert len(reads) == 1 and reads[0][-3:] == (9, 8, 7)  # the session without a pass is not read
+    assert sum("LEFT JOIN app_experiment_results r" in s for s, _ in log) == 1
+    assert len(log) <= RUNS_BUDGET[0] + 2
+    # Nothing counted as passed: neither read.
+    log = []
+    server._RUN_TOTALS.clear()
+    server.list_runs(_ctx(log, 10.0, extra={"FROM app_agent_runs r WHERE r.user_id=%s": [dict(rows[-1])]}))
+    assert not any("FROM app_strategies s WHERE" in s or "app_experiment_results" in s for s, _ in log)
 
 
 def test_the_run_page_reads_the_dream_line_once_a_minute_not_every_poll(production, monkeypatch):
