@@ -34,6 +34,27 @@ def _memo_cash(memo, kept: bool) -> Dict[str, Any]:
     return out
 
 
+_UNREAD = object()
+
+
+def kalshi_cash(cur, uid: int, ask_kalshi: bool = True, key: Any = _UNREAD) -> Dict[str, Any]:
+    """The live key's cash at Kalshi as Funds and the dashboard show it: {"connected", "funding_url",
+    "balance" (cents) [, "balance_at"]}. With ask_kalshi False (a page shell's first read) it never waits on
+    Kalshi: the cash comes from its memo when kept, else is marked pending (_memo_cash), and the page asks
+    /api/funds/cash?book=live for it. `key` is the user's live key row (None: none) when the caller has
+    read it; else it is read here, once."""
+    if ask_kalshi:
+        out = _live_balance(cur, uid)
+        out["balance"] = _cash(out["balance"])
+        return out
+    if key is _UNREAD:
+        key = repo.get_kalshi_key(cur, uid)
+    if key is None:
+        return {"connected": False, "balance": None, "funding_url": kalshi_account.KALSHI_FUNDING_URL}
+    return {"connected": True, "funding_url": kalshi_account.KALSHI_FUNDING_URL,
+            **_memo_cash(kalshi_account.balance_memo(uid), kalshi_account.balance_kept(uid))}
+
+
 def funds(ctx: Ctx, ask_kalshi: bool = True):
     """Funds' read. With ask_kalshi False (the page shell's first read) it never waits on Kalshi: a key's
     cash comes from its memo or is marked pending, and the page asks /api/funds/cash for it."""
@@ -41,12 +62,7 @@ def funds(ctx: Ctx, ask_kalshi: bool = True):
 
     cur = ctx.cur
     key = repo.get_kalshi_key(cur, ctx.uid)
-    if ask_kalshi or key is None:
-        kalshi = _live_balance(cur, ctx.uid)
-        kalshi["balance"] = _cash(kalshi["balance"])
-    else:
-        kalshi = {"connected": True, "funding_url": kalshi_account.KALSHI_FUNDING_URL,
-                  **_memo_cash(kalshi_account.balance_memo(ctx.uid), kalshi_account.balance_kept(ctx.uid))}
+    kalshi = kalshi_cash(cur, ctx.uid, ask_kalshi, key)
     if key is not None:
         kalshi["key_id"] = key["key_id"][:4] + "…" + key["key_id"][-4:]
     dev = repo.get_kalshi_dev_key(cur, ctx.uid)

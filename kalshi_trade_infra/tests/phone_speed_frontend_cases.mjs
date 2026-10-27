@@ -282,6 +282,123 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     f.clearTimers();
   });
 
+  // The dashboard's shell read never waits on Kalshi either (shell_reads.py): its live cash comes pending, read
+  // through the same /api/funds/cash follow-up as Funds', and the same words (cashFig) draw it.
+  const keyedDash = (live = {}, demo = {}) => ({
+    paper: {equity: 1001.6, cash: 1000, open_at_cost: 1.6, total_pnl: 1.6, closed_trades: 8, open_positions: 0,
+      realized_pnl: 3.5, today_pnl: 0, running: 0, daily: []},
+    live: {connected: true, pending: true, balance: null, funding_url: 'https://kalshi.com/account/funding', closed_trades: 0,
+      open_positions: 0, open_at_cost: 0, realized_pnl: 0, today_pnl: 0, running: 0, ...live},
+    demo: {equity: 1000, capital: 1000, realized_pnl: 0, closed_trades: 0, open_positions: 0, health: null, ...demo},
+    deployments: [], open_positions: [], recent_closed: [], reconcile: [], freshness: {btc: 30, engine: 4},
+    agents: {research_running: 0, research_queued: 0}, v: 'pending1'});
+  const dashCash = (f) => {
+    const box = [...f.root.querySelectorAll('div.m')].find((el) => /Kalshi cash/.test(el.textContent));
+    return box ? box.textContent.replace(/\s+/g, ' ') : '';
+  };
+  const dashPage = (f) => f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#main').innerHTML;
+  const dashFrontend = (transport) => {
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/track-record') ? response({modes: {}})
+      : path === '/api/autopilot/status' ? response({autopilot: false, mode: 'off'}) : transport(path)});
+    f.S.me.user.autopilot = false;
+    f.S.ap = null; f.S.apAt = 0;
+    f.location.pathname = '/';
+    return f;
+  };
+
+  test(`${name}: the dashboard draws a pending Kalshi cash as checking, never $0, then fills it from its own read`, async () => {
+    let answerLive;
+    const liveHeld = new Promise((resolve) => { answerLive = resolve; });
+    const f = dashFrontend((path) => path === '/api/funds/cash?book=live'
+      ? liveHeld.then(() => response({book: 'live', connected: true, balance: 1234.56, balance_at: new Date().toISOString()})) : response({}));
+    f.window.__TAU_FIRST__ = [{url: '/api/dashboard', body: keyedDash()}];
+    await f.viewDashboard(); await settle();
+    assert.equal(asked(f, '/api/dashboard'), 0, 'the shell carried the figures');
+    assert.equal(asked(f, '/api/funds/cash?book=live'), 1);
+    assert.equal(asked(f, '/api/funds/cash?book=demo'), 0, 'no demo check waited on Kalshi');
+    assert.match(dashCash(f), /Kalshi cash ?Checking… ?Asking Kalshi for your real cash now\./);
+    assert.doesNotMatch(dashCash(f), /\$0\.00|Unavailable/);
+    assert.match(dashPage(f), /\$1,001\.60/, 'the paper book is there at once');
+    answerLive(); await settle();
+    assert.match(dashCash(f), /Kalshi cash ?\$1,234\.56/);
+    assert.doesNotMatch(dashCash(f), /Checking/);
+    assert.equal(asked(f, '/api/dashboard'), 0, 'the dashboard itself is never read again for it');
+    f.clearTimers();
+  });
+
+  test(`${name}: the dashboard shows an older Kalshi cash only with its age while it checks`, async () => {
+    const f = dashFrontend(() => new Promise(() => {}));
+    const at = new Date(Date.now() - 5 * 60000).toISOString();
+    f.window.__TAU_FIRST__ = [{url: '/api/dashboard', body: keyedDash({last_balance: 900, last_balance_at: at})}];
+    await f.viewDashboard(); await settle();
+    assert.match(dashCash(f), /Kalshi cash ?\$900\.00 ?Read 5m ago; checking Kalshi for the latest…/);
+    f.clearTimers();
+  });
+
+  test(`${name}: the dashboard says in plain words when it couldn't check the Kalshi cash`, async () => {
+    const f = dashFrontend((path) => path.startsWith('/api/funds/cash')
+      ? response({error: 'Traceback (most recent call last): RuntimeError: kalshi read timed out'}, 500) : response({}));
+    f.window.__TAU_FIRST__ = [{url: '/api/dashboard', body: keyedDash()}];
+    await f.viewDashboard(); await settle();
+    assert.match(dashCash(f), /Kalshi cash ?Unavailable ?Tau couldn’t check your Kalshi cash just now\. Reload in a minute to try again\./);
+    assert.doesNotMatch(dashPage(f), /Traceback|RuntimeError|timed out|Checking/);
+    assert.doesNotMatch(dashCash(f), /\$0\.00/);
+    f.clearTimers();
+  });
+
+  test(`${name}: the dashboard takes the cash read the shell started early, and reads again once a demo check can be made`, async () => {
+    const health = {code: 'demo_funds', need: 'demo funds', line: 'Demo isn’t trading: your Kalshi demo account has $0.00. Add demo funds on Kalshi’s demo site.',
+      action: {label: 'Open Kalshi demo', href: 'https://demo.kalshi.co/'}};
+    const full = {...keyedDash({pending: undefined, balance: 1234.56, balance_at: new Date().toISOString()}, {health}), v: 'full1'};
+    const f = dashFrontend((path) => path.startsWith('/api/dashboard') ? response(full) : response({}));
+    f.window.__TAU_FIRST__ = [{url: '/api/dashboard', body: keyedDash({}, {health_pending: true}),
+      then: ['/api/funds/cash?book=live', '/api/funds/cash?book=demo']}];
+    f.window.__TAU_EARLY__ = {
+      '/api/funds/cash?book=live': Promise.resolve(response({book: 'live', connected: true, balance: 1234.56, balance_at: new Date().toISOString()})),
+      '/api/funds/cash?book=demo': Promise.resolve(response({book: 'demo', connected: true, balance: 0})),
+    };
+    await f.viewDashboard(); await settle();
+    assert.equal(asked(f, '/api/funds/cash'), 0, 'both cash reads were started by the shell');
+    assert.deepEqual(Object.keys(f.window.__TAU_EARLY__), [], 'taken once');
+    assert.match(dashCash(f), /Kalshi cash ?\$1,234\.56/);
+    // The demo check waited on the demo cash: once that is read, the dashboard is read once more and says it.
+    assert.equal(asked(f, '/api/dashboard'), 1);
+    assert.match(dashPage(f), /Demo isn’t trading: your Kalshi demo account has \$0\.00/);
+    f.clearTimers();
+  });
+
+  test(`${name}: a newer dashboard poll is never painted over by the cash follow-up`, async () => {
+    let answerLive;
+    const liveHeld = new Promise((resolve) => { answerLive = resolve; });
+    const fresh = {...keyedDash({pending: undefined, balance: 2222, balance_at: new Date().toISOString()}), v: 'full2'};
+    const f = dashFrontend((path) => path === '/api/funds/cash?book=live' ? liveHeld.then(() => response({book: 'live', connected: true, balance: 1111}))
+      : path.startsWith('/api/dashboard') ? response(fresh) : new Promise(() => {}));
+    f.window.__TAU_FIRST__ = [{url: '/api/dashboard', body: keyedDash()}];
+    await f.viewDashboard(); await settle();
+    for (const tick of [...f.intervals.values()]) tick();  // the poll reads it all afresh
+    await settle();
+    assert.match(dashCash(f), /\$2,222\.00/);
+    answerLive(); await settle();
+    assert.match(dashCash(f), /\$2,222\.00/, 'the older follow-up is dropped');
+    f.clearTimers();
+  });
+
+  test(`${name}: past the passes the server judges, the since strip's counts read as at least that many`, async () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const since = {at: '2026-10-19T08:00:00+00:00', first: false, books: {}, autopilot: {}, runs: {},
+      passed: {n: 375, more: true, items: [{id: 9, title: 'Rain'}, {id: 8, title: 'Fade'}, {id: 7, title: 'Tails'}],
+        not_cleared: [{id: 6, title: 'Gust', verdict: 'missed_final'}], not_cleared_n: 125}};
+    const text = f.sinceStrip({since, deployments: []}, '#dash-deps');
+    assert.match(text, /375\+ strategies passed: .*Tails<\/a>, <a href="\/strategies">372\+ more<\/a>/);
+    assert.match(text, /Not cleared to trade: <a href="\/strategies\/6">Gust<\/a> \(missed the final test\), 124\+ more\./);
+    // Every pass judged: exact counts, as before.
+    const exact = f.sinceStrip({since: {...since, passed: {...since.passed, n: 120, more: undefined, not_cleared_n: 30}}, deployments: []}, '#dash-deps');
+    assert.match(exact, /120 strategies passed: .*<a href="\/strategies">117 more<\/a>/);
+    assert.match(exact, /29 more\./);
+    assert.doesNotMatch(exact, /\+/);
+    f.clearTimers();
+  });
+
   test(`${name}: a carried read is used only for its own URL and only by the first page`, async () => {
     let f = frontend({fetchImpl: researchTransport()});
     f.location.pathname = '/research';

@@ -25,6 +25,13 @@ if the memo holds one. The page draws it as "checking" (never $0) and asks /api/
 The shell names those asks beside the read ("then"), and boot.js starts them at once, so Kalshi's wait
 runs while the bundle downloads instead of after the page has drawn; the page takes each answer once.
 
+The dashboard is carried the same way, always: its live book shows the Kalshi cash, read through the
+same memo as Funds' (funds.kalshi_cash), so the shell carries a version that never asks Kalshi, the cash
+pending (with the last figure read and its age, if any) and the page asking /api/funds/cash?book=live,
+named in "then" like Funds'. A demo-funds check that would read the demo cash (the dashboard's demo
+health, the autopilot's idle line) is marked pending too, its read named in "then", and the page reads
+it again once the demo cash is back.
+
 The dashboard also carries the autopilot status: its autopilot card sits above the figures, and drawn
 a round trip after them it pushed them down the screen. Research carries its loop card's board for the
 same reason (it pushed the session list down), but only while the server keeps one for the user: worked
@@ -85,13 +92,39 @@ def funds_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
     return funds(ctx, ask_kalshi=False)
 
 
+def dashboard_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
+    """The dashboard's first read, as dashboard answers it, except that it never asks Kalshi: the live cash
+    whose memo isn't kept is marked pending, and a demo-funds check that would read the demo cash too."""
+    return dashboard(ctx, ask_kalshi=False)
+
+
+def autopilot_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
+    """The autopilot status, as autopilot_status answers it, except that it never asks Kalshi: an idle line
+    that would read the demo cash is marked idle_pending."""
+    return autopilot_status(ctx, ask_kalshi=False)
+
+
+def _pending(body: Dict[str, Any], key: str, flag: str = "pending") -> bool:
+    return isinstance(body.get(key), dict) and bool(body[key].get(flag))
+
+
 def then_reads(url: str, body: Dict[str, Any]) -> List[str]:
-    """The reads a page asks right after its carried one, which boot.js starts beside the bundle: Funds'
-    pending Kalshi cash, one ask per book (the page asks them so too). [] for every other read."""
-    if url != "/api/funds" or not isinstance(body, dict):
+    """The reads a page asks right after its carried one, which boot.js starts beside the bundle: the Kalshi
+    cash a carried read marked pending, one ask per book (the page asks them so too). Funds' live and demo
+    cash; the dashboard's live cash and the demo cash its demo-funds check waits on; the autopilot's demo
+    cash for its idle line. [] for every other read."""
+    if not isinstance(body, dict):
         return []
-    return ["/api/funds/cash?book=%s" % book for book, key in (("live", "kalshi"), ("demo", "kalshi_dev"))
-            if isinstance(body.get(key), dict) and body[key].get("pending")]
+    path = url.split("?", 1)[0]
+    if path == "/api/funds":
+        books = [("live", _pending(body, "kalshi")), ("demo", _pending(body, "kalshi_dev"))]
+    elif path == "/api/dashboard":
+        books = [("live", _pending(body, "live")), ("demo", _pending(body, "demo", "health_pending"))]
+    elif path == "/api/autopilot/status":
+        books = [("demo", bool(body.get("idle_pending")))]
+    else:
+        return []
+    return ["/api/funds/cash?book=%s" % book for book, pending in books if pending]
 
 
 def dashboard_since(cookie: Optional[str], now: Optional[float] = None) -> Optional[int]:
@@ -115,8 +148,8 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
         return []
     if path in ("/", "/dashboard"):
         at = dashboard_since(cookies.get("tau_visit"))
-        return [(("/api/dashboard?since=%d" % at if at else "/api/dashboard"), dashboard, (), ({"since": str(at)} if at else {})),
-                ("/api/autopilot/status", autopilot_status, (), {})]
+        return [(("/api/dashboard?since=%d" % at if at else "/api/dashboard"), dashboard_without_kalshi, (), ({"since": str(at)} if at else {})),
+                ("/api/autopilot/status", autopilot_without_kalshi, (), {})]
     if path == "/research":
         return [("/api/runs", list_runs, (), {}),
                 ("/api/research/scoreboard?days=%d" % LOOP_DAYS, kept_loop_board, (), {"days": str(LOOP_DAYS)})]
@@ -137,15 +170,17 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
 
 def first_reads(path: str, query: str, cookies: Dict[str, str], make_ctx: MakeCtx) -> Tuple[List[Dict[str, Any]], List[str]]:
     """([{url, body}] for each first read that answered, with "then": the reads its page asks next, when
-    there are any; the cookies they set). A read that fails is left out: the page asks for it itself and
-    shows what it gets."""
+    there are any, each named once; the cookies they set). A read that fails is left out: the page asks for
+    it itself and shows what it gets."""
     reads: List[Dict[str, Any]] = []
     set_cookies: List[str] = []
+    named: set = set()
     for url, fn, params, q in first_requests(path, query, cookies):
         try:
             ctx = make_ctx(params, q)
             read = {"url": url, "body": fn(ctx)}
-            then = then_reads(url, read["body"])
+            then = [u for u in then_reads(url, read["body"]) if u not in named]
+            named.update(then)
             if then:
                 read["then"] = then
             reads.append(read)

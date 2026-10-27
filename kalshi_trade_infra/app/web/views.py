@@ -115,7 +115,11 @@ def _with_gate_lines(events: List[Dict]) -> List[Dict]:
 _DEMO_KEY_PAUSE = "demo (sandbox) key"
 
 
-def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None) -> Optional[Dict]:
+# _demo_health's answer when it would have to ask Kalshi for the demo cash and was told not to: unknown yet.
+DEMO_HEALTH_PENDING = "pending"
+
+
+def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None, ask_kalshi: bool = True):
     """Why the demo book can't trade, as one plain line and the one thing to do, or None when nothing
     known stops it. A demo deployment looks healthy (running, capital, a P&L) while every order it
     sends is refused, so the pages that show demo say this instead:
@@ -123,7 +127,9 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None)
       - demo_funds: the Kalshi demo account holds less than one stake, so Kalshi refuses its orders.
     `deps` are deployment rows (with spec). `stake` asks about a strategy that could go on demo but
     isn't there yet (the strategy page's next rung), so funds are checked even with nothing running.
-    The balance read is the cached demo GET (demo_twins.balance_cached); unknown is never a problem."""
+    The balance read is the cached demo GET (demo_twins.balance_cached); unknown is never a problem.
+    With ask_kalshi False (a page shell's first read) it never waits on Kalshi: when that read would ask,
+    it answers DEMO_HEALTH_PENDING, and the page asks again once the demo cash is read."""
     from app.trading import demo_twins
 
     demo = [d for d in deps if d["mode"] == "demo"]
@@ -143,7 +149,13 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None)
         stakes.append(float(stake))
     if not stakes:
         return None
-    cash = demo_twins.balance_cached(cur, uid)
+    if ask_kalshi:
+        cash = demo_twins.balance_cached(cur, uid)
+    else:  # the memo alone, as Funds' shell read takes it
+        hit = kalshi_account.memo_peek(demo_twins._BALANCE_CACHE, uid) if demo_twins.balance_kept(uid) else None
+        if hit is None:
+            return DEMO_HEALTH_PENDING
+        cash = hit[0]
     least = min(stakes)
     if cash is None or cash >= least:
         return None
