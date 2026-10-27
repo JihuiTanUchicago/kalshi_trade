@@ -19,7 +19,8 @@ from app.web.http import ApiError, _json_default
 
 USER = {"id": 7, "email": "trader@example.invalid", "name": "Sample", "picture_url": None, "autopilot": 0, "ui_theme": "tau"}
 ACCOUNT = {"user": {"id": 7, "ui_theme": "tau"}}
-ROUTES = ("dashboard", "autopilot_status", "list_runs", "get_run", "list_strategies", "list_deployments", "billing_state")
+ROUTES = ("dashboard", "autopilot_status", "list_runs", "get_run", "list_strategies", "list_deployments", "billing_state",
+          "research_scoreboard")
 
 
 @pytest.fixture
@@ -144,6 +145,34 @@ def test_billing_tz_reads_the_offset_as_the_page_writes_it(cookie, tz):
     assert shell_reads.billing_tz(cookie) == tz
 
 
+def test_research_carries_its_loop_board_only_while_the_server_keeps_one(web, monkeypatch):
+    # Drawn a round trip after the session list, the loop card pushed the list down the screen.
+    runs, board = {"runs": [], "v": "r1"}, {"total": {"runs": 2, "explored": 10}, "at": datetime(2026, 10, 26, 8, 0)}
+    _record(monkeypatch, "list_runs", runs)
+    calls = _record(monkeypatch, "research_scoreboard", board)
+    kept = []
+    monkeypatch.setattr(shell_reads, "scoreboard_kept", lambda uid, days: kept.append((uid, days)) or True)
+    r, html = _shell(web, "/research")
+    assert r.status == 200 and kept == [(7, 14)] and calls == [((), {"days": "14"}, 7)]
+    assert _first(html) == [{"url": "/api/runs", "body": _wire(runs)},
+                            {"url": "/api/research/scoreboard?days=14", "body": _wire(board)}]
+    # Not worked out yet (seconds, cold): never on the shell's thread. The list is carried, the page asks for the board.
+    monkeypatch.setattr(shell_reads, "scoreboard_kept", lambda uid, days: False)
+    r, html = _shell(web, "/research")
+    assert r.status == 200 and len(calls) == 1 and _first(html) == [{"url": "/api/runs", "body": _wire(runs)}]
+
+
+def test_scoreboard_kept_once_the_route_has_worked_the_board_out(monkeypatch):
+    from app.web import caches
+    from app.web.routes import research
+    monkeypatch.setattr(caches, "_SHARED", {})
+    monkeypatch.setattr(research, "_research_scoreboard", lambda cur, uid, days: {"uid": uid, "days": days})
+    assert not research.scoreboard_kept(7, 14)
+    ctx = SimpleNamespace(uid=7, query={"days": "14"}, cur=None)
+    assert research.research_scoreboard(ctx) == {"uid": 7, "days": 14}
+    assert research.scoreboard_kept(7, 14) and not research.scoreboard_kept(7, 7) and not research.scoreboard_kept(8, 14)
+
+
 def test_a_failed_first_read_leaves_the_page_to_ask_and_the_account_carried(web, monkeypatch):
     _record(monkeypatch, "get_run", ApiError(404, "No such research run."))
     r, html = _shell(web, "/research/5")
@@ -190,3 +219,4 @@ def test_only_the_named_pages_have_first_requests():
     assert [r[0] for r in shell_reads.first_requests("/billing", "", {"tau_tz": "-60"})] == ["/api/billing?tz=-60"]
     assert [r[0] for r in shell_reads.first_requests("/research/12", "", {})] == ["/api/runs/12?after=0"]
     assert [r[0] for r in shell_reads.first_requests("/", "", {})] == ["/api/dashboard", "/api/autopilot/status"]
+    assert [r[0] for r in shell_reads.first_requests("/research", "", {})] == ["/api/runs", "/api/research/scoreboard?days=14"]

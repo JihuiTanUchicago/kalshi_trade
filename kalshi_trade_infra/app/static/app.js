@@ -5022,8 +5022,6 @@
         if (b && !document.hidden && (!S.apAt || Date.now() - S.apAt > 18000)) refreshAutopilot(b, true);
       });
       // Re-check the pill against the page's buttons once a frame at most, as the page moves under it.
-      let yieldQueued = false;
-      const yieldSoon = () => { if (yieldQueued) return; yieldQueued = true; requestAnimationFrame(() => { yieldQueued = false; apYield(); }); };
       addEventListener('scroll', yieldSoon, { passive: true }); addEventListener('resize', yieldSoon);
       document.addEventListener('toggle', yieldSoon, true); document.addEventListener('input', yieldSoon, true);
       // Tabbing onto a stepped-aside pill brings it back (apYield keeps a focused pill shown).
@@ -5768,7 +5766,7 @@
         <span class="apf-dot" aria-hidden="true"></span><span class="apf-pill-label">${esc(apPillLabel(d, m))}</span>${ICON.chev || ''}</button>`;
       // The 20s status read repaints the pill only when it changed (a screen reader re-read a focused pill
       // each time), and a repaint or the panel closing leaves focus on the pill.
-      if (box.apPill === pill && box.querySelector('.apf-pill')) { apYield(); return; }
+      if (box.apPill === pill && box.querySelector('.apf-pill')) { yieldSoon(); return; }
       box.apPill = pill;
       if (box.removeAttribute) { box.removeAttribute('role'); box.removeAttribute('aria-label'); }
       const a = document.activeElement, hadFocus = !!(a && a !== document.body && box.contains && box.contains(a));
@@ -5776,7 +5774,7 @@
       const pb = box.querySelector('.apf-pill');
       if (hadFocus && pb && pb.focus) pb.focus({ preventScroll: true });
       box.querySelector('[data-ap]').onclick = (e) => apAction(box, 'toggle', e);
-      apYield();
+      yieldSoon();
       return;
     }
     if (box.dataset.shell !== 'expanded') apBuildShell(box);
@@ -5795,6 +5793,16 @@
   const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
     '.figures .m', '.fig', 'td.num', 'dd', '#dash-ap'];
   const AP_UNDER_SEL = AP_UNDER.join(', ');
+  // apYield hit-tests the page (elementsFromPoint), which lays it out and pre-paints it then and there. Run
+  // from the pill's render, inside a page's first render, it fixed Research half drawn on a phone: the list
+  // that moves above the form a moment later counted as a layout shift of 0.68, though no frame showed
+  // it. It runs once a frame at most, once the page has drawn.
+  let yieldQueued = false;
+  const yieldSoon = () => {
+    if (yieldQueued) return;
+    yieldQueued = true;
+    (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (f) => setTimeout(f, 16))(() => { yieldQueued = false; apYield(); });
+  };
   function apYield() {
     const box = document.getElementById('autopilot-float'), pill = box && box.querySelector('.apf-pill');
     if (!pill || !pill.getBoundingClientRect) { if (box) box.classList.remove('yield'); return; }

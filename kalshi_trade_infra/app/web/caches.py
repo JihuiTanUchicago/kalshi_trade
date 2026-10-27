@@ -58,6 +58,13 @@ def _shared(key: str, ttl: float, fn: Callable[[Any], Any], cur) -> Any:
     return ent["val"]
 
 
+def _shared_kept(key: str) -> bool:
+    """Whether _shared holds a value for `key` (fresh or due a refresh), so a read of it answers from
+    memory instead of working it out on the caller's thread."""
+    with _SHARED_LOCK:
+        return "val" in _SHARED.get(key, {})
+
+
 def _refresh_shared(ent: Dict[str, Any], fn: Callable[[Any], Any]) -> None:
     conn = None
     try:

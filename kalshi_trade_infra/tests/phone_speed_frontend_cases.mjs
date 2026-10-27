@@ -113,6 +113,22 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     f.clearTimers();
   });
 
+  test(`${name}: Research draws its loop card in its first render from the board the shell carries`, async () => {
+    // Drawn a round trip after the session list, the card pushed the list down the screen (shell_reads.py
+    // carries the board while the server keeps one).
+    const board = {total: {runs: 2, explored: 10, gated: 4, passed: 1, cost_usd: 2, gate_reach_rate: 0.4, pipeline_death_share: 0.5}, days: []};
+    const f = frontend({fetchImpl: researchTransport()});
+    f.location.pathname = '/research';
+    f.window.__TAU_FIRST__ = [{url: '/api/runs', body: {...runsAnswer, totals: {tried: 10, passed: 1}}}, {url: '/api/research/scoreboard?days=14', body: board}];
+    await f.viewResearch();
+    assert.match(f.root.querySelector('#rsimo').innerHTML, /Ideas tried/, 'the card is drawn with the list');
+    await settle();
+    assert.equal(asked(f, '/api/research/scoreboard'), 0, 'no round trip for what the shell carried');
+    assert.equal(asked(f, '/api/runs'), 0);
+    assert.equal(f.window.__TAU_FIRST__.length, 0, 'both taken once');
+    f.clearTimers();
+  });
+
   test(`${name}: Billing draws its figures from the read the shell carries for its time zone, and asks when the zone moved`, async () => {
     const bill = {configured: false, balance: 12.5, spent: 40, spent_7d: 3, spent_24h: 1, pace_days: 7, free_bonus: 20, topup_fee_pct: 5.5,
       cards: [], default_pm: null, auto_reload: false, min_run_balance: 1, spent_7d_by: {}, ledger: [], ledger_cut: false,

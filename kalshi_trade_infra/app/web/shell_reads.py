@@ -16,7 +16,9 @@ from that. No cookie yet (a first load on this device), no read; an offset that 
 change, a trip) names a URL the page doesn't ask, and the page asks as before.
 
 The dashboard also carries the autopilot status: its autopilot card sits above the figures, and drawn
-a round trip after them it pushed them down the screen.
+a round trip after them it pushed them down the screen. Research carries its loop card's board for the
+same reason (it pushed the session list down), but only while the server keeps one for the user: worked
+out cold it takes seconds, and the shell never waits on that.
 """
 from __future__ import annotations
 
@@ -30,7 +32,7 @@ from app.web.routes.billing import billing_state
 from app.web.routes.chat import autopilot_status
 from app.web.routes.dashboard import dashboard
 from app.web.routes.deployments import list_deployments
-from app.web.routes.research import get_run, list_runs
+from app.web.routes.research import get_run, list_runs, research_scoreboard, scoreboard_kept
 from app.web.routes.strategies import list_strategies
 
 # The dashboard asks with ?since= from the tau_visit cookie ("<since>.<last seen>", epoch seconds), as
@@ -40,9 +42,22 @@ VISIT_GAP = 1800
 _VISIT = re.compile(r"(\d+)\.(\d+)")
 _RUN_PAGE = re.compile(r"^/research/(\d+)$")
 _TZ = re.compile(r"^-?\d{1,4}$")  # tau_tz: getTimezoneOffset() in minutes, as boot.js writes it
+LOOP_DAYS = 14  # Research's loop card asks /api/research/scoreboard?days=14 (rsiLoopRead in both bundles)
 
 MakeCtx = Callable[[Tuple[str, ...], Dict[str, str]], Ctx]
 Request = Tuple[str, Callable, Tuple[str, ...], Dict[str, str]]  # URL the page asks, handler, path params, query
+
+
+class NotKept(Exception):
+    """A read the shell carries only when it answers from memory: the page asks for it itself."""
+
+
+def kept_loop_board(ctx: Ctx) -> Dict[str, Any]:
+    """Research's loop card board, as research_scoreboard answers it, while the server keeps one for the
+    user; NotKept when it would be worked out now (4.4s p50 on prod, cold)."""
+    if not scoreboard_kept(ctx.uid, LOOP_DAYS):
+        raise NotKept
+    return research_scoreboard(ctx)
 
 
 def dashboard_since(cookie: Optional[str], now: Optional[float] = None) -> Optional[int]:
@@ -69,7 +84,8 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
         return [(("/api/dashboard?since=%d" % at if at else "/api/dashboard"), dashboard, (), ({"since": str(at)} if at else {})),
                 ("/api/autopilot/status", autopilot_status, (), {})]
     if path == "/research":
-        return [("/api/runs", list_runs, (), {})]
+        return [("/api/runs", list_runs, (), {}),
+                ("/api/research/scoreboard?days=%d" % LOOP_DAYS, kept_loop_board, (), {"days": str(LOOP_DAYS)})]
     if path == "/strategies":
         return [("/api/strategies?page=0", list_strategies, (), {"page": "0"})]
     if path == "/deploy":
@@ -93,8 +109,8 @@ def first_reads(path: str, query: str, cookies: Dict[str, str], make_ctx: MakeCt
             ctx = make_ctx(params, q)
             reads.append({"url": url, "body": fn(ctx)})
             set_cookies += ctx.set_cookies
-        except ApiError:
-            continue  # a missing session page, say: the page's own read says so
+        except (ApiError, NotKept):
+            continue  # a missing session page, say, or a board not worked out yet: the page asks itself
         except Exception as e:  # noqa: BLE001 - the shell must never fail on this
             sys.stdout.write("[app] shell first read failed (%s); the page reads %s itself\n" % (type(e).__name__, url))
             sys.stdout.flush()
