@@ -5,9 +5,9 @@ window.TauPage('strategies', (T) => {
   'use strict';
   const {
     actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
-    catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractMarket, demoHealthLine, DEP_DONE,
+    catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
-    gl, glo, go, ICON, isPerpetual, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
+    gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, serial, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
@@ -483,7 +483,9 @@ window.TauPage('strategies', (T) => {
       const stats = `${num(n)} closed trade${n === 1 ? '' : 's'} ·\u00a0${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats} ·\u00a0${demoHealthLine(s.demo_health)}</p>`;
-      return `<p><span class="mk ${cls}">${label}</span> ${ds.some((d) => d.status === 'running') ? 'running' : 'paused'} ·\u00a0${stats}</p>`;
+      const runs = ds.some((d) => d.status === 'running');
+      const state = !runs ? 'paused' : m === 'live' && !liveOpen() ? 'waiting: live trading isn\u2019t open yet, so it places no orders' : 'running';
+      return `<p><span class="mk ${cls}">${label}</span> ${state} ·\u00a0${stats}</p>`;
     });
     // Paper proves the edge, demo the order path: say so under the demo book, with its settled demo
     // orders against what the live check needs once Road to live is in.
@@ -494,7 +496,7 @@ window.TauPage('strategies', (T) => {
     }
     const next = LADDER[running.length ? LADDER.indexOf(running[running.length - 1]) + 1 : 0];
     let need = '';
-    if (!next) need = 'Top rung: it trades live money.';
+    if (!next) need = liveOpen() ? 'Top rung: it trades live money.' : 'Top rung: live money, but live trading isn\u2019t open yet, so it places no orders.';
     else if (!canDeploy) need = '';
     else if (next[0] === 'paper') {
       // One the autopilot puts on paper itself says so while the switch is on (syncApCopy follows a flip).
@@ -617,8 +619,8 @@ window.TauPage('strategies', (T) => {
         <dt>Worst drawdown</dt><dd>${usd(m.max_drawdown)}</dd>
         <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>${luckFlag(m)}` : held ? '<p class="hint">Its test on unseen data is the validation-window evidence above.</p>' : `<p class="hint">Not tested on unseen data — ${esc(rejectReason(s))}</p>`;
     const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(g.name)}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
-    const trades = (s.recent_trades || []).length ? `<div class="sheet"><table class="table stack t-unseen"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
-        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="tick" data-lab="Contract">${esc(t.ticker)}</td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
+    const trades = (s.recent_trades || []).length ? `<div class="sheet"><table class="table stack t-unseen"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
+        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table></div>` : '<p class="hint">No unseen-data trades to show.</p>';
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     // Stopped deployments can still hold positions; the server refuses the delete until they close.
@@ -728,7 +730,7 @@ window.TauPage('strategies', (T) => {
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             return `<section class="panel"><h3>Holding right now</h3>
-            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="tick">${contractLink(p.ticker)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div>${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}
+            <ul class="holdlist">${s.holdings.map((p) => `<li><div class="pos-name">${contractLink(p.ticker, s.market)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</div><div class="sub-fig">${kalshiRef(p.ticker)}</div>
               <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
@@ -750,7 +752,7 @@ window.TauPage('strategies', (T) => {
                 </form></div>`)}
                 <div id="depflash"></div>
               </div>` : restricted ? `<p class="hint">${perpetual ? 'Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.' : CODE_RESEARCH_ONLY}</p>` : `<p class="hint">${s.status === 'backtest-only' ? 'A backtest-only strategy can’t be deployed: it never went through the held-out checks. To test this idea properly, ask for it in a new research session.' : 'This strategy isn’t ready to deploy yet.'}</p>`}
-            ${!restricted && s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `${bookName(d)} (${esc(d.status)})`).join(', ')}. <a href="/deploy">See them on the Deploy page</a></p>` : ''}
+            ${!restricted && s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `${bookName(d)} (${esc(depIdle(d) ? depIdle(d).state.toLowerCase() : d.status)})`).join(', ')}. <a href="/deploy">See them on the Deploy page</a></p>` : ''}
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
           </section>
           ${!restricted && passedAll ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}

@@ -249,6 +249,27 @@
   const isPerpetual = (s) => s.kind === 'perpetual' || s.market === 'btc_perp' || s.key === 'btc_perp' || (s.spec && s.spec.market === 'btc_perp');
   const researchOnly = (s) => s.research_only === true || isPerpetual(s);
   const researchBadge = (s) => researchOnly(s) ? '<span class="mk quiet">Research only</span>' : '';
+  // Whether live trading is open on this server (/api/me's live_trading_available: the server's live switch).
+  // While it is closed the engine places no live orders: it pauses a running live deployment the next time it
+  // checks the market ("Live trading is not enabled on this server yet."), the server refuses Resume on a live
+  // one, and Tau can't sell what a live deployment holds, which stays open until its market settles.
+  const liveOpen = () => !!(S.me && S.me.live_trading_available);
+  const LIVE_CLOSED = 'Live trading isn’t open yet.';
+  // A deployment marked running that places no orders, in plain words ({tag, state, why}), or null: a live one
+  // while live trading is closed, or a Bitcoin perpetual one (research-only: the engine trades none in any
+  // book). Its row, the board's counts and the dashboard say so, never "Running" or "on live money".
+  const depIdle = (d) => {
+    if (!d || d.status !== 'running') return null;
+    if (isPerpetual(d)) return { tag: 'Not trading', state: 'Not trading: research only', why: 'Bitcoin perpetuals are research-only, so this places no orders.' };
+    if (d.mode !== 'live' || liveOpen()) return null;
+    const n = +d.open_positions || 0;
+    const held = n ? `, and Tau can’t sell ${n === 1 ? 'its open position, which stays open until its market settles' : `its ${n} open positions, which stay open until their markets settle`}` : '';
+    return { tag: 'Waiting', state: 'Waiting: live trading isn’t open yet', why: `Live trading isn’t open yet, so this places no orders${held}. Tau pauses it the next time it checks the market.` };
+  };
+  // Resume the server refuses (a live deployment while live trading is closed, a Bitcoin perpetual one) is
+  // offered disabled, saying why, as a demo copy waiting on its paper run is (the server's resume_block).
+  const resumeBlock = (d) => d.resume_block || (isPerpetual(d) ? 'Bitcoin perpetuals are research-only and can’t be resumed for trading.'
+    : d.mode === 'live' && !liveOpen() ? LIVE_CLOSED : null);
   // A strategy written as code (the server's kind "code") runs only in the research sandbox: the server
   // refuses to deploy it in any mode, so its page offers no deploy button and says what to do instead.
   const CODE_RESEARCH_ONLY = 'Strategies written as code run only in the research sandbox, even after passing every check: paper, demo and live trading run rule-based strategies only. To trade this idea, ask for a rule-based version in a new research session.';
@@ -343,14 +364,16 @@
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
   // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do,
   // to its last decimal: an XRP strike runs to four (-T2.4599), and num() rounds past three.
-  const contractMarket = (ticker) => {
-    const m = contractMkt(ticker);
-    if (!m) return '';
-    const label = m.label || marketShort(m.key), k = /-T(\d+)(\.\d+)?$/.exec(String(ticker));
-    return k ? label.replace('$X', '$' + num(k[1]) + (k[2] || '')) : label;
-  };
-  // A contract ticker that opens its market page (price, settlement rules, your positions in it).
-  const contractLink = (ticker) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(ticker)}</a>`;
+  const strikeIn = (label, ticker) => { const k = /-T(\d+)(\.\d+)?$/.exec(String(ticker || '')); return k ? label.replace('$X', '$' + num(k[1]) + (k[2] || '')) : label; };
+  const contractMarket = (ticker) => { const m = contractMkt(ticker); return m ? strikeIn(m.label || marketShort(m.key), ticker) : ''; };
+  // A position's contract as people name it: its market's plain label with its own strike ("Bitcoin above
+  // $68,499.99 at 5pm ET"), else the market it was traded on (`key`, its deployment's), else "Kalshi contract".
+  // The ticker (KXBTC15M-26OCT262100-00) carries the raw series key, so it is never the headline: kalshiRef
+  // sets it on a small line, there to find the contract on Kalshi.
+  const contractName = (ticker, key) => contractMarket(ticker) || (key ? strikeIn(marketShort(key), ticker) : 'Kalshi contract');
+  // A contract, by its plain name, that opens its market page (price, settlement rules, your positions in it).
+  const contractLink = (ticker, key) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(contractName(ticker, key))}</a>`;
+  const kalshiRef = (ticker) => `<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${esc(ticker)}</span></span>`;
   // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"); '' for one no market
   // here covers, so a chip is left off rather than showing the raw series or another hour's market.
   const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : ''; };
@@ -1651,7 +1674,7 @@
   // A demo copy the demo-copy sync paused waits on its paper deployment: Resume would be paused again
   // at the sync's next pass, so it is offered disabled with the server's reason (resume_block), which
   // the row's status line also says.
-  const resumeButton = (d) => `<button class="btn sm" data-dep="${d.id}" data-act="resume"${d.resume_block ? ` disabled title="${esc(d.resume_block)}"` : ''}>Resume<span class="vh"> ${esc(d.title)}${d.resume_block ? ': ' + esc(d.resume_block) : ''}</span></button>`;
+  const resumeButton = (d, why = resumeBlock(d)) => `<button class="btn sm" data-dep="${d.id}" data-act="resume"${why ? ` disabled title="${esc(why)}"` : ''}>Resume<span class="vh"> ${esc(d.title)}${why ? ': ' + esc(why) : ''}</span></button>`;
   const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   function deploymentSlip(d, regs, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
@@ -1660,7 +1683,7 @@
     // Before the first close it names the book that has none ("no paper trades closed yet"): a bare
     // "no closed trades" under "Backtest estimate" read as if the backtest itself had no trades.
     const pace = exp && +exp.trades > 0 ? (+exp.pnl || 0) / +exp.trades : null;
-    const live = d.mode === 'live';
+    const live = d.mode === 'live', idle = depIdle(d);
     // A paused row names its book too: "Paused" alone didn't say whether real money had stopped.
     const modeTag = live ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">DEMO</span>' : '<span class="mk">PAPER</span>';
     const actions = controls ? `<td class="act" data-lab="">
@@ -1669,9 +1692,9 @@
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</div>${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
+        <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + esc(d.status_why || d.status_reason) : ''}</div>${idle ? `<div class="sub-fig dep-idle">${esc(idle.why)}</div>` : ''}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
-      <td data-lab="Status">${d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
+      <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
@@ -2097,12 +2120,15 @@
       // every user something was wrong that they couldn't act on).
       const stale = adminViewOn() && (d.freshness.btc == null || d.freshness.btc > 2700);
       const agentsBusy = d.agents.research_running + d.agents.research_queued;
-      const running = d.deployments.filter((x) => x.status === 'running').length;
+      // A deployment that places no orders (depIdle: live while live trading is closed) isn't counted running.
+      const idle = d.deployments.filter(depIdle).length;
+      const running = d.deployments.filter((x) => x.status === 'running').length - idle;
       const paused = d.deployments.filter((x) => x.status === 'paused').length;
       const needs = stale || paused > 0;
       const said = [
-        hasLive ? `Live money on: ${usd(d.live.realized_pnl, true)} realized all time` : hasDemo ? 'No real money: paper and demo' : 'Paper money only',
-        running ? `${running} strateg${running > 1 ? 'ies' : 'y'} running` : 'Nothing deployed',
+        hasLive ? `${liveOpen() ? 'Live money on' : 'Live trading isn\u2019t open yet'}: ${usd(d.live.realized_pnl, true)} realized all time${liveOpen() ? '' : ' on live money'}` : hasDemo ? 'No real money: paper and demo' : 'Paper money only',
+        running ? `${running} strateg${running > 1 ? 'ies' : 'y'} running` : idle ? '' : 'Nothing deployed',
+        idle ? `${idle} placing no orders` : '',
         paused ? `<a class="needs-link" href="#dash-deps"><em>${paused} paused, needs you</em></a>` : '',  // paused rows list first
         agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
@@ -2129,10 +2155,11 @@
         : `<div id="deps-empty" data-on="${S.me.user && S.me.user.autopilot ? 1 : 0}">${depsEmpty(S.me.user && S.me.user.autopilot)}</div>`;
       // An open position says what it would sell for now and the gain in it ("+$0.48" alone read as
       // banked), or its cost until the engine's first price.
+      const depMarket = (r) => (d.deployments.find((x) => x.id === r.deployment_id) || {}).market;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
             <span>${closed ? money(+r.pnl) : (r.unrealized != null ? (r.value != null ? `worth ${usd(r.value)} (${money(r.unrealized)})` : money(r.unrealized)) : `${usd(r.at_cost != null ? r.at_cost : r.qty * r.entry_price)} at cost`)}</span>
-            <small>${esc(r.title)} ·\u00a0<span class="tick">${esc(r.ticker)}</span> ·\u00a0${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'} ·\u00a0${when(closed ? r.closed_at : r.opened_at)}</small>${r.why ? `<small class="stub-why">${esc(r.why)}</small>` : ''}</div>`).join('')
+            <small>${esc(r.title)} ·\u00a0<span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : ` ·\u00a0settles ${settleAt(r.market_close_time)}`} ·\u00a0${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'} ·\u00a0${when(closed ? r.closed_at : r.opened_at)}</small>${r.why ? `<small class="stub-why">${esc(r.why)}</small>` : ''}</div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash-wrap"><div class="dash">
           <div>
@@ -2213,28 +2240,32 @@
       const byMode = (m) => d.deployments.filter((x) => x.mode === m);
       const liveDeps = byMode('live'), paperDeps = byMode('paper'), demoDeps = byMode('demo');
       const liveRealized = listed('live', liveDeps), paperRealized = listed('paper', paperDeps), demoRealized = listed('demo', demoDeps);
-      const live = d.deployments.filter((x) => x.mode === 'live' && x.status === 'running');
-      const runDemo = running.some((x) => x.mode === 'demo'), runPaper = running.some((x) => x.mode === 'paper');
+      // Running and placing orders: a live deployment while live trading is closed, or a Bitcoin perpetual
+      // one, is marked running but places none (depIdle), so it is counted apart, never as on live money.
+      const active = running.filter((x) => !depIdle(x)), idle = running.length - active.length;
+      const live = active.filter((x) => x.mode === 'live'), liveIdle = running.filter((x) => x.mode === 'live' && depIdle(x)).length;
+      const runDemo = active.some((x) => x.mode === 'demo'), runPaper = active.some((x) => x.mode === 'paper');
       // Open positions per book, never one count across books. A book with none is left out, except
       // live while live trading is on (or a live deployment is listed), so "0 live" reads as a fact. A
       // no-break space keeps each "3 paper" whole when the figure wraps on a phone.
       const liveOn = !!(S.me && S.me.live_trading_available) || liveDeps.length > 0;
       const openSplit = ['paper', 'demo', 'live'].map((m) => [m, d.open_positions.filter((p) => (p.mode || 'paper') === m).length])
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
-      paint(root.querySelector('#dfigs'), fig('Running', running.length, { small: `${d.deployments.length - running.length} paused` }) +
+      paint(root.querySelector('#dfigs'), fig('Running', active.length, { small: `${d.deployments.length - running.length} paused${idle ? ` ·\u00a0${idle} placing no orders` : ''}` }) +
         (liveDeps.length
           ? fig(listedLab('Live realized', liveDeps), usd(liveRealized, true), { v: liveRealized, small: `real money${removedNote('live')}${paperDeps.length ? ` ·\u00a0${usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
           : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), usd(paperRealized, true), { v: paperRealized, small: `paper money, not real${removedNote('paper')} ·\u00a0${PAPER_NET}${glo('paperfills')}` }) : '') +
         (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}` }) : '') +
         fig('Open positions', openSplit) +
-        fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : 'nothing on live money' }));
+        fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? `${liveIdle} live, placing no orders: live trading isn\u2019t open yet` : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
       paint(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.' : 'Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>'}</div>`);
       paint(root.querySelector('#demo-health'), d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '');
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
-      paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Contract</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="tick" data-lab="Contract">${contractLink(p.ticker)}${contractMarket(p.ticker) ? `<div class="sub-fig pos-mkt">${esc(contractMarket(p.ticker))}</div>` : ''}${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+      const depMarket = (p) => (d.deployments.find((x) => x.id === p.deployment_id) || {}).market;
+      paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : ''}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
@@ -3665,7 +3696,7 @@
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
-    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, dateFmt, DEMO_WHAT, demoHealthLine,
+    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveOpen, dateFmt, DEMO_WHAT, demoHealthLine,
     demoSpan, DEP_DONE, depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
