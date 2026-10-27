@@ -12,7 +12,7 @@ from app import repository as repo
 from app.adapters.kalshi import kalshi_dev
 from app.research import agent, gatekeeper
 from app.research import research_repository as research_repo
-from app.services import backtest_check, book_memo, forward_gate, gate_explain, trade_why
+from app.services import backtest_check, book_memo, customer_text, forward_gate, gate_explain, trade_why
 from app.trading import backtest, track_record
 from app.trading import spec as specmod
 from app.trading.markets import MARKETS
@@ -778,6 +778,9 @@ def _no_dev_curve(s: Dict) -> Optional[str]:
     return None
 
 
+DEV_CURVE_UNSET = "Kalshi demo replay isn’t available on this server."
+
+
 # Passed strategies a session page warms at once (kalshi_dev.warm replays them one after another).
 WARM_DEV_CURVES = 3
 
@@ -800,5 +803,7 @@ def strategy_dev_curve(ctx: Ctx):
         return {"dev_curve": None, "reason": reason}
     out = kalshi_dev.dev_curve_for_strategy(s["id"], s["spec"], s["market"])
     if out is None:
-        return {"dev_curve": None, "reason": kalshi_dev.unavailable_reason()}
+        # kalshi_dev's reason names the server setting when replay isn't set up; the customer reads it in plain words.
+        return {"dev_curve": None, "reason": DEV_CURVE_UNSET if not kalshi_dev.KALSHI_DEV_API_BASE
+                else customer_text.curly(kalshi_dev.unavailable_reason())}
     return out

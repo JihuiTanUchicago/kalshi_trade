@@ -902,6 +902,9 @@ def set_focus_action(cur, user: Dict, action: Dict, run_kind: str) -> str:
             % focus_words(tokens))  # "Bitcoin", never "btc"
 
 
+PERPS_RESEARCH_CLOSED = "Bitcoin perpetuals research isn’t open on this server yet."
+
+
 def research_unavailable_reason(market: Optional[str]) -> Optional[str]:
     """Reject disabled native research before a manual/agent action queues paid work."""
     if market in MARKETS and MARKETS[market].tick_history_short():
@@ -911,8 +914,9 @@ def research_unavailable_reason(market: Optional[str]) -> Optional[str]:
         from app.adapters.data.market_data_common import MarketDataError
         try:
             Config.from_env().require_enabled()
-        except MarketDataError as exc:
-            return str(exc)
+        except MarketDataError:
+            # Its text names the server setting that opens it; the research form and the autopilot's chat say this.
+            return PERPS_RESEARCH_CLOSED
     return None
 
 
