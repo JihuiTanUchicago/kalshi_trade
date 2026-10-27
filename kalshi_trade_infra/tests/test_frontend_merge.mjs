@@ -1031,7 +1031,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Your real cash at Kalshi, read 5m ago\. 2 open live positions \(\$8\.25 at cost \+ fees\) not included/);
-  assert.match(figs, /\$1,000\.00 capital ·\u00a01 open \(\$3\.11 at cost \+ fees\) ·\u00a0needs a demo key ·\u00a0real fills/);
+  assert.match(figs, /\$1,000\.00 capital ·\u00a01 open \(\$3\.11 at cost \+ fees, all of it in Tau’s demo book\) ·\u00a0needs a demo key ·\u00a0real fills/);
   // Paper is the dashboard's figure (cash + open at their price), never cash alone under another name; its open
   // positions are named at cost + fees, with the part the balance holds.
   assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);

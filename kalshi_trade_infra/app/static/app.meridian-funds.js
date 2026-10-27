@@ -66,7 +66,11 @@ window.TauPage('funds', (T) => {
   // Each Funds figure says what it leaves out: a book's open positions, by count and cost with fees (the bundle's
   // openCost: Deploy's and the dashboard's "Cost + fee"). Paper's balance holds them at their price, so its line
   // also says how much of that is in the balance (inBalance). An API without the counts says nothing rather than "0 open".
-  const openAt = (b, held) => b.open_positions ? `${b.open_positions} open (${openCost(b)}${held && inBalance(b) ? ', ' + inBalance(b) : ''}) ·\u00a0` : '';
+  // `held` says where that money sits. Tau's demo book is its capital plus closed demo trades (server demo_equity), so an
+  // open demo position's whole cost is still inside it (DEMO_HELD): "1 open ($2.93 at cost + fees)" didn't say where.
+  // Each book says its own; none is added to another's.
+  const openAt = (b, held) => b.open_positions ? `${b.open_positions} open (${openCost(b)}${held ? ', ' + held : ''}) ·\u00a0` : '';
+  const DEMO_HELD = `all of it in ${DEMO_BOOK}`;
   const openLeft = (b, mode) => b.open_positions == null ? 'Open positions not included'
     : b.open_positions ? `${b.open_positions} open ${mode} position${b.open_positions === 1 ? '' : 's'} (${openCost(b)}) not included` : `No open ${mode} positions`;
   // What each book has made: its realized P&L from closed trades, the figure the dashboard, Deploy and the
@@ -207,8 +211,8 @@ window.TauPage('funds', (T) => {
       const demoNone = demoKeyless(dm, !!kd.connected);
       const cf = k.connected && cashFig(k);
       paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? connectLive(kd) + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Real money at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
-        (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox ·\u00a0${DEMO_WHAT}` })) +
-        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper, true)}${bookPnl(d.paper, 'paper')}`.replace(/ ·\u00a0$/, '') }));
+        (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${usd(dm.capital)} ${dm.before_reload ? 'capital at last reload' : 'starting capital'} ·\u00a0${openAt(dm, DEMO_HELD)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox ·\u00a0${DEMO_WHAT}` })) +
+        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper, inBalance(d.paper))}${bookPnl(d.paper, 'paper')}`.replace(/ ·\u00a0$/, '') }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
       // key forms fold under Connect Kalshi: it opened on the live-key form and the demo key's steps. An account
       // with a key keeps live, demo, paper.

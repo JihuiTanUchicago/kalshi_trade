@@ -770,7 +770,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Real money at Kalshi, read 5m ago\. 1 open live position \(\$3\.11 at cost \+ fees\) not included/);
-  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.25 at cost \+ fees\) ·\u00a0needs a demo key ·\u00a0real fills/);
+  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.25 at cost \+ fees, all of it in Tau’s demo book\) ·\u00a0needs a demo key ·\u00a0real fills/);
   assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);  // books are never summed
   const h = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: null, open_positions: 0, open_at_cost: 0}; return response(d); }});
