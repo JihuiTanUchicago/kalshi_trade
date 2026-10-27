@@ -4,7 +4,7 @@
 window.TauPage('strategies', (T) => {
   'use strict';
   const {
-    actionLink, announce, api, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
+    actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractMarket, demoHealthLine, DEP_DONE,
     depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
     gl, glo, go, ICON, isPerpetual, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
@@ -803,7 +803,7 @@ window.TauPage('strategies', (T) => {
     // paper record, demo record), with progress, what is left and when the counts could be in. How it
     // then reaches real money (the user's own step) is said apart, never as a check that runs by itself.
     // Best-effort and fetched after the page, like the dev curve.
-    if (root.querySelector('#road-live-body')) (async () => {
+    const roadRead = async () => {
       try {
         const r = await api('/api/strategies/' + s.id + '/live-readiness');
         const lb = root.querySelector('#ladder-body');
@@ -826,10 +826,16 @@ window.TauPage('strategies', (T) => {
           + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? 'Paper is <b>losing money</b> per trade, while the backtest made money on unseen data.' : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's unseen-data P&amp;L per trade.`}</p>` : '')
           + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book (bought at the ask, sold at the bid, after Kalshi fees), from every paper run of this strategy, removed ones included, so these figures are not its realized P&amp;L above. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading on this server: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
       } catch (e) {
+        // A read that failed (a bad connection) says why and offers Try again: it said "unavailable" for the
+        // rest of the visit, and only a reload asked again.
         const body = root.querySelector('#road-live-body');
-        if (body) body.innerHTML = '<p class="hint">Live readiness is unavailable right now.</p>';
+        if (!body) return;
+        const why = e instanceof ApiError ? e.message : 'Live readiness is unavailable right now.';
+        body.innerHTML = `<p class="hint">${esc(why)} <button class="btn sm" type="button" data-road-retry>Try again</button></p>`;
+        body.querySelector('[data-road-retry]').onclick = () => { body.innerHTML = '<p class="hint">Checking…</p>'; return roadRead(); };
       }
-    })();
+    };
+    if (root.querySelector('#road-live-body')) roadRead();
     for (const [sel, fl] of [['#dep-paper', '#depflash'], ['#dep-paper-quick', '#depflash-quick']]) {
       const depPaper = root.querySelector(sel);
       if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {

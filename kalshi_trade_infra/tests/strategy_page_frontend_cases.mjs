@@ -279,4 +279,25 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.equal(g.root.querySelector('#dep-paper').hidden, false);
     assert.match(main(g), /<p class="hint ap-paper" data-ap-next hidden>/);
   });
+
+  test(`${name}: Road to live that didn't load says why and offers Try again, which fills it`, async () => {
+    const road = {ready: false, deployment_candidate: true, live_autopilot: {ok: false},
+      paper: {trades: 12, trades_needed: 30, net_pnl: 3.4, events: 12, events_needed: 20, span_hours: 50, span_needed_hours: 48,
+        p_value: 0.2, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 1, realization: null, demo_orders: 7, demo_orders_needed: 20,
+        checks: {realistic_trades: false, net_pnl: true, events: false, span: true, edge: false, recent: true}}};
+    let reads = 0;
+    const f = strategyFrontend(detailStrategy({status: 'passed'}), (path) => {
+      if (path === '/api/strategies/42/live-readiness') return ++reads === 1 ? response({error: 'Tau is busy. Try again in a moment.'}, 500) : response(road);
+      return response({});
+    });
+    await f.viewStrategy(42); await flush(); await flush();
+    const body = () => f.root.querySelector('#road-live-body');
+    assert.match(body().innerHTML, /Tau is busy\. Try again in a moment\./);
+    assert.doesNotMatch(body().innerHTML, /unavailable/);
+    await body().querySelector('[data-road-retry]').onclick(); await flush(); await flush();
+    assert.equal(reads, 2);
+    assert.match(body().innerHTML, /Realistic paper trades/);
+    assert.equal(body().querySelector('[data-road-retry]'), null);
+    if (f.clearTimers) f.clearTimers();
+  });
 }
