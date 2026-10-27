@@ -82,6 +82,16 @@ def test_momentum_drift_moves_fair_value():
     assert specmod.fair_yes(mom, up.features) > specmod.fair_yes(flat, up.features) > specmod.fair_yes(rev, up.features)
 
 
+def test_missing_drift_input_gives_no_fair_value_not_a_crash():
+    # A btc15m_tick row before 5 minutes of per-second spot has no ret_5m (prod runs 3830/3843 KeyError).
+    feats = dict(_snap().features)
+    del feats["ret_5m"]
+    mom = specmod.validate({"model": {"drift_window": 5, "drift_beta": 1.0}})
+    assert specmod.fair_yes(mom, feats) is None
+    assert specmod.fair_yes(specmod.validate({}), feats) is not None
+    assert specmod.entries(mom, [snapshot(feats, _snap().contract, 1_800_000_000, 0.45, 0.47)]) == []
+
+
 def test_entries_pick_the_side_with_edge_and_respect_bounds():
     # Spot well above strike: YES fair ~1, so a 60c ask is a big YES edge.
     snap = _snap(spot=102.0, strike=100.0, tte_min=5, bid=0.58, ask=0.60)
