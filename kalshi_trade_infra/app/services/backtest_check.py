@@ -21,6 +21,8 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Optional
 
+from app.services.customer_text import PAPER_NET_SHORT
+
 MIN_TRADES = 10
 Z = 2.0  # about 95% of n-trade averages land within two standard errors
 # Within this ratio of book cost to stake, a book trades the backtest's size (contract rounding
@@ -98,7 +100,9 @@ def _book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optiona
     out.update(low=round(low, 4), high=round(high, 4))
     vs = "backtest" if bt["source"] == "out_of_sample" else "in-sample backtest"
     size = " at this book's trade size" if scale != 1.0 else ""
-    figures = "%d trades %s: %s/trade vs %s %s/trade%s" % (n, RUNS[mode], _usd(per), vs, _usd(expect), size)
+    # A paper per-trade figure says what it is net of, as every paper P&L does (customer_text.PAPER_NET).
+    net = " " + PAPER_NET_SHORT if mode == "paper" else ""
+    figures = "%d trades %s: %s/trade%s vs %s %s/trade%s" % (n, RUNS[mode], _usd(per), net, vs, _usd(expect), size)
     if bt.get("win_rate") is not None:
         figures += "; won %s vs %s" % (_pct(win), _pct(bt["win_rate"]))
     band = "(%s to %s)" % (_usd(low), _usd(high))

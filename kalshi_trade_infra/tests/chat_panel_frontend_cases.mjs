@@ -172,7 +172,7 @@ export function chatPanelCases({name, frontend, storageFor}) {
     assert.match(own[0].innerHTML, /<a href="\/deploy">Deploy<\/a>/);
     // A tournament entrant the autopilot keeps is the same rule.
     const q = await panel({autopilot: true, chat: () => [{id: 5, role: 'system', created_at: AT, content:
-      `I left ${TAILS} running: it is a paper tournament entrant with 3 of 20 independent events (net $1.20), and the tournament retires it on its own once the data can judge it.`}]});
+      `I left ${TAILS} running: it is a paper tournament entrant with 3 of 20 independent events ($1.20 net of fees and spread), and the tournament retires it on its own once the data can judge it.`}]});
     assert.deepEqual(q.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent), ['Autopilot’s rule: kept running']);
   });
 

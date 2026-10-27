@@ -112,8 +112,8 @@ def test_the_strategy_page_and_the_deploy_board_get_one_line_per_book(conn):
     assert demo["verdict"] == "behind" and demo["line"].startswith(
         "Behind its backtest on demo: 10 trades across all its demo runs: −$0.50/trade vs backtest +$0.15/trade; won 0% vs 61%.")
     assert paper["verdict"] == "within"
-    assert paper["line"] == ("On paper: 12 trades across all its paper runs, realistic fills only: +$0.12/trade vs "
-                             "backtest +$0.15/trade; won 50% vs 61%. "
+    assert paper["line"] == ("On paper: 12 trades across all its paper runs, realistic fills only: +$0.12/trade net of "
+                             "fees and spread vs backtest +$0.15/trade; won 50% vs 61%. "
                              "Within the backtest's usual range.")
     rows = {d["id"]: d for d in server.list_deployments(ctx())["deployments"]}
     assert rows[deps["paper"]]["backtest_check"] == paper and rows[deps["live"]]["backtest_check"] == live

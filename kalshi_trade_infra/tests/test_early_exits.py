@@ -81,7 +81,7 @@ def test_panel_names_a_paused_strategy_and_what_the_stop_did():
     paused = server._paused_recent(deps)
     assert [p["deployment_id"] for p in paused] == [74]
     assert server._paused_lines(paused) == [
-        "Sol 15m fade was paused after 2 paper trades (down $5.66): its safety stop sold a position that had lost 64% of its cost."]
+        "Sol 15m fade was paused after 2 paper trades (down $5.66 net of fees and spread): its safety stop sold a position that had lost 64% of its cost."]
     assert server._plain_pause_reason("force-closed: drawdown 30.0% >= limit 25.0%") == "it lost 30% of its money, past its 25% limit"
     exits = {"stop": {"exits": 2, "scored": 2, "pnl": -5.66, "scored_pnl": -5.66, "hold_pnl": -7.19, "saved": 1.53}}
     assert server._stop_line(exits) == ("This week the safety stop sold 2 positions on paper. Holding them to the end "

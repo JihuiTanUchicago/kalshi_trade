@@ -440,7 +440,7 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
               paper_progress={"trades": 4, "trades_needed": 30, "net_pnl": -1.5})
     story = server._autopilot_story(d2)
     assert story[0].startswith("Right now it's between research runs")
-    assert "4 of the 30 realistic paper trades live needs and is down $1.50 on them, across all its paper runs" in story[1]
+    assert "4 of the 30 realistic paper trades live needs and is down $1.50 on them net of fees and spread, across all its paper runs" in story[1]
     assert "from %d separate events" % server.agent.MIN_PAPER_EVENTS in story[-1]
     soon = server._autopilot_story(dict(d2, paper_progress=dict(d2["paper_progress"], soonest_days=6.6,
                                                                 soonest_title="Rain over NYC — v2")))

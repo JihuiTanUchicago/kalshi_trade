@@ -2840,7 +2840,7 @@
       const b = s.books[m] || { pnl: 0, trades: 0 };
       // The book's name and its signed amount never break apart (a phone wraps the rest of the line).
       return `<span class="since-book" data-book="${m}">${b.trades
-        ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${m === 'live' ? ' (real money)' : ''}`
+        ? `<span class="nobr"><b>${label}</b> <span class="${b.pnl < 0 ? 'neg' : b.pnl > 0 ? 'pos' : ''}">${usd(b.pnl, true)}</span></span> on ${plural(b.trades, 'trade', 'trades')}${m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : ''}`
         : `<b>${label}</b>: no trades closed yet`}</span>`;
     }).join('<span class="sep">·</span>') + sinceSplit(d, books) : 'No trades closed.';
     const pass = s.passed || { n: 0, items: [] }, runs = s.runs || {};
