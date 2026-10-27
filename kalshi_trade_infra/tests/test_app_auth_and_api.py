@@ -349,7 +349,7 @@ def test_key_errors_say_plainly_what_is_wrong_and_never_echo_the_key(monkeypatch
     with pytest.raises(kalshi_account.KalshiKeyError) as e:
         kalshi_account.verify("a952bcbe-ec3b-4b5b-b8f9-11dae589608c", pem)
     msg = str(e.value)
-    assert "couldn't be reached just now" in msg and "demo.kalshi.co is a demo key" in msg and pem not in msg
+    assert "couldn\u2019t be reached just now" in msg and "demo.kalshi.co is a demo key" in msg and pem not in msg
     # The demo box points a live key back to the live box.
     monkeypatch.setattr(server.kalshi_dev_exec, "demo_fills", lambda creds: (_ for _ in ()).throw(RuntimeError("401")))
     with pytest.raises(server.ApiError) as e:
