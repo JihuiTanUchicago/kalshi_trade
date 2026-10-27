@@ -2333,11 +2333,11 @@ test('Tau phone polish: a glossary marker keeps its last word, one rule where bo
   assert.doesNotMatch(source, /fig\('[^']*' \+ glo\(/, 'figure labels go through gl(), not label + glo()');
   assert.match(css, /\.nobr \{ white-space: nowrap; \}/);
   // Phone: the RSI tag sits under the title instead of wrapping to the far left under the badge,
-  // and the system map scrolls sideways at a readable size.
+  // and the system map stacks by stage to the column's width instead of scrolling sideways (fresh_walk_frontend_cases).
   const phone = css.slice(css.lastIndexOf('@media (max-width: 760px)'));
   assert.match(phone, /\.rsi-head > \.rsi-tag \{ grid-column: 2;/);
   assert.match(phone, /\.rsidisc-cap > \.rsi-tag, \.rsidisc-cap > \.rsidisc-delta \{ grid-column: 3;/);
-  assert.match(phone, /\.sys-wrap \{ overflow-x: auto;/);
+  assert.doesNotMatch(phone, /\.sys-wrap \{ overflow-x: auto;|width: 640px/);
   // One rule where two boxes meet.
   assert.match(css, /\.rengine:has\(\.rsidisc\.loop\) \+ \.pipefig \{ border-top: 0; \}/);
   assert.match(css, /\.pipefig:not\(\[open\]\) > \.pipecap \{ border-bottom: 0; \}/);

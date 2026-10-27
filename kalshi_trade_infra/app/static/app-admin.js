@@ -4,7 +4,7 @@
 window.TauPage('admin', (T) => {
   'use strict';
   const {
-    adminViewOn, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loading, num, poll, root, S,
+    adminViewOn, api, armed, boardTitle, busy, clock, compact, esc, flash, go, loading, num, phone, poll, root, S,
     shell, usd, when
   } = T;
 
@@ -156,24 +156,50 @@ window.TauPage('admin', (T) => {
     const dx = Math.max(40, (x2 - x1) * 0.5);
     return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
   }
+  // On a phone the 900-wide map either shrank past reading or scrolled sideways inside its frame (at 390px the
+  // research box started at x 537). There the boxes stack by stage, two 158-wide columns in a 340-wide map that
+  // fits the column at about its own size: each stage under its caption, a short arrow from each stage into the
+  // next in place of the crossing edges, which a stacked map can't draw sensibly.
+  const SYS_PW = 340;
+  const SYS_TIERS = [
+    { cap: 'Outside services', ids: ['kalshi', 'coinbase', 'bedrock', 'stripe'] },
+    { cap: 'Collectors and web server', ids: ['forward', 'cb_coll', 'features', 'web'] },
+    { cap: '', ids: ['db'] },
+    { cap: 'Research and engines', ids: ['agents', 'backtest', 'sim_engine', 'live_engine'] },
+  ];
+  function sysPhoneLayout() {
+    const at = {}, art = [], mid = SYS_PW / 2;
+    let y = 8;
+    SYS_TIERS.forEach((t, i) => {
+      if (i) { art.push(`<path class="sys-tier" d="M${mid},${y - 4} V${y + 10} M${mid - 5},${y + 5} L${mid},${y + 10} L${mid + 5},${y + 5}" />`); y += 16; }
+      if (t.cap) { art.push(`<text class="sys-tier-cap" x="8" y="${y + 11}">${esc(t.cap)}</text>`); y += 18; }
+      for (let r = 0; r < t.ids.length; r += 2) {
+        const row = t.ids.slice(r, r + 2).map(sysNode), hs = row.map((n) => (n.big ? SYS_H : sysH(n)));
+        row.forEach((n, j) => { at[n.id] = { x: 8 + j * 166, y, w: t.ids.length === 1 ? SYS_PW - 16 : 158, h: hs[j] }; });
+        y += Math.max(...hs) + 8;
+      }
+    });
+    return { at, art: art.join(''), w: SYS_PW, h: y };
+  }
   async function viewSystem() {
-    const edges = SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
+    const lay = phone() ? sysPhoneLayout() : null;
+    const edges = lay ? lay.art : SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
     const nodes = SYS_NODES.map((n) => {
-      const h = sysH(n);
+      const at = lay ? lay.at[n.id] : { x: n.x, y: n.y, w: n.w, h: sysH(n) }, h = at.h;
       // A two-line count is a line apiece, each set from metricLines on every read.
       const m = n.lines === 2 ? `<text class="m" data-m="${n.id}"><tspan x="12" y="${h - 26}"></tspan><tspan x="12" y="${h - 12}"></tspan></text>`
         : `<text class="m" x="12" y="${h - 12}" data-m="${n.id}"></text>`;
-      return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})" tabindex="0" role="button" aria-label="${esc(n.label)}">
-        <rect width="${n.w}" height="${h}" rx="${n.ext ? 9 : 3}"></rect>
+      return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${at.x},${at.y})" tabindex="0" role="button" aria-label="${esc(n.label)}">
+        <rect width="${at.w}" height="${h}" rx="${n.ext ? 9 : 3}"></rect>
         <text class="t" x="12" y="23">${esc(n.label)}</text>
         <text class="s" x="12" y="41" data-s="${n.id}">${esc(sysSub(n))}</text>
         ${m}
-        <circle class="pulse" cx="${n.w - 13}" cy="15" r="4"></circle>
+        <circle class="pulse" cx="${at.w - 13}" cy="15" r="4"></circle>
       </g>`;
     }).join('');
     shell('/system', boardTitle('System', 'A live map of the pipeline — every box is a real part of the codebase, every line is data flowing. It refreshes on its own so you can see what’s running.'),
       `<div class="sysmap">
-         <div class="sys-wrap"><svg viewBox="0 0 900 540" preserveAspectRatio="xMidYMid meet" id="syssvg" aria-label="System map">${edges}${nodes}</svg></div>
+         <div class="sys-wrap"><svg viewBox="0 0 ${lay ? `${lay.w} ${lay.h}` : '900 540'}" preserveAspectRatio="xMidYMid meet" id="syssvg"${lay ? ' class="sys-stack"' : ''} aria-label="System map">${edges}${nodes}</svg></div>
          <aside class="sys-side" aria-label="Details and live activity">
            <section class="panel" id="sys-detail"><h2>Pick a box</h2><p class="hint">Click any part of the system to see what it does and what it’s doing right now.</p></section>
            <section class="sect" style="margin-top:16px"><div class="sect-head"><h2>Live activity</h2><span class="sys-live" id="sys-stamp"></span></div><ol class="log sys-feed" id="sys-feed" tabindex="0" aria-label="Live activity"></ol></section>
