@@ -679,8 +679,8 @@ test('Overview offers each mode its own trades CSV only when that mode has close
 test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
     [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital ·\u00a0No demo deployments ·\u00a0real fills on Kalshi’s sandbox, not real money/],
-    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital ·\u00a00 open ·\u00a0\+\$12\.00 P&amp;L since reload ·\u00a0real fills/],
-    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 P&amp;L all time ·\u00a0real fills/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital ·\u00a00 open ·\u00a0\+\$12\.00 realized since reload ·\u00a0real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 realized all time ·\u00a0real fills/],
   ]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({demo})); }});
     await f.viewDashboard(); await flush();
@@ -694,7 +694,7 @@ test('Funds demo labels say "since reload" only after a reload, and that demo pr
     await f.viewFunds(); await flush();
     const main = f.root.querySelector('main').innerHTML;
     assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
-    assert.match(main, before_reload ? /<dt>P&amp;L since reload<\/dt>/ : /<dt>P&amp;L all time<\/dt>/);
+    assert.match(main, before_reload ? /<dt>Realized since reload<\/dt>/ : /<dt>Realized all time<\/dt>/);
     assert.match(main, /to prove the order path before live money\. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job\. The money is simulated\./);
     assert.doesNotMatch(main, /slippage are real/);
     assert.match(main, /Demo is the step between paper and live: it proves orders place, fill and book/);
@@ -3808,6 +3808,13 @@ test('Meridian: the strip splits a book\'s figure by the strategy that traded it
   deployments: deployments.slice(0, 2)});
   assert.match(solo, /<div class="since-split" data-book="paper"><a href="\/strategies\/103">ETH drift<\/a>/);
   assert.match(solo, /a removed strategy <span class="nobr"><span class="neg">−\$1\.00<\/span> on 1<\/span><span class="sep">·<\/span><span class="since-sub">1 more<\/span><\/div>/);
+  // A removed deployment the server names says whose it was: its strategy, or a deleted strategy once that is gone too.
+  const named = await strip({since: {...since, books: {paper: since.books.paper}, by_deployment: {paper: [
+    {deployment_id: 97, pnl: 2, trades: 1, removed: true, strategy_id: 7, title: 'Old fade'},
+    {deployment_id: 96, pnl: -1, trades: 2, removed: true, strategy_id: 6, title: null}]}}, deployments: deployments.slice(0, 2)});
+  assert.match(named, /<a href="\/strategies\/7">Old fade<\/a> <span class="since-sub">\(removed deployment\)<\/span> <span class="nobr"><span class="pos">\+\$2\.00<\/span> on 1<\/span>/);
+  assert.match(named, /a deleted strategy <span class="nobr"><span class="neg">−\$1\.00<\/span> on 2<\/span>/);
+  assert.doesNotMatch(named, /a removed strategy/);
   // An older server without the split: the book's line alone.
   assert.doesNotMatch(await strip({since: {...since, by_deployment: undefined}}), /since-split/);
 });
@@ -4260,7 +4267,7 @@ test('the since strip says what demo needs in a sentence, and a book with nothin
 });
 
 test('past its paper-trade target the autopilot card says how many and how many were needed, never "67 of 30"', async () => {
-  for (const [trades, said] of [[4, '4 of 30 paper trades'], [67, '67 paper trades (30 needed)'], [30, '30 paper trades (30 needed)']]) {
+  for (const [trades, said] of [[4, '4 of 30 realistic paper trades'], [67, '67 realistic paper trades (30 needed)'], [30, '30 realistic paper trades (30 needed)']]) {
     const f = frontend({fetchImpl: path => {
       if (path.startsWith('/api/dashboard')) return response(dashboardData());
       if (path === '/api/autopilot/status') return response({autopilot: true, mode: 'paper', story: ['Researching.'],
@@ -5123,7 +5130,7 @@ test('track record (Meridian): stopped and removed strategies stay in the table 
     sharpe: -1.25, sortino: -2.5, psr: 0.2, profit_factor: 0.6,
     sample: {level: 'early', edge: 'unclear', text: 'Early read.'},
     strategies: [row({}), row({strategy_id: 5, title: 'Reversal', status: 'stopped'}), row({strategy_id: 6, status: 'paused'}),
-      row({strategy_id: 7, title: 'Removed strategy', market: 'high_ny', status: 'stopped', removed: true})]};
+      row({strategy_id: 7, title: 'Deleted strategy', market: 'high_ny', status: 'stopped', removed: true})]};
   const html = f.trackRecordPanel(m, 'paper', th);
   assert.match(html, /<h2>By strategy<\/h2><p>Stopped ones included/);
   assert.match(html, /<a href="\/strategies\/5">Reversal<\/a><div class="sub-fig">Stopped<\/div>/);
@@ -5131,7 +5138,7 @@ test('track record (Meridian): stopped and removed strategies stay in the table 
   assert.match(html, /<a href="\/strategies\/4">Fade<\/a><\/td>/);  // a running one needs no label
   // A removed strategy has no page left: no dead link, and its market says which one it was.
   assert.doesNotMatch(html, /\/strategies\/7/);
-  assert.match(html, /Removed strategy<div class="sub-fig">NYC high temp · stopped, then removed<\/div>/);
+  assert.match(html, /Deleted strategy<div class="sub-fig">NYC high temp · stopped, then deleted<\/div>/);
   // Every trade's P&L is net of fees, so the ratio isn't "gross" beside the gross-before-fees line.
   assert.match(html, /winning trades ÷ losing trades, after fees/); assert.doesNotMatch(html, /gross wins/);
   assert.match(html, /−1\.25/); assert.match(html, /Sortino −2\.50/); assert.doesNotMatch(html, />-1\.25</);

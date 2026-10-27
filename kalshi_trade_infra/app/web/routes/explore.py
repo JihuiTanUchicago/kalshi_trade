@@ -137,7 +137,7 @@ def _market_mine(ctx: Ctx, ticker: str, open_ts: Optional[int]) -> Optional[Dict
         print("[explore] market %s positions failed: %r" % (ticker, e), flush=True)
         return None
     pick = lambda p: {**{k: p.get(k) for k in _MINE_FIELDS},
-                      "cost": round(int(p["qty"]) * float(p["entry_price"]) + float(p.get("entry_fee") or 0), 2)}
+                      "cost": _mark_fields(p)["cost"]}  # contracts x entry price plus the fee, as every page rounds it
     return {"open": [{**pick(p), **_mark_fields(p)} for p in rows["open"]], "closed": [pick(p) for p in rows["closed"]]}
 
 

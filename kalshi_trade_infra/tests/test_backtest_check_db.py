@@ -108,10 +108,12 @@ def test_the_strategy_page_and_the_deploy_board_get_one_line_per_book(conn):
     checks = server.get_strategy(ctx(sid))["backtest_checks"]
     assert [c["mode"] for c in checks] == ["live", "demo", "paper"]
     live, demo, paper = checks
-    assert live["verdict"] == "early" and live["line"].startswith("On live: 3 completed trades so far, too early to tell")
-    assert demo["verdict"] == "behind" and demo["line"].startswith("Behind its backtest on demo: 10 trades, −$0.50/trade vs backtest +$0.15/trade; won 0% vs 61%.")
+    assert live["verdict"] == "early" and live["line"].startswith("On live: 3 completed trades so far across all its live runs; too early to tell")
+    assert demo["verdict"] == "behind" and demo["line"].startswith(
+        "Behind its backtest on demo: 10 trades across all its demo runs: −$0.50/trade vs backtest +$0.15/trade; won 0% vs 61%.")
     assert paper["verdict"] == "within"
-    assert paper["line"] == ("On paper: 12 trades, +$0.12/trade vs backtest +$0.15/trade; won 50% vs 61%. "
+    assert paper["line"] == ("On paper: 12 trades across all its paper runs, realistic fills only: +$0.12/trade vs "
+                             "backtest +$0.15/trade; won 50% vs 61%. "
                              "Within the backtest's usual range.")
     rows = {d["id"]: d for d in server.list_deployments(ctx())["deployments"]}
     assert rows[deps["paper"]]["backtest_check"] == paper and rows[deps["live"]]["backtest_check"] == live

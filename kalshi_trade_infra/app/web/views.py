@@ -14,6 +14,7 @@ from app.adapters.kalshi import kalshi_account
 from app.adapters.stripe import billing
 from app.services import customer_text, gate_explain
 from app.web.http import ApiError, Ctx
+from trading_core.domain.money import cents, exact
 
 
 _LEDGER_PLACE = Decimal("0.000001")  # app_credit_ledger.amount_usd is DECIMAL(14,6)
@@ -40,12 +41,22 @@ def credit_exact(v) -> float:
     return float(Decimal(str(v or 0)).quantize(_LEDGER_PLACE, rounding=ROUND_HALF_UP)) + 0.0
 
 
+def _open_cost(open_pos: List[Dict], mode: str) -> Decimal:
+    """What one mode's open positions cost (contracts x entry price), exactly."""
+    return sum((Decimal(str(p["qty"])) * Decimal(str(p["entry_price"])) for p in open_pos if p["mode"] == mode), Decimal(0))
+
+
 def _open_book(open_pos: List[Dict], mode: str) -> Dict:
     """One mode's open positions: how many and what they cost (contracts x entry price). The dashboard
     and Funds both read this, so the two pages show the same open money to the cent."""
-    pos = [p for p in open_pos if p["mode"] == mode]
-    return {"open_at_cost": round(sum(float(p["qty"]) * float(p["entry_price"]) for p in pos), 2),
-            "open_positions": len(pos)}
+    return {"open_at_cost": cents(_open_cost(open_pos, mode)),
+            "open_positions": sum(1 for p in open_pos if p["mode"] == mode)}
+
+
+def _paper_equity(balance: float, open_pos: List[Dict]) -> Decimal:
+    """Paper equity, exactly: the ledger's cash plus the open paper positions at cost. The dashboard
+    and Funds round this once (cents); cash and cost rounded first and then added could miss by a cent."""
+    return exact(balance) + _open_cost(open_pos, "paper")
 
 
 def _live_balance(cur, uid: int) -> Dict:
@@ -210,7 +221,7 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
         "status_why": copy_pause[0] if copy_pause else _status_why(d, demo_key_back),
         # Why Resume is offered disabled (a demo copy waiting on its paper deployment), or None.
         "resume_block": copy_pause[1] if copy_pause else None,
-        "realized_pnl": round(float(d["realized_pnl"]), 2), "closed_trades": d["closed_trades"], "wins": d["wins"],
+        "realized_pnl": cents(d["realized_pnl"]), "closed_trades": d["closed_trades"], "wins": d["wins"],
         "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
         "stake": _spec_sizing(d).get("stake"), "max_positions": _spec_sizing(d).get("max_positions"),
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
@@ -234,9 +245,9 @@ def _realized_by_book(listed: List[Dict], removed: List[Dict]) -> Dict[str, Dict
         if not ls and not rs:
             continue
         a, b = total(ls), total(rs)
-        book = {"listed": round(float(a), 2) + 0.0, "removed": round(float(b), 2) + 0.0, "removed_deployments": len(rs)}
+        book = {"listed": cents(a), "removed": cents(b), "removed_deployments": len(rs)}
         if mode != "demo":
-            book["all"] = round(float(a + b), 2) + 0.0
+            book["all"] = cents(a + b)
         out[mode] = book
     return out
 
@@ -244,7 +255,7 @@ def _realized_by_book(listed: List[Dict], removed: List[Dict]) -> Dict[str, Dict
 def _past_deployment_out(r: Dict) -> Dict:
     """A removed deployment as its strategy page lists it: book, dates and realized P&L (display only)."""
     return {"id": r["id"], "mode": r["mode"], "created_at": r["created_at"], "removed_at": r["removed_at"],
-            "realized_pnl": round(float(r.get("realized_pnl") or 0), 2) + 0.0,
+            "realized_pnl": cents(r.get("realized_pnl")),
             "closed_trades": int(r.get("closed_trades") or 0)}
 
 

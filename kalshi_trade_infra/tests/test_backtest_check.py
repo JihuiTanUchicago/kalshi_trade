@@ -22,7 +22,8 @@ def _alternating(n, mean, swing):
 def test_within_the_usual_range_reads_plainly():
     c = bc.book_check("paper", _stats(_alternating(34, 0.12, 0.5)), bc.backtest_figures(OOS, 5.0))
     assert c["verdict"] == "within" and c["trades"] == 34
-    assert c["line"] == ("On paper: 34 trades, +$0.12/trade vs backtest +$0.15/trade; won 50% vs 61%. "
+    assert c["line"] == ("On paper: 34 trades across all its paper runs, realistic fills only: +$0.12/trade vs backtest "
+                         "+$0.15/trade; won 50% vs 61%. "
                          "Within the backtest's usual range.")
 
 
@@ -39,17 +40,19 @@ def test_behind_and_ahead_say_so_with_the_range():
     bt = bc.backtest_figures(OOS, 5.0)
     behind = bc.book_check("live", _stats(_alternating(40, -0.10, 0.2)), bt)
     assert behind["verdict"] == "behind"
-    assert behind["line"].startswith("Behind its backtest on live: 40 trades, −$0.10/trade vs backtest +$0.15/trade;")
+    assert behind["line"].startswith("Behind its backtest on live: 40 trades across all its live runs: −$0.10/trade vs backtest +$0.15/trade;")
     assert "Below the usual range for 40 trades (+$0.09 to +$0.21)." in behind["line"]
     ahead = bc.book_check("demo", _stats(_alternating(40, 0.40, 0.2)), bt)
-    assert ahead["verdict"] == "ahead" and ahead["line"].startswith("Ahead of its backtest on demo: 40 trades, +$0.40/trade")
+    assert ahead["verdict"] == "ahead" and ahead["line"].startswith("Ahead of its backtest on demo: 40 trades across all its demo runs: +$0.40/trade")
 
 
 @pytest.mark.parametrize("n", [1, 9])
 def test_under_ten_trades_is_too_early_to_tell(n):
     c = bc.book_check("live", _stats([5.0] * n), bc.backtest_figures(OOS, 5.0))
     assert c["verdict"] == "early" and c["low"] is None
-    assert c["line"] == ("On live: %d completed trade%s so far, too early to tell against the backtest (it takes about 10)."
+    # The count is every live run of the strategy, so a deployment row's own trade count never reads as it.
+    assert c["line"] == ("On live: %d completed trade%s so far across all its live runs; too early to tell against the "
+                         "backtest (it takes about 10)."
                          % (n, "" if n == 1 else "s"))
     assert bc.book_check("live", _stats([0.1] * 10), bc.backtest_figures(OOS, 5.0))["verdict"] != "early"
 

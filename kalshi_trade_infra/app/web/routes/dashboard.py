@@ -21,10 +21,12 @@ from app.web.views import (
     _live_balance,
     _open_book,
     _paper_books,
+    _paper_equity,
     _silent_before,
     _start_of_day_utc,
     credit_usd,
 )
+from trading_core.domain.money import cents, exact
 
 
 def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day,
@@ -41,8 +43,8 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
         "closed_trades": int((closed or {}).get(mode, 0)),  # > 0: the dashboard offers /api/trades.csv
         **_open_book(open_pos, mode),
         "running": sum(1 for d in deps if d["mode"] == mode and d["status"] == "running"),
-        "realized_pnl": round(total, 2),
-        "today_pnl": round(today, 2),
+        "realized_pnl": cents(total),
+        "today_pnl": cents(today),
     }
 
 
@@ -72,13 +74,13 @@ def dashboard(ctx: Ctx):
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
     # Kalshi balance (money we never hold).
     paper = _mode_bucket(cur, ctx.uid, "paper", open_pos, deps, day, realized["paper"], closed)
-    equity = balance + paper["open_at_cost"]
+    equity = _paper_equity(balance, open_pos)
     paper.update(
-        cash=round(balance, 2),
-        equity=round(equity, 2),
-        deposited=round(deposited, 2),
-        total_pnl=round(equity - deposited, 2),
-        roi=round((equity - deposited) / deposited, 4) if deposited > 0 else None,
+        cash=cents(balance),
+        equity=cents(equity),
+        deposited=cents(deposited),
+        total_pnl=cents(equity - exact(deposited)),
+        roi=round(float(equity - exact(deposited)) / deposited, 4) if deposited > 0 else None,
         daily=book_memo.daily_pnl(memo, "paper"),
         # total_pnl restarts at a reset (the ledger is wiped), so its label says "since reset", not
         # "all time", while the track record still counts every closed trade.
@@ -110,7 +112,7 @@ def dashboard(ctx: Ctx):
                                         _paper_books(deps)) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
-        "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep),
+        "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep, {d["id"] for d in deps}),
     }, ctx.query.get("v"))
 
 
@@ -133,29 +135,44 @@ def _visit_since(raw) -> Tuple[datetime, bool]:
 
 
 def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
-                 by_dep: Optional[Dict[Tuple[str, int], Tuple[float, int]]] = None) -> Dict:
+                 by_dep: Optional[Dict[Tuple[str, int], Tuple[float, int]]] = None, listed: Optional[set] = None) -> Dict:
     """The dashboard's "since your last visit" strip: each book's realized P&L and closed trades
     since then (from the books' one pass; books are never added together), the strategies that
     passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
     (real money) ride apart from the books, and only while payments are on: with them off nothing
     is billed. `milestones` are the paper forward-gate passes and live-ready strategies since then.
     `by_deployment` splits each book's figure by the deployment that traded it ({mode: [{deployment_id,
-    pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it."""
+    pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it. A row
+    whose deployment the page doesn't list (`listed`: it was removed) says whose it was itself."""
     act = repo.activity_since(cur, uid, visit)
     return {"at": visit, "first": first,
-            "books": {m: {"pnl": round(pnl, 2), "trades": n} for m, (pnl, n) in recent.items()},
+            "books": {m: {"pnl": cents(pnl), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": repo.passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
             "spent": {k: credit_usd(v) for k, v in act["spent"].items()} if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []},
-            "by_deployment": _since_by_deployment(by_dep or {})}
+            "by_deployment": _since_by_deployment(by_dep or {}, _removed_names(cur, uid, by_dep or {}, listed))}
 
 
-def _since_by_deployment(by_dep: Dict[Tuple[str, int], Tuple[float, int]]) -> Dict[str, List[Dict]]:
-    """{mode: [{deployment_id, pnl, trades}]} for each book, best first; a book is never mixed with another."""
+def _removed_names(cur, uid: int, by_dep: Dict[Tuple[str, int], Tuple[float, int]], listed: Optional[set]) -> Dict[int, Dict]:
+    """{deployment id: {strategy_id, title}} for the since-visit rows of removed deployments (not in
+    `listed`), read only when there is one; the title is None once the strategy itself was deleted.
+    The page named every such row "a removed strategy", one that still exists included."""
+    if listed is None or all(dep_id in listed for _, dep_id in by_dep):
+        return {}
+    return {int(r["id"]): {"strategy_id": r["strategy_id"], "title": r["title"]} for r in repo.removed_deployments(cur, uid)}
+
+
+def _since_by_deployment(by_dep: Dict[Tuple[str, int], Tuple[float, int]],
+                         removed: Optional[Dict[int, Dict]] = None) -> Dict[str, List[Dict]]:
+    """{mode: [{deployment_id, pnl, trades}]} for each book, best first; a book is never mixed with another.
+    A removed deployment's row also carries `removed` and its strategy (`strategy_id`, `title`)."""
     out: Dict[str, List[Dict]] = {}
     for (mode, dep_id), (pnl, n) in by_dep.items():
-        out.setdefault(mode, []).append({"deployment_id": dep_id, "pnl": round(pnl, 2), "trades": n})
+        row = {"deployment_id": dep_id, "pnl": cents(pnl), "trades": n}
+        if dep_id in (removed or {}):
+            row.update(removed=True, **removed[dep_id])
+        out.setdefault(mode, []).append(row)
     for rows in out.values():
         rows.sort(key=lambda r: (-r["pnl"], r["deployment_id"]))
     return out

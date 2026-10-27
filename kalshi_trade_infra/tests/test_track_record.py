@@ -381,7 +381,7 @@ def test_stopped_and_removed_strategies_stay_in_and_say_so():
     by = {s["strategy_id"]: s for s in p["strategies"]}
     assert (by[1]["status"], by[1]["removed"]) == ("running", False)
     assert by[2]["status"] == "stopped" and by[2]["net_pnl"] == -5
-    assert by[3]["removed"] is True and by[3]["title"] == "Removed strategy" and by[3]["trades"] == 1
+    assert by[3]["removed"] is True and by[3]["title"] == "Deleted strategy" and by[3]["trades"] == 1
     assert by[4]["status"] == "paused" and by[4]["trades"] == 2
     assert tr.build([row("paper", 1)], NOW)["modes"]["paper"]["strategies"][0]["status"] is None  # unknown stays unknown
     assert any("Stopped strategies" in line for line in tr.METHOD)

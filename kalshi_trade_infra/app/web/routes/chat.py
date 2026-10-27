@@ -41,6 +41,7 @@ from app.web.views import (
     _run_wait,
     _start_of_day_utc,
 )
+from trading_core.domain.money import cents
 
 
 def get_chat(ctx: Ctx):
@@ -279,7 +280,10 @@ def _autopilot_story(d: Dict) -> List[str]:
     elif not paper:
         lines.append("Nothing is trading on paper yet. A strategy has to pass the research tests first.")
     elif prog and int(prog.get("trades") or 0) > 0:
-        lines.append("%s on paper (pretend money). The furthest along has %d of %d trades and is %s." % (
+        # Its count and net are the realistic paper record across all its paper runs (the road to live's),
+        # not one deployment's realized P&L: said so, since the Deploy row beside it shows that one.
+        lines.append("%s on paper (pretend money). The furthest along has %d of the %d realistic paper trades live "
+                     "needs and is %s on them, across all its paper runs." % (
             _plural(paper, "strategy is", "strategies are"), int(prog["trades"]), int(prog["trades_needed"]),
             ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"])))
     elif int(d.get("paper_open") or 0):
@@ -452,7 +456,7 @@ def _paused_recent(deps: List[Dict], hours: int = 24, cur=None, memo: Optional[b
         trades, pnl = ((d.get("closed_trades"), d.get("realized_pnl")) if "closed_trades" in d
                        else totals.get(int(d["id"]), (0, 0)))
         out.append({"deployment_id": d["id"], "title": _short_title(d.get("title")),
-                    "trades": int(trades or 0), "pnl": round(float(pnl or 0), 2),
+                    "trades": int(trades or 0), "pnl": cents(pnl),
                     "why": _plain_pause_reason(d.get("status_reason"))})
     return out
 
@@ -720,7 +724,7 @@ def autopilot_status(ctx: Ctx):
     mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if on else "off"))
     # Each book's day, summed apart (never together) and kept until a position moves.
     today = book_memo.realized_since(memo, ("live", "paper"), _start_of_day_utc())
-    today_live = round(today["live"], 2)
+    today_live = cents(today["live"])
     limit = float(u.get("autopilot_daily_loss_limit") or 50)
     # The week's credit figures and, when a figure below needs it, the balance: one read of the ledger.
     payments = billing.configured()
@@ -746,7 +750,7 @@ def autopilot_status(ctx: Ctx):
         best = max(sids, key=lambda s: (prog.get(s, (0, 0.0))[0], prog.get(s, (0, 0.0))[1]))
         trades, net = prog.get(best, (0, 0.0))
         paper_progress = {"strategy_id": best, "title": titles[best], "trades": trades,
-                          "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "net_pnl": round(net, 2),
+                          "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES, "net_pnl": cents(net),
                           "strategies": len(sids)}
         # When the soonest one could have a full record for the live check, at the pace each trades.
         from app.research import rsi
@@ -766,9 +770,9 @@ def autopilot_status(ctx: Ctx):
         "live_running": len(live_run), "paper_running": len(paper_run), "demo_running": len(demo_run),
         "today_live_pnl": today_live,
         # The paper book's day, so a paper-only panel shows its own money instead of a live $0.00.
-        "today_paper_pnl": round(today["paper"], 2),
+        "today_paper_pnl": cents(today["paper"]),
         "daily_loss_limit": limit,
-        "loss_headroom": round(max(0.0, limit + min(0.0, today_live)), 2),  # how much loss budget is left today
+        "loss_headroom": cents(max(0.0, limit + min(0.0, today_live))),  # how much loss budget is left today
         "last_action": _last_move(_last_action(cur, ctx.uid, pulse["chat"]), deps),
         "last_review_at": pulse["last_review_at"],  # liveness: a quiet review posts nothing, this still shows it ran
         # A review queued or running now. Switching on queues the first one at once, and the panel said
@@ -838,7 +842,7 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
     paper = repo.autopilot_paper_week(cur, uid, since)
     out = {"research_credits": research.get("cost_7d", 0.0), "tested": research.get("tested_7d", 0),
            "passed": research.get("passed_7d", 0), "paper_started": paper["started"],
-           "paper_pnl": round(paper["pnl"], 2), "paper_trades": paper["trades"],
+           "paper_pnl": cents(paper["pnl"]), "paper_trades": paper["trades"],
            "checkin_credits": None, "credits_left": None, "runway_days": None, "reload_days": None, "pace_days": None}
     if billing.configured():
         # What else the week cost and how long the balance lasts at that pace, read-only: the

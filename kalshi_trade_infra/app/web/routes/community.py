@@ -11,6 +11,7 @@ from app.adapters.ses import notify
 from app.services import customer_text
 from app.web.http import ApiError, Ctx, _int_param
 from data_pipeline.common import get_db_conn
+from trading_core.domain.money import cents
 
 
 MAX_POSTS_PER_HOUR = 30
@@ -34,14 +35,14 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
             raise ApiError(404, "That deployment isn't yours or doesn't exist.")
         since = dep.get("created_at")
         return {"kind": "deployment", "id": dep["id"], "title": dep["title"], "market": dep["market"],
-                "mode": dep["mode"], "realized_pnl": round(float(dep["realized_pnl"]), 2), "closed_trades": dep["closed_trades"],
+                "mode": dep["mode"], "realized_pnl": cents(dep["realized_pnl"]), "closed_trades": dep["closed_trades"],
                 "since": since.strftime("%Y-%m-%dT%H:%M:%SZ") if since else None}
     if kind == "pnl":
         # Each book's all-time realized P&L with its closed-trade count, never added together.
         paper = repo.realized_pnl(cur, user_id, "paper")
         live = repo.realized_pnl(cur, user_id, "live")
         counts = repo.closed_trade_counts(cur, user_id)
-        return {"kind": "pnl", "paper_pnl": round(paper, 2), "live_pnl": round(live, 2),
+        return {"kind": "pnl", "paper_pnl": cents(paper), "live_pnl": cents(live),
                 "paper_trades": counts.get("paper", 0), "live_trades": counts.get("live", 0)}
     return None
 
