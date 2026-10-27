@@ -39,6 +39,36 @@ export function fundsTrustCases({name, frontend, fundsData, dashboard, detailStr
     }
   });
 
+  test(`${name}: the dashboard names the demo figure Tau's demo book, as Funds does, keyed or not`, async () => {
+    // Tau's dashboard said "Demo Sandbox" and Meridian's "Demo balance" for the figure Funds calls Tau's demo book.
+    const demo = {capital: 1000, equity: 1003.5, realized_pnl: 3.5, closed_trades: 1, open_positions: 0, running: 1, open_at_cost: 0, open_cost: 0};
+    const page = async (key, book) => {
+      const base = dashboard();
+      const d = frontend({fetchImpl: (path) => path.startsWith('/api/dashboard') ? response({...base, demo: book, deployments: []})
+        : path.startsWith('/api/track-record') ? response({modes: {}})
+          : path === '/api/autopilot/status' ? response({autopilot: false, mode: 'off'}) : response({})});
+      d.S.me.kalshi_dev_connected = key;
+      d.location.pathname = '/';
+      await d.viewDashboard(); await settle();
+      const html = ['#main', '#boardbody'].map((sel) => (d.root.querySelector(sel) || {innerHTML: ''}).innerHTML).join('');
+      d.clearTimers();
+      return html;
+    };
+    const label = (html) => [...html.matchAll(/<dt class="lab[^"]*">((?:(?!<\/dt>).)*)<\/dt>/g)].map((m) => m[1].replace(/<[^>]*>/g, '').trim());
+    const keyed = await page(true, demo);
+    assert.ok(label(keyed).some((l) => /Tau’s demo book$/.test(l)), label(keyed).join(' | '));
+    assert.match(keyed.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' '), /Tau’s demo book \$1,003\.50/);
+    const keyless = await page(false, {capital: 1000, equity: 1000});
+    assert.match(keyless.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' '), /Tau’s demo book No demo key/);
+    for (const html of [keyed, keyless]) assert.doesNotMatch(html, /Demo balance|Demo<\/span> Sandbox|>Sandbox</);
+    // Funds, the same book: the same name.
+    const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response({...fundsData(), demo: {...demo, realized: 3.5}}) : response({})});
+    f.location.pathname = '/funds';
+    await f.viewFunds(); await settle();
+    assert.match(text(f.root.querySelector('#ffigs')), /Tau’s demo book ?\$1,003\.50/);
+    f.clearTimers();
+  });
+
   // ---------- one cost basis ----------
   const pos = {id: 5, deployment_id: 9, strategy_id: 42, title: 'Drift', ticker: 'KXBTC15M-26OCT181230-T1', side: 'yes', qty: 5,
     entry_price: .38, entry_fee: .04, at_cost: 1.9, cost: 1.94, unrealized: null, mark: null, value: null, mode: 'paper',

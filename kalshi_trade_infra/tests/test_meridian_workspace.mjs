@@ -1629,7 +1629,7 @@ test('Overview chooses the correct primary money bucket and preserves disconnect
     // A connected key's cash is never behind the closed menu: under paper in the band, its own figure.
     const cashInBand = !livePrimary && !!data.live.connected;
     assert.deepEqual(accounts.querySelectorAll('dt.lab').map(lab => lab.textContent),
-      livePrimary ? ['Paper portfolio', 'Demo balance'] : cashInBand ? ['Demo balance'] : ['Kalshi cash', 'Demo balance'], label);
+      livePrimary ? ['Paper portfolio', 'Tau’s demo book'] : cashInBand ? ['Tau’s demo book'] : ['Kalshi cash', 'Tau’s demo book'], label);
     assert.equal(accounts.contains(f.root.querySelector('.paper-summary')), livePrimary, label);
     assert.equal(!!primary.querySelector('.kalshi-cash'), cashInBand, label);
     if (!livePrimary) assert.equal((cashInBand ? primary.querySelector('.kalshi-cash') : accounts).querySelector('.fig').textContent, secondaryLive, label);
