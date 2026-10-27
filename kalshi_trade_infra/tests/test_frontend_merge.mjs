@@ -3,6 +3,8 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {bundleSource, exposing} from './bundle_source.mjs';
+import {pageFileCases} from './page_files_frontend_cases.mjs';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
@@ -25,7 +27,9 @@ import {a11yCases} from './a11y_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
-const source = readFileSync(new URL('../app/static/app.js', import.meta.url), 'utf8');
+// What the checks read from the bundle and its page files (bundle_source.mjs).
+const EXPOSE = ['S', 'api', 'PAGES', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater'];
+const source = bundleSource('app.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
   let resolve;
@@ -167,7 +171,7 @@ function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia 
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'globalThis.frontend = {S, api, armed, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, routes, viewExample, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, postSnapshot, viewCommunity, viewRun, viewFunds, viewBilling, viewDashboard, viewDeploy, viewResearch, viewExplore, marketPicker, wireMarketPicker, paintDashAp, apUpdate, apYield, tabEdges, trCurve, trackRecordPanel, mountTrackRecord, viewMarketDetail, viewSystem, viewSettings, render, paymentGate, hotRowHtml, rpUnderwater};'), context);
+  vm.runInContext(source.replace(boot, 'globalThis.frontend = ' + exposing(EXPOSE) + ';'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -212,6 +216,7 @@ explorePageCases({name: 'Tau', frontend});
 researchFormCases({name: 'Tau', frontend});
 phoneSpeedCases({name: 'Tau', frontend, source, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+pageFileCases({name: 'Tau', frontend, prefix: 'app-', pagesKey: 'tauPages'});
 settingsCases({name: 'Tau', frontend, current: 'tau', cardWallOpts: () => ({stripe: STRIPE_STUB}),
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
@@ -3066,7 +3071,7 @@ test('a failed auto-reload says why by the auto-reload switch, with Update card 
 });
 
 test('the failed auto-reload banner is one helper, byte-identical in both bundles, styled in both stylesheets', () => {
-  const meridian = readFileSync(new URL('../app/static/app.meridian.js', import.meta.url), 'utf8');
+  const meridian = bundleSource('app.meridian.js');
   const helper = (src) => (src.match(/ {2}function reloadFailNote\(d\) \{[\s\S]*?\n {2}\}\n/) || [])[0];
   assert.ok(helper(source));
   assert.equal(helper(meridian), helper(source));
@@ -3820,7 +3825,7 @@ test('an armed confirm resets after 5 seconds, and an earlier arming\'s reset ne
 });
 
 test('a held Enter key repeats nothing while a confirm is armed, in both bundles', () => {
-  const meridian = readFileSync(new URL('../app/static/app.meridian.js', import.meta.url), 'utf8');
+  const meridian = bundleSource('app.meridian.js');
   for (const src of [source, meridian]) {
     const body = src.match(/ {2}function guardArmedRepeat\(\) \{[\s\S]*?\n {2}\}\n/);
     assert.ok(body, 'guardArmedRepeat is defined');
