@@ -225,11 +225,13 @@ def autopilot_kill(ctx: Ctx):
     return {"ok": True, "paused": paused}
 
 
-def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optional[float] = None) -> Dict:
+def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optional[float] = None,
+                       exact: Optional[float] = None) -> Dict:
     """What research is doing for the autopilot float: the markets being researched now and the
     last 7 days' tested/passed counts, so a quiet panel reads as working, not stuck. Made from the
     panel's pulse (repo.autopilot_pulse) and its credit read (repo.credit_week); each is read here
-    when the caller has none."""
+    when the caller has none. `exact` is the week's research debit unrounded, when `spent` is the caller's
+    rounded figure, so a week under half a cent says so (cost_7d_under_cent) instead of reading as nothing."""
     since = repo.now_utc() - timedelta(days=7)
     pulse = pulse if pulse is not None else repo.autopilot_pulse(cur, uid, since)
     # Researching now means a run queued for a worker or one that is beating, among the 50 newest. A
@@ -242,6 +244,8 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
     # Passed counts strategies that cleared every gate: an old run's counter held 68 backtest-only.
     # Of those, the ones a later check left uncleared count apart (_week_not_cleared).
     not_cleared = _week_not_cleared(cur, uid, since, pulse["passed_7d"])
+    if spent is None:
+        spent = repo.credit_week(cur, uid, since)["research"]
     return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "a market it's still picking")
                        for r in active],
             "tested_7d": pulse["tested_7d"],
@@ -250,7 +254,10 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
             "runs_7d": pulse["runs_7d"],
             # What research actually debited this week (the credit ledger), not tokens re-priced:
             # re-pricing billed a screen-arm run's screen tokens at the developer model's rate.
-            "cost_7d": credit_usd(spent if spent is not None else repo.credit_week(cur, uid, since)["research"])}
+            "cost_7d": credit_usd(spent),
+            # Research that debited something but rounds to $0.00 reads "under $0.01", as Billing's week does
+            # (spent_7d_under_cent): the panel left it out, as if research had cost nothing.
+            "cost_7d_under_cent": credit_exact(spent if exact is None else exact) > 0 and not credit_usd(spent)}
 
 
 WEEK_PASSES_TTL = 30.0  # seconds; the panel polls every 20s
@@ -330,7 +337,8 @@ def _autopilot_story(d: Dict) -> List[str]:
             outcome = ("none has passed its tests yet. That's normal: most ideas fail. Each session's page names "
                        "the test each idea missed and what to try next")
         lines.append("This week it tested %s%s and %s." % (
-            _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01 else "", outcome))
+            _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01
+            else " for under $0.01" if research.get("cost_7d_under_cent") else "", outcome))
     paper, prog = int(d.get("paper_running") or 0), d.get("paper_progress")
     if idle and (idle == "engine" or not paper):
         pass  # the idle line (shown above the story) says why nothing trades; this one would repeat or contradict it
@@ -831,7 +839,7 @@ def autopilot_status(ctx: Ctx):
             soon = min(etas, key=etas.get)
             paper_progress.update(soonest_days=etas[soon], soonest_title=titles[soon])
     out = {
-        "research": _research_activity(cur, ctx.uid, pulse, _research_cents(credits)),
+        "research": _research_activity(cur, ctx.uid, pulse, _research_cents(credits), credits["research"]),
         "autopilot": on,
         "autopilot_live": bool(u.get("autopilot_live")),
         "live_enabled": bool(engine.LIVE_TRADING_ENABLED),
