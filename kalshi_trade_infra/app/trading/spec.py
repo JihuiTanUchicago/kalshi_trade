@@ -889,6 +889,10 @@ def fair_yes(spec: Dict, f: Dict[str, float]) -> Optional[float]:
     # with code strategies, which never call fair_yes.
     if "moneyness" not in f or ("vol_%dm" % m["vol_window"]) not in f:
         return None
+    if m["drift_window"] and ("ret_%dm" % m["drift_window"]) not in f:
+        # Its drift input is missing (prod 2026-10-27 runs 3830/3843: a btc15m_tick row before the
+        # per-second spot had 5 minutes of history has no ret_5m): no fair value, as for vol above.
+        return None
     sigma = m["vol_scale"] * f["vol_%dm" % m["vol_window"]]
     t = f["tte_min"]
     mu = 0.0
