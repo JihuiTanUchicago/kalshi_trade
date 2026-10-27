@@ -315,6 +315,9 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
         # Round trips and closed rows are two counts of one book: they add back up to the CSV.
         left_out = _money(sum(x["pnl"] for x in b["instant"]))
         assert _money(t["net_pnl"] + t["open_realized_pnl"] + left_out) == csv_sum(lines)[0], mode
+        # The record says what it left out, so its page can reconcile with the realized P&L every other page shows.
+        assert t["excluded_instant_pnl"] == left_out, mode
+        assert _money(sum(r["excluded_instant_pnl"] for r in t["strategies"])) == left_out, mode
         assert _money(sum(m["pnl"] for m in t["monthly"])) == t["net_pnl"], mode
         assert _money(t["curve"][-1][1]) == t["net_pnl"], mode
 

@@ -37,7 +37,18 @@ def _event(minutes_ahead=90):
     return at.strftime("%y%b%d%H").upper(), at.replace(minute=0, second=0, microsecond=0)
 
 
-def _stub(monkeypatch, spot=None, record=None, reads=None):
+def _stub(monkeypatch, spot=None, record=None, reads=None, records=None):
+    """`record`: what the market page's one-contract read gets; `records`: {ticker: record} the list's
+    batched read finds (none stored by default), or an Exception it raises."""
+    def market_strikes(cur, tickers):
+        if reads is not None:
+            reads.append(("strikes", tuple(tickers)))
+        if isinstance(records, Exception):
+            raise records
+        return {t: r for t, r in (records or {}).items() if t in tickers}
+
+    monkeypatch.setattr(explore_routes.repo, "market_strikes", market_strikes)
+
     def latest_spot(cur, product, since):
         if reads is not None:
             reads.append(("spot", product, since))
@@ -233,9 +244,10 @@ def test_the_list_says_how_far_fresh_spot_is_from_each_strike_from_one_read(monk
     assert vs["KXBTC15M-26OCT262345-45"] is None, "a 15-minute window's start price isn't in its ticker"
     assert vs["KXNBAGAME-26OCT26MINDEN-MIN"] is None
     assert d["spot"]["price"] == 113420.0 and d["spot"]["stale"] is False and 4 <= d["spot"]["age_s"] <= 6
-    assert [r[0] for r in reads] == ["spot"], "one spot read for the page, never a strike read per row"
+    assert [r[0] for r in reads] == ["strikes", "spot"], "one stored-strike read and one spot read for the page, never one per row"
+    assert reads[0][1] == tuple(LADDER[:7]), "the stored strikes of the page's Bitcoin rows alone"
     _list(monkeypatch, _feed(*LADDER), page="0")
-    assert [r[0] for r in reads] == ["spot"], "a second list inside SPOT_TTL_S shares it"
+    assert [r[0] for r in reads] == ["strikes", "spot"], "a second list inside SPOT_TTL_S and STRIKE_TTL_S shares both"
     assert [m["t"] for m in d["markets"]] == list(LADDER), "the list keeps its order"
 
 
@@ -261,9 +273,13 @@ def test_a_failed_spot_read_gives_no_distances_and_no_raw_error(monkeypatch, cap
 def test_a_list_without_bitcoin_strikes_reads_nothing_and_is_untouched(monkeypatch):
     reads = []
     _stub(monkeypatch, spot={"at": _now(), "price": 113420.0}, reads=reads)
-    d = _list(monkeypatch, _feed("KXNBAGAME-26OCT26MINDEN-MIN", "KXETHD-26OCT2717-T4000", "KXBTC15M-26OCT262345-45"))
+    d = _list(monkeypatch, _feed("KXNBAGAME-26OCT26MINDEN-MIN", "KXETHD-26OCT2717-T4000"))
     assert "spot" not in d and all("vs" not in m for m in d["markets"]) and reads == []
     assert set(d["markets"][0]) == {"t", "s", "v24", "ct"}
+    # A 15-minute window with no target in its name and no strike stored: its record is looked up, no spot is read.
+    d = _list(monkeypatch, _feed("KXNBAGAME-26OCT26MINDEN-MIN", "KXBTC15M-26OCT262345-45"))
+    assert "spot" not in d and all("vs" not in m for m in d["markets"]) and [r[0] for r in reads] == ["strikes"]
+    reads.clear()
     # A search that leaves only other markets reads nothing either, though the feed holds Bitcoin.
     _list(monkeypatch, _feed("KXNBAGAME-26OCT26MINDEN-MIN", *LADDER[:2]), q="minden")
     assert reads == []
@@ -302,7 +318,7 @@ def test_the_hot_rail_says_when_each_market_closes_and_how_far_spot_is_from_a_st
     assert [m["ct"] for m in d["markets"]] == ["2026-10-27T21:00:00Z", None, None]
     assert d["markets"][0]["vs"]["diff"] == 420.01 and "vs" not in d["markets"][1] and d["spot"]["price"] == 113420.0
     assert d["markets"][0]["h"] == [0.4, 0.5] and "ct" not in feed["markets"][0], "the cached feed itself is never written to"
-    assert [r[0] for r in reads] == ["spot"]
+    assert [r[0] for r in reads] == ["strikes", "spot"]
 
 
 # A 15-minute window's row: its market page reads "Target Price: $113,512.08" from the contract's own name when no
@@ -326,14 +342,15 @@ def test_a_fifteen_minute_row_measures_from_the_target_price_in_its_title(monkey
     assert vs[M15] == {"side": "below", "diff": -92.08, "pct": -0.081, "from": "title"}
     assert vs["KXBTCD-26OCT2717-T112999.99"] == {"side": "above", "diff": 420.01, "pct": 0.372}, "a ticker strike names no source"
     assert vs["KXNBAGAME-26OCT26MINDEN-MIN"] is None
-    assert [r[0] for r in reads] == ["spot"], "still one spot read, no strike read per row"
+    assert [r[0] for r in reads] == ["strikes", "spot"], "still one spot read, no strike read per row"
     # A page of only that window reads spot for it, where before it read nothing.
     reads.clear()
     explore_routes._SPOT_CACHE.update(at=0.0)
     only = _m15_feed()
     only["markets"] = only["markets"][:1]
     d = _list(monkeypatch, only)
-    assert d["markets"][0]["vs"]["from"] == "title" and d["spot"]["price"] == 113420.0 and [r[0] for r in reads] == ["spot"]
+    assert d["markets"][0]["vs"]["from"] == "title" and d["spot"]["price"] == 113420.0 and [r[0] for r in reads] == ["spot"], \
+        "its missing record is remembered for STRIKE_TTL_S"
     # The hot rail reads the same rows the same way.
     feed = _m15_feed()
     for m in feed["markets"]:
@@ -359,3 +376,31 @@ def test_title_strike_reads_the_target_as_the_market_page_does():
         src = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / bundle).read_text()
         js = re.search(r"const TARGET_IN = /(.+)/i;", src).group(1)
         assert js == btc_spot._TARGET_IN.pattern and btc_spot._TARGET_IN.flags & re.I, bundle
+
+
+# A 15-minute window whose strike the collector has stored: its market page measures from that record (marketSpot's
+# `stored || titleStrike`), while the row measured from the target in its title: −$92 on Explore beside −$78.50 on the
+# page for one contract. The row takes the stored strike too, from one read for the page, and names no title source.
+def test_a_stored_strike_beats_the_title_target_on_the_list_as_on_the_market_page(monkeypatch):
+    reads = []
+    rec = {"floor_strike": 113498.5, "cap_strike": None, "strike_type": "greater_or_equal", "close_time": None}
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0}, reads=reads, record=rec,
+          records={M15: rec, "KXBTC-26OCT2717-B113250": {"floor_strike": 113000, "cap_strike": 113499.99, "strike_type": "between"}})
+    feed = _m15_feed()
+    feed["markets"].append({"t": "KXBTC-26OCT2717-B113250", "s": "KXBTC", "v24": "1"})  # alone in its ladder, but stored
+    d = _list(monkeypatch, feed)
+    row = {m["t"]: m.get("vs") for m in d["markets"]}
+    page = _get(M15)
+    assert row[M15] == {"side": "below", "diff": -78.5, "pct": -0.069}, "the stored strike, no title source named"
+    assert (row[M15]["side"], row[M15]["diff"], row[M15]["pct"]) == (page["vs"]["side"], page["vs"]["diff"], page["vs"]["pct"])
+    assert row["KXBTC-26OCT2717-B113250"] == {"side": "inside", "diff": 0.0, "pct": 0.0}, "a stored bucket's own edges"
+    assert row["KXBTCD-26OCT2717-T112999.99"]["diff"] == 420.01, "a contract with no record keeps its ticker strike"
+    assert [r[0] for r in reads].count("strikes") == 1 and [r[0] for r in reads if r[0] == "strike"] == []
+
+
+def test_a_failed_stored_strikes_read_falls_back_to_the_title_and_ticker(monkeypatch, capsys):
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0}, records=RuntimeError("(2013, 'Lost connection')"))
+    d = _list(monkeypatch, _m15_feed())
+    assert d["markets"][0]["vs"] == {"side": "below", "diff": -92.08, "pct": -0.081, "from": "title"}
+    assert "Lost connection" not in repr(d) and "list strikes read failed" in capsys.readouterr().out
+    assert explore_routes._STRIKE_CACHE == {}, "a failed read is not remembered as 'none stored'"

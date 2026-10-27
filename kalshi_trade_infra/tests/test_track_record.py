@@ -62,6 +62,22 @@ def test_instant_paper_fills_are_excluded_but_counted():
     assert p["trades"] == 1 and p["net_pnl"] == 3 and p["excluded_instant_fills"] == 2
 
 
+def test_what_the_left_out_instant_fills_made_is_reported_per_book_and_per_strategy():
+    """The record read -$24.72 beside the dashboard's -$19.90 "realized all time" for the same paper book (and
+    +$69.51 on 26 trades beside the strategy list's +$74.33 on 27): the gap was an instant fill's +$4.82, with no
+    figure anywhere saying so. The payload carries what was left out, per book and per strategy, in cents."""
+    out = tr.build([row("paper", 3, ref="sim:a"), row("paper", 4.815, ref=None), row("paper", -1.004, ref="legacy", sid=2, title="S2"),
+                    row("paper", 2, ref="sim:b", sid=2, title="S2"), row("demo", 1, ref="d1")], NOW)
+    p = out["modes"]["paper"]
+    assert p["excluded_instant_fills"] == 2 and p["excluded_instant_pnl"] == 3.81  # 4.815 - 1.004, rounded once
+    assert p["net_pnl"] + p["excluded_instant_pnl"] == 8.81, "the record plus what it left out is every closed row"
+    rows = {r["strategy_id"]: r for r in p["strategies"]}
+    assert (rows[1]["trades"], rows[1]["net_pnl"], rows[1]["excluded_instant_fills"], rows[1]["excluded_instant_pnl"]) == (1, 3, 1, 4.82)
+    assert (rows[2]["excluded_instant_fills"], rows[2]["excluded_instant_pnl"]) == (1, -1.0)
+    d = out["modes"]["demo"]
+    assert d["excluded_instant_pnl"] == 0 and d["strategies"][0]["excluded_instant_fills"] == 0, "only paper fills are left out"
+
+
 def test_live_without_order_ref_still_counts():
     assert tr.build([row("live", 2, ref=None)], NOW)["modes"]["live"]["trades"] == 1
 

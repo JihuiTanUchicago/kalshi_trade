@@ -60,3 +60,24 @@ def test_market_strike_reads_the_collectors_record(conn):
                 (ticker, "KXBTC", close, close, json.dumps({"floor_strike": 113000, "cap_strike": 113499.99, "strike_type": "between"})))
     assert repo.market_strike(cur, ticker) == {"floor_strike": 113000, "cap_strike": 113499.99, "strike_type": "between", "close_time": close}
     assert repo.market_strike(cur, ticker + "X") is None
+
+
+def test_market_strikes_reads_a_page_of_records_in_one_primary_key_read(conn):
+    from app import repository as repo
+
+    cur = conn.cursor()
+    tag = uuid.uuid4().hex[:8].upper()
+    close = datetime(2031, 1, 2, 22, 0, 0)
+    stored = {"KXBTC15M-%s-45" % tag: {"floor_strike": 113498.5, "strike_type": "greater_or_equal"},
+              "KXBTC-%s-B113250" % tag: {"floor_strike": 113000, "cap_strike": 113499.99, "strike_type": "between"}}
+    for t, raw in stored.items():
+        cur.execute("INSERT INTO markets (ticker, series_ticker, close_time, last_seen_utc, raw_json) VALUES (%s,%s,%s,%s,%s)",
+                    (t, t.split("-")[0], close, close, json.dumps(raw)))
+    missing = "KXBTCD-%s-T1" % tag
+    got = repo.market_strikes(cur, list(stored) + [missing, list(stored)[0]])
+    assert set(got) == set(stored), "a contract the collector hasn't recorded is left out"
+    for t in stored:
+        assert got[t] == repo.market_strike(cur, t), "the same record the market page reads"
+    assert repo.market_strikes(cur, []) == {}
+    cur.execute("EXPLAIN SELECT ticker, close_time, raw_json FROM markets WHERE ticker IN (%s,%s)", tuple(stored))
+    assert cur.fetchone()["key"] == "PRIMARY"

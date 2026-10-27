@@ -396,10 +396,13 @@ def monthly(trades: List[Dict], today: Optional[date] = None) -> List[Dict]:
 _STATUS_RANK = {"running": 3, "paused": 2, "stopped": 1}
 
 
-def by_strategy(trades: List[Dict], open_trades: List[Dict]) -> List[Dict]:
+def by_strategy(trades: List[Dict], open_trades: List[Dict], left_out: Iterable[Dict] = ()) -> List[Dict]:
     """One row per strategy in this bucket, best net P&L first. `status` is its deployment's status
     now (running, paused or stopped; None when unknown) and `removed` marks a strategy the user
-    deleted after stopping it: both stay in, so the table shows nothing was dropped."""
+    deleted after stopping it: both stay in, so the table shows nothing was dropped.
+    `left_out` are its instant paper fills (prepare leaves them out of the record): a row counts them and
+    their P&L apart (excluded_instant_fills, excluded_instant_pnl), so its figures reconcile with the
+    strategy's realized P&L on its list row and the Deploy board, which count every closed row."""
     groups: Dict[int, Dict] = {}
 
     def group(t):
@@ -413,6 +416,9 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict]) -> List[Dict]:
         group(t)["trades"].append(t)
     for t in open_trades:
         group(t)["open"] += 1
+    left: Dict[int, List[float]] = {}
+    for t in left_out:
+        left.setdefault(t["strategy_id"], []).append(t["pnl"])
     rows = []
     for sid, g in groups.items():
         ts = sorted(g["trades"], key=lambda t: t["closed_ts"])
@@ -432,6 +438,7 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict]) -> List[Dict]:
             "max_drawdown": round(max_drawdown(curve), 2),
             "last_trade_at": ts[-1]["closed_ts"] if ts else None,
             "edge": edge_read(ci) if n >= MIN_TRADES else "thin",
+            "excluded_instant_fills": len(left.get(sid, ())), "excluded_instant_pnl": cents(sum(left.get(sid, ()))),
         })
     rows.sort(key=lambda r: (-r["net_pnl"], -r["trades"]))
     return rows
@@ -448,7 +455,7 @@ def prepare(rows: List[Dict]) -> Dict:
     the book is unchanged; `finish` (which also reads the clock) never modifies it."""
     closed: Dict[str, List[Dict]] = {m: [] for m in MODES}
     opened: Dict[str, List[Dict]] = {m: [] for m in MODES}
-    excluded: Dict[str, int] = {m: 0 for m in MODES}
+    excluded: Dict[str, List[Dict]] = {m: [] for m in MODES}
     for r in rows:
         mode = r.get("mode")
         if mode not in closed:
@@ -468,14 +475,15 @@ def prepare(rows: List[Dict]) -> Dict:
             opened[mode].append(t)
             continue
         if mode == "paper" and not str(r.get("order_ref") or "").startswith("sim:"):
-            excluded[mode] += 1
+            excluded[mode].append(t)
             continue
         if t["closed_ts"] is None:
             continue
         closed[mode].append(t)
     # The by-strategy table and the peak capital at risk read the trades alone, never the clock.
-    return {"closed": closed, "opened": opened, "excluded": excluded,
-            "strategies": {m: by_strategy(closed[m], opened[m]) for m in MODES},
+    return {"closed": closed, "opened": opened, "excluded": {m: len(excluded[m]) for m in MODES},
+            "excluded_pnl": {m: cents(sum(t["pnl"] for t in excluded[m])) for m in MODES},
+            "strategies": {m: by_strategy(closed[m], opened[m], excluded[m]) for m in MODES},
             "peak_at_risk": {m: _peak_at_risk(closed[m], opened[m]) for m in MODES}}
 
 
@@ -488,7 +496,9 @@ def finish(prepared: Dict, now: Optional[datetime] = None) -> Dict:
     for m in MODES:
         s = summarize(closed[m], opened[m], today, now_ts, prepared["peak_at_risk"][m])
         # A fresh list of the rows: finish never hands out what prepare keeps.
-        s.update(label=MODE_LABEL[m], excluded_instant_fills=excluded[m],
+        # What the instant fills left out made: the record plus this (and open_realized_pnl) is the realized
+        # P&L the dashboard, Funds and Deploy show for this book, so the page can say why the two differ.
+        s.update(label=MODE_LABEL[m], excluded_instant_fills=excluded[m], excluded_instant_pnl=prepared["excluded_pnl"][m],
                  monthly=monthly(closed[m], today), strategies=[dict(r) for r in prepared["strategies"][m]])
         modes[m] = s
     default = next((m for m in DEFAULT_ORDER if modes[m]["trades"]), "paper")

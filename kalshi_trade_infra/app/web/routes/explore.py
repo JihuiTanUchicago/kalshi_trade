@@ -313,6 +313,34 @@ def _strike_record(ctx: Ctx, ticker: str) -> Optional[Dict]:
     return rec
 
 
+def _strike_records(ctx: Ctx, tickers: List[str]) -> Dict[str, Optional[Dict]]:
+    """_strike_record for a page of contracts, sharing its cache: the ones not held are read in one go
+    (repo.market_strikes). A failed read gives no record for them (each row then takes its strike from
+    its ticker or title, as the market page does without one), and is not kept."""
+    now = time.time()
+    out: Dict[str, Optional[Dict]] = {}
+    want = []
+    for t in dict.fromkeys(tickers):
+        hit = _STRIKE_CACHE.get(t)
+        if hit and now - hit[0] < STRIKE_TTL_S:
+            out[t] = hit[1]
+        else:
+            want.append(t)
+    if not want:
+        return out
+    try:
+        got = repo.market_strikes(ctx.cur, want)
+    except Exception as e:
+        print("[explore] list strikes read failed: %r" % (e,), flush=True)
+        return out
+    if len(_STRIKE_CACHE) + len(want) > _STRIKE_KEEP:
+        _STRIKE_CACHE.clear()
+    for t in want:
+        _STRIKE_CACHE[t] = (now, got.get(t))
+        out[t] = got.get(t)
+    return out
+
+
 def _spot_view(row: Optional[Dict], now: datetime) -> Optional[Dict]:
     """The stored spot as the page shows it: its price, when it was taken, its age and whether that is stale."""
     if not row:
@@ -324,14 +352,23 @@ def _spot_view(row: Optional[Dict], now: datetime) -> Optional[Dict]:
 
 def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[List[Dict], Dict]:
     """Explore's rows with how far stored spot is from each Bitcoin contract's strike (`vs`: side, diff in
-    $, pct), and the spot itself under "spot". Strikes come from the tickers alone, a 15-minute window's from
-    the target price in its own name (btc_spot.title_strike, as its market page reads it; its `vs` then says
-    "from": "title"), a bucket's edges from its ladder's other tickers in the feed, and spot from the one
-    shared read (_spot_row), so a page of rows costs at most one DB read. A stale, missing or failed spot gives no `vs` and says why in "spot";
-    a page with no Bitcoin strike on it reads nothing and gets no "spot" at all."""
+    $, pct), and the spot itself under "spot". Each strike comes from where its market page takes it: the
+    collector's stored record first (_strike_records, one read for the page's Bitcoin rows), else the ticker,
+    else, for a 15-minute window, the target price in its own name (btc_spot.title_strike; its `vs` then says
+    "from": "title"). A 15-minute row measured from its title while its page measured from the stored strike
+    showed two distances for one contract. A bucket read from its ticker gets its edges from its ladder's
+    other tickers in the feed, and spot comes from the one shared read (_spot_row), so a page of rows costs
+    at most two DB reads. A stale, missing or failed spot gives no `vs` and says why in "spot"; a page with
+    no Bitcoin contract on it reads nothing and gets no "spot" at all."""
+    btc = [m["t"] for m in rows if btc_spot.is_btc_contract(m.get("t"))]
+    if not btc:
+        return rows, {}
+    recs = _strike_records(ctx, btc)
     strikes = {}
     for m in rows:
-        k = (btc_spot.contract_strike(m["t"]) or btc_spot.title_strike(m.get("su"), m.get("ti"))) if btc_spot.is_btc_contract(m.get("t")) else None
+        if not btc_spot.is_btc_contract(m.get("t")):
+            continue
+        k = btc_spot.contract_strike(m["t"], recs.get(m["t"])) or btc_spot.title_strike(m.get("su"), m.get("ti"))
         if k:
             strikes[m["t"]] = k
     if not strikes:
