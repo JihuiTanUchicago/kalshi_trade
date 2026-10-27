@@ -184,6 +184,7 @@ def _fresh_server_shared_cache():
     chat_routes = sys.modules.get("app.web.routes.chat")  # the autopilot's last move, kept per user id
     if chat_routes is not None:
         chat_routes._LAST_ACTION.clear()
+        chat_routes._WEEK_PASSES.clear()  # the week's uncleared passes, kept per user id
     # The demo replay's curves and fetched candles are per strategy id and ticker, which tests reuse.
     kalshi_dev = sys.modules.get("app.adapters.kalshi.kalshi_dev")
     if kalshi_dev is not None:

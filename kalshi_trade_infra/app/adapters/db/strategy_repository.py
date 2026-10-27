@@ -180,7 +180,7 @@ def count_strategies(
 def passed_strategies(
     cur, user_id: int, direction: Optional[str] = None, market: Optional[str] = None,
     q: Optional[str] = None, deployed: bool = False, paper_passed: Optional[str] = None,
-    run_ids: Optional[List[int]] = None,
+    run_ids: Optional[List[int]] = None, research_since=None,
 ) -> List[Dict]:
     """Every passed strategy count_strategies counts under the same filters, with only what a later
     verdict is judged on (id, status, market, direction, spec, experiment_id) and its run_id: the list's
@@ -189,7 +189,10 @@ def passed_strategies(
     `paper_passed` (the gatekeeper's FORWARD_VALIDATED value) also reads the void and rejected strategies
     whose experiment has a paper result of that classification (a probation strategy that passed on
     paper, which the diversification check may then have held back): still one read, the paper row
-    probed through idx_res_exp. `run_ids` narrows it to those research sessions (the research list's)."""
+    probed through idx_res_exp. `run_ids` narrows it to those research sessions (the research list's).
+    `research_since` narrows it to the passes strategies_passed_since counts: from research sessions
+    started since then (each pass's session probed by primary key), so a headline can take off the
+    ones a later check left uncleared from that same count."""
     where, fparams = _strategy_filter_sql(direction, None if paper_passed else "passed", market, None, q, deployed)
     if paper_passed:
         noise = ",".join(["%s"] * len(NOISE_STATUSES))
@@ -202,6 +205,10 @@ def passed_strategies(
             return []
         where += " AND s.run_id IN (%s)" % ",".join(["%s"] * len(run_ids))
         fparams.extend(int(i) for i in run_ids)
+    if research_since is not None:
+        where += (" AND EXISTS (SELECT 1 FROM app_agent_runs r WHERE r.id=s.run_id AND r.kind='research'"
+                  " AND r.created_at>=%s)")
+        fparams.append(research_since)
     cur.execute("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id, s.run_id FROM app_strategies s"
                 + where, [user_id] + fparams)
     return [_strategy_row(r) for r in cur.fetchall()]

@@ -103,7 +103,8 @@ class CountingCursor:
         s = " ".join(str(sql).split())
         self.log.append((s, tuple(params) if params else ()))
         hit = next((rows for prefix, rows in self.rows.items() if prefix in s), None)
-        self._out = list(hit) if hit is not None else ([Row()] if s.startswith(AGGREGATE) else [])
+        # Each read gets its own copies: a reader may reshape its rows (repo._strategy_row pops spec_json).
+        self._out = [dict(r) if isinstance(r, dict) else r for r in hit] if hit is not None else ([Row()] if s.startswith(AGGREGATE) else [])
 
     def fetchone(self):
         return self._out[0] if self._out else None
@@ -343,7 +344,9 @@ def test_an_off_autopilot_panel_skips_the_reads_only_its_story_and_idle_line_use
 # lighter ones: a poll was 4 statements, ~7.5ms of SQL and 21KB of JSON (2.2KB brotli); an unchanged one
 # is 2 statements, ~2.2ms and 36 bytes, and a changed one 5 statements, ~8.5ms.
 # A list whose counters hold a pass reads those sessions' passes and their experiments' later rows (+2, one
-# each for the list), so a row takes off the passes its page says weren't cleared.
+# each for the list), so a row takes off the passes its page says weren't cleared. The headline (cold, once
+# per 30s) reads every research pass in place of their count, and their later rows when one exists (+1); the
+# rows then reuse that judgment instead of reading their own.
 RUNS_BUDGET = (7, 5)
 RUNS_SAME_BUDGET = 2
 
@@ -420,20 +423,77 @@ def test_the_research_list_takes_off_uncleared_passes_in_two_reads_for_the_page(
     fell = {"phase": "holdout", "classification": "inconclusive", "n_trades": 40, "p_value": 0.48, "ci_lo": -0.03,
             "ci_hi": 0.025, "mean_net_return": -0.003, "verdict_at": None}
     later = [dict(fell, experiment_id=500 + i, min_sample=30, id=900 + i) for i in (0, 2, 3)]
+    extra = {"FROM app_agent_runs r WHERE r.user_id=%s": [dict(r) for r in rows],
+             "s.run_id FROM app_strategies s WHERE": passed, "LEFT JOIN app_experiment_results r": later}
+    # Cold, the headline judges every research pass (its 30s cache lapsed): the rows take theirs from that
+    # same judgment, so the passes are read once and their later rows once for the headline and the rows.
     log = []
-    out = server.list_runs(_ctx(log, 10.0, extra={"FROM app_agent_runs r WHERE r.user_id=%s": [dict(r) for r in rows],
-                                                  "s.run_id FROM app_strategies s WHERE": passed,
-                                                  "LEFT JOIN app_experiment_results r": later}))
+    out = server.list_runs(_ctx(log, 10.0, extra=extra))
+    assert {r["id"]: r.get("not_cleared") for r in out["runs"]} == {9: 1, 8: 2, 7: None, 6: None}
+    assert (out["totals"]["passed"], out["totals"]["not_cleared"]) == (3, 3)
+    reads = [p for s, p in log if "s.run_id FROM app_strategies s WHERE" in s]
+    assert len(reads) == 1 and "app_agent_runs r WHERE r.id=s.run_id AND r.kind='research'" in next(
+        s for s, _ in log if "s.run_id FROM app_strategies s WHERE" in s)
+    assert sum("LEFT JOIN app_experiment_results r" in s for s, _ in log) == 1
+    assert not any("SELECT COUNT(*) AS n FROM app_strategies" in s for s, _ in log)  # no stored-pass count beside it
+    assert len(log) <= RUNS_BUDGET[0] + 2
+    # Warm (the headline from its cache), a changed list reads only its listed sessions' passes.
+    log = []
+    out = server.list_runs(_ctx(log, 10.0, extra=extra))
     assert {r["id"]: r.get("not_cleared") for r in out["runs"]} == {9: 1, 8: 2, 7: None, 6: None}
     reads = [p for s, p in log if "s.run_id FROM app_strategies s WHERE" in s]
     assert len(reads) == 1 and reads[0][-3:] == (9, 8, 7)  # the session without a pass is not read
     assert sum("LEFT JOIN app_experiment_results r" in s for s, _ in log) == 1
-    assert len(log) <= RUNS_BUDGET[0] + 2
-    # Nothing counted as passed: neither read.
+    assert len(log) <= RUNS_BUDGET[1] + 2
+    # Nothing counted as passed: the rows read nothing, and the headline (cold) only its passes, finding none.
     log = []
     server._RUN_TOTALS.clear()
     server.list_runs(_ctx(log, 10.0, extra={"FROM app_agent_runs r WHERE r.user_id=%s": [dict(rows[-1])]}))
-    assert not any("FROM app_strategies s WHERE" in s or "app_experiment_results" in s for s, _ in log)
+    assert [s for s, _ in log if "FROM app_strategies s WHERE" in s] == [
+        s for s, _ in log if "r.kind='research' AND r.created_at>=%s" in s and "FROM app_strategies s WHERE" in s]
+    assert sum("FROM app_strategies s WHERE" in s for s, _ in log) == 1
+    assert not any("app_experiment_results" in s for s, _ in log)
+    log = []
+    server.list_runs(_ctx(log, 10.0, extra={"FROM app_agent_runs r WHERE r.user_id=%s": [dict(rows[-1])]}))
+    assert not any("FROM app_strategies s WHERE" in s or "app_experiment_results" in s for s, _ in log)  # warm
+
+
+def test_the_autopilot_week_counts_only_cleared_passes_and_judges_them_once_per_30s(production):
+    """The panel's "N passed" this week counts what was cleared to trade, as the session rows and the Strategies
+    list do: of the week's 3 stored passes, the one whose holdout then failed counts under not_cleared_7d. Read
+    only when the pulse counts a pass (the week's passes, then their later rows), and kept while that count holds."""
+    passed = [{"id": 100 + i, "run_id": 3, "status": "passed", "market": "btc15m", "direction": None,
+               "spec_json": "{}", "experiment_id": 500 + i} for i in range(3)]
+    later = [{"experiment_id": 500, "min_sample": 30, "id": 900, "phase": "holdout", "classification": "inconclusive",
+              "n_trades": 40, "p_value": 0.48, "ci_lo": -0.03, "ci_hi": 0.025, "mean_net_return": -0.003, "verdict_at": None}]
+
+    def poll(stored):
+        log = []
+        out = server.autopilot_status(_ctx(log, 10.0, extra={
+            PULSE: [dict(_pulse_row(), passed_7d=stored, tested_7d=12)],
+            "s.run_id FROM app_strategies s WHERE": passed, "LEFT JOIN app_experiment_results r": later}))
+        return out, [p for s, p in log if "s.run_id FROM app_strategies s WHERE" in s], log
+
+    out, reads, log = poll(3)
+    assert (out["research"]["passed_7d"], out["research"]["not_cleared_7d"]) == (2, 1)
+    assert (out["week"]["passed"], out["week"]["not_cleared"]) == (2, 1)
+    assert any("This week it tested 12 ideas and 2 passed, and 1 more passed but wasn't cleared to trade." in s
+               for s in out["story"])
+    assert reads == [(7, "passed", datetime(2026, 10, 18))]  # the week's passes from research sessions
+    assert sum("LEFT JOIN app_experiment_results r" in s for s, _ in log) == 1
+    repeats = sorted({s for s in log if log.count(s) > 1})
+    assert not repeats and len(log) <= BUDGET["autopilot_status"] + 2, log
+    # The next poll keeps the judgment while the week's count holds; a new pass judges again.
+    out, reads, log = poll(3)
+    assert out["research"]["passed_7d"] == 2 and not reads and not any("app_experiment_results" in s for s, _ in log)
+    assert len(log) <= BUDGET["autopilot_status"]
+    out, reads, _ = poll(4)
+    assert len(reads) == 1 and (out["research"]["passed_7d"], out["research"]["not_cleared_7d"]) == (3, 1)
+    # Nothing passed: neither read, and the figures read as before.
+    chat_routes._WEEK_PASSES.clear()
+    out, reads, log = poll(0)
+    assert not reads and not any("app_experiment_results" in s for s, _ in log)
+    assert (out["research"]["passed_7d"], out["research"]["not_cleared_7d"]) == (0, 0)
 
 
 def test_the_run_page_reads_the_dream_line_once_a_minute_not_every_poll(production, monkeypatch):

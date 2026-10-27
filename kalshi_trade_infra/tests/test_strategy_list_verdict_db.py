@@ -4,6 +4,8 @@ check then held back (a holdout pass, a pass stored before app_strategies.experi
 strategy that passed on paper), nothing for a true pass or a plain miss. The list judges all of them with
 one read of their experiments' later rows (plus one for a strategy stored without its experiment id),
 whatever the page size. The research session page names the strategy a held-back pass repeats, by title.
+The headlines agree with them: the Research page's all-time "Passed every gate" and the autopilot panel's
+week count only cleared passes and say the rest as not cleared, each judged in one batched read.
 Written through the repository layer only (no engine, no order). Opt in as for test_app_engine_db.py
 (APP_TEST_MYSQL=1).
 """
@@ -31,11 +33,15 @@ class _Counting:
     The passes' own read only probes a void or rejected strategy's paper row, through idx_res_exp."""
 
     def __init__(self, cur):
-        self.cur, self.later = cur, 0
+        self.cur, self.later, self.sqls = cur, 0, []
 
     def execute(self, sql, args=None):
         self.later += "LEFT JOIN app_experiment_results" in sql
+        self.sqls.append(" ".join(str(sql).split()))
         return self.cur.execute(sql, args)
+
+    def reads(self, part):
+        return sum(part in s for s in self.sqls)
 
     def __getattr__(self, name):
         return getattr(self.cur, name)
@@ -119,6 +125,59 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     runs = server.list_runs(server.Ctx(conn, user, (), {}, {}, None))["runs"]
     assert {r["id"]: r.get("not_cleared") for r in runs if not r.get("example")} == {run: 3}
     assert counting.later == 1
+
+    # The headlines count what the rows and the Strategies chips count. The Research page's "kept N that beat
+    # every gate" (all time) and the autopilot panel's "N passed" this week read 5 stored passes; 2 were
+    # cleared, and 3 are said apart as not cleared. Cold, the Research headline judges every research pass in
+    # one read of the passes and one of their later rows (plus the legacy fallback for the pass stored without
+    # its experiment id), and the session rows reuse that judgment: no second later-rows read.
+    research._RUN_TOTALS.clear()
+    counting.later, counting.sqls = 0, []
+    listed = server.list_runs(server.Ctx(conn, user, (), {}, {}, None))
+    assert {k: listed["totals"][k] for k in ("tried", "passed", "not_cleared")} == {"tried": 8, "passed": 2, "not_cleared": 3}
+    row = next(r for r in listed["runs"] if r["id"] == run)
+    assert row["strategies_passed"] - row["not_cleared"] == listed["totals"]["passed"]
+    assert counting.later == 1 and counting.reads("s.run_id FROM app_strategies s WHERE") == 1
+    assert counting.reads("SELECT strategy_id, MAX(id) AS id FROM app_experiments") == 1  # the legacy pass's experiment
+    assert not counting.reads("SELECT COUNT(*) AS n FROM app_strategies")
+    # Warm (inside the 30s cache), the headline reads nothing; the rows read their own sessions' passes.
+    counting.later, counting.sqls = 0, []
+    again = server.list_runs(server.Ctx(conn, user, (), {}, {}, None))
+    assert again["totals"] == listed["totals"] and counting.later == 1
+    assert counting.reads("s.run_id FROM app_strategies s WHERE") == 1
+    counting.later, counting.sqls = 0, []
+    assert server.list_runs(server.Ctx(conn, user, (), {"since": again["v"]}, {}, None)) == {"v": again["v"], "same": True}
+    assert counting.later == 0 and len(counting.sqls) == 2  # an unchanged poll: the counts and the version
+    # The Strategies list's Passed chip agrees with the headline (every pass here is from this session).
+    assert listed["totals"]["passed"] == server.list_strategies(
+        server.Ctx(conn, user, (), {"status": "", "page": "0"}, {}, None))["counts"]["passed"]
+    # The passes read scans neither table: the user's passes by idx_strat_user (or idx_strat_run), their
+    # sessions by key (on a table this small the planner may pick idx_runs_user over PRIMARY).
+    from datetime import timedelta
+    since = repo.now_utc() - timedelta(days=7)
+    cur.execute("EXPLAIN SELECT s.id FROM app_strategies s WHERE s.user_id=%s AND s.status='passed' AND EXISTS "
+                "(SELECT 1 FROM app_agent_runs r WHERE r.id=s.run_id AND r.kind='research' AND r.created_at>=%s)", (uid, since))
+    plan = cur.fetchall()
+    assert plan and all(r["type"] != "ALL" and r.get("key") for r in plan), plan
+
+    # The autopilot panel's week: the same 5 stored passes, 2 passed and 3 not cleared, in its research line,
+    # its last 7 days and its story. Judged only on a poll that finds a pass, then kept while the count holds.
+    from app.web.routes import chat as chat_routes
+    chat_routes._WEEK_PASSES.clear()
+    counting.later, counting.sqls = 0, []
+    status = server.autopilot_status(server.Ctx(conn, user, (), {}, {}, None))
+    assert (status["research"]["passed_7d"], status["research"]["not_cleared_7d"]) == (2, 3)
+    assert counting.later == 1 and counting.reads("s.run_id FROM app_strategies s WHERE") == 1
+    first = len(counting.sqls)
+    counting.later, counting.sqls = 0, []
+    status = server.autopilot_status(server.Ctx(conn, user, (), {}, {}, None))
+    assert status["research"]["passed_7d"] == 2 and counting.later == 0
+    assert not counting.reads("s.run_id FROM app_strategies s WHERE") and len(counting.sqls) <= first - 3
+    cur.execute("UPDATE app_users SET autopilot=1 WHERE id=%s", (uid,))
+    on = server.autopilot_status(server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None))
+    assert (on["week"]["passed"], on["week"]["not_cleared"]) == (2, 3)
+    assert any("and 2 passed, and 3 more passed but weren't cleared to trade." in ln for ln in on["story"]), on["story"]
+    cur.execute("UPDATE app_users SET autopilot=0 WHERE id=%s", (uid,))
     # Each page says the same, and a held-back one names what held it back, never an experiment id.
     for name, s in sid.items():
         page = server.get_strategy(server.Ctx(conn, user, (str(s),), {}, {}, None))

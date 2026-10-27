@@ -1068,12 +1068,26 @@ def test_research_totals_are_all_time_and_cached(monkeypatch):
     # The Research headline summed its 50 newest runs; the server now totals every research run.
     calls = []
     monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since, include_demo=False: calls.append((since, include_demo)) or [{"tried": 900}, {"tried": "340"}])
-    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 4)
+    # Four research passes, one of which a later check left uncleared (its page says Missed final test):
+    # the headline counts the three cleared and says the fourth apart, as the session rows do.
+    judged = []
+    passes = [{"id": 100 + i, "run_id": 9, "status": "passed"} for i in range(4)]
+    monkeypatch.setattr(research_routes, "_research_pass_verdicts",
+                        lambda cur, uid, since: judged.append(since) or (passes, {101: ("missed_final", {})}))
     server._RUN_TOTALS.clear()
-    assert server._research_totals(None, 77) == {"tried": 1240, "passed": 4}
-    assert server._research_totals(None, 77) == {"tried": 1240, "passed": 4} and len(calls) == 1  # cached
+    assert server._research_totals(None, 77) == {"tried": 1240, "passed": 3, "not_cleared": 1}
+    assert server._research_totals(None, 77) == {"tried": 1240, "passed": 3, "not_cleared": 1} and len(calls) == 1  # cached
     assert calls[0][0] < server.repo.now_utc() - server.timedelta(days=365 * 10)
     assert calls[0][1] is False  # the seeded example session is the app's, not the user's research
+    assert judged == [calls[0][0]]  # the same sessions' passes, judged once with the totals
+    # A cold read hands its judgment to the session rows, so they read nothing of their own.
+    server._RUN_TOTALS.clear()
+    out = {}
+    server._research_totals(None, 77, out)
+    assert out == {"passes": passes, "got": {101: ("missed_final", {})}}
+    out = {}
+    server._research_totals(None, 77, out)
+    assert out == {}  # cached: nothing judged this request
     server._RUN_TOTALS.clear()
 
 
@@ -1084,7 +1098,7 @@ def test_runs_list_marks_the_seeded_example_session(monkeypatch):
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, **kw: {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: [{"id": 2}, {"id": 1}])
-    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
+    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid, judged=None: {"tried": 0, "passed": 0})
     runs = {r["id"]: r for r in server.list_runs(ctx())["runs"]}
     assert runs[1]["example"] is True and runs[2]["example"] is False
 

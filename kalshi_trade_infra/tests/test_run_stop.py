@@ -55,7 +55,7 @@ def test_the_runs_list_carries_stop_reason_not_the_raw_flag(monkeypatch):
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, silent_before=None: {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)
-    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
+    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid, judged=None: {"tried": 0, "passed": 0})
     ctx = server.Ctx(SimpleNamespace(cursor=lambda: None), {"id": 7}, (), {}, {}, None)
     out = server.list_runs(ctx)["runs"]
     assert [(r["id"], r["stop_reason"]) for r in out] == [(2, "credits"), (1, "user")]
@@ -97,7 +97,7 @@ def test_a_silent_session_is_counted_out_of_running_and_its_row_says_so(monkeypa
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, silent_before=None: seen.update(cut=silent_before) or {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)
-    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
+    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid, judged=None: {"tried": 0, "passed": 0})
     ctx = server.Ctx(SimpleNamespace(cursor=lambda: None), {"id": 7}, (), {}, {}, None)
     out = {r["id"]: r["wait"] for r in server.list_runs(ctx)["runs"]}
     assert out[3]["state"] == "silent" and out[3]["overdue"] is True and out[3]["seconds"] >= server.RUN_OVERDUE_SECONDS

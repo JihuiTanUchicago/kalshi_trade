@@ -373,12 +373,15 @@ window.TauPage('research', (T) => {
       const d = got.same && kept ? kept : (kept = got);
       // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
       const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
+      // Passed counts only what was cleared to trade: a pass a later check left uncleared (Missed final test,
+      // Held back) is counted apart (`not_cleared`), as each session row and the Strategies list count it.
       const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + runPassed(r).ok, 0);
+      const fell = d.totals ? +d.totals.not_cleared || 0 : d.runs.reduce((a, r) => a + runPassed(r).fell, 0);
       // A paused session holds one of the two session slots but isn't running: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
       paint(root.querySelector('#research-status'), fig('Running', running) + (paused ? fig('Paused', paused) : '') + fig('Queued', queued));
       const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested` : 'No strategies tested';
-      paint(rfigs, fig(gl('Passed', 'gate'), passed) + fig('Tested', tried));
+      paint(rfigs, fig(gl('Passed', 'gate'), passed, { small: fell ? `${num(fell)} more passed but ${fell === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : '' }) + fig('Tested', tried));
       if (rfigs.getAttribute('title') !== rtitle) rfigs.setAttribute('title', rtitle);
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       const active = d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused');

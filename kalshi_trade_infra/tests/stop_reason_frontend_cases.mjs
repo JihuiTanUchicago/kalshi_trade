@@ -16,9 +16,9 @@ const fundsData = (over = {}) => ({kalshi: {connected: false}, kalshi_dev: {conn
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: []}, ...over});
 
 export function stopReasonCases({name, frontend}) {
-  const research = (runs) => {
+  const research = (runs, totals = {tried: 9, passed: 1}) => {
     const f = frontend({fetchImpl: (path) => {
-      if (path === '/api/runs') return response({runs, counts, policy: null, totals: {tried: 9, passed: 1}});
+      if (path === '/api/runs') return response({runs, counts, policy: null, totals});
       if (path === '/api/models') return response({models: [], default: ''});
       if (path === '/api/research/context') return response({markets: []});
       if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
@@ -74,6 +74,34 @@ export function stopReasonCases({name, frontend}) {
     list = f.root.querySelector('#runs').innerHTML;
     assert.match(list, /Out of credits/);
     assert.doesNotMatch(list, /run-add/);
+    f.clearTimers();
+  });
+
+  test(`${name}: the research headline counts only what cleared, and says the passes a later check left uncleared apart`, async () => {
+    // The server's totals: `passed` counts only passes cleared to trade; `not_cleared` the passes whose one-time
+    // holdout then failed or that the diversification check held back. The headline read "kept 3" over rows
+    // reading "1 passed, 2 not cleared".
+    const words = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    let f = research([run({id: 4, hypotheses_tried: 20, strategies_passed: 3, not_cleared: 2})], {tried: 20, passed: 1, not_cleared: 2});
+    await f.viewResearch(); await settle();
+    const figs = words(f.root.querySelector('#rfigs').innerHTML);
+    assert.match(figs, /Passed[^0-9]*\b1\b/);
+    assert.match(figs, /2 more passed but weren’t cleared to trade/);
+    assert.doesNotMatch(figs, /Passed[^0-9]*\b3\b/);
+    const said = f.root.querySelector('#rstatus .said');
+    if (said) {  // Tau's sentence over the figures
+      assert.match(words(said.innerHTML), /kept 1 that beat every gate \( 2 more passed but weren’t cleared to trade\)/);
+      assert.match(figs, /\b5(\.0)?% pass rate/);  // 1 of 20, not 3 of 20
+    }
+    f.clearTimers();
+    // One: singular. None uncleared: the headline reads as before.
+    f = research([run({id: 4, hypotheses_tried: 20, strategies_passed: 2, not_cleared: 1})], {tried: 20, passed: 1, not_cleared: 1});
+    await f.viewResearch(); await settle();
+    assert.match(words(f.root.querySelector('#rfigs').innerHTML), /1 more passed but wasn’t cleared to trade/);
+    f.clearTimers();
+    f = research([run({id: 4, hypotheses_tried: 20, strategies_passed: 1})], {tried: 20, passed: 1, not_cleared: 0});
+    await f.viewResearch(); await settle();
+    assert.doesNotMatch(f.root.querySelector('#rfigs').innerHTML + (f.root.querySelector('#rstatus .said') || {innerHTML: ''}).innerHTML, /cleared/);
     f.clearTimers();
   });
 
