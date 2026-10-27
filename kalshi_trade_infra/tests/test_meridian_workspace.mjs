@@ -2547,6 +2547,16 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   assert.equal(JSON.stringify(markets), before); assert.equal(postRequests(f).length, 0);
 });
 
+test('Explore says when a timed contract closes, and nothing for an event with no hour', async () => {
+  const markets = [{t: 'KXBTC15M-26OCT262345-45', s: 'KXBTC15M', ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,204.11', bid: .48, ask: .51, v24: 9, oi: 1, ct: '2026-10-27T03:45:00Z'},
+    {t: 'KXNBAGAME-26OCT26MINDEN-MIN', s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota', bid: .41, ask: .42, v24: 8, oi: 1, ct: null}];
+  const f = frontend({fetchImpl: () => response({at: new Date().toISOString(), markets, total: 2, shown: 2, matched: 2, per: 40})});
+  await f.viewExplore();
+  const links = f.root.querySelectorAll('a.market-name');
+  assert.match(links[0].querySelector('.market-close').textContent, /^Closes .*\d/);
+  assert.equal(links[1].querySelector('.market-close'), null);
+});
+
 test('Hot Markets names a 5pm Bitcoin contract by its market, an hourly one by its own title', () => {
   const f = frontend();
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', close_hour_et: 17}];

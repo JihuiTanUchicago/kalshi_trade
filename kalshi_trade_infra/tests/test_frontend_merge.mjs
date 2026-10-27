@@ -1287,16 +1287,22 @@ test('the autopilot panel shows Kill only once real money is armed or running', 
   assert.match(controls({autopilot: false, live_running: 1}), /data-ap="kill"/);
 });
 
-test('Explore tells same-titled markets from different events apart', async () => {
-  const row = (t, ev) => ({t, s: 'KXBTCD', ev, ti: 'Bitcoin price on Oct 25, 2026?', su: '$80,500 or above', last: '0.5', bid: '0.49', ask: '0.51', v24: '10', oi: '5', st: 'active'});
+test('Explore tells same-titled markets from different events apart by market and close time, never the raw event key', async () => {
+  const row = (t, ev, ct) => ({t, s: 'KXBTCD', ev, ct, ti: 'Bitcoin price on Oct 25, 2026?', su: '$80,500 or above', last: '0.5', bid: '0.49', ask: '0.51', v24: '10', oi: '5', st: 'active'});
   const f = frontend({fetchImpl: path => {
-    if (path.startsWith('/api/explore?')) return response({at: '2026-10-25T15:00:00Z', total: 2, shown: 2, matched: 2, page: 0, per: 50, sort: 'v24',
-      markets: [row('KXBTCD-26OCT2512-T80499.99', 'KXBTCD-26OCT2512'), row('KXBTCD-26OCT2517-T80499.99', 'KXBTCD-26OCT2517')]});
+    if (path.startsWith('/api/explore?')) return response({at: '2026-10-25T15:00:00Z', total: 3, shown: 3, matched: 3, page: 0, per: 50, sort: 'v24',
+      markets: [row('KXBTCD-26OCT2512-T80499.99', 'KXBTCD-26OCT2512', '2026-10-25T16:00:00Z'), row('KXBTCD-26OCT2517-T80499.99', 'KXBTCD-26OCT2517', '2026-10-25T21:00:00Z'),
+        {...row('KXNBAGAME-26OCT25MINDEN-MIN', 'KXNBAGAME-26OCT25MINDEN', null), s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota'}]});
     return response({});
   }});
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', close_hour_et: 17}];
   await f.viewExplore(); await flush();
-  const html = f.root.querySelector('#xbody').innerHTML;
-  assert.match(html, /KXBTCD-26OCT2512</); assert.match(html, /KXBTCD-26OCT2517</);
+  const tags = f.root.querySelector('#xbody').querySelectorAll('td.name').map((td) => (td.querySelector('.mk') || {textContent: ''}).textContent);
+  assert.match(tags[0], /^closes /); assert.doesNotMatch(tags[0], /BTC 5pm/, 'the noon contract is not the 5pm market');
+  assert.match(tags[1], /^BTC 5pm ·\u00a0closes /);
+  assert.notEqual(tags[0], tags[1].replace('BTC 5pm ·\u00a0', ''));
+  assert.equal(tags[2], '', 'an event with no hour and no market here gets no chip rather than its raw key');
+  assert.doesNotMatch(f.root.querySelector('#xbody').innerHTML, /KXBTCD-26OCT25(12|17)<|KXNBAGAME-26OCT25MINDEN</);
 });
 
 test('Explore drops a yes subtitle that only repeats the title', async () => {

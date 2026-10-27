@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from app import repository as repo
+from app.trading.markets import NEW_YORK
 from app.web.http import ApiError, Ctx
 from app.web.routes.strategies import _mark_fields
 
@@ -75,6 +77,26 @@ def _efloat(x) -> float:
         return 0.0
 
 
+# A timed event's ticker says when it closes, in New York time: KXBTC15M-26OCT262345 closes 11:45pm ET
+# on Oct 26, 2026 and KXBTCD-26OCT2717 at 5pm. Sports and daily events (26OCT26MINDEN, 26OCT27) carry
+# no hour, so they get no close time rather than a guessed one.
+_TIMED_EVENT = re.compile(r"^[A-Z0-9]+-(\d{2})([A-Z]{3})(\d{2})(\d{2})(\d{2})?(?:-|$)")
+_MONTHS = {m: i + 1 for i, m in enumerate(("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"))}
+
+
+def _ticker_close(ticker: Optional[str]) -> Optional[str]:
+    """When a contract on a timed event closes (UTC ISO), read from its ticker; None when it carries no hour."""
+    m = _TIMED_EVENT.match(ticker or "")
+    if not m or m.group(2) not in _MONTHS or NEW_YORK is None:
+        return None
+    try:
+        at = datetime(2000 + int(m.group(1)), _MONTHS[m.group(2)], int(m.group(3)), int(m.group(4)), int(m.group(5) or 0),
+                      tzinfo=NEW_YORK)
+    except ValueError:  # hour 24 or a day the month doesn't have: not a time
+        return None
+    return at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def explore_list(ctx: Ctx):
     data = _explore_feed()
     q = (ctx.query.get("q") or "").strip().lower()
@@ -95,7 +117,8 @@ def explore_list(ctx: Ctx):
     matched = len(markets)
     return {"at": data.get("at"), "total": data.get("total"), "shown": data.get("shown"),
             "matched": matched, "page": page, "per": per, "sort": sort,
-            "markets": [{k: v for k, v in m.items() if k != "h"} for m in markets[page * per:(page + 1) * per]]}
+            "markets": [{**{k: v for k, v in m.items() if k != "h"}, "ct": _ticker_close(m.get("t"))}
+                        for m in markets[page * per:(page + 1) * per]]}
 
 
 def explore_hot(ctx: Ctx):

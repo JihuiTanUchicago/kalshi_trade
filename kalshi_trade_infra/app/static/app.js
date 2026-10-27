@@ -2477,7 +2477,11 @@
       }
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
-        return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${m.ev || m.s ? ` <span class="mk quiet">${esc(m.ev || m.s)}</span>` : ''}</td>
+        // The market as the app names it and when the contract closes (`ct`, read from a timed event's
+        // ticker), never the raw event key: that's what tells "every strike of Bitcoin at 5pm" apart from
+        // the next hour's ladder, and a 15-minute contract from the one after it.
+        const tag = [contractShort(m.t), m.ct ? 'closes ' + settleAt(m.ct) : ''].filter(Boolean).join(' ·\u00a0');
+        return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${tag ? ` <span class="mk quiet">${esc(tag)}</span>` : ''}</td>
           <td class="num" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num" data-lab="Open int.">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink" data-lab="Kalshi"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
       }).join('');
