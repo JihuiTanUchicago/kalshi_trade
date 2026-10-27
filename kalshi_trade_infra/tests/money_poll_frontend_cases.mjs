@@ -119,4 +119,24 @@ export function moneyPollCases({name, frontend}) {
     assert.match(open.innerHTML, /\+\$0\.13/);
     f.clearTimers();
   });
+
+  test(`${name}: back on the tab after a while, the Deploy board reads at once instead of standing on old figures`, async () => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/deployments')) return response({deployments: [dep()], open_positions: [pos()], recent_closed: [], demo_health: null, v: 'b1'});
+      if (path === '/api/strategies?status=passed') return response({counts: {passed: 1}});
+      return response({});
+    }});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const reads = () => f.requests.filter(({path}) => path.startsWith('/api/deployments')).length;
+    const flip = async (hidden) => { f.document.hidden = hidden; for (const [type, on] of f.documentListeners) if (type === 'visibilitychange') on({}); await settle(); };
+    const before = reads();
+    // A glance at another tab and back reads nothing new.
+    await flip(true); f.shiftClock(2e3); await flip(false);
+    assert.equal(reads(), before);
+    // An hour away: the board reads as the tab shows, with no tick of its 10s poll.
+    await flip(true); f.shiftClock(3600e3); await flip(false);
+    assert.equal(reads(), before + 1);
+    f.clearTimers();
+  });
 }

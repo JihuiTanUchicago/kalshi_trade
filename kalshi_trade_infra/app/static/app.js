@@ -615,10 +615,21 @@
   // figures), and a page or panel that failed to load tries again. A waker returns false once its
   // page is gone.
   const wakers = new Set();
+  const wake = () => wakers.forEach((w) => { if (w() === false) wakers.delete(w); });
   window.addEventListener('online', () => {
-    wakers.forEach((w) => { if (w() === false) wakers.delete(w); });
+    wake();
     if (document.getElementById('bootretry')) { render(); return; }
     root.querySelectorAll('.load-fail [data-retry]').forEach((b) => b.click());
+  });
+  // Back on the tab after a while: polls sit out while it is hidden, so its figures may be hours old,
+  // and they stood as current until the next tick (15s on the dashboard, a minute for the record).
+  // They read now. A glance away and back (WAKE_AWAY_MS or less) reads nothing new.
+  const WAKE_AWAY_MS = 5000;
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (hiddenAt && Date.now() - hiddenAt > WAKE_AWAY_MS) wake();
+    hiddenAt = 0;
   });
   // SPA deploys only take effect on a full reload. Check the server's build hash on each
   // navigation (throttled); if it changed, offer a one-click reload instead of silent staleness.
