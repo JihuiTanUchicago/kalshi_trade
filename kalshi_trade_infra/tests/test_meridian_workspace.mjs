@@ -6201,3 +6201,16 @@ test('the hot rail wraps a market’s name instead of cutting its close hour, an
   // A pause reason's "the Funds page" in a Deploy row is underlined; the row's strategy name still isn't.
   assert.match(css, /\n\.t-dep td\.name \.sub-fig a, \.monitor-limits a \{ text-decoration: underline;/);
 });
+
+test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" with its figure', async () => {
+  // Walk 2026-10-27: "· Deployed" ended one line of a row's details and "Oct 18" began the next, at 390px and in
+  // the 1280px table's name column. Each fact is one .dep-fact span, which never wraps inside.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\n\.dep-evidence \.dep-fact \{ white-space: nowrap; \}/);
+  const f = frontend({fetchImpl: () => response({deployments: [{id: 11, strategy_id: 111, title: 'S', market: 'btc15m', mode: 'paper',
+    status: 'running', stake: 5, max_positions: 2, backtest: {out_of_sample: {pnl: 12, trades: 20}}, created_at: '2026-10-17T10:00:00Z',
+    realized_pnl: 3, unrealized_pnl: null, closed_trades: 2, open_positions: 0, curve: []}], open_positions: []})});
+  await f.viewDeploy();
+  const html = f.root.querySelector('#deps').innerHTML;
+  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Unseen P&amp;L \+\$12\.00<\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
+});

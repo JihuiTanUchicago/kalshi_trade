@@ -1957,6 +1957,7 @@ body.landing-body .apf { display: none; }
 .dep-evidence[open] { display: block; margin: 4px 0 0; }
 .dep-evidence > summary { display: inline-block; padding: 3px 0 0; font-size: 12px; color: var(--ink-2); }
 .dep-evidence > div { font-size: 12px; color: var(--ink-2); white-space: normal; }
+.dep-evidence .dep-fact { white-space: nowrap; }  /* "Deployed" stays with its date, "Unseen P&L" with its figure */
 .unavailable { font-size: 12px; font-weight: 500; color: var(--ink-2); }
 .connection-help { margin-bottom: 14px; }
 .section-count { margin-left: 8px; font-size: 13px; font-weight: 400; color: var(--ink-3); }
