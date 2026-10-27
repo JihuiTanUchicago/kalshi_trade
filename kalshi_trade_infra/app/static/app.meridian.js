@@ -1922,7 +1922,7 @@
         <div class="dep-meta"><span class="sub-fig">${[esc(marketFull(d.market)), depStake(d), depCap(d)].filter(Boolean).map((t, i) => (i ? `<span class="nobr">${t}</span>` : t)).join('\u00a0\u00b7 ')}${d.status !== 'running' && (d.status_why || d.status_reason) ? '\u00a0\u00b7 ' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span>
         ${deploymentEvidence(d)}</div>${depIdleLine(d)}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${depInstant(d)}${roadLine(d)}</td>
       <td data-lab="Status">${depState(d, live)}<div class="sub-fig">${modeTag}</div></td>
-      <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
+      <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? ' <div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades} closed${d.open_positions ? ` <div class="sub-fig">${d.open_positions} open</div>` : ''}</td>
       ${actions}
@@ -1937,7 +1937,7 @@
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${depState(d, live)}</span></header>
       <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketFull(d.market))}${SEP}<span class="nobr">${depStake(d)}</span></p><div class="monitor-limits"><span>${depCap(d) ? `${SEP}<span class="nobr">${depCap(d)}</span>` : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? SEP + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}${depInstant(d)}</div>
       <dl class="monitor-metrics">
-        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${PAPER_NET}${glo('paperfills')}</dd>` : ''}</div>
+        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${realizedCell(d, '<span class="unavailable">None yet</span>')}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${PAPER_NET}${glo('paperfills')}</dd>` : ''}</div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}</dd></div>
       </dl>
       <div class="monitor-footer"><dl class="monitor-counts"><div><dt>Closed / open</dt><dd aria-label="${esc(d.closed_trades)} closed trades, ${esc(d.open_positions || 0)} open positions">${esc(d.closed_trades)} / ${esc(d.open_positions || 0)}</dd></div></dl><div class="monitor-controls">${deploymentActions(d, false)}${deploymentEvidence(d, true)}</div></div>
@@ -2449,7 +2449,7 @@
       // "Realized P&L, all time $0.00" and "Realized today $0.00" read as results to a new account, and so did
       // "Open at cost + fees $0.00" beside them: nothing has ever been open. A book that has traded keeps its figure.
       const paperNew = !(p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper'));
-      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span>\u00a0· ${paperNew ? '<span class="nobr">no paper strategies yet</span>' : `<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span>\u00a0· <span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}${slipEst(p.slippage_estimate)}`}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${paperNew ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : openFig(p)}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
+      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span>\u00a0· ${paperNew ? '<span class="nobr">no paper strategies yet</span>' : !hasClosed(p) ? '<span class="nobr">P&amp;L shows once a paper trade closes</span>' : `<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span>\u00a0· <span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}${slipEst(p.slippage_estimate)}`}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${!hasClosed(p) ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : hasOpen(p) ? openFig(p) : 'None open'}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
@@ -2753,6 +2753,9 @@
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
         : apOn ? 'Autopilot runs the strategies that pass every research test on paper, with pretend money. Every closed trade is recorded here.'
         : onPaper ? `${onPaper === 1 ? 'Your strategy is' : `${num(onPaper)} strategies are`} running on paper. ${onPaper === 1 ? 'It trades' : 'Each trades'} only when its rule fires, so the first trade can take a while. Every closed trade is recorded here.`
+        // A new account with no session of its own has no passed strategy to deploy: "Deploy a passed strategy"
+        // sat over a "Start a research session" button. It says where a paper strategy comes from instead.
+        : S.dashDeps === 0 && S.dashNoSessions ? 'Nothing has run on paper yet: a strategy gets there by passing its tests in a research session. Every closed trade is recorded here.'
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
       // With nothing deployed (the dashboard's board says so), Deploy is an empty board too and sent a
       // new user Deploy → Strategies → Research; the button goes straight to the step that comes first.
@@ -3512,6 +3515,13 @@
   const openBasis = (b) => b.open_cost != null ? 'cost + fees' : 'cost before fees';
   const openFig = (b) => usd(b.open_cost != null ? b.open_cost : b.open_at_cost);
   const openCost = (b) => `${openFig(b)} at ${openBasis(b)}`;
+  // A book or deployment with no closed trade has no realized P&L yet: the first paper deployment's Overview read
+  // "Realized P&L, all time $0.00", "Realized today $0.00" and "Open at cost + fees $0.00", and its Deploy row "$0.00"
+  // under Deploy's own "Realized: None yet". Until a trade closes each says so; nothing open says "None open".
+  const hasClosed = (b) => !!(+b.closed_trades || +b.realized_pnl);
+  const hasOpen = (b) => !!(+b.open_positions || +b.open_cost || +b.open_at_cost);
+  // An unknown realized (null) keeps its dash: only a known zero with nothing closed reads None yet.
+  const realizedCell = (d, none = '<span class="sub-fig">None yet</span>') => d.realized_pnl == null || hasClosed(d) ? money(d.realized_pnl) : none;
   // Paper's balance counts an open position at its price (contracts x entry price): the fee is already spent. When
   // the two differ, the part in the balance is said, so cash plus it is the balance.
   const inBalance = (b, what = 'the balance') => b.open_cost != null && b.open_at_cost != null && Math.abs(b.open_cost - b.open_at_cost) >= 0.005
@@ -3724,7 +3734,12 @@
     const checkins = +w.checkin_credits >= 0.01 || !!w.checkin_under_cent;
     const empty = !(+w.research_credits >= 0.005) && !w.research_under_cent && !(+w.checkin_credits >= 0.005) && !w.checkin_under_cent
       && !+w.tested && !+w.passed && !+w.not_cleared && !+w.paper_started && !trades && !pnl;
-    if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>Last 7 days:</b> nothing yet. Its research, paper strategies and credits spent show here once it starts.</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
+    // Its first session already running is not "once it starts": the card said so beside "It started 1 research
+    // session" in Last 24 hours. While one runs (the status's research.active) it says that instead.
+    const researching = !!(d && d.research && d.research.active && d.research.active.length);
+    if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>Last 7 days:</b> ${researching
+      ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
+      : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
       <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? `${SEP}plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>

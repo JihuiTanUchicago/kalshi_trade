@@ -38,6 +38,7 @@ import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
+import {newUserCases} from './new_user_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -5506,10 +5507,18 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   // "Open at cost + fees $0.00" read as a figure too, for a book nothing has ever been open in.
   assert.match(paper, /Open at cost \+ fees(?:<[^>]*>)*None yet/);
   assert.doesNotMatch(paper, /\$0\.00/);
-  // Once the book has a paper deployment, its figures are figures, $0.00 included.
+  // A paper deployment with no trade closed yet has no realized figure either: "Realized P&L, all time $0.00",
+  // "Realized today $0.00" and "Open at cost + fees $0.00" read as results beside Deploy's "Realized: None yet".
   const used = apDashboard(dashboardData({paper: fresh, deployments: [dashboardDeployment('paper')]}), apStatus);
   await used.viewDashboard(); await flush();
-  assert.match(used.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \$0\.00[\s\S]*Realized today \(UTC\)\$0\.00[\s\S]*Open at cost \+ fees\$0\.00/);
+  const usedText = used.root.querySelector('.paper-summary').textContent;
+  assert.match(usedText, /P&amp;L shows once a paper trade closes[\s\S]*Realized today \(UTC\)None yet[\s\S]*Open at cost \+ feesNone open/);
+  assert.doesNotMatch(usedText, /Realized P&amp;L, all time|\$0\.00/);
+  // Once a trade has closed its figures are figures, a $0.00 day included.
+  const traded = apDashboard(dashboardData({paper: {...fresh, closed_trades: 1, realized_pnl: 5.73, cash: 1005.73, equity: 1005.73},
+    deployments: [dashboardDeployment('paper')]}), apStatus);
+  await traded.viewDashboard(); await flush();
+  assert.match(traded.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \+\$5\.73[\s\S]*Realized today \(UTC\)\$0\.00[\s\S]*Open at cost \+ feesNone open/);
 });
 
 // Meridian opens a market page from Explore's ?m= link.
@@ -6282,3 +6291,4 @@ test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" wi
   const html = f.root.querySelector('#deps').innerHTML;
   assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Unseen P&amp;L \+\$12\.00<\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
+newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});

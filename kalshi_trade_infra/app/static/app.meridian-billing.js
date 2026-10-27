@@ -30,7 +30,10 @@ window.TauPage('billing', (T) => {
         // Until a card was ever charged for credits (the server's card_charged), the balance is free credits: a
         // new user read $19.16 with no word that their card hadn't been charged.
         fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0, small: d.card_charged === false && d.balance > 0 ? 'free credits so far: your card hasn’t been charged' : undefined }) +
-        fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(SEP) }) +
+        // Nothing spent yet (a new account) is not a $0.00 result: "$0.00 · $0.00 in the last 24 hours · $0.00 all time"
+        // read as three figures under a balance of free credits. It says what will draw on them instead.
+        (+d.spent > 0 ? fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(SEP) })
+          : fig('Spent so far', 'None yet', { small: 'research sessions and chat draw on your credits as they run' })) +
         // How long it lasts means until research pauses (under min_run_balance; with payments off nothing
         // pauses, so until $0), and with auto-reload on, when the card is next charged and for how much:
         // "Credits last about 2 days" in red beside auto-reload read as a stop that auto-reload prevents,
@@ -330,7 +333,7 @@ window.TauPage('billing', (T) => {
       const added = micros(g.rows.filter((r) => r.kind !== 'usage'));
       return `<tr class="ledger-day"><td colspan="3" data-lab="Day"><b>${ledgerDay(g.day)}</b><span class="day-sum">${[used >= 0.005 ? `${usd(used)} used` : '', added ? `${usd(added, true)} credits` : ''].filter(Boolean).join(SEP)}</span></td></tr>`;
     };
-    const key = d.math ? `Last ${d.math.days} days, newest first. Each research line is one session's model calls that day; open it to see the session. Lines are rounded to the cent so they add up to their day; the receipt has every call and every card charge, exactly.`
+    const key = d.math ? `Last ${d.math.days} days, newest first. Each research line is one session’s model calls that day; open it to see the session. Lines are rounded to the cent so they add up to their day; the receipt has every call and every card charge, exactly.`
       : 'Newest first. The receipt has every line, with exact amounts.';
     return `${billMath(d.math)}<p class="hint ledger-key">${key}</p><div class="sheet"><table class="table stack t-dep t-ledger"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${
       days.map((g) => (g.day ? head(g) : '') + g.rows.map(line).join('')).join('')}</tbody></table></div>${d.ledger_cut ? '<p class="hint">Older days are in the receipt.</p>' : ''}`;

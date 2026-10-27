@@ -37,6 +37,7 @@ import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
+import {newUserCases} from './new_user_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -4413,7 +4414,8 @@ test('a new account\'s paper card says nothing is on paper yet instead of "$0.00
     await f.viewDashboard(); await flush();
     const board = f.root.querySelector('#boardbody').innerHTML;
     if (empty) { assert.match(board, /\$1,000\.00 of practice money\u00a0· no paper strategies yet/); assert.doesNotMatch(board, /at cost/); }
-    else assert.match(board, /\$1,000\.00 cash\u00a0· \$0\.00 at cost \+ fees\u00a0· <span class="amt">\$0\.00<\/span> realized all time/);  // a strategy on paper: its book, zeros and all
+    // A strategy on paper with no trade closed yet: its cash, and no "$0.00 at cost + fees · $0.00 realized all time".
+    else { assert.match(board, /\$1,000\.00 cash\u00a0· P&amp;L shows once a paper trade closes/); assert.doesNotMatch(board, /at cost|realized all time/); }
   }
 });
 
@@ -5355,3 +5357,4 @@ test('Tau phone: a folded paper section does not count, so the numbered sections
   const body = f.root.querySelector('.paper-body').innerHTML;
   assert.match(body, /<details class="fold"[^>]*><summary class="fold-h">Methodology<\/summary><section class="paper-sec">/);
 });
+newUserCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, billingPage, cardedBilling, apStatus: apOn});

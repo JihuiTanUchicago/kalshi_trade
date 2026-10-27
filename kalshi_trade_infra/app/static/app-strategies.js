@@ -531,7 +531,8 @@ window.TauPage('strategies', (T) => {
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
       const { trades: n, pnl, instant, slip } = bookTotal(s, m, ds);
-      const stats = `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
+      // Before its first close a book has no realized P&L: "0 closed trades · $0.00 realized" read as a result.
+      const stats = !n && !+pnl ? 'no closed trades yet' : `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats}${SEP}${demoHealthLine(s.demo_health)}</p>`;
       const runs = ds.some((d) => d.status === 'running');

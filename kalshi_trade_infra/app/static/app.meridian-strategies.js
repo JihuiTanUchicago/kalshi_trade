@@ -531,7 +531,8 @@ window.TauPage('strategies', (T) => {
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
       const { trades: n, pnl, instant, slip } = bookTotal(s, m, ds);
-      const stats = `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
+      // Before its first close a book has no realized P&L: "0 closed trades · $0.00 realized" read as a result.
+      const stats = !n && !+pnl ? 'no closed trades yet' : `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats}${SEP}${demoHealthLine(s.demo_health)}</p>`;
       const runs = ds.some((d) => d.status === 'running');
@@ -646,6 +647,11 @@ window.TauPage('strategies', (T) => {
       // unseen result is the gatekeeper's, above): "Return on capital —" stood on every one of their pages, so it is left out.
       (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [overDays(r.out_of_sample.days) ? (splitOnly ? 'After the split date' : 'Unseen data') + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +
       fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
+    // How many figures the row holds (fig() opens each with <div class="m">): a research session's strategy has no
+    // Return on capital, and its three figures sat in a four-column grid with an empty slot at the end. The grid
+    // takes the count (.detail #figs[data-cols]), on first paint and after a what-if redraw.
+    const figCols = (html) => (html.match(/<div class="m[ "]/g) || []).length;
+    const paintFigs = (el, r) => { const html = figsFor(r); el.innerHTML = html; el.setAttribute('data-cols', figCols(html)); };
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
     root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(marketShort(s.market))}${SEP}${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${statusMark(s)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
@@ -775,7 +781,7 @@ window.TauPage('strategies', (T) => {
           <article class="sheet-doc paper">
             ${!hasExp ? `<div class="legacy-verdict">${verdictBody}</div>` : ''}
             ${quickHtml}
-            <dl class="figures measure" id="figs">${figsFor(s)}</dl>
+            <dl class="figures measure" id="figs" data-cols="${figCols(figsFor(s))}">${figsFor(s)}</dl>
             ${restricted ? '' : realRecord(s)}
             ${s.shared_from ? `<div class="paper-byline"><span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span></div>` : ''}
             <section class="paper-abstract" aria-label="Strategy hypothesis">
@@ -1006,7 +1012,7 @@ window.TauPage('strategies', (T) => {
             root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth(), ...cutWords }) +
               `<div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(r.in_sample)}</div><div><h4>${oosHead}</h4>${metricRows(r.out_of_sample)}</div></div>`;
             root.querySelector('#gates').innerHTML = gatesHtml(r.gates);
-            root.querySelector('#figs').innerHTML = figsFor({ ...r });
+            paintFigs(root.querySelector('#figs'), { ...r });
             wi.querySelector('#wflash').innerHTML = (fee === 1 && slip === 0 && stake === s.stake) ? '' : notice(r.passed ? 'Still passes every gate under these conditions.' : 'Would fail at least one gate under these conditions.', r.passed ? 'good' : 'bad');
           } catch (e) { wi.querySelector('#wflash').innerHTML = notice(e.message, 'bad'); }
           root.querySelector('#sheet-results').style.opacity = '';

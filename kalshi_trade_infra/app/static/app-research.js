@@ -224,11 +224,11 @@ window.TauPage('research', (T) => {
     const modelOpts = (mdl.models || []).filter((m) => m.available !== false).concat((mdl.models || []).filter((m) => m.available === false))
       .map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (coming soon)' : ''}</option>`).join('');
     shell('/research', boardTitle('Research', 'A self-improving research engine for Kalshi markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
-      ${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}
+      ${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}${S.me.user ? `<p class="research-ap-on" data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>Autopilot is on: the sessions it starts are listed below with an Autopilot tag. You can still start a session of your own.</p>` : ''}
       <div id="rexample"></div>
       <form class="panel dispatch" id="dispatch">
         <h2>${ICON.spark2}New research session</h2>
-        ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
+        ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won’t be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
@@ -425,7 +425,10 @@ window.TauPage('research', (T) => {
   const runSetup = (r) => [r.model_label ? esc(r.model_label) : '',
     r.run_forever ? (runLive(r) ? 'Runs until you stop it' : 'Ran until stopped')
       : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(SEP);
-  const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
+  // What a session still going has spent. Before its first model call is billed that is nothing, not a $0.00 figure
+  // (a first autopilot session read "Spent so far: $0.00" on its row and its page); a sliver says "under $0.01".
+  const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
+  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'nothing yet')}` : `Cost: ${usd(r.spent_usd)}`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
   // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
@@ -1265,7 +1268,7 @@ window.TauPage('research', (T) => {
       paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', worked == null ? '—' : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
         runCountFigs(r, active, tried, d.strategies));
       const next = root.querySelector('#runnext');
       paint(next, active ? '' : runNext(r, d.strategies));

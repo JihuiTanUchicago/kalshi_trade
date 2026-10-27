@@ -108,7 +108,9 @@ test('Meridian: the example nudge on Research takes its own full-width row, not 
   const css = read('app.meridian.css'), js = read('app.meridian.js');
   assert.match(css, /\.research-page \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/);
   assert.match(css, /\.research-page > #rexample \{ grid-column: 1 \/ -1; \}/);
-  assert.match(js, /<div class="research-page"><h1 class="page">Research<\/h1><p class="lede research-lede">[^<]+<\/p>\$\{[^`]*`[^`]*`[^}]*\}<div id="rexample"><\/div>/);
+  assert.match(js, /<div class="research-page"><h1 class="page">Research<\/h1><p class="lede research-lede">[^<]+<\/p>\$\{[^`]*`[^`]*`[^}]*\}\$\{S\.me\.user \? `<p class="research-ap-on"[^`]*`[^}]*\}<div id="rexample"><\/div>/);
+  // The autopilot-on line (beside the Turn on nudge) spans the row too.
+  assert.match(css, /\.research-page > \.research-ap, \.research-page > \.research-ap-on \{ grid-column: 1 \/ -1; \}/);
   // What Research is, said under its name, spans the row too (not squeezed beside New session).
   assert.match(css, /\.research-page > \.research-lede \{ grid-column: 1 \/ -1;/);
 });
