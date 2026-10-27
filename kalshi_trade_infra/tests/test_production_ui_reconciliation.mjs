@@ -67,7 +67,7 @@ function frontend(transport = () => { throw new Error('Unexpected synthetic requ
   body.appendChild(root); body.appendChild(box);
   const requests = [], alerts = [], intervals = new Map(); let next = 0;
   const document = {body, activeElement: null, getElementById: id => body.querySelector('#' + id), createElement: tag => new Element(tag), addEventListener() {}};
-  const context = vm.createContext({Intl, URL, URLSearchParams, document,
+  const context = vm.createContext({Intl, URL, URLSearchParams, AbortController, document,
     window: {addEventListener() {}, matchMedia: () => ({matches: false})}, addEventListener() {},
     location: {pathname: '/funds', search: '', origin: 'https://offline.invalid'}, history: {},
     localStorage: {getItem: key => key === 'tau_ap_open' ? '1' : null, setItem() {}},

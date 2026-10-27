@@ -416,6 +416,9 @@
   // over the new one (or arm its poll there). Widgets that outlive a page pass { keep: true }.
   const STALE = () => new Promise(() => {});
   const TRANSIENT = new Set([502, 503, 504]), RETRY_MS = [700, 1800];
+  // How long a read waits before the page says it failed and offers Try again: the edge gives up on the
+  // server at 30s too. Writes wait as long as it takes, since Tau may still be doing them.
+  const READ_MS = 30000;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // What a failed request says when Tau sent no words of its own (the edge's HTML error page, a cut-off
   // reply, no network): plain words, never the page itself. A write that Tau may have taken anyway (no
@@ -450,9 +453,11 @@
       opts.body = JSON.stringify(body);
     }
     // Optional timeout (used on the boot /api/me call so a slow/overloaded server can't hang the
-    // whole app on a blank screen). AbortController fires an abort the fetch rejects on.
+    // whole app on a blank screen). AbortController fires an abort the fetch rejects on. A read with
+    // none of its own gets READ_MS: one the network swallowed left its page's skeleton up for good.
     let ctl, tid;
-    if (cfg && cfg.timeoutMs) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), cfg.timeoutMs); }
+    const limit = (cfg && cfg.timeoutMs) || (body === undefined ? READ_MS : 0);
+    if (limit) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), limit); }
     let res;
     // A GET that hits a restart (a deploy takes the server away for a second, and CloudFront
     // answers 502/503/504 with its own non-JSON page) retries twice before the page shows an
