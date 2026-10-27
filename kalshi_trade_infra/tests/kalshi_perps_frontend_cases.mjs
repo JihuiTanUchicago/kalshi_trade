@@ -514,6 +514,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const clear = await road({...base, blocking: 'autopilot is off', paper: {...paper, ready: true, why: '', p_value: 0.0004, checks: all}});
     assert.match(clear, /<b>Its record clears every check\.<\/b> It still trades paper money only\./);
     assert.match(clear, /under 0\.001/); assert.doesNotMatch(clear, /checks? left|autopilot is off/);
+    // A failing check the page doesn't name is said in the server's words, escaped, with "the Funds page" linked
+    // to Connect Kalshi as every other line that sends someone there.
+    const refused = await road({...base, paper: {...paper, ready: false, checks: all,
+      why: "it couldn't trade on the demo exchange yet: Kalshi refused its 2 demo orders (your Kalshi demo key wasn't accepted; check it on the Funds page) <b>"}});
+    assert.match(refused, /Kalshi refused its 2 demo orders \(your Kalshi demo key wasn[^ ]+t accepted; check it on <a href="\/funds#connect-kalshi">the Funds page<\/a>\) &lt;b&gt;\./);
   });
 
   test(`${name}: a paper row on Deploy says how far its strategy is toward live and when the counts could be in`, async () => {

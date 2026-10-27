@@ -130,9 +130,20 @@ def test_refusals_after_real_fills_are_named_but_not_counted(monkeypatch):
 
 
 @pytest.mark.parametrize("refusal,phrase", [
-    ({"http_status": 401}, "didn't accept the demo key"),
+    ({"http_status": 401}, "your Kalshi demo key wasn't accepted; check it on the Funds page"),
+    ({"http_status": 403}, "your Kalshi demo key wasn't accepted; check it on the Funds page"),
     ({"http_status": 404, "code": "market_not_found"}, "Kalshi said: market_not_found"),
     (None, "no reason given"),
 ])
 def test_refusal_reasons_read_plainly(refusal, phrase):
     assert phrase in demo_record.refusal_reason(refusal)
+
+
+def test_a_refused_demo_key_is_named_once_in_the_gate_line(monkeypatch):
+    # It read "(it didn't accept the demo key; check the Kalshi demo key on the Funds page)": "it" for Kalshi and
+    # the key twice. "the Funds page" stays the words the app's pages link to Connect Kalshi (fundsLinked).
+    _outcomes(monkeypatch, refused=2, last_refusal={"http_status": 401, "code": "unauthorized"})
+    why = demo_record.demo_evidence(None, 1, 7)["why"]
+    assert why == ("it couldn't trade on the demo exchange yet: Kalshi refused its 2 demo orders (your Kalshi demo "
+                   "key wasn't accepted; check it on the Funds page)")
+    assert why.count("demo key") == 1 and "it didn't accept" not in why

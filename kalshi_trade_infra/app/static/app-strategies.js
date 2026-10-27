@@ -449,8 +449,8 @@ window.TauPage('strategies', (T) => {
         : (p.demo_mismatched_tickers || []).length ? 'a demo book that matches the demo exchange'
         : 'a check of its demo book against the demo exchange in the last 24h');
     }
-    // A failing check this page doesn't name is said in the server's own words.
-    if (!left.length && !roadClear(r)) left.push(esc(p.why || r.blocking || 'a check this page can’t name'));
+    // A failing check this page doesn't name is said in the server's own words, "the Funds page" linked (fundsLinked).
+    if (!left.length && !roadClear(r)) left.push(fundsLinked(esc(p.why || r.blocking || 'a check this page can’t name')));
     return left;
   }
   function roadSummary(r, s, liveWhy, total, apPaper) {
