@@ -76,6 +76,17 @@ def clean(text: Optional[str], fallback: Optional[str] = "") -> Optional[str]:
     return MODEL_ID.sub(A_MODEL, EMAIL.sub(SOMEONE, s))
 
 
+# The pages write an apostrophe curly ("isn’t"), and so do the autopilot panel's own summary lines (its story and
+# idle line). Words another module wrote that a line quotes (the engine's entry scan, a stored pause reason) go
+# through ``curly`` on the way out, so one line never mixes the two. Only an apostrophe inside a word changes.
+_STRAIGHT_APOSTROPHE = re.compile(r"(?<=[A-Za-z])'(?=[A-Za-z])")
+
+
+def curly(text: Optional[str]) -> Optional[str]:
+    """``text`` with each in-word straight apostrophe ("isn't") curly ("isn’t"); None and "" as given."""
+    return _STRAIGHT_APOSTROPHE.sub("’", text) if text else text
+
+
 def display_name(name: Optional[str], fallback: str) -> str:
     """A person's name as other people see it: their name, or ``fallback`` when there is none or it
     carries an email address (a Google profile with no name set can use the address as its name)."""
@@ -202,7 +213,7 @@ _TOURNAMENT_WORDS = (
     (re.compile(r"^Resumed paper entrant (“.+?”) "), r"Resumed \1 on paper "),
     (re.compile(r" \(posterior mean [+-]?\d+(?:\.\d+)?% of stake\)"), ""),
     (re.compile(r"\bno trade in (\d+) days on paper: its entry rule never fires on the live book\b"),
-     r"no trade in \1 days, as its entry rule never fired on the market's real prices"),
+     r"no trade in \1 days, as its entry rule never fired on the market’s real prices"),
     (re.compile(r"\bIts slot goes to the next near miss\."), "Its place goes to the next strategy that came close to passing research."),
     (re.compile(r"\bpausing would cut the forward sample short\."), "pausing would cut its paper test short."),
 )
@@ -231,10 +242,41 @@ def tournament_line(text: Optional[str]) -> Optional[str]:
                 "short." % (m.group(1), m.group(2), m.group(3), _signed_usd(m.group(4)), m.group(5)))
     if not text or not _TOURNAMENT.match(str(text)):
         return text
-    s = _TOURNAMENT.sub("", str(text), count=1)
+    return tournament_reason(_TOURNAMENT.sub("", str(text), count=1))
+
+
+def tournament_reason(text: Optional[str]) -> Optional[str]:
+    """The tournament's own terms in ``text`` (_TOURNAMENT_WORDS) in plain words: a chat line without its marker,
+    or a reason on its own, tournament.verdict's ("after 31 paper events it is 93% likely to be losing money per
+    event (posterior mean -4.2% of stake)") as the Research page's Paper tournament shows it, the same words its
+    removal line says in the autopilot feed. Text with none of them is as given."""
+    if not text:
+        return text
+    s = str(text)
     for rx, words in _TOURNAMENT_WORDS:
         s = rx.sub(words, s)
     return s
+
+
+# What rebalance stores as the reason on a deployment it stops ("Tournament: retired, <verdict>"), which a removed
+# deployment's row and its strategy page show as its status reason.
+_RETIRED_REASON = re.compile(r"^Tournament: retired, (.+)$", re.S)
+
+
+def tournament_status(text: Optional[str]) -> Optional[str]:
+    """A deployment's stored "Tournament: retired, <reason>" as "The paper tournament removed it: <reason>" in
+    plain words (tournament_reason); any other reason as given."""
+    m = _RETIRED_REASON.match(str(text or ""))
+    return "The paper tournament removed it: " + tournament_reason(m.group(1)) if m else text
+
+
+def tournament_standings(st: Optional[Dict]) -> Optional[Dict]:
+    """tournament.standings as the Research page reads it: each strategy's reason for coming off paper
+    (``verdict``) in plain words (tournament_reason). In place; the standings' figures are as computed."""
+    for r in (st or {}).get("entrants") or []:
+        if r.get("verdict"):
+            r["verdict"] = tournament_reason(r["verdict"])
+    return st
 
 
 def auto_paused_ids(messages: List[Dict]) -> List[int]:

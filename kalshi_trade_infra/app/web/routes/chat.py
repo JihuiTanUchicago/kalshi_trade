@@ -246,7 +246,7 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
     not_cleared = _week_not_cleared(cur, uid, since, pulse["passed_7d"])
     if spent is None:
         spent = repo.credit_week(cur, uid, since)["research"]
-    return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "a market it's still picking")
+    return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "a market it’s still picking")
                        for r in active],
             "tested_7d": pulse["tested_7d"],
             "passed_7d": pulse["passed_7d"] - not_cleared,
@@ -328,13 +328,13 @@ def _autopilot_story(d: Dict) -> List[str]:
         cost = float(research.get("cost_7d") or 0)
         if passed:
             outcome = "{:,} passed".format(passed) + (
-                ", and {:,} more passed but {} cleared to trade".format(fell, "wasn't" if fell == 1 else "weren't")
+                ", and {:,} more passed but {} cleared to trade".format(fell, "wasn’t" if fell == 1 else "weren’t")
                 if fell else "")
         elif fell:
-            outcome = ("none has been cleared to trade yet: %s, but a later check didn't clear %s. Each one's "
+            outcome = ("none has been cleared to trade yet: %s, but a later check didn’t clear %s. Each one’s "
                        "page says which check" % (_plural(fell, "passed", "passed"), "it" if fell == 1 else "them"))
         else:
-            outcome = ("none has passed its tests yet. That's normal: most ideas fail. Each session's page names "
+            outcome = ("none has passed its tests yet. That’s normal: most ideas fail. Each session’s page names "
                        "the test each idea missed and what to try next")
         lines.append("This week it tested %s%s and %s." % (
             _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01
@@ -369,7 +369,7 @@ def _autopilot_story(d: Dict) -> List[str]:
         days = float(prog["soonest_days"])
         when = "about a day" if days < 1.5 else "about %d days" % round(days)
         lines.append("At the pace they trade, the soonest one could have enough for the live check is %s "
-                     "(%s), and only if it's up by then." % (when, _short_title(prog.get("soonest_title"))))
+                     "(%s), and only if it’s up by then." % (when, _short_title(prog.get("soonest_title"))))
     t_line = _tournament_line(d.get("tournament"))
     if t_line:
         lines.append(t_line)
@@ -385,21 +385,21 @@ def _autopilot_story(d: Dict) -> List[str]:
     live_open = bool(d.get("live_enabled"))
     if int(d.get("live_running") or 0) and not live_open:
         n = int(d["live_running"])
-        lines.append("%s live but waiting: live trading isn't open yet, so %s no orders." % (
+        lines.append("%s live but waiting: live trading isn’t open yet, so %s no orders." % (
             _plural(n, "strategy is", "strategies are"), "it places" if n == 1 else "they place"))
     elif int(d.get("live_running") or 0):
         lines.append("%s trading real money." % _plural(int(d["live_running"]), "strategy is", "strategies are"))
     elif limit > 0 and float(d.get("today_live_pnl") or 0) <= -limit:
         # The kill switch turned live autopilot off and paused live deployments; the panel used to
         # go back to "Nothing trades real money until..." as if live had never run.
-        lines.append("Live trading stopped for today: today's live loss of $%.2f reached your $%.2f daily limit, "
+        lines.append("Live trading stopped for today: today’s live loss of $%.2f reached your $%.2f daily limit, "
                      "so live autopilot switched itself off and live strategies were paused. Paper keeps running."
                      % (-float(d["today_live_pnl"]), limit))
     else:
         lines.append("Nothing trades real money until a strategy makes money on paper over at least %d trades "
                      "from %d separate events and %d hours, and you turn on live autopilot.%s" % (
                          agent.MIN_REALISTIC_PAPER_TRADES, agent.MIN_PAPER_EVENTS, int(agent.MIN_PAPER_SPAN_HOURS),
-                         "" if live_open else " Live trading isn't open yet."))
+                         "" if live_open else " Live trading isn’t open yet."))
     return lines
 
 
@@ -407,26 +407,26 @@ def _autopilot_now(d: Dict) -> str:
     """The story's first line: what the autopilot is doing right now."""
     active = (d.get("research") or {}).get("active") or []
     if active:
-        names = [n for n in dict.fromkeys(active) if n != "a market it's still picking"]  # two runs on one market read as one
-        now = ("Right now it's researching %s." % (
+        names = [n for n in dict.fromkeys(active) if n != "a market it’s still picking"]  # two runs on one market read as one
+        now = ("Right now it’s researching %s." % (
             names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1])) if names \
-            else "Right now it's picking a market to research."
+            else "Right now it’s picking a market to research."
     elif d.get("reviewing"):
-        now = "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
+        now = "Right now it’s reviewing the markets to pick its next move. Each move shows up in its activity feed."
     elif d.get("review_wait"):
         w = d["review_wait"]
         mins = max(1, int(w.get("seconds") or 0) // 60)
         now = ("Its next review has waited %s for a free worker, longer than usual. It starts when one frees up."
                % _span(mins)) if w.get("state") == "queued" else \
-              ("Its review hasn't checked in for %s. A review that quiet is normally stopped, and the next one "
+              ("Its review hasn’t checked in for %s. A review that quiet is normally stopped, and the next one "
                "starts on schedule." % _span(mins))
     else:
-        now = "Right now it's between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
+        now = "Right now it’s between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
         quiet = _quiet_minutes(d.get("last_review_at"))
         if quiet:
             # A stalled worker would leave "checks in every 10 minutes" on screen for hours; say how long it's been.
             # Same steps as the "Last reviewed" figure beside it (sinceMin), so the two never disagree.
-            now = "Right now it's between research runs. Its last check-in was %s ago, longer than usual." % _span(quiet)
+            now = "Right now it’s between research runs. Its last check-in was %s ago, longer than usual." % _span(quiet)
     return now
 
 
@@ -457,7 +457,7 @@ def _paper_waiting(paper_run: List[Dict], tally: Optional[Dict[int, Dict[str, in
         sc = d.get("scan") or {}
         if sc.get("why") and not sc.get("entered") and not sc.get("qualifying"):
             t = (tally or {}).get(d["id"]) or {}
-            out.append({"deployment_id": d["id"], "title": _short_title(d.get("title")), "why": sc["why"],
+            out.append({"deployment_id": d["id"], "title": _short_title(d.get("title")), "why": customer_text.curly(sc["why"]),
                         "blocked_at": sc.get("blocked_at"), "at": d.get("last_scan_at"),
                         "checks_today": sum(t.values()), "qualified_today": t.get("qualified", 0)})
     return out[:5]
@@ -501,12 +501,12 @@ def _tournament_line(t: Optional[Dict]) -> str:
         return ""
     lead, book = t["leader"], "${:,.0f}".format(t["capital"])
     if t["cash_weight"] >= lead["weight"]:
-        where = "it keeps %d%% of its %s practice book in cash until an entrant proves it beats zero" % (
+        where = "it keeps %d%% of its %s practice book in cash until a strategy shows it makes money" % (
             round(100 * t["cash_weight"]), book)
     else:
         where = "it has %d%% of its %s practice book on %s" % (
             round(100 * lead["weight"]), book, lead["title"] or "its leader")
-    return ("The paper tournament runs %s at once, with %d of the %d independent bets the research gate needs so far; %s." % (
+    return ("The paper tournament runs %s at once, with %d of the %d separate bets it takes to judge them so far; %s." % (
         _plural(t["entrants"], "strategy", "strategies"), t["trips"], t["target"], where))
 
 
@@ -682,12 +682,12 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
         return None
     running = sum(int(d.get(k) or 0) for k in ("paper_running", "demo_running", "live_running"))
     if running and engine_age is not _UNKNOWN and (engine_age is None or engine_age > ENGINE_STALE_SECONDS):
-        when = ("isn't running" if engine_age is None
+        when = ("isn’t running" if engine_age is None
                 else "last checked the markets %s ago" % _span(max(1, int(engine_age) // 60)))
-        return _idle("engine", "Nothing is trading right now: Tau's trading engine %s, so %s. There's nothing for "
-                               "you to do; %s when it's back." % (
-                                   when, "your strategy can't buy or sell" if running == 1
-                                   else "your %d strategies can't buy or sell" % running,
+        return _idle("engine", "Nothing is trading right now: Tau’s trading engine %s, so %s. There’s nothing for "
+                               "you to do; %s when it’s back." % (
+                                   when, "your strategy can’t buy or sell" if running == 1
+                                   else "your %d strategies can’t buy or sell" % running,
                                    "it carries on" if running == 1 else "they carry on"))
     if running:
         if not paper_run or int(d.get("paper_open") or 0):
@@ -705,15 +705,15 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
             if done:
                 who = _short_title(prog.get("title") or paper_run[0].get("title"))
                 line = ("Nothing open right now: %s has closed %s on paper and holds no position. It checks "
-                        "again at its market's next decision time." % (who, _plural(done, "trade"))) if n == 1 else \
+                        "again at its market’s next decision time." % (who, _plural(done, "trade"))) if n == 1 else \
                        ("Nothing open right now: none of your %d paper strategies holds a position (the furthest "
-                        "along, %s, has closed %s). Each checks again at its market's next decision time."
+                        "along, %s, has closed %s). Each checks again at its market’s next decision time."
                         % (n, who, _plural(done, "trade")))
                 return _idle("flat", line)
-            line = ("No trades yet: %s went on paper and hasn't had its first look at the market. It checks at its "
-                    "market's next decision time." % _short_title(paper_run[0].get("title"))) if n == 1 else \
-                   ("No trades yet: your %d paper strategies haven't had their first look at the market. Each checks "
-                    "at its market's next decision time." % n)
+            line = ("No trades yet: %s went on paper and hasn’t had its first look at the market. It checks at its "
+                    "market’s next decision time." % _short_title(paper_run[0].get("title"))) if n == 1 else \
+                   ("No trades yet: your %d paper strategies haven’t had their first look at the market. Each checks "
+                    "at its market’s next decision time." % n)
             return _idle("starting", line)
         waiting = d.get("paper_waiting") or []
         closed = [w for w in waiting if w["why"].startswith("no open contracts")]
@@ -731,10 +731,10 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
     card = d.get("billing_reason") == "card"
     if d.get("billing_blocked"):
         if not card and d.get("reload_failed"):  # auto-reload is on and the card it charges was refused
-            return _idle("billing", "Nothing is on paper, and it can't research new strategies: auto-reload couldn't "
+            return _idle("billing", "Nothing is on paper, and it can’t research new strategies: auto-reload couldn’t "
                                     "charge your card. Update it on Billing, then add credits.",
                          {"label": "Update card", "href": "/billing"})
-        return _idle("billing", "Nothing is on paper, and it can't research new strategies until you %s." % (
+        return _idle("billing", "Nothing is on paper, and it can’t research new strategies until you %s." % (
             "add a payment method" if card else "add credits"),
             {"label": "Add a payment method" if card else "Add credits", "href": "/billing"})
     now = _autopilot_now(d).split(". ")[0].rstrip(".") + "."  # its first sentence
@@ -755,7 +755,7 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
     inside = [x for x in passed if x["in_focus"]]
     if focus and passed and not inside:
         k = len(passed)
-        return _idle("focus", "Nothing is on paper: your focus is %s, and %s outside it, so it won't deploy %s. "
+        return _idle("focus", "Nothing is on paper: your focus is %s, and %s outside it, so it won’t deploy %s. "
                               "It researches inside the focus to find new ones." % (
                                   agent.focus_words(focus), ("your passed strategy, %s, is" % passed[0]["title"]) if k == 1
                                   else "both your passed strategies are" if k == 2 else "all %d of your passed strategies are" % k, "it" if k == 1 else "them"),
@@ -769,7 +769,7 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
         return _idle("no_candidate", "Nothing is on paper yet: %s passed the research tests, but %s cleared the last "
                                      "check before paper (the holdout test). %s" % (
                                          inside[0]["title"] if len(inside) == 1 else "%d strategies" % len(inside),
-                                         "it hasn't" if len(inside) == 1 else "none has", doing))
+                                         "it hasn’t" if len(inside) == 1 else "none has", doing))
     code = ("researching" if (d.get("research") or {}).get("active") else "reviewing" if d.get("reviewing")
             else "review_wait" if d.get("review_wait") else "no_strategies")
     if retired:

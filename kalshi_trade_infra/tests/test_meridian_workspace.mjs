@@ -332,7 +332,9 @@ test('strategy evidence identifies run-wide trial counts and places missing vali
     assert.match(output, /Backtest results/); assert.doesNotMatch(output, /<h4 class="paper-h">Backtest<\/h4>/);
     const saved = paper.querySelector('.saved-result');
     assert.equal(saved.tag, 'details'); assert.equal(saved.open, false);
-    assert.equal(saved.textContent.includes('one passes by luck'), count != null);
+    // The luck note sits under the Ideas tested figure, in Tau's words, and the folded result doesn't repeat it.
+    assert.equal(trials.textContent.includes('More ideas tried, more chance one passes by luck (multiple testing).'), count != null);
+    assert.equal(saved.textContent.includes('passes by luck'), false);
     assert.ok(f.root.querySelector('#dep-paper')); assert.ok(f.root.querySelector('#live-confirm input'));
     assert.equal(detail.status, 'passed'); assert.equal(JSON.stringify(detail), before);
     assert.equal(postRequests(f).length, 0);
@@ -902,7 +904,7 @@ test('Overview autopilot card says what switching it on costs, and a running fir
   const card = () => f.root.querySelector('#dash-ap'), cost = () => f.root.querySelector('#dash-ap .apcard-cost');
   f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 18.4, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
   await f.viewDashboard(); await flush();
-  assert.match(cost().innerHTML, /uses your credits while it's on \(\$18\.40 left\)\. When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
+  assert.match(cost().innerHTML, /uses your credits while it’s on \(\$18\.40 left\)\. When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
   f.S.me.auto_reload = null;
   await f.viewDashboard(); await flush();
   assert.match(cost().innerHTML, /and pauses when they run out\. Turn it off any time\./);
@@ -929,7 +931,7 @@ test('Meridian: while its paper strategy holds nothing, the autopilot card also 
   f.S.apAt = Date.now();
   await f.viewDashboard(); await flush();
   const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
-  assert.match(now(), /Its last check: no edge\. Meanwhile it's researching BTC 15-min up\/down\.$/);
+  assert.match(now(), /Its last check: no edge\. Meanwhile it’s researching BTC 15-min up\/down\.$/);
   f.S.ap = {...f.S.ap, research: {tested_7d: 3, passed_7d: 0, active: []}};
   await f.viewDashboard(); await flush();
   assert.doesNotMatch(now(), /Meanwhile/);
@@ -2120,8 +2122,8 @@ test('Research index shows the research loop scoreboard, escaped, and keeps it o
   assert.match(html, /8% <span class="rsi-arrow">→<\/span> 33%/);
   assert.match(html, /v2<\/b> on trial ·\u00a02 of 6 ideas reached the gate ·\u00a081% likely better/);
   assert.match(html, /feature missing/); assert.match(html, /calibration &lt;4h/);
-  assert.match(html, /On paper against the live book: 2 passed strategies, 1 trading, 12 round trips, net −\$1\.50, losing money where the backtest expected a profit/);
-  assert.match(html, /3 of 20 ideas reached the gate ·\u00a0on paper 12 trips, −\$1\.50/);
+  assert.match(html, /On paper at the market’s real prices: 2 passed strategies, 1 trading, 12 closed trades, net −\$1\.50, losing money where the backtest expected a profit/);
+  assert.match(html, /3 of 20 ideas reached the gate ·\u00a0on paper 12 closed trades, −\$1\.50/);
   assert.match(html, /order-book feature ·\u00a0flow_imb_60s<\/b> ·\u00a0idea re-tested ·\u00a0<a href="\/research\/44">session<\/a>/);
   assert.match(html, /For: Flow &lt;b&gt;leads&lt;\/b&gt;/);
   assert.ok(html.includes('&lt;script&gt;')); assert.doesNotMatch(html, /<script>/);
@@ -2288,7 +2290,7 @@ test('Community snapshots retain source financial values, missing versus zero, e
     assert.match(host.innerHTML, /Title &quot;quoted&quot; &lt;script&gt;unsafe&lt;\/script&gt;/);
     assert.equal(host.querySelector('.snap-meta').textContent, '&lt;unsafe&gt;');
     assert.deepEqual(host.querySelectorAll('dt').map(dt => dt.textContent),
-      ['Out-of-sample P&amp;L', ...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
+      ['Unseen-data P&amp;L', ...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
     assert.deepEqual(host.querySelectorAll('.snap-secondary dt').map(dt => dt.textContent),
       [...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
   }
@@ -3405,7 +3407,7 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money<\/small><\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>3 strategies <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a01 closed trade<\/small><\/dd>/);
+  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a01 closed trade<\/small><\/dd>/);
   assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
   await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   const box = f.root.parent.querySelector('#autopilot-float');
@@ -3839,7 +3841,7 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   await f.viewStrategy(42); await flush();
   const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days/);
-  assert.match(figs, /Out-of-sample over 15 days · \$100 at risk at most/);
+  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
   assert.match(html, /Demo · running<br>Paper · paused/);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
@@ -3850,7 +3852,7 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   // An older result with no window length keeps its figure as it was; not on paper, no warning.
   const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
   await g.viewStrategy(42); await flush();
-  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">6 trades<\/dd>/);
+  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">6 trades the agent never saw<\/dd>/);
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
   assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again|on-paper/);
 });
@@ -4931,7 +4933,7 @@ test('autopilot (Meridian): the market it researches reads by its label, never a
   // series or label alike; a key only the app knows (eth15m, not in this catalog) by its short one.
   f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi', 'eth15m']}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
-  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it's still picking"]}};
+  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it’s still picking"]}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
   // The server sends a listed market's catalog label; it reads as it is.
   f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
@@ -5179,7 +5181,7 @@ test('the autopilot switch card says it would wait for credits when the balance 
   f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, credit_balance: 0.4, min_run_balance: 1, auto_reload: null};
   f.S.me.user.autopilot = false; f.S.ap = null;
   await f.viewDashboard(); await flush();
-  assert.equal(f.root.querySelector('#dash-ap .apcard-cost').innerHTML, 'It uses your credits while it\'s on. You have $0.40, under the $1.00 a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.');
+  assert.equal(f.root.querySelector('#dash-ap .apcard-cost').innerHTML, 'It uses your credits while it’s on. You have $0.40, under the $1.00 a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.');
   f.clearTimers();
 });
 

@@ -96,7 +96,7 @@ TOURNAMENT = [
      "Its place goes to the next strategy that came close to passing research."),
     ("[tournament] Retired paper entrant “Wick fade NO”: no trade in 7 days on paper: its entry rule never fires on "
      "the live book. Its slot goes to the next near miss.",
-     "Removed “Wick fade NO” from paper: no trade in 7 days, as its entry rule never fired on the market's real "
+     "Removed “Wick fade NO” from paper: no trade in 7 days, as its entry rule never fired on the market’s real "
      "prices. Its place goes to the next strategy that came close to passing research."),
     ("I left “Fade” running: it is a paper tournament entrant with 3 of 30 independent events ($-1.20 net of fees and "
      "spread), and the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
@@ -149,3 +149,56 @@ def test_the_last_move_says_a_tournament_line_plainly():
     from app.web.routes import chat as chat_routes
     out = chat_routes._last_move({"text": TOURNAMENT[1][0], "at": "2026-10-27T10:00:00"}, [])
     assert out["text"] == TOURNAMENT[1][1]
+
+
+# The Research page's Paper tournament showed each strategy's reason as tournament.verdict wrote it ("Retiring:
+# after 31 paper events ... (posterior mean -4.2% of stake)", "... never fires on the live book"). The scoreboard
+# sends it in the words the feed's removal line uses (tournament_reason, the same rewrite); the standings'
+# figures, and what tournament.py computes and stores, are as they were.
+def _verdicts():
+    from datetime import datetime, timedelta
+    from app.research import tournament
+    now = datetime(2026, 10, 27, 12)
+    losing = tournament.verdict({"status": "running"}, {"trips": 31, "p_positive": 0.03, "post_mean": -0.042}, now)
+    dormant = tournament.verdict({"status": "running", "created_at": now - timedelta(days=8)},
+                                 {"trips": 0, "p_positive": None, "post_mean": 0.0}, now)
+    return losing, dormant
+
+
+def test_a_tournament_reason_reads_as_the_feed_says_it():
+    losing, dormant = _verdicts()
+    assert "posterior" in losing and "live book" in dormant  # what tournament.verdict writes, unchanged
+    assert customer_text.tournament_reason(losing) == "after 31 paper events it is 97% likely to be losing money per event"
+    assert customer_text.tournament_reason(dormant) == ("no trade in 7 days, as its entry rule never fired on the "
+                                                       "market’s real prices")
+    # The feed's removal line says the same words after "Removed “X” from paper: ".
+    line = customer_text.tournament_line("[tournament] Retired paper entrant “Fade”: %s. Its slot goes to the next "
+                                         "near miss." % losing)
+    assert line.startswith("Removed “Fade” from paper: " + customer_text.tournament_reason(losing) + ".")
+    assert customer_text.tournament_reason(None) is None and customer_text.tournament_reason("") == ""
+
+
+def test_the_research_scoreboard_sends_each_tournament_reason_in_plain_words(monkeypatch):
+    from app import repository as repo, rsi_scout
+    from app.research import rsi, rsi_playbook, rsi_repair, tournament
+    from app.web.routes import research
+    losing, dormant = _verdicts()
+    rows = [{"strategy_id": 7, "title": "Fade", "weight": 0.2, "trips": 31, "p_positive": 0.07, "verdict": losing},
+            {"strategy_id": 8, "title": "Wick", "weight": 0.3, "trips": 0, "p_positive": 0.5, "verdict": dormant},
+            {"strategy_id": 9, "title": "Trend", "weight": 0.2, "trips": 3, "p_positive": 0.6, "verdict": None},
+            {"strategy_id": 0, "title": "Cash", "weight": 0.3, "trips": 0, "verdict": None}]
+    figures = [(r["weight"], r["trips"], r.get("p_positive")) for r in rows]
+    standings = {"entrants": rows, "pooled": {"trips": 34, "target": 400}, "book": {"capital": 100.0, "pnl": -1.2}}
+    monkeypatch.setattr(rsi, "load_scoreboard", lambda cur, days, uid: {"cards": []})
+    monkeypatch.setattr(rsi, "paper_outcomes", lambda cur, uid: None)
+    monkeypatch.setattr(rsi_playbook, "summary", lambda cur, uid: [])
+    monkeypatch.setattr(rsi_scout, "ranking", lambda cur, n: [])
+    monkeypatch.setattr(rsi_repair, "summary", lambda cur, uid: [])
+    monkeypatch.setattr(repo, "get_user", lambda cur, uid: {"id": uid})
+    monkeypatch.setattr(repo, "early_exit_scorecard", lambda cur, uid: None)
+    monkeypatch.setattr(tournament, "standings", lambda cur, uid: standings)
+    got = research._research_scoreboard(None, 1, 14)["tournament"]["entrants"]
+    assert [r["verdict"] for r in got] == [customer_text.tournament_reason(losing),
+                                         customer_text.tournament_reason(dormant), None, None]
+    assert not any(JARGON.search(r["verdict"] or "") for r in got)
+    assert [(r["weight"], r["trips"], r.get("p_positive")) for r in got] == figures  # the figures as computed

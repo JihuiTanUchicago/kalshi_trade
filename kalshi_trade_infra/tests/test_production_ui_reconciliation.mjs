@@ -309,7 +309,7 @@ test('with live trading off on the server, the panel says so in one line instead
   f.apUpdate(f.box, status({live_enabled: false}));
   assert.doesNotMatch(controls(), /livearm|Enable live autopilot/);
   assert.equal(gates(), 'Live trading isn’t available on this server yet. ');
-  assert.match(controls(), /See what's trading/);
+  assert.match(controls(), /See what’s trading/);
   // Live available: the button is exactly as before, greyed until a Kalshi key is connected.
   f.apUpdate(f.box, status({live_enabled: true, kalshi_connected: false}));
   assert.match(controls(), /<button class="btn sm" data-ap="livearm" aria-disabled="true">Enable live autopilot<\/button>/);

@@ -335,7 +335,7 @@ def test_autopilot_status_says_when_a_review_is_in_flight(monkeypatch):
     monkeypatch.setattr(server.repo, 'active_agent_run', lambda cur, uid, kind=None: kind == 'review' and review)
     out = server.autopilot_status(ctx)
     assert out['reviewing'] is True and out['review_wait'] is None
-    assert out['story'][0].startswith("Right now it's reviewing the markets")
+    assert out['story'][0].startswith("Right now it’s reviewing the markets")
     off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
     assert off['reviewing'] is False  # an off autopilot reads nothing extra
 
@@ -367,7 +367,7 @@ def test_a_review_queued_or_silent_past_the_reaper_limit_stops_reading_as_review
     review.update(heartbeat_at=now - timedelta(minutes=7))
     out = server.autopilot_status(ctx)
     assert out['reviewing'] is False and out['review_wait']['state'] == 'silent'
-    assert out['story'][0] == ("Its review hasn't checked in for 7 minutes. A review that quiet is normally "
+    assert out['story'][0] == ("Its review hasn’t checked in for 7 minutes. A review that quiet is normally "
                                "stopped, and the next one starts on schedule.")
 
 
@@ -712,11 +712,11 @@ def _passed(title='Rain tails', market='kxrainnyc', in_focus=True, candidate=Fal
 @pytest.mark.parametrize('d,paper_run,paused,age,passed,code,line,action', [
     # Strategies running, but the engine hasn't beaten: nothing else matters until it's back.
     (_idle_d(paper_running=1), [_paper()], [], None, [], 'engine',
-     "Nothing is trading right now: Tau's trading engine isn't running, so your strategy can't buy or sell. "
-     "There's nothing for you to do; it carries on when it's back.", None),
+     "Nothing is trading right now: Tau’s trading engine isn’t running, so your strategy can’t buy or sell. "
+     "There’s nothing for you to do; it carries on when it’s back.", None),
     (_idle_d(paper_running=2), [_paper(), _paper()], [], 1500, [], 'engine',
-     "Nothing is trading right now: Tau's trading engine last checked the markets 25 minutes ago, so your 2 "
-     "strategies can't buy or sell. There's nothing for you to do; they carry on when it's back.", None),
+     "Nothing is trading right now: Tau’s trading engine last checked the markets 25 minutes ago, so your 2 "
+     "strategies can’t buy or sell. There’s nothing for you to do; they carry on when it’s back.", None),
     # Running and fresh, but the market has no contracts at all.
     (_idle_d(paper_running=1, paper_waiting=[_waiting('Rain tails', 'no open contracts in the order book right now')]),
      [_paper('Rain tails', {'why': 'no open contracts in the order book right now', 'qualifying': 0})], [], 20, [],
@@ -729,18 +729,18 @@ def _passed(title='Rain tails', market='kxrainnyc', in_focus=True, candidate=Fal
      "no open contract has a spread of 3¢ or less (of 12; tightest is 5¢).", None),
     # Deployed but never decided yet.
     (_idle_d(paper_running=1), [_paper()], [], 20, [], 'starting',
-     "No trades yet: Fade tails went on paper and hasn't had its first look at the market. It checks at its "
-     "market's next decision time.", None),
+     "No trades yet: Fade tails went on paper and hasn’t had its first look at the market. It checks at its "
+     "market’s next decision time.", None),
     # No scan record, but it has closed trades: the line defers to them instead of "No trades yet".
     (_idle_d(paper_running=1, paper_progress={'strategy_id': 1, 'title': 'Fade tails — v2', 'trades': 12}), [_paper()], [], 20, [],
      'flat', "Nothing open right now: Fade tails has closed 12 trades on paper and holds no position. It checks again "
-     "at its market's next decision time.", None),
+     "at its market’s next decision time.", None),
     (_idle_d(paper_running=2, paper_progress={'strategy_id': 1, 'title': 'Rain tails', 'trades': 1}), [_paper(), _paper('Rain tails')], [], 20, [],
      'flat', "Nothing open right now: none of your 2 paper strategies holds a position (the furthest along, Rain tails, "
-     "has closed 1 trade). Each checks again at its market's next decision time.", None),
+     "has closed 1 trade). Each checks again at its market’s next decision time.", None),
     # Nothing running: billing first, then paused deployments, then the focus, then research.
     (_idle_d(billing_blocked=True, billing_reason='card'), [], [], None, [], 'billing',
-     "Nothing is on paper, and it can't research new strategies until you add a payment method.",
+     "Nothing is on paper, and it can’t research new strategies until you add a payment method.",
      {'label': 'Add a payment method', 'href': '/billing'}),
     (_idle_d(), [], [{'title': 'Rain tails — v1', 'status_reason': 'force-closed: position down 42.0% >= stop 30.0%'},
                      {'title': 'Fade tails', 'status_reason': 'By you'}], None, [], 'stopped',
@@ -750,20 +750,20 @@ def _passed(title='Rain tails', market='kxrainnyc', in_focus=True, candidate=Fal
      "Nothing is trading: Fade tails is paused: you paused it. Resume one, or let the autopilot find new ones.",
      {'label': 'Open Deploy', 'href': '/deploy'}),
     (_idle_d(focus=['sports']), [], [], None, [_passed(in_focus=False), _passed('Fade BTC', 'btc15m', in_focus=False)], 'focus',
-     "Nothing is on paper: your focus is sports, and both your passed strategies are outside it, so it won't deploy "
+     "Nothing is on paper: your focus is sports, and both your passed strategies are outside it, so it won’t deploy "
      "them. It researches inside the focus to find new ones.", {'label': 'Change focus', 'do': 'focus'}),
     (_idle_d(), [], [], None, [_passed(candidate=True)], 'to_deploy',
-     "Nothing is on paper yet: Rain tails cleared every check, and the next review puts it on paper. It's between "
+     "Nothing is on paper yet: Rain tails cleared every check, and the next review puts it on paper. It’s between "
      "research runs.", None),
     (_idle_d(), [], [], None, [_passed()], 'no_candidate',
-     "Nothing is on paper yet: Rain tails passed the research tests, but it hasn't cleared the last check before paper "
-     "(the holdout test). It's between research runs.", None),
+     "Nothing is on paper yet: Rain tails passed the research tests, but it hasn’t cleared the last check before paper "
+     "(the holdout test). It’s between research runs.", None),
     (_idle_d(research={'active': ['BTC 15m']}), [], [], None, [], 'researching',
-     "Nothing is on paper yet: no strategy has passed its research tests. It's researching BTC 15m.", None),
+     "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m.", None),
     (_idle_d(reviewing=True), [], [], None, [], 'reviewing',
-     "Nothing is on paper yet: no strategy has passed its research tests. It's reviewing the markets to pick its next move.", None),
+     "Nothing is on paper yet: no strategy has passed its research tests. It’s reviewing the markets to pick its next move.", None),
     (_idle_d(), [], [], None, [_passed(retired=True)], 'no_strategies',
-     "Nothing is on paper: the strategy that passed was stopped on paper, and no new one has passed since. It's "
+     "Nothing is on paper: the strategy that passed was stopped on paper, and no new one has passed since. It’s "
      "between research runs.", None),
 ])
 def test_idle_reason_names_why_nothing_trades(d, paper_run, paused, age, passed, code, line, action):
@@ -812,7 +812,7 @@ def test_autopilot_status_carries_idle_and_reads_the_engine_only_with_something_
 def test_the_story_says_when_the_daily_live_loss_limit_stopped_live():
     d = _idle_d(paper_running=1, paper_open=1, today_live_pnl=-60.5, daily_loss_limit=50.0, live_running=0)
     lines = server._autopilot_story(d)
-    assert ("Live trading stopped for today: today's live loss of $60.50 reached your $50.00 daily limit, so live "
+    assert ("Live trading stopped for today: today’s live loss of $60.50 reached your $50.00 daily limit, so live "
             "autopilot switched itself off and live strategies were paused. Paper keeps running.") in lines
     assert not any(line.startswith('Nothing trades real money until') for line in lines)
 

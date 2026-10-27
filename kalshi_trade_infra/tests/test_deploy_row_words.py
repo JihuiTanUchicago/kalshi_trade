@@ -59,7 +59,7 @@ def test_the_demo_key_line_links_to_connect_kalshi_through_its_action(monkeypatc
     health = views._health_from(None, 7, [_dep(mode="demo", status="running", status_reason=None)], None,
                                 lambda: pytest.fail("no demo cash read without a key"))
     assert health == {"code": "demo_key", "need": "your Kalshi demo key",
-                      "line": "Demo isn't trading: your Kalshi demo key isn't connected.",
+                      "line": "Demo isn’t trading: your Kalshi demo key isn’t connected.",
                       "action": {"label": "Add it on the Funds page", "href": "/funds#connect-kalshi"}}
     assert "Funds page" not in health["line"] and "<" not in health["line"]
 
@@ -71,6 +71,22 @@ def test_a_loss_guard_pause_says_resume_pauses_again_while_the_loss_is_past_the_
     assert ("Resume would pause it again at its next check" in why) is still
     # A stopped deployment can't be resumed, so it is not told about Resume.
     assert "Resume" not in views._status_why(_dep(status="stopped", status_reason=GUARD_REASON, realized_pnl=-50.0))
+
+
+def test_a_deployment_the_tournament_stopped_says_why_in_plain_words():
+    # rebalance stores "Tournament: retired, " + tournament.verdict; the removed row and the strategy page showed it
+    # as written, "(posterior mean -4.2% of stake)" and "the live book" included. The stored reason is unchanged.
+    from datetime import datetime, timedelta
+    from app.research import tournament
+    now = datetime(2026, 10, 27, 12)
+    losing = tournament.verdict({"status": "running"}, {"trips": 31, "p_positive": 0.03, "post_mean": -0.042}, now)
+    dormant = tournament.verdict({"status": "running", "created_at": now - timedelta(days=8)},
+                                 {"trips": 0, "p_positive": None, "post_mean": 0.0}, now)
+    assert views._status_why(_dep(status="stopped", status_reason="Tournament: retired, " + losing)) == (
+        "The paper tournament removed it: after 31 paper events it is 97% likely to be losing money per event")
+    assert views._status_why(_dep(status="stopped", status_reason="Tournament: retired, " + dormant)) == (
+        "The paper tournament removed it: no trade in 7 days, as its entry rule never fired on the market’s real prices")
+    assert views._status_why(_dep(status="stopped", status_reason="By you")) == "You removed it"
 
 
 def test_a_guard_figure_with_thousands_reads_as_a_number():

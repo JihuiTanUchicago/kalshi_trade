@@ -3393,7 +3393,7 @@
   // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a listed market, key or series, reads
   // as its full label (marketFull, as Billing's research lines say it), a key only the app knows as its
   // short label, and a key nothing knows as "an unlisted market", never the raw key.
-  const AP_PICKING = "a market it's still picking";
+  const AP_PICKING = "a market it’s still picking";
   function apMarketName(n) {
     const s = String(n || '');
     const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || x.label === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
@@ -3411,10 +3411,10 @@
   function apMeanwhile(d) {
     if (!d || !d.idle || !AP_IDLE_PAPER.has(d.idle.code)) return '';
     const all = apMarketNames(d), names = all.filter((n) => n !== AP_PICKING);
-    if (!all.length) return d.reviewing ? " Meanwhile it's reviewing the markets to pick its next move." : '';
-    if (!names.length) return " Meanwhile it's picking a market to research.";
+    if (!all.length) return d.reviewing ? " Meanwhile it’s reviewing the markets to pick its next move." : '';
+    if (!names.length) return " Meanwhile it’s picking a market to research.";
     const said = names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-    return ` Meanwhile it's researching ${esc(said)}.`;
+    return ` Meanwhile it’s researching ${esc(said)}.`;
   }
   // The server's story lines with each raw key it quoted from the research list said as apMarketName does.
   function apStory(d) {
@@ -3495,8 +3495,8 @@
       <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? ` · plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
-      <div><dt>Autopilot's paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>
-    </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
+      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>
+    </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot’s. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
   // Paused for credits while auto-reload is on and its last charge failed (the status's reload_failed,
@@ -3551,8 +3551,8 @@
     const ar = me.auto_reload;
     // Already under what a session needs to start: switched on, it would sit paused from the start.
     if (!ar && !me.needs_card && me.min_run_balance != null && me.credit_balance < me.min_run_balance)
-      return `<p class="apcard-cost">It uses your credits while it's on. You have ${usd(me.credit_balance)}, under the ${usd(me.min_run_balance)} a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.</p>`;
-    return `<p class="apcard-cost">It uses your credits while it's on (${usd(me.credit_balance)} left)${ar
+      return `<p class="apcard-cost">It uses your credits while it’s on. You have ${usd(me.credit_balance)}, under the ${usd(me.min_run_balance)} a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.</p>`;
+    return `<p class="apcard-cost">It uses your credits while it’s on (${usd(me.credit_balance)} left)${ar
       ? `. When they fall to ${usd(ar.threshold)}, auto-reload charges your card ${usd(ar.charge)} for ${usd(ar.amount)} more. Turn it off any time, or change auto-reload on <a href="/billing">Billing</a>.`
       : ' and pauses when they run out. Turn it off any time.'}</p>`;
   }

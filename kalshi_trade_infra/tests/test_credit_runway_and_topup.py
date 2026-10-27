@@ -154,7 +154,7 @@ def test_the_autopilot_status_names_a_declined_reload_only_when_it_is_why_credit
 def test_the_idle_line_says_the_card_is_the_step_when_the_reload_was_declined():
     d = {'autopilot': True, 'billing_blocked': True, 'billing_reason': 'credits', 'reload_failed': 'It couldn\'t add $25.00.'}
     idle = chat_routes._idle_reason(d, [], [], 20, [])
-    assert idle['code'] == 'billing' and "auto-reload couldn't charge your card" in idle['line']
+    assert idle['code'] == 'billing' and "auto-reload couldn’t charge your card" in idle['line']
     assert idle['line'].endswith('Update it on Billing, then add credits.')
     assert idle['action'] == {'label': 'Update card', 'href': '/billing'}
     idle = chat_routes._idle_reason(dict(d, reload_failed=None), [], [], 20, [])

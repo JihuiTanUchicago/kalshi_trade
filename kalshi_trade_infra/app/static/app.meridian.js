@@ -1549,6 +1549,13 @@
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
   // Draw at the column's real width on a narrow screen: a 760-wide chart shrunk to a phone has 4px labels.
   const chartWidth = () => { const m = root.querySelector('#main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
+  // The equity chart's label over its unseen-data window, in the strategy page's words ("Unseen-data P&L"):
+  // the full words when they fit, else "Unseen →", pinned to the chart's right edge when even that would run past it.
+  const unseenLabel = (cx, right, y) => {
+    const room = right - cx - 8, text = room >= 150 ? 'Unseen by the agent →' : 'Unseen →';
+    return room >= 64 ? `<text x="${cx + 8}" y="${y}" style="fill:var(--ink-2)">${text}</text>`
+      : `<text x="${right}" y="${y}" text-anchor="end" style="fill:var(--ink-2)">${text}</text>`;
+  };
   function equityChart(curve, cutoffIso, devCurve, options = {}) {
     const W = options.width || 760, H = options.height || 236, L = 52, R = 10, T = options.paper ? 16 : 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
@@ -1612,7 +1619,7 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="${options.paper ? 'group' : 'img'}" aria-label="${esc(options.label || `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}`)}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
-              <text x="${cx + 8}" y="${T - 10}" style="fill:var(--ink-2)">Out-of-sample →</text>` : ''}
+              ${unseenLabel(cx, W - R, T - 10)}` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${reference}${ticks}${zeroTick}${dates}${endLabel}
       <polyline points="${line(curve)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
@@ -3546,7 +3553,7 @@
   // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a listed market, key or series, reads
   // as its full label (marketFull, as Billing's research lines say it), a key only the app knows as its
   // short label, and a key nothing knows as "an unlisted market", never the raw key.
-  const AP_PICKING = "a market it's still picking";
+  const AP_PICKING = "a market it’s still picking";
   function apMarketName(n) {
     const s = String(n || '');
     const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || x.label === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
@@ -3564,10 +3571,10 @@
   function apMeanwhile(d) {
     if (!d || !d.idle || !AP_IDLE_PAPER.has(d.idle.code)) return '';
     const all = apMarketNames(d), names = all.filter((n) => n !== AP_PICKING);
-    if (!all.length) return d.reviewing ? " Meanwhile it's reviewing the markets to pick its next move." : '';
-    if (!names.length) return " Meanwhile it's picking a market to research.";
+    if (!all.length) return d.reviewing ? " Meanwhile it’s reviewing the markets to pick its next move." : '';
+    if (!names.length) return " Meanwhile it’s picking a market to research.";
     const said = names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-    return ` Meanwhile it's researching ${esc(said)}.`;
+    return ` Meanwhile it’s researching ${esc(said)}.`;
   }
   // The server's story lines with each raw key it quoted from the research list said as apMarketName does.
   function apStory(d) {
@@ -3648,8 +3655,8 @@
       <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? ` ·\u00a0plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
-      <div><dt>Autopilot's paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>
-    </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot's. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
+      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>
+    </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot’s. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
   // Paused for credits while auto-reload is on and its last charge failed (the status's reload_failed,
@@ -3704,8 +3711,8 @@
     const ar = me.auto_reload;
     // Already under what a session needs to start: switched on, it would sit paused from the start.
     if (!ar && !me.needs_card && me.min_run_balance != null && me.credit_balance < me.min_run_balance)
-      return `<p class="apcard-cost">It uses your credits while it's on. You have ${usd(me.credit_balance)}, under the ${usd(me.min_run_balance)} a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.</p>`;
-    return `<p class="apcard-cost">It uses your credits while it's on (${usd(me.credit_balance)} left)${ar
+      return `<p class="apcard-cost">It uses your credits while it’s on. You have ${usd(me.credit_balance)}, under the ${usd(me.min_run_balance)} a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.</p>`;
+    return `<p class="apcard-cost">It uses your credits while it’s on (${usd(me.credit_balance)} left)${ar
       ? `. When they fall to ${usd(ar.threshold)}, auto-reload charges your card ${usd(ar.charge)} for ${usd(ar.amount)} more. Turn it off any time, or change auto-reload on <a href="/billing">Billing</a>.`
       : ' and pauses when they run out. Turn it off any time.'}</p>`;
   }

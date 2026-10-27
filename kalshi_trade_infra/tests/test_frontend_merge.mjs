@@ -612,10 +612,10 @@ test('the research headline uses all-time totals, not the 50 newest runs', async
   }});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> hypotheses and kept <em>4<\/em>/);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> ideas and kept <em>4<\/em>/);
 });
 
-test('Tau: a new user\'s first idea reads "1 hypothesis tested", not "1 hypotheses"', async () => {
+test('Tau: a new user\'s first idea reads "1 idea tested", not "1 ideas"', async () => {
   const at = (counts) => frontend({fetchImpl: path => {
     if (path === '/api/models') return response({models: [], default: ''});
     if (path === '/api/research/context') return response({markets: []});
@@ -627,12 +627,12 @@ test('Tau: a new user\'s first idea reads "1 hypothesis tested", not "1 hypothes
   let f = at({research_running: 1, research_queued: 0});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— all time, <em>1<\/em> hypothesis tested, <em>0<\/em> through every gate\./);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— all time, <em>1<\/em> idea tested, <em>0<\/em> through every gate\./);
   f.clearTimers();
   f = at({research_running: 0, research_queued: 0});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1<\/em> hypothesis and kept <em>0<\/em>/);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1<\/em> idea and kept <em>0<\/em>/);
   f.clearTimers();
 });
 
@@ -658,7 +658,7 @@ test('the seeded example session is listed as an example, not counted as the use
     assert.equal(f.root.querySelector('#rcount').textContent, count);
     assert.match(list, /Example<\/span>/); assert.match(list, /An example Tau ran for you when you signed up\. It cost you nothing\./);
     assert.doesNotMatch(list, /Cost: \$0\.00/);
-    if (own.length) { assert.match(said, /tested <em>3<\/em> hypotheses/); assert.match(list, /Cost: \$0\.42/); }
+    if (own.length) { assert.match(said, /tested <em>3<\/em> ideas/); assert.match(list, /Cost: \$0\.42/); }
     else assert.doesNotMatch(said, /Your engine has tested/);
   }
 });
@@ -1179,7 +1179,7 @@ test('the autopilot card says what switching it on costs before the click', asyn
   const cost = () => f.root.querySelector('#dash-ap .apcard-cost');
   f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 18.4, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
   await f.viewDashboard(); await flush();
-  assert.match(cost().innerHTML, /uses your credits while it's on \(\$18\.40 left\)/);
+  assert.match(cost().innerHTML, /uses your credits while it’s on \(\$18\.40 left\)/);
   assert.match(cost().innerHTML, /When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
   assert.match(cost().innerHTML, /<a href="\/billing">Billing<\/a>/);
   f.S.me.auto_reload = null; f.paintDashAp();
@@ -1216,11 +1216,11 @@ test('while its paper strategy holds nothing, the autopilot card also says what 
   f.S.ap = {...apOn, idle: flat, research: {...apOn.research, active: ['btc15m', 'eth15m']}};
   await f.viewDashboard(); await flush();
   const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
-  assert.match(now(), /holds no position\. It checks again at its market(?:'|&#39;)s next decision time\. Meanwhile it's researching BTC 15-min up\/down and ETH 15-min up\/down\.$/);
-  f.S.ap = {...f.S.ap, research: {...apOn.research, active: ["a market it's still picking"]}}; f.paintDashAp();
-  assert.match(now(), /Meanwhile it's picking a market to research\.$/);
+  assert.match(now(), /holds no position\. It checks again at its market(?:'|&#39;)s next decision time\. Meanwhile it’s researching BTC 15-min up\/down and ETH 15-min up\/down\.$/);
+  f.S.ap = {...f.S.ap, research: {...apOn.research, active: ["a market it’s still picking"]}}; f.paintDashAp();
+  assert.match(now(), /Meanwhile it’s picking a market to research\.$/);
   f.S.ap = {...f.S.ap, research: {...apOn.research, active: []}, reviewing: true}; f.paintDashAp();
-  assert.match(now(), /Meanwhile it's reviewing the markets to pick its next move\.$/);
+  assert.match(now(), /Meanwhile it’s reviewing the markets to pick its next move\.$/);
   f.S.ap = {...f.S.ap, reviewing: false}; f.paintDashAp();
   assert.match(now(), /next decision time\.$/);  // between runs: nothing to add
   // An idle line that already says what it is doing (nothing on paper) gets nothing added.
@@ -1330,7 +1330,7 @@ test('the autopilot panel shows Kill only once real money is armed or running', 
     return box.querySelector('#apf-controls').innerHTML;
   };
   const off = controls({autopilot: false});
-  assert.doesNotMatch(off, /data-ap="kill"|data-ap="livearm"/); assert.match(off, /See what's trading/);
+  assert.doesNotMatch(off, /data-ap="kill"|data-ap="livearm"/); assert.match(off, /See what’s trading/);
   const paper = controls({autopilot: true});
   assert.doesNotMatch(paper, /data-ap="kill"/); assert.match(paper, /data-ap="livearm" aria-disabled="true"/);
   assert.match(controls({autopilot: true, autopilot_live: true}), /data-ap="kill"/);
@@ -2030,7 +2030,7 @@ test('the autopilot card and panel show the last 7 days with real credits and pa
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money<\/small><\/dd>/);
   assert.match(card, /<dt>Ideas<\/dt><dd>1,234 tested ·\u00a02 passed<\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>1 strategy <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a04 closed trades<\/small><\/dd>/);
+  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a04 closed trades<\/small><\/dd>/);
   assert.match(card, /The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here/);
   assert.doesNotMatch(card, /\$3\.80|\$10\.72/);  // never netted or summed
   assert.doesNotMatch(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);  // the scorecard says it
@@ -2446,7 +2446,7 @@ test('the autopilot says the market it researches by its label, never a raw key 
   // series or label alike; a key only the app knows (eth15m, not in this catalog) by its short one.
   f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi', 'eth15m']}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
-  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it's still picking"]}};
+  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it’s still picking"]}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
   // The server sends a listed market's catalog label; it reads as it is.
   f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
@@ -3832,7 +3832,7 @@ test('autopilot walk: the last move says what and when, the pill says what it is
   // The feed's pulse follows the status read: researching, off, or idle on its schedule.
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute']}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute');
-  f.S.ap = {...ap, research: {active: ["a market it's still picking"]}};
+  f.S.ap = {...ap, research: {active: ["a market it’s still picking"]}};
   assert.equal(f.apIdleLine(), 'Picking a market to research');
   f.S.ap = {...ap, autopilot: false, mode: 'off'};
   assert.match(f.apIdleLine(), /^Off: it acts only when you message it/);
@@ -4228,7 +4228,7 @@ test('the autopilot switch card says it would wait for credits when the balance 
   f.S.me.user.autopilot = false; f.S.ap = null;
   await f.viewDashboard(); await flush();
   const cost = f.root.querySelector('#dash-ap .apcard-cost').innerHTML;
-  assert.equal(cost, 'It uses your credits while it\'s on. You have $0.40, under the $1.00 a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.');
+  assert.equal(cost, 'It uses your credits while it’s on. You have $0.40, under the $1.00 a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.');
   f.clearTimers();
 });
 

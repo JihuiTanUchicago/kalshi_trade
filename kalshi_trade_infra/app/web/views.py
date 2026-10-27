@@ -244,7 +244,7 @@ def _health_from(cur, uid: int, deps: List[Dict], stake: Optional[float], cash_r
         # the last part a link to Funds' Connect Kalshi). The line said "Add it on the Funds page." in plain text,
         # followed by a separate "Add demo key" link.
         return {"code": "demo_key", "need": "your Kalshi demo key",
-                "line": "Demo isn't trading: your Kalshi demo key isn't connected.",
+                "line": "Demo isn’t trading: your Kalshi demo key isn’t connected.",
                 "action": {"label": "Add it on the Funds page", "href": "/funds#connect-kalshi"}}
     stakes = [float(_spec_sizing(d)["stake"]) for d in active
               if d["status"] == "running" and _spec_sizing(d).get("stake") is not None]
@@ -258,7 +258,7 @@ def _health_from(cur, uid: int, deps: List[Dict], stake: Optional[float], cash_r
         return None
     has = "has $0.00" if cash < 0.005 else "has %s, less than one %s stake" % (_usd(cash), _usd(least))
     return {"code": "demo_funds", "need": "demo funds: your Kalshi demo account %s" % has,
-            "line": "Demo isn't trading: your Kalshi demo account %s. Add demo funds on Kalshi's demo site." % has,
+            "line": "Demo isn’t trading: your Kalshi demo account %s. Add demo funds on Kalshi’s demo site." % has,
             "action": {"label": "Open Kalshi demo", "href": demo_twins.KALSHI_DEMO_SITE}}
 
 
@@ -389,7 +389,8 @@ def _status_why(d: Dict, demo_key_back: bool = False) -> Optional[str]:
     if d.get("status") == "paused" and demo_key_back and _DEMO_KEY_PAUSE in raw:
         return "Your Kalshi demo key wasn't connected when it paused. It is now, so you can resume it"
     if raw not in ("By you", "Approved agent proposal", "Kill switch") and not re.search(r"% >= (?:stop|limit) ", raw):
-        why = customer_text.clean(raw, "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")
+        why = customer_text.clean(customer_text.tournament_status(raw),
+                                  "Stopped automatically" if d.get("status") == "stopped" else "Paused automatically")
         guard = _LOSS_GUARD.match(raw)
         if (guard and d.get("status") == "paused" and d.get("realized_pnl") is not None
                 and float(d["realized_pnl"]) < -float(guard.group(1).replace(",", ""))):
@@ -413,7 +414,7 @@ def _plain_pause_reason(why: str) -> str:
 
     why = (why or "").strip()
     if why == demo_twins.PAUSE_REASON:  # stored as "... the demo copy stopped too", but it is paused (_demo_copy_pause)
-        return "its paper deployment wasn't running, so its demo copy paused with it"
+        return "its paper deployment wasn’t running, so its demo copy paused with it"
     m = re.search(r"position down ([\d.]+)% >= stop ([\d.]+)%", why)
     if m:
         return "its safety stop sold a position that had lost %.0f%% of its cost" % float(m.group(1))
@@ -422,13 +423,13 @@ def _plain_pause_reason(why: str) -> str:
         return "it lost %.0f%% of its money, past its %.0f%% limit" % (float(m.group(1)), float(m.group(2)))
     if why.lower().startswith("lost $"):
         return "it hit its loss guard"
-    return (customer_text.clean(why, "") or "").rstrip(".")[:120] or "it was paused"
+    return (customer_text.curly(customer_text.clean(why, "")) or "").rstrip(".")[:120] or "it was paused"
 
 
 def _pause_clause(raw: Optional[str]) -> str:
     """Why a deployment is paused, as the end of a sentence."""
     raw = (raw or "").strip()
-    return {"By you": "you paused it", "Approved agent proposal": "you approved the agent's proposal to pause it",
+    return {"By you": "you paused it", "Approved agent proposal": "you approved the agent’s proposal to pause it",
             "Kill switch": "you pressed Kill"}.get(raw) or _plain_pause_reason(raw)
 
 

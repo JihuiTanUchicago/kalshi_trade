@@ -189,7 +189,7 @@ def test_story_says_when_the_last_check_in_is_late(monkeypatch):
     # Researching right now is its own answer, and no review yet means it's just starting.
     busy = server._autopilot_story({"autopilot": True, "last_review_at": now - timedelta(hours=5),
                                     "research": {"active": ["Bitcoin"]}})
-    assert busy[0] == "Right now it's researching Bitcoin."
+    assert busy[0] == "Right now it’s researching Bitcoin."
     assert "checks in about every" in server._autopilot_story({"autopilot": True, "last_review_at": None})[0]
 
 
@@ -200,11 +200,11 @@ def test_story_says_a_queued_or_running_review_is_happening_now(monkeypatch):
     now = datetime(2026, 10, 25, 16, 0)
     monkeypatch.setattr(server.repo, "now_utc", lambda: now)
     first = server._autopilot_story({"autopilot": True, "reviewing": True, "last_review_at": now})
-    assert first[0] == "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed."
+    assert first[0] == "Right now it’s reviewing the markets to pick its next move. Each move shows up in its activity feed."
     queued = server._autopilot_story({"autopilot": True, "last_review_at": now,
                                       "review_wait": {"state": "queued", "seconds": 400, "overdue": True}})
     assert queued[0] == ("Its next review has waited 6 minutes for a free worker, longer than usual. "
                          "It starts when one frees up.")
     # Research already running is the more specific answer.
     assert server._autopilot_story({"autopilot": True, "reviewing": True,
-                                    "research": {"active": ["Bitcoin"]}})[0] == "Right now it's researching Bitcoin."
+                                    "research": {"active": ["Bitcoin"]}})[0] == "Right now it’s researching Bitcoin."
