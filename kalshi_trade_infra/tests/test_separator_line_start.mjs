@@ -3,7 +3,7 @@
 // began "· 3 trades", "· Max 2 open" or "· +$3.80 on paper". This renders every main page of both bundles from
 // the view fuzz's replies (and the whole states it renders: new accounts, older rows) and reads what each page
 // wrote, then checks the bundles' own source, so a page the fixtures don't reach can't bring the pattern back.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {pageFiles} from './bundle_source.mjs';
@@ -71,6 +71,20 @@ for (const bundle of ['app.js', 'app.meridian.js']) {
     const seen = files.flatMap(([f, src]) => src.replace(KEPT, '').split('\n').flatMap((line, i) => (
       LEADING.test(line) && !/^\s*(\/\/|\*)/.test(line) ? [`${f}:${i + 1}: ${line.trim().slice(0, 120)}`] : [])));
     assert.deepEqual(seen, []);
+  });
+
+  // A plain " · " (a breakable space on both sides) can start a line too. Only a line that splits a server's or
+  // Kalshi's own text on it keeps one; a server line drawn as is goes through sepLine, which makes each one SEP.
+  test(`${bundle}: the bundle and its page files have no plain " · " separator`, () => {
+    const dir = new URL('../app/static/', import.meta.url);
+    const own = readFileSync(new URL(bundle, dir), 'utf8');
+    const land = own.indexOf('  // ---------- landing (pre-login) ----------'), dash = own.indexOf('  // ---------- dashboard ----------');
+    const files = [[bundle, own.slice(0, land) + own.slice(dash)], ...pageFiles(bundle).map((f) => [f, readFileSync(new URL(f, dir), 'utf8')])];
+    const PLAIN = new RegExp(`[ \\t]${DOT} `);
+    const seen = files.flatMap(([f, src]) => src.split('\n').flatMap((line, i) => (
+      PLAIN.test(line.replace(/\s\/\/\s.*$/, '')) && !/^\s*(\/\/|\*)/.test(line) && !line.includes('.split(') ? [`${f}:${i + 1}: ${line.trim().slice(0, 120)}`] : [])));
+    assert.deepEqual(seen, []);
+    assert.match(own, /\n {2}const sepLine = \(s\) => esc\(s\)\.split\(' \\u00b7 '\)\.join\(SEP\);\n/);
   });
 }
 

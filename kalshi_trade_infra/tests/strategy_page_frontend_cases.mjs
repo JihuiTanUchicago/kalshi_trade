@@ -1,5 +1,5 @@
 // Strategy page (/strategies/:id) cases, run against each bundle's offline DOM/transport harness.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
@@ -113,6 +113,10 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const f = await open({status: 'passed', out_of_sample: null, experiment: exp});
     const figs = f.root.querySelector('#figs').innerHTML;
     assert.match(figs, /\+\$20\.46/); assert.match(figs, /after fees, over 132 trades the agent never saw/);
+    // Its record has no return on capital (that is the old backtest's later slice): "Return on capital —" stood on every
+    // research session's strategy page. With no figure it is left out.
+    assert.deepEqual(f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['Unseen-data P&L', 'In-sample P&L', 'Ideas tested']);
+    assert.doesNotMatch(figs, /Return on capital/);
     assert.doesNotMatch(figs + main(f), /Rejected before the unseen test|Not tested out-of-sample|not advanced to the unseen-data test/);
     assert.match(main(f), /On 132 trades of data the agent never saw while iterating, it made \$20\.46 after fees \(\+3\.10% of the stake per trade\), one of 5 ideas tested this run\./);
     // Too few trades to judge: the loss and the count it had, still not "rejected before the test".
@@ -155,14 +159,19 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.match(html, /Most recent later-period trades/); assert.match(html, /No later-period trades to show\./);
       assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest’s later-period pace, 2 trades would have made/);
       assert.doesNotMatch(html, /never saw|never touched|Unseen-data P&|in-sample only|Never seen \(out-of-sample\)|UNSEEN|Unseen by the agent|Unseen →|Unseen \(held out\)|unseen window|unseen trades|unseen-data pace|only ever saw/);
+      // Plain words for what it is, never the pipeline's own ("statistical-gatekeeper record", "pre-registration",
+      // "record missing", "reclassified to backtest-only").
+      assert.doesNotMatch(html, /[Gg]atekeeper|[Pp]re-registration|[Mm]ultiple-testing|record missing|Marked passed|reclassif|[Bb]acktest-only/);
+      if (status === 'backtest-only') assert.match(html, /It never went through the held-out tests: no test on data it hadn’t seen, no one-time final test and no correction for how many ideas were tried\./);
       if (status === 'passed') {
-        assert.match(html, /Not validated \(record missing\)/);
+        assert.match(html, /<span class="mk armed">Not validated<\/span><p>It’s marked Passed, but there’s no record of its held-out tests \(a test on data it hadn’t seen and the one-time final test\), so nothing/);
         assert.match(html, /so nothing on this page is held-out evidence: its figures come from the history it searched and from the data after the split date, which picked it\. Treat it as unvalidated\./);
       }
     }
     // With no later-period result its only figures are in-sample: no unseen-data figure, and no "rejected before the test".
     const bare = await open({status: 'passed', experiment: null, out_of_sample: null, recent_trades: []});
-    assert.deepEqual(bare.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['In-sample P&L', 'Return on capital', 'Ideas tested']);
+    // No later-period result, no return on it: the figure is left out, never "Return on capital —".
+    assert.deepEqual(bare.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['In-sample P&L', 'Ideas tested']);
     assert.match(main(bare), /It has no held-out result: its only figures are from the history it searched\./);
     assert.match(main(bare), /so nothing on this page is held-out evidence: its only figures are from the history it searched\. Treat it as unvalidated\./);
     assert.match(main(bare), /No result after the split date recorded: its only figures are from the history it searched\./);
@@ -198,7 +207,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const f = await open({status: 'backtest-only', experiment: null});
     assert.doesNotMatch(main(f), /Deploying it is your decision/);
     assert.match(main(f), /It can’t be deployed: only a strategy put through those checks can be\./);
-    assert.match(main(f), /A backtest-only strategy can’t be deployed: it never went through the held-out checks\./);
+    assert.match(main(f), /A strategy tested only on a backtest can’t be deployed: it never went through the held-out checks\./);
     assert.equal(f.root.querySelector('#dep-paper'), null);
   });
 

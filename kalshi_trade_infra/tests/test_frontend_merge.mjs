@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+import assert, {visible} from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
@@ -353,7 +353,8 @@ test('the sidebar lists each holding with every figure instead of a clipped five
   assert.doesNotMatch(list, /<x>/); assert.doesNotMatch(output, /<th>Contract<\/th><th>Position<\/th>/);
   // Each holding says why it was bought and how it will exit; one without a reason says nothing.
   assert.deepEqual([...list.matchAll(/<div class="sub-fig pos-why">([^<]*)<\/div>/g)].map((m) => m[1]),
-    ['Entered at 60¢: edge ≥ 2¢ after fees · Holds to settlement']);
+    // The server joins entry and exit with a plain " · "; drawn, each is SEP, so "·" ends a line and never starts one.
+    ['Entered at 60¢: edge ≥ 2¢ after fees\u00a0· Holds to settlement']);
   // Each contract opens its market page (price, settlement rules, your positions in it), by its market's plain
   // name (here the strategy's market, as no listed market covers these tickers); the ticker sits on a small line.
   assert.match(list, /<a href="\/explore\?m=KXBTC15M-B">BTC 15-min up\/down<\/a>/); assert.match(list, /href="\/explore\?m=KXBTC15M-%3Cx%3E"/);
@@ -758,8 +759,10 @@ test('every trade on the dashboard and Deploy says why it was entered and why it
   await f.viewDashboard(); await flush();
   const html = f.root.querySelector('#main').innerHTML;
   const lines = [...html.matchAll(/<small class="stub-why">([^<]*)<\/small>/g)].map((m) => m[1]);
-  assert.deepEqual(lines, ['Entered at 41¢: edge ≥ 3¢ after fees · Exits: +20¢ take-profit, else settlement',
-    why.replace('<', '&lt;'), 'Held to settlement: &lt;img src=x&gt;']);  // the row with no reason shows none
+  // The server's plain " · " between entry and exit is drawn as SEP: at 390px a line began "· Exits: …".
+  assert.deepEqual(lines, ['Entered at 41¢: edge ≥ 3¢ after fees\u00a0· Exits: +20¢ take-profit, else settlement',
+    why.replace('<', '&lt;').replace(' · ', '\u00a0· '), 'Held to settlement: &lt;img src=x&gt;']);  // the row with no reason shows none
+  assert.ok(lines.every((t) => !/ ·/.test(t)), lines.join('\n'));
   assert.doesNotMatch(html, /<img/);
   // Walk 2026-10-27 at 390px: a settled trade's line began "· Bitcoin up or down in 15 minutes" and "· PAPER · 7h ago".
   // Each "·" has a no-break space before it and a plain one after, so it ends its line.
@@ -3397,7 +3400,7 @@ test('Deploy prices a deployment\'s open positions in its row, as the dashboard 
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dep(1, 'paper'), dep(2, 'live'), dep(3, 'paper')],
     open_positions: [pos(10, 1, 'paper', 1.25), pos(11, 1, 'paper', -0.5), pos(12, 2, 'live', 2), pos(13, 3, 'paper', null)]}) : response({})});
   await f.viewDeploy(); await flush(); await flush();
-  const html = f.root.querySelector('#deps').innerHTML;
+  const html = visible(f.root.querySelector('#deps').innerHTML);
   assert.ok(html.includes('+$0.75'), 'paper deployment 1: its two marks');
   assert.ok(html.includes('+$2.00'), 'live deployment 2: its own mark only');
   assert.doesNotMatch(html, /\+\$2\.75/);  // never added across deployments or books

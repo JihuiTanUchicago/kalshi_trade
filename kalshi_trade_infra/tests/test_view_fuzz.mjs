@@ -4,7 +4,7 @@
 // each object's plain fields all missing, then all null, and each nested object or list alone. A crash
 // is what the page itself reports to /admin (reportBroken('view')) or a promise it leaves rejected.
 // TAU_VIEW_FUZZ=full takes every field away on its own instead (slower; for hunting, not CI).
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 import {fuzzPage, loadBundle, pageText, renderPage} from './view_fuzz_harness.mjs';
 import {me, replies, scenarios} from './view_fuzz_fixtures.mjs';

@@ -156,7 +156,9 @@ def test_a_tune_proposal_approved_then_another_declined_through_the_routes(conn,
 
     # -- Approve ---------------------------------------------------------------------------------
     ask = _turn(conn, monkeypatch, web, token, uid, did, 0.08)
-    assert ask["content"] == "Proposed adjustment to %s. It passed the backtest gates." % TITLE
+    # A tuned strategy is backtest-only: the line says what that is, never "passed the backtest gates".
+    assert ask["content"] == ("Proposed adjustment to %s. The change held up in a backtest, which isn’t a test on data "
+                              "it hadn’t seen." % TITLE)
     assert ask["deployment_mode"] == "paper"
     tuned = _proposal(conn, ask["proposal_id"])["strategy_id"]
     assert tuned != original and repo.get_deployment(conn.cursor(), uid, did)["strategy_id"] == original  # nothing yet

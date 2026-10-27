@@ -6,7 +6,7 @@ window.TauPage('billing', (T) => {
   const {
     alert0, api, armed, BEHIND, boardTitle, busy, cardFormFail, CLOCK, CLOCK_ZONE, dateFmt, esc, fig, flash,
     halfUp, ICON, KIND_LABEL, loading, loadStripe, num, paceDay, paceTooSoon, paceWords, paint, poll, refreshed,
-    root, runwayLabel, S, SEP, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote,
+    root, runwayLabel, S, SEP, sessionTitle, settleAt, shell, stripeFail, syncMeBilling, topupCharge, usd, waitNote, WJ,
     WEEKDAY_DAY
   } = T;
 
@@ -218,7 +218,7 @@ window.TauPage('billing', (T) => {
   // What a ledger line is, under its name: usage is one model call (the memo names the model), and credits
   // bought show the credits, while the card paid those plus the purchase fee. Amounts are the server's.
   // A charge under a cent (one short model call) shows three decimals instead of a misleading −$0.00.
-  const ledgerAmount = (v) => { const n = +v; return n && Math.abs(n) < 0.005 ? (n < 0 ? '−' : '+') + '$' + Math.abs(halfUp(n, 3)).toFixed(3) : usd(v, true); };
+  const ledgerAmount = (v) => { const n = +v; return n && Math.abs(n) < 0.005 ? (n < 0 ? '−' : '+') + WJ + '$' + Math.abs(halfUp(n, 3)).toFixed(3) : usd(v, true); };
   const USAGE_PREFIX = /^Agent usage\s\u00b7\s/;  // the server's memo, "Agent usage" then a middle dot
   // A usage line: what it was for (`item`: research session, autopilot research or check-in, chat)
   // over the model's name (`model`). The server sends both and never the model's internal id.

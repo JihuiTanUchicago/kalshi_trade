@@ -1,5 +1,5 @@
 // Reused frozen86 workspace regressions, targeted at Meridian; current Funds behavior is reconciled.
-import assert from 'node:assert/strict';
+import assert, {visible} from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
@@ -324,7 +324,7 @@ test('a strategy page stamps its status once: the verdict under the head drops a
   const stamps = (f, said) => [...f.root.querySelector('.strategy-pagehead').querySelectorAll('.mk'), ...f.root.querySelector('article.paper').querySelectorAll('.mk')]
     .filter(el => el.textContent.trim() === said).length;
   for (const [status, said, words] of [['failed', 'Void', /It reached the unseen-data gate and failed it/], ['rejected', 'Rejected', /Rejected — /],
-    ['backtest-only', 'Backtest only', /never put through statistical validation/]]) {
+    ['backtest-only', 'Backtest only', /It never went through the held-out tests: no test on data it hadn’t seen, no one-time final test and no correction for how many ideas were tried\./]]) {
     const f = strategyFrontend(detailStrategy({status, experiment: null}));
     await f.viewStrategy(42); await flush();
     assert.equal(stamps(f, said), 1, `${status}: one "${said}" stamp`);
@@ -335,7 +335,7 @@ test('a strategy page stamps its status once: the verdict under the head drops a
   const f = strategyFrontend(detailStrategy({status: 'passed', experiment: null}));
   await f.viewStrategy(42); await flush();
   assert.equal(stamps(f, 'Passed'), 1);
-  assert.equal(f.root.querySelector('.legacy-verdict .mk').textContent, 'Not validated (record missing)');
+  assert.equal(f.root.querySelector('.legacy-verdict .mk').textContent, 'Not validated');
   assert.match(readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8'), /\.legacy-verdict \.rp-verdict p:first-child \{ margin-top: 0; \}/);
 });
 
@@ -348,7 +348,7 @@ test('strategy evidence identifies run-wide trial counts and places missing vali
     const trials = paper.querySelectorAll('#figs .m').find(el => el.querySelector('dt').textContent === 'Ideas tested');
     assert.equal(trials.querySelector('.fig').textContent, expected);
     assert.equal(paper.querySelectorAll('.rp-verdict').length, 1);
-    assert.match(paper.querySelector('.legacy-verdict').textContent, /Not validated \(record missing\)/);
+    assert.match(paper.querySelector('.legacy-verdict').textContent, /^Not validated\s*It’s marked Passed, but there’s no record of its held-out tests/);
     assert.ok(output.indexOf('class="legacy-verdict"') < output.indexOf('id="figs"'));
     assert.match(output, /Backtest results/); assert.doesNotMatch(output, /<h4 class="paper-h">Backtest<\/h4>/);
     const saved = paper.querySelector('.saved-result');
@@ -878,9 +878,11 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({open_positions: open, recent_closed: closed})); }});
   await f.viewDashboard();
   const why = key => positionFor(f.root, key).querySelector('.position-why');
-  assert.equal(why('open-1').textContent, openWhy);
+  // The server joins entry and exit with a plain " · "; drawn, each is SEP, so a wrapped line ends on "·".
+  const drawn = s => s.replace(/ · /g, '\u00a0· ');
+  assert.equal(why('open-1').textContent, drawn(openWhy));
   assert.equal(why('open-2'), null);  // nothing stored to say: no empty line
-  assert.equal(why('closed-3').textContent, exitWhy.replace('<', '&lt;'));
+  assert.equal(why('closed-3').textContent, drawn(exitWhy.replace('<', '&lt;')));
   assert.equal(why('closed-4').textContent, 'Held to settlement: &lt;img src=x&gt;');
   assert.ok(f.root.querySelector('#recent-settlements').contains(why('closed-3')));
   assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /<img/);
@@ -889,12 +891,12 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
   const d = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments: [], open_positions: [pos, {...pos, ticker: 'KXRAINNYC-T2', why: null}]}); }});
   await d.viewDeploy(); await flush();
   const table = d.root.querySelector('#openpos').innerHTML;
-  assert.deepEqual([...table.matchAll(/<div class="sub-fig pos-why">([^<]*)<\/div>/g)].map(m => m[1]), [openWhy]);
+  assert.deepEqual([...table.matchAll(/<div class="sub-fig pos-why">([^<]*)<\/div>/g)].map(m => m[1]), [drawn(openWhy)]);
   const holdings = [{ticker: 'KXBTC15M-A', side: 'yes', qty: 2, entry_price: 0.35, cost: 0.7, unrealized: null, mode: 'paper',
     market_close_time: '2026-10-25T07:45:00Z', why: openWhy}];
   const s = strategyFrontend(detailStrategy({holdings})); await s.viewStrategy(42); await flush();
   const list = s.root.querySelector('#main').innerHTML;
-  assert.match(list, new RegExp('<ul class="holdlist">[\\s\\S]*<div class="sub-fig pos-why">' + openWhy.replace(/[+.*?()]/g, '\\$&') + '</div></li>'));
+  assert.match(list, new RegExp('<ul class="holdlist">[\\s\\S]*<div class="sub-fig pos-why">' + drawn(openWhy).replace(/[+.*?()]/g, '\\$&') + '</div></li>'));
   assert.equal(postRequests(f).length + postRequests(d).length, 0);
 });
 
@@ -989,7 +991,7 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     const evidence = evidenceFor(monitor, d.id); assert.equal(evidence.tag, 'details'); assert.equal(evidence.open, false);
     // No backtest figure (a research session's strategy keeps its unseen result with the gatekeeper): no "Unseen P&L —".
     if (d.status === 'running') assert.ok(!evidence.textContent.includes('Unseen P&amp;L'), evidence.textContent);
-    else assert.ok(evidence.textContent.includes(`Unseen P&amp;L ${d.status === 'paused' ? '$0.00' : '+$7.25'}`));
+    else assert.ok(visible(evidence.textContent).includes(`Unseen P&amp;L ${d.status === 'paused' ? '$0.00' : '+$7.25'}`));
     assert.ok(evidence.textContent.includes('Deployed ' + new Date(d.created_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})));
     assert.deepEqual(monitor.querySelectorAll('[data-dep]').map(button => button.dataset.act),
       d.status === 'running' ? ['pause', 'stop'] : d.status === 'paused' ? ['resume', 'stop'] : ['stop']);
@@ -1693,14 +1695,14 @@ test('Overview chooses the correct primary money bucket and preserves disconnect
     assert.equal(!!primary.querySelector('.kalshi-cash'), cashInBand, label);
     if (!livePrimary) assert.equal((cashInBand ? primary.querySelector('.kalshi-cash') : accounts).querySelector('.fig').textContent, secondaryLive, label);
     const paper = f.root.querySelector('.paper-summary');
-    for (const amount of ['$1,111.25', '+$98.40', '−$7.50', '$900.00', '$211.25']) assert.ok(paper.textContent.includes(amount), label + ' paper ' + amount);
+    for (const amount of ['$1,111.25', '+$98.40', '−$7.50', '$900.00', '$211.25']) assert.ok(visible(paper.textContent).includes(amount), label + ' paper ' + amount);
     assert.match(accounts.textContent, /\$2,222\.50/); assert.match(accounts.textContent, /\$2,200\.00 capital/);
     const liveHost = livePrimary || cashInBand ? primary : accounts;
     if (!data.live.connected) assert.equal(liveHost.querySelector('a').getAttribute('href'), '/funds#connect-kalshi', label);
     if (data.live.connected && data.live.balance == null) assert.match(liveHost.textContent, /read your Kalshi balance/, label);
     if (livePrimary) {
-      for (const amount of ['−$2.00', '$50.00']) assert.ok(primary.textContent.includes(amount), label + ' live ' + amount);
-      if (data.live.connected && data.live.balance != null) assert.ok(primary.textContent.includes('+$17.00'), label + ' realized live P&L');
+      for (const amount of ['−$2.00', '$50.00']) assert.ok(visible(primary.textContent).includes(amount), label + ' live ' + amount);
+      if (data.live.connected && data.live.balance != null) assert.ok(visible(primary.textContent).includes('+$17.00'), label + ' realized live P&L');
     }
     assert.equal(postRequests(f).length, 0);
   }
@@ -3044,7 +3046,7 @@ test('deployment details hold realized P&L against the backtest pace for the sam
   const data = dashboardData({deployments: [dep(1, 5, {pnl: 12, trades: 6}), dep(2, 0, {pnl: 12, trades: 6}), dep(3, 1, {pnl: 3})]});
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(data); }});
   await f.viewDashboard();
-  const text = id => evidenceFor(f.root.querySelector('#dash-deps'), id).textContent;
+  const text = id => visible(evidenceFor(f.root.querySelector('#dash-deps'), id).textContent);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
   assert.ok(text(1).includes('Backtest estimate +$10.00 for the same 5 trades\u00a0· Unseen P&amp;L +$12.00'), text(1));
   assert.ok(!text(2).includes('Backtest estimate')); assert.ok(!text(3).includes('Backtest estimate'));
@@ -4570,7 +4572,7 @@ test('Deploy prices a deployment\'s open positions in its row, as the dashboard 
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [dep(1, 'paper'), dep(2, 'live'), dep(3, 'paper')],
     open_positions: [pos(10, 1, 'paper', 1.25), pos(11, 1, 'paper', -0.5), pos(12, 2, 'live', 2), pos(13, 3, 'paper', null)]}) : response({})});
   await f.viewDeploy(); await flush(); await flush();
-  const html = f.root.querySelector('#deps').innerHTML;
+  const html = visible(f.root.querySelector('#deps').innerHTML);
   assert.ok(html.includes('+$0.75'), 'paper deployment 1: its two marks');
   assert.ok(html.includes('+$2.00'), 'live deployment 2: its own mark only');
   assert.doesNotMatch(html, /\+\$2\.75/);  // never added across deployments or books

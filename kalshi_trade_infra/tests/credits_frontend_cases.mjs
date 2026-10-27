@@ -5,7 +5,7 @@
 // - "How long credits last" counts to where research pauses, and with auto-reload on it says when the card
 //   is next charged and for how much, instead of a red "Credits last" that auto-reload prevents.
 // - A credits pause while the auto-reload card is declined names the card as the step, everywhere.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 

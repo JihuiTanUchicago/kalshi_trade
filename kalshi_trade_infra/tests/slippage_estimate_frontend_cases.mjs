@@ -5,13 +5,13 @@
 // before a real order lands (0.2-0.55c a contract a fill on Kalshi's books). The estimate rides beside paper
 // realized P&L on the dashboard, the strategy page's "Since deploying" and the track record's paper tab: muted,
 // never tinted, never in place of a figure, and never on live or demo.
-import assert from 'node:assert/strict';
+import assert, {visible} from './assert_text.mjs';
 import {test} from 'node:test';
 import {paperBook as trackBook} from './track_record_trust_frontend_cases.mjs';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
-const plain = (html) => html.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+const plain = (html) => visible(html).replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 const EST = {pnl: 3.1, per_fill_cents: 0.5};
 export const SAID = '≈ +$3.10 after typical live slippage (estimate: 0.5¢ a contract each time an order fills)';
 const estSpans = (html) => html.match(/<span class="slip-est">[^<]*<\/span>/g) || [];

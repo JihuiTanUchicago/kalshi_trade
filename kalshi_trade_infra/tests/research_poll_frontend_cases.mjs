@@ -1,7 +1,7 @@
 // Shared cases, run against each bundle's offline DOM/transport harness (Tau and Meridian): the Research
 // list's 5s poll sends back the version of its last answer, repaints nothing when the server says the
 // list is unchanged, and when one session moved rewrites that session's row alone.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

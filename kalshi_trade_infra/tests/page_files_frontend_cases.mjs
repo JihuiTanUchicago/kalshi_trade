@@ -15,7 +15,7 @@
 //   pill needs none, the panel shows its head over a skeleton meanwhile, and a file that doesn't
 //   arrive says so in the panel with Try again; a panel closed meanwhile stays closed.
 // The harnesses run every page file up front (bundle_source.mjs); a case takes one out to see it fetched.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

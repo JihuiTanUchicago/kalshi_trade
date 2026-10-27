@@ -4132,8 +4132,10 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         pid = repo.create_proposal(cur, user_id, "adjust", reason, dep["id"], sid, "applied" if auto else "pending")
         if auto:
             repo.set_deployment_strategy(cur, user_id, dep["id"], sid)
-            return "Autopilot applied an adjustment to %s. It passed the backtest gates." % dep["title"], pid
-        return "Proposed adjustment to %s. It passed the backtest gates." % dep["title"], pid
+            return ("Autopilot applied an adjustment to %s on paper. The change held up in a backtest, which "
+                    "isn’t a test on data it hadn’t seen." % dep["title"]), pid
+        return ("Proposed adjustment to %s. The change held up in a backtest, which isn’t a test on data it "
+                "hadn’t seen." % dep["title"]), pid
     if kind in ("pause", "resume"):
         target = "paused" if kind == "pause" else "running"
         if dep["status"] == target:

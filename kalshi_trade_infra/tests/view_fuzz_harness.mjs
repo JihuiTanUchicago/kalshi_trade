@@ -161,10 +161,12 @@ export async function renderPage(bundleSource, path, reply, {me, trace} = {}) {
   const location = {pathname, search: query ? '?' + query : '', hash: '', origin: 'http://offline.invalid', href: 'http://offline.invalid' + path, reload() {}, assign() {}, replace() {}};
   const navigate = (_s, _t, to) => { const [p, q] = String(to).split('?'); location.pathname = p.split('#')[0]; location.search = q ? '?' + q : ''; };
   const store = () => { const m = new Map(); return {getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k)}; };
+  const documentListeners = {};  // what the bundle listens for on the document (a copy, a key), by type
   const document = {body, head: new Element('head'), activeElement: body, hidden: false, title: '', cookie: '',
     documentElement: new Element('html'),
     getElementById: id => body.querySelector('#' + id), querySelector: s => body.querySelector(s), querySelectorAll: s => body.querySelectorAll(s),
-    addEventListener() {}, removeEventListener() {}, createElement: tag => new Element(tag), elementsFromPoint: () => []};
+    addEventListener: (type, cb) => (documentListeners[type] ||= []).push(cb), removeEventListener() {},
+    createElement: tag => new Element(tag), elementsFromPoint: () => []};
   const timers = [];
   const context = vm.createContext({
     Intl, URL, URLSearchParams, AbortController, console: {log() {}, warn() {}, error() {}, info() {}},
@@ -207,7 +209,7 @@ export async function renderPage(bundleSource, path, reply, {me, trace} = {}) {
     }
   } catch (e) { crashes.push(e); }
   finally { await flush(); process.off('unhandledRejection', onRejection); }
-  return {crashes: [...crashes, ...rejected], requests, root, location};
+  return {crashes: [...crashes, ...rejected], requests, root, location, document, documentListeners, window: context.window, t};
 }
 
 // Each bundle is compiled once and run in a fresh context per render (hundreds of renders a test).
@@ -216,7 +218,7 @@ function compiled(source) {
   if (!scripts.has(source)) {
     const boot = '  setupGlossary();\n  render();';
     if (source.split(boot).length !== 2) throw new Error('bundle boot line changed');
-    scripts.set(source, new vm.Script(source.replace(boot, 'globalThis.__t = {S, render};')));
+    scripts.set(source, new vm.Script(source.replace(boot, 'globalThis.__t = {S, render, usd, plain};')));
   }
   return scripts.get(source);
 }

@@ -1,7 +1,7 @@
 // boot.js's page error reports: an uncaught error, an unhandled rejection, or a failure the app bundle
 // passes to window.__tauReport goes to POST /api/client-errors, at most 5 per page load, each distinct
 // one once, with nothing that could identify a person, and the reporter itself can never throw or loop.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';

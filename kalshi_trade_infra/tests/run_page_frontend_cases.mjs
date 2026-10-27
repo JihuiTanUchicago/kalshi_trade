@@ -5,7 +5,7 @@
 // the pauses, a silent session's sentence is said once, the loop's phase line moves past a verdict, the
 // research system's explainer is one folded line (no "How it searches" figure), and a void or rejected
 // strategy's backtest P&L is muted and says it did not pass.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

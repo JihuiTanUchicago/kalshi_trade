@@ -6,7 +6,7 @@
 // - A press while the phone says it is offline sends nothing and says so.
 // - The strategy page's Deploy on paper, its Stop deployment, and bulk deploy say the same about Deploy.
 // - The paper-net phrase is said once, where it explains a paper figure: the headline, not every row.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

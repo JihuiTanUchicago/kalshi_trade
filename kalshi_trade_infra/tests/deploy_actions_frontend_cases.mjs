@@ -1,6 +1,6 @@
 // Shared cases for the Deploy board's actions, bulk deploy, the community feed and the research draft,
 // run against each bundle's offline DOM/transport harness (Tau and Meridian).
-import assert from 'node:assert/strict';
+import assert, {visible} from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
@@ -165,7 +165,7 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
       f.clearTimers();
       // Each signed amount sits in a no-wrap span (walk 2026-10-27 at 390px: "· −" ended a line, "$0.30 from …" began the
       // next); the words around it are read without the span.
-      const html = f.root.querySelector('#dfigs').innerHTML;
+      const html = visible(f.root.querySelector('#dfigs').innerHTML);
       for (const m of html.matchAll(/removed deployments?/g)) assert.match(html.slice(Math.max(0, m.index - 60), m.index), /<span class="nobr">[−+]?\$[\d.,]+<\/span> from \d+ $/);
       return html.replace(/<span class="nobr">([−+]?\$[\d.,]+)<\/span>/g, '$1');
     };
@@ -270,6 +270,9 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     const html = f.root.querySelector('#openpos').innerHTML;
     assert.match(html, /data-lab="Cost \+ fee">\$1\.51</);
     assert.doesNotMatch(html, /\$1\.50/);
+    // The column says what it is, as each row's label and the strategy page do: "Unreal." read as "unreal".
+    assert.deepEqual([...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]), ['Strategy', 'Market', 'Side', 'Cost + fee', 'Unrealized', 'Settles']);
+    assert.doesNotMatch(html, /Unreal\./);
     f.clearTimers();
   });
 

@@ -1,7 +1,7 @@
 // Shared cases, run against each bundle's offline DOM/transport harness (Tau and Meridian): what a Bitcoin trader deciding
 // whether to trust the dashboard's track record needs it to say. Its figures reconcile with the realized P&L every other
 // page shows for the same book.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});

@@ -4,7 +4,7 @@
 // outlined (ghost) buttons' borders. Body text needs 4.5:1, icons, borders and focus rings 3:1 (WCAG 2.1 AA). A token change that drops a pair
 // below that fails here. The pages declare color-scheme light, so dark-mode browsers render the
 // same tokens (checked in a browser at 390px and 1280px with Playwright: no difference).
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {bundleSource} from './bundle_source.mjs';

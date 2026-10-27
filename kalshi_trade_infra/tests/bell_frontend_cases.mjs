@@ -6,7 +6,7 @@
 // - marking the list read that didn't save puts the dot back, and only the next open tries once more;
 // - a bell link to a post opens the feed at that post with its replies, shows the feed from that post
 //   when it is older than the newest page, and says so when the post is gone.
-import assert from 'node:assert/strict';
+import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
