@@ -178,7 +178,7 @@ export function chatPanelCases({name, frontend, storageFor}) {
       {id: 4, role: 'system', content: 'Market focus set to btc.', created_at: AT},
     ]});
     const kinds = p.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent);
-    assert.deepEqual(kinds, ['You', 'Agent', 'Autopilot’s rule: kept running', 'Reviewed']);
+    assert.deepEqual(kinds, ['You', 'Agent', 'Autopilot’s rule: kept running', 'Market focus']);
     const own = p.box.querySelectorAll('.apf-rule');
     assert.equal(own.length, 1);
     assert.equal(own[0].textContent, 'To stop it anyway, pause it yourself on Deploy.');
@@ -203,5 +203,26 @@ export function chatPanelCases({name, frontend, storageFor}) {
     const html = feed.querySelectorAll('.apf-md').map((el) => el.innerHTML).join('\n');
     assert.ok(html.includes(TAILS) && html.includes('more than its $10.00 loss guard'), html);
     assert.doesNotMatch(html, /deployment #|#\d/);
+  });
+
+  // Walked 2026-10-27: changing the market focus, deploying from the Deploy page, the kill switch, the engine's
+  // stop-loss sale and its daily loss stops each landed in the feed under "Reviewed", seconds after a click
+  // when no review had run.
+  test(`${name}: lines no review wrote are headed as what they are, not "Reviewed"`, async () => {
+    const lines = [
+      'Market focus set to Bitcoin.',
+      'Market focus cleared.',
+      'Market focus set to Bitcoin. Autopilot will research, deploy and trade only these from now on.',
+      `Deployed ${TAILS} on paper.`,
+      'Kill switch: live autopilot off, 1 live deployment(s) paused.',
+      `Sold a NO position of your paper strategy ${TAILS} automatically: it fell 42.0% below its cost, past your 40.0% stop. The rest of the strategy keeps trading.`,
+      'Live autopilot auto-disabled: today\'s live loss $51.00 hit your $50.00 daily limit. Pausing live deployments.',
+      'Live trading stopped: your Kalshi account is down $60.00 today (equity $940.00), past your $50.00 daily limit. Live autopilot is off and live deployments are paused.',
+      'Autopilot paused Rain: it hit its loss guard.',
+    ];
+    const p = await panel({autopilot: true, chat: () => lines.map((content, i) => ({id: i + 1, role: 'system', content, created_at: AT}))});
+    const kinds = p.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent);
+    assert.deepEqual(kinds, ['Market focus', 'Market focus', 'Market focus', 'You deployed', 'Kill switch', 'Sold automatically',
+      'Live stopped', 'Live stopped', 'Reviewed']);
   });
 }

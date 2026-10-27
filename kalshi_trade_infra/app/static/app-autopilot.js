@@ -84,6 +84,16 @@ window.TauPage('autopilot', (T) => {
     if (k === 'set_risk' || k === 'set_exec') return { text: 'Approve applies these limits to every strategy you run, live ones included.' };
     return null;
   }
+  // Lines no review wrote, headed as what they are. Each sat under "Reviewed": your own market focus and kill
+  // switch, a deploy from the Deploy page, and the engine's stop-loss sale and daily loss stops (the server says
+  // those in words, customer_text.chat_rows).
+  const AP_OTHER = [
+    [/^Market focus (?:set to|cleared)\b/, 'Market focus'],
+    [/^Deployed .+ on (?:paper|LIVE money|the demo \(sandbox\) exchange)\.$/, 'You deployed'],
+    [/^Kill switch:/, 'Kill switch'],
+    [/^Sold an? (?:YES|NO) position of .+ automatically:/, 'Sold automatically'],
+    [/^(?:Live autopilot auto-disabled|Live trading stopped):/, 'Live stopped'],
+  ];
   // One feed entry, rendered with the SAME research-session parts (.ln timeline rail, .say card,
   // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
   // a legible end-to-end session, not a cramped chat. m.content is Markdown; m.stage/m.strategy/
@@ -117,9 +127,10 @@ window.TauPage('autopilot', (T) => {
     // The engine's own loss guard or drawdown limit paused a strategy (the server says it by name,
     // customer_text.auto_pause_line): no review ran, so it isn't headed "Reviewed".
     const guard = !m.proposal_kind && /^Paused (?:your (?:paper|demo|live) strategy .+|one of your strategies) automatically\b/.test(m.content || '');
+    const other = !m.proposal_kind && (AP_OTHER.find(([rx]) => rx.test(m.content || '')) || [])[1];
     const kind = (st === 'pending' && AP_ASK[m.proposal_kind]) || AP_ACT[m.proposal_kind]
       || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off')
-        : said || (rule ? 'Autopilot’s rule: kept running' : guard ? 'Paused automatically' : 'Reviewed'));
+        : said || (rule ? 'Autopilot’s rule: kept running' : guard ? 'Paused automatically' : other || 'Reviewed'));
     const own = rule ? '<p class="apf-ask apf-rule">To stop it anyway, pause it yourself on <a href="/deploy">Deploy</a>.</p>' : '';
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
     const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`
