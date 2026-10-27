@@ -2887,6 +2887,10 @@ body.landing-body .apf { display: none; }
 .t-ledger tr.ledger-day td { padding-top: 16px; border-bottom: 1px solid var(--rule-2); }
 .t-ledger .day-sum { margin-left: 10px; color: var(--ink-3); font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .t-ledger .ref { overflow-wrap: anywhere; }
+/* A statement line's amount. Credits added are not profit: neutral ink, set apart by weight, never a P&L gain's
+   green. A debit is plain ink with its minus sign. */
+.t-ledger .credit-in, .t-ledger .credit-out { color: var(--ink); white-space: nowrap; }
+.t-ledger .credit-in { font-weight: 600; }
 
 /* Keyboard focus you can see. `input:focus { outline: none }` (fields show focus with their border)
    also took it from the switches (Options: "Let it run until I stop it") and the What-if sliders,

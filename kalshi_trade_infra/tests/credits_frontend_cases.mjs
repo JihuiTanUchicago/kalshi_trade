@@ -7,6 +7,7 @@
 // - A credits pause while the auto-reload card is declined names the card as the step, everywhere.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -62,6 +63,29 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     assert.doesNotMatch(await tone({balance: 25.71, min_run_balance: 1}), /tint|pos|gain/);
     assert.match(await tone({balance: 0.4, min_run_balance: 1}), /tint neg/);  // under the research floor
     assert.match(await tone({balance: -0.3, min_run_balance: 1}), /tint neg/);
+  });
+
+  test(`${name}: the statement's credits added wear their own neutral tone, not a P&L gain's, and a debit still reads as one`, async () => {
+    // Top-ups, auto-reloads and the welcome bonus were drawn in the `gain` class, the one a P&L gain wears.
+    const at = (day) => ({day, created_at: `${day}T09:00:00Z`, first_at: `${day}T09:00:00Z`});
+    const f = billingPage(cardedBilling({ledger_cut: false, ledger: [
+      {kind: 'usage', amount: -1.25, item: 'Autopilot research', model: 'Claude Opus 4.6', calls: 3, ...at('2026-10-26')},
+      {kind: 'autoreload', amount: 25, card_charge: 26.38, ...at('2026-10-26')},
+      {kind: 'topup', amount: 10, card_charge: 10.55, ...at('2026-10-25')},
+      {kind: 'bonus', amount: 20, memo: 'Welcome credits', ...at('2026-10-24')}]}));
+    await f.viewBilling(); await flush();
+    const amounts = [...f.root.querySelectorAll('#bledger tbody tr')].filter((tr) => !tr.querySelector('.day-sum'))
+      .map((tr) => { const m = tr.querySelector('td.num').innerHTML.match(/^<span class="([^"]*)">([^<]*)<\/span>$/) || []; return {cls: m[1], text: m[2]}; });
+    assert.equal(amounts.length, 4);
+    assert.deepEqual(amounts.map((a) => a.cls), ['credit-out', 'credit-in', 'credit-in', 'credit-in']);
+    for (const a of amounts) assert.doesNotMatch(a.cls, /gain|loss|pos|neg/);
+    assert.deepEqual(amounts.map((a) => a.text), ['−$1.25', '+$25.00', '+$10.00', '+$20.00']);
+    // The theme's stylesheet draws both in neutral ink: no P&L green on a credit line.
+    const css = readFileSync(new URL(`../app/static/${name === 'Meridian' ? 'app.meridian.css' : 'app.css'}`, import.meta.url), 'utf8');
+    const rules = css.match(/[^{}]*\.credit-(?:in|out)[^{}]*\{[^}]*\}/g) || [];
+    assert.ok(rules.length);
+    for (const r of rules) assert.doesNotMatch(r, /gain-ink|--pos|--up|#0E5C33|#365D3B/i);
+    assert.match(css, /\.t-ledger \.credit-in, \.t-ledger \.credit-out \{ color: var\(--ink\);/);
   });
 
   test(`${name}: Billing says when auto-reload next charges the card, or when research pauses, not a stop auto-reload prevents`, async () => {

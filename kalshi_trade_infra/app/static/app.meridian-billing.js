@@ -317,10 +317,12 @@ window.TauPage('billing', (T) => {
     const days = [];
     rows.forEach((r) => { const last = days[days.length - 1]; if (last && last.day === (r.day || '')) last.rows.push(r); else days.push({ day: r.day || '', rows: [r] }); });
     const cents = usageCents(d, days);
+    // Credits added (a top-up, an auto-reload, the welcome bonus) are not profit: their amount is credit-in, a
+    // tone of its own, never the green a P&L gain wears. A debit is credit-out and keeps its minus sign.
     const line = (r) => `<tr>
       <td class="hint" data-lab="When"><time datetime="${esc(r.created_at)}">${r.day ? lineWhen(r) : settleAt(r.created_at)}</time></td>
       <td class="name" data-lab="Item">${esc((r.kind === 'usage' && r.item) || KIND_LABEL[r.kind] || r.kind)}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
-      <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${ledgerAmount(cents && cents.has(r) ? -cents.get(r) / 100 : r.amount)}</span></td></tr>`;
+      <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'credit-in' : 'credit-out'}">${ledgerAmount(cents && cents.has(r) ? -cents.get(r) / 100 : r.amount)}</span></td></tr>`;
     const head = (g) => {
       // Summed in millionths (the ledger's six places): a float sum can land a hair under a half cent.
       const micros = (rows) => rows.reduce((s, r) => s + Math.round(r.amount * 1e6), 0) / 1e6;
