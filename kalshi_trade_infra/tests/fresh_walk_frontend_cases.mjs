@@ -125,7 +125,7 @@ export function freshWalkCases({name, frontend, dashboard}) {
     const st = (f, id) => f.root.querySelector(`.sys-node[data-id="${id}"]`).getAttribute('data-st');
     const label = (f, id) => f.root.querySelector(`.sys-node[data-id="${id}"] .t`).textContent;
     assert.equal(text(small, 'db', 'm'), '3 MB', 'an estimate of 0 rows is left out');
-    assert.equal(text(small, 'forward', 'm'), '—');
+    assert.equal(text(small, 'forward', 'm'), 'not seen yet');
     assert.equal(text(small, 'cb_coll', 'm'), '7m ago', '120 is no count to show');
     assert.equal(text(small, 'features', 'm'), '20s ago');
     for (const id of ['kalshi', 'coinbase', 'bedrock', 'stripe']) assert.equal(text(small, id, 'm'), '', `${id} says nothing it can't show`);
@@ -220,8 +220,9 @@ export function freshWalkCases({name, frontend, dashboard}) {
     const metric = (id) => f.root.querySelector(`[data-m="${id}"]`).textContent;
     assert.equal(metric('sim_engine'), `2 paper running${SEP}not seen yet`);
     assert.equal(metric('live_engine'), `0 live${SEP}1 demo${SEP}not seen yet`);
-    assert.equal(metric('forward'), `0 quote rows${SEP}not seen yet`);
-    assert.equal(metric('cb_coll'), `1,200 candles${SEP}42s ago`);
+    // Under 1,000 rows the count drops out (#599), so the heartbeat words stand alone.
+    assert.equal(metric('forward'), 'not seen yet');
+    assert.equal(metric('cb_coll'), `about 1k candles${SEP}42s ago`);
     for (const id of ['sim_engine', 'live_engine', 'forward']) assert.doesNotMatch(metric(id), /—/);
     f.root.querySelector('.sys-node[data-id="sim_engine"]').dispatchEvent({type: 'click'});
     assert.match(f.root.querySelector('#sys-detail').innerHTML, /2 paper running · not seen yet<\/p>/);
