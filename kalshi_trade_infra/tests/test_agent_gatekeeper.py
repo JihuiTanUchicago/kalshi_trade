@@ -406,6 +406,15 @@ def test_mechanism_buckets_put_renamed_ideas_together():
     assert rsi.mechanism("XRP-SOL Cross-Market Lead-Lag Arbitrage") == "cross-asset lead-lag / pairs"
     assert rsi.mechanism("Logistic Multi-Factor ITM Scoring").startswith("generic learned")
     assert rsi.mechanism("Weekly options expiry hedge unwind") is None
+    # Prod 2026-10-26 btc15m titles that named no bucket and so were never rationed.
+    opt, pm = "options-implied fair value / IV vs Kalshi", "cross-venue basis (Polymarket vs Kalshi)"
+    for t in ("Options IV Compression \u2014 Underpriced Tail Risk", "Options Surface Staleness \u2014 Fresh Data Advantage",
+              "Low IV with Recent Realized Move \u2014 Options Surface Lag", "Deep OTM Options Edge \u2014 Tail Probability",
+              "Options-Kalshi Basis Regime \u2014 Extreme opt_edge with Volume Confirmation"):
+        assert rsi.mechanism(t) == opt, t
+    assert rsi.mechanism("Polymarket-Kalshi Spread at Extremes with Fresh Options Anchor") == pm
+    assert rsi.mechanism("PM Consensus Fade \u2014 Retail Sentiment Contrary Signal") == pm
+    assert rsi.mechanism("ETH-BTC Decorrelation Regime \u2014 Idiosyncratic Move Detection") == "cross-asset lead-lag / pairs"
 
 
 def test_sibling_drops_steer_a_market_off_mechanisms_its_family_already_killed(monkeypatch):
@@ -589,6 +598,17 @@ def test_rationed_mechanisms_skip_the_catch_all_and_what_the_run_asked_for():
     assert agent._rationed_mechanisms(rows, {"prompt": "book imbalance"}) == {fl: 6}
     assert agent._rationed_mechanisms(rows, {"prompt": "favorite-longshot bias late"}) == {}
     assert agent._rationed_mechanisms(rows[:5], {"prompt": ""}) == {}               # under 6 drops
+
+
+def test_a_mechanism_that_keeps_dying_on_this_market_is_rationed_too():
+    # Bitcoin-only research has one sibling, so the sibling rule rarely fires; btc15m's own drops count.
+    opt = "options-implied fair value / IV vs Kalshi"
+    own = [{"title": "Options IV variant %d" % i, "why": "t=-3"} for i in range(4)]
+    assert agent._rationed_mechanisms(own, {"prompt": ""}) == {opt: 4}
+    assert agent._rationed_mechanisms(own[:3], {"prompt": ""}) == {}
+    assert agent._rationed_mechanisms(own, {"prompt": "options implied fair value edge"}) == {}
+    aside = own[:3] + [{"title": "Options IV variant 9", "why": "not developed: already died"}]
+    assert agent._rationed_mechanisms(aside, {"prompt": ""}) == {}  # set aside untested is not a drop
 
 
 def test_a_sibling_dead_mechanism_gets_one_developed_idea_per_chunk(monkeypatch):

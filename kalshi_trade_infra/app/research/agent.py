@@ -1620,16 +1620,30 @@ def _sibling_dead(rows: List[Dict], min_drops: int = _SIBLING_MIN_DROPS,
 # are set aside untested. Prod 2026-10-24 22:24Z (xrp15m, run 2721): with the sibling list in the
 # prompt, 6 of 9 ideas were still calibration / mean reversion / vol mispricing, and all died.
 _RATION_MIN_DROPS, _RATION_MIN_MARKETS = 6, 3
+# The same holds for a mechanism that keeps dying on THIS market. With research Bitcoin-only (#465)
+# there are only two crypto markets to learn from, so the sibling rule rarely fires and btc15m kept
+# re-testing options IV variants it had already killed (prod 2026-10-26).
+_RATION_MIN_OWN = 4
 _NEVER_RATIONED = ("generic learned recalibration (logistic / multi-factor)",)
 
 
 def _rationed_mechanisms(dropped: Optional[List[Dict]], run: Dict) -> Dict[str, int]:
-    """{mechanism: sibling drops} for the mechanisms to ration on this run, leaving out the catch-all
-    bucket and whatever the run's own prompt asks to study."""
+    """{mechanism: drops} for the mechanisms to ration on this run (dead on the siblings, or dropped
+    _RATION_MIN_OWN times on this market), leaving out the catch-all bucket and whatever the run's
+    own prompt asks to study. Ideas set aside untested don't count as drops."""
     from app.research import rsi
     asked = rsi.mechanism(run.get("prompt") or "")
-    return {m: len(v) for m, v in _sibling_dead(dropped or [], _RATION_MIN_DROPS, _RATION_MIN_MARKETS)
-            if m not in _NEVER_RATIONED and m != asked}
+    out = {m: len(v) for m, v in _sibling_dead(dropped or [], _RATION_MIN_DROPS, _RATION_MIN_MARKETS)}
+    own: Dict[str, int] = defaultdict(int)
+    for d in dropped or []:
+        mech = not d.get("market") and not (d.get("why") or "").startswith("not developed") \
+            and rsi.mechanism(d.get("title"))
+        if mech:
+            own[mech] += 1
+    for m, c in own.items():
+        if c >= _RATION_MIN_OWN:
+            out[m] = out.get(m, 0) + c
+    return {m: c for m, c in out.items() if m not in _NEVER_RATIONED and m != asked}
 
 
 def _sibling_block(rows: List[Dict], market: str) -> str:
@@ -2190,8 +2204,8 @@ def _explore_and_gate(cur, run, ds, partition, memory, model, usage, log, checkp
             mech = _mechanism_of(h) if rationed else None
             if mech in rationed:
                 if mech in spent:
-                    why = ("not developed: %s already died %d times on sibling markets and this run spent "
-                           "its one try on it" % (mech, rationed[mech]))
+                    why = ("not developed: %s already died %d times on this market or its siblings and this "
+                           "run spent its one try on it" % (mech, rationed[mech]))
                     log("step", "Set aside untested: %s (%s)" % (h.get("title"), why),
                         {"phase": "proposing", "rationed": mech})
                     dropped.insert(0, {"title": h.get("title") or "", "why": why})
