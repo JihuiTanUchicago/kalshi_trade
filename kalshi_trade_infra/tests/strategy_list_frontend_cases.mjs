@@ -207,6 +207,20 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.doesNotMatch(row(f, {kind: 'code', research_only: true, past: {paper: {pnl: 1, trades: 1}}}), /Removed from/);
   });
 
+  test(`${name}: a removed paper book says how many of its trades were instant fills, as the track record leaves them out`, () => {
+    // Walk 2026-10-27: "Removed from paper: +$0.75 · 3 trades" said nothing of the instant fills among them, which the
+    // track record leaves out. The server's past.paper.instant_fills says how many; demo never carries one.
+    const f = frontend({fetchImpl: () => response({})});
+    const fig = (paper, demo) => row(f, {deployed: false, past: {paper, ...(demo ? {demo} : {})}});
+    assert.match(fig({pnl: 0.75, trades: 3, deployments: 1, instant_fills: 1}),
+      /Removed from paper: <span class="[^"]*">\+\$0\.75<\/span> ·\u00a03 trades, 1 of them an instant fill, left out of the track record</);
+    assert.match(fig({pnl: 0.75, trades: 3, deployments: 1, instant_fills: 2}), /3 trades, 2 of them instant fills, left out of the track record</);
+    assert.match(fig({pnl: 0.75, trades: 2, deployments: 1, instant_fills: 2}), /2 trades, all instant fills, left out of the track record</);
+    assert.match(fig({pnl: 0.75, trades: 1, deployments: 1, instant_fills: 1}), /1 trade, an instant fill, left out of the track record</);
+    assert.doesNotMatch(fig({pnl: 0.75, trades: 3, deployments: 1}), /instant/);
+    assert.doesNotMatch(fig({pnl: 0, trades: 0, deployments: 1}, {pnl: 1, trades: 2, deployments: 1, instant_fills: 2}), /instant/);
+  });
+
   // Walk 2026-10-27: a strategy whose only paper trades were instant fills read "+$3.80 on paper since deploying ·
   // 2 trades" here, while the track record gave it a row saying all its trades were instant fills, left out of it.
   test(`${name}: a paper row whose trades were all instant fills says so, as the track record does`, () => {

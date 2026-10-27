@@ -105,7 +105,8 @@ def test_the_list_finds_the_best_strategy_flags_the_autopilot_and_keeps_removed_
     cards = {c["title"]: c for c in page(status="")["strategies"]}
     mid = cards["mid"]
     assert mid["books"] == ["paper"] and mid["real"]["pnl"] == 2.0 and mid["real"]["trades"] == 1
-    assert mid["past"] == {"paper": {"pnl": 0.75, "trades": 2, "deployments": 2},
+    # Its removed paper trades have no 'sim:' order_ref: instant fills, which the book counts (display only).
+    assert mid["past"] == {"paper": {"pnl": 0.75, "trades": 2, "deployments": 2, "instant_fills": 2},
                            "demo": {"pnl": 3.0, "trades": 1, "deployments": 1}}
     # Active + removed paper is the strategy's whole paper book, which the dashboard counts.
     assert round(mid["real"]["pnl"] + mid["past"]["paper"]["pnl"], 2) == round(repo.realized_pnl(cur, uid, "paper"), 2)
@@ -126,10 +127,10 @@ def test_the_list_flags_a_paper_book_of_instant_fills_as_the_track_record_leaves
     uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "instant@example.invalid", "I", None)["id"]
     spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}})
     close = repo.now_utc() - timedelta(hours=2)
-    sid = {}
+    sid, dep_of = {}, {}
     for title, refs in (("instant", [None, None]), ("venue", ["sim:1", "sim:2"]), ("mixed", ["sim:3", None])):
         sid[title] = repo.insert_strategy(cur, uid, None, None, "btc15m", "momentum", title, "t", spec, "passed", _result(1.0))
-        dep = repo.create_deployment(cur, uid, sid[title], "btc15m", "paper")
+        dep = dep_of[title] = repo.create_deployment(cur, uid, sid[title], "btc15m", "paper")
         for i, ref in enumerate(refs):
             repo.insert_closed_position(cur, dep, uid, "paper", "KXBTC15M-26OCT2517-T98", "yes", 1, 0.40, 0.02, 1.0, 0.0,
                                         1.9, "settled", close, order_ref=ref, opened_at=close - timedelta(minutes=9 - i),
@@ -163,3 +164,11 @@ def test_the_list_flags_a_paper_book_of_instant_fills_as_the_track_record_leaves
         assert [d.get("instant_fills", 0) for d in deps] == [n]
     # Kept while the positions are unchanged: a second page read asks again for nothing.
     assert server.list_strategies(server.Ctx(conn, user, (), {"status": ""}, {}, None))["strategies"] == out["strategies"]
+    # Removed, each card's "Removed from paper" book says the same of its trades, from the removed totals' own read.
+    for title in dep_of:
+        repo.set_deployment_status(cur, uid, dep_of[title], "stopped", "By you")
+    conn.commit()
+    cards = {c["title"]: c for c in server.list_strategies(server.Ctx(conn, user, (), {"status": ""}, {}, None))["strategies"]
+             if not c.get("example")}
+    assert {t: (c["past"]["paper"]["trades"], c["past"]["paper"].get("instant_fills", 0)) for t, c in cards.items()} == {
+        "instant": (2, 2), "venue": (2, 0), "mixed": (2, 1)}

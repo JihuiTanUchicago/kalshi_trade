@@ -275,13 +275,19 @@ def _attach_past_records(cur, uid: int, cards: List[Dict], removed_ids: List[int
     "past". A removed deployment leaves the card's "since deploying" line (active ones only), so a
     strategy that traded for a week and was removed read as if it never traded, while the track
     record's strategy row and the strategy page's "Past deployments" line still counted its trades.
-    Books are never added together. One read, and only when the page has such a strategy."""
+    Books are never added together. One read, and only when the page has such a strategy.
+    A paper book whose closed trades were partly or all instant fills carries `instant_fills` (its trades
+    less those through the simulated venue, `sim_trades` of the same read): the track record leaves those
+    out, while "Removed from paper: 3 trades" didn't say so. Display only."""
     if not removed_ids:
         return
     past: Dict[int, Dict[str, Dict]] = {}
     for r in repo.removed_totals_by_strategy(cur, uid, removed_ids):
-        past.setdefault(int(r["strategy_id"]), {})[r["mode"]] = {
+        book = past.setdefault(int(r["strategy_id"]), {})[r["mode"]] = {
             "pnl": cents(r["pnl"]), "trades": int(r["trades"] or 0), "deployments": int(r["deployments"] or 0)}
+        instant = book["trades"] - int(r.get("sim_trades") or 0) if r["mode"] == "paper" and "sim_trades" in r else 0
+        if instant > 0:
+            book["instant_fills"] = instant
     for c in cards:
         books = past.get(c["id"])
         if books:

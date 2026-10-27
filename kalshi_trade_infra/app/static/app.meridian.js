@@ -1730,9 +1730,17 @@
   };
   // What its removed deployments made, one line per book (the server's `past`), never added to the
   // book it runs in now: a removed strategy read as if it had never traded.
+  // Its removed paper trades that were instant fills (the server's `instant_fills`, the track record's split): the
+  // track record leaves them out, while "Removed from paper: +$0.75 \u00b7 2 trades" read as its count.
+  const pastInstant = (m, p, n) => {
+    const k = +p.instant_fills || 0;
+    if (m !== 'paper' || !(k > 0) || !(n > 0)) return '';
+    return k >= n ? `, ${n === 1 ? 'an instant fill' : 'all instant fills'}, left out of the track record`
+      : `, ${num(k)} of them ${k === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record`;
+  };
   const pastFig = (past) => past && typeof past === 'object' ? ['live', 'paper', 'demo'].filter((m) => past[m]).map((m) => {
     const p = past[m], n = +p.trades || 0;
-    return `<div class="sub-fig real-fig past-fig">Removed from ${m}: ${n ? `${money(+p.pnl || 0)} \u00b7\u00a0${realTrades(n)}` : 'no closed trades'}</div>`;
+    return `<div class="sub-fig real-fig past-fig">Removed from ${m}: ${n ? `${money(+p.pnl || 0)} \u00b7\u00a0${realTrades(n)}${pastInstant(m, p, n)}` : 'no closed trades'}</div>`;
   }).join('') : '';
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
