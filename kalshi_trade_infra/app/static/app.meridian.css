@@ -1874,7 +1874,6 @@ body.landing-body .apf { display: none; }
 .t-strat td.name a:hover { text-decoration: underline; }
 .t-strat td { padding-top: 10px; padding-bottom: 10px; }
 .t-strat td.name a { font-size: 14px; font-weight: 500; }
-.strategy-ref { display: inline-block; min-width: 36px; margin-right: 10px; font-size: 12px; font-weight: 400; color: var(--ink-3); }
 .t-strat td.num:first-of-type, .t-strat td.num .gain, .t-strat td.num .loss, .t-strat td.num .pnl-nopass { font-size: 16px; font-weight: 500; }
 .strategy-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 24px; }
 .strategy-summary { position: relative; }
@@ -2069,9 +2068,6 @@ body.landing-body .apf { display: none; }
 .position-title { min-width: 0; font: 500 14px/20px var(--f-ui); overflow-wrap: anywhere; }
 .position-market { grid-column: 1; grid-row: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
 .position-size { font-size: 15px; line-height: 20px; font-weight: 500; font-variant-numeric: tabular-nums lining-nums; }
-.position-contract { display: block; grid-column: 1 / -1; grid-row: 2; min-width: 0; margin: 0; font: 400 12px/16px var(--f-terminal); color: var(--ink-2); overflow-wrap: anywhere; }
-.position-details > summary:not(:has(.position-market)) .position-contract { grid-column: 1; grid-row: 1; }
-.position-prefix { color: var(--ink-3); }
 .position-mode { grid-column: 2; grid-row: 1; margin: 0; font-size: 12px; line-height: 20px; font-weight: 400; }
 .position-mode .mk { padding: 0; border: 0; background: none; font-size: 12px; line-height: 18px; letter-spacing: 0; }
 /* The pill's light text stayed on with its fill gone, so a live row's LIVE read as blank: the signal ink instead. */
@@ -2125,6 +2121,8 @@ body.landing-body .apf { display: none; }
 .monitor-state { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px; min-width: 0; margin-left: auto; font-size: 13px; line-height: 18px; }
 .monitor-state > [aria-hidden="true"] { display: none; }
 .monitor-state .deployment-state { color: #365D3B; font-weight: 600; }
+/* Marked running but placing no orders (live while live trading is closed): not the running green. */
+.t-dep .deployment-state.idle, .monitor-state .deployment-state.idle { color: var(--ink-2); }
 .monitor-state .mk:not(.live):not(.armed) { padding: 0; border: 0; background: none; color: var(--ink-2); font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; }
 .shared-paper-running .monitor-state > .monitor-mode { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .monitor-config { grid-column: 1; grid-row: 2; min-width: 0; margin: 0; padding: 0; }
@@ -2652,13 +2650,16 @@ body.landing-body .apf { display: none; }
 .holdlist { list-style: none; margin: 0; padding: 0; }
 .holdlist li { padding: 9px 0; border-bottom: 1px solid var(--rule); }
 .holdlist li:first-child { padding-top: 2px; }
-.holdlist .tick { overflow-wrap: anywhere; }
 .holdlist-figs { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 4px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .holdlist-figs b { color: var(--ink); font-weight: 600; }
 /* A trade's one-line entry/exit reason (server trade_why), in the UI face even inside a .tick cell. */
 .pos-why { font-family: var(--f-ui); letter-spacing: normal; white-space: normal; }
 /* A contract's readable market under its ticker (contractMarket), in the same UI face. */
-.pos-mkt { font-family: var(--f-ui); letter-spacing: normal; white-space: normal; }
+/* A position leads with its market's plain name (.pos-name); its Kalshi contract, the ticker a user needs to
+   find it on Kalshi, sits on a small line under it (.kalshi-ref), never as the headline. */
+.pos-name { overflow-wrap: anywhere; }
+.kalshi-ref { font-size: 12px; color: var(--ink-3); }
+.kalshi-ref .tick { overflow-wrap: anywhere; }
 /* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
 #openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
@@ -2749,7 +2750,7 @@ body.landing-body .apf { display: none; }
 }
 /* A book's line against its backtest (btCheckLine) and a paper row's road to live (roadLine): each
    wraps under the deployment's name, full width in a phone card, and never splits a signed amount. */
-.t-dep tbody td.name .bt-check.sub-fig, .t-dep tbody td.name .road-line.sub-fig, .t-dep tbody td.name .demo-row.sub-fig, .real-record .bt-check { white-space: normal; flex: 1 0 100%; }
+.t-dep tbody td.name .bt-check.sub-fig, .t-dep tbody td.name .road-line.sub-fig, .t-dep tbody td.name .demo-row.sub-fig, .t-dep tbody td.name .dep-idle.sub-fig, .real-record .bt-check { white-space: normal; flex: 1 0 100%; }
 .bt-check .amt { white-space: nowrap; }
 
 /* New users: the finished example session, one tap from the dashboard and Research. */
@@ -2820,7 +2821,7 @@ body.landing-body .apf { display: none; }
   .dispatch-go .ex-run { min-height: 40px; }
   /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
      the autopilot card's figures, a held contract's ticker): 40px tall, the line box left alone. */
-  .since-row dd a, .apcard-figs dd a, .tick a { padding-block: 12px; margin-block: -12px; }
+  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 12px; margin-block: -12px; }
   a.apcard-alt { padding-block: 8px; margin-block: -8px; }
 }
 

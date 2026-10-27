@@ -28,6 +28,7 @@ import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
+import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -1389,7 +1390,7 @@ test('Overview paper context follows the whole displayed book through mode chang
   assert.equal(reads, cases.length);
 });
 
-test('Overview contract identities use the catalog and expiry while keeping raw tickers and safe fallbacks', async () => {
+test('Overview contract identities use the catalog and expiry, keep the raw ticker in the details only, and fall back safely', async () => {
   const samples = [
     {ticker: 'KXBTC15M-26OCT181230-B105000', title: 'Strategy <script>unsafe</script>', label: 'Bitcoin', known: true, expiry: true},
     {ticker: 'KXRAIN-26OCT18-T1', label: 'Rainfall index', known: true, expiry: true},
@@ -1413,8 +1414,9 @@ test('Overview contract identities use the catalog and expiry while keeping raw 
     const market = summary.querySelector('.position-market'), secondary = detail.querySelector('.sub-fig');
     assert.equal(detail.tag, 'details'); assert.equal(detail.open, false); assert.equal(detail.dataset.position, `open-${index + 1}`);
     assert.equal(summary.contains(secondary), false); assert.equal(secondary.querySelector('.position-opened').textContent, 'Opened 2m ago');
+    // The market's plain name leads; a contract no listed market covers reads "Kalshi contract", never its ticker.
     if (sample.known) assert.ok(market.textContent.startsWith(sample.label), sample.ticker);
-    else assert.equal(market, null);
+    else assert.equal(market.textContent, 'Kalshi contract', sample.ticker);
     if (sample.expiry) {
       const date = new Date(positions[index].market_close_time).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
       assert.ok(row.querySelector('.position-expiry-cell time').textContent.includes(date), sample.ticker + ' expiry');
@@ -1422,11 +1424,12 @@ test('Overview contract identities use the catalog and expiry while keeping raw 
       const absolute = new Date(positions[index].market_close_time).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23'});
       assert.equal(secondary.querySelector('.position-absolute').textContent, 'Expires ' + absolute);
     } else { assert.equal(row.querySelector('.position-expiry-cell time'), null); assert.equal(row.querySelector('.position-expiry-cell .vh').textContent, 'Expiry unavailable'); assert.equal(secondary.querySelector('.position-absolute'), null); }
-    assert.ok(secondary.textContent.includes(sample.known ? sample.ticker : sample.label), sample.ticker + ' raw identifier');
-    const contractCell = row.querySelectorAll('td')[0];
-    assert.equal(contractCell.querySelector('.position-contract').textContent, sample.known ? sample.ticker : sample.label);
-    assert.equal(summary.contains(contractCell.querySelector('.position-contract')), true, 'full raw contract remains in the native visible identity summary');
-    assert.ok(summary.getAttribute('aria-label').includes(sample.known ? sample.ticker : sample.label));
+    // The ticker (it carries the raw series key) sits only in the details, as the Kalshi contract to find it by.
+    const raw = sample.known ? sample.ticker : sample.label;
+    assert.equal(secondary.querySelector('.kalshi-ref .tick').textContent, raw, sample.ticker + ' raw identifier');
+    assert.equal(row.querySelector('.position-contract'), null);
+    assert.ok(!summary.textContent.includes(raw), 'the ticker is never the headline');
+    assert.ok(!summary.getAttribute('aria-label').includes(raw));
     const sourceStrategy = index === 0 ? 'Strategy &lt;script&gt;unsafe&lt;/script&gt;' : `Strategy ${index + 1}`;
     assert.equal(summary.querySelector('.position-title').textContent, sourceStrategy, 'show the actual strategy independently from the full raw contract');
     assert.ok(summary.getAttribute('aria-label').includes(sourceStrategy));
@@ -1461,8 +1464,8 @@ test('Overview rowgroups remove repeated catalog labels without merging nonadjac
   assert.deepEqual(table.querySelectorAll('.position-family th').map(th => th.getAttribute('colspan')), ['6', '6', '6', '6']);
   assert.deepEqual(table.querySelectorAll('.open-position .position-details').map(detail => detail.dataset.position), ['open-1', 'open-2', 'open-3', 'open-4', 'open-5']);
   assert.deepEqual(bodies.map(body => body.querySelectorAll('.open-position').length), [2, 1, 1, 1]);
-  assert.equal(table.querySelectorAll('.open-position').at(-1).querySelector('.position-contract').textContent, 'UNKNOWN-A');
-  assert.equal(table.querySelectorAll('.open-position').at(-1).querySelector('.position-market'), null);
+  assert.equal(table.querySelectorAll('.open-position').at(-1).querySelector('.kalshi-ref .tick').textContent, 'UNKNOWN-A');
+  assert.equal(table.querySelectorAll('.open-position').at(-1).querySelector('.position-market').textContent, 'Kalshi contract');
   assert.equal(table.querySelectorAll('.position-pnl').at(-1).textContent, '$0.00');
   assert.equal(JSON.stringify({rows, catalog}), before); assert.equal(postRequests(f).length, 0);
 });
@@ -1493,7 +1496,7 @@ test('Overview attribution groups require adjacent known deployments and keep ti
   const expected = [[1, 2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14, 15], [16]];
   assert.deepEqual(groups.map(group => group.querySelectorAll('.open-position .position-details')
     .map(detail => Number(detail.dataset.position.slice('open-'.length)))), expected);
-  assert.deepEqual(table.querySelectorAll('.position-contract').map(el => el.textContent), rows.map(row => row.ticker));
+  assert.deepEqual(table.querySelectorAll('.kalshi-ref .tick').map(el => el.textContent), rows.map(row => row.ticker));
   groups.forEach((group, index) => {
     const source = rows.find(row => row.id === expected[index][0]);
     const header = group.querySelector('th[scope="rowgroup"]');
@@ -1528,7 +1531,8 @@ test('Overview separates open cost and unrealized marks from collapsed realized 
     const cells = row.querySelectorAll('td');
     assert.equal(cells.length, 6);
     assert.equal(cells[0].querySelector('.position-title').textContent, open[index].title);
-    assert.equal(cells[0].querySelector('.position-contract').textContent, open[index].ticker);
+    assert.equal(cells[0].querySelector('.position-market').textContent, 'Kalshi contract');  // no market listed here: never the ticker
+    assert.equal(cells[0].querySelector('.kalshi-ref .tick').textContent, open[index].ticker);
     assert.equal(cells[1].querySelector('.position-side').textContent, open[index].side.toUpperCase());
     assert.equal(cells[1].querySelector('.position-quantity').textContent, `Quantity ${open[index].qty}`);
     assert.equal(history.contains(row), false);
@@ -1547,14 +1551,14 @@ test('Overview separates open cost and unrealized marks from collapsed realized 
   const closedRow = history.querySelector('.settled-position'), cells = closedRow.querySelectorAll('td');
   assert.equal(cells.length, 5);
   assert.equal(cells[0].querySelector('.position-title').textContent, settled.title);
-  assert.equal(cells[0].querySelector('.position-contract').textContent, settled.ticker);
+  assert.equal(cells[0].querySelector('.kalshi-ref .tick').textContent, settled.ticker);
   assert.equal(cells[1].querySelector('.position-side').textContent, settled.side.toUpperCase());
   assert.equal(cells[1].querySelector('.position-quantity').textContent, `Quantity ${settled.qty}`);
   assert.deepEqual(history.querySelectorAll('thead th').map(th => th.textContent), ['Market / contract', 'Position', 'Expiry', 'Entry', 'Realized P&amp;L']);
   assert.equal(closedRow.querySelector('.position-cost'), null);
   const closedDetail = closedRow.querySelector('.position-details');
   assert.equal(closedDetail.tag, 'details'); assert.equal(closedDetail.open, false); assert.equal(closedDetail.dataset.position, 'closed-4');
-  assert.ok(closedDetail.querySelector('.sub-fig').textContent.includes(settled.ticker + ' ·\u00a0' + settled.title));
+  assert.ok(closedDetail.querySelector('.sub-fig').textContent.includes('Kalshi contract ' + settled.ticker + ' ·\u00a0' + settled.title));
   assert.match(closedDetail.querySelector('.position-opened').textContent, /^Closed /);
   assert.equal(closedDetail.querySelector('.position-absolute').textContent,
     'Expires ' + new Date(settled.market_close_time).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23'}));
@@ -4749,8 +4753,10 @@ test('Meridian money pages: open positions name their market, settle with date a
   f.S.me.markets = markets;
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
-  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<\/a><div class="sub-fig pos-mkt">Bitcoin above \$68,499\.99 at 5pm ET<\/div>/);
-  assert.match(html, /KXOTHER-1<\/a><\/td>/);
+  // The market's plain name leads, its own strike filled in; the ticker sits on a small line, to find it on Kalshi.
+  assert.match(html, /<a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin above \$68,499\.99 at 5pm ET<\/a><div class="sub-fig"><span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T68499\.99<\/span>/);
+  assert.match(html, /<a href="\/explore\?m=KXOTHER-1">Kalshi contract<\/a>/);
+  assert.doesNotMatch(html, />KX[A-Z]+-[^<]*<\/a>/);
   assert.match(html, /data-lab="Settles">Jan 1[56], \d\d:\d\d [^<\s]+<\/td>/);
   assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
@@ -4785,7 +4791,7 @@ test('Meridian: an open ETH, SOL or XRP position names its contract as Bitcoin\'
     {key: 'xrp_daily', series: 'KXXRPD', label: 'XRP above $X at 5pm ET', close_hour_et: 17},
     {key: 'eth15m', series: 'KXETH15M', label: 'Ethereum up or down in 15 minutes'}, {key: 'sol15m', series: 'KXSOL15M', label: 'Solana up or down in 15 minutes'}];
   await f.viewDeploy(); await flush(); await flush();
-  const names = [...f.root.querySelector('#openpos').innerHTML.matchAll(/<div class="sub-fig pos-mkt">([^<]*)<\/div>/g)].map(m => m[1]);
+  const names = [...f.root.querySelector('#openpos').innerHTML.matchAll(/<td class="pos-name" data-lab="Market"><a [^>]*>([^<]*)<\/a>/g)].map(m => m[1]);
   assert.deepEqual(names, ['Ethereum above $3,999.99 at 5pm ET', 'Solana above $189.99 at 5pm ET', 'XRP above $2.4599 at 5pm ET',
     'Ethereum up or down in 15 minutes', 'Solana up or down in 15 minutes', 'XRP above $X at 5pm ET']);
 });
@@ -6007,3 +6013,4 @@ writeWaitCases({name: 'Meridian', frontend, billingPage, cardedBilling, postRequ
 declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});
 flakyNetworkCases({name: 'Meridian', frontend});
 deployErrorCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, postRequests});
+liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});

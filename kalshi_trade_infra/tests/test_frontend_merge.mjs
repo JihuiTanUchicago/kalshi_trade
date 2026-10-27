@@ -27,6 +27,7 @@ import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
 import {flakyNetworkCases} from './flaky_network_frontend_cases.mjs';
 import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
+import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 
@@ -342,8 +343,11 @@ test('the sidebar lists each holding with every figure instead of a clipped five
   // Each holding says why it was bought and how it will exit; one without a reason says nothing.
   assert.deepEqual([...list.matchAll(/<div class="sub-fig pos-why">([^<]*)<\/div>/g)].map((m) => m[1]),
     ['Entered at 60¢: edge ≥ 2¢ after fees · Holds to settlement']);
-  // Each contract opens its market page (price, settlement rules, your positions in it).
-  assert.match(list, /<a href="\/explore\?m=KXBTC15M-B">KXBTC15M-B<\/a>/); assert.match(list, /href="\/explore\?m=KXBTC15M-%3Cx%3E"/);
+  // Each contract opens its market page (price, settlement rules, your positions in it), by its market's plain
+  // name (here the strategy's market, as no listed market covers these tickers); the ticker sits on a small line.
+  assert.match(list, /<a href="\/explore\?m=KXBTC15M-B">BTC 15-min up\/down<\/a>/); assert.match(list, /href="\/explore\?m=KXBTC15M-%3Cx%3E"/);
+  assert.match(list, /<div class="sub-fig"><span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTC15M-B<\/span><\/span><\/div>/);
+  assert.doesNotMatch(list, /<a [^>]*>KXBTC15M-B</);  // never the headline
 });
 
 test('the abstract says a strategy cleared the gate only when it passed', async () => {
@@ -704,12 +708,12 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   assert.doesNotMatch(html, /Backtest unseen/);
 });
 
-test('Deploy open positions label every cell so phone cards read Contract, Side, Cost + fee', async () => {
+test('Deploy open positions label every cell so phone cards read Market, Side, Cost + fee', async () => {
   const pos = {title: 'Rain fade', ticker: 'KXRAINNYC-T1', side: 'no', qty: 4, entry_price: .37, entry_fee: .02, unrealized: null, market_close_time: '2026-10-25T17:30:00Z', mode: 'paper'};
   const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: [pos]}) : response({})});
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
-  for (const lab of ['Strategy', 'Contract', 'Side', 'Cost \\+ fee', 'Unrealized', 'Settles']) assert.match(html, new RegExp(`data-lab="${lab}"`), lab);
+  for (const lab of ['Strategy', 'Market', 'Side', 'Cost \\+ fee', 'Unrealized', 'Settles']) assert.match(html, new RegExp(`data-lab="${lab}"`), lab);
   // This Cost carries the entry fee ($1.48 + $0.02); the dashboard's Cost and "Open at cost" don't, so it says so.
   assert.match(html, /<th class="num">Cost \+ fee<\/th>/); assert.match(html, /data-lab="Cost \+ fee">\$1\.50</);
   assert.match(html, /<td class="name" data-lab="Strategy">Rain fade/);
@@ -736,7 +740,7 @@ test('every trade on the dashboard and Deploy says why it was entered and why it
   await d.viewDeploy(); await flush(); await flush();
   const table = d.root.querySelector('#openpos').innerHTML;
   assert.equal((table.match(/class="sub-fig pos-why"/g) || []).length, 1);
-  assert.match(table, /data-lab="Contract"><a href="\/explore\?m=T-1">T-1<\/a><div class="sub-fig pos-why">Entered at 41¢: edge ≥ 3¢ after fees/);
+  assert.match(table, /data-lab="Market"><a href="\/explore\?m=T-1">Kalshi contract<\/a><div class="sub-fig"><span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">T-1<\/span><\/span><\/div><div class="sub-fig pos-why">Entered at 41¢: edge ≥ 3¢ after fees/);
 });
 
 test('while autopilot is off, Turn on autopilot is the only primary button on the dashboard', async () => {
@@ -3653,9 +3657,11 @@ test('money pages: an open position names its market and settles with a date and
   f.S.me.markets = markets;
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
-  // The raw ticker keeps its readable market under it; an unknown series gets no guessed label.
-  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<\/a><div class="sub-fig pos-mkt">Bitcoin above \$68,499\.99 at 5pm ET<\/div>/);
-  assert.match(html, /KXOTHER-1<\/a><\/td>/);
+  // The market's plain name leads, its own strike filled in; the raw ticker sits on a small line under it, there to
+  // find the contract on Kalshi. An unknown series gets no guessed label.
+  assert.match(html, /<a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin above \$68,499\.99 at 5pm ET<\/a><div class="sub-fig"><span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T68499\.99<\/span>/);
+  assert.match(html, /<a href="\/explore\?m=KXOTHER-1">Kalshi contract<\/a><div class="sub-fig"><span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXOTHER-1<\/span>/);
+  assert.doesNotMatch(html, />KX[A-Z]+-[^<]*<\/a>/);
   // Another day carries its date; today only the time; both name the zone (a bare "21:17" read as today, zone unknown).
   assert.match(html, /data-lab="Settles">Jan 1[56], \d\d:\d\d [^<\s]+<\/td>/);
   assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
@@ -3663,7 +3669,7 @@ test('money pages: an open position names its market and settles with a date and
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
   const side = s.root.querySelector('#main').innerHTML;
   assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
-  assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="sub-fig pos-mkt">Bitcoin above \$68,499\.99 at 5pm ET<\/div>/);
+  assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="pos-name"><a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin above \$68,499\.99 at 5pm ET<\/a>/);
   // Dashboard: an unmarked position's figure is its cost, never a bare dollar amount beside the marked rows' P&L.
   const g = frontend({fetchImpl: path => {
     if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), open_positions: [pos(), pos({qty: 10, entry_price: .47, unrealized: 0.32})]});
@@ -3701,7 +3707,7 @@ test('an open ETH, SOL or XRP position names its contract as Bitcoin\'s does, wi
     {key: 'xrp_daily', series: 'KXXRPD', label: 'XRP above $X at 5pm ET', close_hour_et: 17},
     {key: 'eth15m', series: 'KXETH15M', label: 'Ethereum up or down in 15 minutes'}, {key: 'sol15m', series: 'KXSOL15M', label: 'Solana up or down in 15 minutes'}];
   await f.viewDeploy(); await flush(); await flush();
-  const names = [...f.root.querySelector('#openpos').innerHTML.matchAll(/<div class="sub-fig pos-mkt">([^<]*)<\/div>/g)].map(m => m[1]);
+  const names = [...f.root.querySelector('#openpos').innerHTML.matchAll(/<td class="pos-name" data-lab="Market"><a [^>]*>([^<]*)<\/a>/g)].map(m => m[1]);
   assert.deepEqual(names, ['Ethereum above $3,999.99 at 5pm ET', 'Solana above $189.99 at 5pm ET', 'XRP above $2.4599 at 5pm ET',
     'Ethereum up or down in 15 minutes', 'Solana up or down in 15 minutes', 'XRP above $X at 5pm ET']);
 });
@@ -5163,3 +5169,4 @@ writeWaitCases({name: 'Tau', frontend, billingPage, cardedBilling, postRequests,
 declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 flakyNetworkCases({name: 'Tau', frontend});
 deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests});
+liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
