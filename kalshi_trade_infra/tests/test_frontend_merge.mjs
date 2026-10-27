@@ -696,6 +696,20 @@ test('only the admin view shows backtest-history lag on the dashboard status lin
   assert.match(f.root.querySelector('#boardbody').innerHTML, /No backtest history yet/);
 });
 
+test('a backtest-only strategy’s Deploy row says its backtest estimate is later-period, not unseen', async () => {
+  // Its out_of_sample is the old loose gate's later slice, which picked it (#590's words): the server's backtest_only.
+  const dep = (id, o) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+    backtest: {out_of_sample: {pnl: 12, trades: 6}}, ...o});
+  const f = frontend({fetchImpl: path => path === '/api/deployments'
+    ? response({deployments: [dep(1, {backtest_only: true}), dep(2, {backtest_only: false})], open_positions: []}) : response({})});
+  await f.viewDeploy(); await flush(); await flush();
+  const cells = [...f.root.querySelector('#deps').innerHTML.matchAll(/<td class="num" data-lab="Backtest estimate" title="([^"]*)">/g)].map((m) => m[1]);
+  assert.deepEqual(cells, [
+    'What these same closed trades would have made at the backtest’s average per trade after its split date (later-period, which picked it: not held out)',
+    'What these same closed trades would have made at the backtest’s average per trade on unseen data']);
+});
+
 test('the Deploy board puts realized P&L beside the backtest pace for the same trades', async () => {
   const dep = (id, closed, oos) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
     realized_pnl: 1, closed_trades: closed, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,

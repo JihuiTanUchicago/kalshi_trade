@@ -69,12 +69,15 @@ def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] =
     keep calling list_deployments. `strategy_id` keeps one strategy's deployments (the strategy
     page), the same rows list_deployments filtered to it, without summing every other one's.
     `contract_fills` (its closed rows' contracts times taker fills, from the qty and close_reason of the
-    rows the same pass fetches) is for the paper book's after-slippage estimate; no gate reads it."""
+    rows the same pass fetches) is for the paper book's after-slippage estimate; no gate reads it.
+    `strategy_status` (its strategy's status, from the strategy row the same read joins) lets a row of a
+    backtest-only strategy say its backtest figure is later-period, not unseen; display only."""
     one = (int(strategy_id),) if strategy_id is not None else ()
     only_pd, only_d = (" AND pd.strategy_id=%s", " AND d.strategy_id=%s") if one else ("", "")
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
                   d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json,
+                  s.status AS strategy_status,
                   COALESCE(t.realized_pnl,0) AS realized_pnl, COALESCE(t.closed_trades,0) AS closed_trades,
                   COALESCE(t.wins,0) AS wins, COALESCE(t.open_positions,0) AS open_positions,
                   COALESCE(t.contract_fills,0) AS contract_fills
@@ -112,7 +115,8 @@ def deployment_rows_for_display(cur, user_id: int, strategy_id: Optional[int] = 
     one = (int(strategy_id),) if strategy_id is not None else ()
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
-                  d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json
+                  d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json,
+                  s.status AS strategy_status
            FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
            WHERE d.user_id=%s AND d.status <> 'stopped'""" + (" AND d.strategy_id=%s" if one else "") + """ ORDER BY d.id DESC""",
         (user_id, *one),

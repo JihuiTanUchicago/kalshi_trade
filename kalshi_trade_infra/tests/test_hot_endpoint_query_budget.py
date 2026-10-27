@@ -205,7 +205,7 @@ def _board_rows():
     dep = {"user_id": 7, "strategy_id": 9, "market": "btc15m", "status": "running", "status_reason": None,
            "last_decision_ts": None, "created_at": now - timedelta(days=3), "updated_at": now, "last_scan_json": None,
            "last_scan_at": None, "title": "Fade tails", "direction": None, "spec_json": spec, "result_json": result,
-           "realized_pnl": 1.5, "closed_trades": 12, "wins": 7, "open_positions": 1, "contract_fills": 24}
+           "strategy_status": "passed", "realized_pnl": 1.5, "closed_trades": 12, "wins": 7, "open_positions": 1, "contract_fills": 24}
     strategy = {"id": 9, "run_id": 3, "parent_id": None, "market": "btc15m", "direction": None, "title": "Fade tails",
                 "thesis": "t", "spec_json": spec, "status": "passed", "result_json": result, "experiment_id": None,
                 "created_at": now, "hypotheses_tried": 4, "shared_from_user_id": None, "shared_from_name": None}
@@ -213,7 +213,7 @@ def _board_rows():
     return {"FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id LEFT JOIN": [
                 dict(dep, id=5, mode="paper"), dict(dep, id=6, mode="demo")],
             # The same deployments without their position totals (read while those are kept).
-            "s.result_json FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id WHERE": [
+            "s.status AS strategy_status FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id WHERE": [
                 dict(bare, id=5, mode="paper"), dict(bare, id=6, mode="demo")],
             "FROM app_strategies s LEFT JOIN app_agent_runs r": [strategy]}
 

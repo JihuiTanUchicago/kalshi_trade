@@ -1784,7 +1784,10 @@
     // over figures from the history the agent searched, marked only "tested only". A strategy researched
     // since the locked holdout keeps its unseen numbers with the gatekeeper, so most rows are that kind.
     // And over how long: "+$6.20 on unseen data" beside "58% win" said neither period nor pace (its page says both).
-    const pnlSub = [m.pnl == null ? '' : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
+    // A backtest-only strategy (the old loose gate) has no gatekeeper record: its out_of_sample is the backtest's
+    // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590).
+    const pnlSub = [m.pnl == null ? '' : oos && s.status === 'backtest-only' ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
+      : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const missed = Array.isArray(opts.missed) && opts.missed.length ? `<div class="slip-missed">${whyFailedHtml(opts.missed.slice(0, 1))}${opts.missed.length > 1 ? `<a class="sub-fig" href="/strategies/${s.id}">${opts.missed.length - 1} more check${opts.missed.length > 2 ? 's' : ''} on its page</a>` : ''}</div>` : '';
@@ -1825,8 +1828,9 @@
   // Each fact keeps its label with its value (.dep-fact never wraps inside): "· Deployed" ended one line and
   // "Oct 18" began the next, on a phone and in the Deploy table's name column on a desktop.
   // A strategy from a research session keeps its unseen result with the gatekeeper, not in its backtest: its row read
-  // "Unseen P&L —" as though it had none. The fact shows only with a backtest figure to give.
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact">Unseen P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  // "Unseen P&L —" as though it had none. The fact shows only with a backtest figure to give. A backtest-only strategy's
+  // (the server's backtest_only) is its backtest's later slice, which picked it: "Later-period P&L", never unseen.
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? (d.backtest_only ? `<span class="dep-fact" title="After the split date, which picked it: not held out">Later-period P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}` : `<span class="dep-fact">Unseen P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}`) : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   // One plain line on how a book is doing against its backtest, written by the server
   // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
   // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.

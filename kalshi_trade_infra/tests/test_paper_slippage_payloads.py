@@ -17,6 +17,7 @@ from app.research import agent, gatekeeper
 from app.services import forward_gate
 from app.trading import engine
 from app.trading import track_record as tr
+from app.web import views
 from app.web.routes import dashboard as dashboard_routes
 from app.web.routes import deployments as deployment_routes
 from app.web.routes import strategies as strategy_routes
@@ -143,6 +144,14 @@ def test_the_deploy_boards_paper_realized_carries_the_listed_deployments_estimat
     # No listed paper deployment, or none with a closed trade: no estimate.
     assert "slippage_estimate" not in deployment_routes._realized_with_estimate([], removed)["paper"]
     assert "slippage_estimate" not in deployment_routes._realized_with_estimate([_dep(7, "paper", "0", 0, 0, 1)], [])["paper"]
+
+
+def test_a_backtest_only_strategys_deploy_row_says_so_from_its_own_read():
+    row = dict(_dep(7, "paper", "1.2000", 2, 8, 1), title="t", direction=None, market="btc15m", status_reason=None, wins=1,
+               created_at=None, result={"out_of_sample": {"pnl": 6.0, "trades": 40}})
+    assert views._deployment_out(dict(row, strategy_status="backtest-only"), [])["backtest_only"] is True
+    assert views._deployment_out(dict(row, strategy_status="passed"), [])["backtest_only"] is False
+    assert views._deployment_out(row, [])["backtest_only"] is False  # a read without it (the gates') claims nothing
 
 
 def test_the_autopilots_day_and_week_sum_their_fills_in_the_reads_they_already_make():

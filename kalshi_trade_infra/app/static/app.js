@@ -1770,7 +1770,10 @@
     // over figures from the history the agent searched, marked only "tested only". A strategy researched
     // since the locked holdout keeps its unseen numbers with the gatekeeper, so most rows are that kind.
     // And over how long: "+$6.20 on unseen data" beside "58% win" said neither period nor pace (its page says both).
-    const pnlSub = [m.pnl == null ? '' : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
+    // A backtest-only strategy (the old loose gate) has no gatekeeper record: its out_of_sample is the backtest's
+    // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590).
+    const pnlSub = [m.pnl == null ? '' : oos && s.status === 'backtest-only' ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
+      : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
     const tried = s.hypotheses_tried ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const pickCell = opts.pick ? (bulkDeployable(s)
@@ -1788,6 +1791,8 @@
   }
   // The Backtest estimate column's hover text (its header's glossary marker says the same at more length).
   const PACE_TIP = 'What these same closed trades would have made at the backtest’s average per trade on unseen data';
+  // A backtest-only strategy's row (the server's backtest_only): its backtest's later slice picked it, so not unseen.
+  const PACE_TIP_LATER = 'What these same closed trades would have made at the backtest’s average per trade after its split date (later-period, which picked it: not held out)';
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="${PACE_TIP}">${gl('Backtest estimate', 'pace')}</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
   // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
   const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
@@ -1865,7 +1870,7 @@
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
-      <td class="num" data-lab="Backtest estimate" title="${PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig">${live ? 'no live trades closed yet' : d.mode === 'demo' ? 'no demo trades closed yet' : 'no paper trades closed yet'}</span>`}</td>
+      <td class="num" data-lab="Backtest estimate" title="${d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig">${live ? 'no live trades closed yet' : d.mode === 'demo' ? 'no demo trades closed yet' : 'no paper trades closed yet'}</span>`}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
       ${actions}
     </tr>`;

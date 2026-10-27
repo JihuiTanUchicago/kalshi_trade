@@ -166,8 +166,9 @@ def test_each_pages_estimate_agrees_with_the_positions_and_the_gates_never_see_i
 
 def test_deploy_the_strategies_list_and_the_autopilot_carry_it_from_the_reads_they_already_make(conn, monkeypatch):
     """The Deploy board's paper Realized, the Strategies list's paper card, the autopilot's paper day and its
-    week each carry the estimate, held to the position rows that figure counts; live and demo never do. The
-    gate's list_deployments carries none of it."""
+    week each carry the estimate, held to the position rows that figure counts; live and demo never do. A
+    backtest-only strategy's Deploy row says so (backtest_only) from the row's own read. The gate's
+    list_deployments carries none of it."""
     from app import repository as repo
     from app import server
     from app.services import book_memo
@@ -227,6 +228,10 @@ def test_deploy_the_strategies_list_and_the_autopilot_carry_it_from_the_reads_th
     assert books["paper"]["slippage_estimate"] == est(listed)
     assert books["paper"]["all"] == _expected(paper)[1] and books["paper"]["removed_deployments"] == 1
     assert "slippage_estimate" not in books["live"] and "slippage_estimate" not in books["demo"]
+    # A backtest-only strategy's row says so, from the row's own read; the rest don't.
+    by = {r["id"]: r for r in board["deployments"]}
+    assert by[dep["b_paper"]]["backtest_only"] is True
+    assert not any(by[dep[k]]["backtest_only"] for k in ("a_paper", "a_demo", "c_live", "c_paper"))
 
     # The Strategies list: a paper card carries its listed paper book's estimate; a live card shows live, unestimated.
     cards = {s["id"]: s for s in server.list_strategies(ctx)["strategies"]}
@@ -246,5 +251,5 @@ def test_deploy_the_strategies_list_and_the_autopilot_carry_it_from_the_reads_th
     assert week["paper_slippage_estimate"] == est(mine)
 
     # The gate's read carries none of the display columns.
-    assert all("contract_fills" not in d
+    assert all("strategy_status" not in d and "contract_fills" not in d
                for d in repo.list_deployments(cur, uid, include_stopped=True))
