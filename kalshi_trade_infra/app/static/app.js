@@ -1718,7 +1718,8 @@
     // Which history the figure covers, on every row: the column read "Unseen P&L" ("the P&L that counts")
     // over figures from the history the agent searched, marked only "tested only". A strategy researched
     // since the locked holdout keeps its unseen numbers with the gatekeeper, so most rows are that kind.
-    const pnlSub = [m.pnl == null ? '' : oos ? 'on unseen data' : 'on the history it searched', missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(' \u00b7\u00a0');
+    // And over how long: "+$6.20 on unseen data" beside "58% win" said neither period nor pace (its page says both).
+    const pnlSub = [m.pnl == null ? '' : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(' \u00b7\u00a0');
     const tried = s.hypotheses_tried ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const pickCell = opts.pick ? (bulkDeployable(s)
@@ -2463,6 +2464,9 @@
   };
   // A strategy row's share of them, so its figures meet its Strategies list line ("+$74.33 · 27 trades" beside 26 here).
   const trRowLeft = (r) => (r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
+  // The span a return is over, as the sample line counts it (track_record.sample_read): a return with no period read
+  // the same for a week as for a year once the headline's "since" had scrolled away.
+  const trOver = (m) => (m.span_days == null ? '' : (() => { const d = Math.max(1, Math.round(+m.span_days)); return ` over ${num(d)} day${d === 1 ? '' : 's'}`; })());
   function trackRecordPanel(m, key, th) {
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY})${trLeftGap(m)}`);
@@ -2500,7 +2504,7 @@
     const good = s.level === 'solid' && s.edge === 'positive';
     const figs = `<dl class="figures measure tr-figs">
       ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `${key === 'paper' ? `${PAPER_NET} (${usd(m.fees)} in fees)${glo('paperfills')}` : `after ${usd(m.fees)} in fees`}${m.first_trade_at ? ` \u00b7\u00a0since ${trDay(m.first_trade_at)}` : ''}` })}
-      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${m.annualized_return != null ? ` ·\u00a0${pct(m.annualized_return)} a year` : ''}` })}
+      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? ` ·\u00a0${pct(m.annualized_return)} a year` : ''}` })}
       ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
       ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)} ·\u00a0Sortino ${trFix(m.sortino)}` })}
       ${fig('Win rate', pct(m.win_rate, false), { small: trCi(m.win_rate_ci, (v) => pct(v, false)) })}

@@ -73,4 +73,18 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
       f.clearTimers();
     }
   });
+
+  test(`${name}: a return says the period it is over, on the track record and on the Strategies list`, () => {
+    const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
+    // The record's Return read "−20.9% on $118.51 capital required", with its period only on the P&L figure beside it.
+    const ret = plain(f.trackRecordPanel(paperBook({span_days: 27.4}), 'paper', TH)).match(/Return −20\.9% ([^]*?) Max drawdown/)[1];
+    assert.equal(ret, 'on $118.51 capital required over 27 days');
+    assert.match(plain(f.trackRecordPanel(paperBook({span_days: 0.2}), 'paper', TH)), /on \$118\.51 capital required over 1 day /);
+    // A strategy's backtest P&L on the list said "on unseen data" beside a win rate, over no stated span.
+    const s = {id: 3, title: 'Fade the 15-minute Bitcoin overshoot', thesis: 'A rule.', market: 'btc15m', direction: 'both', status: 'passed',
+      out_of_sample: {pnl: 6.2, trades: 48, win_rate: 0.58, days: 30.2}, in_sample: {pnl: 21, trades: 120, win_rate: 0.61, days: 90}};
+    assert.match(f.strategySlip(s, {}), /<div class="sub-fig">on unseen data over 30 days<\/div>/);
+    assert.match(f.strategySlip({...s, out_of_sample: null}), /<div class="sub-fig">on the history it searched over 90 days<\/div>/);
+    assert.match(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: null}}), /<div class="sub-fig">on unseen data<\/div>/);
+  });
 }
