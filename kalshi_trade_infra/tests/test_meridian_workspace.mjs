@@ -3708,15 +3708,20 @@ test('a passed strategy not yet on paper puts Deploy on paper up top as well, th
   await bad.viewStrategy(42); await flush();
   bad.root.querySelector('#dep-paper-quick').onclick(); await flush(); await flush();
   assert.match(bad.root.querySelector('#depflash-quick').innerHTML, /Synthetic paper refusal/);
-  // Already on paper, not validated, or no gatekeeper record behind its "passed": only the panel's own button.
-  for (const detail of [detailStrategy({deployments: [{id: 3, mode: 'paper', status: 'running'}]}), detailStrategy({status: 'rejected'}), detailStrategy({experiment: null})]) {
+  // Not validated, or no gatekeeper record behind its "passed": only the panel's own button.
+  for (const detail of [detailStrategy({status: 'rejected'}), detailStrategy({experiment: null})]) {
     const g = strategyFrontend(detail, () => response({deployments: [], open_positions: []}));
     await g.viewStrategy(42); await flush();
     assert.equal(g.root.querySelector('#dep-paper-quick'), null); assert.ok(g.root.querySelector('#dep-paper'));
   }
+  // Already on paper: no Deploy on paper at all (a second copy doubles its positions), a link to it instead.
+  const on = strategyFrontend(detailStrategy({deployments: [{id: 3, mode: 'paper', status: 'running'}]}), () => response({deployments: [], open_positions: []}));
+  await on.viewStrategy(42); await flush();
+  assert.equal(on.root.querySelector('#dep-paper-quick'), null); assert.equal(on.root.querySelector('#dep-paper'), null);
+  assert.match(on.root.querySelector('#main').innerHTML, /<p class="hint on-paper">It runs on paper\. <a href="\/deploy">See it on Deploy<\/a>\.<\/p>/);
 });
 
-test('strategy page: out-of-sample figures say their span, deployments go by book not row id, and a second paper copy is flagged', async () => {
+test('strategy page: out-of-sample figures say their span, deployments go by book not row id, and a paper copy links to itself', async () => {
   const detail = detailStrategy({out_of_sample: {...metrics(12), days: 15.2}, capital: 100,
     deployments: [{id: 812, mode: 'demo', status: 'running'}, {id: 811, mode: 'paper', status: 'paused'}]});
   const f = strategyFrontend(detail, () => response({deployments: [], open_positions: []}));
@@ -3727,13 +3732,15 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   assert.match(html, /Demo · running<br>Paper · paused/);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
-  assert.match(html, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
+  // Its paused paper deployment is found on Deploy, not deployed a second time.
+  assert.match(html, /<p class="hint on-paper">Its paper deployment is paused\. <a href="\/deploy">Resume it on Deploy<\/a>\.<\/p>/);
+  assert.equal(f.root.querySelector('#dep-paper'), null);
   // An older result with no window length keeps its figure as it was; not on paper, no warning.
   const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
   await g.viewStrategy(42); await flush();
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">6 trades<\/dd>/);
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
-  assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again/);
+  assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /on-paper/);
 });
 
 test('Research folds model, depth and market behind Options on a phone, open on a wide screen, and says what will run', async () => {

@@ -192,4 +192,70 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const none = await open({status: 'rejected', out_of_sample: null});
     assert.equal(none.root.querySelector('#dev-pending'), null);
   });
+
+  // A validation pass keeps the status "passed" when a later check fails; the server's why_failed names it.
+  const val = {classification: 'statistically_supported', n_trades: 150, mean_net_return: 0.026};
+  const holdoutMiss = [{gate: 'significance', label: 'The edge could be luck on the locked holdout', measured: 'p-value 0.480', needed: '0.050 or lower', next: 'Try a simpler version.'}];
+  const tooSimilar = [{gate: 'diversification', label: 'Too similar to “<b>BTC</b> fade”', measured: 'a 0.93 correlation of daily results with “<b>BTC</b> fade”', needed: '0.80 or less', next: 'Point it elsewhere.'}];
+  const stamp = f => (f.root.querySelector('.paper-byline') || f.root.querySelector('.strategy-pagehead')).innerHTML;
+
+  test(`${name}: a strategy that passed validation and then missed the final test never reads Passed`, async () => {
+    const f = await open({status: 'passed', out_of_sample: null, why_failed: holdoutMiss, experiment: {classification: 'rejected', validation: val,
+      holdout: {classification: 'rejected', n_trades: 71, mean_net_return: -0.003, p_value: 0.48, consumed: true}}});
+    const html = main(f);
+    assert.match(stamp(f), /<span class="mk">Missed final test<\/span>/); assert.doesNotMatch(stamp(f), />Passed</);
+    assert.match(html, /<b>Missed the final test\.<\/b> It passed its first test on unseen data \(150 trades\), then missed the one-time final test on the locked holdout: the edge could be luck on the locked holdout\./);
+    assert.doesNotMatch(html, /<b>Passed|cleared every check|this is the one that passed|cleared the gate as one of/);
+    // No Deploy on paper up top and no Road to live (it can never be cleared); the panel says why before its button.
+    assert.equal(f.root.querySelector('#dep-paper-quick'), null); assert.equal(f.root.querySelector('#road-live'), null);
+    assert.ok(f.root.querySelector('#dep-paper'));
+    assert.match(html, /Missed the final test: the edge could be luck on the locked holdout \(see Verdict\)\. It wasn’t cleared to trade, so it can’t go live, and putting it on paper is your call\./);
+    assert.ok(html.indexOf('Missed the final test: the edge') < html.indexOf('id="dep-paper"'));
+    assert.equal(f.requests.some(({path}) => /live-readiness/.test(path)), false);
+  });
+
+  test(`${name}: a strategy the diversification check held back says so, named, never "cleared every check"`, async () => {
+    const f = await open({status: 'passed', out_of_sample: null, why_failed: tooSimilar, experiment: {classification: 'forward_validated', promoted: false,
+      validation: val, holdout: {classification: 'forward_validated', n_trades: 64, mean_net_return: 0.024, p_value: 0.01, consumed: true}}});
+    const html = main(f);
+    assert.match(stamp(f), /<span class="mk quiet">Held back<\/span>/); assert.doesNotMatch(stamp(f), />Passed</);
+    assert.match(html, /<b>Held back\.<\/b> It held up on data it had never seen, the one-time locked holdout included, but it is too similar to “&lt;b&gt;BTC&lt;\/b&gt; fade”, so the gatekeeper didn’t clear it to trade\./);
+    assert.doesNotMatch(html, /<b>Passed|cleared every check|<b>BTC<\/b>/);
+    assert.equal(f.root.querySelector('#dep-paper-quick'), null); assert.equal(f.root.querySelector('#road-live'), null);
+    assert.match(html, /Held back: too similar to “&lt;b&gt;BTC&lt;\/b&gt; fade” \(see Verdict\)\./);
+  });
+
+  test(`${name}: a true pass keeps its stamp, summary, Deploy on paper up top and Road to live`, async () => {
+    const f = await open({status: 'passed', why_failed: [], experiment: {classification: 'deployment_candidate', promoted: true, validation: val,
+      holdout: {classification: 'forward_validated', n_trades: 64, mean_net_return: 0.024, consumed: true}}});
+    assert.match(stamp(f), /<span class="mk on">Passed<\/span>/);
+    assert.match(main(f), /<b>Passed\.<\/b> It cleared every check, including the one-time locked holdout/);
+    assert.ok(f.root.querySelector('#dep-paper-quick')); assert.ok(f.root.querySelector('#dep-paper')); assert.ok(f.root.querySelector('#road-live'));
+    assert.doesNotMatch(main(f), /data-ap-next|data-ap-off|notice bad/);
+    // A plain reject keeps its own stamp and notice.
+    const r = await open({status: 'rejected', why_failed: holdoutMiss, experiment: {classification: 'rejected'}});
+    assert.match(stamp(r), /<span class="mk quiet">Rejected<\/span>/); assert.match(main(r), /<b>Rejected\.<\/b>/);
+    assert.doesNotMatch(main(r), /Missed final test|Held back/);
+  });
+
+  test(`${name}: a pass the autopilot puts on paper itself says so in place of Deploy on paper, and follows the switch`, async () => {
+    const detail = {status: 'passed', why_failed: [], autopilot_paper: true, experiment: {classification: 'deployment_candidate', promoted: true, validation: val,
+      holdout: {classification: 'forward_validated', n_trades: 64, mean_net_return: 0.024, consumed: true}}};
+    const f = strategyFrontend(detailStrategy(detail), () => response({}));
+    f.S.me.user.autopilot = true;
+    await f.viewStrategy(42); await flush();
+    const said = /The autopilot is putting this on paper at its next check-in, so there is nothing for you to deploy\./;
+    assert.match(f.root.querySelector('#strat-quick').innerHTML, said);
+    assert.equal(f.root.querySelector('#dep-paper-quick').hidden, true); assert.equal(f.root.querySelector('#dep-paper').hidden, true);
+    assert.match(main(f), /Next rung, paper: <span data-ap-next>the autopilot puts it there at its next check-in\.<\/span><span data-ap-off hidden>/);
+    // The switch flips off while the page is open: the buttons come back and the line hides.
+    f.S.ap = {autopilot: false, mode: 'off'}; f.paintDashAp();
+    assert.equal(f.root.querySelector('#dep-paper-quick').hidden, false); assert.equal(f.root.querySelector('#dep-paper').hidden, false);
+    for (const n of f.root.querySelectorAll('[data-ap-next]')) assert.equal(n.hidden, true);
+    // Off when the page opened: the buttons as before, the line drawn hidden.
+    const g = strategyFrontend(detailStrategy(detail), () => response({}));
+    await g.viewStrategy(42); await flush();
+    assert.equal(g.root.querySelector('#dep-paper').hidden, false);
+    assert.match(main(g), /<p class="hint ap-paper" data-ap-next hidden>/);
+  });
 }
