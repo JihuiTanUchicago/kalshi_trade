@@ -60,4 +60,21 @@ export function flakyNetworkCases({name, frontend}) {
       f.clearTimers();
     }
   });
+
+  test(`${name}: a page that failed to load keeps its section's tab marked, as the page itself would`, async () => {
+    for (const [path, status, tab] of [['/deploy', 500, '/deploy'], ['/research/5', 500, '/research'], ['/strategies/12', 404, '/strategies'], ['/dashboard', 500, '/']]) {
+      const f = frontend({fetchImpl: (asked) => {
+        if (/^\/api\/(deployments|research\/5|strategies\/12|dashboard)/.test(asked)) return response({error: 'Something went wrong on our side.'}, status);
+        return response({});
+      }});
+      f.location.pathname = path;
+      const rendering = f.render();
+      for (let i = 0; i < 4; i++) { await settle(); f.elapse(2000); }
+      await rendering; await settle();
+      assert.match(f.root.innerHTML, status === 404 ? /Not found/ : /Something went wrong/, path);
+      const marked = f.root.querySelectorAll('a.svc-link').filter((a) => a.getAttribute('aria-current') === 'page').map((a) => a.getAttribute('href'));
+      assert.deepEqual(marked, [tab], path);
+      f.clearTimers();
+    }
+  });
 }
