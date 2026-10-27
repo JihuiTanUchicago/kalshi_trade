@@ -3576,6 +3576,23 @@ test('Tau: a hot-markets row names its market the app’s way, never by the raw 
   for (const s of ['KXBTC15M', 'KXETHD']) assert.doesNotMatch(row(s), new RegExp('>' + s + '<'));
 });
 
+test('Tau: a hot-markets row keeps its chip and volume on one line, the chip giving way', () => {
+  // Walk 2026-10-27 at 1280px: "BTC range at midnight ET" beside "1.2M vol · 24h" wrapped the volume to two
+  // lines and the row grew 15px. The volume never wraps or shrinks; the chip may shrink, cut with an ellipsis.
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const rule = (sel) => (css.match(new RegExp('\\n' + sel.replace(/[.$]/g, '\\$&') + ' \\{([^}]*)\\}')) || [])[1] || '';
+  assert.match(rule('.hot-foot'), /display: flex;/);
+  assert.doesNotMatch(rule('.hot-foot'), /flex-wrap: wrap/);
+  assert.match(rule('.hot-vol'), /flex: none;/); assert.match(rule('.hot-vol'), /white-space: nowrap;/);
+  const chip = rule('.hot-foot .mk');
+  for (const want of [/min-width: 0;/, /overflow: hidden;/, /text-overflow: ellipsis;/]) assert.match(chip, want);
+  // Still one row's markup: the chip, then the volume, then the Kalshi icon.
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
+  const html = f.hotRowHtml({t: 'KXBTC-26OCT2700-B114750', s: 'KXBTC', ti: 'Bitcoin price range?', su: '$114,500 to $114,999.99', bid: .11, ask: .13, v24: 1234567, h: [.15, .12]});
+  assert.match(html, /<span class="hot-foot"><span class="mk quiet">BTC range at midnight ET<\/span><span class="hot-vol">1\.2M vol · 24h<\/span><svg/);
+});
+
 test('Tau: a hot-markets row for an hourly Bitcoin contract carries its own hour, never the 5pm chip', () => {
   const f = frontend();
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
