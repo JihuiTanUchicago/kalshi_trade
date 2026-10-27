@@ -2452,7 +2452,7 @@
   function viewStrategy(id) { return pageView('strategies', 'viewStrategy', '/strategies', [id]); }
 
   // ---------- deploy + chat ----------
-  const deployedNote = (n) => `Deployed on ${n.mode}: ${n.title}. It trades only when its rule fires, ${n.mode === 'demo' ? 'on Kalshi’s demo exchange with no real money' : 'against live prices with paper money'}, so the first trade can take a while. Its trades show up here and on your dashboard.`;
+  const deployedNote = (n) => `Deployed on ${n.mode}: ${n.title}. It trades only when its rule fires, ${n.mode === 'demo' ? 'on Kalshi’s demo exchange with no real money' : 'against live prices with paper money'}, so the first trade can take a while. Its trades show up here and on the Dashboard.`;
   // An open position with no mark yet (the engine prices it on its next tick) says so in its Unrealized cell, as a
   // deployment row does: a bare "—" there said nothing, and a screen reader read it as "dash". Deploy's open
   // positions and a market page's own positions; the dashboard's cards show the position's cost until then.
@@ -2591,7 +2591,7 @@
   // book, with nothing saying the gap was one instant fill's +$4.82.
   const trLeftGap = (m) => {
     const v = +m.excluded_instant_pnl || 0, n = m.excluded_instant_fills;
-    return !v ? '.' : `: ${usd(v, true)}. The realized P&L on the dashboard, Funds and Deploy counts ${n === 1 ? 'it' : 'them'}, so it reads ${usd(Math.abs(v))} ${v > 0 ? 'higher' : 'lower'} than this record.`;
+    return !v ? '.' : `: ${usd(v, true)}. The realized P&L on the Dashboard, Funds and Deploy counts ${n === 1 ? 'it' : 'them'}, so it reads ${usd(Math.abs(v))} ${v > 0 ? 'higher' : 'lower'} than this record.`;
   };
   // A strategy row's share of them, so its figures meet its Strategies list line ("+$74.33 · 27 trades" beside 26 here).
   // A strategy whose only trades were instant fills (the server's `instant_only`) has a row of its own, last, so it is

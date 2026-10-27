@@ -3861,7 +3861,7 @@ test('first-run funnel: deploying from a strategy page lands on Deploy with a no
   await flush(); await flush();
   const note = f.root.querySelector('#flash').innerHTML;
   assert.match(note, /class="notice good"/);
-  assert.match(note, /Deployed on paper: Momentum &lt;b&gt;fade&lt;\/b&gt;\. It trades only when its rule fires, against live prices with paper money, so the first trade can take a while\. Its trades show up here and on your dashboard\./);
+  assert.match(note, /Deployed on paper: Momentum &lt;b&gt;fade&lt;\/b&gt;\. It trades only when its rule fires, against live prices with paper money, so the first trade can take a while\. Its trades show up here and on the Dashboard\./);
   assert.equal(f.S.deployed, null);
   // Once: the next visit to Deploy has no note.
   await f.viewDeploy(); await flush();

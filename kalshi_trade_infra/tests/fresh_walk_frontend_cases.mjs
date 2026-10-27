@@ -228,4 +228,21 @@ export function freshWalkCases({name, frontend, dashboard}) {
     assert.match(f.root.querySelector('#sys-detail').innerHTML, /2 paper running · not seen yet<\/p>/);
     f.clearTimers();
   });
+
+  // Meridian headed the page "Overview" (and its tab read "Overview · Tau") under a nav that says "Dashboard", beside
+  // notes that send the reader to "the dashboard". The page says the nav's name, and so does the copy that names it.
+  test(`${name}: the dashboard is headed by its nav name, "Dashboard", and the tab and notes say the same`, async () => {
+    const f = frontend({fetchImpl: (path) => (path === '/api/dashboard' || path.startsWith('/api/dashboard?')) ? response(dashboard())
+      : response({messages: [], models: []})});
+    f.location.pathname = '/';
+    await f.render(); await settle();
+    const here = f.root.querySelector('.services [aria-current="page"]');
+    assert.equal(here.textContent.replace(/<[^>]*>/g, '').trim(), 'Dashboard');
+    assert.equal(f.root.querySelector('h1').textContent, 'Dashboard');
+    assert.equal(f.document.title, `Dashboard${SEP}Tau`);
+    assert.doesNotMatch(f.root.innerHTML, />Overview</);
+    f.clearTimers();
+    // The track record's instant-fill note (track_record_trust_frontend_cases) and Deploy's first-deploy note
+    // name it "the Dashboard" too.
+  });
 }
