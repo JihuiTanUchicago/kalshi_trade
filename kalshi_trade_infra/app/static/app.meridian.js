@@ -3003,17 +3003,31 @@
   // A 15-minute window's row measures from the target price in its own name, the one its market page shows
   // (titleStrike) until a strike is stored; the server says so (`vs.from`), and the row names it the same way.
   const VS_TITLE = 'Target price from the contract’s title, as on its market page';
-  // Every 15-minute window's line is its target price, as its market page names it (spotSect, marketSpot), whether
-  // the server read it from the title or has it stored: a stored one still said "Spot vs strike" here.
-  const vsTarget = (m) => !!(m.vs && m.vs.from === 'title') || M15_CONTRACT.test(m.t || '');
-  const vsText = (v, target) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (target ? 'at the target price' : 'at the strike')
+  // A 15-minute window's line is its target price whether it was read from the title or stored (M15_CONTRACT, as
+  // its market page says it): a stored one read "Spot vs strike" on Explore beside "Target price" on its page.
+  const vsTarget = (m) => !!((m.vs && m.vs.from === 'title') || M15_CONTRACT.test(m.t || ''));
+  const vsText = (v, m) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (vsTarget(m || { vs: v }) ? 'at the target price' : 'at the strike')
     : `${+v.diff < 0 ? '−' : '+'}$${num(Math.round(Math.abs(+v.diff)))} · ${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
   const vsLab = (m) => (vsTarget(m) ? 'Spot vs target price' : /^KXBTC-.+-B[\d.]+$/.test(m.t) ? 'Spot vs bucket' : 'Spot vs strike');
-  const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, vsTarget(m))}</b></span>` : '');
-  const spotListNote = (s) => (s === undefined ? '' : s && s.failed ? 'Bitcoin’s latest stored price didn’t load, so distances to the strike are left out.'
-    : !s ? 'No Bitcoin price stored in the last day, so distances to the strike are left out.'
-    : s.stale ? `Bitcoin’s spot feed is ${spotOld(+s.age_s || 0)} old, so distances to the strike are left out until it catches up.`
-    : `Distances to the strike are from Bitcoin at ${btcUsd(s.price)} (Coinbase, ${spotAge(+s.age_s || 0)}).`);
+  const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, m)}</b></span>` : '');
+  // The line names what the rows shown measure from: a list of 15-minute windows only said "Distances to the strike"
+  // over rows that each said "target price". Both kinds on one list name both. The rows with a figure count; with
+  // no figure to show (an old or missing spot), the Bitcoin rows that would have one: a 15-minute window's only with
+  // the target in its name (TARGET_IN), as the server reads it when no strike is stored.
+  const spotFrom = (ms) => {
+    const all = ms || [], vs = all.filter((m) => m.vs);
+    const btc = vs.length ? vs : all.filter((m) => BTC_CONTRACT.test(m.t || '') && (!M15_CONTRACT.test(m.t) || TARGET_IN.test(`${m.su || ''} ${m.ti || ''}`)));
+    const m15 = btc.filter(vsTarget).length;
+    return !m15 ? 'the strike' : m15 === btc.length ? 'the target price' : 'the strike or target price';
+  };
+  const spotListNote = (s, ms) => {
+    if (s === undefined) return '';
+    const to = 'distances to ' + spotFrom(ms);
+    return s && s.failed ? `Bitcoin’s latest stored price didn’t load, so ${to} are left out.`
+      : !s ? `No Bitcoin price stored in the last day, so ${to} are left out.`
+      : s.stale ? `Bitcoin’s spot feed is ${spotOld(+s.age_s || 0)} old, so ${to} are left out until it catches up.`
+      : `${to.charAt(0).toUpperCase() + to.slice(1)} are from Bitcoin at ${btcUsd(s.price)} (Coinbase, ${spotAge(+s.age_s || 0)}).`;
+  };
 
   // Explore's empty and failed states: what happened, and a way to ask again. Each sits directly under the
   // page's h1, so its heading is an h2 (styled as the other empty states' h3).
@@ -3095,7 +3109,7 @@
           <td class="num yes-price" data-lab="YES Price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="YES Bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="YES Ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
       });
-      const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot);
+      const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot, d.markets);
       const sortHead =(key, label, criterion = label, rowspan = 1) => `<th scope="col"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} class="num${key === 'last' ? ' quote-head' : ''}" aria-sort="${f.sort === key ? 'descending' : 'none'}"><button type="button" data-sort="${key}" title="Sort by ${criterion.toLowerCase()}" aria-label="Sort by ${criterion.toLowerCase()}">${label}${f.sort === key ? ' <span aria-hidden="true">↓</span>' : ''}</button></th>`;
       const sortFocused = body.querySelector('[data-sort]:focus')?.dataset.sort;
       keepFocus(body, () => {
@@ -3889,10 +3903,10 @@
   // When a hot market closes (`ct`, as Explore's rows say it) and, for a Bitcoin contract, how far spot is
   // from its strike; a rail with no fresh spot says why above its rows, as the list does.
   const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? `<span>Closes ${esc(settleAt(m.ct))}</span>` : ''}${vsHtml(m)}</span>` : '');
-  const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot))}</p>` : '');
+  const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
   function hotRowHtml(m) {
     const compactName = contractShort(m.t) || (m.ti || '').trim() || contractName(m.t);
-    const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m)} ${vsText(m.vs, vsTarget(m))}` : '');
+    const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m)} ${vsText(m.vs, m)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(' ·\u00a0'))} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours${when} ·\u00a0Opens Kalshi in a new tab">
