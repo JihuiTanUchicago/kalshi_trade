@@ -171,6 +171,96 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     f.clearTimers();
   });
 
+  // An account with Kalshi keys: the shell carries Funds' read without waiting on Kalshi (shell_reads.py), each
+  // key's cash pending; the page draws it as checking, never $0, and asks for each book's cash on its own.
+  const keyed = (over = {}) => ({
+    kalshi: {connected: true, pending: true, balance: null, key_id: 'LIVE…1234', funding_url: 'https://kalshi.com/account/funding',
+      closed_trades: 1, realized_pnl: -1.25, open_positions: 0, open_at_cost: 0, ...over.kalshi},
+    kalshi_dev: {connected: true, pending: true, balance: null, key_id: 'DEVK…5678', copies_from: 100, ...over.kalshi_dev},
+    demo: {capital: 1000, equity: 1003.5, realized: 3.5, closed_trades: 1, open_positions: 0, open_at_cost: 0},
+    paper: {cash: 2001.75, equity: 2001.75, realized_pnl: 5.61, closed_trades: 2, open_positions: 0, open_at_cost: 0,
+      ledger: [{created_at: '2026-10-17T10:00:00Z', memo: 'Paper deposit', amount: 1000}]},
+  });
+  const liveFig = (f) => f.root.querySelector('#ffigs').querySelectorAll('div.m')[0].textContent;
+  const spot = (f, name) => f.root.querySelector(`[data-cash="${name}"]`).innerHTML;
+
+  test(`${name}: Funds draws a pending Kalshi cash as checking, never $0, then fills each book's in from its own read`, async () => {
+    let answerLive;
+    const liveHeld = new Promise((resolve) => { answerLive = resolve; });
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/funds/cash?book=live') return liveHeld.then(() => response({book: 'live', connected: true, balance: 1234.56, balance_at: new Date().toISOString()}));
+      if (path === '/api/funds/cash?book=demo') return response({book: 'demo', connected: true, balance: 500, balance_at: new Date().toISOString()});
+      return response({});
+    }});
+    f.location.pathname = '/funds';
+    f.window.__TAU_FIRST__ = [{url: '/api/funds', body: keyed()}];
+    await f.viewFunds(); await settle();
+    assert.equal(asked(f, '/api/funds'), 2, 'no /api/funds: the two cash reads only');
+    assert.equal(asked(f, '/api/funds/cash?book=live'), 1);
+    assert.equal(asked(f, '/api/funds/cash?book=demo'), 1);
+    // Live is still on its way: a labelled placeholder, never $0, while the books from our own database are all there.
+    assert.match(liveFig(f), /Kalshi cash\s*Checking…/);
+    assert.doesNotMatch(liveFig(f), /\$0\.00|Unavailable/);
+    assert.match(f.root.querySelector('#ffigs').textContent, /\$2,001\.75/);
+    assert.match(f.root.querySelector('#ffigs').textContent, /\$1,003\.50/);
+    assert.match(spot(f, 'live-cell'), /^Checking…$/);
+    assert.match(spot(f, 'live-ok'), /checking your balance at Kalshi/);
+    // Demo answered: its line is filled in place.
+    assert.match(spot(f, 'demo-ok'), /Connected ✓<\/b> \(balance \$500\.00, read just now\)/);
+    answerLive(); await settle();
+    assert.match(liveFig(f), /Kalshi cash\s*\$1,234\.56/);
+    assert.doesNotMatch(liveFig(f), /Checking/);
+    assert.equal(spot(f, 'live-cell'), '$1,234.56');
+    assert.match(spot(f, 'live-ok'), /Connected ✓/);
+    assert.equal(asked(f, '/api/funds'), 2, 'the page itself is never read again for it');
+    f.clearTimers();
+  });
+
+  test(`${name}: Funds shows an older Kalshi cash only with its age while it checks`, async () => {
+    const f = frontend({fetchImpl: () => new Promise(() => {})});
+    f.location.pathname = '/funds';
+    const at = new Date(Date.now() - 5 * 60000).toISOString();
+    f.window.__TAU_FIRST__ = [{url: '/api/funds', body: keyed({kalshi: {last_balance: 900, last_balance_at: at}, kalshi_dev: {last_balance: 0, last_balance_at: at}})}];
+    await f.viewFunds(); await settle();
+    assert.match(liveFig(f), /Kalshi cash\s*\$900\.00\s*Read 5m ago; checking Kalshi for the latest…/);
+    assert.equal(spot(f, 'live-cell'), '$900.00, read 5m ago; checking…');
+    // An old $0 demo figure is shown as old, and raises no "your demo account is empty" notice from it.
+    assert.match(spot(f, 'demo-ok'), /balance \$0\.00, read 5m ago; checking for the latest…/);
+    assert.doesNotMatch(spot(f, 'demo-ok'), /refuses demo orders/);
+    f.clearTimers();
+  });
+
+  test(`${name}: Funds says in plain words when it couldn't check the Kalshi cash`, async () => {
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/funds/cash')
+      ? response({error: 'Traceback (most recent call last): RuntimeError: kalshi read timed out'}, 500) : response({})});
+    f.location.pathname = '/funds';
+    f.window.__TAU_FIRST__ = [{url: '/api/funds', body: keyed()}];
+    await f.viewFunds(); await settle();
+    assert.match(liveFig(f), /Kalshi cash\s*Unavailable\s*Tau couldn’t check your Kalshi cash just now\. Reload in a minute to try again\./);
+    assert.equal(spot(f, 'live-cell'), 'Couldn’t check it just now');
+    assert.match(spot(f, 'demo-ok'), /Tau couldn’t check it just now\. Reload in a minute to try again\./);
+    const page = f.root.querySelector('#ffigs').textContent + spot(f, 'live-ok') + spot(f, 'demo-ok');
+    assert.doesNotMatch(page, /Traceback|RuntimeError|timed out|\$0\.00|Checking/);
+    f.clearTimers();
+  });
+
+  test(`${name}: a full Funds read never waits on the follow-up, and the follow-up never paints over it`, async () => {
+    let answerLive;
+    const liveHeld = new Promise((resolve) => { answerLive = resolve; });
+    const fresh = keyed({kalshi: {pending: undefined, balance: 2222, balance_at: new Date().toISOString()}, kalshi_dev: {pending: undefined, balance: 600}});
+    const f = frontend({fetchImpl: (path) => path === '/api/funds/cash?book=live' ? liveHeld.then(() => response({book: 'live', connected: true, balance: 1111}))
+      : path === '/api/funds' ? response(fresh) : new Promise(() => {})});
+    f.location.pathname = '/funds';
+    f.window.__TAU_FIRST__ = [{url: '/api/funds', body: keyed()}];
+    await f.viewFunds(); await settle();
+    for (const tick of [...f.intervals.values()]) tick();  // the poll reads it all afresh
+    await settle();
+    assert.match(liveFig(f), /\$2,222\.00/);
+    answerLive(); await settle();
+    assert.match(liveFig(f), /\$2,222\.00/, 'the older follow-up is dropped');
+    f.clearTimers();
+  });
+
   test(`${name}: a carried read is used only for its own URL and only by the first page`, async () => {
     let f = frontend({fetchImpl: researchTransport()});
     f.location.pathname = '/research';

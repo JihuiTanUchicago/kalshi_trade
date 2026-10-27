@@ -17,9 +17,11 @@ change, a trip) names a URL the page doesn't ask, and the page asks as before. I
 account Stripe has no cards to list for: the saved-card list waits on Stripe, and a slow Stripe must
 never hold the whole shell blank (the page's own read keeps it behind a skeleton instead).
 
-Funds is carried by the same rule: its read asks Kalshi for the live and demo cash of an account with a
-key, unless the server read it in the last minute (the dashboard and Funds' own poll read it too). It is
-carried for an account with no key, or with each key's cash still memoized; otherwise the page asks.
+Funds is carried by the same rule, always: its read asks Kalshi for the live and demo cash of an account
+with a key (unless the server read it in the last minute), so the shell carries a version that never asks.
+Everything from our own database (each book, its positions, P&L and history) is as /api/funds answers it;
+a key's cash comes from its memo when kept, else is marked pending, with the last figure read and its age
+if the memo holds one. The page draws it as "checking" (never $0) and asks /api/funds/cash?book= for it.
 
 The dashboard also carries the autopilot status: its autopilot card sits above the figures, and drawn
 a round trip after them it pushed them down the screen. Research carries its loop card's board for the
@@ -38,7 +40,7 @@ from app.web.routes.billing import asks_stripe, billing_state
 from app.web.routes.chat import autopilot_status
 from app.web.routes.dashboard import dashboard
 from app.web.routes.deployments import list_deployments
-from app.web.routes.funds import asks_kalshi, funds
+from app.web.routes.funds import funds
 from app.web.routes.research import get_run, list_runs, research_scoreboard, scoreboard_kept
 from app.web.routes.strategies import list_strategies
 
@@ -76,11 +78,9 @@ def billing_without_stripe(ctx: Ctx) -> Dict[str, Any]:
 
 
 def funds_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
-    """Funds' first read, as funds answers it, while every cash figure it shows is memoized (or there is no
-    key to read one for); NotKept when it would ask Kalshi (up to its timeout, per key)."""
-    if asks_kalshi(ctx):
-        raise NotKept
-    return funds(ctx)
+    """Funds' first read, as funds answers it, except that it never asks Kalshi: a key's cash whose memo
+    isn't kept is marked pending (with the last figure read and its age, if any) for the page to ask after."""
+    return funds(ctx, ask_kalshi=False)
 
 
 def dashboard_since(cookie: Optional[str], now: Optional[float] = None) -> Optional[int]:
