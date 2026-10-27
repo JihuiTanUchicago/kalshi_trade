@@ -87,6 +87,21 @@ def test_panel_says_it_sticks_to_the_focus():
     assert not any("focus" in line for line in server._autopilot_story({"autopilot": True, "focus": []}))
 
 
+def test_the_panel_names_the_focus_in_words_never_its_token():
+    # Walk 2026-10-27: a Bitcoin-only account's story read "It sticks to the focus you set: btc." right above the
+    # panel's own "Focus: Bitcoin".
+    story = server._autopilot_story({"autopilot": True, "focus": ["btc"]})
+    assert "It sticks to the focus you set: Bitcoin." in story
+    assert not any(" btc" in line for line in story)
+    assert agent.focus_words(["btc", "eth"]) == "Bitcoin, Ethereum"
+    assert agent.focus_words(["btc15m"]) == agent.MARKETS["btc15m"].label
+    assert agent.focus_words(["weather-high", "sports"]) == "daily high temperatures, sports"
+    assert agent.focus_words([]) == ""
+    idle = server._idle_reason({"autopilot": True, "focus": ["btc"]}, [], [], None, [
+        {"id": 5, "title": "Rain idea", "market": "high_ny", "in_focus": False, "candidate": False, "retired": False}])
+    assert idle["code"] == "focus" and "your focus is Bitcoin," in idle["line"] and "btc" not in idle["line"]
+
+
 def test_focus_endpoint_validates_and_stores(monkeypatch):
     from types import SimpleNamespace
     stored, chat = [], []
@@ -95,7 +110,7 @@ def test_focus_endpoint_validates_and_stores(monkeypatch):
     assert server.autopilot_focus(SimpleNamespace(cur=None, uid=1, body={"focus": ["Bitcoin"]})) == {"ok": True, "focus": ["btc"]}
     with pytest.raises(server.ApiError):
         server.autopilot_focus(SimpleNamespace(cur=None, uid=1, body={"focus": ["stonks"]}))
-    assert stored == [["btc"]] and chat == ["Market focus set to btc."]
+    assert stored == [["btc"]] and chat == ["Market focus set to Bitcoin."]
     assert any(r[0] == "POST" and r[1].pattern == "^/api/autopilot/focus$" for r in server.ROUTES)
 
 

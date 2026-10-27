@@ -409,7 +409,40 @@ def test_the_run_page_gives_each_verdict_event_its_lines(monkeypatch):
     assert out[2]["data"]["why_failed"] == [] and out[3]["data"]["why_failed"] == []
     # Each verdict also carries the plain sentence the page shows over a message written for the ledger.
     assert out[1]["data"]["note"] == "Did not pass on data it never saw (9" + NB + "trades)."
-    assert out[2]["data"]["note"] == "Passed every check on data it never saw." and out[3]["data"]["note"] is None
+    # A validation pass passed its first test only: the locked holdout and the diversification check follow.
+    assert out[2]["data"]["note"] == "Passed its first test on data it never saw." and out[3]["data"]["note"] is None
+
+
+def test_the_run_page_done_line_counts_apart_the_passes_a_later_check_left_uncleared(monkeypatch):
+    """Walk 2026-10-27: a session page read "Passed 0 · 1 not cleared" over the strategy stamped Missed final
+    test, and its log ended "1 of 2 ideas passed every check". The done line now counts the session's passes
+    a later check left uncleared apart; a probation strategy held back after paper (stored Void) was never in
+    the agent's count, so it isn't taken off."""
+    from app.web.routes import research
+    run = {"id": 9, "kind": "research", "status": "succeeded", "created_at": None, "heartbeat_at": None, "finished_at": None}
+    events = [{"id": 1, "kind": "verdict", "message": "PASSED - Cheap NO: validation verdict", "data": {"title": "Cheap NO", "status": "passed", "stats": {}}},
+              {"id": 2, "kind": "done", "message": "2 of 18 hypotheses passed every gate (5 dropped on research data).", "data": {"passed": 2}}]
+    rows = [{"id": 41, "run_id": 9, "status": "passed"}, {"id": 42, "run_id": 9, "status": "passed"},
+            {"id": 43, "run_id": 9, "status": "failed"}]
+    monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: dict(run))
+    monkeypatch.setattr(server.repo, "runs_spent", lambda *a: {})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [dict(r) for r in rows])
+    monkeypatch.setattr(server.repo, "get_policy", lambda *a: None)
+    monkeypatch.setattr(server.repo, "latest_dream_event", lambda *a: None)
+    monkeypatch.setattr(server.repo, "run_events", lambda *a: [dict(e, data=dict(e["data"])) for e in events])
+    monkeypatch.setattr(research, "warm_dev_curves", lambda *a: None)
+    monkeypatch.setattr(research, "_strategy_card", lambda s: {"id": s["id"]})
+    monkeypatch.setattr(research, "_autopilot_puts_on_paper", lambda *a: set())
+    later = {42: {"verdict": "held_back"}, 43: {"verdict": "held_back"}}
+    monkeypatch.setattr(research, "_later_missed", lambda cur, uid, strategies: dict(later))
+    out = server.get_run(_ctx(("9",)))["events"]
+    assert out[0]["data"]["note"] == "Passed its first test on data it never saw."
+    assert out[1]["data"]["note"] == ("1 of 18 ideas cleared every check (5 dropped before testing); 1 more passed its first "
+                                      "test, then wasn't cleared to trade.")
+    assert "passed every check" not in out[1]["data"]["note"]
+    later = {}
+    out = server.get_run(_ctx(("9",)))["events"]
+    assert out[1]["data"]["note"] == "2 of 18 ideas passed every check (5 dropped before testing)."
 
 
 def test_ledger_verdict_lines_read_as_plain_sentences():

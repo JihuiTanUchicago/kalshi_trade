@@ -644,6 +644,18 @@ def _brief() -> str:
 # deploys and the paper funnel refuse anything outside it, and the research picker only offers it.
 FOCUS_ALIASES = {"bitcoin": "btc", "ethereum": "eth", "solana": "sol", "ripple": "xrp",
                  "dogecoin": "doge", "weather": "weather-high", "temperature": "weather-high"}
+# A focus token as a customer reads it. The autopilot panel's story said "It sticks to the focus you set: btc."
+# right above its own "Focus: Bitcoin".
+FOCUS_WORDS = {"btc": "Bitcoin", "eth": "Ethereum", "sol": "Solana", "xrp": "XRP", "doge": "Dogecoin",
+               "hype": "Hyperliquid", "near": "NEAR", "zec": "Zcash", "tao": "Bittensor",
+               "crypto-perpetuals": "crypto perpetuals", "weather-high": "daily high temperatures"}
+
+
+def focus_words(tokens: List[str]) -> str:
+    """The focus in words ("Bitcoin", "crypto, sports"): a coin by its name, a market key by its label, a family
+    by its name. Display only; the stored tokens are unchanged."""
+    return ", ".join(FOCUS_WORDS.get(t) or (MARKETS[t].label if t in MARKETS else str(t).replace("-", " "))
+                     for t in tokens or [])
 
 
 def _underlying_tag(market: str) -> str:

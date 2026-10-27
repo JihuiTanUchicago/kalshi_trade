@@ -447,11 +447,12 @@ window.TauPage('research', (T) => {
   function runRow(r, newest) {
     const why = RUN_STOP[r.stop_reason] || '', { ok, fell } = runPassed(r);
     // A `stopped` session (interrupted, or a market with nothing to research yet) reads like a
-    // finished one: it fell through to a red "Failed".
+    // finished one: it fell through to a red "Failed". The uncleared passes are their own line, outside the
+    // green ratio: "0/2 passed, 1 not" broke before "cleared" and read as if nothing had passed.
     const late = runLate(r);
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching'
       : r.status === 'queued' ? 'Waiting'
-      : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${ok ? 'gain' : ''}"><span class="run-ratio" aria-label="${esc(ok)} of ${esc(r.hypotheses_tried)}"><b class="run-passed">${ok}</b><span aria-hidden="true">/</span><b class="run-tested">${r.hypotheses_tried}</b></span> <span class="run-denominator">passed${fell ? `, ${num(fell)} not cleared` : ''}</span></span>${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : ''}`
+      : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${ok ? 'gain' : ''}"><span class="run-ratio" aria-label="${esc(ok)} of ${esc(r.hypotheses_tried)}"><b class="run-passed">${ok}</b><span aria-hidden="true">/</span><b class="run-tested">${r.hypotheses_tried}</b></span> <span class="run-denominator">passed</span></span>${fell ? `<span class="run-denominator run-fell">${num(fell)} more passed but not cleared</span>` : ''}${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : ''}`
       : r.status === 'paused' ? 'Paused'
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
     // status band: a thin color rule so passed/void/failed reads at a glance; only a real error is `fail`

@@ -77,6 +77,14 @@ def test_the_done_line_and_lines_it_leaves_alone():
     assert ge.step_note("done", "0 of 5 hypotheses passed every gate (1 dropped on research data).") == \
         "0 of 5 ideas passed every check (1 dropped before testing)."
     assert ge.step_note("done", "1 of 1 hypotheses passed every gate.") == "1 of 1 idea passed every check."
+    # Passes a later check left uncleared (Missed final test, Held back) are counted apart, never more than passed.
+    assert ge.step_note("done", "1 of 2 hypotheses passed every gate.", 1) == \
+        "0 of 2 ideas cleared every check; 1 more passed its first test, then wasn't cleared to trade."
+    assert ge.step_note("done", "3 of 9 hypotheses passed every gate (2 dropped on research data).", 2) == \
+        "1 of 9 ideas cleared every check (2 dropped before testing); 2 more passed their first test, then weren't cleared to trade."
+    assert ge.step_note("done", "1 of 2 hypotheses passed every gate.", 4).startswith("0 of 2 ideas cleared every check; 1 more")
+    assert ge.step_note("done", "0 of 2 hypotheses passed. Random really does wander nowhere.", 1) == \
+        "0 of 2 ideas passed. Random really does wander nowhere."
     # The seeded example's last line keeps its own sentence after the count.
     assert ge.step_note("done", "0 of 2 hypotheses passed. Random really does wander nowhere — now describe a real idea.") == \
         "0 of 2 ideas passed. Random really does wander nowhere — now describe a real idea."
@@ -98,3 +106,5 @@ def test_the_run_page_gets_the_note_beside_the_untouched_message():
     assert evs[1]["data"] == {"phase": "loading"}  # nothing to say: untouched
     assert evs[2]["data"] == {"note": "Picked the best 2 ideas to test on data it hasn't seen; a skeptical reviewer read each one first."}
     assert evs[3]["data"] == {"passed": 1, "note": "1 of 2 ideas passed every check."}
+    done = _with_gate_lines([{"kind": "done", "message": "1 of 2 hypotheses passed every gate.", "data": {"passed": 1}}], 1)
+    assert done[0]["data"]["note"] == "0 of 2 ideas cleared every check; 1 more passed its first test, then wasn't cleared to trade."

@@ -88,6 +88,10 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.doesNotMatch(on, /100\.0%/); assert.match(on, /not with Deployed on: only passed strategies deploy/);
     const off = await figs('?status=', {total: 56, passed: 16, failed: 19, rejected: 14, deployed: 5});
     assert.match(off, /28\.6%/); assert.doesNotMatch(off, /not with Deployed on/);
+    // Walk 2026-10-27: it says what it is a rate of. Research's rate is of every idea tested (most never become a
+    // strategy), and one account read 8.6% there and 12.0% here with nothing saying why.
+    assert.match(off, /of the 56 strategies here/); assert.doesNotMatch(on, /strategies here/);
+    assert.match(await figs('?status=', {total: 1, passed: 1}), /of the 1 strategy here/);
     // Nothing passed yet is a 0% rate, not a blank.
     assert.match(await figs('?status=', {total: 4, rejected: 4}), /0\.0%/);
   });
