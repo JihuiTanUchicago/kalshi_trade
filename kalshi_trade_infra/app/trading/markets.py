@@ -106,22 +106,24 @@ CRYPTO_15M_HISTORY_DAYS = 90
 # endpoints serve these series back to 2021, and market_history pages them past the live cutoff.
 WEATHER_HISTORY_DAYS = int(os.getenv("WEATHER_HISTORY_DAYS", "365"))
 
+# A label is what customers read, so a Bitcoin one says what the contract pays on and when it closes
+# ("Bitcoin above $X at 5pm ET"); the app fills a contract's own strike in for "$X" from its ticker.
 CURATED: Dict[str, Market] = {
     # Logical research series; the native Bitcoin ticker is verified/discovered by the
     # dedicated public-data adapter. Never send BTC_PERP to the event-contract API.
-    "btc_perp": Market("btc_perp", "BTC_PERP", "Bitcoin perpetual (research only)",
+    "btc_perp": Market("btc_perp", "BTC_PERP", "Bitcoin perpetual future, no expiry (research only)",
                        candle_minutes=1, history_days=90, underlying="BTC-USD",
                        deployable=False, kind="perpetual", category="Crypto perpetuals"),
     # Deployable: live feed + execution path exist, so the engine trades these.
-    "btc15m": Market("btc15m", "KXBTC15M", "Bitcoin 15-minute", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
+    "btc15m": Market("btc15m", "KXBTC15M", "Bitcoin up or down in 15 minutes", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
                      underlying="BTC-USD", deployable=True, category="Crypto"),
     # Research-only: the same KXBTC15M contracts replayed from the per-second tick archive
     # (book, taker flow, Coinbase spot each second), deciding every 5s instead of every minute.
     # Archive starts 2026-10-24 20:00Z; history is short until it accumulates.
-    "btc15m_tick": Market("btc15m_tick", "KXBTC15M", "Bitcoin 15-minute, per-second data", candle_minutes=1,
-                          history_days=7, underlying="BTC-USD", deployable=False, category="Crypto",
+    "btc15m_tick": Market("btc15m_tick", "KXBTC15M", "Bitcoin up or down in 15 minutes, per-second data",
+                          candle_minutes=1, history_days=7, underlying="BTC-USD", deployable=False, category="Crypto",
                           source="ticks", decision_secs=5, data_from_ts=1792872000),
-    "btc_daily": Market("btc_daily", "KXBTCD", "Bitcoin daily close, 5pm EDT", candle_minutes=60,
+    "btc_daily": Market("btc_daily", "KXBTCD", "Bitcoin above $X at 5pm ET", candle_minutes=60,
                         history_days=60, close_hour_et=17, underlying="BTC-USD", deployable=True, category="Crypto"),
     # Deployable crypto: same strike-ladder + spot-price model as BTC. The live engine prices
     # each from its own Coinbase product (engine.fetch_spot_series) and places orders on its

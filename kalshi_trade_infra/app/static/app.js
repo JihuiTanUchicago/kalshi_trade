@@ -310,7 +310,10 @@
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
   const MKT_SHORT = {
-    btc15m: 'BTC 15-min', btc15m_tick: 'BTC 15-min ·\u00a0per second', btc_perp: 'BTC perp', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
+    // Bitcoin says the contract and its close, not just the coin and an hour ("BTC 5pm" was every kind),
+    // with no " · " inside: lists and chips join labels with it, and "BTC above $X · 5pm ET" read as two.
+    btc15m: 'BTC 15-min up/down', btc15m_tick: 'BTC 15-min up/down, per second', btc_perp: 'BTC perpetual, no expiry',
+    btc_daily: 'BTC above $X at 5pm ET', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
     sol15m: 'SOL 15-min', sol_daily: 'SOL 5pm', xrp15m: 'XRP 15-min', xrp_daily: 'XRP 5pm',
     doge15m: 'DOGE 15-min', near15m: 'NEAR 15-min', zec15m: 'ZEC 15-min', hype15m: 'HYPE 15-min',
     nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
@@ -325,15 +328,18 @@
   const catOrder = (a, b) => { const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); };
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
-  // "Bitcoin daily close, 5pm EDT"), so an open position never shows only the raw ticker. Unknown: ''.
+  // "Bitcoin above $68,499.99 at 5pm ET"), so an open position never shows only the raw ticker. Unknown: ''.
   // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
   // contracts whose event closes then: KXBTCD-26OCT2700 is the midnight contract, which no strategy trades.
   const contractHour = (ticker) => { const m = /^[^-]+-\d{2}[A-Z]{3}\d{2}(\d{2})(?:-|$)/.exec(String(ticker || '')); return m ? +m[1] : null; };
   const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
+  // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do.
   const contractMarket = (ticker) => {
     const m = contractMkt(ticker);
-    return m ? (m.label || marketShort(m.key)) : '';
+    if (!m) return '';
+    const label = m.label || marketShort(m.key), k = /-T(\d+(?:\.\d+)?)$/.exec(String(ticker));
+    return k ? label.replace('$X', '$' + num(k[1])) : label;
   };
   // A contract ticker that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(ticker)}</a>`;
@@ -2885,9 +2891,9 @@
   function apMarketName(n) {
     const s = String(n || '');
     if (MKT_SHORT[s]) return MKT_SHORT[s];
-    const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
+    const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || x.label === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
     if (m) return marketShort(m.key);
-    // A label has a space or mixed case ("Bitcoin daily close, 5pm EDT"); a key is one case, no spaces.
+    // A label has a space or mixed case ("Chicago high temp"); a key is one case, no spaces.
     if (!/^[\w.-]+$/.test(s) || (s !== s.toLowerCase() && s !== s.toUpperCase())) return s;
     return contractMarket(s) || 'an unlisted market';
   }

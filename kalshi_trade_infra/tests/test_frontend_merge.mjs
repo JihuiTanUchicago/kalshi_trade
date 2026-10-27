@@ -1192,7 +1192,7 @@ test('while its paper strategy holds nothing, the autopilot card also says what 
   f.S.ap = {...apOn, idle: flat, research: {...apOn.research, active: ['btc15m', 'eth15m']}};
   await f.viewDashboard(); await flush();
   const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
-  assert.match(now(), /holds no position\. It checks again at its market(?:'|&#39;)s next decision time\. Meanwhile it's researching BTC 15-min and ETH 15-min\.$/);
+  assert.match(now(), /holds no position\. It checks again at its market(?:'|&#39;)s next decision time\. Meanwhile it's researching BTC 15-min up\/down and ETH 15-min\.$/);
   f.S.ap = {...f.S.ap, research: {...apOn.research, active: ["a market it's still picking"]}}; f.paintDashAp();
   assert.match(now(), /Meanwhile it's picking a market to research\.$/);
   f.S.ap = {...f.S.ap, research: {...apOn.research, active: []}, reviewing: true}; f.paintDashAp();
@@ -1321,12 +1321,12 @@ test('Explore tells same-titled markets from different events apart by market an
         {...row('KXNBAGAME-26OCT25MINDEN-MIN', 'KXNBAGAME-26OCT25MINDEN', null), s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota'}]});
     return response({});
   }});
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', close_hour_et: 17}];
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   await f.viewExplore(); await flush();
   const tags = f.root.querySelector('#xbody').querySelectorAll('td.name').map((td) => (td.querySelector('.mk') || {textContent: ''}).textContent);
-  assert.match(tags[0], /^closes /); assert.doesNotMatch(tags[0], /BTC 5pm/, 'the noon contract is not the 5pm market');
-  assert.match(tags[1], /^BTC 5pm ·\u00a0closes /);
-  assert.notEqual(tags[0], tags[1].replace('BTC 5pm ·\u00a0', ''));
+  assert.match(tags[0], /^closes /); assert.doesNotMatch(tags[0], /BTC above/, 'the noon contract is not the 5pm market');
+  assert.match(tags[1], /^BTC above \$X at 5pm ET ·\u00a0closes /);
+  assert.notEqual(tags[0], tags[1].replace('BTC above $X at 5pm ET ·\u00a0', ''));
   assert.equal(tags[2], '', 'an event with no hour and no market here gets no chip rather than its raw key');
   assert.doesNotMatch(f.root.querySelector('#xbody').innerHTML, /KXBTCD-26OCT25(12|17)<|KXNBAGAME-26OCT25MINDEN</);
 });
@@ -1404,11 +1404,11 @@ const MARKET_PAGE = {ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD', ti
 const readerZone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value;
 
 test('a market page says what its price is, how it settles and when, and the reader’s positions by money book', async () => {
-  const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}]);
+  const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}]);
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin daily close, 5pm EDT · Open for trading · KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
   assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
@@ -2414,20 +2414,23 @@ test('the floating autopilot pill steps aside from any control or value under it
 
 test('the autopilot says the market it researches by its label, never a raw key or series', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}, {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}, {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
   const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
   f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi']}};
-  assert.equal(f.apIdleLine(), 'Researching BTC 15-min · BTC 5pm · Chicago high temp');
+  assert.equal(f.apIdleLine(), 'Researching BTC 15-min up/down · BTC above $X at 5pm ET · Chicago high temp');
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it's still picking"]}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
+  // The server sends a listed market's catalog label; it reads as the short one, as its key does.
+  f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
+  assert.equal(f.apIdleLine(), 'Researching BTC above $X at 5pm ET');
   // The story quotes the same list; the panel, the card and the pill's tooltip say it the same way.
   const d = {...ap, research: {active: ['btc15m', 'KXBTCD'], tested_7d: 3, passed_7d: 0}, story: ["Right now it's researching btc15m and KXBTCD."]};
   const box = new Element('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
   f.apUpdate(box, d);
-  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching BTC 15-min and BTC 5pm\.<\/p>/);
+  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching BTC 15-min up\/down and BTC above \$X at 5pm ET\.<\/p>/);
   assert.doesNotMatch(box.querySelector('#apf-story').innerHTML, /btc15m|KXBTCD/);
   f.apUpdate(box, {...d, story: []});
-  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching BTC 15-min · BTC 5pm/);
+  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching BTC 15-min up\/down · BTC above \$X at 5pm ET/);
   assert.doesNotMatch(source, /esc\(\(d\.story && d\.story\[0\]\)|\(d\.story \|\| \[\]\)\.map|\[\.\.\.new Set\(d\.research\.active\)\]/);
 });
 
@@ -3501,9 +3504,9 @@ test('Tau: a research-paper figure is red exactly when its gate line says it mis
 
 test('Tau: a hot-markets row names its market the app’s way, never by the raw series', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin 15-minute'}, {key: 'eth_daily', series: 'KXETHD', label: 'Ethereum daily close, 5pm EDT'}];
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}, {key: 'eth_daily', series: 'KXETHD', label: 'Ethereum daily close, 5pm EDT'}];
   const row = (s) => f.hotRowHtml({t: s + '-26OCT261530-30', s, ti: 'Some title', su: '', bid: .48, ask: .52, v24: 1200, h: [.4, .5]});
-  assert.match(row('KXBTC15M'), /<span class="hot-foot"><span class="mk quiet">BTC 15-min<\/span>/);
+  assert.match(row('KXBTC15M'), /<span class="hot-foot"><span class="mk quiet">BTC 15-min up\/down<\/span>/);
   assert.match(row('KXETHD'), /<span class="mk quiet">ETH 5pm<\/span>/);
   // A series no market here covers loses the chip rather than showing the ticker.
   assert.doesNotMatch(row('KXWEIRD'), /mk quiet|>KXWEIRD</);
@@ -3512,10 +3515,10 @@ test('Tau: a hot-markets row names its market the app’s way, never by the raw 
 
 test('Tau: a hot-markets row for an hourly Bitcoin contract carries no 5pm chip', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', close_hour_et: 17}];
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   const row = (t) => f.hotRowHtml({t, s: 'KXBTCD', ti: 'Bitcoin price?', su: '$113,000 or above', bid: .48, ask: .52, v24: 1200, h: [.4, .5]});
-  assert.match(row('KXBTCD-26OCT2717-T112999.99'), /<span class="mk quiet">BTC 5pm<\/span>/);
-  assert.doesNotMatch(row('KXBTCD-26OCT2700-T112999.99'), /mk quiet|BTC 5pm/);
+  assert.match(row('KXBTCD-26OCT2717-T112999.99'), /<span class="mk quiet">BTC above \$X at 5pm ET<\/span>/);
+  assert.doesNotMatch(row('KXBTCD-26OCT2700-T112999.99'), /mk quiet|BTC above/);
 });
 
 test('Tau: the dashboard says where the sessions it counts are, and points finished ones at what each idea missed', async () => {
@@ -3621,14 +3624,14 @@ test('first-run funnel: deploying from a strategy page lands on Deploy with a no
 test('money pages: an open position names its market and settles with a date and zone; an unmarked dashboard row says its figure is cost', async () => {
   const pos = (extra) => ({title: 'Drift', ticker: 'KXBTCD-26OCT2617-T68499.99', side: 'no', qty: 25, entry_price: .36, entry_fee: .41, cost: 9.41,
     unrealized: null, mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z', ...extra});
-  const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}];
+  const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}];
   const f = frontend({fetchImpl: path => path === '/api/deployments'
     ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date().toISOString()})]}) : response({})});
   f.S.me.markets = markets;
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
   // The raw ticker keeps its readable market under it; an unknown series gets no guessed label.
-  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<\/a><div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
+  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<\/a><div class="sub-fig pos-mkt">Bitcoin above \$68,499\.99 at 5pm ET<\/div>/);
   assert.match(html, /KXOTHER-1<\/a><\/td>/);
   // Another day carries its date; today only the time; both name the zone (a bare "21:17" read as today, zone unknown).
   assert.match(html, /data-lab="Settles">Jan 1[56], \d\d:\d\d [^<\s]+<\/td>/);
@@ -3637,7 +3640,7 @@ test('money pages: an open position names its market and settles with a date and
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
   const side = s.root.querySelector('#main').innerHTML;
   assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
-  assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
+  assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="sub-fig pos-mkt">Bitcoin above \$68,499\.99 at 5pm ET<\/div>/);
   // Dashboard: an unmarked position's figure is its cost, never a bare dollar amount beside the marked rows' P&L.
   const g = frontend({fetchImpl: path => {
     if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), open_positions: [pos(), pos({qty: 10, entry_price: .47, unrealized: 0.32})]});
@@ -5084,7 +5087,7 @@ test('Tau: a research session the autopilot started says so on the list and on i
   assert.doesNotMatch(cards[1], /Autopilot<\/span>/);
   assert.doesNotMatch(cards[2], /Autopilot<\/span>/); assert.match(cards[2], /Example<\/span>/);
   f.clearTimers();
-  for (const [run, said, not] of [[ap, /BTC 15-min · Started by autopilot/, /· Session/],
+  for (const [run, said, not] of [[ap, /BTC 15-min up\/down · Started by autopilot/, /· Session/],
     [{...ap, direction: 'momentum'}, /· Momentum · Started by autopilot/, /· Session/],
     [mine, /· Momentum/, /Started by autopilot/], [{...ap, by_autopilot: 0}, /· Session/, /Started by autopilot/]]) {
     const g = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/' + run.id)); return response({run, events: []}); }});

@@ -438,6 +438,31 @@ def test_every_market_has_a_short_label(bundle):
     assert set(markets.MARKETS) - keys == set()
 
 
+@pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
+def test_bitcoin_labels_say_the_contract_and_its_close(bundle):
+    # "BTC 5pm" named the coin and an hour, not whether the contract pays above a price, on a range or on
+    # up/down. Every Bitcoin market's short and long label says which, short enough for a phone row, with
+    # no " · " inside (chips and lists join labels with it). Labels only: keys and series stay as stored.
+    import re
+    from pathlib import Path
+    from app.trading import markets
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / bundle).read_text()
+    block = src[src.index('const MKT_SHORT = {'):]
+    short = dict(re.findall(r"(\w+): '([^']*)'", block[:block.index('};')]))
+    btc = {k: m for k, m in markets.MARKETS.items() if m.underlying == "BTC-USD"}
+    assert set(btc) == {"btc15m", "btc15m_tick", "btc_daily", "btc_perp"}
+    assert {k: short[k] for k in btc} == {
+        "btc15m": "BTC 15-min up/down", "btc15m_tick": "BTC 15-min up/down, per second",
+        "btc_daily": "BTC above $X at 5pm ET", "btc_perp": "BTC perpetual, no expiry"}
+    assert {k: m.label for k, m in btc.items()} == {
+        "btc15m": "Bitcoin up or down in 15 minutes", "btc15m_tick": "Bitcoin up or down in 15 minutes, per-second data",
+        "btc_daily": "Bitcoin above $X at 5pm ET", "btc_perp": "Bitcoin perpetual future, no expiry (research only)"}
+    assert {(m.series, m.close_hour_et) for m in btc.values()} == {
+        ("KXBTC15M", None), ("BTC_PERP", None), ("KXBTCD", 17)}
+    for k in btc:
+        assert len(short[k]) <= 30 and "\u00b7" not in short[k] and "\\u00a0" not in short[k]
+
+
 def test_run_page_and_research_list_carry_each_runs_ledger_spend(monkeypatch):
     # A run-until-stopped session shows what it has taken from credits: the ledger rows billed to
     # the run, read once per response (one grouped query for the list, not one per row).
