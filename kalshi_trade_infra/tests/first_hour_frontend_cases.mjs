@@ -239,6 +239,29 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     assert.doesNotMatch(some, /Not in yet/);
   });
 
+  test(`${name}: Research counts your sessions as sessions, never "runs"`, async () => {
+    const example = {id: 1, seq: 1, status: 'succeeded', market: 'btc15m', direction: 'random_walk', example: true, prompt: 'Random walk',
+      hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};
+    const mine = (id) => ({id, seq: id, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Mine ' + id,
+      hypotheses_tried: 3, strategies_passed: 0, spent_usd: 0.42, created_at: '2026-10-25T08:00:00Z'});
+    for (const [runs, n] of [[[mine(6), example], 1], [[mine(7), mine(6), example], 2]]) {
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path === '/api/runs' || path.startsWith('/api/runs?')) return response({runs, counts: {research_running: 0, research_queued: 0}, policy: null,
+          totals: {tried: 3 * n, passed: 0}});
+        if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+        return response({});
+      }});
+      f.S.me.user.autopilot = false; f.location.pathname = '/research';
+      await f.viewResearch(); for (let i = 0; i < 6; i++) await flush();
+      const said = f.root.querySelector('#rcount').textContent;
+      // Tau names them ("1 session · 1 example"); Meridian's heading carries the bare count.
+      assert.match(said, new RegExp(`^${n}( session${n > 1 ? 's' : ''} · 1 example)?$`), said);
+      assert.doesNotMatch(said, /\bruns?\b/);
+      f.clearTimers();
+    }
+  });
+
   test(`${name}: an account with no demo key is shown no demo figure, on the dashboard or on Funds`, async () => {
     const demo = {equity: 4321, capital: 4321, realized_pnl: 0, open_positions: 0, running: 0};
     const board = async (key) => {

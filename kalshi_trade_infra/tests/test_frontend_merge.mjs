@@ -635,7 +635,7 @@ test('the seeded example session is listed as an example, not counted as the use
     hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};
   const mine = {id: 6, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Mine',
     hypotheses_tried: 3, strategies_passed: 1, spent_usd: 0.42, created_at: '2026-10-25T08:00:00Z'};
-  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 run ·\u00a01 example']]) {
+  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 session ·\u00a01 example']]) {
     const own = runs.filter((r) => !r.example);
     const f = frontend({fetchImpl: path => {
       if (path === '/api/models') return response({models: [], default: ''});
