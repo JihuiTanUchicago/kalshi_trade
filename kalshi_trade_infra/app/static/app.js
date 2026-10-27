@@ -343,7 +343,9 @@
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
-  const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7\u00a0' + marketShort(r.market));
+  // The server's title for a session whose prompt is an instruction to the agent (the autopilot's research
+  // floor), else the idea as typed.
+  const sessionTitle = (r) => r.title ? r.title : (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7\u00a0' + marketShort(r.market));
 
   // The research market picker: ONE list in the live-row style (name \u00b7 sparkline \u00b7 mid \u00b7
   // 24h volume), grouped by category, with Agent's choice leading as the default. Every row is

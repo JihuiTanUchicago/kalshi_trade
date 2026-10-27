@@ -107,7 +107,7 @@ def test_billing_lists_a_session_day_as_one_line_and_each_card_charge_with_its_r
     ledger = server.billing_state(_ctx())["ledger"]
     research, reload_, checkin, topup, bonus = ledger
     assert research["calls"] == 57 and research["amount"] == -12.94938 and research["item"] == "Research session"
-    assert research["session"] == {"id": 108, "prompt": None, "market": "btc15m", "direction": "momentum"}
+    assert research["session"] == {"id": 108, "prompt": None, "title": None, "market": "btc15m", "direction": "momentum"}
     assert research["first_at"] == datetime(2026, 10, 25, 8, 1) and research["created_at"] == at and research["day"] == "2026-10-25"
     assert checkin["calls"] == 3 and "session" not in checkin  # a check-in has no session page to open
     # What the card paid: the credits plus the purchase fee, the sum billing charges; and the payment's reference.

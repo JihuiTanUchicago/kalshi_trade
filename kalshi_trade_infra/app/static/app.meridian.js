@@ -343,7 +343,9 @@
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
-  const sessionTitle = (r) => (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7\u00a0' + marketShort(r.market));
+  // The server's title for a session whose prompt is an instruction to the agent (the autopilot's research
+  // floor), else the idea as typed.
+  const sessionTitle = (r) => r.title ? r.title : (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + ' \u00b7\u00a0' + marketShort(r.market));
   // A session's number among the user's own (the server's `seq`: 1 is their first), never the global run
   // id, which read "Session 8" on someone's first session. The example and an answer without it get none.
   const sessionNo = (r) => r && +r.seq > 0 ? `Session ${num(+r.seq)}` : '';

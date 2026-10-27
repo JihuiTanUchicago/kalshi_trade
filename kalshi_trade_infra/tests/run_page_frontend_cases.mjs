@@ -59,6 +59,15 @@ export function runPageCases({name, frontend}) {
     assert.doesNotMatch(list(f), /dropped before testing|still being tested/);
   });
 
+  test(`${name}: a session the server titles is named by that title, not its prompt to the agent`, async () => {
+    const floor = 'Research floor: no research started for a while, so pick the most promising angle.';
+    let f = await open({status: 'succeeded', brief: 1, by_autopilot: 1, prompt: floor, title: 'New idea picked by the autopilot for Bitcoin 15-minute'});
+    const head = f.root.querySelector('#runboard').innerHTML;
+    assert.match(head, /New idea picked by the autopilot for Bitcoin 15-minute/); assert.doesNotMatch(head, /Research floor/);
+    f = await open({status: 'succeeded', prompt: 'Fade late YES takers', title: null});
+    assert.match(f.root.querySelector('#runboard').innerHTML, /Fade late YES takers/);
+  });
+
   test(`${name}: the example's cost says it was free, not "from your credits"`, async () => {
     let f = await open({status: 'succeeded', example: true, spent_usd: 0});
     assert.match(figs(f), /\$0\.00\s*free: Tau ran it for you/); assert.doesNotMatch(figs(f), /from your credits/);
