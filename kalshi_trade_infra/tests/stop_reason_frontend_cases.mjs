@@ -131,17 +131,17 @@ export function stopReasonCases({name, frontend}) {
     const words = (html) => html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
     const band = (html) => html.match(/class="run-card ([a-z]+)"/)[1];
     let row = f.runRow(run({hypotheses_tried: 10, strategies_passed: 2, not_cleared: 1}));
-    assert.match(words(row), /\b1(?: of |\/)10 passed(?:· | )?\+1 passed, not cleared/);
+    assert.match(words(row), /\b1(?: of |\/)10 passed(?: ?· ?| )?\+1 passed, not cleared/);
     assert.doesNotMatch(words(row), /\b2(?: of |\/)10\b/);
     assert.equal(band(row), 'ok');
     // Nothing cleared: no green, a neutral band, and the passes still said as not cleared.
     row = f.runRow(run({hypotheses_tried: 10, strategies_passed: 2, not_cleared: 2}));
-    assert.match(words(row), /\b0(?: of |\/)10 passed(?:· | )?\+2 passed, not cleared/);
+    assert.match(words(row), /\b0(?: of |\/)10 passed(?: ?· ?| )?\+2 passed, not cleared/);
     assert.equal(band(row), 'void');
     assert.doesNotMatch(row, /class="gain"/);
     // A stopped session says the same; one with nothing uncleared reads as before.
     row = f.runRow(run({status: 'stopped', hypotheses_tried: 10, strategies_passed: 3, not_cleared: 1}));
-    assert.match(words(row), /\b2(?:\/10)? passed(?:· | )?\+1 passed, not cleared/);
+    assert.match(words(row), /\b2(?:\/10)? passed(?: ?· ?| )?\+1 passed, not cleared/);
     row = f.runRow(run({hypotheses_tried: 10, strategies_passed: 2}));
     assert.match(words(row), /\b2(?: of |\/)10 passed/);
     assert.doesNotMatch(row, /not cleared/);
@@ -149,12 +149,14 @@ export function stopReasonCases({name, frontend}) {
     // line of its own that begins with a comma ("0 OF 2 PASSED" over ", 1 NOT CLEARED"), and never sits inside
     // the green pass count.
     row = f.runRow(run({hypotheses_tried: 2, strategies_passed: 1, not_cleared: 1}));
-    assert.match(row, /<span class="[^"]*\brun-fell\b[^"]*">(?:·\u00a0)?\+1 passed, not cleared<\/span>/);
+    assert.match(row, /<span class="[^"]*\brun-fell\b[^"]*">\+1 passed, not cleared<\/span>/);
+    // Tau: the "·" before it ends the item ahead, kept whole with it; the count began its line with "·" when it wrapped.
+    if (!/run-ratio/.test(row)) assert.match(row, /<span class="nobr"><span class="[^"]*">0 of 2 passed<\/span>\u00a0\u00b7<\/span><span class="run-fell">/);
     assert.doesNotMatch(words(row), /,\s*1 not cleared|passed, \d/);
     assert.doesNotMatch(row, /class="gain"[^>]*>[^<]*not cleared/);
     // Never more uncleared than counted, and never a negative pass count.
     row = f.runRow(run({hypotheses_tried: 10, strategies_passed: 1, not_cleared: 3}));
-    assert.match(words(row), /\b0(?: of |\/)10 passed(?:· | )?\+1 passed, not cleared/);
+    assert.match(words(row), /\b0(?: of |\/)10 passed(?: ?· ?| )?\+1 passed, not cleared/);
     // Walk 2026-10-27: "1 more passed but not cleared" took two lines in a Tau card beside the hot rail and in
     // Meridian's Outcome column. The words stay short enough for one, even at a three-digit count.
     row = f.runRow(run({hypotheses_tried: 900, strategies_passed: 250, not_cleared: 123}));
@@ -163,7 +165,7 @@ export function stopReasonCases({name, frontend}) {
     // On the list, the rows say so too.
     const g = research([run({id: 4, hypotheses_tried: 10, strategies_passed: 2, not_cleared: 1})]);
     await g.viewResearch(); await settle();
-    assert.match(words(g.root.querySelector('#runs').innerHTML), /\b1(?: of |\/)10 passed(?:· | )?\+1 passed, not cleared/);
+    assert.match(words(g.root.querySelector('#runs').innerHTML), /\b1(?: of |\/)10 passed(?: ?· ?| )?\+1 passed, not cleared/);
     g.clearTimers();
     // Meridian's running-session card counts its passes the same way (Tau's list shows none while it runs).
     const h = research([run({id: 5, status: 'running', stop_reason: null, hypotheses_tried: 6, strategies_passed: 2, not_cleared: 1})]);

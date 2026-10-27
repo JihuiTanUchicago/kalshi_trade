@@ -458,11 +458,13 @@ window.TauPage('research', (T) => {
     // began with the comma, and "0 of 2 passed, 1 not cleared" read as if nothing had passed. It says the
     // uncleared ones passed too, as the headline's "2 more passed but weren't cleared to trade" does, in
     // words short enough for one line of a card beside the hot rail ("1 more passed but not cleared" took two).
-    const unclear = fell ? `<span class="run-fell">\u00b7\u00a0+${num(fell)} passed, not cleared</span>` : '';
+    // The "·" before it ends the item ahead (kept whole with it): when the item wrapped, its line began "· +1 passed".
+    const unclear = (ahead) => fell ? `<span class="nobr">${ahead}\u00a0\u00b7</span><span class="run-fell">+${num(fell)} passed, not cleared</span>` : ahead;
+    const explored = `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}`;
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
-      : r.status === 'succeeded' ? `${why ? why + SEP : ''}<span class="${ok ? 'gain' : ''}">${ok} of ${r.hypotheses_tried} passed</span>${unclear}`
-      : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${ok ? `${SEP}<span class="gain">${ok} passed</span>` : ''}${unclear}`
+      : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${ok} of ${r.hypotheses_tried} passed</span>`)}`
+      : r.status === 'stopped' ? (ok ? `${explored}${SEP}${unclear(`<span class="gain">${ok} passed</span>`)}` : unclear(explored))
       : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
     // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
