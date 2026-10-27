@@ -214,21 +214,23 @@ def test_funds_shell_carries_its_read_for_an_account_with_kalshi_keys_and_never_
     assert "<" not in block and ">" not in block
 
 
-def test_funds_without_kalshi_reads_each_keys_cash_from_its_memo_alone(monkeypatch):
+def test_funds_reads_each_keys_cash_from_its_memo_alone(monkeypatch):
     from datetime import timezone
+
+    from app.web.routes.funds import funds
     kalshi_account, demo_twins = _funds_db(monkeypatch)
     ctx = SimpleNamespace(cur=None, uid=7)
     now = kalshi_account.time.monotonic()
     utc = lambda: datetime.now(timezone.utc).replace(tzinfo=None)  # noqa: E731
     # Nothing memoized: pending, with no figure at all (the page reads "Checking…", never $0).
-    out = shell_reads.funds_without_kalshi(ctx)
+    out = funds(ctx)
     assert {k: out["kalshi"][k] for k in ("connected", "balance", "pending")} == {"connected": True, "balance": None, "pending": True}
     assert out["kalshi_dev"] == {"connected": True, "key_id": "DEVK…5678", "balance": None, "pending": True,
                                  "copies_from": out["kalshi_dev"]["copies_from"]}
     # Read 70s ago (past the minute): still pending, carrying that figure and when it was read.
     kalshi_account._BALANCE_CACHE[7] = (now - 70, 1234.5649)
     demo_twins._BALANCE_CACHE[7] = (now - 70, None)  # the demo read failed then: nothing to show but pending
-    out = shell_reads.funds_without_kalshi(ctx)
+    out = funds(ctx)
     k = out["kalshi"]
     assert k["pending"] is True and k["balance"] is None and k["last_balance"] == 1234.56
     assert 68 <= (utc() - k["last_balance_at"]).total_seconds() <= 75
@@ -236,21 +238,20 @@ def test_funds_without_kalshi_reads_each_keys_cash_from_its_memo_alone(monkeypat
     # Read 10s ago: kept, so it is the figure, dated, and nothing is pending.
     kalshi_account._BALANCE_CACHE[7] = (now - 10, 1234.5)
     demo_twins._BALANCE_CACHE[7] = (now - 10, 250.0)
-    out = shell_reads.funds_without_kalshi(ctx)
+    out = funds(ctx)
     assert out["kalshi"]["balance"] == 1234.5 and "pending" not in out["kalshi"] and out["kalshi"]["balance_at"]
     assert out["kalshi_dev"]["balance"] == 250.0 and "pending" not in out["kalshi_dev"]
     # A failed read still kept answers as /api/funds does: no figure, not pending ("Kalshi didn't answer").
     kalshi_account._BALANCE_CACHE[7] = (now - 10, None)
-    out = shell_reads.funds_without_kalshi(ctx)
+    out = funds(ctx)
     assert out["kalshi"]["balance"] is None and "pending" not in out["kalshi"] and "balance_at" not in out["kalshi"]
 
 
-def test_funds_without_kalshi_for_an_account_with_no_key_is_the_whole_read(monkeypatch):
+def test_funds_for_an_account_with_no_key_is_the_whole_read(monkeypatch):
     _funds_db(monkeypatch, live_key=False, demo_key=False)
     from app.web.routes import funds as funds_routes
     ctx = SimpleNamespace(cur=None, uid=7)
-    out = shell_reads.funds_without_kalshi(ctx)
-    assert out == funds_routes.funds(ctx)
+    out = funds_routes.funds(ctx)
     assert out["kalshi"]["connected"] is False and out["kalshi_dev"] == {"connected": False}
 
 
@@ -356,29 +357,31 @@ def test_the_dashboard_shell_carries_its_read_for_an_account_with_kalshi_keys_an
     assert "LIVEKEY-ABCD-1234" not in html and "DEVKEY-WXYZ-5678" not in html
 
 
-def test_the_dashboard_without_kalshi_reads_the_cash_from_its_memo_alone(monkeypatch):
+def test_the_dashboard_reads_the_cash_from_its_memo_alone(monkeypatch):
     from datetime import timezone
-    from app.web.views import DEMO_HEALTH_PENDING, _demo_health
+
+    from app.web.routes.dashboard import dashboard
+    from app.web.views import demo_health_memo
     kalshi_account, demo_twins = _dashboard_db(monkeypatch, deps=[DEMO_DEP])
     ctx = SimpleNamespace(cur=None, uid=7, query={})
     now = kalshi_account.time.monotonic()
     utc = lambda: datetime.now(timezone.utc).replace(tzinfo=None)  # noqa: E731
     # Read 70s ago (past the minute): still pending, carrying that figure and when it was read, in cents.
     kalshi_account._BALANCE_CACHE[7] = (now - 70, 1234.5649)
-    live = shell_reads.dashboard_without_kalshi(ctx)["live"]
+    live = dashboard(ctx)["live"]
     assert live["pending"] is True and live["balance"] is None and live["last_balance"] == 1234.56
     assert 68 <= (utc() - live["last_balance_at"]).total_seconds() <= 75
     # Read 10s ago: kept, so it is the figure, dated, and nothing is pending; so is the demo check's cash.
     kalshi_account._BALANCE_CACHE[7] = (now - 10, 1234.5)
     demo_twins._BALANCE_CACHE[7] = (now - 10, 0.0)
-    out = shell_reads.dashboard_without_kalshi(ctx)
+    out = dashboard(ctx)
     assert out["live"]["balance"] == 1234.5 and "pending" not in out["live"] and out["live"]["balance_at"]
     assert out["demo"]["health"]["code"] == "demo_funds" and "health_pending" not in out["demo"]
     assert shell_reads.then_reads("/api/dashboard", out) == []
     # The demo-funds check alone: pending without the memo, never a Kalshi read; nothing to check, nothing pending.
     demo_twins._BALANCE_CACHE.clear()
-    assert _demo_health(None, 7, [DEMO_DEP]) == DEMO_HEALTH_PENDING
-    assert _demo_health(None, 7, []) is None
+    assert demo_health_memo(None, 7, [DEMO_DEP]) == (None, True)
+    assert demo_health_memo(None, 7, []) == (None, False)
 
 
 def test_a_demo_check_reads_the_memo_alone_and_keeps_a_line_from_a_figure_under_two_minutes_old(monkeypatch):
@@ -747,13 +750,27 @@ def test_no_page_read_has_a_path_that_waits_on_kalshi():
     from app.web.routes import funds as funds_routes
     for fn in (dashboard_routes.dashboard, funds_routes.funds, chat_routes.autopilot_status):
         assert list(inspect.signature(fn).parameters) == ["ctx"], fn.__name__
-    assert "ask_kalshi" not in inspect.signature(views._demo_health).parameters
+    assert "ask_kalshi" not in inspect.signature(views.demo_health_memo).parameters
     assert "ask_kalshi" not in inspect.signature(funds_routes.kalshi_cash).parameters
     # None of them (nor the demo check the pages read) reaches a read that may wait on Kalshi.
     waits = ("_live_balance", "_demo_cash", "balance_cached", "single_flight", "kalshi_dev_exec", "verify(")
     for fn in (dashboard_routes.dashboard, funds_routes.funds, funds_routes.kalshi_cash, chat_routes.autopilot_status,
-               views._demo_health, views.demo_health_memo, views._health_from):
+               views.demo_health_memo, views._health_from):
         src = inspect.getsource(fn)
         assert not [w for w in waits if w in src], fn.__name__
+    # The shell carries those same handlers, with nothing between: the pages that show Kalshi cash name exactly
+    # the reads checked above, and no first read the shell names on any page reaches a Kalshi wait either.
+    carried = {}
+    for page in ("/", "/dashboard", "/funds", "/settings/account", "/research", "/research/12", "/strategies", "/deploy",
+                 "/billing", "/settings/billing"):
+        for url, fn, _, _ in shell_reads.first_requests(page, "", {"tau_tz": "-60"}):
+            carried[(page, url.split("?", 1)[0])] = fn
+    for page in ("/", "/dashboard"):
+        assert carried[(page, "/api/dashboard")] is dashboard_routes.dashboard
+        assert carried[(page, "/api/autopilot/status")] is chat_routes.autopilot_status
+    assert carried[("/funds", "/api/funds")] is carried[("/settings/account", "/api/funds")] is funds_routes.funds
+    for (page, url), fn in carried.items():
+        src = inspect.getsource(fn)
+        assert not [w for w in waits if w in src], (page, url, fn.__name__)
     app = pathlib.Path(views.__file__).resolve().parents[1]
     assert not [str(f) for f in app.rglob("*.py") if "ask_kalshi" in f.read_text(encoding="utf-8")]

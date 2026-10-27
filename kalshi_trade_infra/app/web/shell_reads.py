@@ -26,8 +26,8 @@ The shell names those asks beside the read ("then"), and boot.js starts them at 
 runs while the bundle downloads instead of after the page has drawn; the page takes each answer once.
 
 The dashboard is carried the same way, always: its live book shows the Kalshi cash, read through the
-same memo as Funds' (funds.kalshi_cash), so the shell carries a version that never asks Kalshi, the cash
-pending (with the last figure read and its age, if any) and the page asking /api/funds/cash?book=live,
+same memo as Funds' (funds.kalshi_cash), so the shell carries the dashboard's own read, which never asks
+Kalshi: the cash pending (with the last figure read and its age, if any) and the page asking /api/funds/cash?book=live,
 named in "then" like Funds'. A demo-funds check that would read the demo cash (the dashboard's demo
 health, the autopilot's idle line, the Deploy board's demo line) is marked pending too, its read named in
 "then", and the page reads it again once the demo cash is back. The Deploy board is carried as before; its
@@ -87,24 +87,6 @@ def billing_without_stripe(ctx: Ctx) -> Dict[str, Any]:
     return billing_state(ctx)
 
 
-def funds_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
-    """Funds' first read, as funds answers it (every read of it, never asking Kalshi): a key's cash whose memo
-    isn't kept is marked pending (with the last figure read and its age, if any) for the page to ask after."""
-    return funds(ctx)
-
-
-def dashboard_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
-    """The dashboard's first read, as dashboard answers it (every read of it, never asking Kalshi): the live cash
-    whose memo isn't kept is marked pending, and a demo-funds check that would read the demo cash too."""
-    return dashboard(ctx)
-
-
-def autopilot_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
-    """The autopilot status, as autopilot_status answers it (every read of it, never asking Kalshi): an idle line
-    that would read the demo cash is marked idle_pending."""
-    return autopilot_status(ctx)
-
-
 def _pending(body: Dict[str, Any], key: str, flag: str = "pending") -> bool:
     return isinstance(body.get(key), dict) and bool(body[key].get(flag))
 
@@ -151,8 +133,8 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
         return []
     if path in ("/", "/dashboard"):
         at = dashboard_since(cookies.get("tau_visit"))
-        return [(("/api/dashboard?since=%d" % at if at else "/api/dashboard"), dashboard_without_kalshi, (), ({"since": str(at)} if at else {})),
-                ("/api/autopilot/status", autopilot_without_kalshi, (), {})]
+        return [(("/api/dashboard?since=%d" % at if at else "/api/dashboard"), dashboard, (), ({"since": str(at)} if at else {})),
+                ("/api/autopilot/status", autopilot_status, (), {})]
     if path == "/research":
         return [("/api/runs", list_runs, (), {}),
                 ("/api/research/scoreboard?days=%d" % LOOP_DAYS, kept_loop_board, (), {"days": str(LOOP_DAYS)})]
@@ -161,7 +143,7 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
     if path == "/deploy":
         return [("/api/deployments", list_deployments, (), {})]
     if path in ("/funds", "/settings/account"):
-        return [("/api/funds", funds_without_kalshi, (), {})]
+        return [("/api/funds", funds, (), {})]
     if path in ("/billing", "/settings/billing"):
         tz = billing_tz(cookies.get("tau_tz"))
         return [] if tz is None else [("/api/billing?tz=%d" % tz, billing_without_stripe, (), {"tz": str(tz)})]
