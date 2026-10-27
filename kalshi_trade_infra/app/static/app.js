@@ -2454,9 +2454,18 @@
   const trCurveCap = (m) => (m.curve || []).length < (m.trades || 0)
     ? `Cumulative net P&amp;L over all ${num(m.trades)} trades, drawn from each stretch’s lowest and highest point so no dip is skipped.`
     : 'Cumulative net P&amp;L, one point per closed trade.';
+  // What the left-out instant fills made, and which way it moves the realized P&L the dashboard, Funds and Deploy show
+  // (they count every closed trade): the record read −$24.72 under a −$19.90 "realized all time" for the same paper
+  // book, with nothing saying the gap was one instant fill's +$4.82.
+  const trLeftGap = (m) => {
+    const v = +m.excluded_instant_pnl || 0, n = m.excluded_instant_fills;
+    return !v ? '.' : `: ${usd(v, true)}. The realized P&L on the dashboard, Funds and Deploy counts ${n === 1 ? 'it' : 'them'}, so it reads ${usd(Math.abs(v))} ${v > 0 ? 'higher' : 'lower'} than this record.`;
+  };
+  // A strategy row's share of them, so its figures meet its Strategies list line ("+$74.33 · 27 trades" beside 26 here).
+  const trRowLeft = (r) => (r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
   function trackRecordPanel(m, key, th) {
     const caveats = [];
-    if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY}).`);
+    if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY})${trLeftGap(m)}`);
     if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_cost)} at cost + fees) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
       // A part-sold trade's sold slice is realized (the dashboard counts it) but waits here for the rest.
       + (m.open_realized_pnl ? ` Part of ${m.open_trades === 1 ? 'it' : 'them'} is already sold: ${usd(m.open_realized_pnl, true)} realized, not yet in these figures.` : ''));
@@ -2517,7 +2526,7 @@
       // A stopped or deleted strategy stays in the table (and every figure); it says so instead of
       // reading like one still trading. A deleted one has no page left to link to.
       const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}stopped, then deleted` : TR_STATUS[r.status];
-      return `<tr><td class="name" data-lab="Strategy">${r.removed ? esc(r.title) : `<a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a>`}${st ? `<div class="sub-fig">${st}</div>` : ''}</td>
+      return `<tr><td class="name" data-lab="Strategy">${r.removed ? esc(r.title) : `<a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a>`}${st ? `<div class="sub-fig">${st}</div>` : ''}${trRowLeft(r)}</td>
         <td data-lab="Read"><span class="mk ${cls}">${tag}</span></td>
         <td class="num" data-lab="Trades">${num(r.trades)}${r.open_trades ? ` <span class="sub-fig">+${num(r.open_trades)} open</span>` : ''}</td>
         <td class="num" data-lab="Net P&amp;L">${money(r.net_pnl)}</td>

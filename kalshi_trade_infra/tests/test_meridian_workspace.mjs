@@ -36,6 +36,7 @@ import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
+import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -258,6 +259,7 @@ moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async 
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
 explorePageCases({name: 'Meridian', frontend});
+trackRecordTrustCases({name: 'Meridian', frontend, Element});
 researchFormCases({name: 'Meridian', frontend});
 kalshiWaitCases({name: 'Meridian', frontend, detailStrategy});
 phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
