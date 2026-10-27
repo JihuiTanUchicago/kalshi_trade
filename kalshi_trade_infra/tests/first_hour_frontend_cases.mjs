@@ -219,6 +219,26 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     f.clearTimers();
   });
 
+  test(`${name}: Explore before the market feed arrives says so instead of counting 0 markets`, async () => {
+    const explore = async (d) => {
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/explore?') ? response(d) : response({})});
+      f.location.pathname = '/explore'; f.location.search = '';
+      await f.viewExplore(); await flush(); await flush();
+      const figs = f.root.querySelector('#xfigs').textContent;
+      f.clearTimers();
+      return figs;
+    };
+    const none = await explore({at: null, total: 0, shown: 0, matched: 0, page: 0, per: 40, markets: []});
+    assert.match(none, /Market feed\s*Not in yet/);
+    assert.doesNotMatch(none, /Markets tracked|In this list|Available markets|Time unavailable|\b0\b/);
+    // Once it is in, the counts and its time are back.
+    const at = new Date(Date.now() - 60000).toISOString();
+    const some = await explore({at, total: 1200, shown: 1, matched: 1, page: 0, per: 40,
+      markets: [{t: 'KXFED-26DEC-T4.00', ti: 'Fed rate above 4%', yb: 0.4, ya: 0.42, v24: 10, oi: 5}]});
+    assert.match(some, /1,200/);
+    assert.doesNotMatch(some, /Not in yet/);
+  });
+
   test(`${name}: Funds for an account with no Kalshi key leads with Paper and folds the key forms under Connect Kalshi`, async () => {
     const page = async (o) => {
       const d = {...fundsData(), ...o};

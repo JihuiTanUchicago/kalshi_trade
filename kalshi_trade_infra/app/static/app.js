@@ -2754,6 +2754,10 @@
   // distance to spot, which the collector stores every 20s. The server answers from its cached feed and one spot
   // read shared by every reader for 5s (about 2ms a call, never a Kalshi call), as fast as the market page's spot.
   const EXPLORE_POLL_MS = 15000;
+  // Before the server's first copy of the market feed there is no list and no time: "Markets tracked 0" read
+  // as Kalshi having no markets. The figures say the feed hasn't come in yet instead.
+  const exploreNoFeed = (d) => !d.at && !+d.total;
+  const EXPLORE_NO_FEED = fig('Market feed', 'Not in yet', { small: 'the market list arrives about once a minute' });
   const exploreEmpty = (title, text) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
@@ -2772,6 +2776,7 @@
     // "Live now" was the hottest markets the list carries, not what's live; Matching shows only when a
     // search narrows the list. The list refreshes each minute, so an older one says it's behind.
     const figsHtml = (d) => {
+      if (exploreNoFeed(d)) return EXPLORE_NO_FEED;
       const atMs = Date.parse(d.at || ''), behind = Number.isFinite(atMs) && Date.now() - atMs > 180000;
       return fig('Markets tracked', num(d.total)) + fig('In this list', num(d.shown), { small: 'the most traded' }) + (f.q ? fig('Matching', num(d.matched)) : '') +
         fig('Prices updated', sinceMin(d.at), behind ? { small: 'Behind: prices normally refresh each minute', cls: 'fig-behind' } : {});

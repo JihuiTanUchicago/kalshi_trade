@@ -2393,7 +2393,8 @@ test('Explore preserves distinct source counts and search zeroes while omitting 
     ['', 1, 1, 1, old, [['Available markets', '1'], ['Prices updated', '4m ago']]],
     ['?q=%3Cunsafe%3E', 3, 2, 0, undefined, [['Available markets', '2'], ['Tracked', '3'], ['Matching', '0'], ['Prices updated', 'Time unavailable']]],
     ['?q=btc', 1, 1, 1, 'not-a-timestamp', [['Available markets', '1'], ['Matching', '1'], ['Prices updated', 'Time unavailable']]],
-    ['', 0, 0, 0, undefined, [['Available markets', '0'], ['Prices updated', 'Time unavailable']]],
+    // No feed yet (no time, nothing tracked): one figure says so, never "Available markets 0" and "Time unavailable".
+    ['', 0, 0, 0, undefined, [['Market feed', 'Not in yet']]],
   ]) {
     const payload = Object.freeze({total, shown, matched, at, per: 40, page: 0, markets: Object.freeze(matched ? [market] : [])});
     const before = JSON.stringify(payload), query = new URLSearchParams(search), q = query.get('q') || '';
@@ -2402,8 +2403,9 @@ test('Explore preserves distinct source counts and search zeroes while omitting 
     await f.viewExplore();
     assert.deepEqual(f.root.querySelectorAll('#xfigs .m').map(fig => [fig.querySelector('dt').textContent,
       (fig.querySelector('.snapshot-age') || fig.querySelector('.fig')).textContent]), expected);
-    const snapshot = f.root.querySelector('.snapshot-time'), time = snapshot.querySelector('time');
-    if (Number.isFinite(Date.parse(at))) {
+    const snapshot = f.root.querySelector('.snapshot-time'), time = snapshot && snapshot.querySelector('time');
+    if (!total) assert.equal(snapshot, null);
+    else if (Number.isFinite(Date.parse(at))) {
       assert.equal(time.getAttribute('datetime'), at); assert.match(time.textContent, / UTC$/);
       assert.equal(Date.parse(time.textContent), Date.parse(at));
       assert.equal(snapshot.classList.contains('snapshot-old'), at === old);

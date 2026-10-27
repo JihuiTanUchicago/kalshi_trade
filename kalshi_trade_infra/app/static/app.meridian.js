@@ -2873,6 +2873,10 @@
   // distance to spot, which the collector stores every 20s. The server answers from its cached feed and one spot
   // read shared by every reader for 5s (about 2ms a call, never a Kalshi call), as fast as the market page's spot.
   const EXPLORE_POLL_MS = 15000;
+  // Before the server's first copy of the market feed there is no list and no time: "Available markets 0" and "Time unavailable" read
+  // as Kalshi having no markets. The figures say the feed hasn't come in yet instead.
+  const exploreNoFeed = (d) => !d.at && !+d.total;
+  const EXPLORE_NO_FEED = fig('Market feed', 'Not in yet', { small: 'the market list arrives about once a minute' });
   const exploreEmpty = (title, text) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
@@ -2894,6 +2898,7 @@
     // How old the prices are, as Tau says it ("Prices updated 2m ago"), beside the snapshot's own time; past three
     // minutes it says the list is behind.
     const paintFigs = (d) => {
+      if (exploreNoFeed(d)) { paint(figs, '<dl class="explore-counts">' + EXPLORE_NO_FEED + '</dl>'); return; }
       const snapshotAt = d.at ? Date.parse(d.at) : NaN;
       const snapshotOld = !Number.isFinite(snapshotAt) || Date.now() - snapshotAt > 180000;
       paint(figs, '<dl class="explore-counts">' + fig('Available markets', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig('Prices updated', Number.isFinite(snapshotAt) ? `<span class="snapshot-age">${sinceMin(d.at)}</span><time datetime="${esc(d.at)}">${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}</time>${snapshotOld ? '<span class="snapshot-behind">Behind: prices normally refresh each minute</span>' : ''}` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>');
