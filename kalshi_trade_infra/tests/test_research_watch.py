@@ -136,3 +136,27 @@ def test_an_autopilot_user_with_credit_and_no_research_for_30_min_is_flagged(mon
     flag = report["anomalies"][0]
     assert flag["severity"] == "high" and flag["kind"] == "idle" and flag["user_id"] == 1
     assert "95 min (last run 3337)" in flag["detail"] and "can't research that market" in flag["detail"]
+
+
+def test_features_falling_behind_the_raw_archive_is_flagged():
+    # Prod 10-25 23:00Z: features_1s stopped for ~30h while the raw archives looked fine.
+    from app import research_watch as rw
+
+    class S3:
+        def __init__(self, keys):
+            self.keys = keys
+
+        def list_objects_v2(self, Bucket, Prefix):
+            return {"Contents": [{"Key": k} for k in self.keys if k.startswith(Prefix)]}
+
+    now = datetime(2026, 10, 27, 5, 30)
+    raw = ["ticks/manifest/kalshi/date=2026-10-27/%02d.json" % h for h in range(5)]
+    fresh = rw.data_freshness(S3(raw + ["ticks/manifest/features_1s/date=2026-10-27/03.json"]), now)
+    assert fresh == {"kalshi": "2026-10-27T04:00:00", "features_1s": "2026-10-27T03:00:00", "lag_h": 1.0}
+    assert rw.freshness_anomalies(fresh) == []
+    stale = rw.data_freshness(S3(raw + ["ticks/manifest/features_1s/date=2026-10-25/22.json"]), now)
+    assert stale["lag_h"] == 30.0
+    [a] = rw.freshness_anomalies(stale)
+    assert a["severity"] == "high" and a["kind"] == "features_stale" and "30h behind" in a["detail"]
+    assert rw.freshness_anomalies(rw.data_freshness(S3(raw), now))[0]["kind"] == "features_stale"
+    assert rw.freshness_anomalies(None) == []

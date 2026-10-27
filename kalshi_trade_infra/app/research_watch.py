@@ -14,6 +14,8 @@ runs of the last few hours (plus everything still queued or running) and their e
   repeat        one market researched again and again with nothing gated
   idle          an autopilot user with credit has had no research start for IDLE_MIN minutes, with
                 the newest system line the reviews posted (usually the refusal that is blocking it)
+  features_stale  the newest features_1s hour in S3 is more than FEATURES_LAG_H behind the newest
+                raw Kalshi tick archive (the tick markets and the maker lab read those features)
 
 The report goes to S3 (datalake research-watch/latest.json plus one file per run of the watch), so
 it can be read without database access, and to stdout. Read-only on the database.
@@ -42,8 +44,12 @@ FRESH_MIN = float(os.getenv("TAU_WATCH_FRESH_MIN", "60"))
 # market) and nobody noticed for two hours. Users without credit are skipped: their reviews are
 # off by design (worker.autopilot_review_ok), so they are not idle by mistake.
 IDLE_MIN = float(os.getenv("TAU_WATCH_IDLE_MIN", "30"))
+# Prod 2026-10-25 23:00Z to 10-27: no features_1s hour was built for ~30h (the archiver's build was
+# OOM-killed every run, #534) while the raw archives looked fine, and nothing flagged it.
+FEATURES_LAG_H = float(os.getenv("TAU_WATCH_FEATURES_LAG_H", "2"))
 BUCKET = os.getenv("DATALAKE_BUCKET", "kalshi-trade-datalake-568386354218-us-east-1")
 PREFIX = "research-watch"
+TICK_PREFIX = os.getenv("TAU_TICK_PREFIX", "ticks")
 _RUN_COLS = ("id, user_id, market, status, error, model, prompt, hypotheses_tried, strategies_passed, "
              "input_tokens, output_tokens, created_at, started_at, heartbeat_at, finished_at")
 
@@ -160,6 +166,38 @@ def idle_anomalies(idle: List[Dict]) -> List[Dict]:
     return out
 
 
+def newest_manifest_hour(s3, source: str, now: datetime, days: int = 4) -> Optional[datetime]:
+    """The newest hour with a tick manifest for `source` (kalshi, features_1s, ...), from the last `days`."""
+    for d in range(days):
+        date = (now - timedelta(days=d)).strftime("%Y-%m-%d")
+        resp = s3.list_objects_v2(Bucket=BUCKET, Prefix="%s/manifest/%s/date=%s/" % (TICK_PREFIX, source, date))
+        hours = [o["Key"].rsplit("/", 1)[-1][:2] for o in resp.get("Contents") or []]
+        hours = [h for h in hours if h.isdigit()]
+        if hours:
+            return datetime.strptime("%s %s" % (date, max(hours)), "%Y-%m-%d %H")
+    return None
+
+
+def data_freshness(s3, now: datetime) -> Dict:
+    """Newest raw Kalshi archive hour vs newest features_1s hour, and the lag between them."""
+    raw, feat = newest_manifest_hour(s3, "kalshi", now), newest_manifest_hour(s3, "features_1s", now)
+    lag = (raw - feat).total_seconds() / 3600.0 if raw and feat else None
+    return {"kalshi": raw and raw.isoformat(), "features_1s": feat and feat.isoformat(),
+            "lag_h": round(lag, 1) if lag is not None else None}
+
+
+def freshness_anomalies(f: Optional[Dict]) -> List[Dict]:
+    out: List[Dict] = []
+    if not f or not f.get("kalshi"):
+        return out
+    if f.get("features_1s") is None or (f.get("lag_h") or 0) > FEATURES_LAG_H:
+        behind = "none in 4 days" if f.get("features_1s") is None else "%s, %.0fh behind" % (f["features_1s"], f["lag_h"])
+        _flag(out, "high", "features_stale", None,
+              "newest features_1s hour %s the raw Kalshi archive (%s): check the collector box's "
+              "kalshi-tick-archiver log for features_1s errors or a killed build" % (behind, f["kalshi"]))
+    return out
+
+
 def load_idle(cur, now: datetime) -> List[Dict]:
     """Autopilot users with credit and no research queued or running whose newest research run was
     created IDLE_MIN+ minutes ago. `reason` is the newest system chat line since that run: act()'s
@@ -190,7 +228,7 @@ def load_idle(cur, now: datetime) -> List[Dict]:
 
 
 def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime, hours: float,
-                 idle: Optional[List[Dict]] = None) -> Dict:
+                 idle: Optional[List[Dict]] = None, freshness: Optional[Dict] = None) -> Dict:
     summaries = [run_summary(r, events.get(r["id"], []), now) for r in runs]
     finished = [s for s in summaries if s["status"] in ("succeeded", "stopped", "failed")]
     cards = [rsi.run_card(r, [e for e in events.get(r["id"], []) if e.get("kind") == "verdict"])
@@ -204,8 +242,9 @@ def build_report(runs: List[Dict], events: Dict[int, List[Dict]], now: datetime,
                    for m, v in _group(finished, "model").items()},
         "screen_ab": screen_ab(cards),
         "leads_ab": screen_ab(cards, "leads_arm"),
-        "anomalies": idle_anomalies(idle or []) + anomalies(summaries),
+        "anomalies": freshness_anomalies(freshness) + idle_anomalies(idle or []) + anomalies(summaries),
         "idle_users": idle or [],
+        "data_freshness": freshness,
         "runs": sorted(summaries, key=lambda s: -s["run_id"]),
     }
 
@@ -294,7 +333,13 @@ def main() -> None:
             idle = []
     finally:
         conn.close()
-    report = build_report(runs, events, now, a.hours, idle)
+    try:
+        import boto3
+        freshness = data_freshness(boto3.client("s3"), now)
+    except Exception as e:  # noqa: BLE001 - the run report still goes out without it
+        print("[watch] freshness check failed: %r" % e, flush=True)
+        freshness = None
+    report = build_report(runs, events, now, a.hours, idle, freshness)
     print(json.dumps({k: report[k] for k in ("generated_at", "status_counts", "anomalies")}, default=str), flush=True)
     if not a.no_s3:
         try:
