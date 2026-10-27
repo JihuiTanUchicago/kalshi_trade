@@ -815,7 +815,7 @@ def set_focus_action(cur, user: Dict, action: Dict, run_kind: str) -> str:
     if not tokens:
         return "Market focus cleared: autopilot may research and trade any market again."
     return ("Market focus set to %s. Autopilot will research, deploy and trade only these from now on."
-            % ", ".join(tokens))
+            % focus_words(tokens))  # "Bitcoin", never "btc"
 
 
 def research_unavailable_reason(market: Optional[str]) -> Optional[str]:

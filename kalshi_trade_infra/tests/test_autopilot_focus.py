@@ -114,6 +114,38 @@ def test_focus_endpoint_validates_and_stores(monkeypatch):
     assert any(r[0] == "POST" and r[1].pattern == "^/api/autopilot/focus$" for r in server.ROUTES)
 
 
+def test_an_older_focus_line_in_the_chat_names_the_focus_in_words(monkeypatch):
+    # Walk 2026-10-27: lines stored before the focus was said in words still read "Market focus set to btc." in
+    # the panel's feed (both themes show the server's line), under its own "Focus: Bitcoin".
+    from types import SimpleNamespace
+    from app.services import customer_text
+    rows = [
+        {"id": 1, "role": "system", "content": "Market focus set to btc."},
+        {"id": 2, "role": "system", "content": "Market focus set to btc, weather-high. Autopilot will research, deploy and "
+                                               "trade only these from now on."},
+        {"id": 3, "role": "system", "content": "Market focus set to Bitcoin."},  # already in words: as it is
+        {"id": 4, "role": "system", "content": "Market focus set to crypto."},
+        {"id": 5, "role": "system", "content": "Market focus cleared."},
+        {"id": 6, "role": "user", "content": "Market focus set to btc."},  # the user's own words stay
+    ]
+    monkeypatch.setattr(server.repo, "active_agent_run", lambda cur, uid: None)
+    monkeypatch.setattr(server.repo, "chat_messages", lambda cur, uid, after: [dict(r) for r in rows])
+    monkeypatch.setattr(server.billing, "configured", lambda: False)
+    said = [m["content"] for m in server.get_chat(SimpleNamespace(cur=None, uid=1, query={}))["messages"]]
+    assert said == ["Market focus set to Bitcoin.",
+                    "Market focus set to Bitcoin, daily high temperatures. Autopilot will research, deploy and trade only "
+                    "these from now on.",
+                    "Market focus set to Bitcoin.", "Market focus set to crypto.", "Market focus cleared.",
+                    "Market focus set to btc."]
+    # Without the words to name it by, a line is left as stored.
+    assert customer_text.chat_rows([dict(rows[0])])[0]["content"] == "Market focus set to btc."
+    # A new line from the autopilot says it in words too; the deploy-path refusal keeps its words.
+    monkeypatch.setattr(agent.repo, "set_autopilot_focus", lambda cur, uid, tokens: None)
+    assert agent.set_focus_action(None, {"id": 1}, {"focus": ["bitcoin"]}, "chat").startswith("Market focus set to Bitcoin. ")
+    assert agent.focus_refusal({"autopilot_focus": json.dumps(["btc"])}, "nba_game").startswith(
+        "You asked me to focus on btc, so I won't touch ")
+
+
 def _board():
     # Todd's shape on 2026-10-24: told "only crypto", most runs went to sports.
     cards = ([{"market": "btc15m"}] * 8 + [{"market": "nfl_game"}] * 13 + [{"market": "high_ny"}] + [{"market": None}])

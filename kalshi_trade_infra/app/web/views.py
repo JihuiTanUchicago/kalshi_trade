@@ -116,14 +116,17 @@ def _gate_lines(fn, *args) -> List[Dict]:
         return []
 
 
-def _with_gate_lines(events: List[Dict], not_cleared: int = 0) -> List[Dict]:
+def _with_gate_lines(events: List[Dict], not_cleared: int = 0, not_cleared_at: Optional[List] = None) -> List[Dict]:
     """Each verdict event gains `why_failed`: one plain line per gate it missed (measured, needed,
     what to try next), from the numbers the event already carries, and `note`: a plain sentence
     the page shows in place of a message written for the ledger ("gatekeeper-held
     (classification=...)", "Lead scan: control arm"). The model tiering line's internal model id
     is dropped: the page never shows one. A step or done line the agent wrote in the ledger's terms
     gains `note` too (gate_explain.step_note); the done line counts the `not_cleared` passes apart (the
-    session's passes a later check left uncleared). Display only; no extra read."""
+    session's passes a later check left uncleared). A running session's "N tested so far, M passed" line
+    counts apart those of them made by the time it was written: `not_cleared_at` holds each uncleared
+    pass's created_at (the later check is judged in the pass's own gating transaction, before the line);
+    without it, or for a line with no time, all `not_cleared` (never more than M). Display only; no extra read."""
     for ev in events:
         if ev.get("kind") == "verdict":
             data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
@@ -136,7 +139,10 @@ def _with_gate_lines(events: List[Dict], not_cleared: int = 0) -> List[Dict]:
             ev["data"] = data
         elif ev.get("kind") in ("step", "done"):
             # The agent's step lines in plain words ("Froze 2 finalists; ... validation budget" read as jargon).
-            note = gate_explain.step_note(ev.get("kind"), ev.get("message"), not_cleared)
+            fell, at = not_cleared, ev.get("created_at")
+            if ev.get("kind") == "step" and not_cleared_at is not None and at is not None:
+                fell = sum(1 for t in not_cleared_at if t is not None and t <= at)
+            note = gate_explain.step_note(ev.get("kind"), ev.get("message"), fell)
             if note:
                 data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
                 data["note"] = note

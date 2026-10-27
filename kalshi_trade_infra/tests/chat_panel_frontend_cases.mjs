@@ -157,6 +157,19 @@ export function chatPanelCases({name, frontend, storageFor}) {
     assert.match(p.box.querySelector('#apf-last').textContent, new RegExp(`: I left ${SPIKE} running\\.$`));
   });
 
+  test(`${name}: "Furthest on paper" ends its net before the instant-fill note, never running one into the other`, async () => {
+    // Walk 2026-10-27: the panel read "+$15.26 net on them instant-fill paper trades left out (...)" with nothing between.
+    const p = await panel({autopilot: true});
+    p.f.apUpdate(p.box, {autopilot: true, mode: 'paper', research: {active: []},
+      paper_progress: {strategy_id: 3, title: 'Momentum', trades: 22, trades_needed: 30, net_pnl: 15.26, strategies: 1}});
+    const stats = p.box.querySelector('#apf-stats');
+    const dd = stats.querySelectorAll('dd').find((el) => /Momentum/.test(el.textContent));
+    assert.ok(dd, stats.innerHTML);
+    const said = dd.textContent.replace(/\s+/g, ' ');
+    assert.match(said, /22 of 30 realistic paper trades · \+\$15\.26 net on them\. Instant-fill paper trades left out \(fills real execution would not get\)\.$/);
+    assert.doesNotMatch(said, /net on them instant-fill/);
+  });
+
   test(`${name}: autopilot keeping a young paper strategy reads as its own rule after the agent's suggestion`, async () => {
     const p = await panel({autopilot: true, chat: () => [
       {id: 1, role: 'user', content: `Pause ${TAILS}.`, created_at: AT},

@@ -53,7 +53,8 @@ def get_chat(ctx: Ctx):
     rows = repo.chat_messages(ctx.cur, ctx.uid, after)
     # The engine's automatic pause names a deployment by its row number: the feed says it by name.
     paused_ids = customer_text.auto_paused_ids(rows)
-    messages = customer_text.chat_rows(rows, repo.deployment_names(ctx.cur, ctx.uid, paused_ids) if paused_ids else None)
+    messages = customer_text.chat_rows(rows, repo.deployment_names(ctx.cur, ctx.uid, paused_ids) if paused_ids else None,
+                                       agent.focus_words)  # an older "Market focus set to btc." says "Bitcoin"
     # agent_wait: the oldest chat/review in flight has waited or gone quiet past the reaper's limit,
     # so the panel's pulse says that instead of "working" for as long as it lasts.
     out = {"messages": messages, "agent_busy": run is not None, "agent_wait": wait if wait and wait["overdue"] else None}

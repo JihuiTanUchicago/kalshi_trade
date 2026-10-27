@@ -96,6 +96,23 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.match(await figs('?status=', {total: 4, rejected: 4}), /0\.0%/);
   });
 
+  test(`${name}: the ideas-tested column says what it counts: "Ideas tested", the session's count, never "Tried 1 of 18"`, async () => {
+    // Walk 2026-10-27: Tau's column read "Tried" over "1 of 18", which said neither what was tried nor where;
+    // Meridian's reads "Ideas tested" over 18.
+    const f = frontend({fetchImpl: () => response(listOf(2))});
+    const cell = (html) => (html.match(/<td[^>]*data-lab="Ideas tested"[^>]*>([^<]*)<\/td>/) || [])[1];
+    const html = row(f, {hypotheses_tried: 18});
+    assert.equal(cell(html), '18');
+    assert.doesNotMatch(html, /data-lab="Tried"|1 of 18/);
+    assert.equal(cell(row(f, {hypotheses_tried: null, parent_id: 3})), 'Adjustment');
+    f.location.pathname = '/strategies'; f.location.search = '?status=';
+    await f.viewStrategies(); await flush();
+    const head = f.root.querySelector('.t-strat thead').innerHTML;
+    assert.match(head, /<th class="num" title="Every idea[^"]*session[^"]*">Ideas tested<\/th>/);
+    assert.doesNotMatch(head, />Tried</);
+    f.clearTimers();
+  });
+
   test(`${name}: a strategy the autopilot found is tagged on its row; the user's own are not`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const tag = /<span class="mk quiet ap-run-tag" title="Found in a research session the autopilot started\.">Autopilot<\/span>/;

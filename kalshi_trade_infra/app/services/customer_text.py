@@ -21,7 +21,7 @@ Pure: no I/O, no app imports, so every layer can use it.
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 MODEL_ID = re.compile(
@@ -133,7 +133,8 @@ def notification_rows(items: List[Dict]) -> List[Dict]:
     return items
 
 
-def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None) -> List[Dict]:
+def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None,
+              focus_words: Optional[Callable[[List[str]], str]] = None) -> List[Dict]:
     """The autopilot panel's lines Tau wrote (role system). The user's own lines and the agent's
     replies are as they were said. A once-only line's marker ("[live-ready #12]") is dropped (unmarked).
     A risk or execution change an older line wrote as the setting's
@@ -141,15 +142,33 @@ def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None) ->
     The engine's "Paused deployment #N automatically. <why>" reads as the "Last move" line does
     (auto_pause_line), by the strategy's name from ``paused`` ({deployment id: {"title", "mode"}}
     for the ids auto_paused_ids lists); the row number never reaches the page, and the stored line
-    is unchanged."""
+    is unchanged. An older "Market focus set to btc." names the focus in words through ``focus_words``
+    (the research agent's, which this module can't import), as new lines are written (focus_set_line)."""
     for m in messages:
         if m.get("role") == "system":
             text = m.get("content")
             dep = auto_paused_id(text)
             if dep is not None:
                 text = auto_pause_line(text, (paused or {}).get(dep))
-            m["content"] = plain_controls(clean(unmarked(text), CHAT_FALLBACK))
+            m["content"] = plain_controls(clean(focus_set_line(unmarked(text), focus_words), CHAT_FALLBACK))
     return messages
+
+
+# "Market focus set to btc." (the focus route) and "Market focus set to btc, eth. Autopilot will research, ..."
+# (the autopilot's set_focus) named the focus by its stored tokens until 2026-10-27, right under the panel's
+# own "Focus: Bitcoin". A token is lowercase with no space, so a line already in words ("Bitcoin", "daily high
+# temperatures") is left as it is.
+_FOCUS_SET = re.compile(r"^(Market focus set to )([a-z0-9_-]+(?:, [a-z0-9_-]+)*)(?=\.(?:\s|$))")
+
+
+def focus_set_line(text: Optional[str], focus_words: Optional[Callable[[List[str]], str]]) -> Optional[str]:
+    """A "Market focus set to <tokens>." line with the tokens in words (``focus_words``), else as given."""
+    if not text or focus_words is None:
+        return text
+    m = _FOCUS_SET.match(str(text))
+    if not m:
+        return text
+    return m.group(1) + focus_words(m.group(2).split(", ")) + str(text)[m.end():]
 
 
 # A once-only line (agent.live_ready_notices, auto_paper_probation) leads with a marker that names the

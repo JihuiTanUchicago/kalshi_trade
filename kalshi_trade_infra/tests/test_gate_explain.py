@@ -445,6 +445,44 @@ def test_the_run_page_done_line_counts_apart_the_passes_a_later_check_left_uncle
     assert out[1]["data"]["note"] == "2 of 18 ideas passed every check (5 dropped before testing)."
 
 
+def test_the_run_page_progress_lines_count_apart_the_passes_a_later_check_left_uncleared(monkeypatch):
+    """A running session's "N tested so far, M passed" lines counted passes later held back or that missed the
+    final test. Each now counts, apart, the uncleared passes made by the time it was written, from the session's
+    strategies and the verdicts the page already reads (no read of its own)."""
+    from datetime import datetime
+    from app.web.routes import research
+
+    def t(m):
+        return datetime(2026, 10, 27, 14, m)
+    run = {"id": 9, "kind": "research", "status": "running", "created_at": None, "heartbeat_at": None, "finished_at": None}
+    still = "Still running - %d tested so far, %d passed. Exploring more (stop anytime)."
+    events = [{"id": 1, "kind": "step", "message": still % (3, 1), "data": None, "created_at": t(10)},
+              {"id": 2, "kind": "step", "message": still % (6, 2), "data": None, "created_at": t(20)},
+              {"id": 3, "kind": "step", "message": still % (9, 3), "data": None, "created_at": t(30)}]
+    rows = [{"id": 41, "run_id": 9, "status": "passed", "created_at": t(5)},
+            {"id": 42, "run_id": 9, "status": "passed", "created_at": t(15)},
+            {"id": 43, "run_id": 9, "status": "passed", "created_at": t(25)},
+            {"id": 44, "run_id": 9, "status": "failed", "created_at": t(26)}]  # held back after paper: never counted
+    monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: dict(run))
+    monkeypatch.setattr(server.repo, "runs_spent", lambda *a: {})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [dict(r) for r in rows])
+    monkeypatch.setattr(server.repo, "get_policy", lambda *a: None)
+    monkeypatch.setattr(server.repo, "latest_dream_event", lambda *a: None)
+    monkeypatch.setattr(server.repo, "run_events", lambda *a: [dict(e) for e in events])
+    monkeypatch.setattr(research, "warm_dev_curves", lambda *a: None)
+    monkeypatch.setattr(research, "_strategy_card", lambda s: {"id": s["id"]})
+    monkeypatch.setattr(research, "_autopilot_puts_on_paper", lambda *a: set())
+    later = {42: {"verdict": "missed_final"}, 43: {"verdict": "held_back"}, 44: {"verdict": "held_back"}}
+    monkeypatch.setattr(research, "_later_missed", lambda cur, uid, strategies: dict(later))
+    out = server.get_run(_ctx(("9",)))["events"]
+    assert [e["data"]["note"] for e in out] == [
+        "3 tested so far, 1 passed. Looking for more; you can stop it anytime.",
+        "6 tested so far, 1 cleared every check; 1 more passed its first test, then wasn't cleared to trade. "
+        "Looking for more; you can stop it anytime.",
+        "9 tested so far, 1 cleared every check; 2 more passed their first test, then weren't cleared to trade. "
+        "Looking for more; you can stop it anytime."]
+
+
 def test_ledger_verdict_lines_read_as_plain_sentences():
     note = ge.event_note
     assert note("Lead scan: control arm, hypotheses first.", {"phase": "leads", "arm": "control"}) == \

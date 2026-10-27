@@ -107,6 +107,23 @@ export function stopReasonCases({name, frontend}) {
     f.clearTimers();
   });
 
+  test(`${name}: the research headline's figures say they are all time, as the autopilot panel's say "Last 7 days"`, async () => {
+    // Walk 2026-10-27: "Hypotheses tested 37 / Passed every gate 4" were every session ever, unsaid, while the
+    // autopilot panel's "37 tested · 4 passed" sat under its "Last 7 days".
+    const words = (html) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    const f = research([run({id: 4, status: 'running', stop_reason: null, hypotheses_tried: 9, strategies_passed: 1})],
+      {tried: 37, passed: 4, not_cleared: 4});
+    counts.research_running = 1;  // a session researching now, beside the all-time totals
+    try { await f.viewResearch(); await settle(); } finally { counts.research_running = 0; }
+    const figs = words(f.root.querySelector('#rfigs').innerHTML);
+    assert.match(figs, /Tested 37 all time/i);
+    assert.match(figs, /Passed[^0-9]*4 all time/);
+    const said = f.root.querySelector('#rstatus .said');
+    if (said) assert.match(words(said.innerHTML), /all time, 37 hypotheses tested, 4 through every gate/);  // Tau's line beside "researching now"
+    else assert.match(f.root.querySelector('#rfigs').getAttribute('title'), /of 37 tested, all time/);
+    f.clearTimers();
+  });
+
   test(`${name}: a research row counts only what cleared, and says how many passes a later check left uncleared`, async () => {
     // The server's not_cleared: passes whose one-time holdout then failed, or that the diversification check held
     // back (Missed final test, Held back on the session page). The run's counter still holds them.

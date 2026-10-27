@@ -177,3 +177,21 @@ test('Tau: a research result\'s title and a post\'s Reply, Edit and reactions ar
   assert.equal(decl(all, '.reactions .rx', 'min-height', COARSE), '40px');
   assert.equal(decl(all, '.btn.sm', 'min-height'), '24px');
 });
+
+// Walk 2026-10-27 (Meridian, 390x844, Tau the same): the open autopilot sheet's close button reaches 2px from the
+// screen's right edge and 1px from its top (its 44px target's negative margin into the header's padding), so the
+// focus ring drawn 2px outside it was cut off on the right and at the top. The ring sits inside the button there.
+const SHEET = '@media (max-width: 600px)';
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: on a phone the open autopilot sheet's close button shows its whole focus ring`, () => {
+    const all = rules(read(file));
+    const [padTop, padRight] = decl(all, '.apf-head', 'padding').split(/\s+/).map(px);
+    const [marginTop, marginRight] = decl(all, '.apf-x', 'margin', COARSE).split(/\s+/).map(px);
+    const room = Math.min(padTop + marginTop, padRight + marginRight);  // between the button and the screen's edges
+    assert.ok(room >= 0 && room < 4, `the button sits ${room}px from the edge`);
+    const width = px(decl(all, ':focus-visible', 'outline'));
+    const offset = px(decl(all, '.apf.open .apf-x:focus-visible', 'outline-offset', SHEET) ?? decl(all, ':focus-visible', 'outline-offset'));
+    assert.ok(width + offset <= room, `the ring reaches ${width + offset}px outside the button, ${room}px from the edge`);
+    assert.ok(width + offset <= 0 && -offset < 22, 'inside the button and clear of its icon');
+  });
+}

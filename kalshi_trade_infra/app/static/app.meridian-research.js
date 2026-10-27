@@ -380,8 +380,10 @@ window.TauPage('research', (T) => {
       // A paused session holds one of the two session slots but isn't running: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
       paint(root.querySelector('#research-status'), fig('Running', running) + (paused ? fig('Paused', paused) : '') + fig('Queued', queued));
-      const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested` : 'No strategies tested';
-      paint(rfigs, fig(gl('Passed', 'gate'), passed, { small: fell ? `${num(fell)} more passed but ${fell === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : '' }) + fig('Tested', tried));
+      const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested, all time` : 'No strategies tested';
+      // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
+      // each says its window.
+      paint(rfigs, fig(gl('Passed', 'gate'), passed, { small: [ALL_TIME, fell ? `${num(fell)} more passed but ${fell === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : ''].filter(Boolean).join(' ·\u00a0') }) + fig('Tested', tried, { small: ALL_TIME }));
       if (rfigs.getAttribute('title') !== rtitle) rfigs.setAttribute('title', rtitle);
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       const active = d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused');
@@ -438,6 +440,8 @@ window.TauPage('research', (T) => {
   // (`not_cleared` from the server: the one-time holdout then failed, or the diversification check held it
   // back, stamped Missed final test and Held back on its page). The row read "2 of 10 passed" over a
   // session whose page said "Passed 1" and "1 not cleared".
+  // The Research headline's window: its totals count every session ever (the server's totals).
+  const ALL_TIME = 'all time';
   const runPassed = (r) => {
     const all = +r.strategies_passed || 0, fell = Math.min(all, +r.not_cleared || 0);
     return { ok: all - fell, fell };
