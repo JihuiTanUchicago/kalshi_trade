@@ -13,7 +13,9 @@ fresh form) carries nothing and asks as before; so does any read that fails.
 Billing asks with the browser's UTC offset (?tz=: its statement's days are the viewer's), which only the
 browser knows. boot.js keeps it in the tau_tz cookie on every load and the shell names Billing's read
 from that. No cookie yet (a first load on this device), no read; an offset that changed since (a clock
-change, a trip) names a URL the page doesn't ask, and the page asks as before.
+change, a trip) names a URL the page doesn't ask, and the page asks as before. It is carried only for an
+account Stripe has no cards to list for: the saved-card list waits on Stripe, and a slow Stripe must
+never hold the whole shell blank (the page's own read keeps it behind a skeleton instead).
 
 The dashboard also carries the autopilot status: its autopilot card sits above the figures, and drawn
 a round trip after them it pushed them down the screen. Research carries its loop card's board for the
@@ -28,7 +30,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.web.http import ApiError, Ctx
-from app.web.routes.billing import billing_state
+from app.web.routes.billing import asks_stripe, billing_state
 from app.web.routes.chat import autopilot_status
 from app.web.routes.dashboard import dashboard
 from app.web.routes.deployments import list_deployments
@@ -58,6 +60,14 @@ def kept_loop_board(ctx: Ctx) -> Dict[str, Any]:
     if not scoreboard_kept(ctx.uid, LOOP_DAYS):
         raise NotKept
     return research_scoreboard(ctx)
+
+
+def billing_without_stripe(ctx: Ctx) -> Dict[str, Any]:
+    """Billing's first read, as billing_state answers it, for an account it wouldn't ask Stripe for;
+    NotKept for one it would (the saved cards wait on Stripe, up to its timeout)."""
+    if asks_stripe(ctx):
+        raise NotKept
+    return billing_state(ctx)
 
 
 def dashboard_since(cookie: Optional[str], now: Optional[float] = None) -> Optional[int]:
@@ -92,7 +102,7 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
         return [("/api/deployments", list_deployments, (), {})]
     if path in ("/billing", "/settings/billing"):
         tz = billing_tz(cookies.get("tau_tz"))
-        return [] if tz is None else [("/api/billing?tz=%d" % tz, billing_state, (), {"tz": str(tz)})]
+        return [] if tz is None else [("/api/billing?tz=%d" % tz, billing_without_stripe, (), {"tz": str(tz)})]
     m = _RUN_PAGE.match(path)
     if m:
         return [("/api/runs/%s?after=0" % m.group(1), get_run, (m.group(1),), {"after": "0"})]

@@ -139,6 +139,18 @@ def test_billing_shell_carries_its_read_under_the_url_the_page_asks_with_its_tim
     assert r.status == 200 and _first(html) == [] and 'id="tau-me"' in html
 
 
+def test_billing_shell_never_waits_on_stripe(web, monkeypatch):
+    # An account with a Stripe customer has its saved cards listed by Stripe: a slow Stripe would hold
+    # the whole shell blank up to its timeout, so the page asks for itself behind its skeleton.
+    calls = _record(monkeypatch, "billing_state", {"balance": 12.5})
+    monkeypatch.setattr(shell_reads, "asks_stripe", lambda ctx: True)
+    r, html = _shell(web, "/billing", "rsid=abc; tau_tz=240")
+    assert r.status == 200 and calls == [] and _first(html) == [] and 'id="tau-me"' in html
+    monkeypatch.setattr(shell_reads, "asks_stripe", lambda ctx: False)
+    r, html = _shell(web, "/billing", "rsid=abc; tau_tz=240")
+    assert len(calls) == 1 and _first(html) == [{"url": "/api/billing?tz=240", "body": {"balance": 12.5}}]
+
+
 @pytest.mark.parametrize("cookie,tz", [(None, None), ("", None), ("abc", None), ("240", 240), ("-330", -330), ("0", 0),
                                        ("-0", 0), ("12345", None), ("2.5", None), ("240 ", None)])
 def test_billing_tz_reads_the_offset_as_the_page_writes_it(cookie, tz):
@@ -220,3 +232,16 @@ def test_only_the_named_pages_have_first_requests():
     assert [r[0] for r in shell_reads.first_requests("/research/12", "", {})] == ["/api/runs/12?after=0"]
     assert [r[0] for r in shell_reads.first_requests("/", "", {})] == ["/api/dashboard", "/api/autopilot/status"]
     assert [r[0] for r in shell_reads.first_requests("/research", "", {})] == ["/api/runs", "/api/research/scoreboard?days=14"]
+
+
+def test_asks_stripe_only_for_a_stripe_customer_with_payments_on(monkeypatch):
+    from app.web.routes import billing as billing_routes
+    ctx = SimpleNamespace(cur=None, uid=7)
+    monkeypatch.setattr(billing_routes.repo, "get_stripe_customer", lambda cur, uid: {"stripe_customer_id": "cus_1"})
+    monkeypatch.setattr(billing_routes.billing, "configured", lambda: True)
+    assert billing_routes.asks_stripe(ctx) is True
+    monkeypatch.setattr(billing_routes.billing, "configured", lambda: False)
+    assert billing_routes.asks_stripe(ctx) is False
+    monkeypatch.setattr(billing_routes.billing, "configured", lambda: True)
+    monkeypatch.setattr(billing_routes.repo, "get_stripe_customer", lambda cur, uid: None)
+    assert billing_routes.asks_stripe(ctx) is False

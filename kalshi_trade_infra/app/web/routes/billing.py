@@ -144,6 +144,12 @@ def reload_failed_now(cur, uid: int, reads: billing.Reads) -> Optional[str]:
     return failed["text"] if failed else None
 
 
+def asks_stripe(ctx: Ctx) -> bool:
+    """Whether billing_state would ask Stripe for the saved cards (an account with a Stripe customer,
+    payments on): a read that waits on Stripe, up to its timeout."""
+    return bool(billing.configured() and repo.get_stripe_customer(ctx.cur, ctx.uid))
+
+
 def billing_state(ctx: Ctx):
     cur = ctx.cur
     cust = repo.get_stripe_customer(cur, ctx.uid)
