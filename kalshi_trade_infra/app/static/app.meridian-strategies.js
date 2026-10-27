@@ -392,11 +392,18 @@ window.TauPage('strategies', (T) => {
   // own figure) when it sends one. Adding the rows' rounded figures here could read a cent off the list.
   function bookTotal(s, mode, ds) {
     const t = s.book_totals && s.book_totals[mode];
-    if (t) return { pnl: +t.pnl || 0, trades: +t.trades || 0, open: +t.open || 0 };
+    if (t) return { pnl: +t.pnl || 0, trades: +t.trades || 0, open: +t.open || 0, instant: +t.instant_fills || 0 };
     return { pnl: ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), trades: ds.reduce((a, d) => a + (+d.closed_trades || 0), 0),
       open: ds.reduce((a, d) => a + (+d.open_positions || 0), 0) };
   }
 
+  // How many of a paper book's `n` closed trades were instant fills (`k`, the server's book_totals.paper.instant_fills,
+  // split as the track record splits them): "+$3.80 realized over 2 closed trades" said nothing of the one the track
+  // record leaves out. The live check's count of realistic paper trades (paper_evidence) leaves them out too.
+  // Display only: what counts toward live is the server's alone.
+  const instantNote = (k, n, cls) => (!(k > 0) || !(n > 0) ? '' : `<p class="${cls}">${k >= n
+    ? (n === 1 ? 'This trade was an instant fill' : `All ${num(n)} of these trades were instant fills`)
+    : `${num(k)} of these ${num(n)} trades ${k === 1 ? 'was an instant fill' : 'were instant fills'}`}, filled whole at the quoted price without the simulated order book. The track record leaves ${k === 1 ? 'it' : 'them'} out, and so does the count of realistic paper trades toward live.</p>`);
   // What the strategy has actually done since it was deployed, per mode (live, demo, paper), from
   // its deployments' realized P&L. The page otherwise shows only the backtest.
   function realRecord(s) {
@@ -424,9 +431,9 @@ window.TauPage('strategies', (T) => {
     const lines = order.map((mode) => {
       const ds = (s.deployments || []).filter((d) => d.mode === mode);
       if (!ds.length) return '';
-      const { pnl, trades: n, open } = bookTotal(s, mode, ds);
+      const { pnl, trades: n, open, instant } = bookTotal(s, mode, ds);
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together), and,
@@ -500,7 +507,7 @@ window.TauPage('strategies', (T) => {
     const running = LADDER.filter(([m]) => deps.some((d) => d.mode === m && d.status !== 'stopped'));
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
-      const { trades: n, pnl } = bookTotal(s, m, ds);
+      const { trades: n, pnl, instant } = bookTotal(s, m, ds);
       const stats = `${num(n)} closed trade${n === 1 ? '' : 's'} ·\u00a0${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats} ·\u00a0${demoHealthLine(s.demo_health)}</p>`;
@@ -508,7 +515,7 @@ window.TauPage('strategies', (T) => {
       // Its demo check is still reading the demo cash (demo_health_pending): not "running" until that is in.
       const state = !runs ? 'paused' : m === 'live' && !liveOpen() ? 'waiting: live trading isn\u2019t open yet, so it places no orders'
         : m === 'demo' && s.demo_health_pending ? 'checking your Kalshi demo account\u2026' : 'running';
-      return `<p><span class="mk ${cls}">${label}</span> ${state} ·\u00a0${stats}</p>`;
+      return `<p><span class="mk ${cls}">${label}</span> ${state} ·\u00a0${stats}</p>${m === 'paper' ? instantNote(instant, n, 'hint rung-instant') : ''}`;
     });
     // Paper proves the edge, demo the order path: say so under the demo book, with its settled demo
     // orders against what the live check needs once Road to live is in.

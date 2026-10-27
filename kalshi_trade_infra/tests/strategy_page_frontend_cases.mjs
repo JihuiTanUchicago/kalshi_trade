@@ -324,6 +324,34 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(lines.join(' '), /\$5\.52|\$4\.36/);
   });
 
+  test(`${name}: since deploying and the ladder say how many paper trades were instant fills, which the track record leaves out`, async () => {
+    // Walk 2026-10-27: an instant-only strategy's page read "+$3.80 realized over 2 closed trades" under Since deploying
+    // and on Paper → demo → live, with no word of the instant fills the track record leaves out (and the live check's
+    // count of realistic paper trades too). The count is the server's (book_totals.paper.instant_fills); figures unchanged.
+    const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 3.8, closed_trades: 2, open_positions: 0, created_at: '2026-10-27T08:00:00Z'},
+      {id: 4, mode: 'demo', status: 'running', realized_pnl: 0.5, closed_trades: 1, open_positions: 0, created_at: '2026-10-27T08:00:00Z'}];
+    const page = async (instant) => {
+      const f = await open({status: 'passed', deployments, book_totals: {paper: {pnl: 3.8, trades: 2, open: 0, ...(instant ? {instant_fills: instant} : {})},
+        demo: {pnl: 0.5, trades: 1, open: 0}}});
+      const text = (sel) => [...f.root.querySelectorAll(sel)].map((p) => p.textContent.replace(/\s+/g, ' ')).join(' | ');
+      return {record: text('.real-record p'), ladder: text('#ladder-body p'), html: main(f)};
+    };
+    const part = await page(1);
+    const said = /1 of these 2 trades was an instant fill, filled whole at the quoted price without the simulated order book\. The track record leaves it out, and so does the count of realistic paper trades toward live\./;
+    assert.match(part.record, /Paper \+\$3\.80 realized over 2 closed trades/);
+    assert.match(part.record, said);
+    assert.match(part.ladder, /Paper running · 2 closed trades · \+\$3\.80 realized/);
+    assert.match(part.ladder, said);
+    // The demo book says nothing of it, and is never added in.
+    assert.doesNotMatch(part.record.split(' | ').filter((t) => t.startsWith('Demo')).join(' '), /instant/);
+    assert.doesNotMatch(part.html, /\$4\.30/);
+    const all = await page(2);
+    assert.match(all.record, /All 2 of these trades were instant fills, filled whole at the quoted price without the simulated order book\. The track record leaves them out/);
+    assert.match(all.ladder, /All 2 of these trades were instant fills/);
+    // None (or a server that sends no count): no note.
+    assert.doesNotMatch((await page(0)).html, /instant fill/);
+  });
+
   test(`${name}: past deployments say which money each was and that fees are in, as the lines above do`, async () => {
     // "Demo Sep 28–Oct 1, −$1.50 over 1 closed trade" said neither that it was Tau's demo book (not real money)
     // nor that Kalshi's fees were taken off, where the "Since deploying" line above it now says both.
