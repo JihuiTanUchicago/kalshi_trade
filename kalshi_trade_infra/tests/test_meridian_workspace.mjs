@@ -6088,9 +6088,10 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
 test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / trade"', async () => {
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Both', stake: 5, max_positions: 3})]);
-  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*· Stake not set<\/span>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*Stake not set · Max 3 open<\/span>/);
-  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\$5 \/ trade · Max 3 open<\/span>/);
+  // Walk 2026-10-27 at 390px: "Max 2" ended a line and "open" began the next. Stake and cap each stay whole.
+  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*\u00a0· <span class="nobr">Stake not set<\/span><\/span>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">Stake not set<\/span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
+  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\u00a0· <span class="nobr">\$5 \/ trade<\/span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
   assert.doesNotMatch(html, /\$ \/ trade|Max\s+open|null|NaN/);
   const f = frontend();
   const none = f.deploymentMonitor(nullStakeDep({status: 'paused', status_why: 'You paused it'}));

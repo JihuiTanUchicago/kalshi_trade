@@ -1845,13 +1845,15 @@
   const depState = (d, live) => d.status !== 'running' ? mark(d.status, live)
     : depIdle(d) ? `<span class="deployment-state idle">${esc(depIdle(d).state)}</span>` : '<span class="deployment-state">Running</span>';
   const depIdleLine = (d) => depIdle(d) ? `<div class="sub-fig dep-idle">${esc(depIdle(d).why)}</div>` : '';
+  // The row's market, stake and cap: "$5 / trade" and "Max 2 open" each stay whole (.nobr) and each "·" ends its
+  // line: at 390px "Max 2" ended a line and "open" began the next.
   function deploymentSlip(d, controls, regs) {
     const live = d.mode === 'live';
     const modeTag = deploymentMode(d);
     const actions = controls ? `<td class="act" data-lab="">${deploymentActions(d)}</td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="dep-meta"><span class="sub-fig">${[esc(marketFull(d.market)), depStake(d), depCap(d)].filter(Boolean).join(' \u00b7\u00a0')}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span>
+        <div class="dep-meta"><span class="sub-fig">${[esc(marketFull(d.market)), depStake(d), depCap(d)].filter(Boolean).map((t, i) => (i ? `<span class="nobr">${t}</span>` : t)).join('\u00a0\u00b7 ')}${d.status !== 'running' && (d.status_why || d.status_reason) ? '\u00a0\u00b7 ' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span>
         ${deploymentEvidence(d)}</div>${depIdleLine(d)}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${depInstant(d)}${roadLine(d)}</td>
       <td data-lab="Status">${depState(d, live)}<div class="sub-fig">${modeTag}</div></td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
