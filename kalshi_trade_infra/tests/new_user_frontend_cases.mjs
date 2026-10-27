@@ -14,7 +14,7 @@ const firstDep = (o = {}) => ({id: 1, strategy_id: 11, title: 'Momentum after sh
   status_reason: null, realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-27T22:05:34Z',
   curve: [], stake: 5, max_positions: 4, backtest: {out_of_sample: {trades: 60, pnl: 0.9}, capital: 10}, ...o});
 
-export function newUserCases({name, frontend, detailStrategy, strategyFrontend, dashboard, billingPage, cardedBilling}) {
+export function newUserCases({name, frontend, detailStrategy, strategyFrontend, dashboard, billingPage, cardedBilling, apStatus}) {
   const meridian = name === 'Meridian';
   const pageFile = (page) => readFileSync(new URL(`../app/static/${meridian ? 'app.meridian-' : 'app-'}${page}.js`, import.meta.url), 'utf8');
 
@@ -69,6 +69,28 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     assert.match(await page(session({spent_usd: 0.003})), /Spent so far\s*under \$0\.01/);
     assert.match(await page(session({spent_usd: 0.4})), /Spent so far\s*\$0\.40/);
     assert.match(await page(session({status: 'succeeded', spent_usd: 0.83, hypotheses_tried: 2, strategies_passed: 1, finished_at: '2026-10-27T22:05:00Z'})), /Cost\s*\$0\.83/);
+  });
+
+  // Autopilot's first session running: Last 24 hours said "It started 1 research session" while the card's week said
+  // "nothing yet ... once it starts". While a session runs (and nothing in the week has landed) it says that.
+  test(`${name}: the autopilot card's empty week says a session is running instead of "once it starts"`, async () => {
+    const zero = {research_credits: 0, tested: 0, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0,
+      checkin_credits: 0, credits_left: 20, runway_days: null, pace_days: 0.01, card_charged: false};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard') return response(dashboard());
+      if (path === '/api/autopilot/status') return response({...apStatus, week: zero});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      return response({});
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    const week = () => f.root.querySelector('#dash-ap .ap-week').textContent.trim();
+    f.S.ap = {...apStatus, week: zero, research: {...apStatus.research, active: ['Bitcoin up or down in 15 minutes']}}; f.paintDashAp();
+    assert.equal(week(), 'Last 7 days: a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.');
+    f.S.ap = {...apStatus, week: zero, research: {...apStatus.research, active: []}}; f.paintDashAp();
+    assert.match(week(), /^Last 7 days: nothing yet\. Its research, paper strategies and credits spent show here once it starts\.$/);
+    f.clearTimers();
   });
 
   // A new account has spent nothing: Billing read "Spent, last 7 days $0.00 · $0.00 in the last 24 hours · $0.00 all

@@ -3570,7 +3570,12 @@
     const checkins = +w.checkin_credits >= 0.01 || !!w.checkin_under_cent;
     const empty = !(+w.research_credits >= 0.005) && !w.research_under_cent && !(+w.checkin_credits >= 0.005) && !w.checkin_under_cent
       && !+w.tested && !+w.passed && !+w.not_cleared && !+w.paper_started && !trades && !pnl;
-    if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>Last 7 days:</b> nothing yet. Its research, paper strategies and credits spent show here once it starts.</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
+    // Its first session already running is not "once it starts": the card said so beside "It started 1 research
+    // session" in Last 24 hours. While one runs (the status's research.active) it says that instead.
+    const researching = !!(d && d.research && d.research.active && d.research.active.length);
+    if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>Last 7 days:</b> ${researching
+      ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
+      : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
       <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? `${SEP}plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
