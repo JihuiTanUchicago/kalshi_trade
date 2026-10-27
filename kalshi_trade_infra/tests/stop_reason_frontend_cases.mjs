@@ -160,6 +160,26 @@ export function stopReasonCases({name, frontend}) {
     f.clearTimers();
   });
 
+  test(`${name}: a Deploy row paused for a missing demo key links "the Funds page" to Connect Kalshi, its words escaped`, async () => {
+    // The engine's pause reason (app/trading/engine.py), word for word: it was plain text, with nothing to press.
+    const why = 'Add your Kalshi demo (sandbox) key on the Funds page to run this on demo.';
+    const dep = (id, reason) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'demo', status: 'paused', status_reason: reason,
+      status_why: reason, realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null,
+      created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {out_of_sample: null}});
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/deployments') return response({deployments: [dep(1, why), dep(2, '<img src=x onerror=alert(1)> see the Funds page')], open_positions: []});
+      return response({});
+    }});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const html = f.root.querySelector('#deps').innerHTML;
+    assert.match(html, /Add your Kalshi demo \(sandbox\) key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on demo\./);
+    // Only the fixed words become a link; the rest of what the server said stays escaped.
+    assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt; see <a href="\/funds#connect-kalshi">the Funds page<\/a>/);
+    assert.doesNotMatch(html, /<img/);
+    f.clearTimers();
+  });
+
   // Funds: each write repaints the page. Focus a control the way a keyboard user would, write, and
   // the repainted twin of that control (or what replaced it) has focus.
   const fundsPage = (connectedAfter = false) => {

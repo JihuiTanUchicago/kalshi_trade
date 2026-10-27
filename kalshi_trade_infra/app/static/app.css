@@ -1073,6 +1073,11 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .deploy[data-view="chat"] .deploy-board { display: none; }
   .deploy[data-view="chat"] .chat { position: sticky; top: 12px; height: calc(100vh - 96px); max-height: none; }
 }
+/* A phone's half-width figure: a book's chip sits on its own line above the book's name, so "Tau's demo book"
+   reads on one line (beside its chip it wrapped "BOOK" onto a second line at 390px). */
+@media (max-width: 480px) {
+  .measure dt.lab > .mk:first-child { display: block; width: fit-content; margin: 0 0 5px; }
+}
 @media (max-width: 760px) {
   .measure { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .measure > .m { border-left: 0; padding: 12px 0 11px; }
@@ -2056,6 +2061,8 @@ body.landing-body .apf { display: none; }
 .pos-name { overflow-wrap: anywhere; }
 .kalshi-ref { font-size: 12px; color: var(--ink-3); }
 .kalshi-ref .tick { overflow-wrap: anywhere; }
+/* On a market page it is the line under the name ("Open for trading · Kalshi contract KX…"), at that line's size. */
+.deck .kalshi-ref { font-size: inherit; color: inherit; }
 /* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
 #openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
