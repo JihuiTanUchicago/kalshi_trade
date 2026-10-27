@@ -168,7 +168,10 @@ def _deploy_roads(cur, uid: int, deps: List[Dict], memo: Optional[book_memo.Book
     sids = sorted({int(d["strategy_id"]) for d in deps if d["mode"] == "paper"})
     if not sids:
         return {}
-    key = (uid, tuple(sids), tuple(sorted((int(d["id"]), d["status"]) for d in deps if d["mode"] == "paper")))
+    # With the board's kept position sums, their version is in the key: a trade that closed inside the
+    # 30s showed "Realized +$5.63 · 1 trade" beside "Toward live: 0/30 trades" on the same row.
+    key = (uid, tuple(sids), tuple(sorted((int(d["id"]), d["status"]) for d in deps if d["mode"] == "paper")),
+           memo.version() if memo is not None else None)
     hit = _ROADS.get(key)
     if hit and time.time() - hit[0] < ROAD_TTL:
         return hit[1]
