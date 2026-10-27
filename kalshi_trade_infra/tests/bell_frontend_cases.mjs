@@ -2,6 +2,7 @@
 // - the bell lists a grouped notice with how many more it stands for, a notice with no page as plain
 //   text, and moves focus into the list when it opens;
 // - the autopilot status read brings new notices to the bell within a minute, without a reload;
+// - a list that didn't load still opens and says so, with Try again, and the next read fills it;
 // - a bell link to a post opens the feed at that post with its replies, shows the feed from that post
 //   when it is older than the newest page, and says so when the post is gone.
 import assert from 'node:assert/strict';
@@ -76,6 +77,38 @@ export function bellCases({name, frontend}) {
     assert.equal(dot.hidden, false);
     assert.equal(f.root.querySelector('.bell-trig').getAttribute('aria-label'), 'Notifications, 1 unread');
     assert.match(f.root.querySelector('a.notif.unread').textContent, /was paused automatically/);
+  });
+
+  test(`${name}: a bell whose list didn't load still opens, says so, and Try again or the next read fills it`, async () => {
+    const unread = {unread: 1, items: [{id: 3, kind: 'deploy', body: 'Edge made a trade.', link: '/deploy', created_at: ago(60e3), read: false, more: 0}]};
+    let failing = true;
+    const f = dashboard(() => (failing ? response({error: 'Something went wrong on our side.'}, 500) : response(structuredClone(unread))));
+    f.location.pathname = '/';
+    await f.render(); await settle();
+    const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
+    const list = wrap.querySelector('#bell-list');
+    await trig.onclick({stopPropagation() {}});
+    assert.equal(menu.hidden, false);  // it used to do nothing at all
+    assert.match(list.textContent, /didn.t load just now/);
+    const again = list.querySelector('[data-bell-retry]');
+    assert.ok(again);
+    failing = false;
+    list.listeners.get('click')({target: again});
+    await settle();
+    assert.match(list.querySelector('a.notif').textContent, /Edge made a trade/);
+    assert.equal(menu.hidden, false);
+    assert.equal(f.requests.filter(({path}) => path === '/api/notifications/read').length, 1);  // read as it shows
+
+    // Left closed, the autopilot's read within the minute brings the dot back without a tap.
+    failing = true;
+    const g = dashboard(() => (failing ? response({error: 'Something went wrong on our side.'}, 500) : response(structuredClone(unread))));
+    g.location.pathname = '/';
+    await g.render(); await settle();
+    assert.equal(g.root.querySelector('.bell-dot').hidden, true);
+    failing = false;
+    g.shiftClock(61e3); [...g.intervals.values()].forEach(tick => tick()); await settle();
+    assert.equal(g.root.querySelector('.bell-dot').hidden, false);
+    assert.equal(g.root.querySelector('.bell-trig').getAttribute('aria-label'), 'Notifications, 1 unread');
   });
 
   const community = (posts, older) => {

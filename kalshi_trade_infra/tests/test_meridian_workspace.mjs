@@ -186,7 +186,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
     clearTimeout: id => timeouts.delete(id),
     fetch: async (path, options) => {
       requests.push({path, options});
-      if (path === '/api/notifications') return response(notifications || {unread: 0, items: []});
+      if (path === '/api/notifications') return typeof notifications === 'function' ? notifications() : response(notifications || {unread: 0, items: []});
       if (fetchImpl) return fetchImpl(path, options);
       throw new Error('Unexpected offline request: ' + path);
     },

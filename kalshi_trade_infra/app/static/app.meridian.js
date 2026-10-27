@@ -861,25 +861,43 @@
       // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
       list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
     };
-    let data = { unread: 0, items: [] };
-    // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
-    if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
-    try { data = await bellReq; paint(data); } catch (e) { return; }  // bell is best-effort
+    // A list that didn't load still opens, says so and offers Try again; the next read (bellTick) fills it
+    // too. It used to leave the bell dead for the rest of the visit: a tap did nothing and no dot ever came.
+    let data = null;
+    const unloaded = () => { list.innerHTML = '<p class="bell-empty">Notifications didn\u2019t load just now. <button type="button" class="btn sm" data-bell-retry>Try again</button></p>'; };
+    // Focus goes into the list (its first notice, or the list itself when it is empty), so Tab and a
+    // screen reader carry on from what just opened; Esc brings it back to the bell.
+    const focusIn = () => (list.querySelector('a.notif') || menu).focus({ preventScroll: true });
+    // An open list is read from here on, also for a repaint that reuses this reply; the marks clear on close.
+    const seen = () => {
+      if (menu.hidden || !data || !data.unread) return;
+      data.unread = 0; data.items.forEach((n) => { n.read = true; }); dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
+      api('/api/notifications/read', {}).catch(() => {});
+    };
+    const load = async () => {
+      // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
+      if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
+      try { data = await bellReq; paint(data); return true; } catch (e) { if (!data) unloaded(); return false; }  // bell is best-effort
+    };
+    await load();
     // Autopilot pauses or readies a strategy while the page sits open: the dot shows it within a minute,
-    // without a reload (bellTick). An open list is left as the reader sees it.
-    bellFresh = (d) => { if (menu.hidden) { data = d; paint(d); } };
+    // without a reload (bellTick). An open list is left as the reader sees it, unless it never loaded.
+    bellFresh = (d) => { if (menu.hidden || !data) { data = d; paint(d); seen(); } };
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
-      // Focus goes into the list (its first notice, or the list itself when it is empty), so Tab and a
-      // screen reader carry on from what just opened; Esc brings it back to the bell.
-      (list.querySelector('a.notif') || menu).focus({ preventScroll: true });
-      if (data.unread) {
-        // Read from here on, also for a repaint that reuses this reply; the marks clear on close.
-        data.unread = 0; data.items.forEach((n) => { n.read = true; }); dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
-        api('/api/notifications/read', {}).catch(() => {});
-      }
+      focusIn();
+      seen();
+    };
+    // Focus waits on the list itself while it reads: the browser blurs a button that goes disabled or is
+    // painted over, and focus leaving the bell closes the list.
+    const retry = async (btn) => {
+      if (btn.dataset.busy) return;
+      btn.dataset.busy = '1';
+      menu.focus({ preventScroll: true });
+      bellReqAt = 0;  // a fresh read, not the one that just failed
+      if (await load()) { focusIn(); seen(); } else { const b = list.querySelector('[data-bell-retry]'); if (b) b.focus({ preventScroll: true }); }
     };
     // Esc closes the list and gives focus back to the bell.
     wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); trig.focus(); } });
@@ -887,7 +905,10 @@
     // longer reached it: focus leaving the bell closes the list, as a click outside already does.
     wrap.addEventListener('focusout', (e) => { if (!menu.hidden && !wrap.contains(e.relatedTarget)) close(); });
     // Opening a notice closes the list first, so its click-outside listener doesn't outlive the page.
-    list.addEventListener('click', (e) => { if (e.target.closest('a.notif')) close(); });
+    list.addEventListener('click', (e) => {
+      const again = e.target.closest('[data-bell-retry]');
+      if (again) retry(again); else if (e.target.closest('a.notif')) close();
+    });
   }
 
   function shell(active, board, main) {
