@@ -1806,23 +1806,36 @@
   // waits for the first to come back instead of sending again. The board re-reading after an action
   // that landed is not the action: when only the re-read fails, the action is confirmed with a word to
   // reload (it read as an error and invited a second press), and the button, still offering what was
-  // just done, stays locked until the board repaints.
-  const depSending = new Set();
+  // just done, stays locked until the board repaints. A poll that repaints the board while an action is
+  // on its way draws that deployment's buttons locked, the pressed one still busy: they read as idle
+  // before, and a press on them did nothing.
+  const depSending = new Map();  // deployment id -> the action on its way
   function bindDeploymentActions(scope, after) {
     scope.querySelectorAll('[data-dep]').forEach((btn) => {
+      const going = depSending.get(btn.dataset.dep);
+      if (going) {
+        if (!btn.disabled) { btn.disabled = true; btn.dataset.sending = '1'; }
+        if (going === btn.dataset.act) btn.classList.add('busy');
+      }
       btn.onclick = () => {
         const id = btn.dataset.dep, act = btn.dataset.act;
         if (depSending.has(id) || btn.disabled) return;
         const run = async () => {
           if (depSending.has(id)) return;
-          depSending.add(id);
+          depSending.set(id, act);
           let fresh = null;
           try {
             await busy(btn, async () => {
               try { await api(`/api/deployments/${id}/${act}`, {}); } catch (e) { alert0(e.message); return; }
               fresh = await refreshed(after());
             });
-          } finally { depSending.delete(id); }
+          } finally {
+            depSending.delete(id);
+            root.querySelectorAll(`[data-dep="${id}"]`).forEach((b) => {
+              b.classList.remove('busy');
+              if (b.dataset.sending) { delete b.dataset.sending; b.disabled = false; }
+            });
+          }
           if (fresh === null) return;
           if (!fresh) btn.disabled = true;
           depActed(id, act, fresh);
