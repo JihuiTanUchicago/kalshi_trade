@@ -3515,6 +3515,35 @@
   }
   // Without a version (an older shell) the file is still found, revalidated instead of cached for good.
   const pageSrc = (name, v = pageVersions()[name]) => '/static/app.meridian-' + name + '.js' + (v ? '?v=' + v : '');
+  // A page's own scripts and stylesheets beside its file (#tau-boot data-page-assets, page_modules.ASSETS):
+  // Funds' native perps account, and the broker and Alpaca paper files kept with it. The shell of the
+  // page's own paths links them; arriving from another page, they load with the page file, each once, and
+  // the page draws once they are in. One that fails leaves its part out, as a failed one in the shell
+  // did, and never fails the page.
+  const assetWaits = {};  // url -> its load, settled or in flight
+  const pageAssetSrcs = (name) => {
+    const boot = document.getElementById('tau-boot');
+    return String((boot && boot.dataset && boot.dataset.pageAssets) || '').split(' ')
+      .map((p) => /^([a-z]+):([a-z.-]+\.(?:js|css)\?v=[0-9a-f]+)$/.exec(p)).filter((m) => m && m[1] === name).map((m) => '/static/' + m[2]);
+  };
+  const assetHere = (src) => [...document.querySelectorAll(/\.css\?/.test(src) ? 'link[rel="stylesheet"]' : 'script[src]')]
+    .some((el) => el.getAttribute(/\.css\?/.test(src) ? 'href' : 'src') === src);
+  function pageAssets(name) {
+    return Promise.all(pageAssetSrcs(name).map((src) => assetWaits[src] || (assetWaits[src] = assetHere(src) ? Promise.resolve() : new Promise((resolve) => {
+      const css = /\.css\?/.test(src), el = document.createElement(css ? 'link' : 'script');
+      let tid = null;
+      const done = (ok) => {
+        clearTimeout(tid); el.onload = el.onerror = null;
+        if (!ok) { delete assetWaits[src]; apiBroke(src, false, 'did not load'); }
+        resolve();
+      };
+      el.onload = () => done(true);
+      el.onerror = () => done(false);
+      tid = setTimeout(() => done(false), PAGE_WAIT_MS);
+      if (css) { el.rel = 'stylesheet'; el.href = src; } else el.src = src;
+      document.head.appendChild(el);
+    }))));
+  }
   // What this bundle's page files use from it, by name, made once (the first file to run). A file that
   // asks for a name this build doesn't share (a file from another build) throws as it runs, instead of
   // drawing with undefined, and its page fails with Try again.
@@ -3540,15 +3569,16 @@
   // A page file calls this as it runs: make(shared()) returns the file's views. Once per name.
   window.TauPage = (name, make) => { if (!PAGES[name]) PAGES[name] = make(shared()); };
   function pageLoad(name) {
-    if (PAGES[name]) return Promise.resolve(PAGES[name]);
     if (pageWaits[name]) return pageWaits[name];
-    const src = pageSrc(name);
+    if (PAGES[name]) return Promise.resolve(PAGES[name]);
+    const src = pageSrc(name), assets = pageAssets(name);
     return (pageWaits[name] = new Promise((resolve, reject) => {
       const s = document.createElement('script');
       let tid = null;
       const settle = (ok) => {
-        clearTimeout(tid); s.onload = s.onerror = null; delete pageWaits[name];
-        if (ok && PAGES[name]) return resolve(PAGES[name]);
+        clearTimeout(tid); s.onload = s.onerror = null;
+        if (ok && PAGES[name]) return void assets.then(() => { delete pageWaits[name]; resolve(PAGES[name]); });
+        delete pageWaits[name];
         if (s.parentNode) s.parentNode.removeChild(s);
         apiBroke(src, false, 'did not load');
         reject(new ApiError(0, PAGE_FAIL));
@@ -3563,7 +3593,7 @@
   // The router's stand-in for a view in a page file: the view itself once the file has run; until then
   // the page's skeleton under its nav, the file, and the view, unless the user has moved on meanwhile.
   async function pageView(name, view, nav, args) {
-    if (!PAGES[name]) {
+    if (!PAGES[name] || pageWaits[name]) {
       const gen = S.gen;
       shell(nav, loading(120), loading(320));
       await pageLoad(name);
@@ -3582,9 +3612,11 @@
     setTimeout(() => {
       for (const [name, v] of Object.entries(all)) {
         if (PAGES[name] || pageWaits[name]) continue;
-        const l = document.createElement('link');
-        l.rel = 'prefetch'; l.href = pageSrc(name, v);
-        document.head.appendChild(l);
+        for (const href of [pageSrc(name, v), ...pageAssetSrcs(name).filter((src) => !assetWaits[src] && !assetHere(src))]) {
+          const l = document.createElement('link');
+          l.rel = 'prefetch'; l.href = href;
+          document.head.appendChild(l);
+        }
       }
     }, PAGE_PREFETCH_MS);
   }

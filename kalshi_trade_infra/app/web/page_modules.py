@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 # Page file -> the app paths whose view is in it (both themes split the same views out).
 PAGES: Dict[str, str] = {
@@ -32,6 +32,14 @@ PAGES: Dict[str, str] = {
 # Panel files: opened over any page, so no path's view is in them.
 PANELS = ("autopilot",)
 NAMES = tuple(PAGES) + PANELS
+# A page's own static files beside its page file. The shell of the page's paths links them (stylesheets in
+# <head>, scripts deferred ahead of the bundle); from any other page the bundle loads them with the page
+# file (#tau-boot data-page-assets). Funds': the native perps account, and the broker connection and
+# Alpaca paper files kept with it (Funds doesn't offer those controls for now).
+ASSETS: Dict[str, Tuple[str, ...]] = {
+    "funds": ("broker-connections.css", "alpaca-paper.css", "kalshi-perps-live.css",
+              "alpaca-paper.js", "kalshi-perps-live.js", "broker-connections.js"),
+}
 PREFIX = {"tau": "app-", "meridian": "app.meridian-"}
 BUNDLE = {"tau": "app.js", "meridian": "app.meridian.js"}
 FILES = tuple(PREFIX[theme] + name + ".js" for theme in PREFIX for name in NAMES)
@@ -67,3 +75,17 @@ def preload(theme: Optional[str], path: str, versions: Dict[str, str]) -> str:
         return ""
     f = file_name(theme, name)
     return '\n<link rel="preload" href="/static/%s?v=%s" as="script">' % (f, versions[f])
+
+
+def assets_attr(versions: Dict[str, str]) -> str:
+    """#tau-boot's data-page-assets: "funds:alpaca-paper.css?v=<v> funds:..." (names and hex only)."""
+    return " ".join("%s:%s?v=%s" % (name, f, versions[f]) for name, files in ASSETS.items() for f in files)
+
+
+def asset_tags(path: str, versions: Dict[str, str]) -> Tuple[str, str]:
+    """The tags for the own files of the page at this path: (stylesheets for <head>, scripts ahead of
+    boot.js), each '' for a page without any. Signed in or not, as before: the files hold no account data."""
+    files = ASSETS.get(page_for(path) or "", ())
+    css = "".join('\n<link rel="stylesheet" href="/static/%s?v=%s">' % (f, versions[f]) for f in files if f.endswith(".css"))
+    js = "".join('<script src="/static/%s?v=%s" defer></script>\n' % (f, versions[f]) for f in files if f.endswith(".js"))
+    return css, js

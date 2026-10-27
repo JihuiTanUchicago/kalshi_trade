@@ -6,6 +6,9 @@
 // - a file that arrives after the user moved on never draws over the next page;
 // - a file from another build that asks for a helper this build doesn't share fails as it runs;
 // - after the first page paints, the files not yet in are prefetched once, at the lowest priority;
+// - a page's own files (Funds' perps, broker and Alpaca paper scripts and stylesheets) load with its page
+//   file from another page, each once, and the page draws once they are in; one that fails leaves its
+//   part out and never fails the page; those the shell linked are neither fetched nor prefetched again;
 // - the autopilot panel's file (app-autopilot.js) is fetched the first time the panel opens, once: the
 //   pill needs none, the panel shows its head over a skeleton meanwhile, and a file that doesn't
 //   arrive says so in the panel with Try again; a panel closed meanwhile stays closed.
@@ -28,7 +31,13 @@ export function pageFileCases({name, frontend, prefix, pagesKey, storageFor}) {
     f.document.body.appendChild(boot);
     const head = [];
     f.document.head = {appendChild: (el) => head.push(el)};
-    return {f, head, reports};
+    return {f, head, reports, boot};
+  };
+  // A page's own files (#tau-boot data-page-assets), and the ones its shell already linked.
+  const ownFiles = (boot, f, assets, linked = []) => {
+    boot.dataset.pageAssets = assets;
+    f.document.querySelectorAll = (sel) => linked.filter((src) => sel.startsWith(/\.css\?/.test(src) ? 'link' : 'script'))
+      .map((src) => ({getAttribute: () => src}));
   };
 
   test(`${name}: a page file that doesn't arrive fails its page with Try again, which fetches it afresh`, async () => {
@@ -115,6 +124,40 @@ export function pageFileCases({name, frontend, prefix, pagesKey, storageFor}) {
       ['link', 'prefetch', `/static/${prefix}research.js?v=111aaa`], ['link', 'prefetch', `/static/${prefix}funds.js?v=333ccc`]]);
     await f.render(); await settle(); f.elapse(3000);
     assert.equal(head.length, 2, 'once a load');
+  });
+
+  test(`${name}: a page's own files load with its page file from another page, once, and it draws once they are in`, async () => {
+    const {f, head, reports, boot} = page('funds:abc123');
+    ownFiles(boot, f, 'funds:kalshi-perps-live.css?v=0c0c0c funds:kalshi-perps-live.js?v=0d0d0d funds:broker-connections.js?v=0e0e0e other:x.js?v=1',
+      ['/static/broker-connections.js?v=0e0e0e']);  // the shell linked this one
+    delete f.PAGES.funds;
+    const drawn = [];
+    f.location.pathname = '/funds';
+    const done = f.render(); await flush();
+    assert.deepEqual(head.map((el) => [el.tag, el.rel || '', el.src || el.href]), [
+      ['link', 'stylesheet', '/static/kalshi-perps-live.css?v=0c0c0c'], ['script', '', '/static/kalshi-perps-live.js?v=0d0d0d'],
+      ['script', '', `/static/${prefix}funds.js?v=abc123`]]);
+    f.PAGES.funds = {viewFunds: () => drawn.push('funds')};
+    head[2].onload(); await settle();
+    assert.deepEqual(drawn, [], 'not before its own files are in');
+    head[0].onload(); head[1].onerror(); await done; await settle();
+    assert.deepEqual(drawn, ['funds'], 'a file that fails leaves its part out, never the page');
+    assert.deepEqual(reports, [['api', 'GET /static/kalshi-perps-live.js did not load']]);
+    // In now: the next visit fetches nothing.
+    await f.render(); await settle();
+    assert.deepEqual(drawn, ['funds', 'funds']);
+    assert.equal(head.length, 3);
+  });
+
+  test(`${name}: the idle prefetch takes a page's own files too, except those the shell linked`, async () => {
+    const {f, head, boot} = page('strategies:222bbb,funds:333ccc');
+    ownFiles(boot, f, 'funds:kalshi-perps-live.js?v=0d0d0d funds:broker-connections.js?v=0e0e0e', ['/static/broker-connections.js?v=0e0e0e']);
+    delete f.PAGES.funds;
+    f.PAGES.strategies = {viewStrategies: () => {}};
+    f.location.pathname = '/strategies';
+    await f.render(); await settle(); f.elapse(3000);
+    assert.deepEqual(head.map((l) => [l.tag, l.rel, l.href]), [
+      ['link', 'prefetch', `/static/${prefix}funds.js?v=333ccc`], ['link', 'prefetch', '/static/kalshi-perps-live.js?v=0d0d0d']]);
   });
 
   // The pill on a page whose shell names the panel file's version, with the file not run yet.

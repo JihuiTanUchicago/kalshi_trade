@@ -170,3 +170,31 @@ def test_the_autopilot_panel_is_in_its_own_file_and_the_bundle_only_forwards_to_
     for name in returned:
         assert re.search(r"\n  function %s\(" % name, src) and re.search(r"\n  function %s\(" % name, bundle)
     assert all(page_modules.page_for(path) != "autopilot" for path in PATHS)  # no page's shell preloads it
+
+
+# Funds' own files: the perps, broker and Alpaca paper scripts and stylesheets. They were linked by every
+# page's shell, the stylesheets render-blocking in <head>, though only Funds uses them.
+FUNDS_FILES = ("broker-connections.css", "alpaca-paper.css", "kalshi-perps-live.css",
+               "alpaca-paper.js", "kalshi-perps-live.js", "broker-connections.js")
+
+
+@pytest.mark.parametrize("theme", ["tau", "meridian"])
+@pytest.mark.parametrize("cookie", [None, "rsid=abc"])
+def test_only_the_funds_shell_links_funds_own_files_and_every_shell_names_them_for_the_bundle(web, theme, cookie):
+    port, account = web
+    account["ui_theme"] = theme
+    versions = server._static_versions()
+    assert page_modules.ASSETS == {"funds": FUNDS_FILES}
+    for path in PATHS:
+        _, body = _get(port, path, cookie=cookie)
+        html = body.decode()
+        head, page = html.split("</head>")
+        linked = re.findall(r'<link rel="stylesheet" href="/static/([a-z.-]+\.css)\?v=([0-9a-f]+)">', head)
+        scripts = re.findall(r'<script src="/static/([a-z.-]+\.js)\?v=([0-9a-f]+)" defer></script>', page)
+        own = page_modules.page_for(path) == "funds"
+        # In <head> as before, after the theme's stylesheet; the scripts deferred ahead of boot.js, in their order.
+        assert [f for f, _ in linked if f in FUNDS_FILES] == ([f for f in FUNDS_FILES if f.endswith(".css")] if own else []), path
+        names = [f for f, _ in scripts]
+        assert names[:names.index("boot.js") + 1] == ([f for f in FUNDS_FILES if f.endswith(".js")] if own else []) + ["boot.js"], path
+        assert all(v == versions[f] for f, v in linked + scripts)
+        assert 'data-page-assets="%s"' % " ".join("funds:%s?v=%s" % (f, versions[f]) for f in FUNDS_FILES) in html

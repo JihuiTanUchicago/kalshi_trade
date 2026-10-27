@@ -167,8 +167,11 @@ def test_a_bundle_under_another_hash_revalidates_and_answers_304(web, query):
 
 
 def test_every_versioned_link_in_the_shell_is_immutable_and_hashed_fonts_always_are(web):
-    _, body = _get(web, "/")
-    links = re.findall(r'"(/static/[a-z0-9_.-]+\?v=[0-9a-f]+)"', body.decode("utf-8"))
+    # Funds' shell also links that page's own files (page_modules.ASSETS).
+    links = set()
+    for path in ("/", "/funds"):
+        _, body = _get(web, path)
+        links.update(re.findall(r'"(/static/[a-z0-9_.-]+\?v=[0-9a-f]+)"', body.decode("utf-8")))
     assert len(links) >= 10
     for link in links:
         r, _ = _get(web, link)

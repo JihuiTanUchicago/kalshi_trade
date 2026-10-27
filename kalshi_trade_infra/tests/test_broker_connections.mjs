@@ -36,9 +36,13 @@ class Host {
 }
 
 test('broker modules remain available but unavailable connections are absent from both Funds themes', () => {
+  // Funds' own files (page_modules.ASSETS): the Funds shell links them ahead of boot.js, and from any other
+  // page the bundle loads them with the Funds page file.
   const html = readFileSync(new URL('../app/static/index.html', import.meta.url), 'utf8');
-  assert.ok(html.indexOf('broker-connections.js?v={{brokers_v}}') < html.indexOf('boot.js?v='));
-  assert.match(html, /broker-connections\.css\?v=\{\{brokers_css_v\}\}/);
+  assert.ok(html.indexOf('{{page_js}}') < html.indexOf('boot.js?v='));
+  assert.match(html, /\{\{page_css\}\}/);
+  const modules = readFileSync(new URL('../app/web/page_modules.py', import.meta.url), 'utf8');
+  assert.match(modules, /"funds": \("broker-connections\.css", "alpaca-paper\.css", "kalshi-perps-live\.css",\s+"alpaca-paper\.js", "kalshi-perps-live\.js", "broker-connections\.js"\)/);
   for (const name of ['app.js', 'app.meridian.js']) {
     const source = bundleSource(name);
     assert.doesNotMatch(source, /id="broker-connections"/);
