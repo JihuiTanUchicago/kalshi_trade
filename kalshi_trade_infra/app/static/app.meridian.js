@@ -3130,7 +3130,7 @@
     // What the time away cost, in credits: real money, so its own row, never added to a book above.
     // Until a card was ever charged (the server's card_charged) every credit spent was a free one, and
     // "real money" beside a new user's first cents read as a charge to their card.
-    const paid = spent && spent.card_charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
+    const paid = creditsPaid(spent && spent.card_charged);
     // A card charged while they were away (the server's charges, reloads of them auto-reload's): the time
     // away's real-money moment, which only Billing's statement told. Credits bought, never netted with spent.
     const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
@@ -3345,11 +3345,15 @@
   // The autopilot's last 7 days (d.week). Credits are real money and paper P&L is not, so they are two
   // labelled figures, never added together. Research counts every session; paper counts only the
   // strategies the autopilot put on paper itself (the server attributes them by their deploy record).
+  // What spent credits were, beside a spend: real money once a card was ever charged for credits (the
+  // server's card_charged), and until then free ones. The autopilot's week said "real money" under a new
+  // user's first cents while the strip above it said the card hadn't been charged.
+  const creditsPaid = (charged) => charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
   function apWeek(w, d) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>real money${+w.checkin_credits >= 0.01 ? ` ·\u00a0plus ${usd(w.checkin_credits)} on its check-ins` : ''}</small></dd></div>
+      <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>${creditsPaid(w.card_charged)}${+w.checkin_credits >= 0.01 ? ` ·\u00a0plus ${usd(w.checkin_credits)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot's paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>

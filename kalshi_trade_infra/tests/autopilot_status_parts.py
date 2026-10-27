@@ -65,7 +65,8 @@ def credit_week_from_parts(cur, uid, since, balance=False):
     return _Parts({"research": lambda: repo.research_spent_since(cur, uid, since),
                    "by_source": lambda: repo.usage_by_source(cur, uid, since),
                    "spent": lambda: repo.credit_spent_total(cur, uid, since),
-                   "balance": lambda: repo.credit_balance(cur, uid) if balance else None})
+                   "balance": lambda: repo.credit_balance(cur, uid) if balance else None,
+                   "card_charged": lambda: repo.card_charged(cur, uid) if balance else None})
 
 
 def credit_reference(cur, uid, since, balance=False):

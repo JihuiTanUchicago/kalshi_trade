@@ -43,3 +43,16 @@ def test_the_card_check_ins_and_research_add_up_with_billings_chat_line_to_the_w
     assert _c(week['research_credits']) + _c(week['checkin_credits']) + _c(WEEK['chat']) == _c(sum(WEEK.values())) == Decimal('100.17')
     # Credits stay apart from paper: the card's P&L figure is the paper book's, never these.
     assert week['paper_pnl'] == 0.0
+
+
+def test_the_week_says_whether_a_card_was_ever_charged_only_when_the_credit_read_says(monkeypatch):
+    """The card's "free credits so far" beside the week's spend rides the panel's credit read; without it
+    the page keeps "real money" (None), never a guess."""
+    monkeypatch.setattr(chat_routes.billing, 'configured', lambda: True)
+    monkeypatch.setattr(chat_routes.repo, 'autopilot_paper_week', lambda *a: {'started': 0, 'pnl': 0.0, 'trades': 0})
+    monkeypatch.setattr(chat_routes.repo, 'usage_by_source', lambda *a: dict(WEEK))
+    reads = SimpleNamespace(customer=lambda: None, balance=lambda: 19.16)
+    for charged in (False, True):
+        credits = {'research': 0.84, 'by_source': dict(WEEK), 'card_charged': charged}
+        assert chat_routes._autopilot_week(object(), 7, {}, reads, credits, None)['card_charged'] is charged
+    assert chat_routes._autopilot_week(object(), 7, {}, reads, None, None)['card_charged'] is None

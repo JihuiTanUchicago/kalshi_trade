@@ -195,6 +195,10 @@ def test_the_merged_reads_answer_as_the_reads_they_replace(conn, frozen):
     assert got["passed_7d"] == 4 and got["tested_7d"] == 12 + 7 + 4 + 2  # the example and last week's left out
     week = repo.credit_week(cur, busy["uid"], since, balance=True)
     assert week["research"] == 0.48 and week["by_source"]["autopilot_review"] == 0.11
+    # Welcome credits only: no card charge yet, so the page calls the spend free credits, not real money.
+    assert week["card_charged"] is False and repo.credit_week(cur, busy["uid"], since)["card_charged"] is None
+    repo.add_credit(cur, busy["uid"], "autoreload", 20, "Auto-reload")
+    assert repo.credit_week(cur, busy["uid"], since, balance=True)["card_charged"] is True
     # "Last check-in" is when the newest review ran: one queued 40 minutes ago that a busy worker only
     # started 2 minutes ago reads 2 minutes; a newer one still queued stands in with its queued time.
     late = repo.create_run(cur, busy["uid"], "review")
@@ -328,7 +332,8 @@ def test_every_figure_the_panel_shows_moves_on_the_next_poll_and_a_kept_answer_i
          moved("research.cost_7d", by=0.5)),
         ("a check-in is billed", lambda: repo.add_credit(cur, uid, "usage", -0.2, "Model usage", run_id=ids["review"]),
          moved("week.checkin_credits", by=0.2)),
-        ("credits are added", lambda: repo.add_credit(cur, uid, "topup", 25, "Card top-up"), moved("week.credits_left", by=25)),
+        ("credits are added", lambda: repo.add_credit(cur, uid, "topup", 25, "Card top-up"),
+         lambda b, a: moved("week.credits_left", by=25)(b, a) and (b["week"]["card_charged"], a["week"]["card_charged"]) == (False, True)),
         ("a strategy passes", lambda: repo.insert_strategy(cur, uid, ids["week"], None, "btc15m", "momentum", "Late pass", "t",
                                                            {"side": "yes"}, "passed", None), moved("research.passed_7d", by=1)),
         ("research tries more ideas", lambda: repo.set_run_counts(cur, ids["live"], 13, 0), moved("research.tested_7d", by=9)),

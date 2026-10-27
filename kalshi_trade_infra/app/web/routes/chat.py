@@ -915,7 +915,10 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
            "passed": research.get("passed_7d", 0), "not_cleared": research.get("not_cleared_7d", 0),
            "paper_started": paper["started"],
            "paper_pnl": cents(paper["pnl"]), "paper_trades": paper["trades"],
-           "checkin_credits": None, "credits_left": None, "runway_days": None, "reload_days": None, "pace_days": None}
+           "checkin_credits": None, "credits_left": None, "runway_days": None, "reload_days": None, "pace_days": None,
+           # Whether a card was ever charged for credits (the panel's credit read, with the balance): until
+           # then every credit spent was a free one, and the page says so beside the spend, not "real money".
+           "card_charged": credits.get("card_charged") if credits is not None else None}
     if billing.configured():
         # What else the week cost and how long the balance lasts at that pace, read-only: the
         # autopilot's check-ins bill too, and the runway is the Billing page's (every usage debit of

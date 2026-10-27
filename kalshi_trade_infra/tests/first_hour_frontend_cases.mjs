@@ -88,4 +88,29 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     assert.match(line(), /about 10 days at this week’s pace\./);
     f.clearTimers();
   });
+
+  test(`${name}: the autopilot's week calls free credits free until a card was ever charged, as the strip above it does`, async () => {
+    const week = {research_credits: 0.84, tested: 2, passed: 1, paper_started: 0, paper_pnl: 0, paper_trades: 0,
+      checkin_credits: 0, credits_left: 19.16, runway_days: null, pace_days: 0.01};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard') return response(dashboard());
+      if (path === '/api/autopilot/status') return response({...apStatus, week});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 19.16, min_run_balance: 1, auto_reload: null};
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    const spent = () => f.root.querySelector('#dash-ap .ap-week dd').textContent;
+    f.S.ap = {...apStatus, week: {...week, card_charged: false}}; f.paintDashAp();
+    assert.match(spent(), /^\$0\.84 free credits so far: your card hasn’t been charged$/);
+    assert.doesNotMatch(spent(), /real money/);
+    // Once a card was charged, or from a server that doesn't say: real money, as before.
+    for (const charged of [true, undefined]) {
+      f.S.ap = {...apStatus, week: {...week, card_charged: charged}}; f.paintDashAp();
+      assert.match(spent(), /^\$0\.84 real money$/);
+    }
+    f.clearTimers();
+  });
 }
