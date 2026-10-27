@@ -2547,6 +2547,26 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   assert.equal(JSON.stringify(markets), before); assert.equal(postRequests(f).length, 0);
 });
 
+test('Explore says when a timed contract closes, and nothing for an event with no hour', async () => {
+  const markets = [{t: 'KXBTC15M-26OCT262345-45', s: 'KXBTC15M', ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,204.11', bid: .48, ask: .51, v24: 9, oi: 1, ct: '2026-10-27T03:45:00Z'},
+    {t: 'KXNBAGAME-26OCT26MINDEN-MIN', s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota', bid: .41, ask: .42, v24: 8, oi: 1, ct: null}];
+  const f = frontend({fetchImpl: () => response({at: new Date().toISOString(), markets, total: 2, shown: 2, matched: 2, per: 40})});
+  await f.viewExplore();
+  const links = f.root.querySelectorAll('a.market-name');
+  assert.match(links[0].querySelector('.market-close').textContent, /^Closes .*\d/);
+  assert.equal(links[1].querySelector('.market-close'), null);
+});
+
+test('Hot Markets names a 5pm Bitcoin contract by its market, an hourly one by its own title', () => {
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', close_hour_et: 17}];
+  const row = (t, ti) => ({t, s: 'KXBTCD', ti, su: '$113,000 or above', bid: .5, ask: .52, v24: 10, oi: 0});
+  f.root.innerHTML = '<aside id="hotrail"></aside>';
+  f.S.hot = {at: new Date().toISOString(), markets: [row('KXBTCD-26OCT2717-T112999.99', 'Bitcoin price at 5pm EDT?'), row('KXBTCD-26OCT2700-T112999.99', 'Bitcoin price at 12am EDT?')]};
+  f.renderHotRail();
+  assert.deepEqual(f.root.querySelectorAll('.hot-row').map(r => r.querySelector('.hot-title strong').textContent), ['BTC 5pm', 'Bitcoin price at 12am EDT?']);
+});
+
 test('Explore bid and ask preserve decimal strings, zero and independently missing or malformed quote sides', async () => {
   const markets = Object.freeze([
     Object.freeze({t: 'DECIMAL', ti: 'Decimal contract', bid: '.51', ask: '.53', last: '.5'}),
@@ -4628,6 +4648,10 @@ test('Meridian first-run funnel: an empty paper track record never sends a user 
   f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/); assert.match(paper(), /Turn on autopilot/);
   f.S.dashDeps = undefined; assert.match(paper(), /Go to Deploy/);
   f.S.dashDeps = 0; assert.match(f.trackRecordPanel({trades: 0, label: 'Demo'}, 'demo', th), /Go to Deploy/);
+  // A strategy just deployed on paper: the record says it's running instead of asking for a deploy.
+  f.S.dashDeps = 1; f.S.dashOnPaper = 1;
+  assert.match(paper(), /Your strategy is running on paper\. It trades only when its rule fires, so the first trade can take a while\./);
+  assert.doesNotMatch(paper(), /Deploy a passed strategy on paper/); assert.match(paper(), /href="\/deploy">See it on Deploy</);
 });
 
 test('Meridian first-run funnel: an empty Deploy board with nothing passed starts a session instead of opening an empty list', async () => {

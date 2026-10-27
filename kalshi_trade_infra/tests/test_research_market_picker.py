@@ -41,6 +41,14 @@ def test_spot_market_hidden_until_it_has_candles(fake_cursor):
     assert "tao_sn19" not in shown  # still no data for the others
 
 
+def test_one_close_ladder_names_its_close_hour(fake_cursor):
+    # The SPA maps a KXBTCD contract to btc_daily only at the 5pm close research covers; the series'
+    # hourly contracts are not that market. Markets with no close hour carry no such field.
+    rows = {m["key"]: m for m in server._researchable_markets(fake_cursor)}
+    assert rows["btc_daily"]["close_hour_et"] == 17
+    assert "close_hour_et" not in rows["btc15m"]
+
+
 def test_spot_symbols_with_data_empty_input_runs_no_query(fake_cursor):
     # Guard the short-circuit: an empty symbol set must not build a bare `IN ()` query.
     fake_cursor._last = ["sentinel"]

@@ -321,19 +321,20 @@
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
   // "Bitcoin daily close, 5pm EDT"), so an open position never shows only the raw ticker. Unknown: ''.
-  const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-'));
+  // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
+  // contracts whose event closes then: KXBTCD-26OCT2700 is the midnight contract, which no strategy trades.
+  const contractHour = (ticker) => { const m = /^[^-]+-\d{2}[A-Z]{3}\d{2}(\d{2})(?:-|$)/.exec(String(ticker || '')); return m ? +m[1] : null; };
+  const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
+    && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
   const contractMarket = (ticker) => {
     const m = contractMkt(ticker);
     return m ? (m.label || marketShort(m.key)) : '';
   };
   // A contract ticker that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(ticker)}</a>`;
-  // A Kalshi series (KXBTC15M, a hot-markets row's `s`) as the app names its market ("BTC 15-min"); '' for a
-  // series no market here covers, so a chip is left off rather than showing the raw series.
-  const seriesMarket = (s) => {
-    const m = s && ((S.me && S.me.markets) || []).find((x) => x.series && x.series.toUpperCase() === String(s).toUpperCase());
-    return m ? marketShort(m.key) : '';
-  };
+  // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"); '' for one no market
+  // here covers, so a chip is left off rather than showing the raw series or another hour's market.
+  const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : ''; };
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
@@ -1972,14 +1973,15 @@
       if (!got.same) kept = got;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
-      const depsWas = S.dashDeps;
+      const depsWas = S.dashDeps, paperWas = S.dashOnPaper;
       S.dashDeps = d.deployments.length;  // the empty track record's button reads it (trackRecordPanel)
+      S.dashOnPaper = d.deployments.filter((x) => x.mode === 'paper' && x.status === 'running').length;  // and its copy reads this
       // The record below polls once a minute: a trade this poll saw open or close re-reads it now (the
       // server rebuilds a cached record the board has moved past), and a first deployment repaints its
-      // empty copy, which reads S.dashDeps.
+      // empty copy, which reads S.dashDeps and S.dashOnPaper.
       const books = ['paper', 'demo', 'live'].map((m) => (d[m] ? `${d[m].closed_trades}/${d[m].open_positions}` : '')).join(' ');
       if (booksSeen != null && books !== booksSeen && S.trReread) S.trReread();
-      else if (depsWas !== S.dashDeps && trAp && trAp.host.isConnected) trAp.repaint();
+      else if ((depsWas !== S.dashDeps || paperWas !== S.dashOnPaper) && trAp && trAp.host.isConnected) trAp.repaint();
       booksSeen = books;
       const p = d.paper;
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
@@ -2174,9 +2176,13 @@
     if (!m.trades) {
       // Paper only: the live and demo tabs keep their own copy.
       const apOn = key === 'paper' && !!(S.me && S.me.user && S.me.user.autopilot);
+      // Something already runs on paper (the dashboard's board counts it): asking for a deploy just made
+      // read as if it hadn't taken. Say it's running and why the record waits.
+      const onPaper = key === 'paper' && !apOn && S.dashOnPaper > 0 ? S.dashOnPaper : 0;
       const how = key === 'live' ? 'Deploy a strategy that has proven itself on paper to live money, and its closed trades show up here.'
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
         : apOn ? 'Autopilot runs the strategies that pass every research test on paper, with pretend money. Every closed trade is recorded here.'
+        : onPaper ? `${onPaper === 1 ? 'Your strategy is' : `${num(onPaper)} strategies are`} running on paper. ${onPaper === 1 ? 'It trades' : 'Each trades'} only when its rule fires, so the first trade can take a while. Every closed trade is recorded here.`
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
       // With nothing deployed (the dashboard's board says so), Deploy is an empty board too and sent a
       // new user Deploy → Strategies → Research; the button goes straight to the step that comes first.
@@ -2185,7 +2191,7 @@
       // record doesn't offer it a second time.
       const go = apOn ? '<a class="btn" href="/research">See its research</a>'
         : first ? (S.dashNoSessions ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>')
-        : '<a class="btn" href="/deploy">Go to Deploy</a>';
+        : `<a class="btn" href="/deploy">${onPaper ? 'See it on Deploy' : 'Go to Deploy'}</a>`;
       // Instant-fill paper trades are closed but left out (caveat below): "No closed paper trades" denied
       // trades the user can see on Deploy, so the heading says none count yet instead.
       const none = m.excluded_instant_fills ? `No ${esc(m.label.toLowerCase())} trades in the record yet` : `No closed ${esc(m.label.toLowerCase())} trades yet`;
@@ -2334,7 +2340,9 @@
 
   function priceChart(points) {
     if (!points || points.length < 2) return '<div class="empty"><h3>Not enough history yet</h3><p>This market is new or thinly traded — its price curve fills in as it trades.</p></div>';
-    const W = 760, H = 260, pl = 44, pr = 14, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb;
+    // The SVG scales to its box, labels too: drawn 760 wide, a phone's ~320px chart shrank its 10.5px axis
+    // labels to under 5px. On a phone it's drawn near the size it shows at, so the cents and times stay legible.
+    const W = phone() ? 340 : 760, H = phone() ? 220 : 260, pl = 44, pr = 14, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb;
     const ts = points.map((p) => p.t), t0 = Math.min(...ts), t1 = Math.max(...ts), tr = (t1 - t0) || 1;
     const x = (t) => pl + (t - t0) / tr * iw, y = (v) => pt + (1 - v) * ih;
     const grid = [0, .25, .5, .75, 1].map((v) => `<line x1="${pl}" y1="${y(v).toFixed(1)}" x2="${W - pr}" y2="${y(v).toFixed(1)}" class="pc-grid"/><text x="${pl - 8}" y="${(y(v) + 3).toFixed(1)}" class="pc-ylab">${Math.round(v * 100)}¢</text>`).join('');
@@ -2373,6 +2381,10 @@
   // strategies on it, when it's one Tau researches; otherwise say so, rather than leave a dead end.
   function marketNext(ticker) {
     const m = contractMkt(ticker);
+    // Another hour of a ladder Tau researches at one close (an hourly Bitcoin contract): point at that close.
+    const sib = !m && ((S.me && S.me.markets) || []).find((x) => x.series && x.close_hour_et != null && String(ticker || '').startsWith(x.series + '-'));
+    const h = sib && sib.close_hour_et;
+    if (sib) return `<p class="hint mk-next">Tau researches only the ${h % 12 || 12}${h < 12 ? 'am' : 'pm'} ET close of this ladder, so your strategies don’t trade this contract. <a href="/research?new=1&amp;market=${encodeURIComponent(sib.key)}">Research ${esc(marketShort(sib.key))}</a></p>`;
     if (!m) return '<p class="hint mk-next">Tau doesn’t research this market, so your strategies can’t trade it. <a href="/research?new=1">See the markets it researches</a></p>';
     const k = encodeURIComponent(m.key);
     return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a><a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a></p>`;
@@ -2472,7 +2484,11 @@
       }
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
-        return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${m.ev || m.s ? ` <span class="mk quiet">${esc(m.ev || m.s)}</span>` : ''}</td>
+        // The market as the app names it and when the contract closes (`ct`, read from a timed event's
+        // ticker), never the raw event key: that's what tells "every strike of Bitcoin at 5pm" apart from
+        // the next hour's ladder, and a 15-minute contract from the one after it.
+        const tag = [contractShort(m.t), m.ct ? 'closes ' + settleAt(m.ct) : ''].filter(Boolean).join(' ·\u00a0');
+        return `<tr><td class="name"><a href="/explore?m=${encodeURIComponent(m.t)}">${esc(mktLabel(m))}</a>${tag ? ` <span class="mk quiet">${esc(tag)}</span>` : ''}</td>
           <td class="num" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num" data-lab="Open int.">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink" data-lab="Kalshi"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`;
       }).join('');
@@ -3715,7 +3731,7 @@
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener">
       <span class="hot-title">${esc(mktLabel(m))}</span>
       <span class="hot-mid">${hotChart(h)}<span class="hot-price"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
-      <span class="hot-foot">${seriesMarket(m.s) ? `<span class="mk quiet">${esc(seriesMarket(m.s))}</span>` : ''}<span class="hot-vol">${kfmt(m.v24)} vol ·\u00a024h</span>${ICON.ext}</span></a>`;
+      <span class="hot-foot">${contractShort(m.t) ? `<span class="mk quiet">${esc(contractShort(m.t))}</span>` : ''}<span class="hot-vol">${kfmt(m.v24)} vol ·\u00a024h</span>${ICON.ext}</span></a>`;
   }
   function renderHotRail() {
     const rail = document.getElementById('hotrail'); if (!rail) return;

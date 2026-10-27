@@ -1264,6 +1264,8 @@ def _plain_filter(flt: Dict) -> str:
     other feature is named by plain_feature, else by its documented description without the formula.
     Display only: the exact feature, operator and value stay in the spec."""
     name, value = flt["feature"], float(flt["value"])
+    if name == "moneyness":
+        return _plain_moneyness(flt["op"], value)
     words = plain_feature(name)
     if words == name and FEATURES.get(name):
         doc = FEATURES[name].split(": ", 1)[-1]  # "BTC markets only: ETH log return ..." -> the rest
@@ -1280,6 +1282,22 @@ def _plain_filter(flt: Dict) -> str:
     else:
         shown = "%g" % value
     return "Only when %s %s %s." % (words, _OP_WORDS.get(flt["op"], flt["op"]), shown)
+
+
+def _plain_moneyness(op: str, value: float) -> str:
+    """A moneyness filter as where the spot price sits against the strike ('moneyness < -0.01' ->
+    'Only when the spot price is below the strike by more than 1.00%.'). Moneyness is ln(spot / strike),
+    so the percent is exp(value) - 1: "moneyness is below -0.01" read as jargon to a Bitcoin trader."""
+    below = op in ("<", "<=")
+    gap = "%.2f%%" % abs((math.exp(value) - 1) * 100)
+    if value == 0:
+        side = ("below" if below else "above") if op in ("<", ">") else ("at or below" if below else "at or above")
+        return "Only when the spot price is %s the strike." % side
+    if below == (value < 0):  # further out than the gap: 'below by more than', 'above by at least'
+        return "Only when the spot price is %s the strike by %s %s." % (
+            "below" if below else "above", "more than" if op in ("<", ">") else "at least", gap)
+    # the other way: within the gap of the strike, or past it on the other side
+    return "Only when the spot price is no more than %s %s the strike." % (gap, "above" if below else "below")
 
 
 def describe(spec: Dict) -> List[str]:

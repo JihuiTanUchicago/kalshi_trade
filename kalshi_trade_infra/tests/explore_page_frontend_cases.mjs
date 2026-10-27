@@ -8,7 +8,7 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 
-const MARKETS = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', category: 'Crypto'},
+const MARKETS = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', category: 'Crypto', close_hour_et: 17},
   {key: 'nba_game', series: 'KXNBAGAME', label: 'NBA game winner', category: 'Sports'}];
 const page = (over) => ({ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD', title: 'Bitcoin price at 5pm EDT?', sub: '$113,500 or above',
   status: 'active', yes_bid: '0.55', yes_ask: '0.57', last: '0.55', volume_24h: '15234', open_interest: '40211',
@@ -16,8 +16,9 @@ const page = (over) => ({ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD'
   points: Array.from({length: 130}, (_, i) => ({t: 1793012400 + 60 * i, yes: .5, vol: 1})), mine: {open: [], closed: []}, ...over});
 
 export function explorePageCases({name, frontend}) {
-  const open = async (payload) => {
+  const open = async (payload, narrow = false) => {
     const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore/market?') ? response(payload) : response({}))});
+    if (narrow) f.window.matchMedia = (q) => ({matches: /max-width/.test(q), addEventListener() {}, removeEventListener() {}});
     f.S.me.markets = MARKETS;
     f.location.pathname = '/explore'; f.location.search = '?m=' + encodeURIComponent(payload.ticker);
     await f.viewExplore(); await settle();
@@ -42,6 +43,22 @@ export function explorePageCases({name, frontend}) {
     assert.equal(next.querySelector('a.primary'), null, 'no research button for a market research can’t pick');
     assert.match(f.root.innerHTML, />Open for trading · KXFEDDECISION-26DEC-H0</);
     assert.doesNotMatch(f.root.innerHTML, /KXFEDDECISION ·/);
+  });
+
+  test(`${name}: an hourly contract of the 5pm Bitcoin ladder isn't named the 5pm market, and points at the close Tau researches`, async () => {
+    const f = await open(page({ticker: 'KXBTCD-26OCT2700-T112999.99', title: 'Bitcoin price on Oct 27, 2026 at 12am EDT?', sub: '$113,000 or above'}));
+    assert.doesNotMatch(f.root.innerHTML, /Bitcoin daily close, 5pm EDT ·/, 'the midnight contract is not the 5pm market');
+    const next = f.root.querySelector('.mk-next');
+    assert.match(next.textContent, /Tau researches only the 5pm ET close of this ladder, so your strategies don’t trade this contract\./);
+    assert.deepEqual(next.querySelectorAll('a').map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily']);
+    assert.equal(next.querySelector('a.primary'), null, 'no research button that reads as researching this contract');
+  });
+
+  test(`${name}: on a phone the price chart is drawn near the width it shows at, so its labels stay legible`, async () => {
+    const wide = await open(page());
+    assert.match(wide.root.querySelector('.pchart').getAttribute('viewBox'), /^0 0 760 /);
+    const f = await open(page(), true);
+    assert.match(f.root.querySelector('.pchart').getAttribute('viewBox'), /^0 0 340 220$/);
   });
 
   test(`${name}: the market page's raw candles come 25 to a page, so its actions stay within reach`, async () => {

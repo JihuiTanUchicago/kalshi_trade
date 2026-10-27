@@ -50,5 +50,8 @@ def researchable_markets(cur, ready_series: Optional[Set[str]] = None) -> List[D
             has_data = m.series in ready_series and m.tick_history_short() is None
         out.append({"key": m.key, "label": m.label, "series": m.series,
                     "category": m.category, "deployable": m.deployable, "has_data": has_data,
+                    # A ladder researched at one close (the 5pm KXBTCD event): the page maps only those
+                    # contracts to this market, not the series' other hours.
+                    **({"close_hour_et": m.close_hour_et} if m.close_hour_et is not None else {}),
                     **({"kind": "perpetual", "research_only": True} if m.kind == "perpetual" else {})})
     return out

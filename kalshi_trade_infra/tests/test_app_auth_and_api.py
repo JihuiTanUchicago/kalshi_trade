@@ -1017,6 +1017,34 @@ def test_explore_price_sort_follows_the_price_the_list_shows(monkeypatch):
     assert order("bogus") == ["A", "D", "C", "B"]
 
 
+def test_explore_search_finds_a_market_by_the_apps_name_for_it(monkeypatch):
+    # Kalshi titles the 15-minute Bitcoin contracts "BTC price up in next 15 mins?": a search for
+    # "bitcoin" finds them through the app's name for the series, as it finds the 5pm ladder by title.
+    feed = {"at": "2026-10-26T10:55:00Z", "total": 3, "shown": 3, "markets": [
+        {"t": "KXBTC15M-26OCT262345-45", "s": "KXBTC15M", "ti": "BTC price up in next 15 mins?", "v24": "3"},
+        {"t": "KXBTCD-26OCT2717-T113499.99", "s": "KXBTCD", "ti": "Bitcoin price on Oct 27, 2026 at 5pm EDT?", "v24": "2"},
+        {"t": "KXETH15M-26OCT262345-45", "s": "KXETH15M", "ti": "ETH price up in next 15 mins?", "v24": "1"}]}
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
+    found = lambda q: [m["t"] for m in server.explore_list(server.Ctx(FakeConn(), {"id": 1}, (), {"q": q}, {}, None))["markets"]]
+    assert found("bitcoin") == ["KXBTC15M-26OCT262345-45", "KXBTCD-26OCT2717-T113499.99"]
+    assert found("Ethereum") == ["KXETH15M-26OCT262345-45"]
+    assert found("btc") == ["KXBTC15M-26OCT262345-45", "KXBTCD-26OCT2717-T113499.99"]
+
+
+def test_explore_list_says_when_a_timed_contract_closes(monkeypatch):
+    # A timed event's ticker carries its New York close: the list sends it as UTC so the page can say
+    # "closes 22:45 CDT" for a 15-minute Bitcoin contract. No hour in the ticker, no close time.
+    feed = {"at": "2026-10-26T10:55:00Z", "total": 4, "shown": 4, "markets": [
+        {"t": "KXBTC15M-26OCT262345-45", "v24": "4"}, {"t": "KXBTCD-26NOV0217-T113499.99", "v24": "3"},
+        {"t": "KXNBAGAME-26OCT26MINDEN-MIN", "v24": "2"}, {"t": "KXBTCD-26FEB3017-T1", "v24": "1"}]}
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
+    rows = server.explore_list(server.Ctx(FakeConn(), {"id": 1}, (), {}, {}, None))["markets"]
+    assert [m["ct"] for m in rows] == ["2026-10-27T03:45:00Z",  # 11:45pm EDT
+                                       "2026-11-02T22:00:00Z",  # 5pm EST, after the clocks change
+                                       None, None]              # a game with no hour; Feb 30 is no date
+    assert "ct" not in feed["markets"][0], "the cached feed itself is never written to"
+
+
 def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys):
     import data_pipeline.common as common
     c = server.Ctx(FakeConn(), {"id": 1}, (), {"ticker": "KXNBAGAME-26OCT25TORMIN-MIN"}, {}, None)

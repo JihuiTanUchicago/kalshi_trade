@@ -17,7 +17,7 @@ from app.trading import spec as specmod
 from app.trading.markets import MARKETS
 from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
-from app.web.routes.explore import _efloat, _explore_feed, _feed_mid
+from app.web.routes.explore import _efloat, _explore_feed, _feed_mid, _ticker_close_at
 from app.web.routes.strategies import _owned_strategy, _strategy_card
 from app.web.settings import MAX_ACTIVE_RESEARCH, MAX_RESEARCH_PER_DAY
 from app.web.views import _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd
@@ -331,6 +331,10 @@ def _research_context(feed_markets: List[Dict]) -> List[Dict]:
     out: List[Dict] = []
     for mk in MARKETS.values():
         rows = by_series.get(mk.series)
+        if rows and mk.close_hour_et is not None:
+            # The 5pm Bitcoin ladder shares KXBTCD with the hourly contracts research never trades:
+            # its row's price and volume come from the 5pm contracts alone.
+            rows = [r for r in rows if (at := _ticker_close_at(r.get("t"))) and mk.is_target_event(at)]
         if not rows:
             continue
         top = max(rows, key=lambda r: _efloat(r.get("v24")))

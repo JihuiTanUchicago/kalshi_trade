@@ -76,6 +76,19 @@ def test_the_rules_read_entry_filters_in_plain_words():
     assert not any("ret_5m" in line or "ob_imbalance" in line for line in lines)
 
 
+def test_a_moneyness_filter_reads_as_the_spot_price_against_the_strike():
+    # Moneyness is ln(spot / strike): "moneyness is below -0.01" told a Bitcoin trader nothing.
+    line = lambda op, v: specmod._plain_filter({"feature": "moneyness", "op": op, "value": v})
+    assert line("<", -0.01) == "Only when the spot price is below the strike by more than 1.00%."
+    assert line(">=", 0.02) == "Only when the spot price is above the strike by at least 2.02%."
+    assert line(">", 0) == "Only when the spot price is above the strike."
+    assert line("<=", 0) == "Only when the spot price is at or below the strike."
+    assert line("<", 0.01) == "Only when the spot price is no more than 1.01% above the strike."
+    assert line(">", -0.01) == "Only when the spot price is no more than 1.00% below the strike."
+    spec = specmod.validate({"market": "btc_daily", "entry": {"filters": [{"feature": "moneyness", "op": "<", "value": -0.01}]}})
+    assert not any("moneyness" in s for s in specmod.describe(spec))
+
+
 def test_every_known_feature_reads_as_a_short_phrase_or_its_own_name():
     # A feature documented with a formula or a paragraph keeps its name rather than printing either.
     for name in specmod.FEATURES:

@@ -254,7 +254,9 @@ def test_research_context_folds_feed_to_researchable_markets():
     feed = [
         {"t": "A", "s": btc15m, "v24": 100, "oi": 5, "bid": 0.40, "ask": 0.42, "h": [0.40, 0.41, 0.42]},
         {"t": "B", "s": btc15m, "v24": 300, "oi": 9, "last": 0.60},  # most active -> its mid wins
-        {"t": "C", "s": btc_daily, "v24": 50, "oi": 2, "bid": 0.50, "ask": 0.50},
+        {"t": "KXBTCD-26OCT2717-T113499.99", "s": btc_daily, "v24": 50, "oi": 2, "bid": 0.50, "ask": 0.50},
+        # The same ladder's midnight contract: not the 5pm close btc_daily researches, so not in its row.
+        {"t": "KXBTCD-26OCT2700-T113499.99", "s": btc_daily, "v24": 900, "oi": 7, "bid": 0.90, "ask": 0.92},
         {"t": "Z", "s": "KXNOTAMARKET", "v24": 9e9, "oi": 1},        # unknown series dropped
         {"t": "N", "s": None, "v24": 10},                            # no series -> ignored
     ]
@@ -269,6 +271,7 @@ def test_research_context_folds_feed_to_researchable_markets():
     assert keyed["btc15m"]["mid"] == 0.60             # the most-active contract's mid (last)
     assert keyed["btc15m"]["trace"] == []             # the top contract (B) carries no trace
     assert out[0]["key"] == "btc15m"                  # sorted by 24h volume, busiest first
+    assert (keyed["btc_daily"]["contracts"], keyed["btc_daily"]["vol24"], keyed["btc_daily"]["mid"]) == (1, 50, 0.5)
     assert server._feed_mid({"bid": 0.40, "ask": 0.42}) == 0.41  # bid/ask midpoint when both present
 
 
