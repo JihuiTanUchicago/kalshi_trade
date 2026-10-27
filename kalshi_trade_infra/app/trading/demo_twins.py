@@ -61,6 +61,13 @@ def balance_read_at(user_id: int) -> Optional[datetime]:
     return kalshi_account.memo_read_at(_BALANCE_CACHE, user_id)
 
 
+def balance_kept(user_id: int) -> bool:
+    """Whether balance_cached would answer from the memo now, never asking the demo exchange. The memo only."""
+    from app.adapters.kalshi import kalshi_account
+
+    return kalshi_account.memo_kept(_BALANCE_CACHE, user_id, BALANCE_TTL)
+
+
 def balance_cached(cur, user_id: int, ttl: float = BALANCE_TTL) -> Optional[float]:
     """The user's demo cash in dollars, at most `ttl` seconds old, or None when it can't be read.
     Read-only: one GET of the demo account's balance, the same read sync makes."""

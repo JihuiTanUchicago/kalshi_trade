@@ -20,7 +20,7 @@ from app.web.http import ApiError, _json_default
 USER = {"id": 7, "email": "trader@example.invalid", "name": "Sample", "picture_url": None, "autopilot": 0, "ui_theme": "tau"}
 ACCOUNT = {"user": {"id": 7, "ui_theme": "tau"}}
 ROUTES = ("dashboard", "autopilot_status", "list_runs", "get_run", "list_strategies", "list_deployments", "billing_state",
-          "research_scoreboard")
+          "research_scoreboard", "funds")
 
 
 @pytest.fixture
@@ -108,7 +108,7 @@ def test_an_app_page_shell_carries_its_first_read_under_the_url_the_page_asks(we
     ("/billing", "rsid=abc; tau_tz=abc"),
     ("/billing", "rsid=abc; tau_tz=99999"),
     ("/billing?setup_intent=seti_1", "rsid=abc; tau_tz=240"),  # back from the card form: the page reads fresh
-    ("/funds", "rsid=abc"),
+    ("/funds?tab=keys", "rsid=abc"),
     ("/strategies?status=passed", "rsid=abc"),  # a filtered list: the page's URL says more
     ("/research?new=1", "rsid=abc"),
     ("/signin", "rsid=abc"),
@@ -149,6 +149,61 @@ def test_billing_shell_never_waits_on_stripe(web, monkeypatch):
     monkeypatch.setattr(shell_reads, "asks_stripe", lambda ctx: False)
     r, html = _shell(web, "/billing", "rsid=abc; tau_tz=240")
     assert len(calls) == 1 and _first(html) == [{"url": "/api/billing?tz=240", "body": {"balance": 12.5}}]
+
+
+@pytest.mark.parametrize("path", ["/funds", "/settings/account"])
+def test_funds_shell_carries_its_read_only_while_no_cash_figure_would_ask_kalshi(web, monkeypatch, path):
+    # Its read asks Kalshi for the live and demo cash of an account with a key, unless the server read it in
+    # the last minute: a slow Kalshi would hold the whole shell blank, so then the page asks for itself.
+    answer = {"paper": {"cash": 1000, "ledger": [{"memo": "</script>", "created_at": datetime(2026, 10, 26, 8, 0)}]},
+              "kalshi": {"connected": True, "balance": Decimal("12.5"), "balance_at": datetime(2026, 10, 27, 9, 0)}}
+    calls = _record(monkeypatch, "funds", answer)
+    monkeypatch.setattr(shell_reads, "asks_kalshi", lambda ctx: True)
+    r, html = _shell(web, path)
+    assert r.status == 200 and calls == [] and _first(html) == [] and 'id="tau-me"' in html
+    monkeypatch.setattr(shell_reads, "asks_kalshi", lambda ctx: False)
+    r, html = _shell(web, path)
+    assert r.status == 200 and calls == [((), {}, 7)] and _first(html) == [{"url": "/api/funds", "body": _wire(answer)}]
+    block = html.split('id="tau-first">', 1)[1].split("</script>", 1)[0]
+    assert "<" not in block and ">" not in block
+
+
+def test_asks_kalshi_unless_each_keys_cash_is_memoized(monkeypatch):
+    from app.adapters.kalshi import kalshi_account
+    from app.trading import demo_twins
+    from app.web.routes import funds as funds_routes
+    ctx = SimpleNamespace(cur=None, uid=7)
+    keys = {"live": None, "demo": None}
+    monkeypatch.setattr(funds_routes.repo, "get_kalshi_key", lambda cur, uid: keys["live"])
+    monkeypatch.setattr(funds_routes.repo, "get_kalshi_dev_key", lambda cur, uid: keys["demo"])
+    monkeypatch.setattr(kalshi_account, "_BALANCE_CACHE", {})
+    monkeypatch.setattr(demo_twins, "_BALANCE_CACHE", {})
+    assert funds_routes.asks_kalshi(ctx) is False  # no key: nothing to ask Kalshi for
+    keys["live"] = {"key_id": "abcd1234"}
+    assert funds_routes.asks_kalshi(ctx) is True
+    kalshi_account.remember_balance(7, 12.5)
+    assert funds_routes.asks_kalshi(ctx) is False
+    keys["demo"] = {"key_id": "efgh5678"}
+    assert funds_routes.asks_kalshi(ctx) is True
+    demo_twins._BALANCE_CACHE[7] = (demo_twins.time.monotonic(), None)  # a failed read memoized answers from memory too
+    assert funds_routes.asks_kalshi(ctx) is False
+    kalshi_account.remember_balance(8, 3.0)  # another user's memo is not this one's
+    kalshi_account._BALANCE_CACHE.pop(7)
+    assert funds_routes.asks_kalshi(ctx) is True
+
+
+def test_a_memo_counts_as_kept_only_with_time_to_spare(monkeypatch):
+    from app.adapters.kalshi import kalshi_account
+    now = 1000.0
+    monkeypatch.setattr(kalshi_account.time, "monotonic", lambda: now)
+    cache = {7: (now - 50.0, 12.5)}
+    assert kalshi_account.memo_kept(cache, 7, 60.0)
+    assert not kalshi_account.memo_kept(cache, 8, 60.0)
+    # Within KEPT_MARGIN of its end the next read could go to Kalshi: not kept.
+    cache[7] = (now - (60.0 - kalshi_account.KEPT_MARGIN), 12.5)
+    assert not kalshi_account.memo_kept(cache, 7, 60.0)
+    cache[7] = (now - 61.0, 12.5)
+    assert not kalshi_account.memo_kept(cache, 7, 60.0)
 
 
 @pytest.mark.parametrize("cookie,tz", [(None, None), ("", None), ("abc", None), ("240", 240), ("-330", -330), ("0", 0),
@@ -232,6 +287,8 @@ def test_only_the_named_pages_have_first_requests():
     assert [r[0] for r in shell_reads.first_requests("/research/12", "", {})] == ["/api/runs/12?after=0"]
     assert [r[0] for r in shell_reads.first_requests("/", "", {})] == ["/api/dashboard", "/api/autopilot/status"]
     assert [r[0] for r in shell_reads.first_requests("/research", "", {})] == ["/api/runs", "/api/research/scoreboard?days=14"]
+    assert [r[0] for r in shell_reads.first_requests("/funds", "", {})] == ["/api/funds"]
+    assert [r[0] for r in shell_reads.first_requests("/settings/account", "", {})] == ["/api/funds"]
 
 
 def test_asks_stripe_only_for_a_stripe_customer_with_payments_on(monkeypatch):

@@ -60,6 +60,16 @@ def funds(ctx: Ctx):
     }
 
 
+def asks_kalshi(ctx: Ctx) -> bool:
+    """Whether funds would ask Kalshi for cash: a live key whose cash isn't memoized, or a demo key whose
+    demo cash isn't (each read waits on Kalshi, up to its timeout)."""
+    from app.trading import demo_twins
+
+    if repo.get_kalshi_key(ctx.cur, ctx.uid) is not None and not kalshi_account.balance_kept(ctx.uid):
+        return True
+    return repo.get_kalshi_dev_key(ctx.cur, ctx.uid) is not None and not demo_twins.balance_kept(ctx.uid)
+
+
 def paper_transfer(ctx: Ctx):
     kind = ctx.body.get("kind")
     if kind not in ("deposit", "withdraw", "reset"):
