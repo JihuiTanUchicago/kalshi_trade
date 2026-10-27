@@ -214,10 +214,11 @@ def get_run(ctx: Ctx):
     later = _later_missed(ctx.cur, ctx.uid, mine)
     # The passes its done line counts that a later check left uncleared (a probation strategy held back
     # after paper was never among them), so that line agrees with the page's Passed figure.
-    fell = sum(1 for s in mine if s["id"] in later and s.get("status") == "passed")
+    # Its "N tested so far, M passed" lines count them apart too, each the ones made by the time it was written.
+    fell_at = [s.get("created_at") for s in mine if s["id"] in later and s.get("status") == "passed"]
     return {
         "run": run,
-        "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after), fell)),
+        "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after), len(fell_at), fell_at)),
         "strategies": [{**_strategy_card(s), **({"autopilot_next": True} if s["id"] in auto else {}),
                         **later.get(s["id"], {})} for s in mine],
         "rsi": _rsi_block(pol, dream),

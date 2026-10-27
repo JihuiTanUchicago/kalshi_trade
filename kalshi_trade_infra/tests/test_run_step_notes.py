@@ -108,3 +108,34 @@ def test_the_run_page_gets_the_note_beside_the_untouched_message():
     assert evs[3]["data"] == {"passed": 1, "note": "1 of 2 ideas passed every check."}
     done = _with_gate_lines([{"kind": "done", "message": "1 of 2 hypotheses passed every gate.", "data": {"passed": 1}}], 1)
     assert done[0]["data"]["note"] == "0 of 2 ideas cleared every check; 1 more passed its first test, then wasn't cleared to trade."
+
+
+def test_a_running_sessions_progress_line_counts_apart_the_passes_a_later_check_left_uncleared():
+    """Walk 2026-10-27: a running session's log said "9 tested so far, 3 passed" while its page said Passed 1 with a
+    Missed final test and a Held back below: the agent's count holds passes a later check left uncleared. The line
+    counts them as the done line and the finished rows do: cleared passes, the uncleared said apart."""
+    still = "Still running - 9 tested so far, 3 passed. Exploring more (stop anytime)."
+    assert ge.step_note("step", still, 2) == ("9 tested so far, 1 cleared every check; 2 more passed their first test, "
+                                              "then weren't cleared to trade. Looking for more; you can stop it anytime.")
+    assert ge.step_note("step", still, 1).startswith("9 tested so far, 2 cleared every check; 1 more passed its first test, "
+                                                     "then wasn't cleared to trade.")
+    assert ge.step_note("step", still, 5).startswith("9 tested so far, 0 cleared every check; 3 more")  # never more than passed
+    assert ge.step_note("step", still, 0) == "9 tested so far, 3 passed. Looking for more; you can stop it anytime."
+    # Each line counts only the uncleared passes made by the time it was written.
+    from datetime import datetime
+
+    def t(m):
+        return datetime(2026, 10, 27, 14, m)
+
+    def line(n, k, m):
+        return {"kind": "step", "message": "Still running - %d tested so far, %d passed. Exploring more (stop anytime)." % (n, k),
+                "data": None, "created_at": t(m)}
+    evs = _with_gate_lines([line(3, 1, 10), line(6, 2, 20), line(9, 3, 30)], 2, [t(15), t(25)])
+    assert [e["data"]["note"].split(". Looking")[0] for e in evs] == [
+        "3 tested so far, 1 passed",
+        "6 tested so far, 1 cleared every check; 1 more passed its first test, then wasn't cleared to trade",
+        "9 tested so far, 1 cleared every check; 2 more passed their first test, then weren't cleared to trade"]
+    # The stored line is unchanged; without a time, every uncleared pass is counted (never more than the line's).
+    assert evs[0]["message"].startswith("Still running - 3 tested so far, 1 passed.")
+    bare = _with_gate_lines([dict(line(3, 1, 10), created_at=None)], 2, [t(15), t(25)])
+    assert bare[0]["data"]["note"].startswith("3 tested so far, 0 cleared every check; 1 more passed its first test")

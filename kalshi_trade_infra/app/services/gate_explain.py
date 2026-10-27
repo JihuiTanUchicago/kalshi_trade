@@ -680,6 +680,10 @@ def _Ideas(n: int) -> str:
     return "%d idea%s" % (n, "" if n == 1 else "s") if n else "None"
 
 
+# A running session's progress line (agent.py, after each chunk); step_note counts its uncleared passes apart.
+_STILL = re.compile(r"^Still running - (\d+) tested so far, (\d+) passed\. Exploring more \(stop anytime\)\.")
+
+
 # The agent's own step lines, written for whoever reads the run's ledger ("Froze 2 finalists; the
 # challenger reviewed each before any validation budget was spent."), as a customer reads them. Each
 # pattern matches the line agent.py writes today (tests/test_gate_explain.py renders each one); a line
@@ -700,8 +704,8 @@ _STEP_NOTES: List[Tuple["re.Pattern[str]", Any]] = [
     (re.compile(r"^Challenger unavailable; approving finalists as-is — the gatekeeper still gates\."),
      lambda m: "The skeptical review couldn't run this time, so the picked ideas go straight to the test on "
                "data it hasn't seen, which still decides."),
-    (re.compile(r"^Still running - (\d+) tested so far, (\d+) passed\. Exploring more \(stop anytime\)\."),
-     lambda m: "%s tested so far, %s passed. Looking for more; you can stop it anytime." % (m.group(1), m.group(2))),
+    (_STILL,
+     lambda m:"%s tested so far, %s passed. Looking for more; you can stop it anytime." % (m.group(1), m.group(2))),
     (re.compile(r"^Paused — out of credits\."),
      lambda m: "Out of credits, so the session stopped here. Add credits (or turn on auto-reload), then start "
                "a new session to keep researching."),
@@ -729,7 +733,8 @@ def step_note(kind: Optional[str], message: Optional[str], not_cleared: int = 0)
     its words). `not_cleared`: how many of the done line's passes a later check left uncleared (the
     session's Missed final test and Held back stamps, which the run page's handler reads). The agent's
     count holds them, so "1 of 2 ideas passed every check" sat under the page's "Passed 0, 1 not
-    cleared"; the line counts them apart, as the page's figures do. Display only."""
+    cleared"; the line counts them apart, as the page's figures do. A running session's "N tested so far,
+    M passed" line does the same with `not_cleared` as how many of its M were left uncleared. Display only."""
     msg = str(message or "")
     if kind == "done":
         m = _DONE.match(msg)
@@ -745,6 +750,17 @@ def step_note(kind: Optional[str], message: Optional[str], not_cleared: int = 0)
                                            " (%d dropped before testing)" % dropped if dropped else "", m.group(5))
     if kind != "step":
         return None
+    m = _STILL.match(msg)
+    if m:
+        # A running session's "N tested so far, M passed": M is the agent's count, which holds the passes a
+        # later check left uncleared, so it read "3 passed" over a page saying "Passed 1, 2 not cleared". Here
+        # `not_cleared` is how many of the passes this line counts were left uncleared (views._with_gate_lines).
+        passed = int(m.group(2))
+        fell = min(max(0, int(not_cleared or 0)), passed)
+        if fell:
+            return ("%s tested so far, %d cleared every check; %d more passed %s first test, then %s cleared to trade. "
+                    "Looking for more; you can stop it anytime." % (m.group(1), passed - fell, fell, "its" if fell == 1 else "their",
+                                                                   "wasn't" if fell == 1 else "weren't"))
     for rx, say in _STEP_NOTES:
         m = rx.match(msg)
         if m:
