@@ -118,6 +118,21 @@ def test_billing_runway_is_absent_without_recent_usage_or_balance(monkeypatch):
     assert server.billing_state(context())['runway_days'] is None
 
 
+def test_billing_says_whether_the_card_was_ever_charged_from_the_same_ledger_read(monkeypatch):
+    # Welcome credits only: the page says under the balance that the card hasn't been charged. A top-up or
+    # an auto-reload ever made (from the grouped read the balance already comes from) turns that off.
+    monkeypatch.setattr(server.billing, 'configured', lambda: False)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_statement', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE))
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a, **k: 0.84)
+    for totals, charged in ((_totals(bonus=20.0, usage=-0.84), False), (_totals(bonus=20.0, topup=25.0, usage=-3.0), True),
+                            (_totals(bonus=20.0, autoreload=20.0, usage=-16.0), True)):
+        monkeypatch.setattr(server.repo, 'credit_totals', lambda *a, t=totals: t)
+        assert server.billing_figures(context())['card_charged'] is charged
+        assert server.billing_state(context())['card_charged'] is charged
+
+
 def test_billing_figures_poll_reads_the_page_figures_without_stripe_or_the_statement(monkeypatch):
     # The open Billing page polls this. The full read asks Stripe for the saved cards of a paying account
     # (up to its timeout) and reads the 300-line statement; the poll does neither, and its figures are

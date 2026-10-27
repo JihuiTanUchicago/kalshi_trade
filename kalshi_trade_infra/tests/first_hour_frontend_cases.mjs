@@ -176,4 +176,16 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
       f.clearTimers();
     }
   });
+
+  test(`${name}: Billing says under the balance that it is free credits until the card was ever charged`, async () => {
+    const balanceFig = async (o) => {
+      const f = billingPage(cardedBilling({balance: 19.16, spent_7d: 0.84, runway_days: null, pace_days: 0.01, ...o}));
+      await f.viewBilling(); await flush();
+      return f.root.querySelector('#bfigs .m').textContent;
+    };
+    assert.match(await balanceFig({card_charged: false}), /Credit balance\s*\$19\.16\s*free credits so far: your card hasn’t been charged/);
+    // Charged once, from a server that doesn't say, or with nothing left: no such line.
+    for (const o of [{card_charged: true}, {}, {card_charged: false, balance: 0}])
+      assert.doesNotMatch(await balanceFig(o), /free credits so far/, JSON.stringify(o));
+  });
 }
