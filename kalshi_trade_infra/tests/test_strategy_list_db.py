@@ -144,5 +144,12 @@ def test_the_list_flags_a_paper_book_of_instant_fills_as_the_track_record_leaves
     # The track record says the same of each: only "instant" is a row of instant fills left out.
     rows = {r["title"]: r for r in book_memo.track_record(cur, uid)["modes"]["paper"]["strategies"]}
     assert {t for t, r in rows.items() if r["instant_only"]} == {t for t, c in cards.items() if c["real"].get("instant_only")}
+    # Partly instant fills: the card counts them as the track record's row does (1 of "mixed"'s 2), and the
+    # strategy page's paper book says the same; none on "venue". The figures and counts are unchanged.
+    assert {t: c["real"].get("instant_fills", 0) for t, c in cards.items()} == {"instant": 2, "venue": 0, "mixed": 1}
+    assert {t: r["excluded_instant_fills"] for t, r in rows.items()} == {"instant": 2, "venue": 0, "mixed": 1}
+    for title, n in (("instant", 2), ("venue", 0), ("mixed", 1)):
+        books = server.get_strategy(server.Ctx(conn, user, (str(sid[title]),), {}, {}, None))["book_totals"]
+        assert books["paper"].get("instant_fills", 0) == n and books["paper"]["trades"] == 2
     # Kept while the positions are unchanged: a second page read asks again for nothing.
     assert server.list_strategies(server.Ctx(conn, user, (), {"status": ""}, {}, None))["strategies"] == out["strategies"]

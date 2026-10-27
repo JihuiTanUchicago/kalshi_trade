@@ -325,6 +325,9 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     };
     let fd = await funds({connected: false});
     assert.match(fd.figs, /Tau’s demo book\s*No demo key/);
+    // The line says what the sandbox is once: it read "to trade Kalshi’s sandbox · real fills on Kalshi’s sandbox".
+    assert.match(fd.figs, /No demo key\s*Connect a demo key below to trade Kalshi’s sandbox: real fills, not real money(?!,)/);
+    assert.equal((fd.figs.match(/sandbox/g) || []).length, 1);
     assert.doesNotMatch(fd.figs + fd.main, /4,321/);
     assert.equal(fd.reload, null);
     fd = await funds({connected: true, key_id: 'k2', balance: 50});

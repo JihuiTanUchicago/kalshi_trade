@@ -266,6 +266,28 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     f.clearTimers();
   });
 
+  // Deploy's row said "BTC 15-min up/down" over its own open position in "Bitcoin up or down in 15 minutes" (and
+  // Billing's research lines say the full name too). A market named on its own, as a row's market, is its full
+  // label; the short one stays for chips. A position on a contract no market lists still says its deployment's
+  // market in full.
+  test(`${name}: Deploy names a row's market as its positions do, by its full label`, async () => {
+    const pos = (id, ticker) => ({id, deployment_id: 1, title: 'Dep one', mode: 'paper', ticker, side: 'no', qty: 4, entry_price: 0.46,
+      entry_fee: 0.07, at_cost: 1.91, cost: 1.91, unrealized: null, market_close_time: '2026-10-27T18:41:00Z', market: 'btc15m'});
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/deployments') return response({deployments: [dep()], open_positions: [pos(5, 'KXBTC15M-26OCT271415-15'), pos(6, 'KXODD-26OCT27-T98')]});
+      return response({});
+    }});
+    f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes', category: 'Crypto'}];
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const rows = f.root.querySelector('#deps').innerHTML, open = f.root.querySelector('#openpos').innerHTML;
+    assert.match(rows, /Bitcoin up or down in 15 minutes/);
+    assert.doesNotMatch(rows, /BTC 15-min/);
+    assert.equal((open.match(/Bitcoin up or down in 15 minutes/g) || []).length, 2, 'both positions, listed or not');
+    assert.doesNotMatch(open, /BTC 15-min/);
+    f.clearTimers();
+  });
+
   // Two paper deployments that made $0.0050 each: each row reads $0.01, so adding the rows read $0.02,
   // beside the strategies list's $0.01 (the exact $0.0100). The page shows the server's per-book total
   // (book_totals), the list's own figure, never its own sum of rounded rows.

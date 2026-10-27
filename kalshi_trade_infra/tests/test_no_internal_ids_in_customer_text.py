@@ -73,7 +73,6 @@ def test_no_customer_module_numbers_a_strategy_run_or_deployment_by_its_id():
     ("[live-ready #12] “Fade” cleared every paper-to-live check: 31 trades.", "“Fade” cleared every paper-to-live check: 31 trades."),
     ("[paper-standout #7] “Fade” cleared every paper-to-live check on forward paper.", "“Fade” cleared every paper-to-live check on forward paper."),
     ("[probation #3] Put “Fade” on paper as a forward test.", "Put “Fade” on paper as a forward test."),
-    ("[tournament] Retired paper entrant “Fade”.", "[tournament] Retired paper entrant “Fade”."),  # no id in it
 ])
 def test_the_chat_feed_drops_a_once_only_marker_that_names_a_row_number(stored, shown):
     rows = customer_text.chat_rows([{"role": "system", "content": stored}, {"role": "agent", "content": stored}])
@@ -86,3 +85,67 @@ def test_the_last_move_drops_the_marker_too():
     out = chat_routes._last_move({"text": "[live-ready #12] “Fade” cleared every check. Turn on live autopilot.",
                                   "at": "2026-10-27T10:00:00"}, [])
     assert out["text"].startswith("“Fade” cleared") and "#12" not in out["text"]
+
+
+# The paper tournament's lines (research/tournament.rebalance, stored as written) read in the app's words: no
+# "[tournament]" marker, no "paper entrant", "posterior mean", "live book", "near miss" or "forward sample".
+TOURNAMENT = [
+    ("[tournament] Retired paper entrant “Fade: late YES”: after 31 paper events it is 93% likely to be losing money "
+     "per event (posterior mean -4.2% of stake). Its slot goes to the next near miss.",
+     "Removed “Fade: late YES” from paper: after 31 paper events it is 93% likely to be losing money per event. "
+     "Its place goes to the next strategy that came close to passing research."),
+    ("[tournament] Retired paper entrant “Wick fade NO”: no trade in 7 days on paper: its entry rule never fires on "
+     "the live book. Its slot goes to the next near miss.",
+     "Removed “Wick fade NO” from paper: no trade in 7 days, as its entry rule never fired on the market's real "
+     "prices. Its place goes to the next strategy that came close to passing research."),
+    ("I left “Fade” running: it is a paper tournament entrant with 3 of 30 independent events ($-1.20 net of fees and "
+     "spread), and the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
+     "only shrinks the forward sample.",
+     "I left “Fade” running: it is in its paper test, with 3 of the 30 separate events it needs (−$1.20 net of fees and "
+     "spread), and it is removed on its own once there are enough to judge it. Paper costs nothing; a pause now only "
+     "cuts its paper test short."),
+    ("I left Fade running: it is a paper tournament entrant with 12 of 30 independent events ($4.50 net of fees and "
+     "spread), and the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
+     "only shrinks the forward sample.",
+     "I left Fade running: it is in its paper test, with 12 of the 30 separate events it needs (+$4.50 net of fees and "
+     "spread), and it is removed on its own once there are enough to judge it. Paper costs nothing; a pause now only "
+     "cuts its paper test short."),
+    ("[tournament] Resumed paper entrant “Fade” after a position stop. The stop closed that trade and its loss "
+     "counts; pausing would cut the forward sample short.",
+     "Resumed “Fade” on paper after a position stop. The stop closed that trade and its loss counts; pausing would "
+     "cut its paper test short."),
+]
+JARGON = re.compile(r"\[tournament\]|entrant|posterior|live book|near miss|forward sample|\bslot\b|\$-")
+
+
+@pytest.mark.parametrize("stored,shown", TOURNAMENT)
+def test_a_tournament_line_reads_in_plain_words_and_its_stored_text_is_kept(stored, shown):
+    row = {"role": "system", "content": stored}
+    assert customer_text.chat_rows([row])[0]["content"] == shown
+    assert not JARGON.search(shown)
+    assert customer_text.tournament_line(stored) == shown
+    assert customer_text.tournament_line(shown) == shown  # said once; a plain line is left as it is
+    agent = {"role": "agent", "content": stored}
+    assert customer_text.chat_rows([agent])[0]["content"] == stored  # the agent's own words are as it said them
+
+
+def test_the_tournament_wording_matches_what_rebalance_writes():
+    """The rewrite keys on rebalance's own sentences: if one changes, this says so before the panel shows jargon."""
+    src = (APP / "research" / "tournament.py").read_text(encoding="utf-8")
+    for piece in ("[tournament] Retired paper entrant “%s”: %s. Its slot goes to the next near miss.",
+                  "[tournament] Resumed paper entrant “%s” after a position stop. The stop closed that ",
+                  "trade and its loss counts; pausing would cut the forward sample short.",
+                  "(posterior mean %+.1f%% of stake)", "no trade in %d days on paper: its entry rule never fires on the live book"):
+        assert piece in src, piece
+    agent_src = (APP / "research" / "agent.py").read_text(encoding="utf-8")
+    for piece in ('"I left %s running: it is a paper tournament entrant with %d of %d independent events ($%.2f %s), and "',
+                  '"the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "',
+                  '"only shrinks the forward sample."', "customer_text.PAPER_NET_SHORT"):
+        assert piece in agent_src, piece
+    assert customer_text.PAPER_NET_SHORT == "net of fees and spread"
+
+
+def test_the_last_move_says_a_tournament_line_plainly():
+    from app.web.routes import chat as chat_routes
+    out = chat_routes._last_move({"text": TOURNAMENT[1][0], "at": "2026-10-27T10:00:00"}, [])
+    assert out["text"] == TOURNAMENT[1][1]

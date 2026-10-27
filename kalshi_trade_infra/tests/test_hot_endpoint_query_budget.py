@@ -75,7 +75,9 @@ BUDGET = {"autopilot_status": 9, "me": 5, "get_run": 6, "dashboard": 14}  # dash
 # cached 30s), so a paper row says how far it is and when the counts could be in.
 # Each also reads the removed deployments (one index read of app_deployments, no position), so the
 # board's Realized can name what it leaves out and the strategy page list its past deployments (+1 each).
-BUDGET.update({"list_deployments": 9, "get_strategy": 7})
+# The strategy page's 8th counts its paper book's closed trades through the simulated venue, only when that
+# book has one, so it can say how many were instant fills, which the track record leaves out.
+BUDGET.update({"list_deployments": 9, "get_strategy": 8})
 # The track record (cached a minute per user; a returning user pays it cold) and the Strategies page.
 # The Strategies page's last two are its strategies' later verdicts (Missed final test, Held back): their
 # experiments' holdout, paper and forward rows, and, for a passed one stored without its experiment id,

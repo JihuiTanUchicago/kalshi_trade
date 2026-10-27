@@ -123,7 +123,8 @@ window.TauPage('autopilot', (T) => {
     // can suggest pausing it, and then this line says "I left it running": under "Reviewed" it read as
     // the same voice taking it back. It is the autopilot's own rule (agent.act), so it is headed as
     // that, and says that your own Pause on Deploy still stops it.
-    const rule = !m.proposal_kind && /^I left .+ running: it (?:has been on paper for only|is a paper tournament entrant)/.test(m.content || '');
+    // (A tournament entrant's line reads "it is in its paper test" since customer_text.tournament_line says it plainly.)
+    const rule = !m.proposal_kind && /^I left .+ running: it (?:has been on paper for only|is a paper tournament entrant|is in its paper test)/.test(m.content || '');
     // The engine's own loss guard or drawdown limit paused a strategy (the server says it by name,
     // customer_text.auto_pause_line): no review ran, so it isn't headed "Reviewed".
     const guard = !m.proposal_kind && /^Paused (?:your (?:paper|demo|live) strategy .+|one of your strategies) automatically\b/.test(m.content || '');
@@ -337,6 +338,7 @@ window.TauPage('autopilot', (T) => {
       if (on) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
       if (S.ap) S.ap = Object.assign({}, S.ap, { autopilot: on, mode: !on ? 'off' : S.ap.mode === 'off' ? 'paper' : S.ap.mode });
       paintDashAp();  // copy that follows the switch flips now, not on the next status read
+      if (S.ap && box.querySelector('#apf-apswitch') === sw) apUpdate(box, S.ap);  // the panel's own figures too
       refreshAutopilot(box);
     };
     const msgs = box.querySelector('#apf-messages');
@@ -504,7 +506,9 @@ window.TauPage('autopilot', (T) => {
     ].concat(budgetShown ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
       // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.
-      .concat(d.review_wait ? [`<dt>Check-in</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
+      // Check-ins are the autopilot's own: with it off (or a flip to off still saving) the figure goes, as the switch
+      // says. Right after turning it off the panel kept "Last check-in 37m ago" under "Off: it only suggests ideas".
+      .concat(!(flip ? flip.on : on) ? [] : d.review_wait ? [`<dt>Check-in</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
         : d.reviewing ? ['<dt>Last check-in</dt><dd>Reviewing now</dd>'] : d.last_review_at ? [`<dt>Last check-in</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;

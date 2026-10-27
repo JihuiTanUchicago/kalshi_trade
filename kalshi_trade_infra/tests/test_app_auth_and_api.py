@@ -681,6 +681,11 @@ def test_strategies_list_flags_a_paper_book_whose_trades_were_all_instant_fills(
     assert "instant_only" not in cards[2]["real"]  # one of its deployments filled through the simulated venue
     assert "instant_only" not in cards[3]["real"]  # nothing closed yet
     assert cards[4]["real"]["mode"] == "live" and "instant_only" not in cards[4]["real"]
+    # Partly instant fills: the card says how many (3 closed, 1 through the simulated venue), so its "3 trades"
+    # reads beside the track record's 1; its figure and count are unchanged. A book of all of them counts them all.
+    assert cards[2]["real"]["instant_fills"] == 2 and (cards[2]["real"]["trades"], cards[2]["real"]["pnl"]) == (3, 1.8)
+    assert cards[1]["real"]["instant_fills"] == 2
+    assert "instant_fills" not in cards[3]["real"] and "instant_fills" not in cards[4]["real"]
     # No paper book with a closed trade on the page: no extra read.
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": 3, "deployed": True}])
     asked.clear()

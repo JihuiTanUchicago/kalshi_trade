@@ -32,6 +32,19 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.ok(rule.root.querySelector('#dep-paper'));
   });
 
+  // Every Kalshi strategy's pre-registration stores {fee: 'kalshi_taker', fill: 'ask/bid'} (agent.py), and its page
+  // printed them as stored: "Fee: kalshi_taker · Fill: ask/bid".
+  test(`${name}: the pre-registered cost assumptions read in words, never the stored codes`, async () => {
+    const f = await open({status: 'passed', experiment: {classification: 'deployment_candidate', null_hypothesis: 'No edge.',
+      cost_assumptions: {fee: 'kalshi_taker', fill: 'ask/bid'}}});
+    assert.match(main(f), /<dt>Cost assumptions<\/dt><dd>Fee: Kalshi(?:’|&#39;|')s taker fee on every fill ·\u00a0Fill: buys at the ask, sells at the bid<\/dd>/);
+    assert.doesNotMatch(main(f), /kalshi_taker|ask\/bid/);
+    const perp = await open({status: 'passed', experiment: {classification: 'deployment_candidate', null_hypothesis: 'No edge.',
+      cost_assumptions: {fill: 'next_open', funding: 'finalized_payments_as_cost_only', scenario: 'some_new_code', lookback_minutes: 60}}});
+    assert.match(main(perp), /Fill: the next bar’s open ·\u00a0Funding: settled funding payments, counted only as a cost ·\u00a0Scenario: some new code ·\u00a0Lookback minutes: 60/);
+    assert.doesNotMatch(main(perp), /next_open|finalized_payments|some_new_code/);
+  });
+
   test(`${name}: the research figures read the stored per-trade returns, in stakes and % of stake`, async () => {
     // The gatekeeper stores a phase as its per-trade net returns, not a running total.
     const val = [[1000, 0.5], [2000, -0.8], [3000, 1.0]], hold = [[4000, 0.25], [5000, -0.05]];
@@ -309,6 +322,41 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(line('Paper'), /real money|demo book/);
     // Each book on its own line: never one figure across them.
     assert.doesNotMatch(lines.join(' '), /\$5\.52|\$4\.36/);
+  });
+
+  test(`${name}: since deploying and the ladder say how many paper trades were instant fills, which the track record leaves out`, async () => {
+    // Walk 2026-10-27: an instant-only strategy's page read "+$3.80 realized over 2 closed trades" under Since deploying
+    // and on Paper → demo → live, with no word of the instant fills the track record leaves out (and the live check's
+    // count of realistic paper trades too). The count is the server's (book_totals.paper.instant_fills); figures unchanged.
+    const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 3.8, closed_trades: 2, open_positions: 0, created_at: '2026-10-27T08:00:00Z'},
+      {id: 4, mode: 'demo', status: 'running', realized_pnl: 0.5, closed_trades: 1, open_positions: 0, created_at: '2026-10-27T08:00:00Z'}];
+    const page = async (instant) => {
+      const f = await open({status: 'passed', deployments, book_totals: {paper: {pnl: 3.8, trades: 2, open: 0, ...(instant ? {instant_fills: instant} : {})},
+        demo: {pnl: 0.5, trades: 1, open: 0}}});
+      const text = (sel) => [...f.root.querySelectorAll(sel)].map((p) => p.textContent.replace(/\s+/g, ' ')).join(' | ');
+      return {record: text('.real-record p'), ladder: text('#ladder-body p'), html: main(f)};
+    };
+    const part = await page(1);
+    const said = /1 of these 2 trades was an instant fill, filled whole at the quoted price without the simulated order book\. The track record leaves it out, and so does the count of realistic paper trades toward live\./;
+    assert.match(part.record, /Paper \+\$3\.80 realized over 2 closed trades/);
+    assert.match(part.record, said);
+    assert.match(part.ladder, /Paper running · 2 closed trades · \+\$3\.80 realized/);
+    assert.match(part.ladder, said);
+    // The demo book says nothing of it, and is never added in.
+    assert.doesNotMatch(part.record.split(' | ').filter((t) => t.startsWith('Demo')).join(' '), /instant/);
+    assert.doesNotMatch(part.html, /\$4\.30/);
+    const all = await page(2);
+    assert.match(all.record, /All 2 of these trades were instant fills, filled whole at the quoted price without the simulated order book\. The track record leaves them out/);
+    assert.match(all.ladder, /All 2 of these trades were instant fills/);
+    // None (or a server that sends no count): no note.
+    assert.doesNotMatch((await page(0)).html, /instant fill/);
+  });
+
+  test(`${name}: since deploying keeps "deployed" with its date on one line`, async () => {
+    // Walk 2026-10-27: at 390px in Meridian a book's line ended "· deployed" and "Oct 18" began the next line.
+    const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 1.3, closed_trades: 2, open_positions: 0, created_at: '2026-10-18T08:00:00Z'}];
+    const f = await open({status: 'passed', deployments});
+    assert.match(f.root.querySelector('.real-record').innerHTML, /·\u00a0<span class="nobr">deployed [^<]+<\/span>/);
   });
 
   test(`${name}: past deployments say which money each was and that fees are in, as the lines above do`, async () => {

@@ -371,6 +371,11 @@
   // Category sort shared by the research picker and the strategies market filter.
   const catOrder = (a, b) => { const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); };
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
+  // A market named on its own, in a sentence or as a row's market ("Bitcoin up or down in 15 minutes"), by its full
+  // label, as Billing's lines and every position name it; the short one stays for chips and meta lines joined by
+  // " · ". The autopilot said "Researching BTC 15-min up/down" and Deploy's rows "BTC 15-min up/down" above
+  // positions in "Bitcoin up or down in 15 minutes". A key the catalog doesn't list reads as marketShort does.
+  const marketFull = (k) => { const m = k && ((S.me && S.me.markets) || []).find((x) => x.key === k); return m && m.label ? m.label : marketShort(k); };
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
   // "Bitcoin above $68,499.99 at 5pm ET"), so an open position never shows only the raw ticker. Unknown: ''.
   // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
@@ -418,7 +423,7 @@
   // $68,499.99 at 5pm ET"), else the market it was traded on (`key`, its deployment's), else "Kalshi contract".
   // The ticker (KXBTC15M-26OCT262100-00) carries the raw series key, so it is never the headline: kalshiRef
   // sets it on a small line, there to find the contract on Kalshi.
-  const contractName = (ticker, key) => contractMarket(ticker) || (key ? strikeIn(marketShort(key), ticker) : 'Kalshi contract');
+  const contractName = (ticker, key) => contractMarket(ticker) || (key ? strikeIn(marketFull(key), ticker) : 'Kalshi contract');
   // A contract, by its plain name, that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker, key) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(contractName(ticker, key))}</a>`;
   const kalshiRef = (ticker) => `<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${esc(ticker)}</span></span>`;
@@ -1707,7 +1712,11 @@
   // counts them) says so: the track record leaves those trades out and names the strategy on a row saying so, while
   // "+$3.80 on paper since deploying \u00b7 2 trades" here read as a record.
   const realInstant = (r) => `${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record \u00b7\u00a0${money(r.pnl)} on paper \u00b7\u00a0${realNet('paper')}`;
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)} \u00b7\u00a0${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)} \u00b7\u00a0${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
+  // Some of them instant fills (the server's `instant_fills`, the same split): the count says how many, so "2 trades"
+  // no longer reads as the record beside a track record that counts 1 and says 1 instant fill was left out.
+  const realSome = (r) => (r.mode === 'paper' && +r.instant_fills > 0 && +r.instant_fills < r.trades
+    ? `, ${num(+r.instant_fills)} of them ${+r.instant_fills === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record` : '');
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}${realSome(r)} \u00b7\u00a0${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)} \u00b7\u00a0${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
   const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));
@@ -1774,7 +1783,9 @@
     if (!oos || !(+oos.trades > 0) || !n) return '';
     return `Backtest estimate ${usd((+oos.pnl || 0) / +oos.trades * n, true)} for the same ${n} trade${n === 1 ? '' : 's'} ·\u00a0`;
   };
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'} ·\u00a0Deployed ${when(d.created_at)}${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  // Each fact keeps its label with its value (.dep-fact never wraps inside): "· Deployed" ended one line and
+  // "Oct 18" began the next, on a phone and in the Deploy table's name column on a desktop.
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}<span class="dep-fact">Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'}</span> ·\u00a0<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   // One plain line on how a book is doing against its backtest, written by the server
   // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
   // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.
@@ -1819,7 +1830,7 @@
     const actions = controls ? `<td class="act" data-lab="">${deploymentActions(d)}</td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="dep-meta"><span class="sub-fig">${[esc(marketShort(d.market)), depStake(d), depCap(d)].filter(Boolean).join(' \u00b7\u00a0')}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span>
+        <div class="dep-meta"><span class="sub-fig">${[esc(marketFull(d.market)), depStake(d), depCap(d)].filter(Boolean).join(' \u00b7\u00a0')}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span>
         ${deploymentEvidence(d)}</div>${depIdleLine(d)}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
       <td data-lab="Status">${depState(d, live)}<div class="sub-fig">${modeTag}</div></td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
@@ -1832,7 +1843,7 @@
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${depState(d, live)}</span></header>
-      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} ·\u00a0${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? ' \u00b7\u00a0' + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}</div>
+      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketFull(d.market))} ·\u00a0${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? ' \u00b7\u00a0' + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}</div>
       <dl class="monitor-metrics">
         <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${PAPER_NET}${glo('paperfills')}</dd>` : ''}</div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}</dd></div>
@@ -3003,17 +3014,31 @@
   // A 15-minute window's row measures from the target price in its own name, the one its market page shows
   // (titleStrike) until a strike is stored; the server says so (`vs.from`), and the row names it the same way.
   const VS_TITLE = 'Target price from the contract’s title, as on its market page';
-  // Every 15-minute window's line is its target price, as its market page names it (spotSect, marketSpot), whether
-  // the server read it from the title or has it stored: a stored one still said "Spot vs strike" here.
-  const vsTarget = (m) => !!(m.vs && m.vs.from === 'title') || M15_CONTRACT.test(m.t || '');
-  const vsText = (v, target) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (target ? 'at the target price' : 'at the strike')
+  // A 15-minute window's line is its target price whether it was read from the title or stored (M15_CONTRACT, as
+  // its market page says it): a stored one read "Spot vs strike" on Explore beside "Target price" on its page.
+  const vsTarget = (m) => !!((m.vs && m.vs.from === 'title') || M15_CONTRACT.test(m.t || ''));
+  const vsText = (v, m) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (vsTarget(m || { vs: v }) ? 'at the target price' : 'at the strike')
     : `${+v.diff < 0 ? '−' : '+'}$${num(Math.round(Math.abs(+v.diff)))} · ${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
   const vsLab = (m) => (vsTarget(m) ? 'Spot vs target price' : /^KXBTC-.+-B[\d.]+$/.test(m.t) ? 'Spot vs bucket' : 'Spot vs strike');
-  const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, vsTarget(m))}</b></span>` : '');
-  const spotListNote = (s) => (s === undefined ? '' : s && s.failed ? 'Bitcoin’s latest stored price didn’t load, so distances to the strike are left out.'
-    : !s ? 'No Bitcoin price stored in the last day, so distances to the strike are left out.'
-    : s.stale ? `Bitcoin’s spot feed is ${spotOld(+s.age_s || 0)} old, so distances to the strike are left out until it catches up.`
-    : `Distances to the strike are from Bitcoin at ${btcUsd(s.price)} (Coinbase, ${spotAge(+s.age_s || 0)}).`);
+  const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, m)}</b></span>` : '');
+  // The line names what the rows shown measure from: a list of 15-minute windows only said "Distances to the strike"
+  // over rows that each said "target price". Both kinds on one list name both. The rows with a figure count; with
+  // no figure to show (an old or missing spot), the Bitcoin rows that would have one: a 15-minute window's only with
+  // the target in its name (TARGET_IN), as the server reads it when no strike is stored.
+  const spotFrom = (ms) => {
+    const all = ms || [], vs = all.filter((m) => m.vs);
+    const btc = vs.length ? vs : all.filter((m) => BTC_CONTRACT.test(m.t || '') && (!M15_CONTRACT.test(m.t) || TARGET_IN.test(`${m.su || ''} ${m.ti || ''}`)));
+    const m15 = btc.filter(vsTarget).length;
+    return !m15 ? 'the strike' : m15 === btc.length ? 'the target price' : 'the strike or target price';
+  };
+  const spotListNote = (s, ms) => {
+    if (s === undefined) return '';
+    const to = 'distances to ' + spotFrom(ms);
+    return s && s.failed ? `Bitcoin’s latest stored price didn’t load, so ${to} are left out.`
+      : !s ? `No Bitcoin price stored in the last day, so ${to} are left out.`
+      : s.stale ? `Bitcoin’s spot feed is ${spotOld(+s.age_s || 0)} old, so ${to} are left out until it catches up.`
+      : `${to.charAt(0).toUpperCase() + to.slice(1)} are from Bitcoin at ${btcUsd(s.price)} (Coinbase, ${spotAge(+s.age_s || 0)}).`;
+  };
 
   // Explore's empty and failed states: what happened, and a way to ask again. Each sits directly under the
   // page's h1, so its heading is an h2 (styled as the other empty states' h3).
@@ -3095,7 +3120,7 @@
           <td class="num yes-price" data-lab="YES Price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="YES Bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="YES Ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
       });
-      const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot);
+      const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot, d.markets);
       const sortHead =(key, label, criterion = label, rowspan = 1) => `<th scope="col"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''} class="num${key === 'last' ? ' quote-head' : ''}" aria-sort="${f.sort === key ? 'descending' : 'none'}"><button type="button" data-sort="${key}" title="Sort by ${criterion.toLowerCase()}" aria-label="Sort by ${criterion.toLowerCase()}">${label}${f.sort === key ? ' <span aria-hidden="true">↓</span>' : ''}</button></th>`;
       const sortFocused = body.querySelector('[data-sort]:focus')?.dataset.sort;
       keepFocus(body, () => {
@@ -3495,14 +3520,15 @@
   // "reviewing", "2 on paper", or "paused" while billing stops it. '' when there's nothing to add.
   // A market the autopilot names (the status read's research list, and its story, which quotes that
   // list): the app's own label. The server sends a market's label, or the run's raw key when the
-  // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a key reads as the short label,
-  // a series as its market's, and a key nothing knows as "an unlisted market", never the raw key.
+  // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a listed market, key or series, reads
+  // as its full label (marketFull, as Billing's research lines say it), a key only the app knows as its
+  // short label, and a key nothing knows as "an unlisted market", never the raw key.
   const AP_PICKING = "a market it's still picking";
   function apMarketName(n) {
     const s = String(n || '');
-    if (MKT_SHORT[s]) return MKT_SHORT[s];
     const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || x.label === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
-    if (m) return marketShort(m.key);
+    if (m) return marketFull(m.key);
+    if (MKT_SHORT[s]) return MKT_SHORT[s];
     // A label has a space or mixed case ("Chicago high temp"); a key is one case, no spaces.
     if (!/^[\w.-]+$/.test(s) || (s !== s.toLowerCase() && s !== s.toUpperCase())) return s;
     return contractMarket(s) || 'an unlisted market';
@@ -3889,10 +3915,10 @@
   // When a hot market closes (`ct`, as Explore's rows say it) and, for a Bitcoin contract, how far spot is
   // from its strike; a rail with no fresh spot says why above its rows, as the list does.
   const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? `<span>Closes ${esc(settleAt(m.ct))}</span>` : ''}${vsHtml(m)}</span>` : '');
-  const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot))}</p>` : '');
+  const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
   function hotRowHtml(m) {
     const compactName = contractShort(m.t) || (m.ti || '').trim() || contractName(m.t);
-    const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m)} ${vsText(m.vs, vsTarget(m))}` : '');
+    const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m)} ${vsText(m.vs, m)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(' ·\u00a0'))} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours${when} ·\u00a0Opens Kalshi in a new tab">

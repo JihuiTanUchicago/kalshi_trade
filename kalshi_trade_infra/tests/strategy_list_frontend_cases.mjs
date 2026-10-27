@@ -224,4 +224,21 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, instant_only: false}}), /\+\$3\.80<\/span> on paper since deploying · 2 trades/);
     assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, trades: 0, pnl: 0}}), /No closed paper trades yet/);
   });
+
+  // Walk 2026-10-27: a strategy whose paper trades were only partly instant fills still read "+$1.30 on paper since
+  // deploying · 2 trades", while the track record counted 1 trade and said 1 instant fill was left out.
+  test(`${name}: a paper row whose trades were partly instant fills says how many, as the track record does`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const real = {pnl: 1.3, trades: 2, open: 0, mode: 'paper', instant_fills: 1};
+    const html = row(f, {deployed: true, books: ['paper'], real});
+    assert.match(html, /\+\$1\.30<\/span> on paper since deploying ·\s2 trades, 1 of them an instant fill, left out of the track record ·\safter Kalshi fees and the spread/);
+    assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, trades: 5, instant_fills: 3}}), /5 trades, 3 of them instant fills, left out of the track record/);
+    // All of them: the instant-only line, unchanged. A demo book beside it is never counted, nor added in.
+    assert.match(row(f, {deployed: true, books: ['paper'], real: {...real, instant_fills: 2, instant_only: true}}), /All 2 of its trades were instant fills/);
+    const demo = row(f, {deployed: true, books: ['paper', 'demo'], real: {...real, demo: {pnl: 0.5, trades: 1, open: 0}}});
+    assert.match(demo, /Demo: <span class="[^"]*">\+\$0\.50<\/span> ·\s1 trade ·\safter Kalshi fees/);
+    assert.doesNotMatch(demo, /\$1\.80/);
+    // A live or demo row never carries it, even if one leaks in.
+    assert.doesNotMatch(row(f, {deployed: true, books: ['demo'], real: {...real, mode: 'demo'}}), /instant/);
+  });
 }

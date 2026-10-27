@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from typing import Callable, Dict, List, Optional
 
+from trading_core.domain.money import cents
+
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 MODEL_ID = re.compile(
     r"(?:\b(?:us|eu|apac|global)\.)?\b(?:anthropic\.claude|amazon\.(?:nova|titan)|meta\.llama|writer\.palmyra"
@@ -182,10 +184,57 @@ _ONCE_MARKER = re.compile(r"^\[[a-z-]+ #\d+\]\s*")
 
 
 def unmarked(text: Optional[str]) -> Optional[str]:
-    """``text`` without its leading once-only marker ("[live-ready #12] "), else as given."""
+    """``text`` without its leading once-only marker ("[live-ready #12] "), and a paper tournament line
+    (tournament_line) in the app's words, else as given."""
     if not text:
         return text
-    return _ONCE_MARKER.sub("", str(text), count=1)
+    return tournament_line(_ONCE_MARKER.sub("", str(text), count=1))
+
+
+# The hourly paper tournament (research/tournament.rebalance) leads its chat lines with "[tournament]" and says
+# them in its own terms: a "paper entrant", "Retired", a "posterior mean", "the live book", the "next near miss",
+# the "forward sample". The panel showed them so. The stored line keeps them (it is the record); a customer
+# reads what happened in the words the app uses elsewhere: a deployment taken off paper is "removed" (Deploy's
+# Remove button), and a strategy that came close to passing research takes its place.
+_TOURNAMENT = re.compile(r"^\[tournament\]\s*")
+_TOURNAMENT_WORDS = (
+    (re.compile(r"^Retired paper entrant (“.+?”): "), r"Removed \1 from paper: "),
+    (re.compile(r"^Resumed paper entrant (“.+?”) "), r"Resumed \1 on paper "),
+    (re.compile(r" \(posterior mean [+-]?\d+(?:\.\d+)?% of stake\)"), ""),
+    (re.compile(r"\bno trade in (\d+) days on paper: its entry rule never fires on the live book\b"),
+     r"no trade in \1 days, as its entry rule never fired on the market's real prices"),
+    (re.compile(r"\bIts slot goes to the next near miss\."), "Its place goes to the next strategy that came close to passing research."),
+    (re.compile(r"\bpausing would cut the forward sample short\."), "pausing would cut its paper test short."),
+)
+
+
+# The autopilot's refusal to pause a tournament entrant (agent._tournament_hold) says it in the same terms, and
+# its net as "$%.2f" ("$-1.20"). The panel heads it "Autopilot's rule: kept running" by its opening words, which
+# the plain line keeps ("I left <title> running: it ").
+_HOLD = re.compile(r"^(I left .+? running: it )is a paper tournament entrant with (\d+) of (\d+) independent events "
+                   r"\(\$(-?\d+(?:\.\d+)?) (net of fees and spread)\), and the tournament retires it on its own once the "
+                   r"data can judge it\. Paper costs nothing; a pause now only shrinks the forward sample\.$")
+
+
+def _signed_usd(v: str) -> str:
+    c = cents(v)
+    return ("−" if c < 0 else "+") + _usd(abs(c))
+
+
+def tournament_line(text: Optional[str]) -> Optional[str]:
+    """A "[tournament] ..." chat line without its marker and in plain words, and the autopilot's "I left it
+    running" for a tournament entrant the same way; any other text as given."""
+    if text and _HOLD.match(str(text)):
+        m = _HOLD.match(str(text))
+        return ("%sis in its paper test, with %s of the %s separate events it needs (%s %s), and it is removed on "
+                "its own once there are enough to judge it. Paper costs nothing; a pause now only cuts its paper test "
+                "short." % (m.group(1), m.group(2), m.group(3), _signed_usd(m.group(4)), m.group(5)))
+    if not text or not _TOURNAMENT.match(str(text)):
+        return text
+    s = _TOURNAMENT.sub("", str(text), count=1)
+    for rx, words in _TOURNAMENT_WORDS:
+        s = rx.sub(words, s)
+    return s
 
 
 def auto_paused_ids(messages: List[Dict]) -> List[int]:

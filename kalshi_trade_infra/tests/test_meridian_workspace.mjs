@@ -4924,22 +4924,26 @@ test('autopilot walk (Meridian): the last move says what and when, the pill says
 
 test('autopilot (Meridian): the market it researches reads by its label, never a raw key or series', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}, {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}, {key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'},
+    {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
   const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
-  f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi']}};
-  assert.equal(f.apIdleLine(), 'Researching BTC 15-min up/down · BTC above $X at 5pm ET · Chicago high temp');
+  // A listed market reads by its full label, as Billing's research lines and every position name it, by key,
+  // series or label alike; a key only the app knows (eth15m, not in this catalog) by its short one.
+  f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi', 'eth15m']}};
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it's still picking"]}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
-  // The server sends a listed market's catalog label; it reads as the short one, as its key does.
+  // The server sends a listed market's catalog label; it reads as it is.
   f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
-  assert.equal(f.apIdleLine(), 'Researching BTC above $X at 5pm ET');
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin above $X at 5pm ET');
   // The story quotes the same list; the panel says it the same way, and so does the research figure.
   const d = {...ap, research: {active: ['btc15m', 'KXBTCD'], tested_7d: 3, passed_7d: 0}, story: ["Right now it's researching btc15m and KXBTCD."]};
   const box = new Element('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
   f.apUpdate(box, d);
-  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching BTC 15-min up\/down and BTC above \$X at 5pm ET\.<\/p>/);
+  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching Bitcoin up or down in 15 minutes and Bitcoin above \$X at 5pm ET\.<\/p>/);
   f.apUpdate(box, {...d, story: []});
-  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching BTC 15-min up\/down · BTC above \$X at 5pm ET/);
+  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching Bitcoin up or down in 15 minutes · Bitcoin above \$X at 5pm ET/);
+  assert.doesNotMatch(box.querySelector('#apf-stats').innerHTML + box.querySelector('#apf-story').innerHTML, /BTC 15-min|BTC above/);
   assert.doesNotMatch(source, /esc\(\(d\.story && d\.story\[0\]\)|\(d\.story \|\| \[\]\)\.map|\[\.\.\.new Set\(d\.research\.active\)\]/);
 });
 
@@ -6196,4 +6200,17 @@ test('the hot rail wraps a market’s name instead of cutting its close hour, an
   assert.equal(f.root.querySelector('.hot-title strong').textContent, 'BTC above $X at 5pm ET', 'the whole name, its hour included');
   // A pause reason's "the Funds page" in a Deploy row is underlined; the row's strategy name still isn't.
   assert.match(css, /\n\.t-dep td\.name \.sub-fig a, \.monitor-limits a \{ text-decoration: underline;/);
+});
+
+test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" with its figure', async () => {
+  // Walk 2026-10-27: "· Deployed" ended one line of a row's details and "Oct 18" began the next, at 390px and in
+  // the 1280px table's name column. Each fact is one .dep-fact span, which never wraps inside.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\n\.dep-evidence \.dep-fact \{ white-space: nowrap; \}/);
+  const f = frontend({fetchImpl: () => response({deployments: [{id: 11, strategy_id: 111, title: 'S', market: 'btc15m', mode: 'paper',
+    status: 'running', stake: 5, max_positions: 2, backtest: {out_of_sample: {pnl: 12, trades: 20}}, created_at: '2026-10-17T10:00:00Z',
+    realized_pnl: 3, unrealized_pnl: null, closed_trades: 2, open_positions: 0, curve: []}], open_positions: []})});
+  await f.viewDeploy();
+  const html = f.root.querySelector('#deps').innerHTML;
+  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Unseen P&amp;L \+\$12\.00<\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });

@@ -90,6 +90,38 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     g.clearTimers();
   });
 
+  // A list of 15-minute windows only said "Distances to the strike are from Bitcoin at …" over rows that each said
+  // "Spot vs target price". The line names what the rows shown measure from, both when the list holds both, and a
+  // 15-minute row with a stored strike is its target price too, as its market page says it.
+  test(`${name}: the line above the list names what its rows measure from, target price for 15-minute windows`, async () => {
+    const m15 = (t, vs) => row(t, {ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,512.08', vs});
+    const titled = m15('KXBTC15M-26OCT271145-45', {side: 'below', diff: -92.08, pct: -0.081, from: 'title'});
+    const stored = m15('KXBTC15M-26OCT271200-00', {side: 'above', diff: 40, pct: 0.035});
+    const only15 = await list({markets: [titled, stored, ROWS[5]], spot: SPOT});
+    assert.equal(only15.note.textContent, 'Distances to the target price are from Bitcoin at $113,420.00 (Coinbase, 4s ago).');
+    assert.deepEqual(only15.rows.slice(0, 2).map((r) => r.querySelector('.xspot').textContent.replace(/ /g, ' ')),
+      ['Spot vs target price −$92 · 0.08%', 'Spot vs target price +$40 · 0.04%'], 'a stored 15-minute strike is its target price too');
+    assert.doesNotMatch(only15.body.innerHTML, /strike/i);
+    only15.f.clearTimers();
+    const atStored = await list({markets: [{...stored, vs: {side: 'at', diff: 0, pct: 0}}], spot: SPOT});
+    assert.equal(atStored.rows[0].querySelector('.xspot').textContent, 'Spot vs target price at the target price');
+    atStored.f.clearTimers();
+    const both = await list({markets: [titled, ROWS[0]], spot: SPOT});
+    assert.equal(both.note.textContent, 'Distances to the strike or target price are from Bitcoin at $113,420.00 (Coinbase, 4s ago).');
+    both.f.clearTimers();
+    // A 15-minute row with no figure (no target in its name) leaves the line to the rows that have one.
+    const strikes = await list({markets: [ROWS[4], ROWS[0]], spot: SPOT});
+    assert.equal(strikes.note.textContent, 'Distances to the strike are from Bitcoin at $113,420.00 (Coinbase, 4s ago).');
+    strikes.f.clearTimers();
+    // With no figure to show, the line names what the Bitcoin rows would measure from.
+    const old = await list({markets: [{...titled, vs: undefined}], spot: {...SPOT, age_s: 840, stale: true}});
+    assert.equal(old.note.textContent, 'Bitcoin’s spot feed is 14 min old, so distances to the target price are left out until it catches up.');
+    old.f.clearTimers();
+    const {f: g, el} = await rail({markets: [{...titled, vs: undefined, h: [.4, .5]}], spot: null});
+    assert.equal(el.querySelector('.hot-note').textContent, 'No Bitcoin price stored in the last day, so distances to the target price are left out.');
+    g.clearTimers();
+  });
+
   test(`${name}: an old, missing or failed spot leaves the figures out and says why in one line above the list`, async () => {
     const strip = (ms) => ms.map(({vs, ...m}) => m);  // the server sends no `vs` then
     for (const [spot, words] of [[{...SPOT, age_s: 840, stale: true}, 'Bitcoin’s spot feed is 14 min old, so distances to the strike are left out until it catches up.'],

@@ -50,7 +50,10 @@ def _exp(holdout_cls, promoted):
                         "ci_hi": 0.045, "consumed": True}}
 
 
-def _page(monkeypatch, row, exp, event=None, deps=(), candidate=True, chat=()):
+_BOOK_TOTALS = strategy_routes._book_totals
+
+
+def _page(monkeypatch, row, exp, event=None, deps=(), candidate=True, chat=(), totals=None):
     reads = []
     strategies = {4: row, 8: _row(id=8, title="Fade", status="passed")}
     titles = {77: "Fade"}
@@ -68,7 +71,7 @@ def _page(monkeypatch, row, exp, event=None, deps=(), candidate=True, chat=()):
     for name in ("_demo_key_back", "_paper_books"):
         monkeypatch.setattr(strategy_routes, name, lambda *a, **k: None)
     monkeypatch.setattr(strategy_routes, "_deployment_out", lambda d, *a, **k: d)
-    monkeypatch.setattr(strategy_routes, "_book_totals", lambda deps: {})
+    monkeypatch.setattr(strategy_routes, "_book_totals", totals or (lambda deps: {}))
     monkeypatch.setattr(strategy_routes, "_backtest_checks", lambda *a, **k: {})
     monkeypatch.setattr(agent, "_is_deployment_candidate", lambda cur, sid: candidate)
     return server.get_strategy(_ctx()), reads
@@ -150,3 +153,30 @@ def test_a_probation_strategy_held_back_after_passing_on_paper_says_so_not_its_v
     assert "verdict" not in out and reads == [] and out["why_failed"][0]["gate"] == "sample_size"
     out, reads = _page(monkeypatch, _row(), dict(_probation(FV), promoted=True))
     assert "verdict" not in out and reads == [] and out["why_failed"] == []
+
+
+def test_the_page_says_how_many_of_its_paper_trades_were_instant_fills(monkeypatch):
+    # "Since deploying" and Paper -> demo -> live read "+$3.80 realized over 2 closed trades" with no word that
+    # one was an instant fill, which the track record leaves out. The paper book counts them (the same split:
+    # its closed rows less those through the simulated venue); its figure, its count and the demo book are
+    # unchanged, and nothing a gate reads is touched (display only).
+    deps = [{"id": 1, "strategy_id": 4, "mode": "paper", "status": "running", "realized_pnl": 3.8, "closed_trades": 2, "open_positions": 0},
+            {"id": 2, "strategy_id": 4, "mode": "paper", "status": "paused", "realized_pnl": 1, "closed_trades": 1, "open_positions": 0},
+            {"id": 3, "strategy_id": 4, "mode": "demo", "status": "running", "realized_pnl": 0.5, "closed_trades": 4, "open_positions": 0}]
+    asked = []
+    monkeypatch.setattr(server.repo, "realistic_paper_closed", lambda cur, ids: asked.append(sorted(ids)) or {2: 1})
+    out, _ = _page(monkeypatch, _row(), _exp(FV, promoted=True), deps=deps, totals=_BOOK_TOTALS)
+    paper = out["book_totals"]["paper"]
+    assert asked == [[1, 2]] and paper["instant_fills"] == 2 and (paper["trades"], paper["pnl"]) == (3, 4.8)
+    assert "instant_only" not in paper and "instant_fills" not in out["book_totals"]["demo"]
+    # Every one an instant fill: all of them counted, and flagged so.
+    monkeypatch.setattr(server.repo, "realistic_paper_closed", lambda cur, ids: {})
+    out, _ = _page(monkeypatch, _row(), _exp(FV, promoted=True), deps=deps, totals=_BOOK_TOTALS)
+    assert out["book_totals"]["paper"]["instant_fills"] == 3 and out["book_totals"]["paper"]["instant_only"] is True
+    # None closed on paper (or no paper book): nothing read, nothing stamped.
+    monkeypatch.setattr(server.repo, "realistic_paper_closed", lambda cur, ids: asked.append(ids) or {})
+    asked.clear()
+    out, _ = _page(monkeypatch, _row(), _exp(FV, promoted=True), deps=[dict(d, closed_trades=0) for d in deps[:2]], totals=_BOOK_TOTALS)
+    assert asked == [] and "instant_fills" not in out["book_totals"]["paper"]
+    out, _ = _page(monkeypatch, _row(), _exp(FV, promoted=True), deps=deps[2:], totals=_BOOK_TOTALS)
+    assert asked == [] and "paper" not in out["book_totals"]
