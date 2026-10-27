@@ -2480,6 +2480,10 @@
     const wantMkt = new URLSearchParams(location.search).get('market');
     const wantRow = wantMkt ? (me.markets || []).find((m) => m.key === wantMkt) : null;
     const notOpen = wantMkt && !wantRow ? `${MKT_SHORT[wantMkt] || 'The market you picked'} isn\u2019t open for research right now` : '';
+    // Under the credits a session needs to start, the form says so up top. Start refused for it (402) moves
+    // that note beside Start instead of adding the server's own words under it: the same warning twice.
+    const lowSaid = `You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start.`;
+    const lowNote = (kind) => `<div class="notice${kind ? ' ' + kind : ''}" id="rlow" role="${kind === 'bad' ? 'alert' : 'status'}">${ICON.warn}<span>${lowSaid} ${me.reload_failed ? 'Auto-reload couldn’t charge your card. <a href="/billing">Update your card and add credits →</a>' : '<a href="/billing">Add credits →</a>'}</span></div>`;
     // Models you can't pick yet go after the ones you can, and say "coming soon": they led the list as
     // "(access pending)", four greyed-out rows above the default.
     const modelOpts = (mdl.models || []).filter((m) => m.available !== false).concat((mdl.models || []).filter((m) => m.available === false))
@@ -2488,7 +2492,7 @@
       <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
 
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
-        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? `<div class="notice" role="status">${ICON.warn}<span>You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start. ${me.reload_failed ? 'Auto-reload couldn’t charge your card. <a href="/billing">Update your card and add credits →</a>' : '<a href="/billing">Add credits →</a>'}</span></div>` : ''}
+        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
         <label class="field"><span>Describe your idea</span>
           <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
         <details class="dispatch-opts" id="ropts"${phone() ? '' : ' open'}><summary><span class="dispatch-opts-t">Options</span><span class="dispatch-opts-sum" id="ropts-sum"></span></summary><div class="dispatch-opts-body">
@@ -2600,10 +2604,11 @@
           draft.drop();
           go('/research/' + r.id);
         } catch (err) {
-          flash('#dflash', err.message, 'bad');
+          const said = form.querySelector('#dflash'), low = err.status === 402 && form.querySelector('#rlow');
+          if (low && said) { low.remove(); said.innerHTML = lowNote('bad'); announce(lowSaid, true); }
+          else flash('#dflash', err.message, 'bad');
           // The error sits under the cost lines: on a phone that is below the fold, so Start looked
           // like it did nothing (out of credits, two sessions already going). Bring it into view.
-          const said = form.querySelector('#dflash');
           if (said && said.scrollIntoView) said.scrollIntoView({ block: 'nearest' });
         }
       });

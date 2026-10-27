@@ -6,6 +6,8 @@
 //   everyone's for that model.
 // - An error from Start (out of credits, two sessions going) landed under the cost lines, below the
 //   fold on a phone: Start looked like it did nothing. It is scrolled into view.
+// - Under the credits a session needs, Start's refusal repeated the form's own low-credit note in the
+//   server's words (walked 2026-10-27). The note moves beside Start instead: said once.
 // - A strategy count the browser refuses inside folded Options left Start doing nothing (Chrome: "An
 //   invalid form control is not focusable"). Options unfold so the browser can point at it.
 // - Arriving from Explore with ?market= for a market the picker doesn't offer (perpetuals off) left
@@ -74,6 +76,32 @@ export function researchFormCases({name, frontend}) {
     const opts = f.root.querySelector('#ropts'); opts.open = false;
     dispatch.dispatchEvent({type: 'invalid', target: f.root.querySelector('#maxhyp')});
     assert.equal(opts.open, true);
+    f.clearTimers();
+  });
+
+  test(`${name}: Start refused for low credits says so once, beside Start, not again under the form's own note`, async () => {
+    let refuse = {status: 402, error: 'You need at least $1.00 in credits to start a research session. Add credits on the Billing tab.'};
+    const f = await form({globals: {FormData}, me: {billing_enabled: true, needs_card: false, credit_balance: 0.49, min_run_balance: 1, reload_failed: null},
+      create: () => response({error: refuse.error}, refuse.status)});
+    const dispatch = f.root.querySelector('#dispatch'), said = f.root.querySelector('#dflash');
+    said.scrollIntoView = () => {};
+    const warnings = () => dispatch.querySelectorAll('.notice').filter((n) => !n.removed && /credits/.test(n.innerHTML));
+    assert.equal(warnings().length, 1);
+    f.root.querySelector('textarea[name=prompt]').value = 'Buy YES when Bitcoin is up over the past five minutes';
+    for (let press = 0; press < 2; press++) {
+      await dispatch.onsubmit({preventDefault() {}}); await settle();
+      // Before: the form's note up top and, under Start, the server's "You need at least $1.00 in credits".
+      const [one] = warnings();
+      assert.equal(warnings().length, 1);
+      assert.ok(said.contains(one));
+      assert.match(said.innerHTML, /You have \$0\.49 in credits — a research session needs at least \$1\.00 to start\. <a href="\/billing">Add credits →<\/a>/);
+      assert.match(said.innerHTML, /class="notice bad" id="rlow" role="alert"/);
+      assert.doesNotMatch(said.innerHTML, /on the Billing tab/);
+    }
+    // Refused for something else (two sessions going): the server's words, as before.
+    refuse = {status: 429, error: 'You already have 2 research sessions going (paused ones count).'};
+    await dispatch.onsubmit({preventDefault() {}}); await settle();
+    assert.match(said.innerHTML, /You already have 2 research sessions going/);
     f.clearTimers();
   });
 
