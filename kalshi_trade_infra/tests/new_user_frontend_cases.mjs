@@ -14,8 +14,27 @@ const firstDep = (o = {}) => ({id: 1, strategy_id: 11, title: 'Momentum after sh
   status_reason: null, realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-27T22:05:34Z',
   curve: [], stake: 5, max_positions: 4, backtest: {out_of_sample: {trades: 60, pnl: 0.9}, capital: 10}, ...o});
 
-export function newUserCases({name, frontend, detailStrategy, strategyFrontend, dashboard}) {
+export function newUserCases({name, frontend, detailStrategy, strategyFrontend, dashboard, billingPage, cardedBilling}) {
   const meridian = name === 'Meridian';
+  const pageFile = (page) => readFileSync(new URL(`../app/static/${meridian ? 'app.meridian-' : 'app-'}${page}.js`, import.meta.url), 'utf8');
+
+  // A new account has spent nothing: Billing read "Spent, last 7 days $0.00 · $0.00 in the last 24 hours · $0.00 all
+  // time" under its free credits. It says none yet and what will draw on them; once something is spent, the figures.
+  test(`${name}: Billing says nothing is spent yet on a new account, not three $0.00 figures`, async () => {
+    const welcome = [{kind: 'bonus', amount: 20, memo: 'Welcome credits', created_at: '2026-10-27T21:57:00Z'}];
+    let f = billingPage(cardedBilling({balance: 20, spent: 0, spent_7d: 0, spent_24h: 0, runway_days: null, pace_days: null, card_charged: false, ledger: welcome}));
+    await f.viewBilling(); await flush();
+    let figs = f.root.querySelector('#bfigs').textContent;
+    assert.match(figs, /Spent so far\s*None yet\s*research sessions and chat draw on your credits as they run/);
+    assert.doesNotMatch(figs, /\$0\.00|Spent, last 7 days/);
+    f = billingPage(cardedBilling({spent: 0.83, spent_7d: 0.83, spent_24h: 0.83}));
+    await f.viewBilling(); await flush();
+    figs = f.root.querySelector('#bfigs').textContent;
+    assert.match(figs, /Spent, last 7 days\s*\$0\.83\s*\$0\.83 in the last 24 hours · \$0\.83 all time/);
+    // The statement's key ("one session’s model calls") and the research form's card note write a curly apostrophe.
+    assert.match(pageFile('billing'), /one session’s model calls that day/);
+    assert.doesNotMatch(pageFile('billing') + pageFile('research'), /one session's model calls that day; open it|won't be charged until/);
+  });
 
   // The first paper deployment, before its first trade closes. Deploy's summary said "Realized: None yet" above a row
   // reading "$0.00", and the dashboard's card (Meridian's monitor) said "$0.00" too. Once a trade closes it is a figure.
