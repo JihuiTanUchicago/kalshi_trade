@@ -2547,6 +2547,16 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   assert.equal(JSON.stringify(markets), before); assert.equal(postRequests(f).length, 0);
 });
 
+test('Hot Markets names a 5pm Bitcoin contract by its market, an hourly one by its own title', () => {
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', close_hour_et: 17}];
+  const row = (t, ti) => ({t, s: 'KXBTCD', ti, su: '$113,000 or above', bid: .5, ask: .52, v24: 10, oi: 0});
+  f.root.innerHTML = '<aside id="hotrail"></aside>';
+  f.S.hot = {at: new Date().toISOString(), markets: [row('KXBTCD-26OCT2717-T112999.99', 'Bitcoin price at 5pm EDT?'), row('KXBTCD-26OCT2700-T112999.99', 'Bitcoin price at 12am EDT?')]};
+  f.renderHotRail();
+  assert.deepEqual(f.root.querySelectorAll('.hot-row').map(r => r.querySelector('.hot-title strong').textContent), ['BTC 5pm', 'Bitcoin price at 12am EDT?']);
+});
+
 test('Explore bid and ask preserve decimal strings, zero and independently missing or malformed quote sides', async () => {
   const markets = Object.freeze([
     Object.freeze({t: 'DECIMAL', ti: 'Decimal contract', bid: '.51', ask: '.53', last: '.5'}),

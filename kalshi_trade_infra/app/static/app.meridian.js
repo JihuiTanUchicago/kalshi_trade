@@ -321,19 +321,20 @@
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
   // "Bitcoin daily close, 5pm EDT"), so an open position never shows only the raw ticker. Unknown: ''.
-  const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-'));
+  // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
+  // contracts whose event closes then: KXBTCD-26OCT2700 is the midnight contract, which no strategy trades.
+  const contractHour = (ticker) => { const m = /^[^-]+-\d{2}[A-Z]{3}\d{2}(\d{2})(?:-|$)/.exec(String(ticker || '')); return m ? +m[1] : null; };
+  const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
+    && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
   const contractMarket = (ticker) => {
     const m = contractMkt(ticker);
     return m ? (m.label || marketShort(m.key)) : '';
   };
   // A contract ticker that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(ticker)}</a>`;
-  // A Kalshi series (KXBTC15M, a hot-markets row's `s`) as the app names its market ("BTC 15-min"); '' for a
-  // series no market here covers, so a chip is left off rather than showing the raw series.
-  const seriesMarket = (s) => {
-    const m = s && ((S.me && S.me.markets) || []).find((x) => x.series && x.series.toUpperCase() === String(s).toUpperCase());
-    return m ? marketShort(m.key) : '';
-  };
+  // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"); '' for one no market
+  // here covers, so a chip is left off rather than showing the raw series or another hour's market.
+  const contractShort = (ticker) => { const m = contractMkt(ticker); return m ? marketShort(m.key) : ''; };
   // Link a strategy's market to its Kalshi series page.
   const marketKalshiUrl = (k) => { const m = (S.me && S.me.markets || []).find((x) => x.key === k); return m && m.series ? `https://kalshi.com/markets/${m.series.toLowerCase()}` : null; };
   const dirLabel = (k) => { if (!k) return 'Session'; const d = S.me && S.me.directions.find((x) => x.key === k); return d ? d.label : String(k).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); };
@@ -2442,6 +2443,10 @@
   // strategies on it, when it's one Tau researches; otherwise say so, rather than leave a dead end.
   function marketNext(ticker) {
     const m = contractMkt(ticker);
+    // Another hour of a ladder Tau researches at one close (an hourly Bitcoin contract): point at that close.
+    const sib = !m && ((S.me && S.me.markets) || []).find((x) => x.series && x.close_hour_et != null && String(ticker || '').startsWith(x.series + '-'));
+    const h = sib && sib.close_hour_et;
+    if (sib) return `<p class="hint mk-next">Tau researches only the ${h % 12 || 12}${h < 12 ? 'am' : 'pm'} ET close of this ladder, so your strategies don’t trade this contract. <a href="/research?new=1&amp;market=${encodeURIComponent(sib.key)}">Research ${esc(marketShort(sib.key))}</a></p>`;
     if (!m) return '<p class="hint mk-next">Tau doesn’t research this market, so your strategies can’t trade it. <a href="/research?new=1">See the markets it researches</a></p>';
     const k = encodeURIComponent(m.key);
     return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(marketShort(m.key))}</a><a class="btn sm" href="/strategies?market=${k}">Your ${esc(marketShort(m.key))} strategies</a></p>`;
@@ -3712,7 +3717,7 @@
     return `<svg class="hot-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
   }
   function hotRowHtml(m) {
-    const compactName = seriesMarket(m.s) || (m.ti || '').trim() || m.t;
+    const compactName = contractShort(m.t) || (m.ti || '').trim() || m.t;
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc(mktLabel(m))} ·\u00a0${esc(m.t)} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours ·\u00a0Opens Kalshi in a new tab">

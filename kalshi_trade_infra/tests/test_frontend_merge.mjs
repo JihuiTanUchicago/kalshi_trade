@@ -3433,6 +3433,14 @@ test('Tau: a hot-markets row names its market the app’s way, never by the raw 
   for (const s of ['KXBTC15M', 'KXETHD']) assert.doesNotMatch(row(s), new RegExp('>' + s + '<'));
 });
 
+test('Tau: a hot-markets row for an hourly Bitcoin contract carries no 5pm chip', () => {
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', close_hour_et: 17}];
+  const row = (t) => f.hotRowHtml({t, s: 'KXBTCD', ti: 'Bitcoin price?', su: '$113,000 or above', bid: .48, ask: .52, v24: 1200, h: [.4, .5]});
+  assert.match(row('KXBTCD-26OCT2717-T112999.99'), /<span class="mk quiet">BTC 5pm<\/span>/);
+  assert.doesNotMatch(row('KXBTCD-26OCT2700-T112999.99'), /mk quiet|BTC 5pm/);
+});
+
 test('Tau: the dashboard says where the sessions it counts are, and points finished ones at what each idea missed', async () => {
   const at = async (since) => {
     const f = frontend({fetchImpl: path => {
