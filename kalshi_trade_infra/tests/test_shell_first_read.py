@@ -323,9 +323,9 @@ def _dashboard_db(monkeypatch, deps=()):
         "deployment_strategies": lambda cur, uid: {},
     }.items():
         monkeypatch.setattr(r, name, fn)
-    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None, split=False: (
+    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None, split=False, fills=False: (
         {m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"live": 2},
-        {m: (0.0, 0) for m in ("paper", "demo", "live")}) + (({},) if split else ()))
+        {m: (0.0, 0) for m in ("paper", "demo", "live")}) + (({},) if split else ()) + (({},) if fills else ()))
     monkeypatch.setattr(dashboard_routes, "_freshness", lambda cur: {})
     monkeypatch.setattr(dashboard_routes, "_deployment_out", lambda d, *a: {"id": d["id"], "mode": d["mode"], "status": d["status"]})
     monkeypatch.setattr(book_memo, "_LEDGER", {})

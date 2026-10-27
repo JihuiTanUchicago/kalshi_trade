@@ -67,12 +67,17 @@
     range90: ['Likely average per trade (90% range)', 'Where the true average return per trade after fees most likely sits, 9 times in 10. A range wholly above 0% is what a real edge shows.'],
     placebo: ['Same test on shuffled outcomes (placebo)', 'The same test run on outcomes redrawn at random, so they hold no signal: how often they did at least as well. Lower means the signal, not luck, did the work.'],
     drawdown: ['Worst drop (max drawdown)', 'The biggest fall in P&amp;L from a high point to a later low during the test.'],
-    paperfills: ['Paper fills', 'Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second before a real order lands, so live fills can come in slightly worse.'],
+    paperfills: ['Paper fills', 'Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second or two before a real order lands. Where a page shows an estimate after typical live slippage, it takes 0.5¢ a contract off each time an order fills to allow for that.'],
   };
   // What every paper P&L figure includes, said beside it (services/customer_text.PAPER_NET; the bubble
-  // above is its PAPER_FILLS). Paper already fills at the ask and bid and pays Kalshi's fee, so there
-  // is no separate live-cost estimate to show.
+  // above is its PAPER_FILLS). Paper already fills at the ask and bid and pays Kalshi's fee.
   const PAPER_NET = 'after Kalshi fees and the spread';
+  // What it leaves out is the price moving before a real order lands. Beside the paper headline figures (the
+  // dashboard's, the strategy page's "Since deploying", the track record's paper tab), the server's
+  // slippage_estimate (trading_core/domain/slippage.py) says what they might have been after it: muted, an
+  // estimate with its assumption, never in place of the P&L. Paper only: live and demo never carry one.
+  const slipEst = (e) => (e && e.pnl != null && Number.isFinite(+e.pnl)
+    ? `<span class="slip-est">≈ ${usd(e.pnl, true)} after typical live slippage (estimate: ${+e.per_fill_cents}¢ a contract each time an order fills)</span>` : '');
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
   // A label with its marker: the last word and the marker never break apart, so the marker can't wrap onto a line of its own.
@@ -2301,7 +2306,7 @@
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : 'Connect your Kalshi account on <a href="/funds#connect-kalshi">Funds</a> to trade real money') + tradesCsv('live', lv) })}
           ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
-          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${openCost(p)}${inBalance(p) ? ', ' + inBalance(p) : ''} \u00b7\u00a0<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${PAPER_NET}${glo('paperfills')}${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
+          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${openCost(p)}${inBalance(p) ? ', ' + inBalance(p) : ''} \u00b7\u00a0<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${PAPER_NET}${glo('paperfills')}${tradesCsv('paper', p)}${slipEst(p.slippage_estimate)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
       // The dashboard is a summary: the first few deployments (paused ones, which need the user, then
@@ -2557,7 +2562,7 @@
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
     const figs = `<dl class="figures measure tr-figs">
-      ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `${key === 'paper' ? `${PAPER_NET} (${usd(m.fees)} in fees)${glo('paperfills')}` : `after ${usd(m.fees)} in fees`}${m.first_trade_at ? `\u00a0\u00b7 since ${trDay(m.first_trade_at)}` : ''}` })}
+      ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `${key === 'paper' ? `${PAPER_NET} (${usd(m.fees)} in fees)${glo('paperfills')}` : `after ${usd(m.fees)} in fees`}${m.first_trade_at ? `\u00a0\u00b7 since ${trDay(m.first_trade_at)}` : ''}${key === 'paper' ? slipEst(m.slippage_estimate) : ''}` })}
       ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? ` ·\u00a0${pct(m.annualized_return)} a year` : ''}` })}
       ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
       ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)} ·\u00a0Sortino ${trFix(m.sortino)}` })}
@@ -4054,7 +4059,7 @@
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
     marketKalshiUrl, marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money,
     notice, num, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
-    paperAgain, PAPER_NET, paperCount, PAPER_COUNT_WHY, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
+    paperAgain, PAPER_NET, paperCount, slipEst, PAPER_COUNT_WHY, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
     runTag, runWaitLine, runwayLabel, S, sessionTitle, settleAt, shell, sinceMin, smooth, statusMark,
     strategySlip, strategyTable, stripeFail, syncMeBilling, tone, topupCharge, tradePrice, trDay, tzName,

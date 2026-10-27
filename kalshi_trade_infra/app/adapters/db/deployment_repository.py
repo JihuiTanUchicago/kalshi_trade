@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.adapters.db.sql import now_utc
+from app.adapters.db.sql import contract_fills_sql, now_utc
 from app.adapters.db.strategy_repository import DEMO_DIRECTION, _strategy_row
 
 _EPOCH = datetime(1970, 1, 1)  # naive UTC, as the DATETIME columns are read
@@ -67,20 +67,24 @@ def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] =
     rows instead, so every one of a busy trader's 20k positions carries its strategy's spec and
     result JSON through the GROUP BY (64ms against 31ms). Display only: the engine and the gates
     keep calling list_deployments. `strategy_id` keeps one strategy's deployments (the strategy
-    page), the same rows list_deployments filtered to it, without summing every other one's."""
+    page), the same rows list_deployments filtered to it, without summing every other one's.
+    `contract_fills` (its closed rows' contracts times taker fills, from the qty and close_reason of the
+    rows the same pass fetches) is for the paper book's after-slippage estimate; no gate reads it."""
     one = (int(strategy_id),) if strategy_id is not None else ()
     only_pd, only_d = (" AND pd.strategy_id=%s", " AND d.strategy_id=%s") if one else ("", "")
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
                   d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json,
                   COALESCE(t.realized_pnl,0) AS realized_pnl, COALESCE(t.closed_trades,0) AS closed_trades,
-                  COALESCE(t.wins,0) AS wins, COALESCE(t.open_positions,0) AS open_positions
+                  COALESCE(t.wins,0) AS wins, COALESCE(t.open_positions,0) AS open_positions,
+                  COALESCE(t.contract_fills,0) AS contract_fills
            FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
            LEFT JOIN (SELECT p.deployment_id,
                              SUM(CASE WHEN p.status='closed' THEN p.pnl END) AS realized_pnl,
                              COUNT(CASE WHEN p.status='closed' THEN 1 END) AS closed_trades,
                              COUNT(CASE WHEN p.status='closed' AND p.pnl > 0 THEN 1 END) AS wins,
-                             COUNT(CASE WHEN p.status='open' THEN 1 END) AS open_positions
+                             COUNT(CASE WHEN p.status='open' THEN 1 END) AS open_positions,
+                             SUM(CASE WHEN p.status='closed' THEN """ + contract_fills_sql("p.") + """ END) AS contract_fills
                       FROM app_deployments pd STRAIGHT_JOIN app_positions p FORCE INDEX (idx_pos_dep) ON p.deployment_id=pd.id
                       WHERE pd.user_id=%s AND pd.status <> 'stopped'""" + only_pd + """
                       GROUP BY p.deployment_id) t ON t.deployment_id=d.id
@@ -90,7 +94,7 @@ def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] =
     return [_strategy_row(r) for r in cur.fetchall()]
 
 
-DISPLAY_TOTALS = ("realized_pnl", "closed_trades", "wins", "open_positions")
+DISPLAY_TOTALS = ("realized_pnl", "closed_trades", "wins", "open_positions", "contract_fills")
 
 
 def deployment_strategies(cur, user_id: int) -> Dict[int, int]:
@@ -274,14 +278,17 @@ _TRADE_PACKED = (
     "COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0), COALESCE(SUM(p.qty * p.entry_price),0), "
     "COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price + COALESCE(p.entry_fee,0) END),0), "
     "COALESCE(TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at)),''), "
-    "COALESCE(TIMESTAMPDIFF(SECOND, '1970-01-01', MAX(p.closed_at)),''))")
+    "COALESCE(TIMESTAMPDIFF(SECOND, '1970-01-01', MAX(p.closed_at)),''), "
+    # The closed slices' contracts times taker fills, for the paper book's after-slippage estimate (display only).
+    "COALESCE(SUM(CASE WHEN p.status='closed' THEN " + contract_fills_sql("p.") + " END),0))")
 _TRADE_FIELDS = ("open_slices", "pnl", "fees", "cost", "open_cost")
 
 
 def track_record_trades(cur, user_id: int) -> List[Dict]:
     """track_record_rows' first read: the user's positions grouped per trade, before each trade's
     deployment and strategy are attached: {mode, deployment_id, order_ref, open_slices, pnl, fees,
-    cost, open_cost (Decimals, as the sums read), opened_s, closed_s (whole seconds, None for none)}.
+    cost, open_cost (Decimals, as the sums read), opened_s, closed_s (whole seconds, None for none),
+    contract_fills (its closed slices' contracts times taker fills, for the paper after-slippage estimate)}.
     It reads positions alone, so services.book_memo keeps it while the user's positions are unchanged."""
     cur.execute(
         "SELECT p.mode, p.deployment_id, MAX(p.order_ref) AS order_ref, " + _TRADE_PACKED + """ AS v
@@ -298,6 +305,7 @@ def track_record_trades(cur, user_id: int) -> List[Dict]:
         r.update(zip(_TRADE_FIELDS, map(Decimal, v[:5])))
         r["opened_s"] = int(v[5]) if v[5] else None
         r["closed_s"] = int(v[6]) if v[6] else None
+        r["contract_fills"] = int(Decimal(v[7])) if len(v) > 7 and v[7] else 0
         out.append(r)
     return out
 
@@ -332,7 +340,7 @@ def track_record_join(trades: List[Dict], deps: Dict[int, Dict], seconds: bool =
         row = {"mode": t["mode"], "strategy_id": d["strategy_id"], "title": d["title"], "market": d["market"],
                "dep_status": d["status"],
                "order_ref": t["order_ref"], "open_slices": t["open_slices"], "pnl": t["pnl"], "fees": t["fees"],
-               "cost": t["cost"], "open_cost": t["open_cost"]}
+               "cost": t["cost"], "open_cost": t["open_cost"], "contract_fills": t.get("contract_fills", 0)}
         if seconds:
             row["opened_ts"], row["closed_ts"] = t["opened_s"], t["closed_s"]
         else:

@@ -33,6 +33,8 @@ OLD_TRACK_RECORD_SQL = """
            COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0) AS fees,
            COALESCE(SUM(p.qty * p.entry_price),0) AS cost,
            COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price + COALESCE(p.entry_fee,0) END),0) AS open_cost,
+           COALESCE(SUM(CASE WHEN p.status='closed' THEN p.qty * (CASE WHEN p.close_reason='settled' THEN 1 ELSE 2 END) END),0)
+             AS contract_fills,
            MIN(p.opened_at) AS opened_at, MAX(p.closed_at) AS closed_at
     FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id
     LEFT JOIN app_strategies s ON s.id=d.strategy_id
@@ -134,11 +136,21 @@ def test_the_track_record_and_strategies_page_say_what_they_said(conn, monkeypat
     cur.execute("DELETE FROM app_deployments WHERE id=%s", (gone,))
 
     cur.execute(OLD_TRACK_RECORD_SQL, (uid,))
-    old_rows = cur.fetchall()
+    old_rows = [dict(r, contract_fills=int(r["contract_fills"])) for r in cur.fetchall()]
     new_rows = repo.track_record_rows(cur, uid)
     assert len(new_rows) > 1000 and any(r["title"] is None for r in new_rows) and any(r["open_slices"] for r in new_rows)
     assert not any(r["order_ref"] == "sim:gone" for r in new_rows)
     assert sum(r["order_ref"] == "sim:same-ref" for r in new_rows) == 2
+    # Each trade also carries its closed slices' contract fills (the paper after-slippage estimate's input):
+    # per book, they add up to the closed rows' contracts times their fills (one when settled, else two).
+    cur.execute("SELECT p.mode, p.qty, p.close_reason FROM app_positions p JOIN app_deployments d ON d.id=p.deployment_id "
+                "WHERE p.user_id=%s AND p.status='closed'", (uid,))
+    want, got = {}, {}
+    for s in cur.fetchall():
+        want[s["mode"]] = want.get(s["mode"], 0) + int(s["qty"]) * (1 if s["close_reason"] == "settled" else 2)
+    for r in new_rows:
+        got[r["mode"]] = got.get(r["mode"], 0) + r["contract_fills"]
+    assert got == want and got.get("paper")
     assert new_rows == old_rows  # every value, the same type, in the same order
 
     real_build, real_finish = track_record.build, track_record.finish

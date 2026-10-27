@@ -430,13 +430,16 @@ def stop_sold_line(text: Optional[str], deployment: Optional[Dict]) -> Optional[
 #   size    only the contracts resting at that price; the rest of the order doesn't fill
 #   settle  $1 or $0 on Kalshi's result (engine.settle_due)
 # That already pays the taker cost measured on Kalshi's books (app/trading/exec_cost_model.py: about
-# 0.45c of half-spread plus 1.75c of fee a contract at the median book), so the pages add no live-cost
-# estimate. What it leaves out is the ask moving in the second before a real order lands. A change to
-# the fill model changes these words with it.
+# 0.45c of half-spread plus 1.75c of fee a contract at the median book). What it leaves out is the ask
+# moving in the second or two before a real order lands (0.2c at 1s, 0.55c at 2s on average): the
+# dashboard, the strategy page and the track record show paper P&L after it beside the figure, as an
+# estimate (trading_core.domain.slippage, 0.5c a contract each time an order fills; owner, 2026-10-27).
+# A change to the fill model changes these words with it.
 PAPER_NET = "after Kalshi fees and the spread"
 # The same, where a sentence already runs long (the backtest comparison, the autopilot's chat lines).
 PAPER_NET_SHORT = "net of fees and spread"
 PAPER_FILLS = ("Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays "
                "Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A "
-               "contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second "
-               "before a real order lands, so live fills can come in slightly worse.")
+               "contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second or "
+               "two before a real order lands. Where a page shows an estimate after typical live slippage, it takes "
+               "0.5¢ a contract off each time an order fills to allow for that.")

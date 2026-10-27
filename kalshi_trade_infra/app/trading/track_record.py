@@ -30,6 +30,7 @@ from typing import Dict, Iterable, List, Optional
 from app.trading.quant import max_drawdown
 from app.research.stats import probabilistic_sharpe_ratio
 from trading_core.domain.money import cents, exact
+from trading_core.domain.slippage import paper_estimate
 
 MODES = ("live", "demo", "paper")
 MODE_LABEL = {"live": "Live money", "demo": "Kalshi demo", "paper": "Paper"}
@@ -50,7 +51,7 @@ METHOD = [
     "A trade is one entry fill, round trip. Partial exits are summed into it, and a trade that is still partly open is left out until it closes.",
     "P&L is net of all Kalshi fees.",
     # What a paper fill assumes: app.services.customer_text.PAPER_FILLS, word for word (a test pins it).
-    "Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second before a real order lands, so live fills can come in slightly worse.",
+    "Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second or two before a real order lands. Where a page shows an estimate after typical live slippage, it takes 0.5¢ a contract off each time an order fills to allow for that.",
     "Strategies removed from paper, demo or live, and strategies deleted after that, keep their trades in every figure: nothing is dropped for doing badly.",
     "Paper trades that filled instantly, without the simulated order book, are left out, because real execution would not get those fills.",
     "Capital is what the record needed: the most money ever at risk at once plus the worst drawdown, so the smallest bankroll that could have taken every trade. Return and drawdown percentages use it.",
@@ -474,6 +475,8 @@ def prepare(rows: List[Dict]) -> Dict:
             "opened_ts": r["opened_ts"] if "opened_ts" in r else _ts(r.get("opened_at")),
             "closed_ts": r["closed_ts"] if "closed_ts" in r else _ts(r.get("closed_at")),
             "open_cost": float(r.get("open_cost") if r.get("open_cost") is not None else r.get("cost") or 0),
+            # Contracts times taker fills of its closed slices: the paper after-slippage estimate's input only.
+            "contract_fills": int(r.get("contract_fills") or 0),
         }
         if int(r.get("open_slices") or 0) > 0:
             opened[mode].append(t)
@@ -504,6 +507,10 @@ def finish(prepared: Dict, now: Optional[datetime] = None) -> Dict:
         # P&L the dashboard, Funds and Deploy show for this book, so the page can say why the two differ.
         s.update(label=MODE_LABEL[m], excluded_instant_fills=excluded[m], excluded_instant_pnl=prepared["excluded_pnl"][m],
                  monthly=monthly(closed[m], today), strategies=[dict(r) for r in prepared["strategies"][m]])
+        # Beside net_pnl, never in place of it: the same closed trades after the slippage a live order typically
+        # pays (trading_core.domain.slippage). Paper only (None for live and demo, and for a book with no trade).
+        s["slippage_estimate"] = paper_estimate(m, sum(t["pnl"] for t in closed[m]),
+                                                sum(t.get("contract_fills", 0) for t in closed[m]))
         modes[m] = s
     default = next((m for m in DEFAULT_ORDER if modes[m]["trades"]), "paper")
     return {"generated_at": now_ts, "default_mode": default, "modes": modes, "method": METHOD,

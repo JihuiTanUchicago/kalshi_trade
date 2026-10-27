@@ -20,6 +20,7 @@ from data_pipeline.architecture.simulated_venue import SimulatedVenue
 from data_pipeline.common import utc_now
 from data_pipeline.kalshi_fees import taker_fee_dollars
 from data_pipeline.market_data import Quote
+from trading_core.domain.slippage import per_fill_cents
 
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
 TICKER = "KXBTC15M-26OCT271315-15"
@@ -63,8 +64,13 @@ def test_the_words_are_plain_and_say_fees_and_the_spread():
         assert customer_text.leaks(text) == []
         assert "list price" not in text.lower()
     for said in ("buys at the ask", "sells at the bid", "trading fee on every fill", "settles at $1 or $0",
-                 "live fills can come in slightly worse"):
+                 "price moving in the second or two before a real order lands"):
         assert said in customer_text.PAPER_FILLS
+    # What it leaves out is named once, by the estimate beside paper P&L, with the assumption the server uses
+    # (it said "live fills can come in slightly worse" before the estimate existed).
+    assert "slightly worse" not in customer_text.PAPER_FILLS
+    assert ("an estimate after typical live slippage, it takes %s¢ a contract off each time an order fills"
+            % format(per_fill_cents(), "g")) in customer_text.PAPER_FILLS
 
 
 def test_the_track_record_method_says_how_paper_fills():

@@ -9,7 +9,7 @@ window.TauPage('strategies', (T) => {
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, S, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
+    researchOnly, roadDays, root, rpUnderwater, S, settleAt, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -392,7 +392,7 @@ window.TauPage('strategies', (T) => {
   // own figure) when it sends one. Adding the rows' rounded figures here could read a cent off the list.
   function bookTotal(s, mode, ds) {
     const t = s.book_totals && s.book_totals[mode];
-    if (t) return { pnl: +t.pnl || 0, trades: +t.trades || 0, open: +t.open || 0, instant: +t.instant_fills || 0 };
+    if (t) return { pnl: +t.pnl || 0, trades: +t.trades || 0, open: +t.open || 0, instant: +t.instant_fills || 0, slip: t.slippage_estimate };
     return { pnl: ds.reduce((a, d) => a + (+d.realized_pnl || 0), 0), trades: ds.reduce((a, d) => a + (+d.closed_trades || 0), 0),
       open: ds.reduce((a, d) => a + (+d.open_positions || 0), 0) };
   }
@@ -437,10 +437,10 @@ window.TauPage('strategies', (T) => {
     const lines = order.map((mode) => {
       const ds = (s.deployments || []).filter((d) => d.mode === mode);
       if (!ds.length) return '';
-      const { pnl, trades: n, open, instant } = bookTotal(s, mode, ds);
+      const { pnl, trades: n, open, instant, slip } = bookTotal(s, mode, ds);
       // "deployed Oct 18" stays whole (.nobr): at 390px in Meridian "deployed" ended a line and "Oct 18" began the next.
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? ` ·\u00a0<span class="nobr">deployed ${when(since)}</span>` : ''}</p>${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? ` ·\u00a0<span class="nobr">deployed ${when(since)}</span>` : ''}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together), and,

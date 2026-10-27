@@ -37,6 +37,7 @@ import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
+import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -6189,6 +6190,7 @@ moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
 }});
+slippageEstimateCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 
 test('the strategies sort shows "P&L on data it never saw" whole, and the filter row still fits one line at 1366', () => {
   // Measured in DM Sans 14px: the label is ~160px of text; at 175px the select cut it. The market filter and the

@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from trading_core.domain.slippage import contract_fills
+
 pytestmark = pytest.mark.skipif(os.getenv("APP_TEST_MYSQL") != "1", reason="needs APP_TEST_MYSQL=1 and a MySQL")
 
 
@@ -758,8 +760,16 @@ def test_the_dashboard_and_strategy_list_reads_answer_as_the_ones_they_replace(c
     cur.execute("UPDATE app_positions SET closed_at=%s WHERE deployment_id=%s", (day - timedelta(days=2), b["id"]))
 
     listed = repo.list_deployments_for_display(cur, uid)
-    assert listed == repo.list_deployments(cur, uid)
-    assert repr(listed) == repr(repo.list_deployments(cur, uid))  # the same types too (Decimal sums, int counts)
+    # It also sums each deployment's contract fills (the paper after-slippage estimate's input, which the
+    # gates' list_deployments never reads); every other column is list_deployments' own.
+    bare = [{k: v for k, v in d.items() if k != "contract_fills"} for d in listed]
+    assert bare == repo.list_deployments(cur, uid)
+    assert repr(bare) == repr(repo.list_deployments(cur, uid))  # the same types too (Decimal sums, int counts)
+    cur.execute("SELECT deployment_id, qty, close_reason FROM app_positions WHERE user_id=%s AND status='closed'", (uid,))
+    want = {}
+    for r in cur.fetchall():
+        want[r["deployment_id"]] = want.get(r["deployment_id"], 0) + contract_fills(r["qty"], r["close_reason"] == "settled")
+    assert {d["id"]: int(d["contract_fills"]) for d in listed} == {d["id"]: want.get(d["id"], 0) for d in listed}
     by_id = {d["id"]: d for d in listed}
     assert stopped["id"] not in by_id and by_id[empty["id"]]["closed_trades"] == 0
     assert (by_id[a["id"]]["closed_trades"], by_id[a["id"]]["wins"], by_id[a["id"]]["open_positions"]) == (4, 2, 1)
@@ -922,7 +932,8 @@ def test_the_deploy_board_and_strategy_page_reads_answer_as_the_ones_they_replac
 
     # The strategy page's deployments: the same rows list_deployments gave, filtered to the strategy.
     for sid in {big["strategy_id"], small["strategy_id"], stopped["strategy_id"]}:
-        mine = repo.list_deployments_for_display(cur, uid, strategy_id=sid)
+        mine = [{k: v for k, v in d.items() if k != "contract_fills"}  # the estimate's input; the rest is the same
+                for d in repo.list_deployments_for_display(cur, uid, strategy_id=sid)]
         want = [d for d in repo.list_deployments(cur, uid) if d["strategy_id"] == sid]
         assert repr(mine) == repr(want), sid
     assert [d["id"] for d in repo.list_deployments_for_display(cur, uid, strategy_id=big["strategy_id"])] == [demo, big["id"]]
