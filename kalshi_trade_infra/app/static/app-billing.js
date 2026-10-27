@@ -218,13 +218,27 @@ window.TauPage('billing', (T) => {
   // A charge under a cent (one short model call) shows three decimals instead of a misleading −$0.00.
   const ledgerAmount = (v) => { const n = +v; return n && Math.abs(n) < 0.005 ? (n < 0 ? '−' : '+') + WJ + '$' + Math.abs(halfUp(n, 3)).toFixed(3) : usd(v, true); };
   const USAGE_PREFIX = /^Agent usage\s\u00b7\s/;  // the server's memo, "Agent usage" then a middle dot
+  // A usage line without the server's `model` (one from before it sent one) has only its memo, which names the
+  // model by its internal id ("Agent usage \u00b7 claude-opus-4-6", "us.anthropic.claude-haiku-4-5-20251001-v1:0"). The
+  // customer reads the model's family and version ("Claude Opus 4.6"), or "AI model", never the id, as the
+  // server's label_for_model_id says it. Display only: the stored memo is unchanged.
+  const MODEL_FAMILY = [['opus', 'Claude Opus'], ['sonnet', 'Claude Sonnet'], ['haiku', 'Claude Haiku'], ['fable', 'Claude Fable'],
+    ['nova', 'Amazon Nova'], ['llama', 'Llama']];
+  const modelName = (id) => {
+    const low = String(id).toLowerCase(), fam = MODEL_FAMILY.find(([k]) => low.includes(k));
+    if (!fam) return 'AI model';
+    const v = new RegExp(`${fam[0]}[-_. ]?(\\d)(?!\\d)(?:[-_.](\\d)(?!\\d))?`).exec(low);
+    return v ? `${fam[1]} ${v[1]}${v[2] ? '.' + v[2] : ''}` : fam[1];
+  };
+  const MODEL_ID = /(?:\b(?:us|eu|apac|global)\.)?\b(?:anthropic\.claude|amazon\.(?:nova|titan)|meta\.llama|writer\.palmyra|deepseek\.r\d|mistral\.[a-z]|cohere\.command|ai21\.)(?:[\w.:-]*\w)?|\bclaude-[a-z0-9](?:[\w.:-]*\w)?/gi;
+  const memoModel = (memo) => (USAGE_PREFIX.test(memo) ? modelName(memo.replace(USAGE_PREFIX, '')) : memo.replace(MODEL_ID, modelName));
   // A usage line: what it was for (`item`: research session, autopilot research or check-in, chat)
   // over the model's name (`model`). The server sends both and never the model's internal id.
   // A usage line is one session's calls on one day: it links the research session it paid for and says
   // how many model calls it adds up. A card purchase says what the card paid and its Stripe reference.
   function ledgerNote(r, feePct) {
     if (r.kind === 'usage') {
-      const model = r.model ? esc(r.model) : r.memo && !r.item ? esc(r.memo.replace(USAGE_PREFIX, '')) : '';
+      const model = r.model ? esc(r.model) : r.memo && !r.item ? esc(memoModel(r.memo)) : '';
       return [r.session ? `<a href="/research/${+r.session.id}">${esc(sessionTitle(r.session))}</a>` : '', model,
         +r.calls > 1 ? `${num(r.calls)} model calls` : ''].filter(Boolean).join(SEP);
     }

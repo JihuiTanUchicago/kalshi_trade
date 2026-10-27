@@ -3233,8 +3233,8 @@ test('Billing ledger says why each line was charged and where the receipt is; am
   assert.match(main, /<p class="hint ledger-key">Newest first\. The receipt has every line, with exact amounts\.<\/p>/);
   const rows = f.root.querySelectorAll('.t-ledger tbody tr').map((r) => r.innerHTML);
   assert.equal(rows.length, 5);
-  assert.match(rows[0], /Agent usage<div class="sub-fig">claude-opus-4-6<\/div>[\s\S]*−\$0\.21/);
-  assert.doesNotMatch(rows[0], /Agent usage · /);  // the memo's prefix isn't said twice
+  assert.match(rows[0], /Agent usage<div class="sub-fig">Claude Opus 4\.6<\/div>[\s\S]*−\$0\.21/);  // the model's name, never its id
+  assert.doesNotMatch(rows[0], /Agent usage · |claude-opus/);  // the memo's prefix isn't said twice
   assert.match(rows[1], /Auto-reload<div class="sub-fig">Card charged: \$25\.00 credits plus the 5\.5% purchase fee<\/div>[\s\S]*\+\$25\.00/);
   assert.match(rows[2], /Agent usage<div class="sub-fig">Research run \(seed\)<\/div>[\s\S]*−\$0\.91/);
   assert.match(rows[3], /Added credits<div class="sub-fig">Card charged: \$10\.00 credits plus the 5\.5% purchase fee<\/div>[\s\S]*\+\$10\.00/);

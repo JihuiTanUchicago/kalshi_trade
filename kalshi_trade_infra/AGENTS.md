@@ -88,7 +88,7 @@ backtest, or research-pipeline change, hold the bar in `RESEARCH_PIPELINE_DESIGN
 
 ## Skills
 - `/ponytail` before any **backend** code; `/impeccable` before any **frontend/UI** work.
-- `/devlog-sync` whenever `mvp.md`'s Queue/Done changes (regenerates the public Dev Logs).
+- `/devlog-sync` whenever `mvp.md`'s Queue/Done changes (regenerates the public Dev Logs). Every customer reads that page: write each entry in customer words, with no setting, code, file, cloud-account, model-id or pricing detail (`tests/test_devlog.py` enforces it).
 - `/security-review` per the safety rule above. `/code-review`, `/simplify` are available on demand.
 - **Skills worth building (propose, don't auto-author):** a `quant-rigor` checklist skill
   distilling `RESEARCH_PIPELINE_DESIGN.md` (pre-registration, trial-count, purged WF, DSR/PSR
