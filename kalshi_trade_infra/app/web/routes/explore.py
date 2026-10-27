@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from app import repository as repo
-from app.trading.markets import NEW_YORK
+from app.trading.markets import MARKETS, NEW_YORK
 from app.web.http import ApiError, Ctx
 from app.web.routes.strategies import _mark_fields
 
@@ -97,6 +97,13 @@ def _ticker_close(ticker: Optional[str]) -> Optional[str]:
     return at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# The app's own names for a series, searched with its contracts: Kalshi titles the 15-minute contracts
+# "BTC price up in next 15 mins?", so a search for "bitcoin" missed them until "Bitcoin 15-minute" counted.
+_SERIES_NAMES: Dict[str, str] = {}
+for _m in MARKETS.values():
+    _SERIES_NAMES[_m.series] = (_SERIES_NAMES.get(_m.series, "") + " " + _m.label).strip()
+
+
 def explore_list(ctx: Ctx):
     data = _explore_feed()
     q = (ctx.query.get("q") or "").strip().lower()
@@ -109,7 +116,7 @@ def explore_list(ctx: Ctx):
     markets = data.get("markets") or []
     if q:
         markets = [m for m in markets
-                   if q in ((m.get("ti") or "") + " " + (m.get("t") or "") + " " + (m.get("s") or "")).lower()]
+                   if q in " ".join((m.get("ti") or "", m.get("t") or "", m.get("s") or "", _SERIES_NAMES.get(m.get("s") or "", ""))).lower()]
     # "Price" orders by the price the list shows (the bid/ask midpoint, else the last trade), so the
     # column reads top to bottom; sorting on the last trade alone put quoted markets that never traded last.
     rank = (lambda m: _feed_mid(m) or 0.0) if sort == "last" else (lambda m: _efloat(m.get(sort)))

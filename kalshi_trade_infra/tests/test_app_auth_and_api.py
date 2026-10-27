@@ -1017,6 +1017,20 @@ def test_explore_price_sort_follows_the_price_the_list_shows(monkeypatch):
     assert order("bogus") == ["A", "D", "C", "B"]
 
 
+def test_explore_search_finds_a_market_by_the_apps_name_for_it(monkeypatch):
+    # Kalshi titles the 15-minute Bitcoin contracts "BTC price up in next 15 mins?": a search for
+    # "bitcoin" finds them through the app's name for the series, as it finds the 5pm ladder by title.
+    feed = {"at": "2026-10-26T10:55:00Z", "total": 3, "shown": 3, "markets": [
+        {"t": "KXBTC15M-26OCT262345-45", "s": "KXBTC15M", "ti": "BTC price up in next 15 mins?", "v24": "3"},
+        {"t": "KXBTCD-26OCT2717-T113499.99", "s": "KXBTCD", "ti": "Bitcoin price on Oct 27, 2026 at 5pm EDT?", "v24": "2"},
+        {"t": "KXETH15M-26OCT262345-45", "s": "KXETH15M", "ti": "ETH price up in next 15 mins?", "v24": "1"}]}
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
+    found = lambda q: [m["t"] for m in server.explore_list(server.Ctx(FakeConn(), {"id": 1}, (), {"q": q}, {}, None))["markets"]]
+    assert found("bitcoin") == ["KXBTC15M-26OCT262345-45", "KXBTCD-26OCT2717-T113499.99"]
+    assert found("Ethereum") == ["KXETH15M-26OCT262345-45"]
+    assert found("btc") == ["KXBTC15M-26OCT262345-45", "KXBTCD-26OCT2717-T113499.99"]
+
+
 def test_explore_list_says_when_a_timed_contract_closes(monkeypatch):
     # A timed event's ticker carries its New York close: the list sends it as UTC so the page can say
     # "closes 22:45 CDT" for a 15-minute Bitcoin contract. No hour in the ticker, no close time.
