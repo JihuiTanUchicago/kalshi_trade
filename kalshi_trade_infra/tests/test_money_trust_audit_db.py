@@ -216,6 +216,16 @@ def test_every_page_shows_one_number_per_figure(conn, quiet):
         for listed in (dash["open_positions"], board["open_positions"]):
             [p] = [p for p in listed if p["mode"] == m]
             assert p["at_cost"] == cost and p["cost"] == _c(p["qty"] * p["entry_price"] + p["entry_fee"]), m
+        # Cost with its fee: the one basis every page names an open position's cost on. The dashboard and Funds said
+        # "$1.51 at cost" for the position Deploy and the strategy page showed at "Cost + fee $1.54". Their book
+        # figure is now that same number, rounded once from the exact sum.
+        with_fees = _c(sum(Decimal(r["qty"]) * r["entry_price"] + r["entry_fee"] for r in held))
+        assert dash[m]["open_cost"] == fb[m]["open_cost"] == with_fees, m
+        for listed in (dash["open_positions"], board["open_positions"]):
+            assert [p["cost"] for p in listed if p["mode"] == m] == [with_fees], m
+        holdings = [h for page in pages.values() for h in page.get("holdings") or [] if h["mode"] == m]
+        assert [h["cost"] for h in holdings] == [with_fees], m
+    assert (dash["paper"]["open_cost"], dash["paper"]["open_at_cost"]) == (1.54, 1.51)  # 5 x $0.301 + $0.03 fee
     assert dash["paper"]["open_at_cost"] == 1.51 and round(5 * 0.301, 2) == 1.5
     assert ap["paper_open"] == dash["paper"]["open_positions"]
     assert dash["paper"]["equity"] == funds["paper"]["equity"] and dash["paper"]["cash"] == funds["paper"]["cash"]

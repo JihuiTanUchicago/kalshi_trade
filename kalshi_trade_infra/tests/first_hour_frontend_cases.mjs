@@ -303,7 +303,7 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     // Tau's demo book starts at a capital Tau sets ($1,000 for a new account): without a key it is no balance at all.
     let html = await board(false);
     assert.match(html, /No demo key/);
-    assert.match(html, /Connect a Kalshi demo key on <a href="\/funds">Funds<\/a>/);
+    assert.match(html, /Connect a Kalshi demo key on <a href="\/funds#connect-kalshi">Funds<\/a>/);
     assert.doesNotMatch(html, /\$4,321\.00/);
     // With a key (or from an /api/me that doesn't say), the figure is shown.
     for (const key of [true, undefined]) {
@@ -320,15 +320,15 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
       return out;
     };
     let fd = await funds({connected: false});
-    assert.match(fd.figs, /Demo balance\s*No demo key/);
+    assert.match(fd.figs, /Tau’s demo book\s*No demo key/);
     assert.doesNotMatch(fd.figs + fd.main, /4,321/);
     assert.equal(fd.reload, null);
     fd = await funds({connected: true, key_id: 'k2', balance: 50});
-    assert.match(fd.figs, /Demo balance\s*\$4,321\.00/);
+    assert.match(fd.figs, /Tau’s demo book\s*\$4,321\.00/);
     assert.ok(fd.reload, 'the reload is there with a key');
     // A book that traded, its key since removed, keeps its record and says it needs a key.
     fd = await funds({connected: false}, {equity: 4326, realized: 5, closed_trades: 2});
-    assert.match(fd.figs, /Demo balance\s*\$4,326\.00[\s\S]*needs a demo key/);
+    assert.match(fd.figs, /Tau’s demo book\s*\$4,326\.00[\s\S]*needs a demo key/);
   });
 
   test(`${name}: Funds for an account with no Kalshi key leads with Paper and folds the key forms under Connect Kalshi`, async () => {

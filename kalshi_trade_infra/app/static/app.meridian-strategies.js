@@ -505,7 +505,7 @@ window.TauPage('strategies', (T) => {
       const on = !!(S.me && S.me.user && S.me.user.autopilot), hand = 'nothing needed. Deploy it on paper below.';
       need = 'Next rung, paper: ' + (apPaper ? `<span data-ap-next${on ? '' : ' hidden'}>the autopilot puts it there at its next check-in.</span><span data-ap-off${on ? ' hidden' : ''}>${hand}</span>` : hand);
     }
-    else if (next[0] === 'demo') need = (demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a>.'
+    else if (next[0] === 'demo') need = (demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds#connect-kalshi">Funds page</a>.'
       : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}`
         // Its demo cash is being read (demo_health_pending): not yet "nothing needed".
         : s.demo_health_pending ? 'Next rung, demo: checking your Kalshi demo account…' : 'Next rung, demo: nothing needed. Deploy it on demo below.')
@@ -595,9 +595,9 @@ window.TauPage('strategies', (T) => {
       if (i.pnl != null && +i.pnl <= 0) return `it lost money in testing (${usd(i.pnl, true)}).`;
       return 'it ranked below the handful of finalists we tested on unseen data.';
     };
-    const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the <a href="/funds">Funds page</a> first.' : (s.side !== 'yes' && !S.me.no_side_live_enabled) ? 'NO-side live trading is still being validated on the demo sandbox — deploy this on demo or paper for now.' : '';
+    const liveWhy = !S.me.live_trading_available ? 'Live trading isn’t open yet.' : !S.me.kalshi_connected ? 'Connect Kalshi on the <a href="/funds#connect-kalshi">Funds page</a> first.' : (s.side !== 'yes' && !S.me.no_side_live_enabled) ? 'NO-side live trading is still being validated on the demo sandbox — deploy this on demo or paper for now.' : '';
     // Both are fixed strings (no user data), so they render as HTML with a link to Funds.
-    const demoWhy = !S.me.kalshi_dev_connected ? 'Add your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a> first.' : '';
+    const demoWhy = !S.me.kalshi_dev_connected ? 'Add your Kalshi demo (sandbox) key on the <a href="/funds#connect-kalshi">Funds page</a> first.' : '';
     // Overfit/luck tells on a raw backtest column: a tiny sample, a perfect win rate, no losing
     // trades (profit factor runs away), or an implausibly high daily Sharpe are the classic
     // signatures of a number too good to be real. Flag them inline so a raw backtest is never

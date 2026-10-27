@@ -48,10 +48,21 @@ def _open_cost(open_pos: List[Dict], mode: str) -> Decimal:
     return sum((Decimal(str(p["qty"])) * Decimal(str(p["entry_price"])) for p in open_pos if p["mode"] == mode), Decimal(0))
 
 
+def _open_cost_with_fees(open_pos: List[Dict], mode: str) -> Decimal:
+    """What one mode's open positions cost with their entry fees (contracts x entry price + entry fee),
+    exactly: each position's "Cost + fee" on Deploy and the strategy page, summed before rounding."""
+    return sum((Decimal(str(p["qty"])) * Decimal(str(p["entry_price"])) + Decimal(str(p.get("entry_fee") or 0))
+                for p in open_pos if p["mode"] == mode), Decimal(0))
+
+
 def _open_book(open_pos: List[Dict], mode: str) -> Dict:
-    """One mode's open positions: how many and what they cost (contracts x entry price). The dashboard
-    and Funds both read this, so the two pages show the same open money to the cent."""
+    """One mode's open positions: how many and what they cost. `open_cost` is with the entry fees, the
+    basis every page names a position's cost on (Deploy's and the strategy page's "Cost + fee");
+    `open_at_cost` is before them, the part paper's balance counts (the fee is already spent). The
+    dashboard and Funds both read this, so the two pages show the same open money to the cent. Display
+    only: nothing stored or summed into P&L changes."""
     return {"open_at_cost": cents(_open_cost(open_pos, mode)),
+            "open_cost": cents(_open_cost_with_fees(open_pos, mode)),
             "open_positions": sum(1 for p in open_pos if p["mode"] == mode)}
 
 
@@ -211,7 +222,7 @@ def _health_from(cur, uid: int, deps: List[Dict], stake: Optional[float], cash_r
             return None  # nothing on demo; the deploy button already says to add the key
         return {"code": "demo_key", "need": "your Kalshi demo key",
                 "line": "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page.",
-                "action": {"label": "Add demo key", "href": "/funds"}}
+                "action": {"label": "Add demo key", "href": "/funds#connect-kalshi"}}
     stakes = [float(_spec_sizing(d)["stake"]) for d in active
               if d["status"] == "running" and _spec_sizing(d).get("stake") is not None]
     if stake is not None:

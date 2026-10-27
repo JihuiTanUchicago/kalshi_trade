@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, loading, pageAssets,
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, loading, openCost, pageAssets,
     paint, painted, poll, refreshed, root, S, shell, tone, usd, when
   } = T;
 
@@ -39,30 +39,35 @@ window.TauPage('funds', (T) => {
     if (!/-----END [A-Z ]*PRIVATE KEY-----/.test(pem)) return 'That private key is cut off: it should end with an -----END … PRIVATE KEY----- line. Choose the .key file instead of copying it.';
     return '';
   }
+  // Funds shows two demo figures, each named for what it is: Tau's demo book (the capital Tau sets, app_users.demo_capital,
+  // plus closed demo trades) and the cash in the reader's own account on Kalshi's sandbox, which the demo key reads.
+  // Both were "balance", side by side with different amounts.
+  const DEMO_BOOK = 'Tau\u2019s demo book', DEMO_CASH = 'Kalshi demo account cash';
   // How you know it worked: the existing balance read, right under the panel title. No balance means Kalshi
   // didn't answer for this key just now (Kalshi down, or the key deleted there), so it gets no check mark.
   // `at` is when the balance memo was read (the server's balance_at), so the line says how old it is.
   const keyOk = (bal, kind, at) => bal == null
     ? `<p class="key-ok key-unread"><b>Key saved</b> (Kalshi didn’t send a balance for it just now)</p><p class="hint key-diff">If this lasts, the key may have been deleted on ${KALSHI_KEYS[kind === 'demo' ? 'demo' : 'live'].site}: ${kind === 'demo' ? 'remove it' : 'disconnect it'} and connect a new one.</p>`
-    : `<p class="key-ok"><b>Connected ✓</b> (balance ${usd(bal)}${at ? ', read ' + when(at) : ''})${kind === 'demo' ? ' <span class="hint">in your Kalshi demo account</span>' : ''}</p>`;
+    : `<p class="key-ok"><b>Connected ✓</b> (${kind === 'demo' ? DEMO_CASH : 'balance'} ${usd(bal)}${at ? ', read ' + when(at) : ''})</p>`;
   // Kalshi refuses orders from a demo account with no cash, and a new one starts empty. Tau's demo balance is
   // Tau's own figure, so a $0.00 here would otherwise read as harmless.
   // `from` is the demo cash the autopilot's demo copies wait for (server: demo_twins), so a balance
   // under it says why no copy starts, not only an empty one.
-  const demoEmpty = (bal, from) => bal == null ? '' : bal < 0.005 ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has $0.00, so Kalshi refuses demo orders. Add demo funds in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (play money, not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>`
-    : from && bal < from ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has ${usd(bal)}. Demo copies of your paper strategies start once it holds ${usd(from)}: add play money in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>` : '';
+  const demoEmpty = (bal, from) => bal == null ? '' : bal < 0.005 ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has $0.00, so Kalshi refuses demo orders. Add demo funds in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (play money, not real). Tau’s demo book above is Tau’s own bookkeeping and doesn’t fund it.</span></div>`
+    : from && bal < from ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has ${usd(bal)}. Demo copies of your paper strategies start once it holds ${usd(from)}: add play money in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (not real). Tau’s demo book above is Tau’s own bookkeeping and doesn’t fund it.</span></div>` : '';
 
   // What the demo key's save says: Kalshi took the key, and its balance once the follow-up has it (never an error's text).
   const DEV_OK = 'Kalshi\u2019s demo exchange confirmed the key.';
   const DEV_CHECKING = `Connected \u2713. ${DEV_OK} Checking its balance\u2026`;
-  const devSaid = (b) => b && b.balance != null ? `Connected \u2713 (balance ${usd(b.balance)}). ${DEV_OK}`
+  const devSaid = (b) => b && b.balance != null ? `Connected \u2713 (${DEMO_CASH} ${usd(b.balance)}). ${DEV_OK}`
     : b && b.failed ? `Connected \u2713. ${DEV_OK} Tau couldn\u2019t read its balance just now. Reload in a minute to try again.`
     : `Connected \u2713. ${DEV_OK}`;
-  // Each Funds figure says what it leaves out: a book's open positions, by count and cost (contracts x entry,
-  // the dashboard's "at cost"). An API without the counts says nothing rather than "0 open".
-  const openAt = (b) => b.open_positions ? `${b.open_positions} open (${usd(b.open_at_cost)} at cost) ·\u00a0` : '';
+  // Each Funds figure says what it leaves out: a book's open positions, by count and cost with fees (the bundle's
+  // openCost: Deploy's and the dashboard's "Cost + fee"). Paper's balance holds them at their price, so its line
+  // also says how much of that is in the balance (inBalance). An API without the counts says nothing rather than "0 open".
+  const openAt = (b, held) => b.open_positions ? `${b.open_positions} open (${openCost(b)}${held && inBalance(b) ? ', ' + inBalance(b) : ''}) ·\u00a0` : '';
   const openLeft = (b, mode) => b.open_positions == null ? 'Open positions not included'
-    : b.open_positions ? `${b.open_positions} open ${mode} position${b.open_positions === 1 ? '' : 's'} (${usd(b.open_at_cost)} at cost) not included` : `No open ${mode} positions`;
+    : b.open_positions ? `${b.open_positions} open ${mode} position${b.open_positions === 1 ? '' : 's'} (${openCost(b)}) not included` : `No open ${mode} positions`;
   // What each book has made: its realized P&L from closed trades, the figure the dashboard, Deploy and the
   // track record show, never added to another book's. Before a book's first close it says when one shows.
   // An API without the figure says nothing. Demo's is since its last reload, as on the dashboard.
@@ -76,8 +81,9 @@ window.TauPage('funds', (T) => {
   // and a figure the server read earlier shows only with its age; a follow-up that fails says so plainly.
   const lastRead = (b) => `${usd(b.last_balance)}, read ${when(b.last_balance_at)}`;
   // The key line under a panel title, and the Cash at Kalshi cell, in the same states; keyOk otherwise.
-  const keyLine = (b, kind) => b.pending ? `<p class="key-ok key-unread"><b>Key saved</b> (${b.last_balance != null ? 'balance ' + lastRead(b) + '; checking for the latest' : 'checking your balance at Kalshi'}\u2026)</p>`
-    : b.failed ? `<p class="key-ok key-unread"><b>Key saved</b> (${b.last_balance != null ? 'balance ' + lastRead(b) + '; ' : ''}Tau couldn\u2019t check it just now. Reload in a minute to try again.)</p>`
+  const cashName = (kind) => kind === 'demo' ? DEMO_CASH : 'balance';
+  const keyLine = (b, kind) => b.pending ? `<p class="key-ok key-unread"><b>Key saved</b> (${b.last_balance != null ? cashName(kind) + ' ' + lastRead(b) + '; checking for the latest' : kind === 'demo' ? 'checking your Kalshi demo account cash' : 'checking your balance at Kalshi'}\u2026)</p>`
+    : b.failed ? `<p class="key-ok key-unread"><b>Key saved</b> (${b.last_balance != null ? cashName(kind) + ' ' + lastRead(b) + '; ' : ''}Tau couldn\u2019t check it just now. Reload in a minute to try again.)</p>`
     : keyOk(b.balance, kind, b.balance_at);
   const cashCell = (b) => b.pending ? (b.last_balance != null ? `${lastRead(b)}; checking\u2026` : 'Checking\u2026')
     : b.failed ? (b.last_balance != null ? `${lastRead(b)}; couldn\u2019t check it just now` : 'Couldn\u2019t check it just now')
@@ -161,6 +167,17 @@ window.TauPage('funds', (T) => {
         if (gen === S.gen && el && el.textContent === DEV_CHECKING + behind) flash('#kdflash', devSaid(b) + behind, 'good');
       });
     };
+    // /funds#connect-kalshi (the "connect a demo key on Funds" links elsewhere) opens Connect Kalshi on the page's first
+    // paint and brings it into view. An account with a key has no fold: the link goes to the key form it lacks.
+    let linked = location.hash !== '#connect-kalshi';
+    const openLinked = (host) => {
+      if (linked) return;
+      linked = true;
+      const fold = host.querySelector('#connect-kalshi'), form = host.querySelector('#kalshi, #kalshi-dev');
+      const to = fold || (form && form.closest('section'));
+      if (fold) fold.open = true;
+      if (to && to.scrollIntoView) to.scrollIntoView({ block: 'start' });
+    };
     // `got`: the page's own answer with a key's cash filled in (fillCash); else /api/funds is read.
     const load = async (cfg, got) => {
       const d = got || await api('/api/funds', undefined, cfg);
@@ -174,8 +191,8 @@ window.TauPage('funds', (T) => {
       const demoNone = demoKeyless(dm, !!kd.connected);
       const cf = k.connected && cashFig(k);
       paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
-        (!demoNone ? fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) : fig('Demo balance', 'No demo key', { small: `Connect a demo key below to trade Kalshi’s sandbox ·\u00a0${DEMO_WHAT}` })) +
-        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}practice money` }));
+        (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox ·\u00a0${DEMO_WHAT}` })) +
+        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper, true)}${bookPnl(d.paper, 'paper')}practice money` }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
       // key forms fold under Connect Kalshi: it opened on the live-key form and the demo key's steps. An account
       // with a key keeps live, demo, paper.
@@ -202,7 +219,7 @@ window.TauPage('funds', (T) => {
       const demoSec = `<section class="${sub}">
           <h2>Kalshi demo (sandbox) account</h2>
           ${!demoNone ? `
-          <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
+          <dl class="kv"><dt>${DEMO_BOOK}</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
           <p class="lede" style="margin-bottom:14px">Demo places real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is ours to set: reload it to any amount; this never touches your Kalshi demo account’s balance. A reload starts realized P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
             <label class="field"><span>Reload to</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="1000"></label>
@@ -210,7 +227,7 @@ window.TauPage('funds', (T) => {
           </form>
           <div id="dmflash" style="margin-top:10px"></div>
           ` : `
-          <p class="lede" style="margin-bottom:14px">Demo places real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. Tau’s demo balance and its reload show here once a demo key is connected.</p>
+          <p class="lede" style="margin-bottom:14px">Demo places real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. Tau’s demo book and its reload show here once a demo key is connected.</p>
           `}
           <h3 style="margin-top:24px">Demo key</h3>
           ${kd.connected ? `
@@ -267,6 +284,7 @@ window.TauPage('funds', (T) => {
       const connectOpen = !!(host.querySelector('#connect-kalshi') || {}).open;
       host.innerHTML = main; painted.set(host, main);
       if (connectOpen && host.querySelector('#connect-kalshi')) host.querySelector('#connect-kalshi').open = true;
+      openLinked(host);
       if (S.perps) { S.perps.destroy(); S.perps = null; }
       if (window.TAU_PERPS_LIVE) mountPerps(); else pageAssets('funds').then(mountPerps);
       const df = root.querySelector('#demo');

@@ -293,4 +293,4 @@ def test_funds_names_each_books_open_positions_and_paper_matches_the_dashboard(m
     assert out["paper"]["cash"] == 2001.74 and out["paper"]["equity"] == 2009.83
     assert out["demo"]["equity"] == 753.77  # demo's own figure, untouched by paper or live
     # The dashboard's buckets read the same helper, so the two pages agree to the cent.
-    assert server._open_book(pos, "paper") == {"open_at_cost": 8.09, "open_positions": 2}
+    assert server._open_book(pos, "paper") == {"open_at_cost": 8.09, "open_cost": 8.09, "open_positions": 2}

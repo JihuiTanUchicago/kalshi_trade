@@ -657,6 +657,8 @@
     const h = e.target.closest('a[href^="#"]');
     const to = h && (h.classList.contains('skip') ? pageStart() : h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1)));
     if (to) {
+      // A link to a fold (Funds' Connect Kalshi) opens it as well.
+      if (to.tagName === 'DETAILS') to.open = true;
       e.preventDefault(); to.scrollIntoView({ behavior: smooth(), block: 'start' });
       // Focus follows the scroll (Skip to content), so the next Tab starts from the target, not from the link.
       if (!to.hasAttribute('tabindex')) to.setAttribute('tabindex', '-1');
@@ -2298,12 +2300,12 @@
       // deployment, the usual case while live is closed), it sits under the paper figure as its own figure, never
       // added to it, and says when Kalshi was read, as Tau's dashboard does. Only a missing key stays in the menu.
       const cashInBand = !hasLive && lv.connected;
-      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds">Connect Kalshi</a>') + tradesCsv('live', lv) });
-      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]} \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : `${money(lv.realized_pnl)} realized all time by Tau trades${lv.balance_at ? ` \u00b7\u00a0cash read from Kalshi ${when(lv.balance_at)}` : ''}`) : '<a href="/funds">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost, not in cash</span><strong>${usd(lv.open_at_cost)}</strong></div></div></dd></div>`;
+      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>') + tradesCsv('live', lv) });
+      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]} \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : `${money(lv.realized_pnl)} realized all time by Tau trades${lv.balance_at ? ` \u00b7\u00a0cash read from Kalshi ${when(lv.balance_at)}` : ''}`) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(lv)}, not in cash</span><strong>${openFig(lv)}</strong></div></div></dd></div>`;
       const demoFigure = (demoKeyless(d.demo) ? fig('Demo balance', 'No demo key', { small: DEMO_NO_KEY }) : fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
       // newcomer could take it for real money.
-      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span> \u00b7\u00a0<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span> \u00b7\u00a0<span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
+      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span> \u00b7\u00a0<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span> \u00b7\u00a0<span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${openFig(p)}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
@@ -2325,7 +2327,7 @@
         <td class="position-size-cell"><span class="position-size"><span class="position-side">${esc(r.side.toUpperCase())}</span><span aria-hidden="true"> × </span><span class="position-quantity"><span class="vh">Quantity </span>${esc(r.qty)}</span></span></td>
         <td class="position-expiry-cell">${expiry ? `<time class="position-expiry" datetime="${esc(close.toISOString())}">${esc(expiry)}</time>` : '<span class="unavailable" title="Expiry unavailable"><span aria-hidden="true">—</span><span class="vh">Expiry unavailable</span></span>'}</td>
         <td class="num position-entry">${cents(+r.entry_price)}</td>
-        ${closed ? '' : `<td class="num"><span class="position-cost">${usd(r.at_cost != null ? r.at_cost : r.qty * r.entry_price)}</span></td>`}
+        ${closed ? '' : `<td class="num"><span class="position-cost">${usd(r.cost != null ? r.cost : r.at_cost != null ? r.at_cost : r.qty * r.entry_price)}</span></td>`}
         <td class="num"><span class="position-pnl">${closed ? money(+r.pnl) : (r.unrealized != null ? money(r.unrealized) : '<span class="unavailable" title="Unrealized P&amp;L unavailable"><span aria-hidden="true">—</span><span class="vh">Unavailable</span></span>')}</span></td>
         </tr>`;
       }).join('');
@@ -2347,7 +2349,7 @@
           else groups.push({market, deploymentId, title: row.title, mode: row.mode, rows: [row]});
         });
         const bodies = groups.map(group => `<tbody><tr class="position-family"><th scope="rowgroup" colspan="${widths.length}"><span class="position-attribution">${group.market ? `<span class="position-family-name vh">${esc(group.market.label || marketShort(group.market.key))}</span>` : ''}<span class="position-strategy">${esc(group.title)}</span><span class="position-attribution-mode">${group.mode === 'live' ? '<span class="mk live">LIVE</span>' : group.mode === 'demo' ? 'Demo' : 'Paper'}</span></span></th></tr>${positions(group.rows, closed)}</tbody>`).join('');
-        return `<div class="sheet"><table class="t-positions" data-paper-only="${onlyPaper}"><colgroup>${widths.map(width => `<col style="width:${width / 808 * 100}%">`).join('')}</colgroup><thead><tr><th scope="col">Market / contract</th><th scope="col">Position</th><th scope="col">Expiry</th><th scope="col" class="num">Entry</th>${closed ? '' : '<th scope="col" class="num">Cost</th>'}<th scope="col" class="num" title="${closed ? 'Realized result after settlement' : 'Estimated from the latest stored bid'}">${closed ? 'Realized' : 'Unrealized'} P&amp;L</th></tr></thead>${bodies}</table></div>`;
+        return `<div class="sheet"><table class="t-positions" data-paper-only="${onlyPaper}"><colgroup>${widths.map(width => `<col style="width:${width / 808 * 100}%">`).join('')}</colgroup><thead><tr><th scope="col">Market / contract</th><th scope="col">Position</th><th scope="col">Expiry</th><th scope="col" class="num">Entry</th>${closed ? '' : '<th scope="col" class="num">Cost + fee</th>'}<th scope="col" class="num" title="${closed ? 'Realized result after settlement' : 'Estimated from the latest stored bid'}">${closed ? 'Realized' : 'Unrealized'} P&amp;L</th></tr></thead>${bodies}</table></div>`;
       };
       const days = (p.daily || []).slice(-30);
       let periodPnl = 0;
@@ -2538,7 +2540,7 @@
   function trackRecordPanel(m, key, th) {
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY}).`);
-    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
+    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost before fees) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
       // A part-sold trade's sold slice is realized (the dashboard counts it) but waits here for the rest.
       + (m.open_realized_pnl ? ` Part of ${m.open_trades === 1 ? 'it' : 'them'} is already sold: ${usd(m.open_realized_pnl, true)} realized, not yet in these figures.` : ''));
     if (key === 'live' && m.trades) caveats.push('Live results count only the trades Tau placed, net of Kalshi fees. Your Kalshi cash also moves with deposits, withdrawals and anything you trade yourself.');
@@ -3232,7 +3234,17 @@
   // doesn't say keeps the figure. Funds passes its own key read.
   const demoUnused = (b) => !!b && !+b.open_positions && !+b.running && !+b.closed_trades && !+(b.realized_pnl != null ? b.realized_pnl : b.realized) && !+b.before_reload;
   const demoKeyless = (b, key = S.me && S.me.kalshi_dev_connected) => key === false && demoUnused(b);
-  const DEMO_NO_KEY = 'Connect a Kalshi demo key on <a href="/funds">Funds</a> to trade its sandbox (play money)';
+  const DEMO_NO_KEY = 'Connect a Kalshi demo key on <a href="/funds#connect-kalshi">Funds</a> to trade its sandbox (play money)';
+  // An open position's cost, on the one basis every page names it: contracts x entry price plus the entry fee, as
+  // Deploy's and the strategy page's "Cost + fee" (a row's `cost`, a book's `open_cost`). The dashboard and Funds said
+  // "$1.90 at cost" for a position Deploy showed at "$1.94". An answer without it names its figure as before fees.
+  const openBasis = (b) => b.open_cost != null ? 'cost + fees' : 'cost before fees';
+  const openFig = (b) => usd(b.open_cost != null ? b.open_cost : b.open_at_cost);
+  const openCost = (b) => `${openFig(b)} at ${openBasis(b)}`;
+  // Paper's balance counts an open position at its price (contracts x entry price): the fee is already spent. When
+  // the two differ, the part in the balance is said, so cash plus it is the balance.
+  const inBalance = (b, what = 'the balance') => b.open_cost != null && b.open_at_cost != null && Math.abs(b.open_cost - b.open_at_cost) >= 0.005
+    ? `${usd(b.open_at_cost)} of it in ${what}` : '';
   // Dashboard autopilot card: the one-click way in while autopilot is off, and once it's on a
   // plain "what is it doing, is it making money" strip. Painted from the float's status poll
   // (S.ap) plus the dashboard's paper book (S.dashPaper), so it never needs its own request.
@@ -3917,7 +3929,7 @@
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
-    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, demoSpan,
+    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig, demoSpan,
     DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,
