@@ -4,8 +4,8 @@
 window.TauPage('research', (T) => {
   'use strict';
   const {
-    alert0, announce, api, apNudge, armed, boardTitle, busy, clearTimers, esc, EXAMPLE_NOTE, exampleLine,
-    feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
+    alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, esc, EXAMPLE_NOTE, exampleLine,
+    failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, sessionNo, sessionTitle, shell, strategySlip, strategyTable, tzName, usd, waitSpan, when,
     whyFailedHtml, wireMarketPicker
@@ -326,6 +326,9 @@ window.TauPage('research', (T) => {
       if (msel) msel.addEventListener('change', sync);
       api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; }).then(sync);
     })();
+    // A start Tau didn't confirm may have landed: the sessions on this page read every 5s, so the words
+    // point there instead of at a reload (the typed idea is kept either way).
+    const RUN_UNSURE = 'Tau didn\u2019t confirm the session started. If it did, it shows up in your sessions on this page within a few seconds; check there before you start it again.';
     form.onsubmit = async (e) => {
       e.preventDefault();
       if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
@@ -345,7 +348,7 @@ window.TauPage('research', (T) => {
         } catch (err) {
           const said = form.querySelector('#dflash'), low = err.status === 402 && form.querySelector('#rlow');
           if (low && said) { low.remove(); said.innerHTML = lowNote('bad'); announce(lowSaid, true); }
-          else flash('#dflash', err.message, 'bad');
+          else flash('#dflash', err instanceof ApiError && err.message === failText(0, true) ? RUN_UNSURE : err.message, 'bad');
           // The error sits under the cost lines: on a phone that is below the fold, so Start looked
           // like it did nothing (out of credits, two sessions already going). Bring it into view.
           if (said && said.scrollIntoView) said.scrollIntoView({ block: 'nearest' });

@@ -151,6 +151,24 @@ export function explorePageCases({name, frontend}) {
     assert.match(body().innerHTML, /\+\$420\.01/);
   });
 
+  // The figures carry the age Tau read them at ("Coinbase · 4s ago"), which stood still while the 15s poll
+  // failed (a train, a lift): once it has failed for about two polls, a line says how old they really are.
+  test(`${name}: spot figures a failing poll left up say how old they are, and the next good read clears it`, async () => {
+    let fail = false;
+    const {f, body} = await openSpot(() => (fail ? response({error: 'Something went wrong on our side.'}, 500) : response(SPOT)));
+    const note = () => f.root.querySelector('#mk-spot-stale').textContent;
+    const tick = async () => { for (const run of [...f.intervals.values()]) await run(); await settle(); };
+    assert.equal(note(), '');
+    fail = true;
+    f.shiftClock(31000); await tick();
+    assert.match(note(), /^Last updated 3\ds ago, retrying$/);
+    assert.match(body().innerHTML, /Coinbase ·\s4s ago/, 'the last figures stay up');
+    fail = false;
+    f.shiftClock(31000); await tick(); await tick();
+    assert.equal(note(), '');
+    f.clearTimers();
+  });
+
   test(`${name}: a market that isn't a Bitcoin contract, or a settled one, has no spot section and asks for none`, async () => {
     const {f, asked} = await openSpot(() => response(SPOT), {ticker: 'KXETHD-26OCT2617-T4000', series: 'KXETHD'});
     assert.equal(f.root.querySelector('#mk-spot'), null);

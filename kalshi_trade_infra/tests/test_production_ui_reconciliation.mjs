@@ -59,6 +59,8 @@ class Element {
     visit(this); return found;
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  closest(selector) { return this.matches(selector) ? this : this.parent ? this.parent.closest(selector) : null; }
+  get parentElement() { return this.parent || null; }
   appendChild(child) { this.children.push(child); child.parent = this; }
   addEventListener(key, callback) { this.listeners.set(key, callback); }
   setAttribute(key, value) { this.attributes[key] = String(value); }

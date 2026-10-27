@@ -637,7 +637,22 @@
   // page is gone.
   const wakers = new Set();
   const wake = () => wakers.forEach((w) => { if (w() === false) wakers.delete(w); });
+  // The phone says it has no network (a tunnel, a lift): a line above the page says so at once. A page
+  // only said so a poll or two later ("Last updated 30s ago, retrying"), or as "Something went wrong"
+  // on the next tap. It goes by itself once the network is back.
+  const OFFLINE = 'You’re offline. Tau keeps what it last showed and catches up when you’re back.';
+  const offline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+  function netBar() {
+    let bar = document.getElementById('netbar');
+    if (!offline()) { if (bar) bar.remove(); return; }
+    if (bar || !document.body) return;
+    bar = document.createElement('div');
+    bar.id = 'netbar'; bar.className = 'netbar'; bar.setAttribute('role', 'status'); bar.textContent = OFFLINE;
+    document.body.insertBefore(bar, root);
+  }
+  window.addEventListener('offline', netBar);
   window.addEventListener('online', () => {
+    netBar();
     wake();
     if (document.getElementById('bootretry')) { render(); return; }
     root.querySelectorAll('.load-fail [data-retry]').forEach((b) => b.click());
@@ -734,7 +749,10 @@
         const up = path.replace(/\/\d+$/, ''), label = { '/strategies': 'All strategies', '/research': 'All research sessions' }[up];
         shell('', boardTitle('Not found'), `<div class="load-fail">${notice(e.message, 'bad')}<a class="btn sm" href="${label ? up : '/'}">${label || 'Dashboard'}</a></div>`);
       } else if (gen === S.gen && e.status !== 401) {
-        shell('', boardTitle('Something went wrong'), loadFail(errText(e)));
+        // Offline, it isn't "something went wrong": the page loads by itself once the network is back
+        // (the online handler presses Try again).
+        const off = e.status === 0 && offline();
+        shell('', boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
       }
     }
@@ -2413,7 +2431,7 @@
   // Spot and strikes to the cent: usd() rounds six figures to the dollar, which drew a $112,999.99 strike
   // as $113,000 beside a distance to it in cents.
   const btcUsd = (v) => '$' + fmt2.format(+v);
-  const SPOT_SECT = '<section class="sect" id="mk-spot"><div class="sect-head"><h2>Bitcoin vs the strike</h2><p>Latest stored price, refreshed every 15s</p></div><div id="mk-spot-body"><p class="hint">Reading Bitcoin’s latest stored price…</p></div></section>';
+  const SPOT_SECT = '<section class="sect" id="mk-spot"><div class="sect-head"><h2>Bitcoin vs the strike</h2><p>Latest stored price, refreshed every 15s</p></div><div id="mk-spot-body"><p class="hint">Reading Bitcoin’s latest stored price…</p></div><p class="stale-note" id="mk-spot-stale" role="status"></p></section>';
   const spotAge = (s) => (s < 60 ? s + 's ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 172800 ? Math.round(s / 3600) + ' hr ago' : Math.round(s / 86400) + ' days ago');
   const spotOld = (s) => (s < 5400 ? Math.max(2, Math.round(s / 60)) + ' min' : s < 172800 ? Math.round(s / 3600) + ' hr' : Math.round(s / 86400) + ' days');
   const leftText = (s) => (s < 60 ? 'Under a minute' : s < 3600 ? Math.floor(s / 60) + ' min' : s < 172800 ? `${Math.floor(s / 3600)} hr ${Math.floor((s % 3600) / 60)} min` : Math.floor(s / 86400) + ' days');
@@ -2450,7 +2468,9 @@
     };
     first.then(show);
     // One poll per page, though a retry of the market draws the page again; a failed poll keeps the last figures.
-    if (S.spotPoll !== S.gen) { S.spotPoll = S.gen; poll((cfg) => api(path, undefined, cfg).then(show), 15000); }
+    // Those figures carry the age Tau read them at ("Coinbase · 12s ago"), which stood still while the poll
+    // failed: once it has failed for about two polls, a line under them says how old they really are.
+    if (S.spotPoll !== S.gen) { S.spotPoll = S.gen; poll((cfg) => api(path, undefined, cfg).then(show), 15000, 'mk-spot-stale'); }
   }
   const spotRead = (ticker) => api('/api/explore/spot?ticker=' + encodeURIComponent(ticker)).catch((e) => ({ failed: errText(e) }));
   async function viewMarketDetail(ticker) {
@@ -2818,6 +2838,18 @@
   // Dashboard autopilot card: the one-click way in while autopilot is off, and once it's on a
   // plain "what is it doing, is it making money" strip. Painted from the float's status poll
   // (S.ap) plus the dashboard's paper book (S.dashPaper), so it never needs its own request.
+  // A Turn on still waiting for Tau: the 15s board poll and the 20s status read repaint the card, and
+  // the button came back pressable with its note gone, so a hung switch looked like a press that did
+  // nothing. The repainted button stays busy, with the note, until the write answers (apTurning).
+  let apTurning = null;
+  function apCardOn(b) {
+    const waited = apTurning = waitNote(b);
+    return busy(b, apTurnOn, waited).finally(() => {
+      apTurning = null;
+      const card = document.getElementById('dash-ap'), now = card && card.querySelector('[data-apcard="on"]');
+      if (now && now !== b) { now.classList.remove('busy'); now.disabled = false; }
+    });
+  }
   function paintDashAp() {
     const host = document.getElementById('dash-ap');
     if (!S.me || !S.me.user) return;
@@ -2832,7 +2864,8 @@
         <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
         <p class="apcard-err error-text" role="alert"></p>`;
       const b = host.querySelector('[data-apcard="on"]');
-      b.onclick = () => busy(b, apTurnOn);
+      if (apTurning) { b.classList.add('busy'); b.disabled = true; apTurning.place(b); }
+      b.onclick = () => apCardOn(b);
       apBindFocus(host);
       return;
     }
@@ -3144,9 +3177,14 @@
       if (p && S.me.user.autopilot) { p.textContent = 'Autopilot is on. Every idea it tries shows up in the autopilot panel.'; p.hidden = false; }
     });
   });
+  // A switch Tau didn't confirm (no reply, or the edge's 5xx page) may have landed. "Reload the page to
+  // check" sent a phone user to reload: the card and the panel read the switch again within half a
+  // minute (the board poll, the status read), so the words point there.
+  const AP_UNSURE = 'Tau didn\u2019t confirm this, so autopilot may or may not have switched. Its status here updates within half a minute; check it before you try again.';
+  const apSaid = (e) => (e instanceof ApiError && e.message === failText(0, true) ? AP_UNSURE : e.message);
   async function apTurnOn() {
     try { await api('/api/settings', { autopilot: true }); }
-    catch (e) { const card = document.getElementById('dash-ap'), err = card && card.querySelector('.apcard-err'); if (err) err.innerHTML = esc(e.message); else alert0(e.message); return; }
+    catch (e) { const card = document.getElementById('dash-ap'), err = card && card.querySelector('.apcard-err'); if (err) err.innerHTML = esc(apSaid(e)); else alert0(apSaid(e)); return; }
     S.me.user.autopilot = true;
     if (S.ap) S.ap = Object.assign({}, S.ap, { autopilot: true, mode: S.ap.mode === 'off' ? 'paper' : S.ap.mode });
     paintDashAp();
@@ -3520,7 +3558,7 @@
   // drawing with undefined, and its page fails with Try again.
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
-    actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction,
+    actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid,
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
@@ -3601,6 +3639,7 @@
 
   setupAnnouncer();
   guardArmedRepeat();
+  netBar();
   setupGlossary();
   render();
 })();
