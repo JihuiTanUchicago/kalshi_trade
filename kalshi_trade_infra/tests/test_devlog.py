@@ -31,3 +31,12 @@ def test_shipped_details_do_not_map_credentials_or_cloud_accounts():
     pat = r"AWS_[A-Z_]+|\bIAM\b|\bOIDC\b|\bSSM\b|Actions Secrets|tau-deploy|\bt4g\.|/etc/shadow|exfil|private `\.env`"
     for _, title, detail in devlog.SHIPPED:
         assert not re.search(pat, title + " " + detail), title
+
+
+def test_dev_logs_never_price_credits_against_a_list_price_or_a_markup():
+    # Walk 2026-10-27: a public entry read "Billing: customers charged list price × 2 (100% margin)" and named the
+    # setting behind it; two more priced models at their "list price". Credits are what a customer pays: the Dev
+    # Logs never say what Tau pays for a model or what it adds on top. ("margin" alone stays: perps margin use.)
+    pat = r"list price|mark-?up|\d+% margin|USAGE_MARGIN|× ?2\b|raw model cost"
+    for title, detail in devlog.PLANNED + [(t, d) for _, t, d in devlog.SHIPPED]:
+        assert not re.search(pat, title + " " + detail, re.I), title
