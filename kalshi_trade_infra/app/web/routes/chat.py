@@ -501,12 +501,12 @@ def _tournament_line(t: Optional[Dict]) -> str:
         return ""
     lead, book = t["leader"], "${:,.0f}".format(t["capital"])
     if t["cash_weight"] >= lead["weight"]:
-        where = "it keeps %d%% of its %s practice book in cash until an entrant proves it beats zero" % (
+        where = "it keeps %d%% of its %s practice book in cash until a strategy shows it makes money" % (
             round(100 * t["cash_weight"]), book)
     else:
         where = "it has %d%% of its %s practice book on %s" % (
             round(100 * lead["weight"]), book, lead["title"] or "its leader")
-    return ("The paper tournament runs %s at once, with %d of the %d independent bets the research gate needs so far; %s." % (
+    return ("The paper tournament runs %s at once, with %d of the %d separate bets it takes to judge them so far; %s." % (
         _plural(t["entrants"], "strategy", "strategies"), t["trips"], t["target"], where))
 
 

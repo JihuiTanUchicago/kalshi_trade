@@ -284,10 +284,14 @@ def test_panel_line_summarizes_the_tournament_in_one_sentence(monkeypatch):
     monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: rows)
     t = tournament.panel_summary(None, 1, {7: "Rain NYC"})
     line = server._tournament_line(t)
-    assert line == ("The paper tournament runs 2 strategies at once, with 15 of the 400 independent bets the research gate "
-                    "needs so far; it has 50% of its $10,000 practice book on Rain NYC.")
+    assert line == ("The paper tournament runs 2 strategies at once, with 15 of the 400 separate bets it takes to judge them "
+                    "so far; it has 50% of its $10,000 practice book on Rain NYC.")
     monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: [dict(rows[0], weight=0.2), dict(rows[2], weight=0.8)])
-    assert "in cash until an entrant proves it beats zero" in server._tournament_line(tournament.panel_summary(None, 1, {}))
+    cash = server._tournament_line(tournament.panel_summary(None, 1, {}))
+    assert "in cash until a strategy shows it makes money" in cash
+    # In the Research page's words for the same tournament: no "entrant", "beats zero" or "independent bets the gate".
+    for said in (line, cash):
+        assert not any(w in said for w in ("entrant", "beats zero", "independent", "gate")), said
     monkeypatch.setattr(tournament, "latest_snapshot", lambda cur, uid: [])
     assert tournament.panel_summary(None, 1, {}) is None and server._tournament_line(None) == ""
 
