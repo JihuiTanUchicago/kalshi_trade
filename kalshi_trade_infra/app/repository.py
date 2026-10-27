@@ -12,7 +12,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 # Shared SQL helpers and the aggregates already split out of this module (ARCHITECTURE.md step 6).
 # Re-exported so every `repo.<name>` caller and monkeypatch keeps working unchanged.
-from app.adapters.db.sql import _json, _loads, now_utc, transaction  # noqa: F401
+from app.adapters.db.sql import _json, _loads, contract_fills_sql, now_utc, transaction  # noqa: F401
 from app.adapters.db.billing_repository import (  # noqa: F401
     add_credit, credit_balance, credit_rows, credit_spent_total, credit_statement, credit_totals, get_stripe_customer,
     finished_session_costs, finished_session_costs_by_model, forever_session_rates, recent_session_costs, research_spent_since, runs_spent,

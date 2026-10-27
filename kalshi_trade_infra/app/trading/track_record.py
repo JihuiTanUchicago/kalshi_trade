@@ -30,6 +30,7 @@ from typing import Dict, Iterable, List, Optional
 from app.trading.quant import max_drawdown
 from app.research.stats import probabilistic_sharpe_ratio
 from trading_core.domain.money import cents, exact
+from trading_core.domain.slippage import paper_estimate
 
 MODES = ("live", "demo", "paper")
 MODE_LABEL = {"live": "Live money", "demo": "Kalshi demo", "paper": "Paper"}
@@ -474,6 +475,8 @@ def prepare(rows: List[Dict]) -> Dict:
             "opened_ts": r["opened_ts"] if "opened_ts" in r else _ts(r.get("opened_at")),
             "closed_ts": r["closed_ts"] if "closed_ts" in r else _ts(r.get("closed_at")),
             "open_cost": float(r.get("open_cost") if r.get("open_cost") is not None else r.get("cost") or 0),
+            # Contracts times taker fills of its closed slices: the paper after-slippage estimate's input only.
+            "contract_fills": int(r.get("contract_fills") or 0),
         }
         if int(r.get("open_slices") or 0) > 0:
             opened[mode].append(t)
@@ -504,6 +507,10 @@ def finish(prepared: Dict, now: Optional[datetime] = None) -> Dict:
         # P&L the dashboard, Funds and Deploy show for this book, so the page can say why the two differ.
         s.update(label=MODE_LABEL[m], excluded_instant_fills=excluded[m], excluded_instant_pnl=prepared["excluded_pnl"][m],
                  monthly=monthly(closed[m], today), strategies=[dict(r) for r in prepared["strategies"][m]])
+        # Beside net_pnl, never in place of it: the same closed trades after the slippage a live order typically
+        # pays (trading_core.domain.slippage). Paper only (None for live and demo, and for a book with no trade).
+        s["slippage_estimate"] = paper_estimate(m, sum(t["pnl"] for t in closed[m]),
+                                                sum(t.get("contract_fills", 0) for t in closed[m]))
         modes[m] = s
     default = next((m for m in DEFAULT_ORDER if modes[m]["trades"]), "paper")
     return {"generated_at": now_ts, "default_mode": default, "modes": modes, "method": METHOD,

@@ -37,3 +37,12 @@ def _loads(value):
     if value is None or isinstance(value, (dict, list)):
         return value
     return json.loads(value)
+
+
+def contract_fills_sql(col: str = "") -> str:
+    """SQL for one closed position row's contracts times taker fills (trading_core.domain.slippage.
+    contract_fills): its entry fill and its exit fill, or the entry alone when it was held to settlement
+    (close_reason 'settled', which the engine's settle_due writes; settlement is not a fill). `col` is the
+    table alias with its dot ("p."). The caller keeps it to closed rows. Display only: the paper
+    after-slippage estimate reads it, no gate does."""
+    return "%sqty * (CASE WHEN %sclose_reason='settled' THEN 1 ELSE 2 END)" % (col, col)

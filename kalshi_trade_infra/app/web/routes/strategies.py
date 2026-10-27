@@ -29,6 +29,7 @@ from app.web.views import (
     demo_health_memo,
 )
 from trading_core.domain.money import cents
+from trading_core.domain.slippage import paper_estimate
 
 
 def _strategy_card(s: Dict) -> Dict:
@@ -255,16 +256,24 @@ def _book_totals(deps: List[Dict]) -> Dict[int, Dict[str, Dict]]:
     deployments summed per book, never across books, the P&L exactly and then rounded once. The
     strategies list's "since deploying" figure and the strategy page's per-book lines both read this:
     the page added its deployments' rounded figures, so two deployments in one book could read a
-    cent away from the list."""
+    cent away from the list. The paper book also carries `slippage_estimate` once it has a closed trade:
+    its P&L after the slippage a live order typically pays (trading_core.domain.slippage), from the same
+    rows' contract fills, beside `pnl` and never in place of it. Live and demo never carry one."""
     out: Dict[int, Dict[str, Dict]] = {}
+    fills: Dict[Tuple[int, str], int] = {}
     for d in deps:
         r = out.setdefault(d["strategy_id"], {}).setdefault(d["mode"], {"pnl": Decimal(0), "trades": 0, "open": 0, "paused": False})
         r["paused"] = r["paused"] or d.get("status") == "paused"  # often auto-paused; the list flags it
         r["pnl"] += Decimal(str(d["realized_pnl"] or 0))
         r["trades"] += int(d["closed_trades"] or 0)
         r["open"] += int(d["open_positions"] or 0)
-    for books in out.values():
-        for r in books.values():
+        key = (d["strategy_id"], d["mode"])
+        fills[key] = fills.get(key, 0) + int(d.get("contract_fills") or 0)
+    for sid, books in out.items():
+        for mode, r in books.items():
+            est = paper_estimate(mode, r["pnl"], fills.get((sid, mode)))
+            if est:
+                r["slippage_estimate"] = est
             r["pnl"] = cents(r["pnl"])
     return out
 

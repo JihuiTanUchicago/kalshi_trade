@@ -28,6 +28,7 @@ from app.web.views import (
     credit_usd,
 )
 from trading_core.domain.money import cents, exact
+from trading_core.domain.slippage import paper_estimate
 
 
 def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict], day,
@@ -74,8 +75,9 @@ def dashboard(ctx: Ctx):
     ledger = book_memo.paper_ledger_summary(cur, ctx.uid)  # balance, deposits and reset: one read, kept until the ledger moves
     balance, deposited = ledger["balance"], ledger["deposited"]
     visit, first = _visit_since(ctx.query.get("since"))
-    # Every book's realized P&L and closed-trade count (today and since the last visit), in one read.
-    realized, closed, recent, by_dep = book_memo.closed_book_totals(memo, day, visit, split=True)
+    # Every book's realized P&L and closed-trade count (today and since the last visit), and its contract
+    # fills for the paper book's after-slippage estimate, in one read.
+    realized, closed, recent, by_dep, fills = book_memo.closed_book_totals(memo, day, visit, split=True, fills=True)
     _BOOK_SHAPE[ctx.uid] = _book_shape(closed, len(open_pos))  # the track record's cache checks it
     # Three mode buckets, each self-contained (real / sandbox / simulation). Paper + demo both
     # carry an app-controlled cash layer on top of the shared fields; live carries the real
@@ -92,6 +94,9 @@ def dashboard(ctx: Ctx):
         # total_pnl restarts at a reset (the ledger is wiped), so its label says "since reset", not
         # "all time", while the track record still counts every closed trade.
         reset_at=ledger["reset_at"],
+        # Beside realized_pnl, never in place of it: what it might have been after the slippage a live
+        # order typically pays (trading_core.domain.slippage). Paper only; None before a closed trade.
+        slippage_estimate=paper_estimate("paper", realized["paper"][0], fills.get("paper")),
     )
     # Demo: real fills applied to the capital WE set. Equity = capital + realized-since-reload,
     # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).

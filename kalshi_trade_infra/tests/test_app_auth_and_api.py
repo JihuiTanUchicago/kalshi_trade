@@ -269,8 +269,9 @@ def test_dashboard_paper_book_carries_its_reset_so_all_time_labels_stay_true(mon
         "user_positions": lambda *a, **k: [], "list_deployments_for_display": lambda *a, **k: [], "deployment_curves": lambda *a, **k: {},
         "paper_ledger_summary": lambda cur, uid: {"balance": 480.0, "deposited": 500.0, "reset_at": at},
         "paper_ledger_version": lambda cur, uid: (2, 9),  # the ledger's rows and highest id (book_memo keeps the sum)
-        "closed_book_totals": lambda cur, uid, since, visit=None, split=False: ({m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"demo": 3},
-                                                                                  {m: (0.0, 0) for m in ("paper", "demo", "live")}) + (({},) if split else ()),
+        "closed_book_totals": lambda cur, uid, since, visit=None, split=False, fills=False: (
+            {m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"demo": 3},
+            {m: (0.0, 0) for m in ("paper", "demo", "live")}) + (({},) if split else ()) + (({},) if fills else ()),
         "daily_pnl": lambda *a, **k: [],
         "activity_since": lambda cur, uid, since: {"autopilot": {}, "runs": {}},
         "passed_since": lambda cur, uid, since, **k: {"n": 0, "items": []},

@@ -205,7 +205,7 @@ def _board_rows():
     dep = {"user_id": 7, "strategy_id": 9, "market": "btc15m", "status": "running", "status_reason": None,
            "last_decision_ts": None, "created_at": now - timedelta(days=3), "updated_at": now, "last_scan_json": None,
            "last_scan_at": None, "title": "Fade tails", "direction": None, "spec_json": spec, "result_json": result,
-           "realized_pnl": 1.5, "closed_trades": 12, "wins": 7, "open_positions": 1}
+           "realized_pnl": 1.5, "closed_trades": 12, "wins": 7, "open_positions": 1, "contract_fills": 24}
     strategy = {"id": 9, "run_id": 3, "parent_id": None, "market": "btc15m", "direction": None, "title": "Fade tails",
                 "thesis": "t", "spec_json": spec, "status": "passed", "result_json": result, "experiment_id": None,
                 "created_at": now, "hypotheses_tried": 4, "shared_from_user_id": None, "shared_from_name": None}
@@ -572,7 +572,7 @@ def test_the_track_record_rebuilds_its_times_and_drops_a_trade_whose_deployment_
     assert server.repo.track_record_rows(CountingCursor(log, rows), 7) == [
         {"mode": "live", "strategy_id": 9, "title": None, "market": None, "dep_status": "stopped", "order_ref": "live:1",
          "open_slices": Decimal("1"), "pnl": Decimal("0.0000"), "fees": Decimal("0.0700"), "cost": Decimal("4.0000"),
-         "open_cost": Decimal("4.0000"), "opened_at": datetime(2025, 10, 25, 11, 1, 1), "closed_at": None}]
+         "open_cost": Decimal("4.0000"), "contract_fills": 0, "opened_at": datetime(2025, 10, 25, 11, 1, 1), "closed_at": None}]
     assert log[1][1] == (5, 8)
     log = []
     assert server.repo.track_record_rows(CountingCursor(log, {}), 7) == [] and len(log) == 1  # no trades, no 2nd read
@@ -625,7 +625,7 @@ def _paper_book(k):
     deps = [{"id": 50 + s, "user_id": 7, "strategy_id": s, "market": "btc15m", "mode": "paper", "status": "running",
              "status_reason": None, "last_decision_ts": None, "created_at": now - timedelta(days=3), "updated_at": now,
              "last_scan_json": None, "last_scan_at": None, "title": "S%d" % s, "direction": None, "spec_json": spec,
-             "result_json": None, "realized_pnl": -2.5, "closed_trades": 40, "wins": 10, "open_positions": 0}
+             "result_json": None, "realized_pnl": -2.5, "closed_trades": 40, "wins": 10, "open_positions": 0, "contract_fills": 80}
             for s in range(1, k + 1)]
     return {"FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id LEFT JOIN app_positions p": deps,
             "SELECT t.strategy_id, COUNT(*) AS trips": [{"strategy_id": s, "trips": 40, "pnl": -2.5} for s in range(1, k + 1)]}
