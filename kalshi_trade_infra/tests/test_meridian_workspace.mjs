@@ -611,7 +611,7 @@ test('Overview paper P&L is realized all time, the Closed P&L chart and track re
     assert.match(paper, /Realized P&amp;L, all time \+\$98\.40/);
     assert.doesNotMatch(paper, /All-time|since reset/);
     // Today is closed trades only (realized_pnl); the live group says so too.
-    assert.match(paper, /Realized today \(UTC\)−\$7\.50/);
+    assert.match(paper, /Paper realized today \(UTC\)−\$7\.50/);
     const card = f.root.querySelector('#dash-ap').innerHTML;
     assert.match(card, /<dt>Paper P&amp;L, realized all time<\/dt><dd><span class="[^"]*">\+\$98\.40/);
   }
@@ -774,7 +774,7 @@ test('Overview live summary says it is Kalshi cash, apart from what Tau trades r
   const live = f.root.querySelector('.live-summary');
   assert.equal(live.querySelector('dt.lab').textContent, 'Kalshi cash');
   assert.match(live.textContent, /\+\$17\.00 realized all time by Tau trades/);
-  assert.match(live.textContent, /Open at cost before fees, not in cash\$50\.00/); assert.match(live.textContent, /Realized today \(UTC\)−\$2\.00/);
+  assert.match(live.textContent, /Open at cost before fees, not in cash\$50\.00/); assert.match(live.textContent, /Live realized today \(UTC\)−\$2\.00/);
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00<\/span> <small>real money, after Kalshi fees<\/small>/);
 });
 
@@ -5544,7 +5544,7 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   await f.viewDashboard(); await flush();
   const paper = f.root.querySelector('.paper-summary').textContent;
   assert.match(paper, /Practice money, not real\s·\s?no paper strategies yet/);
-  assert.match(paper, /Realized today \(UTC\)None yet/);
+  assert.match(paper, /Paper realized today \(UTC\)None yet/);
   assert.doesNotMatch(paper, /Realized P&amp;L, all time/);
   // "Open at cost + fees $0.00" read as a figure too, for a book nothing has ever been open in.
   assert.match(paper, /Open at cost \+ fees(?:<[^>]*>)*None yet/);
@@ -5554,13 +5554,13 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   const used = apDashboard(dashboardData({paper: fresh, deployments: [dashboardDeployment('paper')]}), apStatus);
   await used.viewDashboard(); await flush();
   const usedText = used.root.querySelector('.paper-summary').textContent;
-  assert.match(usedText, /P&amp;L shows once a paper trade closes[\s\S]*Realized today \(UTC\)None yet[\s\S]*Open at cost \+ feesNone open/);
+  assert.match(usedText, /P&amp;L shows once a paper trade closes[\s\S]*Paper realized today \(UTC\)None yet[\s\S]*Open at cost \+ feesNone open/);
   assert.doesNotMatch(usedText, /Realized P&amp;L, all time|\$0\.00/);
   // Once a trade has closed its figures are figures, a $0.00 day included.
   const traded = apDashboard(dashboardData({paper: {...fresh, closed_trades: 1, realized_pnl: 5.73, cash: 1005.73, equity: 1005.73},
     deployments: [dashboardDeployment('paper')]}), apStatus);
   await traded.viewDashboard(); await flush();
-  assert.match(traded.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \+\$5\.73[\s\S]*Realized today \(UTC\)\$0\.00[\s\S]*Open at cost \+ feesNone open/);
+  assert.match(traded.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \+\$5\.73[\s\S]*Paper realized today \(UTC\)\$0\.00[\s\S]*Open at cost \+ feesNone open/);
 });
 
 // Meridian opens a market page from Explore's ?m= link.
@@ -6302,6 +6302,21 @@ test('an Overview demo or live monitor names its book and fees under Realized P&
     const n = m.querySelector('.book-net'); return n ? n.textContent : null;
   });
   assert.deepEqual(notes, ['after Kalshi fees, in Tau’s demo book: not real money', 'real money, after Kalshi fees', null]);
+});
+
+test('Overview’s day figures name their book, and a trades CSV link never breaks inside', async () => {
+  // Walk 2026-10-27 (a live key, live trading closed): the paper band's "Realized today (UTC) −$0.57" sat above the
+  // Kalshi cash band and didn't say it was paper's; at 1280 "Download" ended a line and "trades (CSV)" began the next.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\na\.csv-link \{ white-space: nowrap; \}/);
+  const tau = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  assert.match(tau, /\na\.csv-link \{ white-space: nowrap; \}/);
+  const f = frontend({fetchImpl: () => response(dashboardData({paper: {equity: 999.36, cash: 994.66, realized_pnl: -0.57, today_pnl: -0.57,
+    closed_trades: 4, open_positions: 0, total_pnl: -0.57}}))});
+  await f.viewDashboard();
+  const html = f.root.querySelector('#main').innerHTML;
+  assert.match(html, /<span class="lab">Paper realized today \(UTC\)<\/span>/);
+  assert.doesNotMatch(html, /<span class="lab">Realized today/);
 });
 
 test('an Overview paper monitor says how many of its closed trades were instant fills', async () => {
