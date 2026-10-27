@@ -58,4 +58,22 @@ export function fundsWalkCases({name, frontend, fundsData}) {
     assert.doesNotMatch(line({cost_7d: 0}), /spent/);  // nothing debited: nothing said
     f.clearTimers();
   });
+
+  test(`${name}: every open position on Deploy says its book, paper included`, async () => {
+    // A demo row carried "Demo" and a live one "Live", but a paper row had no mark, so on a board holding paper
+    // and demo positions the paper row's Cost + fee said nothing of which money it was.
+    const pos = (id, mode) => ({id, deployment_id: id, strategy_id: id, title: 'Dep ' + id, ticker: 'KXBTC15M-26OCT271715-15', side: 'yes',
+      qty: 5, entry_price: .44, entry_fee: .09, cost: 2.29, unrealized: null, mode, opened_at: '2026-10-27T16:50:00Z',
+      market_close_time: '2030-01-15T17:30:00Z', status: 'open'});
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/deployments')
+      ? response({deployments: [], open_positions: [pos(1, 'paper'), pos(2, 'demo'), pos(3, 'live')]}) : response({})});
+    f.S.me.markets = MARKETS;
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const rows = [...f.root.querySelectorAll('#openpos tbody tr')].map((tr) => tr.innerHTML);
+    assert.equal(rows.length, 3);
+    const marks = rows.map((r) => (/<td class="name" data-lab="Strategy">[^<]*<span class="mk[^"]*">([^<]*)<\/span><\/td>/.exec(r) || [])[1]);
+    assert.deepEqual(marks, ['Paper', 'Demo', 'Live']);
+    f.clearTimers();
+  });
 }
