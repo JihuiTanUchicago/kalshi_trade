@@ -227,7 +227,7 @@ moneyPollCases({name: 'Tau', frontend, stripe: () => ({stripe: STRIPE_STUB})});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Tau', frontend, detailStrategy});
 explorePageCases({name: 'Tau', frontend});
-trackRecordTrustCases({name: 'Tau', frontend, Element});
+trackRecordTrustCases({name: 'Tau', frontend, Element, dashboard: () => emptyDashboard()});
 researchFormCases({name: 'Tau', frontend});
 kalshiWaitCases({name: 'Tau', frontend, detailStrategy});
 phoneSpeedCases({name: 'Tau', frontend, source, railOpenWide: [['tau_hotrail', '1']],

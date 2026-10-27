@@ -4,6 +4,10 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
+const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
+const flush = () => new Promise(resolve => setImmediate(resolve));
+const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
+
 const TH = {min_sharpe_days: 14, min_trades: 30};
 const plain = (html) => html.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 const stratRow = (o) => ({strategy_id: 3, title: 'Fade the 15-minute Bitcoin overshoot', market: 'btc15m', trades: 26, open_trades: 1,
@@ -19,7 +23,7 @@ export const paperBook = (o = {}) => ({trades: 55, wins: 27, losses: 28, label: 
   strategies: [stratRow({excluded_instant_fills: 1, excluded_instant_pnl: 4.82}), stratRow({strategy_id: 5, title: 'Bitcoin daily strike drift',
     trades: 9, open_trades: 0, net_pnl: -21.04})], ...o});
 
-export function trackRecordTrustCases({name, frontend}) {
+export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
   test(`${name}: the track record says what its left-out instant fills made, so it meets the realized P&L on every other page`, () => {
     // The paper card said "−$19.90 realized all time" above a record of −$24.72 for the same book, and the strategy list
     // "+$74.33 · 27 trades" beside the record's +$69.51 on 26: the gap was one instant fill's +$4.82, named nowhere.
@@ -36,5 +40,37 @@ export function trackRecordTrustCases({name, frontend}) {
     const rows = html.match(/<tr><td class="name" data-lab="Strategy">[\s\S]*?<\/tr>/g);
     assert.match(rows[0], /Fade the 15-minute Bitcoin overshoot<\/a><div class="sub-fig">1 instant fill left out \(\+\$4\.82\)<\/div><\/td>/);
     assert.doesNotMatch(rows[1], /left out/);
+  });
+
+  test(`${name}: the track record says when its figures were worked out, in its head, and when its minute poll stops landing`, async () => {
+    // The read time sat at the foot of the closed "How these numbers are computed" note, so a record its poll could no
+    // longer refresh read as current.
+    const at = Date.UTC(2026, 9, 27, 17, 31) / 1000;
+    const tr = {generated_at: at, default_mode: 'paper', method: ['A trade is one entry fill.'], thresholds: TH,
+      modes: {live: {trades: 0, label: 'Live money'}, demo: {trades: 0, label: 'Kalshi demo'}, paper: paperBook()}};
+    let failTrack = false;
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/dashboard') ? response(dashboard())
+      : path === '/api/track-record' ? (failTrack ? response({error: 'Tau is restarting.'}, 500) : response(tr))
+        : path === '/api/autopilot/status' ? response({autopilot: false, mode: 'off'}) : response({})});
+    Object.defineProperty(Element.prototype, 'parentNode', {get() { return this.parent; }, configurable: true});
+    try {
+      await f.viewDashboard(); await settle();
+      const host = f.root.querySelector('#track-record');
+      const head = host.querySelector('.section-head').innerHTML;
+      const when = new Date(at * 1000);
+      const hhmm = `${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+      assert.match(head, new RegExp(`<span class="tr-asof">Figures as of [^<]*${hhmm}[^<]*</span>`));
+      assert.doesNotMatch(host.querySelector('.tr-method').innerHTML, /Updated/, 'said once, where it is read');
+      const note = () => f.document.getElementById('tr-stale');
+      assert.equal(note().textContent, '');
+      // The record's minute poll fails for a while: the line under the tabs says how old the figures are.
+      failTrack = true;
+      f.shiftClock(5 * 60000);
+      for (let i = 0; i < 2; i++) { for (const tick of [...f.intervals.values()]) tick(); await settle(); }  // the next minute's tick
+      assert.match(note().textContent, /^Last updated 5m ago, retrying$/);
+    } finally {
+      delete Element.prototype.parentNode;
+      f.clearTimers();
+    }
   });
 }

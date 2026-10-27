@@ -259,7 +259,7 @@ moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async 
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
 explorePageCases({name: 'Meridian', frontend});
-trackRecordTrustCases({name: 'Meridian', frontend, Element});
+trackRecordTrustCases({name: 'Meridian', frontend, Element, dashboard: () => dashboardData()});
 researchFormCases({name: 'Meridian', frontend});
 kalshiWaitCases({name: 'Meridian', frontend, detailStrategy});
 phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});

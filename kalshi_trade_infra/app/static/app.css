@@ -1973,6 +1973,7 @@ body.landing-body .apf { display: none; }
 /* Track record (viewTrackRecord): realized results per money bucket, the figures an allocator checks. */
 .tr-tabs { margin-bottom: 4px; }
 .tr-caveat { margin: -4px 0 12px; max-width: 72ch; }
+.tr-asof { white-space: nowrap; }
 .tr-figs { margin-top: 4px; }
 @media (min-width: 761px) {
   .tr-figs { grid-template-columns: repeat(4, minmax(0, 1fr)); }

@@ -2554,14 +2554,17 @@
     if (last) last.at = d.generated_at;
     let tab; try { tab = localStorage.getItem('tau_tr_tab'); } catch (e) { /* private mode */ }
     if (!d.modes[tab]) tab = d.default_mode;
-    host.innerHTML = `<div class="section-head"><h2>Track record</h2><p>Realized results from closed trades. Nothing here is a backtest.</p></div>
+    // When these figures were worked out, in the head where they are read: it sat at the foot of the closed method
+    // note, so a record the minute poll could no longer refresh read as current. A failing poll says so under the tabs.
+    host.innerHTML = `<div class="section-head"><h2>Track record</h2><p>Realized results from closed trades. Nothing here is a backtest. <span class="tr-asof">Figures as of ${esc(settleAt(new Date(d.generated_at * 1000).toISOString()))}</span></p></div>
       <div class="chips tr-tabs" role="group" aria-label="Money type">
         ${TR_MODES.map(([k, label]) => `<button class="chip" type="button" data-trtab="${k}" aria-pressed="${k === tab}">${label} ·\u00a0${num(d.modes[k].trades)}</button>`).join('')}
       </div>
+      <p class="stale-note" id="tr-stale" role="status"></p>
       <div class="trpanel"></div>
       <details class="tr-method"><summary>How these numbers are computed</summary>
         <ul>${d.method.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
-        <p class="hint">Updated ${esc(clock(new Date(d.generated_at * 1000).toISOString()))}. Past results do not predict future returns.</p></details>`;
+        <p class="hint">Past results do not predict future returns.</p></details>`;
     const setTab = (t) => {
       host.querySelectorAll('[data-trtab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.trtab === t)));
       host.querySelector('.trpanel').innerHTML = trackRecordPanel(d.modes[t], t, d.thresholds);
@@ -2592,7 +2595,7 @@
       if (gen !== S.gen) return;
       if (location.hash === '#track-record') host.scrollIntoView();
       S.trReread = () => mountTrackRecord(host, last).catch(() => {});  // the dashboard poll's re-read
-      poll(() => mountTrackRecord(host, last), 60000);
+      poll(() => mountTrackRecord(host, last), 60000, 'tr-stale');
     };
     await first();
   }
