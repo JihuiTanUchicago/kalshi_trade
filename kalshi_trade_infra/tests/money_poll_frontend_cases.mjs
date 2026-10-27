@@ -144,11 +144,17 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
     const open = f.root.querySelector('#openpos');
     const cells = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
     assert.deepEqual(cells(), [`+$0.13 as of ${at('2026-10-26T12:00:00Z')}`, '—']);
+    // The time is tucked under its figure in one block of the Unrealized cell: as a child of the cell itself, a
+    // phone's stacked card set it on a row of its own under the card's labels, one more row a position.
+    const tucked = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1]);
+    assert.match(tucked()[0], /^<div class="pos-unreal"><span class="[^"]*">\+\$0\.13<\/span><div class="sub-fig">as of [^<]+<\/div><\/div>$/);
+    assert.equal(tucked()[1], '—');
 
     // Marked again: the figure and its time move together.
     answer = {v: 'b1', same: true, marks: marks(.52, '2026-10-26T12:05:15Z'), unrealized: {1: null}};
     await pollOf(f, '/api/deployments');
     assert.deepEqual(cells(), [`+$0.41 as of ${at('2026-10-26T12:05:15Z')}`, '—']);
+    assert.match(tucked()[0], /^<div class="pos-unreal"><span class="[^"]*">\+\$0\.41<\/span><div class="sub-fig">as of [^<]+<\/div><\/div>$/);
     f.clearTimers();
 
     // An answer that gives the figure without its time: it is still the last mark's, and says only that.

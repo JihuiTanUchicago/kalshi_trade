@@ -2430,8 +2430,11 @@
       // Each Unrealized figure says when its mark was read (the engine's mark_ts, the time with its zone, as Settles is):
       // the column had no "as of" time. A figure the answer gives no time for is still its last mark's, and says so.
       const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? 'as of ' + settleAt(p.mark_ts) : 'at the last mark'}</div>`;
+      // The figure and its time are one block: a phone's stacked card set the time on a row of its own under the
+      // card's labels, one more row a position; it sits under its figure, in the Unrealized cell.
+      const posUnreal = (p) => `<div class="pos-unreal">${money(p.unrealized)}${posMarked(p)}</div>`;
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized) + posMarked(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : posUnreal(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();

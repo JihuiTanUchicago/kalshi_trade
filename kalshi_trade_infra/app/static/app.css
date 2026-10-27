@@ -1108,6 +1108,8 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .stack tbody td.name::before, .stack tbody td.act::before { content: none; }
   .stack tbody td.act.st::before { content: attr(data-lab); }
   .stack tbody td .sub-fig { flex: 1 0 100%; }
+  /* An open position's mark time sits close under its Unrealized figure, in the figure's own block (pos-unreal). */
+  .stack tbody td .pos-unreal .sub-fig { margin-top: 1px; }
   .stack tbody td .spark { margin-left: 0; }  /* a stacked cell reads left-aligned */
   .stack tbody tr:hover td { background: transparent; }
   /* A deployment card reads as a small figure grid (label over value, three across) instead of

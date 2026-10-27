@@ -249,3 +249,12 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
   });
 }
 
+// Walk 2026-10-27 at 390px: on Deploy's stacked open-position cards each Unrealized figure's "as of" time sat on a
+// row of its own under the card's labels. It is in the figure's own block (pos-unreal), set close under the figure.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: a stacked open position's mark time sits close under its Unrealized figure`, () => {
+    const all = rules(read(file));
+    assert.equal(decl(all, '.stack tbody td .pos-unreal .sub-fig', 'margin-top', PHONE), '1px');
+    assert.equal(decl(all, '.stack tbody td .pos-unreal', 'display', PHONE), undefined, 'a block: its time goes under the figure, not beside it');
+  });
+}
