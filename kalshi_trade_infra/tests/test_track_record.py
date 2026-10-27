@@ -166,6 +166,23 @@ def test_return_and_drawdown_pct_use_required_capital():
     assert p["max_drawdown_pct"] == pytest.approx(1 / 51, abs=1e-4)
 
 
+def test_a_strategy_whose_only_trades_were_instant_fills_gets_its_own_row_outside_the_totals():
+    """S2's only paper trades filled instantly, so it had no by-strategy row and only the book's caveat named
+    them. It gets a row, last, that says so and carries their P&L apart; the record's totals never count it."""
+    out = tr.build([row("paper", 3, ref="sim:a"), row("paper", 4.815, ref=None, sid=2, title="S2"),
+                    row("paper", -1.004, ref="legacy", sid=2, title="S2"), row("paper", -2, ref="sim:b", sid=3, title="S3")], NOW)
+    p = out["modes"]["paper"]
+    assert (p["trades"], p["net_pnl"]) == (2, 1)
+    assert [r["strategy_id"] for r in p["strategies"]] == [1, 3, 2]
+    only = p["strategies"][2]
+    assert only["instant_only"] is True and only["title"] == "S2"
+    assert (only["trades"], only["open_trades"], only["net_pnl"]) == (0, 0, 0)
+    assert (only["excluded_instant_fills"], only["excluded_instant_pnl"]) == (2, 3.81)
+    assert only["win_rate"] is None and only["avg_trade"] is None and only["last_trade_at"] is None
+    assert not any(r["instant_only"] for r in p["strategies"][:2])
+    assert sum(r["net_pnl"] for r in p["strategies"]) == p["net_pnl"], "its excluded P&L never joins the totals"
+    assert sum(r["excluded_instant_pnl"] for r in p["strategies"]) == p["excluded_instant_pnl"]
+
 def test_by_strategy_and_monthly():
     rows = [row("paper", 5, sid=1, title="A", closed=datetime(2026, 9, 30, tzinfo=timezone.utc)),
             row("paper", -1, sid=2, title="B", closed=datetime(2026, 10, 2, tzinfo=timezone.utc)),

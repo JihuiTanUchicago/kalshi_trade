@@ -2593,7 +2593,13 @@
     return !v ? '.' : `: ${usd(v, true)}. The realized P&L on the dashboard, Funds and Deploy counts ${n === 1 ? 'it' : 'them'}, so it reads ${usd(Math.abs(v))} ${v > 0 ? 'higher' : 'lower'} than this record.`;
   };
   // A strategy row's share of them, so its figures meet its Strategies list line ("+$74.33 · 27 trades" beside 26 here).
-  const trRowLeft = (r) => (r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
+  // A strategy whose only trades were instant fills (the server's `instant_only`) has a row of its own, last, so it is
+  // named beside what they made instead of only in the book's caveat: none of its figures is in the record's totals.
+  const trInstantOnly = (r) => {
+    const n = +r.excluded_instant_fills || 0;
+    return `<div class="sub-fig">${n === 1 ? 'Its only trade was an instant fill' : `All ${num(n)} of its trades were instant fills`}, left out of this record (${usd(+r.excluded_instant_pnl || 0, true)})</div>`;
+  };
+  const trRowLeft = (r) => (r.instant_only ? trInstantOnly(r) : r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
   // The span a return is over, as the sample line counts it (track_record.sample_read): a return with no period read
   // the same for a week as for a year once the headline's "since" had scrolled away.
   const trOver = (m) => (m.span_days == null ? '' : (() => { const d = Math.max(1, Math.round(+m.span_days)); return ` over ${num(d)} day${d === 1 ? '' : 's'}`; })());
@@ -2656,17 +2662,17 @@
       <td class="num" data-lab="Net P&amp;L">${r.trades ? money(r.pnl) : '<span class="tr-none">No trades</span>'}</td><td class="num" data-lab="Trades">${num(r.trades)}</td>
       <td class="num" data-lab="Win rate">${r.trades ? pct(r.win_rate, false) : '\u2014'}</td></tr>`).join('');
     const strats = m.strategies.map((r) => {
-      const [tag, cls] = TR_EDGE[r.edge] || TR_EDGE.unclear;
+      const [tag, cls] = r.instant_only ? ['Left out', 'quiet'] : TR_EDGE[r.edge] || TR_EDGE.unclear;
       // A stopped or deleted strategy stays in the table (and every figure); it says so instead of
       // reading like one still trading. A deleted one has no page left to link to.
       const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}stopped, then deleted` : TR_STATUS[r.status];
       return `<tr><td class="name" data-lab="Strategy">${r.removed ? esc(r.title) : `<a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a>`}${st ? `<div class="sub-fig">${st}</div>` : ''}${trRowLeft(r)}</td>
         <td data-lab="Read"><span class="mk ${cls}">${tag}</span></td>
         <td class="num" data-lab="Trades">${num(r.trades)}${r.open_trades ? ` <span class="sub-fig">+${num(r.open_trades)} open</span>` : ''}</td>
-        <td class="num" data-lab="Net P&amp;L">${money(r.net_pnl)}</td>
+        <td class="num" data-lab="Net P&amp;L">${r.instant_only ? '<span class="tr-none">Not in the record</span>' : money(r.net_pnl)}</td>
         <td class="num" data-lab="Win rate">${pct(r.win_rate, false)}</td>
         <td class="num" data-lab="Avg trade">${usd(r.avg_trade, true)}</td>
-        <td class="num" data-lab="Max drawdown">${r.max_drawdown ? usd(-r.max_drawdown) : usd(0)}</td>
+        <td class="num" data-lab="Max drawdown">${r.instant_only ? '\u2014' : r.max_drawdown ? usd(-r.max_drawdown) : usd(0)}</td>
         <td class="num" data-lab="Last trade">${trDay(r.last_trade_at)}</td></tr>`;
     }).join('');
     return `${notice(s.text, good ? 'good' : '')}${cav}${figs}

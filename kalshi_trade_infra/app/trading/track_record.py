@@ -402,7 +402,9 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict], left_out: Iterable[
     deleted after stopping it: both stay in, so the table shows nothing was dropped.
     `left_out` are its instant paper fills (prepare leaves them out of the record): a row counts them and
     their P&L apart (excluded_instant_fills, excluded_instant_pnl), so its figures reconcile with the
-    strategy's realized P&L on its list row and the Deploy board, which count every closed row."""
+    strategy's realized P&L on its list row and the Deploy board, which count every closed row. A strategy
+    whose only trades were instant fills still gets a row (trades 0, `instant_only`), after the others, so it is
+    named beside its excluded P&L instead of only in the book's caveat; the record's totals never count it."""
     groups: Dict[int, Dict] = {}
 
     def group(t):
@@ -418,6 +420,7 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict], left_out: Iterable[
         group(t)["open"] += 1
     left: Dict[int, List[float]] = {}
     for t in left_out:
+        group(t)
         left.setdefault(t["strategy_id"], []).append(t["pnl"])
     rows = []
     for sid, g in groups.items():
@@ -439,8 +442,9 @@ def by_strategy(trades: List[Dict], open_trades: List[Dict], left_out: Iterable[
             "last_trade_at": ts[-1]["closed_ts"] if ts else None,
             "edge": edge_read(ci) if n >= MIN_TRADES else "thin",
             "excluded_instant_fills": len(left.get(sid, ())), "excluded_instant_pnl": cents(sum(left.get(sid, ()))),
+            "instant_only": not n and not g["open"] and bool(left.get(sid)),
         })
-    rows.sort(key=lambda r: (-r["net_pnl"], -r["trades"]))
+    rows.sort(key=lambda r: (r["instant_only"], -r["net_pnl"], -r["trades"]))
     return rows
 
 

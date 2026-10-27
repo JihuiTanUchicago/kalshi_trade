@@ -42,6 +42,27 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     assert.doesNotMatch(rows[1], /left out/);
   });
 
+  test(`${name}: a strategy whose only paper trades were instant fills has its own row, saying so, outside the record's figures`, () => {
+    // Its trades were named only in the book's caveat: the by-strategy table had no row for it at all.
+    const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
+    const only = stratRow({strategy_id: 8, title: 'Bitcoin hourly fade', trades: 0, open_trades: 0, net_pnl: 0, win_rate: null,
+      avg_trade: null, avg_trade_ci: null, max_drawdown: 0, last_trade_at: null, excluded_instant_fills: 2, excluded_instant_pnl: 3.81,
+      instant_only: true});
+    const book = paperBook({excluded_instant_fills: 3, excluded_instant_pnl: 8.63, strategies: [...paperBook().strategies, only]});
+    const html = f.trackRecordPanel(book, 'paper', TH);
+    const rows = html.match(/<tr><td class="name" data-lab="Strategy">[\s\S]*?<\/tr>/g);
+    assert.equal(rows.length, 3);
+    const row = plain(rows[2]);
+    assert.match(rows[2], /Bitcoin hourly fade<\/a><div class="sub-fig">All 2 of its trades were instant fills, left out of this record \(\+\$3\.81\)<\/div><\/td>/);
+    assert.match(rows[2], /<td data-lab="Read"><span class="mk quiet">Left out<\/span><\/td>/);
+    assert.match(row, /Not in the record/);
+    assert.doesNotMatch(row, /Too few|\$0\.00/, 'no figure reads as a record of $0 on 0 trades');
+    // One fill reads as one; the book's headline figures are the record's alone.
+    const one = plain(f.trackRecordPanel(paperBook({strategies: [stratRow({...only, excluded_instant_fills: 1, excluded_instant_pnl: -1.2})]}), 'paper', TH));
+    assert.match(one, /Its only trade was an instant fill, left out of this record \(−\$1\.20\)/);
+    assert.match(plain(html), /Paper net P&L −\$24\.72/);
+  });
+
   test(`${name}: the track record says when its figures were worked out, in its head, and when its minute poll stops landing`, async () => {
     // The read time sat at the foot of the closed "How these numbers are computed" note, so a record its poll could no
     // longer refresh read as current.
