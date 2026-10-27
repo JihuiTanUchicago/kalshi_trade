@@ -258,3 +258,18 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.equal(decl(all, '.stack tbody td .pos-unreal', 'display', PHONE), undefined, 'a block: its time goes under the figure, not beside it');
   });
 }
+
+// Walk 2026-10-27 at 390px: Meridian's Strategies title read "Strategie / s". h1.page wrapped with overflow-wrap:
+// anywhere, which lets a flex item shrink below its longest word, so beside the pass-rate summary the title took one
+// letter's width. Every page title (h1.page, both themes) now breaks only an overlong token, and only at the column's edge.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: a page title wraps between words and never shrinks below its longest word`, () => {
+    const all = rules(read(file));
+    assert.equal(decl(all, 'h1.page', 'overflow-wrap'), 'break-word');
+    assert.equal(decl(all, 'h1.page', 'max-width'), '100%', 'one overlong token still breaks inside the column');
+    for (const media of ['', PHONE]) {
+      assert.ok(!all.some((r) => r.media === media && sels(r).some((s) => /h1\b/.test(s)) && /overflow-wrap\s*:\s*anywhere|word-break\s*:\s*break-all/.test(r.body)),
+        'no title rule breaks inside words');
+    }
+  });
+}
