@@ -2331,6 +2331,7 @@ body.landing-body .apf { display: none; }
 #xfigs .snapshot-time time { font: 400 12px/18px var(--f-terminal); color: var(--ink-2); }
 #xfigs .snapshot-age { font-size: 12px; line-height: 18px; font-weight: 500; color: var(--ink-2); }
 #xfigs .snapshot-old .lab, #xfigs .snapshot-old .snapshot-age { color: #8A5D18; }
+#xfigs .snapshot-behind { font-size: 12px; line-height: 18px; font-weight: 500; color: #8A5D18; }
 #xfigs .snapshot-unknown .fig { display: block; color: var(--ink-2); font-weight: 400; }
 #xbody { min-width: 0; max-width: none; margin-inline: auto; container: explore-register / inline-size; }
 #xbody > .sheet { margin-inline: 0; padding-inline: 0; overflow-x: auto; }

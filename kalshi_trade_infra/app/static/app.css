@@ -1655,6 +1655,7 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .hot-when { display: flex; flex-wrap: wrap; gap: 0 10px; margin-top: 4px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); }
 .hot-when .xspot { color: var(--ink-2); }
 .hot-note { margin: 0; padding: 9px 15px; border-bottom: 1px solid var(--rule); font-size: 12px; line-height: 1.35; color: var(--loss-ink); }
+.hotrail .stale-note { margin: 0; padding: 9px 15px; border-bottom: 1px solid var(--rule); }
 /* Explore table extras */
 .xsearch { flex: 1 1 260px; }
 .xsearch .input { width: 100%; }

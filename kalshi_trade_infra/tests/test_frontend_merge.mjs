@@ -18,6 +18,7 @@ import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
+import {explorePollCases} from './explore_poll_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
@@ -64,6 +65,7 @@ class Element {
   get options() { return this.children.filter(child => child.tag === 'option'); }
   get isConnected() { return !this.removed && (!this.parent || this.parent.isConnected); }
   get parentElement() { return this.parent || null; }
+  get tagName() { return this.tag.toUpperCase(); }
   get className() { return [...this.classes].join(' '); }
   set className(value) { this.classes = new Set(value.split(/\s+/)); }
   get id() { return this.attributes.id; }
@@ -221,6 +223,8 @@ researchFormCases({name: 'Tau', frontend});
 phoneSpeedCases({name: 'Tau', frontend, source, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 exploreSpotListCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
+  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+explorePollCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 pageFileCases({name: 'Tau', frontend, prefix: 'app-', pagesKey: 'tauPages',
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
@@ -1341,7 +1345,7 @@ test('Explore drops a yes subtitle that only repeats the title', async () => {
       row('C', 'Bitcoin price on Oct 25, 2026?', '$80,500 or above')]})
     : response({})});
   await f.viewExplore(); await flush();
-  const html = f.root.querySelector('#xbody').innerHTML;
+  const html = f.root.querySelector('#xrows').innerHTML;
   assert.match(html, />Minnesota wins</); assert.match(html, />Will Bitcoin be above \$200000 by Jan 1, 2027\?</);
   assert.match(html, />Bitcoin price on Oct 25, 2026\? ·\u00a0\$80,500 or above</);
 });
@@ -1352,7 +1356,7 @@ test('Explore shows tenth-of-a-cent prices instead of rounding them to 0¢', asy
     ? response({at: '2026-10-25T16:15:00Z', total: 2, shown: 2, matched: 2, page: 0, per: 50, sort: 'v24', markets: [row('KXBTC15M-A', '0.0010'), row('KXBTC15M-B', '0.3700')]})
     : response({})});
   await f.viewExplore(); await flush();
-  const html = f.root.querySelector('#xbody').innerHTML;
+  const html = f.root.querySelector('#xrows').innerHTML;
   assert.match(html, />0\.1¢</); assert.match(html, />37¢</); assert.doesNotMatch(html, />0¢</);
 });
 

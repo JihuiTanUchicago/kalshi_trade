@@ -19,6 +19,7 @@ import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
+import {explorePollCases} from './explore_poll_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
@@ -160,6 +161,10 @@ class Element {
     const holder = new Element('div'); holder.innerHTML = value;
     const fresh = holder.children[0], parent = this.parent;
     if (!fresh || !parent) return;
+    // Focus inside the replaced element falls back to the body, and the new one belongs to the document.
+    if (this.ownerDocument && this.contains(this.ownerDocument.activeElement)) this.ownerDocument.activeElement = this.ownerDocument.body;
+    const adopt = element => { element.ownerDocument = this.ownerDocument; element.children.forEach(adopt); };
+    adopt(fresh);
     fresh.outer = value; fresh.parent = parent; parent.children[parent.children.indexOf(this)] = fresh; this.removed = true;
   }
 }
@@ -249,6 +254,7 @@ explorePageCases({name: 'Meridian', frontend});
 researchFormCases({name: 'Meridian', frontend});
 phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 exploreSpotListCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
+explorePollCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -2376,11 +2382,11 @@ test('Explore preserves distinct source counts and search zeroes while omitting 
   const recent = new Date(Date.now() - 30000).toISOString(), old = new Date(Date.now() - 240000).toISOString();
   const market = Object.freeze({t: 'BTC-26OCT19', ti: 'Bitcoin <unsafe>', s: 'BTC', bid: .51, ask: .53, v24: 1200, oi: 4});
   for (const [search, total, shown, matched, at, expected] of [
-    ['', 3, 2, 1, recent, [['Available markets', '2'], ['Tracked', '3'], ['Matching', '1'], ['Snapshot', 'just now']]],
-    ['', 1, 1, 1, old, [['Available markets', '1'], ['Stale snapshot', '4m ago']]],
-    ['?q=%3Cunsafe%3E', 3, 2, 0, undefined, [['Available markets', '2'], ['Tracked', '3'], ['Matching', '0'], ['Snapshot', 'Time unavailable']]],
-    ['?q=btc', 1, 1, 1, 'not-a-timestamp', [['Available markets', '1'], ['Matching', '1'], ['Snapshot', 'Time unavailable']]],
-    ['', 0, 0, 0, undefined, [['Available markets', '0'], ['Snapshot', 'Time unavailable']]],
+    ['', 3, 2, 1, recent, [['Available markets', '2'], ['Tracked', '3'], ['Matching', '1'], ['Prices updated', 'just now']]],
+    ['', 1, 1, 1, old, [['Available markets', '1'], ['Prices updated', '4m ago']]],
+    ['?q=%3Cunsafe%3E', 3, 2, 0, undefined, [['Available markets', '2'], ['Tracked', '3'], ['Matching', '0'], ['Prices updated', 'Time unavailable']]],
+    ['?q=btc', 1, 1, 1, 'not-a-timestamp', [['Available markets', '1'], ['Matching', '1'], ['Prices updated', 'Time unavailable']]],
+    ['', 0, 0, 0, undefined, [['Available markets', '0'], ['Prices updated', 'Time unavailable']]],
   ]) {
     const payload = Object.freeze({total, shown, matched, at, per: 40, page: 0, markets: Object.freeze(matched ? [market] : [])});
     const before = JSON.stringify(payload), query = new URLSearchParams(search), q = query.get('q') || '';
@@ -2394,6 +2400,8 @@ test('Explore preserves distinct source counts and search zeroes while omitting 
       assert.equal(time.getAttribute('datetime'), at); assert.match(time.textContent, / UTC$/);
       assert.equal(Date.parse(time.textContent), Date.parse(at));
       assert.equal(snapshot.classList.contains('snapshot-old'), at === old);
+      assert.equal(!!snapshot.querySelector('.snapshot-behind'), at === old);
+      if (at === old) assert.equal(snapshot.querySelector('.snapshot-behind').textContent, 'Behind: prices normally refresh each minute');
       assert.equal(snapshot.classList.contains('snapshot-unknown'), false);
     } else {
       assert.equal(time, null); assert.equal(snapshot.classList.contains('snapshot-unknown'), true);
@@ -2409,7 +2417,7 @@ test('Explore preserves distinct source counts and search zeroes while omitting 
     } else assert.ok(f.root.querySelector('#xbody .empty'));
     assert.equal(JSON.stringify(payload), before); assert.equal(postRequests(f).length, 0); assert.deepEqual(f.navigations, []);
     assert.deepEqual(f.requests.filter(request => request.path !== '/api/notifications').map(request => request.path), [endpoint]);
-    assert.equal(f.S.timers.length, 0);
+    assert.equal(f.S.timers.length, 1);
   }
 });
 
@@ -2469,7 +2477,7 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
   markets = Object.freeze([b, a]); f.root.querySelector('[data-sort="v24"]').onclick(); await flush(); check([a.t, b.t]);
   assert.deepEqual(f.requests.filter(request => request.path !== '/api/notifications').map(request => request.path),
     ['/api/explore?q=&sort=v24&page=0', '/api/explore?q=&sort=oi&page=0', '/api/explore?q=&sort=v24&page=0']);
-  assert.equal(postRequests(f).length, 0); assert.equal(f.S.timers.length, 0);
+  assert.equal(postRequests(f).length, 0); assert.equal(f.S.timers.length, 1);
 });
 
 test('Explore keeps every source event and contract independently legible when the sort interleaves event families', async () => {
@@ -2627,7 +2635,7 @@ test('Explore header sorting keeps the original criteria and search, resets pagi
   }
   assert.deepEqual(queries, [{q: 'btc', sort: 'oi', page: '2'}, ...['last', 'v24', 'oi'].map(sort => ({q: 'btc', sort, page: '0'}))]);
   assert.deepEqual(f.navigations, ['last', 'v24', 'oi'].map(sort => '/explore?' + new URLSearchParams({q: 'btc', sort, page: '0'})));
-  assert.equal(postRequests(f).length, 0); assert.equal(f.S.timers.length, 0);
+  assert.equal(postRequests(f).length, 0); assert.equal(f.S.timers.length, 1);
 });
 
 test('Explore ignores superseded requests and responses from a departed route, including its initial read', async () => {
@@ -2733,11 +2741,11 @@ test('Hot Markets reports source snapshot age without changing quotes or perform
     s: 'KXBTC15M', bid: .51, ask: .53, last: .5, v24: 1200, h: Object.freeze([.48, .52])});
   const markets = Object.freeze([market]), cachedAt = f.S.hotAt, autopilot = f.S.ap;
   const cases = [
-    [new Date(Date.now() - 30000).toISOString(), false, /^Snapshot ·\u00a0just now$/],
-    [new Date(Date.now() - 240000).toISOString(), true, /^Stale ·\u00a04m ago$/],
-    [undefined, true, /^Snapshot time unavailable$/],
-    ['not-a-timestamp', true, /^Snapshot time unavailable$/],
-    [new Date(Date.now() - 30000).toISOString(), false, /^Snapshot ·\u00a0just now$/],
+    [new Date(Date.now() - 30000).toISOString(), false, /^Updated just now$/],
+    [new Date(Date.now() - 240000).toISOString(), true, /^Behind ·\u00a0updated 4m ago$/],
+    [undefined, true, /^Update time unavailable$/],
+    ['not-a-timestamp', true, /^Update time unavailable$/],
+    [new Date(Date.now() - 30000).toISOString(), false, /^Updated just now$/],
   ];
   for (const [at, old, label] of cases) {
     const snapshot = Object.freeze({markets, ...(at === undefined ? {} : {at})});
