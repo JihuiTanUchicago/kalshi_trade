@@ -283,4 +283,17 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     // With only in-sample figures, it says so, as before.
     assert.match(row(f, {status: 'backtest-only', out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}), /on the history it searched over 60 days/);
   });
+
+  // A passed strategy the server found no gatekeeper record for (no_gatekeeper_record, from the list's own reads) comes
+  // from the old loose gate too: its page says "Later-period P&L" (#590), and so does its row now.
+  test(`${name}: a passed row with no gatekeeper record says later-period, not unseen`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const oos = {pnl: 6.2, trades: 40, win_rate: 0.61, days: 30};
+    const none = row(f, {status: 'passed', no_gatekeeper_record: true, out_of_sample: oos});
+    assert.match(none, /later-period P&amp;L over 30 days after the split date, which picked it: not held out/);
+    assert.doesNotMatch(none, /unseen/);
+    assert.match(row(f, {status: 'passed', no_gatekeeper_record: false, out_of_sample: oos}), /on unseen data over 30 days/);
+    assert.match(row(f, {status: 'passed', no_gatekeeper_record: true, out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}),
+      /on the history it searched over 60 days/);
+  });
 }

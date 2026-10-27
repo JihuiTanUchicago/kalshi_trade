@@ -555,7 +555,7 @@ def test_strategies_counts_a_pass_a_later_check_left_uncleared_apart(monkeypatch
     seen, judged, asked = [], [], []
     monkeypatch.setattr(server.repo, "passed_strategies",
                         lambda cur, uid, d, m, q, dep, **k: asked.append(k) or [dict(p) for p in passes])
-    monkeypatch.setattr(strategy_routes, "_later_verdicts", lambda cur, uid, rows: judged.append(sorted(r["id"] for r in rows))
+    monkeypatch.setattr(strategy_routes, "_later_verdicts", lambda cur, uid, rows, **k: judged.append(sorted(r["id"] for r in rows))
                         or {i: v for i, v in ((2, ("missed_final", {})), (3, ("held_back", {})), (5, ("held_back", {})))
                             if i in [r["id"] for r in rows]})
 

@@ -1811,8 +1811,9 @@
     // since the locked holdout keeps its unseen numbers with the gatekeeper, so most rows are that kind.
     // And over how long: "+$6.20 on unseen data" beside "58% win" said neither period nor pace (its page says both).
     // A backtest-only strategy (the old loose gate) has no gatekeeper record: its out_of_sample is the backtest's
-    // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590).
-    const pnlSub = [m.pnl == null ? '' : oos && s.status === 'backtest-only' ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
+    // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590). So is
+    // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's own reads).
+    const pnlSub = [m.pnl == null ? '' : oos && (s.status === 'backtest-only' || s.no_gatekeeper_record) ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
       : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
