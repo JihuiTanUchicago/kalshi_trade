@@ -59,7 +59,7 @@
     unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
-    pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade on unseen data. Compare it with Realized: well below it means trading is falling short of the test.'],
+    pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade after its split date. For a strategy with a gatekeeper record, that data was held out: the agent never saw it. For one without (backtest only, or a pass from the old backtest gate), it is the later period that picked it, so not held out. Compare it with Realized: well below it means trading is falling short of the test.'],
     // A research verdict's figures, each named in plain words with its term of art after it (statGrid).
     pvalue: ['Chance it’s luck (p-value)', 'How likely a strategy with no edge after fees would have done this well on this data by chance. Lower is better.'],
     dsr: ['Edge after correcting for many tries (DSR)', 'The deflated Sharpe ratio: how likely the edge is real once every idea tried is counted, since trying many ideas makes one look good by luck. Closer to 1 is better.'],
@@ -1816,11 +1816,14 @@
       <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${bookLive(s) ? liveWaitLine() : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
     </tr>`;
   }
-  // The Backtest estimate column's hover text (its header's glossary marker says the same at more length).
+  // The Backtest estimate cell's hover text: a strategy with a gatekeeper record's held-out figure.
   const PACE_TIP = 'What these same closed trades would have made at the backtest’s average per trade on unseen data';
   // A backtest-only strategy's row (the server's backtest_only): its backtest's later slice picked it, so not unseen.
   const PACE_TIP_LATER = 'What these same closed trades would have made at the backtest’s average per trade after its split date (later-period, which picked it: not held out)';
-  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="${PACE_TIP}">${gl('Backtest estimate', 'pace')}</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
+  // The column's header covers both kinds of row, so it says which is which (its glossary marker says the same at
+  // more length); it read "on unseen data" over rows whose figure is later-period.
+  const PACE_HEAD_TIP = 'What these same closed trades would have made at the backtest’s average per trade after its split date: held out for a strategy with a gatekeeper record, later-period (the slice that picked it) for one without';
+  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="${PACE_HEAD_TIP}">${gl('Backtest estimate', 'pace')}</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
   // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
   const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
   const deploymentTable = (rows, controls) => `<div class="sheet dep-sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;

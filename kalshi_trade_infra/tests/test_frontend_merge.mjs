@@ -711,6 +711,16 @@ test('a backtest-only strategy’s Deploy row says its backtest estimate is late
     'What these same closed trades would have made at the backtest’s average per trade on unseen data']);
 });
 
+test('the Backtest estimate glossary entry is true of both kinds of Deploy row, in both themes', () => {
+  // Its marker sits on the Deploy header over strategies with a gatekeeper record (held out) and without one
+  // (later-period, the slice that picked it): it said "on unseen data" for every row.
+  for (const file of ['app.js', 'app.meridian.js']) {
+    const entry = readFileSync(new URL(`../app/static/${file}`, import.meta.url), 'utf8').match(/\n {4}pace: \['Backtest estimate', '([^']*)'\]/)[1];
+    assert.match(entry, /after its split date\. For a strategy with a gatekeeper record, that data was held out: the agent never saw it\. For one without \(backtest only, or a pass from the old backtest gate\), it is the later period that picked it, so not held out\./, file);
+    assert.doesNotMatch(entry, /per trade on unseen data/, file);
+  }
+});
+
 test('the Deploy board puts realized P&L beside the backtest pace for the same trades', async () => {
   const dep = (id, closed, oos) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
     realized_pnl: 1, closed_trades: closed, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
@@ -722,8 +732,10 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#deps').innerHTML;
   // The header says what the figure is (Backtest estimate), with a hover title and a glossary marker;
-  // a phone's stacked cell keeps the same name and title.
-  assert.match(html, /<th class="num" title="What these same closed trades would have made at the backtest’s average per trade on unseen data">Backtest <span class="nobr">estimate<button type="button" class="info" data-glo="pace" aria-label="What does “Backtest estimate” mean\?">/);
+  // a phone's stacked cell keeps the same name and title. The header sits over rows of both kinds, so it says which
+  // is which: held out with a gatekeeper record, later-period without one (it read "on unseen data" over all of them).
+  assert.match(html, /<th class="num" title="What these same closed trades would have made at the backtest’s average per trade after its split date: held out for a strategy with a gatekeeper record, later-period \(the slice that picked it\) for one without">Backtest <span class="nobr">estimate<button type="button" class="info" data-glo="pace" aria-label="What does “Backtest estimate” mean\?">/);
+  assert.doesNotMatch(html.match(/<th class="num" title="[^"]*">Backtest/)[0], /unseen/);
   assert.match(html, /<td class="num" data-lab="Backtest estimate" title="What these same closed trades would have made at the backtest’s average per trade on unseen data">\+\$10\.00/);
   assert.doesNotMatch(html, /Test expected/);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.

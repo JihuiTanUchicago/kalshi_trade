@@ -59,7 +59,7 @@
     unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
-    pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade on unseen data. Compare it with Realized: well below it means trading is falling short of the test.'],
+    pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade after its split date. For a strategy with a gatekeeper record, that data was held out: the agent never saw it. For one without (backtest only, or a pass from the old backtest gate), it is the later period that picked it, so not held out. Compare it with Realized: well below it means trading is falling short of the test.'],
     // A research verdict's figures, each named in plain words with its term of art after it (statGrid).
     pvalue: ['Chance it’s luck (p-value)', 'How likely a strategy with no edge after fees would have done this well on this data by chance. Lower is better.'],
     dsr: ['Edge after correcting for many tries (DSR)', 'The deflated Sharpe ratio: how likely the edge is real once every idea tried is counted, since trying many ideas makes one look good by luck. Closer to 1 is better.'],
