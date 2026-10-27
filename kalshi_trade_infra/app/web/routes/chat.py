@@ -308,7 +308,7 @@ def _autopilot_story(d: Dict) -> List[str]:
     idle = (d.get("idle") or {}).get("code")
     lines = [_autopilot_now(d)]
     if d.get("focus"):
-        lines.append("It sticks to the focus you set: %s." % ", ".join(d["focus"]))
+        lines.append("It sticks to the focus you set: %s." % agent.focus_words(d["focus"]))  # "Bitcoin", never "btc"
     tested, passed = int(research.get("tested_7d") or 0), int(research.get("passed_7d") or 0)
     # passed_7d counts only passes cleared to trade; one a later check left uncleared (Missed final test,
     # Held back) is said apart, as the session rows and the Strategies list say it.
@@ -745,7 +745,7 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
         k = len(passed)
         return _idle("focus", "Nothing is on paper: your focus is %s, and %s outside it, so it won't deploy %s. "
                               "It researches inside the focus to find new ones." % (
-                                  ", ".join(focus), ("your passed strategy, %s, is" % passed[0]["title"]) if k == 1
+                                  agent.focus_words(focus), ("your passed strategy, %s, is" % passed[0]["title"]) if k == 1
                                   else "both your passed strategies are" if k == 2 else "all %d of your passed strategies are" % k, "it" if k == 1 else "them"),
                      {"label": "Change focus", "do": "focus"})
     ready = [x for x in inside if x["candidate"]]
@@ -942,7 +942,7 @@ def autopilot_focus(ctx: Ctx):
     except ValueError as e:
         raise ApiError(400, str(e))
     repo.set_autopilot_focus(ctx.cur, ctx.uid, tokens)
-    repo.add_chat(ctx.cur, ctx.uid, "system", ("Market focus set to %s." % ", ".join(tokens)) if tokens
+    repo.add_chat(ctx.cur, ctx.uid, "system", ("Market focus set to %s." % agent.focus_words(tokens)) if tokens
                   else "Market focus cleared.")
     return {"ok": True, "focus": tokens}
 
