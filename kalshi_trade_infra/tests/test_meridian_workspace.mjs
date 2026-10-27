@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {bundleSource, exposing} from './bundle_source.mjs';
+import {pageFileCases} from './page_files_frontend_cases.mjs';
 import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
@@ -26,7 +28,9 @@ import {a11yCases} from './a11y_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
-const source = readFileSync(new URL('../app/static/app.meridian.js', import.meta.url), 'utf8');
+// What the checks read from the bundle and its page files (bundle_source.mjs).
+const EXPOSE = ['S', 'api', 'PAGES', 'deploymentMonitor', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'apLoadChat', 'render', 'viewExample', 'viewSettings', 'viewBilling', 'viewSystem', 'viewAdmin', 'routes', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'tabEdges', 'viewRun', 'viewResearch', 'viewFunds', 'viewDashboard', 'viewDeploy', 'viewCommunity', 'viewExplore', 'postSnapshot', 'replaceDeploymentContent', 'marketPicker', 'wireMarketPicker', 'hotOpen', 'renderHotRail', 'trackRecordPanel', 'paintDashAp', 'mountTrackRecord', 'apUpdate', 'paymentGate'];
+const source = bundleSource('app.meridian.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
   let resolve;
@@ -194,7 +198,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2, 'the harness replaces only automatic boot');
-  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = {S, api, deploymentMonitor, armed, apMoveText, apPillLabel, apIdleLine, sinceStrip, renderAutopilot, apLoadChat, render, viewExample, viewSettings, viewBilling, viewSystem, viewAdmin, routes, equityChart, runControls, runFeed, clearTimers, runRow, feedMd, viewStrategy, viewStrategies, strategySlip, tabEdges, viewRun, viewResearch, viewFunds, viewDashboard, viewDeploy, viewCommunity, viewExplore, postSnapshot, replaceDeploymentContent, marketPicker, wireMarketPicker, hotOpen, renderHotRail, trackRecordPanel, paintDashAp, mountTrackRecord, apUpdate, paymentGate};'), context);
+  vm.runInContext(source.replace(boot, 'if (globalThis.testStripeLoader) loadStripe = globalThis.testStripeLoader; globalThis.frontend = ' + exposing(EXPOSE) + ';'), context);
   const api = context.frontend;
   api.S.me = {user: {id: 7, name: 'Offline fixture'}, markets: [], directions: [], live_trading_available: true, kalshi_connected: true, kalshi_dev_connected: true};
   // Cached global widgets keep these page checks focused. All requests still use
@@ -230,6 +234,7 @@ stopReasonCases({name: 'Meridian', frontend});
 trustGlitchCases({name: 'Meridian', frontend});
 bellCases({name: 'Meridian', frontend});
 communityCases({name: 'Meridian', frontend});
+pageFileCases({name: 'Meridian', frontend, prefix: 'app.meridian-', pagesKey: 'merPages'});
 settingsCases({name: 'Meridian', frontend, current: 'meridian', storageFor: m => m, cardWallOpts: () => ({stripeLoader: async () => STRIPE_STUB})});
 researchPollCases({name: 'Meridian', frontend});
 runPageCases({name: 'Meridian', frontend});

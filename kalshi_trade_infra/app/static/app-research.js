@@ -1,0 +1,1255 @@
+/* Tau's Research pages: the session list and a session's page.
+   Fetched on first use (pageLoad in app.js), which hands this function what the
+   bundle shares with its page files (shared()); the router calls the views it returns. */
+window.TauPage('research', (T) => {
+  'use strict';
+  const {
+    alert0, announce, api, apNudge, armed, boardTitle, busy, clearTimers, esc, EXAMPLE_NOTE, exampleLine,
+    feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
+    markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
+    runWaitLine, S, sessionTitle, shell, tzName, usd, waitSpan, when, whyFailedHtml, wireMarketPicker
+  } = T;
+
+  // ---------- research ----------
+  // The RSI loop made legible on the index: the engine rewrites its own search policy and keeps
+  // the new one only if it beats the old on the user's own history. Same card language as the run
+  // page. Hidden on a brand-new account (no history to evolve from yet).
+  function renderRsiMomentum(host, pol, tried) {
+    if (!host) return;
+    if (!pol || (!pol.evolved && !tried)) { paint(host, ''); return; }
+    const delta = (pol.base_score != null && pol.score != null)
+      ? `<span class="rsi-score">${pol.base_score} <span class="rsi-arrow">→</span> ${pol.score}</span>` : '';
+    const tag = pol.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>';
+    const body = pol.evolved
+      ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
+         ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
+         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? ' ·\u00a0adopted ' + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+      : `<p>After each cycle the engine <b>tries new ways of choosing which ideas to test</b> and keeps one only if it would have found more real winners in your own history — scored over shuffled orderings, so it can't overfit. It gets better the more you run it.</p>`;
+    // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
+    paint(host, `<details class="rsidisc">
+      <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research engine</span>${tag}${pol.evolved && delta ? `<span class="rsidisc-delta">${delta}</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
+      <div class="rsidisc-body">${body}</div>
+    </details>`);
+  }
+  // The research loop's own report card (GET /api/research/scoreboard, app/research/rsi.py): is research
+  // getting better, what it has learned per market family (playbooks under A/B test), where the
+  // free scan points it next, and which ideas the pipeline (not the market) killed. Fetched at
+  // most once a minute; the 5s page poll re-renders from the cached board.
+  const LOOP_FAMILY = { 'weather-high': 'Daily high temps', 'weather-low': 'Daily low temps', crypto: 'Crypto' };
+  const loopFamily = (f) => LOOP_FAMILY[f] || (f ? f.charAt(0).toUpperCase() + f.slice(1).replace(/-/g, ' ') : '');
+  const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', spec_invalid: 'spec rejected', missing_context: 'needs data we lack', thin_sample: 'too few examples', no_signal: 'no signal', wrong_fit: 'wrong for this market', other: 'other' };
+  const loopRate = (r) => (r == null ? '—' : Math.round(r * 100) + '%');
+  const rsiLoop = { board: null, at: 0, req: null };
+  // The board's read, at most once a minute and one at a time. The Research page starts it as it opens,
+  // beside the session list: asked from the list's first paint, it waited a whole round trip for the list.
+  function rsiLoopRead() {
+    if (!rsiLoop.req && Date.now() - rsiLoop.at > 60000) {
+      rsiLoop.req = api('/api/research/scoreboard?days=14', undefined, { keep: true })
+        .then((b) => { rsiLoop.board = b; }, () => { /* keep the last board; the old card still renders */ })
+        .finally(() => { rsiLoop.at = Date.now(); rsiLoop.req = null; });
+    }
+    return rsiLoop.req;
+  }
+  async function renderResearchLoop(host, pol, tried) {
+    if (!host) return;
+    const reading = rsiLoopRead();
+    if (reading) await reading;
+    const b = rsiLoop.board;
+    if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }
+    const t = b.total, tr = b.trend;
+    const delta = tr ? `<span class="rsi-score">${loopRate(tr.before.gate_reach_rate)} <span class="rsi-arrow">→</span> ${loopRate(tr.after.gate_reach_rate)}</span>` : '';
+    const tag = tr ? (tr.better ? '<span class="rsi-tag">Improving</span>' : '<span class="rsi-tag quiet">Not improving yet</span>') : '<span class="rsi-tag quiet">Learning</span>';
+    const perIdea = t.explored ? usd(t.cost_usd / t.explored) : '—';
+    const figs = `<dl class="figures measure loop-figs">${fig('Ideas tried', t.explored, { small: `${t.runs} session${t.runs === 1 ? '' : 's'} ·\u00a014 days` })}${fig('Reached the gate', t.gated, { small: `${loopRate(t.gate_reach_rate)} of ideas` })}${fig('Passed', t.passed, { small: t.holdout_passed ? `${t.holdout_passed} held out` : 'every gate' })}${fig('Spend', usd(t.cost_usd), { small: `${perIdea} per idea` })}${fig('Killed by our pipeline', loopRate(t.pipeline_death_share), { small: 'of dropped ideas' })}</dl>`;
+    const trendP = tr
+      ? `<p class="loop-trend">${tr.better ? 'Getting better.' : 'Not better yet.'} The newer ${tr.after.runs} session${tr.after.runs === 1 ? '' : 's'} took ${loopRate(tr.after.gate_reach_rate)} of ${tr.after.explored} ideas to the statistical gate, against ${loopRate(tr.before.gate_reach_rate)} of ${tr.before.explored} before.</p>`
+      : `<p class="loop-trend">Each session's ideas are counted from first draft to final verdict. A before/after trend appears once there are 16 ideas to compare.</p>`;
+    const maxIdeas = Math.max(1, ...(b.days || []).map((d) => d.explored));
+    const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${d.explored} ideas, ${d.gated} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
+    const pt = b.paper && b.paper.total, byPb = (b.paper && b.paper.by_playbook) || {};
+    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper against the live book: ${pt.strategies} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${pt.trading} trading, ${pt.round_trips} round trip${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? ` ·\u00a0${pt.live_ready} ready for live` : ''}.</p>` : '';
+    const fams = {};
+    (b.playbooks || []).forEach((p) => { (fams[p.family] = fams[p.family] || {})[p.status] = p; });
+    const pbRows = Object.keys(fams).sort().map((f) => {
+      const a = fams[f].active, c = fams[f].candidate;
+      const paper = (p) => { const q = byPb[p.id] || byPb[String(p.id)]; return q && q.round_trips ? ` ·\u00a0on paper ${q.round_trips} trips, ${usd(q.net_pnl, true)}` : ''; };
+      const rec = (p) => (p.ideas ? `${p.reached} of ${p.ideas} ideas reached the gate` : 'no ideas yet') + paper(p);
+      const act = a ? `<b>v${a.version}</b> in use${a.version ? '' : ' (no lessons yet)'} ·\u00a0${rec(a)}` : '';
+      const cand = c ? `<br><b>v${c.version}</b> on trial ·\u00a0${rec(c)}${c.p_better != null ? ` ·\u00a0${Math.round(c.p_better * 100)}% likely better` : ''}${c.changes ? `<span class="loop-why">What changed: ${esc(c.changes)}</span>` : ''}` : '';
+      const text = (c && c.text) || (a && a.text) || '';
+      return `<li><span class="loop-k">${esc(loopFamily(f))}</span><span class="loop-v">${act}${cand}${text ? `<details class="loop-pb"><summary>Read the playbook</summary><pre>${esc(text)}</pre></details>` : ''}</span></li>`;
+    }).join('');
+    const scout = (b.scout || []).slice(0, 5).map((s) => `<li><span class="loop-k">${esc(marketShort(s.market))}</span><span class="loop-v">${esc(s.best_what || '')} ·\u00a0${s.best_net_c != null ? (s.best_net_c > 0 ? '+' : '') + s.best_net_c.toFixed(1) + '¢' : ''} net per contract ·\u00a0${s.best_z != null ? s.best_z.toFixed(1) : '—'} SE</span></li>`).join('');
+    const fixes = (b.fix_list || []).slice(0, 5).map((x) => `<li><span class="loop-k">${esc(marketShort(x.market))}</span><span class="loop-v"><b>${esc(LOOP_TAG[x.tag] || x.tag)}</b> × ${x.count}${x.example ? `<span class="loop-why">${esc(String(x.example).slice(0, 180))}</span>` : ''}</span></li>`).join('');
+    const REQ_KIND = { history: 'more settled history', micro: 'order-book feature', ticks: 'per-second data' };
+    const REQ_STATE = { open: 'collecting', ready: 'data arrived', requeued: 'idea re-tested', expired: 'gave up' };
+    const reqs = (b.data_requests || []).slice(0, 6).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${esc(REQ_KIND[r.kind] || r.kind)}${r.need ? ' ·\u00a0' + esc(r.need) : ''}</b> ·\u00a0${esc(REQ_STATE[r.status] || r.status)}${r.requeued_run_id ? ` ·\u00a0<a href="/research/${r.requeued_run_id}">session</a>` : ''}${r.idea_title ? `<span class="loop-why">For: ${esc(r.idea_title)}</span>` : ''}${r.status !== 'requeued' && r.note ? `<span class="loop-why">${esc(r.note)}</span>` : ''}</span></li>`).join('');
+    const sect = (h, sub, items) => items ? `<div class="loop-sect"><h4>${h}</h4><p class="loop-sub">${sub}</p><ul class="loop-list">${items}</ul></div>` : '';
+    const tn = b.tournament, tnEnt = tn ? (tn.entrants || []).filter((r) => r.strategy_id).sort((x, y) => y.weight - x.weight) : [];
+    const tnCash = tn ? (tn.entrants || []).find((r) => !r.strategy_id) : null;
+    const tnRows = tnEnt.slice(0, 8).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${Math.round(r.weight * 100)}% of the book</b> ·\u00a0${esc(r.title || '')} ·\u00a0${r.trips} bet${r.trips === 1 ? '' : 's'}, ${usd(r.net_pnl, true)} ·\u00a0${Math.round((r.p_positive || 0) * 100)}% likely to make money${r.verdict ? `<span class="loop-why">Retiring: ${esc(r.verdict)}</span>` : ''}</span></li>`).join('')
+      + (tnEnt.length && tnCash ? `<li><span class="loop-k">Cash</span><span class="loop-v"><b>${Math.round(tnCash.weight * 100)}% of the book</b> ·\u00a0held back until an entrant beats zero</span></li>` : '');
+    const tnSub = tn && tn.pooled ? `Every near miss trades on paper at once, and a bandit moves a ${usd(tn.book.capital)} practice book toward what earns. All entrants together: ${tn.pooled.trips} of the ${tn.pooled.target} independent bets the gate needs${tn.pooled.days_to_target != null ? `, about ${Math.round(tn.pooled.days_to_target)} days to go at ${tn.pooled.per_day} a day` : ''}${tn.pooled.mean_return != null ? `, averaging ${(tn.pooled.mean_return * 100).toFixed(1)}% of stake a bet` : ''}. Book so far: ${usd(tn.book.pnl, true)} over ${tn.book.trips} trade${tn.book.trips === 1 ? '' : 's'}.` : '';
+    const body = figs + trendP + days + paperP
+      + sect('Paper tournament', tnSub, tnRows)
+      + sect('What it has learned', 'After every session the loop rewrites a playbook for that kind of market from its verdicts. A rewrite is tried on new sessions and kept only if more of its ideas reach the gate.', pbRows)
+      + sect('Where it looks next', 'A free scan of every market for prices that disagree with how they settle, after fees. Leads steer research; they still have to pass on unseen data.', scout)
+      + sect('Ideas our pipeline killed', 'Dropped because of missing data or features, not because the market said no. This is the fix list.', fixes)
+      + sect('Data it asked for', 'Crypto ideas that died for lack of data start a collection, and the idea is re-tested once the data exists (autopilot on, at most once each).', reqs)
+      + (pol && pol.evolved ? `<p class="rsi-last">Finalist policy evolved from your history${pol.base_score != null && pol.score != null ? ` ·\u00a0score ${pol.base_score} → ${pol.score}` : ''}.</p>` : '');
+    const open = !!host.querySelector('details.rsidisc[open]');
+    const focused = !!host.querySelector('details.rsidisc > summary:focus');
+    const inner = [...host.querySelectorAll('details.loop-pb')].map((d) => d.open);
+    // The 5s poll re-renders from the kept board: the card is rebuilt only when its markup changed.
+    paint(host, `<details class="rsidisc loop"${open ? ' open' : ''}>
+      <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Is research getting better?</span>${tag}${delta ? `<span class="rsidisc-delta">${delta} reach the gate</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
+      <div class="rsidisc-body">${body}</div>
+    </details>`);
+    host.querySelectorAll('details.loop-pb').forEach((d, i) => { if (inner[i] && !d.open) d.open = true; });
+    if (focused) host.querySelector('details.rsidisc > summary').focus({ preventScroll: true });
+  }
+  // Figure 1 -- the real Tau research pipeline, drawn as a styled node-and-connector flow (no
+  // ASCII, no monospace). Stages verified against the code: agent.py (proposer + challenger),
+  // partitions.py (60/25/15 split with purge + embargo), gatekeeper.py (the test battery and
+  // its rejected/inconclusive verdicts), dreaming.py (the Tau-RSI exploration-policy loop).
+  // Collapsible, so a repeat user can fold it and get straight to the form.
+  const FLOW_RIGHT = '<svg class="flow-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+  const LOOP_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg>';
+  const fnode = (k, d, opts = {}) => `<div class="node${opts.cls ? ' ' + opts.cls : ''}"><span class="node-k">${k}</span>${opts.extra || ''}<span class="node-d">${d}</span></div>`;
+  // The connector reads left→right in the horizontal flow; CSS rotates it to point
+  // down when the row stacks vertically at phone width.
+  const flowLink = `<div class="flow-link">${FLOW_RIGHT}</div>`;
+  const fphase = (n) => `<div class="flow-phase"><span>${n}</span></div>`;
+  // A phase label plus its nodes, laid out as a horizontal row (far less vertical space
+  // than a single tall column); the row wraps on narrow screens, stacks at phone width.
+  const fstage = (phase, nodes) => `<section class="flow-stage">${fphase(phase)}<div class="flow-row">${nodes.join(flowLink)}</div></section>`;
+  function pipelineFigure() {
+    const gates = ['Bootstrap CI', 'PSR', 'DSR ·\u00a0deflated by trial count', 'Placebo / null', 'LORD++ FDR budget', 'Purged walk-forward', 'Benjamini–Hochberg'];
+    return `<details class="pipefig">
+      <summary class="pipecap"><b>Figure 1</b> <span class="pipecap-t">The Tau research pipeline</span><span class="pipecap-hint">how your idea becomes a deployable, evidence-backed strategy</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
+      <div class="flow">
+        ${fstage('Propose', [
+          fnode('Idea', 'Your hypothesis, in a sentence.', { cls: 'node-in' }),
+          fnode('Proposer', 'An agent writes several concrete, testable strategy specs. A challenger vets each one — approve, revise, or reject — before a cent of held-out data is spent.', { cls: 'node-proposer' }),
+          fnode('Pre-register &amp; freeze', 'The hypothesis, its metric, and its test are fixed and hashed before the agent sees any held-out data — so a result can’t be fitted after the fact.'),
+        ])}
+        <div class="unseen-cut"><span>Unseen by the agent below</span></div>
+        ${fstage('Test on unseen data', [
+          fnode('Partition the history', 'A purge + embargo gap sits at every cut, so no trade straddles a boundary. The agent only ever iterates on Research.', { cls: 'partnode', extra: '<div class="partbar" aria-hidden="true"><span class="pb res" style="flex:60"></span><span class="pb val" style="flex:25"></span><span class="pb hold" style="flex:15"></span></div><div class="partleg"><span><i class="sw res"></i>Research 60%</span><span><i class="sw val"></i>Validation 25%</span><span><i class="sw hold"></i>Locked holdout 15%</span></div>' }),
+          fnode('Backtest, net of fees', 'Every spec is simulated after real Kalshi taker fees. A gross edge that fees eat does not count.'),
+          fnode('Statistical gatekeeper', 'A battery of tests on the validation window, corrected for how many ideas were tried. A real edge has to clear all of them at once.', { cls: 'gate-node', extra: `<div class="gate-tests">${gates.map((g) => `<span class="gt">${g}</span>`).join('')}</div><div class="gate-out"><span class="gout-lead">Most ideas exit here —</span><span class="gout">Rejected</span><span class="gout">Inconclusive</span><span class="gout-note">logged to an immutable ledger, so the trial count stays honest</span></div>` }),
+        ])}
+        ${fstage('Confirm', [
+          fnode('One-time holdout', 'The locked 15% is spent once, and only for a finalist the validation window already supported.'),
+          fnode('Marginal-contribution check', 'It must add something new — low correlation (|ρ| ≤ 0.80) to the strategies you already run.'),
+          fnode('<span class="mk on">Passed</span> Deployment candidate', 'An edge that survived every check on data it never saw.', { cls: 'pass-node' }),
+        ])}
+        ${fstage('Trade', [
+          fnode('Paper first', 'Proven on paper with realistic fills: 30+ closed trades from 20+ separate events over 48h+, net up, a statistically clear edge that is still working. Only then can anything touch real money.'),
+          fnode('<span class="mk">Gated</span> Live money', 'Only in your own Kalshi account, and only when you explicitly arm it. Off by default.', { cls: 'live-node' }),
+        ])}
+        <div class="rsi-loopback">
+          <span class="loopback-arc" aria-hidden="true"></span>
+          <span class="loopback-label"><span class="loop-ico">${LOOP_ICON}</span><span class="loopback-txt"><b>Tau-RSI loop</b> — the evolved exploration policy feeds back into the Proposer</span></span>
+        </div>
+      </div>
+      <p class="rsi-loop"><span><b>How the loop learns.</b> After each cycle the engine re-scores and <b>rewrites its own exploration policy</b> from your history — graded on how well it generalizes to unseen data across many shuffled replays — then feeds the improved policy back to the Proposer, so the next batch explores smarter.</span></p>
+    </details>`;
+  }
+  // A run-until-stopped session is one session that keeps exploring a fresh round of ideas, so its
+  // figure is per round (a finished set-size session is about one round); a set-size one is per session.
+  // `own`: true for the user's own sessions on any model (an older server's "yours"), 'model' for their
+  // own sessions on the model picked (yours_by_model), false for everyone's on that model.
+  const costBasis = (own) => own === 'model' ? 'your recent sessions on this model' : own ? 'your recent sessions' : 'recent sessions on this model';
+  function sessionCostLine(v, forever, own) {
+    const basis = costBasis(own);
+    return forever
+      ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
+      : `A session like this usually takes about ${usd(v)} from your credits (${basis}).`;
+  }
+  // Run-until-stopped has no natural size, so say its pace: about what an hour costs at recent rates
+  // (/api/research/estimate per_hour, the user's own else the model's typical) and how long the
+  // balance covers that. It stops by itself only when credits run out, unless auto-reload tops up.
+  function foreverRateLine(hourly, own, me) {
+    let s = hourly == null ? '' : `At recent rates it costs about ${usd(hourly)} an hour (${costBasis(own)}).`;
+    if (!me || !me.billing_enabled) return s;
+    const bal = +me.credit_balance || 0, h = hourly > 0 ? bal / hourly : null;
+    if (h != null && bal > 0) s += ` Your ${usd(bal)} covers ${h < 1 ? 'less than an hour' : h < 48 ? `about ${Math.round(h)} hour${Math.round(h) === 1 ? '' : 's'}` : `about ${Math.round(h / 24)} days`}.`;
+    const ar = me.auto_reload;
+    // What auto-reload charges the card is said with it (credits plus the purchase fee), and a declined
+    // reload card is not promised as a top-up: the session stops when credits run out.
+    return (s + (ar && me.reload_failed ? ' Auto-reload couldn’t charge your card, so it stops by itself if your credits run out.'
+      : ar ? ` Auto-reload adds ${usd(ar.amount)} when your balance falls to ${usd(ar.threshold)}, charging your card ${usd(ar.charge)}.`
+      : ' It stops by itself if your credits run out.')).trim();
+  }
+  // A research idea typed before the session ran out is kept for this tab (sessionStorage) and put back
+  // when the same account signs in and lands on the same page; a 401 sends the reader to sign in and
+  // the box used to come back empty. It is dropped once the session starts or the box is cleared.
+  const DRAFT_KEY = 'tau_research_draft';
+  function keepDraft(ta) {
+    const uid = S.me && S.me.user ? S.me.user.id : null, path = location.pathname;
+    try {
+      const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
+      if (d && d.uid === uid && d.path === path && typeof d.text === 'string' && !ta.value) ta.value = d.text.slice(0, 1000);
+    } catch (e) { /* storage off or unreadable: no draft */ }
+    const save = () => {
+      try {
+        if (ta.value.trim()) sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ uid, path, text: ta.value }));
+        else sessionStorage.removeItem(DRAFT_KEY);
+      } catch (e) { /* private mode or full: the box still works */ }
+    };
+    ta.addEventListener('input', save);
+    return { save, drop: () => { try { sessionStorage.removeItem(DRAFT_KEY); } catch (e) { /* nothing kept */ } } };
+  }
+  async function viewResearch() {
+    const me = S.me;
+    const DEMO_PROMPT = "Generate a Todd's random walk strategy that walks +0.01 and -0.01 with 50% equal chances";
+    shell('/research', '', loading(320));  // switch pages at once; the model list can be slow
+    rsiLoopRead();  // the loop card's board, read beside the session list below
+    // /api/me carries the model list, so the page's own reads below don't wait a round trip on it.
+    const mdl = (me && me.models) || await api('/api/models').catch(() => ({ models: [], default: '' }));
+    // Arriving with ?market= (Explore's "Research <market>") for a market the picker doesn't offer right now
+    // (perpetuals switched off, a venue with no data yet) left Agent's choice picked and said nothing, so the
+    // session ran on whatever market the agent chose. It says so, where the market is picked and in the
+    // Options line. A key it doesn't know is never shown as typed.
+    const wantMkt = new URLSearchParams(location.search).get('market');
+    const wantRow = wantMkt ? (me.markets || []).find((m) => m.key === wantMkt) : null;
+    const notOpen = wantMkt && !wantRow ? `${MKT_SHORT[wantMkt] || 'The market you picked'} isn\u2019t open for research right now` : '';
+    // Under the credits a session needs to start, the form says so up top. Start refused for it (402) moves
+    // that note beside Start instead of adding the server's own words under it: the same warning twice.
+    const lowSaid = `You have ${usd(me.credit_balance)} in credits — a research session needs at least ${usd(me.min_run_balance)} to start.`;
+    const lowNote = (kind) => `<div class="notice${kind ? ' ' + kind : ''}" id="rlow" role="${kind === 'bad' ? 'alert' : 'status'}">${ICON.warn}<span>${lowSaid} ${me.reload_failed ? 'Auto-reload couldn’t charge your card. <a href="/billing">Update your card and add credits →</a>' : '<a href="/billing">Add credits →</a>'}</span></div>`;
+    // Models you can't pick yet go after the ones you can, and say "coming soon": they led the list as
+    // "(access pending)", four greyed-out rows above the default.
+    const modelOpts = (mdl.models || []).filter((m) => m.available !== false).concat((mdl.models || []).filter((m) => m.available === false))
+      .map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (coming soon)' : ''}</option>`).join('');
+    shell('/research', boardTitle('Research', 'A self-improving research engine for Kalshi markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
+      ${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}
+      <div id="rexample"></div>
+      <form class="panel dispatch" id="dispatch">
+        <h2>${ICON.spark2}New research session</h2>
+        ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
+        ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
+        <label class="field"><span>Describe your idea</span>
+          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
+        <details class="dispatch-opts" id="ropts"${phone() ? '' : ' open'}><summary><span class="dispatch-opts-t">Options</span><span class="dispatch-opts-sum" id="ropts-sum"></span></summary><div class="dispatch-opts-body">
+        <div class="dispatch-tune">
+          ${modelOpts ? `<label class="field"><span>Model</span>
+            <select class="input" name="model" id="rmodel">${modelOpts}</select></label>` : ''}
+          <label class="field"><span>Strategies to test</span>
+            <input class="input" type="number" name="max_hypotheses" id="maxhyp" min="1" max="1000" value="10"></label>
+          <label class="switch tune-sw"><input type="checkbox" name="run_forever" id="runforever" checked><span>Let it run until I stop it</span></label>
+        </div>
+        <fieldset class="field mkt-field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:8px">Market</legend>
+          ${notOpen ? `<p class="hint mkt-missing" role="status">${esc(notOpen)}, so the agent picks the market unless you choose one here.</p>` : ''}
+          ${marketPicker(me.markets)}
+        </fieldset>
+        </div></details>
+        <div class="dispatch-go">
+          <a class="chip ex" href="/example" data-ex-open title="Opens the finished example session; nothing runs">See the demo — Todd's random walk</a>
+          <button type="button" class="linkish ex-run" data-ex="${esc(DEMO_PROMPT)}">or run it yourself</button>
+          <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${ICON.spark2}Start session</button>
+        </div>
+        <p class="hint ex-cost" id="ex-cost" hidden></p>
+        <p class="hint go-cost" id="rcost" hidden></p>
+        <div id="dflash"></div>
+        <p class="hint" id="rf-hint">A session takes a few minutes and keeps running if you leave this page.</p>
+      </form>
+      <div class="rengine" id="rengine">
+        <div class="statusline" id="rstatus"><p class="said"></p></div>
+        <dl class="figures measure" id="rfigs"></dl><p class="stale-note" id="runs-stale" role="status"></p>
+        <div id="rsimo"></div>
+      </div>
+      ${pipelineFigure()}
+      <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
+        <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
+    const form = root.querySelector('#dispatch');
+    wireMarketPicker(form);
+    const pickMkt = wantRow && [...form.querySelectorAll('input[name=market]')].find((r) => r.value === wantMkt);
+    if (pickMkt) {
+      pickMkt.checked = true;
+      const grp = pickMkt.closest('details'); if (grp) grp.open = true;
+    }
+    if (pickMkt || notOpen) { const opts = form.querySelector('#ropts'); if (opts) opts.open = true; }
+    // Model, depth and market fold behind "Options" on a phone (closed while at their defaults), so
+    // Start session sits right under the idea. The summary line says what will run.
+    const optsSum = form.querySelector('#ropts-sum');
+    const syncOpts = () => {
+      if (!optsSum) return;
+      const msel = form.querySelector('#rmodel'), rfx = form.querySelector('#runforever'), mhx = form.querySelector('#maxhyp');
+      const mo = msel ? [...msel.options].find((o) => o.value === msel.value) : null;
+      const pick = [...form.querySelectorAll('input[name=market]')].find((r) => r.checked);
+      const row = pick && pick.value ? pick.closest('.mktrow') : null, nm = row && row.querySelector('.mktrow-name');
+      optsSum.textContent = [mo ? mo.textContent.trim() : '', rfx && rfx.checked ? 'runs until you stop it' : `${(mhx && mhx.value) || 10} strategies`,
+        nm ? nm.textContent.trim() : notOpen ? `agent\u2019s choice of market (${notOpen})` : 'agent\u2019s choice of market'].filter(Boolean).join(' \u00b7\u00a0');
+    };
+    form.addEventListener('change', syncOpts); syncOpts();
+    // A field the browser won't accept (0 or 5,000 strategies) inside folded Options: it can't show its
+    // message on a hidden field, so Start did nothing. Unfold Options so the browser points at it.
+    form.addEventListener('invalid', () => { const o = form.querySelector('#ropts'); if (o && !o.open) o.open = true; }, true);
+    const ta = form.querySelector('textarea[name=prompt]');
+    const draft = keepDraft(ta);
+    // "Run it yourself" fills the box with the example's idea and says plainly that it's a new, paid
+    // session (with the usual cost beside Start when there's one); the demo link opens the finished one.
+    root.querySelectorAll('[data-ex]').forEach((b) => (b.onclick = () => {
+      ta.value = b.dataset.ex; ta.focus(); draft.save();
+      const note = form.querySelector('#ex-cost'), rc = form.querySelector('#rcost');
+      if (!note) return;
+      note.hidden = false;
+      note.textContent = !me.billing_enabled ? 'This starts a new session from scratch. The example already shows how this idea ends.'
+        : `This starts a new session that uses your credits; the example already shows how this idea ends.${rc && !rc.hidden && rc.textContent ? ' ' + rc.textContent : ''}`;
+    }));
+    const rf = form.querySelector('#runforever'), mh = form.querySelector('#maxhyp');
+    let syncCost = () => {};  // the cost line below follows the run-forever switch too
+    if (rf && mh) {
+      const rh = form.querySelector('#rf-hint');
+      const syncRf = () => { mh.disabled = rf.checked; mh.style.opacity = rf.checked ? '.4' : ''; if (rh) rh.textContent = rf.checked ? 'Runs until you stop it, using credits as it goes. It keeps running if you leave this page.' : 'A session takes a few minutes and keeps running if you leave this page.'; };
+      rf.addEventListener('change', () => { syncRf(); syncCost(); }); syncRf();  // default on -> depth dimmed
+    }
+    // What a session usually costs, beside Start: real ledger debits from /api/research/estimate,
+    // the user's own median or else the typical one for the chosen model. No data, no line.
+    (() => {
+      const rc = form.querySelector('#rcost'), msel = form.querySelector('#rmodel');
+      if (!rc) return;
+      let est = null;
+      const sync = syncCost = () => {
+        // The user's own figure for the model picked (yours_by_model): "yours" pooled every model, so a
+        // history on the default model read beside the cheapest one too. An older server sends "yours" alone.
+        const key = (msel && msel.value) || mdl.default, byModel = est && est.yours_by_model;
+        const mine = !est ? null : byModel ? byModel[key] : est.yours, own = mine != null && (byModel ? 'model' : true);
+        const v = !est ? null : own ? mine : (est.typical || {})[key];
+        const forever = !!(rf && rf.checked), ph = (est && est.per_hour) || {};
+        const myRate = ph.yours_by_model ? ph.yours_by_model[key] : ph.yours, ownRate = myRate != null && (ph.yours_by_model ? 'model' : true);
+        const hourly = ownRate ? myRate : (ph.typical || {})[key];
+        const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ownRate, me) : '';
+        // No ledger figure for this model (or the read failed): with payments on, still say how it
+        // is billed and that it can be stopped, rather than leaving the cost blank.
+        const none = v == null && !pace && me.billing_enabled ? 'No cost estimate for this model yet. It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
+        rc.hidden = v == null && !pace && !none;
+        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace, none].filter(Boolean).join(' ');
+      };
+      if (msel) msel.addEventListener('change', sync);
+      api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; }).then(sync);
+    })();
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      if (me.needs_card) { flash('#dflash', 'Add a payment method on the Billing tab first.', 'bad'); go('/billing'); return; }
+      const fd = new FormData(form);
+      const btn = form.querySelector('button[type=submit]');
+      draft.save();
+      await busy(btn, async () => {
+        try {
+          const r = await api('/api/runs', {
+            market: fd.get('market'), prompt: fd.get('prompt'),
+            max_hypotheses: Number(fd.get('max_hypotheses')) || undefined,
+            run_forever: fd.get('run_forever') === 'on',
+            model: fd.get('model') || undefined,
+          });
+          draft.drop();
+          go('/research/' + r.id);
+        } catch (err) {
+          const said = form.querySelector('#dflash'), low = err.status === 402 && form.querySelector('#rlow');
+          if (low && said) { low.remove(); said.innerHTML = lowNote('bad'); announce(lowSaid, true); }
+          else flash('#dflash', err.message, 'bad');
+          // The error sits under the cost lines: on a phone that is below the fold, so Start looked
+          // like it did nothing (out of credits, two sessions already going). Bring it into view.
+          if (said && said.scrollIntoView) said.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    };
+    // Live market context: fold the shared book onto each picker row (read-only). Rows with no
+    // live quote right now are labelled once the feed resolves; the picker works either way.
+    (async () => {
+      try {
+        const c = await api('/api/research/context');
+        (c.markets || []).forEach((m) => fillLiveRow(form, m));
+      } catch (e) { /* no feed yet -> the picker still works blind */ }
+      markQuietRows(form);
+    })();
+    // The poll sends back the version of its last full answer; while nothing the list shows has moved the
+    // server answers {same: true} from two reads, and the page repaints from the answer it kept (its
+    // relative times still move). Each region is rewritten only when its markup changed.
+    let kept = null;
+    const load = async () => {
+      const got = await api('/api/runs' + (kept && kept.v ? '?since=' + encodeURIComponent(kept.v) : ''));
+      const d = got.same && kept ? kept : (kept = got);
+      // All-time totals from the server; the 50 newest runs undercount a busy autopilot.
+      const tried = d.totals ? d.totals.tried : d.runs.reduce((a, r) => a + (r.hypotheses_tried || 0), 0);
+      const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + (r.strategies_passed || 0), 0);
+      // A paused session holds one of the two session slots but isn't researching: it says paused.
+      const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
+      const said = running || paused
+        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(' ·\u00a0')} — <em>${tried}</em> hypothes${+tried === 1 ? 'is' : 'es'} tested, <em>${passed}</em> through every gate.`
+        : tried
+          ? `Your engine has tested <em>${tried}</em> hypothes${+tried === 1 ? 'is' : 'es'} and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
+          : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
+      paint(root.querySelector('#rstatus .said'), said);
+      paint(root.querySelector('#rfigs'), fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
+        fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: tried ? `${pct(passed / tried, false)} pass rate` : '' }));
+      renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
+      // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
+      const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
+      const rex = root.querySelector('#rexample'), exHtml = exampleLine(d.runs);
+      if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
+      const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
+      if (exOpen) { const hide = !exRun || !!exHtml; if (exOpen.hidden !== hide) exOpen.hidden = hide; if (exRun && exOpen.getAttribute('href') !== '/research/' + exRun.id) exOpen.setAttribute('href', '/research/' + exRun.id); }
+      // "or run it yourself" follows the demo link; with the link hidden (no example, or the example's own
+      // line is up top) it stood alone beside Start and read as a fragment.
+      const exRunBtn = root.querySelector('button[data-ex]');
+      if (exRunBtn) { const t = exOpen && !exOpen.hidden ? 'or run it yourself' : 'Run the demo idea yourself'; if (exRunBtn.textContent !== t) exRunBtn.textContent = t; }
+      // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
+      const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
+      paint(root.querySelector('#rcount'), esc([own ? `${own} run${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(' \u00b7\u00a0')));
+      const newest = d.runs.find((r) => !r.example);
+      paintRows(root.querySelector('#runs'), d.runs.map((r) => [r.id, runRow(r, r === newest)]),
+        `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`);
+    };
+    await load();
+    poll(load, 5000, 'runs-stale');
+  }
+  // What a run has taken from credits (the ledger rows billed to it, `spent_usd` from the server).
+  // A run still going says "so far"; a finished one states its cost.
+  const runLive = (r) => r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+  // Which model a session uses and how far it goes, beside its market on the run page: it never said
+  // either. model_label is the model's customer name from the server (the run's key is NULL for the
+  // default model); run_forever is the form's "Let it run until I stop it", else its strategy count.
+  const runSetup = (r) => [r.model_label ? esc(r.model_label) : '',
+    r.run_forever ? (runLive(r) ? 'Runs until you stop it' : 'Ran until stopped')
+      : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' \u00b7\u00a0');
+  const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
+  // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
+  // the time since that answer: the list counts a silent session out of "Running", so its row says
+  // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
+  const runLate = (r) => {
+    const w = r.wait;
+    if (!w || !w.overdue || (r.status !== 'running' && r.status !== 'queued')) return null;
+    if (w.got == null) w.got = Date.now();
+    return { ...w, seconds: (+w.seconds || 0) + Math.round((Date.now() - w.got) / 1000) };
+  };
+  const lateLabel = (w) => (w.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(w.seconds);
+  // Why a finished session stopped, from the server (services.run_stop). A run-until-stopped session
+  // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
+  // one said "Cancelled" or "Failed" without who or what stopped it.
+  const RUN_STOP = { credits: 'Out of credits', user: 'Stopped by you', error: 'Stopped on an error', limit: 'Finished', complete: 'Finished' };
+  // `newest`: the user's newest session. When it ran out of credits its card offers Add credits, beside
+  // the card (a link can't sit inside the card's own link); older ones only say so.
+  function runRow(r, newest) {
+    const why = RUN_STOP[r.stop_reason] || '', late = runLate(r);
+    const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
+      : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
+      : r.status === 'succeeded' ? `${why ? why + ' \u00b7\u00a0' : ''}<span class="${r.strategies_passed ? 'gain' : ''}">${r.strategies_passed} of ${r.hypotheses_tried} passed</span>`
+      : r.status === 'stopped' ? `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}${r.strategies_passed ? ` ·\u00a0<span class="gain">${r.strategies_passed} passed</span>` : ''}`
+      : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
+      : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
+    // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
+    // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
+    const band = r.status === 'succeeded' ? (r.strategies_passed ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
+    const card = `<a class="run-card ${band}" href="/research/${r.id}">
+      <span class="run-title"><b title="${esc(sessionTitle(r))}">${esc(sessionTitle(r))}</b>${runTag(r)}</span>
+      <span class="run-meta">${esc(marketShort(r.market))}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : r.spent_usd != null ? ' \u00b7\u00a0' + runSpent(r) : ''}${r.error ? ' \u00b7\u00a0' + esc(r.error) : ''}</span>
+      <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
+    return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
+  }
+
+  // ======================================================================
+  // Live research feed — a Claude-Code-style streaming agent log.
+  // Shared, BYTE-IDENTICAL across both themes (app.js / app.meridian.js). A running session
+  // streams its reasoning here as it happens: each thought, each hypothesis + thesis, each
+  // backtest result, the challenger's verdict and the gatekeeper's classification land as nodes
+  // on a timetable rail. Newest at the bottom like a terminal; the view sticks to the latest
+  // only while the reader is already at the foot, so scrolling up to read never gets yanked back.
+  // Polling (every 2s) drives it — no SSE, so it works under `script-src 'self'`.
+  // ======================================================================
+  const RUN_LANE = { step: 'thought', thinking: 'think', hypothesis: 'action', challenger: 'review', verdict: 'result', done: 'done', paused: 'state', resumed: 'state', error: 'alert' };
+
+  function runMechText(m) {
+    if (!m || typeof m !== 'object') return '';
+    const v = m.why || m.mechanism || m.edge || m.rationale || m.because;
+    return typeof v === 'string' ? v : '';
+  }
+
+  // The economic mechanism, as the structured four-part case the proposer pre-registers (who is
+  // on the other side, why it isn't arbitraged, when, why it persists) — or the older free-text form.
+  function mechHtml(m) {
+    if (!m || typeof m !== 'object') { const s = runMechText(m); return s ? `<p class="hx-why">${esc(s)}</p>` : ''; }
+    const rows = [['Who pays', m.who_pays], ['Not arbitraged because', m.why_not_arbitraged], ['When', m.when], ['Why it persists', m.why_persists]].filter(([, v]) => v);
+    if (!rows.length) { const s = runMechText(m); return s ? `<p class="hx-why">${esc(s)}</p>` : ''; }
+    return `<dl class="hx-mech">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+  }
+
+  // Render the strategy spec as what it actually IS, so a fitted model never masquerades as a
+  // flat if-else threshold. Three shapes: a learned DSL model (model.kind logistic/calibration —
+  // a fitted P(YES) model, shown with its features/weights), an agent-authored code model (real
+  // Python, fit-on-research-and-frozen), or a plain threshold rule (the house GBM — unchanged).
+  // The execution gates (side, price band, time-to-settle, spread, exit) and sizing are real
+  // trade bounds and render identically for every shape.
+  function specHtml(spec) {
+    if (!spec || typeof spec !== 'object') return '';
+    const row = (k, v) => (v == null || v === '') ? '' : `<dt>${k}</dt><dd>${esc(v)}</dd>`;
+    const c = (v) => Math.round(v * 100) + '¢';
+    const sz = spec.sizing || {};
+    const sizing = `$${sz.stake != null ? sz.stake : 5} per trade ·\u00a0up to ${sz.max_positions != null ? sz.max_positions : 20} at once`;
+    const codeFig = (src) => `<figure class="hx-code"><figcaption>Strategy code <span>Python ·\u00a0research sandbox only</span></figcaption><pre><code>${esc(src)}</code></pre></figure>`;
+
+    // Code strategy: an arbitrary fitted model in the sandbox, not threshold fields. Show it as
+    // one, keep the real source (and note the frozen fit, if the research run froze params in).
+    if (spec.code) {
+      const fit = (spec.params != null && spec.params !== '') ? ' ·\u00a0fit on research, frozen' : '';
+      return `<dl class="hx-spec"><dt>Signal</dt><dd class="hx-model">custom code model${fit}</dd>
+        ${row('Sizing', sizing)}</dl>${codeFig(spec.code)}`;
+    }
+
+    const e = spec.entry || {}, x = spec.exit || {}, m = spec.model || {};
+    // Execution gates — the real trade bounds, identical for every spec shape.
+    const bounds = [];
+    if (e.min_price != null || e.max_price != null) bounds.push(`price ${e.min_price != null ? c(e.min_price) : '0¢'}–${e.max_price != null ? c(e.max_price) : '100¢'}`);
+    if (e.min_tte_min != null || e.max_tte_min != null) bounds.push(`${e.min_tte_min != null ? e.min_tte_min : 0}–${e.max_tte_min != null ? e.max_tte_min : '∞'} min to settle`);
+    if (e.max_spread != null) bounds.push(`spread ≤ ${c(e.max_spread)}`);
+    const exit = [];
+    if (x.take_profit != null) exit.push(`take profit at ${c(x.take_profit)}`);
+    if (x.stop_loss != null) exit.push(`stop at ${c(x.stop_loss)}`);
+    if (x.min_edge_to_hold != null) exit.push(`hold while edge ≥ ${pct(x.min_edge_to_hold, false)}`);
+    const filters = (spec.filters && spec.filters.length)
+      ? spec.filters.map((f) => typeof f === 'string' ? f : JSON.stringify(f)).join('; ') : '';
+    const side = row('Side', (spec.side || 'yes').toUpperCase());
+    const edge = e.min_edge != null ? `P(YES) edge ≥ ${pct(e.min_edge, false)}` : '';
+
+    // Learned DSL model (logistic / calibration): a FITTED fair-value model, not a threshold.
+    if (m.kind === 'logistic' || m.kind === 'calibration') {
+      const feats = Array.isArray(m.features) ? m.features.filter(Boolean) : [];
+      const signal = m.kind === 'calibration'
+        ? 'fitted calibration of the market&rsquo;s own mid'
+        : `fitted logistic${feats.length ? ' over ' + feats.map((f) => `<span class="hx-feat">${esc(f)}</span>`).join(', ') : ''}`;
+      const coef = Array.isArray(m.coef) ? m.coef : [];
+      // Compact fitted weights, only when they are present and line up with the named features.
+      const weights = (coef.length && coef.length === feats.length && coef.every((n) => typeof n === 'number'))
+        ? `<dt>Fitted weights</dt><dd class="hx-weights">${feats.map((f, i) => `<span class="hx-feat">${esc(f)}</span> ×${coef[i].toFixed(2)}`).join(' ·\u00a0')}${typeof m.intercept === 'number' ? ` ·\u00a0intercept ${m.intercept.toFixed(2)}` : ''}</dd>`
+        : '';
+      return `<dl class="hx-spec">
+        ${side}
+        <dt>Signal</dt><dd class="hx-model">${signal}${edge ? ' — enter when ' + edge : ''}</dd>
+        ${weights}
+        ${row('Only when', bounds.join(' ·\u00a0'))}
+        ${row('Exit', exit.join(' ·\u00a0') || 'hold to settlement')}
+        ${row('Regime filter', filters)}
+        ${row('Sizing', sizing)}</dl>`;
+    }
+
+    // Plain DSL threshold strategy (house GBM / rules) — unchanged.
+    const entry = [];
+    if (edge) entry.push(`edge ≥ ${pct(e.min_edge, false)}`);
+    entry.push(...bounds);
+    return `<dl class="hx-spec">
+      ${side}
+      ${row('Enter when', entry.join(' ·\u00a0') || 'any priced contract')}
+      ${row('Exit', exit.join(' ·\u00a0') || 'hold to settlement')}
+      ${row('Regime filter', filters)}
+      ${row('Sizing', sizing)}</dl>`;
+  }
+
+  // The gatekeeper's numbers for the reader (their own result) — never fed back to the generator.
+  function statGrid(s) {
+    if (!s) return '';
+    const num = (v, dp) => (v == null || typeof v !== 'number') ? null : v.toFixed(dp == null ? 2 : dp);
+    const p = (v) => v == null ? null : (v < 0.001 ? '<0.001' : num(v, 3));
+    const cells = [];
+    const add = (k, v) => { if (v != null && v !== '') cells.push(`<div><dt>${k}</dt><dd>${v}</dd></div>`); };
+    add('Trades', s.n_trades != null ? String(s.n_trades) : null);
+    add('p-value', p(s.p_value));
+    add('DSR', num(s.dsr));
+    add('Sharpe', num(s.sharpe));
+    if (s.ci && (s.ci.lo != null || s.ci.hi != null)) add('95% CI', `${pct(s.ci.lo, false)}…${pct(s.ci.hi, false)}`);
+    add('Placebo p', p(s.placebo_p));
+    if (s.max_drawdown != null) add('Max drawdown', usd(-Math.abs(s.max_drawdown), true));
+    return cells.length ? `<dl class="hx-stats">${cells.join('')}</dl>` : '';
+  }
+
+  // A progressively-filled hypothesis card: intuition (thesis) and the in-sample stat sit in the
+  // open; "Show the homework" expands the mechanism, the real spec/code, and the falsification +
+  // placebo. The challenger's critique and the gatekeeper's stamped verdict are grafted onto the
+  // SAME card as those events arrive, so a reader follows one strategy intuition → code → critique
+  // → verdict rather than hunting across scattered log lines.
+  function hypothesisCard(ev) {
+    const d = ev.data || {};
+    const ins = d.in_sample || {};
+    const title = ev.message;
+    const li = document.createElement('li');
+    li.className = 'ln lane-action hx';
+    const stat = (ins && ins.trades != null)
+      ? `<span class="say-stat">On the history it searched: ${usd(ins.pnl, true)} ·\u00a0${ins.trades} trade${ins.trades === 1 ? '' : 's'}${glo('insample')}</span>` : '';
+    const home = [mechHtml(d.mechanism), specHtml(d.spec),
+      d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
+      d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
+    li.innerHTML = `${logTime(ev.created_at)}<span class="node" aria-hidden="true"></span><div class="say">
+      <div class="hx-head"><span class="say-kind">Hypothesis</span><b class="say-title">${esc(title)}</b><span class="hx-stamp pending" data-stamp>Testing<span class="working" aria-hidden="true"></span></span></div>
+      ${d.thesis ? `<span class="say-sub">${esc(d.thesis)}</span>` : ''}${stat}
+      ${home ? `<details class="hx-more"><summary>Show the homework</summary><div class="hx-body">${home}</div></details>` : ''}
+      <div class="hx-review" data-review hidden></div></div>`;
+    const stampEl = li.querySelector('[data-stamp]');
+    const reviewEl = li.querySelector('[data-review]');
+    const strip = (s, re) => (s || '').replace(re, '');
+    return {
+      li, title,
+      challenger(e2) {
+        const dec = (e2.data || {}).decision || 'review';
+        const reason = strip(strip(e2.message, /^Challenger\s+\w+\s+[-–]\s*/i), new RegExp('^' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*'));
+        reviewEl.hidden = false;
+        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Skeptic’s review ·\u00a0${esc(REVIEW_SAID[dec] || dec)}</span>${esc(reason)}</p>`);
+      },
+      verdict(e2) {
+        const dd = e2.data || {};
+        const cls = dd.status === 'passed' ? 'pass' : (dd.status === 'rejected' || dd.status === 'abandoned') ? 'rej' : 'void';
+        const label = dd.status === 'passed' ? 'PASSED' : dd.status === 'rejected' ? 'REJECTED' : dd.status === 'abandoned' ? 'DROPPED' : 'VOID';
+        li.classList.remove('lane-action'); li.classList.add('lane-' + cls);
+        stampEl.className = 'hx-stamp ' + cls;
+        // A PASSED hypothesis has a strategy page: link both its title and an explicit "View
+        // strategy →" affordance in the verdict row. VOID/REJECTED have no page, so stay unlinked.
+        const href = cls === 'pass' && dd.strategy_id ? `/strategies/${dd.strategy_id}` : '';
+        stampEl.innerHTML = href ? `<a href="${href}">${label}</a>` : label;
+        if (href) {
+          const t = li.querySelector('.say-title');
+          if (t) t.innerHTML = `<a class="hx-titlelink" href="${href}">${esc(title)}</a>`;
+        }
+        const rest = strip(e2.message, /^(PASSED|VOID|FAILED|REJECTED)(\s*\(challenger\))?\s*[-–]\s*/);
+        const tail = rest.indexOf(':') >= 0 ? rest.slice(rest.indexOf(':') + 1).trim() : '';
+        const why = whyFailedHtml(dd.why_failed);  // the gates it missed replace the gatekeeper's raw note
+        // The server's plain sentence stands in for a message written for the ledger ("validation
+        // verdict is gatekeeper-held (classification=...)"); a dropped idea says why it was dropped.
+        const said = dd.note || (dd.status === 'abandoned' && dd.why) || tail;
+        if (dd.strategy_id != null) li.dataset.sid = dd.strategy_id;  // "Ideas tested" jumps here
+        reviewEl.hidden = false;
+        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict ·\u00a0${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);
+      },
+      // A passed idea's later checks (the one-time locked holdout, then whether it adds something new
+      // to what the user runs) land on its own card; they were loose lines stamped VOID.
+      stage(e2) { reviewEl.hidden = false; reviewEl.insertAdjacentHTML('beforeend', stageHtml(e2.data || {})); },
+    };
+  }
+  // One later check of a passed idea in plain words: which check, whether it held, and why not.
+  function stageHtml(dd) {
+    const why = whyFailedHtml(dd.why_failed), ok = !why && !dd.skipped;
+    const name = dd.phase === 'holdout' ? 'Locked holdout' : 'Adds something new';
+    return `<div class="hx-verdict"><span class="hx-tag ${ok ? 'pass' : 'void'}">${name} ·\u00a0${ok ? 'held' : dd.skipped ? 'not run' : 'missed'}</span>${why || (dd.note ? `<span class="hx-vtext">${esc(dd.note)}</span>` : '')}</div>`;
+  }
+
+  // A live "thinking" card: the proposer's reasoning streams in as the agent writes it, with a
+  // ticking elapsed clock and a caret, so the multi-minute generation call is visibly ALIVE rather
+  // than a silent "Researching…". Once the prose turns into the JSON spec we stop echoing raw
+  // tokens (the structured spec lands in each hypothesis card instead) and show a quiet "drafting".
+  function thinkController(block, at) {
+    const li = document.createElement('li');
+    li.className = 'ln lane-think think';
+    li.innerHTML = `${logTime(at)}<span class="node" aria-hidden="true"></span><div class="say">
+      <div class="hx-head"><span class="say-kind">Thinking</span><span class="think-el" data-el>0s</span></div>
+      <div class="think-body" data-body></div>
+      <div class="think-draft" data-draft hidden>drafting the strategy spec<span class="ell" aria-hidden="true"></span></div>
+      <span class="caret" data-caret aria-hidden="true"></span></div>`;
+    const body = li.querySelector('[data-body]');
+    const elEl = li.querySelector('[data-el]');
+    const draft = li.querySelector('[data-draft]');
+    const caret = li.querySelector('[data-caret]');
+    let raw = '';
+    const started = Date.now();
+    const tick = setInterval(() => { elEl.textContent = Math.round((Date.now() - started) / 1000) + 's'; }, 1000);
+    S.timers.push(tick);
+    return {
+      li, block,
+      feed(text) {
+        raw += text || '';
+        // Stop echoing once the JSON spec begins — a ```fence (what we ask for), a line-led brace,
+        // or a bare {" object start — the structured spec lands in the hypothesis cards instead.
+        const cut = raw.search(/```|\n\s*\{|\{\s*"/);
+        body.innerHTML = feedMd((cut >= 0 ? raw.slice(0, cut) : raw).trim());
+        draft.hidden = cut < 0;
+        caret.hidden = cut >= 0;
+      },
+      // A thought replayed from the log (opened after it was written) never ticked: it said "0s".
+      seal() { clearInterval(tick); caret.remove(); draft.hidden = true; li.classList.add('sealed'); if (elEl.textContent === '0s') elEl.hidden = true; if (!raw.trim()) li.remove(); },
+    };
+  }
+  // An idea still "Testing" when its session ended (failed, cancelled, out of credits) kept its
+  // spinner for good, as if the stopped session were still on it. It gets no verdict now.
+  function settlePending(log) {
+    log.querySelectorAll('[data-stamp]').forEach((s) => {
+      if (!s.classList.contains('pending')) return;
+      s.className = 'hx-stamp void'; s.textContent = 'Not finished';
+    });
+  }
+
+  // Controller over a .runfeed section: streams the thinking card, grafts challenger/verdict onto
+  // their hypothesis card, appends everything else newest-at-bottom with an enter animation, sticks
+  // to the latest only when already at the foot, raises a "jump to latest" chip when scrolled up,
+  // and drives the live "researching… (Ns)" pulse so it never looks frozen between polls.
+  // The second model that reads each idea before its test, by what it does (the verdicts already say
+  // "The skeptic's review didn't pass it"), and its call in words, not the agent's codes.
+  const REVIEW_SAID = { approve: 'approved', revise: 'asked for changes', reject: 'turned it down' };
+  function runFeed(section) {
+    const log = section.querySelector('.log');
+    const jump = section.querySelector('.jumplatest');
+    const pulse = section.querySelector('.runpulse');
+    let unseen = 0, first = true, appended = 0, pulseSt = null, pulseKey = '', pulseKind = '', lastAt = Date.now(), queuedAt = null;
+    const cards = new Map();   // hypothesis title -> card controller (most recent wins on a title clash)
+    const settled = new Map(); // title -> card whose verdict is in: its holdout / diversification checks land on it
+    let think = null;          // the currently-open thinking card, if any
+    const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+    const toLatest = () => { log.scrollTop = log.scrollHeight; unseen = 0; jump.hidden = true; };
+    log.addEventListener('scroll', () => { if (atBottom()) { unseen = 0; jump.hidden = true; } });
+    jump.onclick = toLatest;
+    const sealThink = () => { if (think) { think.seal(); think = null; } };
+    const add = (el) => { if (!first) el.classList.add('in'); log.appendChild(el); appended++; };
+    // A long session's first paint keeps only its latest rows in the page and holds the rest behind
+    // "Show N earlier entries" at the top: laying out and painting 600 events took a phone ~1.5s.
+    // Held rows are built (a late verdict still lands on its card); they just wait outside the page.
+    const KEEP_ROWS = 60;
+    let earlier = null;
+    function foldEarlier() {
+      const rows = Array.from(log.children);
+      if (rows.length <= KEEP_ROWS + 20) return;
+      earlier = rows.slice(0, rows.length - KEEP_ROWS);
+      earlier.forEach((el) => el.remove());
+      const li = document.createElement('li');
+      li.className = 'log-earlier';
+      li.innerHTML = `<button type="button" class="btn small">Show ${num(earlier.length)} earlier entries</button>`;
+      li.querySelector('button').onclick = () => showEarlier(true);
+      log.insertBefore(li, log.firstChild);
+    }
+    // Puts the held rows back above what is on screen, which stays where it was.
+    function showEarlier(focus) {
+      if (!earlier) return;
+      const rows = earlier, btn = log.querySelector('.log-earlier'), ref = btn ? btn.nextSibling : log.firstChild;
+      earlier = null;
+      const was = ref ? ref.offsetTop : 0, top = log.scrollTop;
+      const frag = document.createDocumentFragment();
+      rows.forEach((el) => frag.appendChild(el));
+      log.insertBefore(frag, ref);
+      if (btn) btn.remove();
+      // Instantly, not with the log's smooth scrolling, and the same whether or not the browser
+      // anchored the scroll itself.
+      log.style.scrollBehavior = 'auto';
+      log.scrollTop = top + ((ref ? ref.offsetTop : 0) - was);
+      log.style.scrollBehavior = '';
+      // Focus goes to the newest revealed entry (the button it pressed is gone), just above the view.
+      const last = rows[rows.length - 1];
+      if (focus && last && last.focus) { last.setAttribute('tabindex', '-1'); last.focus({ preventScroll: true }); }
+    }
+
+    function dispatch(ev) {
+      lastAt = Date.now();
+      if (ev.kind === 'thinking') {
+        const block = (ev.data || {}).block || 0;
+        if (think && think.block !== block) sealThink();
+        if ((ev.data || {}).end) { sealThink(); return; }
+        if (!think) { think = thinkController(block, ev.created_at); add(think.li); }
+        think.feed(ev.message);
+        return;
+      }
+      sealThink();  // any structured event ends the current train of thought
+      if (ev.kind === 'hypothesis') {
+        const card = hypothesisCard(ev); cards.set(card.title, card); add(card.li);
+      } else if (ev.kind === 'challenger') {
+        const card = cards.get((ev.data || {}).title); card ? card.challenger(ev) : add(runEventEl(ev));
+      } else if (ev.kind === 'verdict') {
+        const card = cards.get((ev.data || {}).title);
+        const later = /^(holdout|forward)$/.test((ev.data || {}).phase || '') && settled.get((ev.data || {}).title);
+        if (later) later.stage(ev);
+        else if (card) { card.verdict(ev); cards.delete(card.title); settled.set(card.title, card); } else add(runEventEl(ev));
+      } else {
+        add(runEventEl(ev));
+      }
+    }
+
+    // Count up the seconds since the last event every second (independent of the 2s poll) so a
+    // long call that isn't streaming still reads as working, not stuck.
+    const ptick = setInterval(() => {
+      if (pulse.hidden || pulseSt === 'paused' || pulseSt === 'done' || pulse.classList.contains('late')) return;
+      const secs = Math.round((Date.now() - (pulseSt === 'queued' && queuedAt != null ? queuedAt : lastAt)) / 1000);
+      const lab = pulse.querySelector('[data-plabel]');
+      if (lab && secs >= 3) lab.textContent = `${pulseSt === 'queued' ? 'Queued' : 'Researching'} ·\u00a0${secs}s`;
+    }, 1000);
+    S.timers.push(ptick);
+
+    return {
+      reveal: () => showEarlier(false),  // a jump to an older card shows the held rows first
+      push(events) {
+        if (!events || !events.length) return;
+        const ph = log.querySelector('.log-empty'); if (ph) ph.remove();
+        const stick = first || atBottom();
+        appended = 0;
+        events.forEach((ev) => { try { dispatch(ev); } catch (e) { /* one bad event must not break the feed */ } });
+        if (first) foldEarlier();
+        if (stick) toLatest();
+        else if (appended) { unseen += appended; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
+        first = false;
+      },
+      state(st, wait) {  // 'queued' | 'running' | 'paused' | 'done'; wait = the server's run.wait
+        if (st === 'done') { pulseSt = st; sealThink(); settlePending(log); pulse.hidden = true; return; }
+        const stick = atBottom();
+        pulse.hidden = false;
+        // Count the queue from the server's clock: "Queued · 19s" restarted on every reload.
+        queuedAt = st === 'queued' && wait && wait.state === 'queued' ? Date.now() - wait.seconds * 1000 : null;
+        // An overdue run's sentence ("No word from the agent for 25 min. …") is said once, in the loop panel
+        // above, as on Meridian: it sat there and again here. The log's foot says the state in the badge's words.
+        const late = st !== 'paused' && wait && wait.overdue ? (wait.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(wait.seconds) : '';
+        if (st + late !== pulseKey) {
+          pulseKey = st + late;
+          pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : late ? ' late' : '');
+          pulse.innerHTML = st === 'paused'
+            ? '<span class="pulse-bar" aria-hidden="true"></span><span>Paused — resume and it picks up exactly where it left off.</span>'
+            : late ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${esc(late)}</span>`
+            : st === 'queued'
+              ? '<span class="working" aria-hidden="true"></span><span data-plabel>Queued — waiting for a free agent to pick this up…</span>'
+              : '<span class="working" aria-hidden="true"></span><span data-plabel>Researching<span class="ell" aria-hidden="true"></span></span>';
+          // The foot is not a live region: its seconds count ticks every second, and a screen reader read
+          // each tick ("Researching · 12s", "· 13s", ...). A change of state (queued, researching, paused,
+          // overdue) is said once instead; the first paint and a minute added to "Waiting 6 min" are not.
+          const kind = st + (late ? ':late' : '');
+          if (pulseKind && kind !== pulseKind) announce(pulse.textContent.replace(/\s+/g, ' ').trim());
+          pulseKind = kind;
+        }
+        pulseSt = st;
+        if (stick) toLatest();
+      },
+    };
+  }
+
+  // Build one feed node (<li>) for the kinds that are NOT a hypothesis card or a streaming thought:
+  // steps, the RSI/dreaming notes, pause/resume, errors, and the fallback standalone verdict.
+  function runEventEl(ev) {
+    const li = document.createElement('li');
+    const data = ev.data || {};
+    let lane = RUN_LANE[ev.kind] || 'thought';
+    let inner;
+    if (ev.kind === 'verdict' && !data.title) {
+      inner = esc(data.note || ev.message);  // a note on the session (the data scan, the model tiering), not an idea's verdict
+      lane = 'thought';
+    } else if (ev.kind === 'verdict' && /^(holdout|forward)$/.test(data.phase || '')) {
+      lane = (data.why_failed && data.why_failed.length) || data.skipped ? 'void' : 'pass';
+      inner = `<b>${esc(data.title)}</b>${stageHtml(data)}`;
+    } else if (ev.kind === 'verdict') {
+      const st = data.status, sid = data.strategy_id;
+      lane = st === 'passed' ? 'pass' : (st === 'rejected' || st === 'abandoned') ? 'rej' : 'void';
+      const tag = st === 'passed' ? '<b class="verdict pass">PASSED</b>'
+        : st === 'rejected' ? '<b class="verdict rej">REJECTED</b>'
+        : st === 'abandoned' ? '<b class="verdict rej">DROPPED</b>'
+        : '<b class="verdict void">VOID</b>';
+      const rest = ev.message.replace(/^(PASSED|VOID|FAILED|REJECTED|NOT TESTED)(\s*\(challenger\))?\s*[-–]\s*/, '');
+      const title = data.title || rest;
+      const tail = data.note ? ': ' + data.note : st === 'abandoned' && data.why ? ' — ' + data.why
+        : rest.startsWith(title) ? rest.slice(title.length) : '';  // keep the ": …" explanation as text
+      const titleHtml = sid ? `<a href="/strategies/${sid}">${esc(title)}</a>` : `<b>${esc(title)}</b>`;
+      const why = whyFailedHtml(data.why_failed);
+      inner = `${tag} ${titleHtml}${why ? '' : esc(tail)}${why}`;
+    } else if (ev.kind === 'challenger') {
+      inner = `<span class="say-kind">Skeptic’s review</span>${esc(ev.message.replace(/^Challenger\s+/, ''))}`;
+    } else if (/^(Dreaming:|Research policy evolved:)/.test(ev.message)) {
+      lane = 'rsi';
+      inner = `<b class="rsi-badge">RSI</b> ${esc(plainDream(ev.message))}`;
+    } else if (ev.kind === 'paused' || ev.kind === 'resumed') {
+      inner = `<span class="say-kind">${ev.kind === 'paused' ? 'Paused' : 'Resumed'}</span>${esc(ev.message)}`;
+    } else {
+      // The server's plain sentence for a step written in the ledger's terms ("Froze 2 finalists; ...
+      // validation budget"), else the step itself: inline markdown (bold/code/italic/links), escaped.
+      inner = (ev.kind === 'step' || ev.kind === 'done') && data.note ? esc(data.note) : mdLite(ev.message);
+    }
+    li.className = 'ln lane-' + lane + (lane === 'rsi' ? ' rsi-event' : '');
+    li.innerHTML = `${logTime(ev.created_at)}<span class="node" aria-hidden="true"></span><div class="say">${inner}</div>`;
+    return li;
+  }
+
+  // ======================================================================
+  // RSI loop observatory — the self-improving cycle, made legible and alive.
+  // A station-line of the four stages (explore → backtest → gate → dream,
+  // looping back), a current-phase + liveness readout driven off the NEWEST
+  // event's own timestamp (so "active Ns ago" is honest and flips to a quiet
+  // state on its own between polls), and — when the stream carries a
+  // parent→child hypothesis lineage — a discovery tree that grows as children
+  // branch from winners. Tolerant of unknown event kinds: a kind it doesn't
+  // know keeps the last stage lit and shows a humanised label, so the new
+  // backend phase events never break it; it just gets richer as they land.
+  // ======================================================================
+  const RSI_STAGES = [['explore', 'Explore'], ['backtest', 'Backtest'], ['gate', 'Check'], ['dream', 'Improve']];
+  // event kind -> [loop stage, human phase label]. New kinds the backend adds just fall through.
+  const RSI_PHASE = {
+    'run-start': ['explore', 'Starting up'], 'data-loaded': ['explore', 'Data loaded'],
+    'proposing': ['explore', 'Proposing hypotheses'], 'developing-thesis': ['explore', 'Developing a thesis'],
+    'thinking': ['explore', 'Thinking it through'], 'step': ['explore', 'Working'],
+    'hypothesis': ['backtest', 'Backtesting a hypothesis'], 'challenger': ['backtest', 'Challenging the result'],
+    'gating': ['gate', 'Gating on unseen data'], 'verdict': ['gate', 'Verdict in, on to the next step'],
+    'dreaming': ['dream', 'Tuning how it searches'],
+  };
+  // The phase line read "Recording the verdict" for as long as the agent then worked without a line (nine
+  // minutes into the next idea's backtest), and kept it through a resume or the session's last line.
+  // A verdict is done when it is logged, so the line says the agent moved on; a verdict with no idea
+  // (the data scan, the model tiering) is a note on the session, read as a step; and these say where it is.
+  const RSI_SAID = { paused: 'Paused', resumed: 'Back at work', done: 'Wrapping up' };
+  const SX = { explore: 80, backtest: 240, gate: 400, dream: 560 };  // viewBox-x of each station (= flex-cell centres: 12.5/37.5/62.5/87.5% of 640)
+  // The engine's own words for its self-tuning step ("Dreaming:", "Research policy evolved:"), said plainly.
+  const plainDream = (m) => String(m || '').replace(/^Dreaming:/, 'Tuning how it searches:').replace(/^Research policy evolved:/, 'Search improved:');
+  const prettyKind = (k) => String(k || '').replace(/[-_]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+  // Liberal id/parent extraction so the tree survives whatever the backend names its lineage fields.
+  const hypId = (d) => d.hyp_id != null ? d.hyp_id : d.id != null ? d.id : d.node_id != null ? d.node_id : null;
+  const hypParent = (d) => d.parent_id != null ? d.parent_id : d.parent != null ? d.parent : d.parent_hyp_id != null ? d.parent_hyp_id : d.parent_title != null ? d.parent_title : null;
+
+  function rsiObservatory(host) {
+    const station = ([s]) => `<g class="rsi-st" data-stage="${s}"><circle class="rsi-ring" cx="${SX[s]}" cy="50" r="17"></circle><circle class="rsi-dot" cx="${SX[s]}" cy="50" r="7.5"></circle></g>`;
+    const link = (a, b, into) => `<line class="rsi-link" data-into="${into}" x1="${SX[a] + 18}" y1="50" x2="${SX[b] - 18}" y2="50"></line>`;
+    host.innerHTML = `
+      <div class="rsiobs-head"><h2>The research loop</h2>
+        <span class="rsiobs-live is-wait" data-live><span class="rsiobs-pdot"></span><span data-livetext>Spinning up…</span></span></div>
+      <div class="rsiobs-loop">
+        <svg class="rsi-rail" viewBox="0 0 640 72" role="img" aria-label="The research loop: explore, backtest, check, improve — and back again.">
+          <path class="rsi-arc" data-into="explore" d="M560 42 C 560 6, 80 6, 80 42"></path>
+          ${link('explore', 'backtest', 'backtest')}${link('backtest', 'gate', 'gate')}${link('gate', 'dream', 'dream')}
+          ${RSI_STAGES.map(station).join('')}</svg>
+        <div class="rsi-labels">${RSI_STAGES.map(([s, l]) => `<span class="rsi-lab" data-stage="${s}">${l}</span>`).join('')}</div></div>
+      <p class="rsiobs-phase" data-phase>Waiting for the agent to start.</p>
+      <p class="rsiobs-phase rsiobs-wait" data-wait hidden></p>
+      <figure class="rsiobs-tree" data-tree hidden><figcaption>Discovery tree <span>how each winner seeded the next</span></figcaption>
+        <div class="rsiobs-treewrap"><svg class="rsiobs-treesvg" data-treesvg></svg></div></figure>`;
+
+    const liveWrap = host.querySelector('[data-live]'), liveText = host.querySelector('[data-livetext]');
+    const phaseEl = host.querySelector('[data-phase]'), treeFig = host.querySelector('[data-tree]'), treeSvg = host.querySelector('[data-treesvg]');
+    const groups = {}, labs = {};
+    RSI_STAGES.forEach(([s]) => { groups[s] = host.querySelector(`.rsi-st[data-stage="${s}"]`); labs[s] = host.querySelector(`.rsi-lab[data-stage="${s}"]`); });
+    const links = host.querySelectorAll('.rsi-link, .rsi-arc');
+    const fired = new Set();
+    let stage = null, lastAt = Date.now(), runState = 'queued', wait = null, waitAt = 0;
+    const waitEl = host.querySelector('[data-wait]');
+    let waitHidPhase = false;
+    let doneRun = null;
+    const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
+    const nodes = [], byId = new Map(), byTitle = new Map(); let hasLineage = false, lastCount = -1;
+
+    function paintStages() {
+      const live = runState === 'running';
+      RSI_STAGES.forEach(([s]) => {
+        const on = live && s === stage, done = !on && fired.has(s);
+        groups[s].classList.toggle('is-active', on); groups[s].classList.toggle('is-done', done);
+        labs[s].classList.toggle('is-active', on); labs[s].classList.toggle('is-done', done);
+      });
+      links.forEach((l) => l.classList.toggle('is-flow', live && l.getAttribute('data-into') === stage));
+    }
+
+    function paintLive() {
+      host.classList.remove('is-quiet');
+      const w = ['queued', 'running'].includes(runState) ? waitNow() : null, late = !!(w && w.overdue);
+      waitEl.hidden = !late;
+      if (late) waitEl.textContent = runWaitLine(w);
+      // An overdue run's wait line takes the phase line's place: a queued one's says what "Waiting for the
+      // agent to start." said, and more; a silent one's last phase ("Working") sat over "No word from the agent".
+      if (late) { phaseEl.hidden = true; waitHidPhase = true; }
+      else if (waitHidPhase) { waitHidPhase = false; phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState); }
+      if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
+      if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
+      if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
+      if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
+      if (runState !== 'running') { liveWrap.className = 'rsiobs-live is-done'; liveText.textContent = doneRun ? runDoneText(doneRun) : runState === 'succeeded' ? 'Finished' : runState === 'cancelled' ? 'Stopped by you' : 'Stopped'; return; }
+      const secs = Math.max(0, Math.round((Date.now() - lastAt) / 1000)), stalled = secs >= 75;
+      host.classList.toggle('is-quiet', stalled);
+      liveWrap.className = 'rsiobs-live' + (stalled ? ' is-stall' : '');
+      // A backtest or a long model call can go minutes without a line while the server still hears from the
+      // worker (a silent one is caught above, from the server's own clock). Raw seconds read "quiet 13246s —
+      // likely a long model call" three hours on; the age reads in minutes and hours, as on Meridian.
+      const age = secs < 60 ? `${secs}s` : secs < 3600 ? `${Math.floor(secs / 60)} min` : `${Math.floor(secs / 3600)} hr`;
+      liveText.textContent = secs < 6 ? 'live' : stalled ? `Last step ${age} ago ·\u00a0still working` : `active ${age} ago`;
+    }
+    // 1s ticker keeps "Ns ago" honest between the 2s polls and flips to the quiet state on its own.
+    S.timers.push(setInterval(paintLive, 1000));
+
+    // ponytail: naive tidy-tree relayout on every change — O(n), fine for the tens of hypotheses a run makes.
+    function tree() {
+      if (!hasLineage || nodes.length === lastCount) return;
+      lastCount = nodes.length; treeFig.hidden = false;
+      const kids = new Map();
+      nodes.forEach((n) => { const p = (n.parent != null && byId.has(n.parent)) ? n.parent : null; n._p = p; if (p != null) (kids.get(p) || kids.set(p, []).get(p)).push(n); });
+      let slot = 0, maxD = 0;
+      const place = (n) => { const ch = kids.get(n.id) || []; maxD = Math.max(maxD, n.depth); if (!ch.length) { n._x = slot++; } else { ch.forEach(place); n._x = (ch[0]._x + ch[ch.length - 1]._x) / 2; } };
+      nodes.filter((n) => n._p == null).forEach(place);
+      const COL = 52, ROW = 54, PX = 24, PY = 22;
+      const x = (n) => PX + n._x * COL, y = (n) => PY + n.depth * ROW;
+      const w = Math.max((slot - 1) * COL + PX * 2, 140), h = Math.max(PY * 2 + maxD * ROW, 64);
+      treeSvg.setAttribute('viewBox', `0 0 ${w} ${h}`); treeSvg.style.width = w + 'px'; treeSvg.style.height = h + 'px';
+      let edges = '', dots = '';
+      nodes.forEach((n) => {
+        if (n._p != null) { const p = byId.get(n._p); edges += `<path class="rsi-tedge" d="M${x(p)} ${y(p) + 9} C ${x(p)} ${y(p) + ROW / 2}, ${x(n)} ${y(n) - ROW / 2}, ${x(n)} ${y(n) - 9}"></path>`; }
+        dots += `<g class="rsi-tnode is-${n.status || 'pending'}${n._new ? ' pop' : ''}"><circle cx="${x(n)}" cy="${y(n)}" r="8"></circle><title>${esc(n.title)}${n.status ? ' — ' + n.status : ''}</title></g>`;
+        n._new = false;
+      });
+      treeSvg.innerHTML = edges + dots;
+    }
+
+    return {
+      push(events, state, run) {
+        wait = (run && run.wait) || null; waitAt = Date.now();
+        doneRun = run || doneRun;  // the badge of a finished run says why it stopped, as the Status figure does
+        runState = state || runState;
+        (events || []).forEach((ev) => {
+          const d = ev.data || {};
+          lastAt = Date.parse(ev.created_at) || Date.now();   // newest event's own clock drives liveness
+          const kind = ev.kind === 'verdict' && !d.title ? 'step' : ev.kind;
+          let ph = RSI_PHASE[kind];
+          if (!ph && /^(Dreaming:|Research policy evolved:)/.test(ev.message || '')) ph = ['dream', plainDream(ev.message).split(':')[0]];
+          if (ph) { stage = ph[0]; fired.add(stage); phaseEl.textContent = ph[1]; }
+          else if (kind) phaseEl.textContent = RSI_SAID[kind] || prettyKind(kind);  // unknown kind: keep stage lit, show a readable label
+          if (ev.kind === 'hypothesis') {
+            const id = hypId(d), key = id != null ? id : ev.message;
+            if (!byId.has(key)) { const n = { id: key, parent: hypParent(d), title: ev.message, depth: 0, status: null, _new: true }; nodes.push(n); byId.set(key, n); byTitle.set(ev.message, n); }
+            const n = byId.get(key);
+            if (n.parent != null) {
+              if (!byId.has(n.parent) && byTitle.has(n.parent)) n.parent = byTitle.get(n.parent).id;  // parent given by title → resolve to its id
+              const par = byId.get(n.parent);
+              if (par) { n.depth = par.depth + 1; hasLineage = true; }
+            }
+          } else if (ev.kind === 'verdict') {
+            const id = hypId(d), n = (id != null && byId.get(id)) || (d.title && byTitle.get(d.title)) || null;
+            if (n) n.status = d.status === 'passed' ? 'pass' : d.status === 'rejected' ? 'rej' : 'void';
+          }
+        });
+        // A finished run's last phase ("Recording the verdict") read as still working; the live
+        // badge already says Finished / Cancelled / Stopped, as on Meridian.
+        phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState);
+        paintStages(); paintLive(); tree();
+      },
+    };
+  }
+
+  // Interrupt & continue: the obvious control cluster for a research run. Running → Pause;
+  // Paused → Resume (the primary action); every active state can Cancel. Finished shows the
+  // way onward. Pause/Resume are reversible so they act immediately; Cancel is armed to confirm.
+  // The run page polls every 2s and called this each time: the repaint undid an armed "Confirm cancel"
+  // before the second press could land, and re-enabled a Pause still in flight (a second POST, then a
+  // "Only a running session can be paused" error). The buttons repaint only when the status changes.
+  const CANCEL_BTN = '<button class="btn danger small" id="cancel" title="Ends the session for good. What it has spent stays charged; ideas it already tested are kept.">Cancel</button>';
+  function runControls(host, id, status, reload) {
+    if (host.dataset.st === status) return;
+    host.dataset.st = status;
+    if (status === 'paused') {
+      host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button>' + CANCEL_BTN + '</span>';
+      host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/resume`, {}).catch((er) => alert0(er.message)); await reload(); });
+    } else if (status === 'running') {
+      host.innerHTML = '<span class="runact"><button class="btn small" id="pause" title="Holds the session where it is until you resume it.">Pause</button>' + CANCEL_BTN + '</span>';
+      host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/pause`, {}).catch((er) => alert0(er.message)); await reload(); });
+    } else if (status === 'queued') {
+      host.innerHTML = '<span class="runact">' + CANCEL_BTN + '</span>';
+    } else {
+      host.innerHTML = status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '';
+      return;
+    }
+    const cancel = host.querySelector('#cancel');
+    cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
+  }
+
+  // A session's time at work. The agent logs "paused" when it stops at a checkpoint and "resumed" when it
+  // goes on (agent.run_research); "Time" counted the wall clock from the start, so a paused session's
+  // figure kept climbing while it waited on Resume. The pauses are left out, and a paused session's clock
+  // stops where it paused (at its last line, before the worker has logged the pause).
+  // pz carries { ms: closed pauses, since: an open pause's start, last: the newest line } across polls.
+  function runPauses(pz, ev) {
+    const t = Date.parse(ev.created_at);
+    if (!t) return;
+    if (ev.kind === 'paused' && pz.since == null) pz.since = t;
+    else if (ev.kind === 'resumed' && pz.since != null) { pz.ms += Math.max(0, t - pz.since); pz.since = null; }
+    pz.last = t;
+  }
+  function runWorked(r, pz, now = Date.now()) {
+    const started = r.started_at ? Date.parse(r.started_at) : null;
+    if (!started) return null;
+    const end = r.finished_at ? Date.parse(r.finished_at) : r.status === 'paused' ? (pz.since != null ? pz.since : pz.last || now) : now;
+    const open = pz.since != null && end > pz.since ? end - pz.since : 0;
+    return Math.max(0, (end - started - pz.ms - open) / 1000);
+  }
+  // A run-until-stopped session that used up the credits ends as a finished one (agent.run_research
+  // logs this step, then wraps up): the page said "Done" and "Try another idea", and the reason sat
+  // in the log. The step's own words mark it, so sessions that ended this way before say so too.
+  const runOutOfCredits = (ev) => !!ev && ev.kind === 'step' && /^Paused — out of credits\b/.test(ev.message || '');
+  // How far along and what it found, live. The run's own counters move once per round of ideas (a
+  // run-until-stopped round is several ideas), so a running session read "3 hypotheses" while its
+  // log showed nine, and "Passed …" beside a passed idea listed under it. Its log and its strategy
+  // rows are current; a set-size session also says how many it will test.
+  function runCountFigs(r, active, tried, strategies) {
+    const n = Math.max(+r.hypotheses_tried || 0, tried || 0);
+    const cap = active && !r.run_forever && +r.max_hypotheses ? `of up to ${num(r.max_hypotheses)}` : '';
+    const passed = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
+    return fig('Tested', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed);
+  }
+  // A finished session's status, in the research list's words (RUN_STOP, from the server's stop_reason):
+  // the list said "Finished" or "Stopped by you" and this page "Done" or "Cancelled" for the same session,
+  // and an interrupted one read only "Stopped". A run-until-stopped session that used up the credits is
+  // read from its log (runOutOfCredits), since the run page's server answer can't tell.
+  const RUN_DONE = { interrupted: 'Interrupted', no_data: 'Nothing to research' };
+  const runDoneText = (r) => r.out_of_credits ? 'Out of credits' : RUN_STOP[r.stop_reason] || RUN_DONE[r.stop_reason]
+    || (r.status === 'succeeded' ? 'Finished' : r.status === 'stopped' ? 'Stopped' : r.status === 'cancelled' ? 'Stopped by you' : 'Stopped on an error');
+  // A session that ended with no strategy to list says why it stopped (the server's stop_reason,
+  // services.run_stop): "Each strategy below says which check it missed" sat over an empty list.
+  const RUN_EMPTY = {
+    interrupted: 'It was interrupted before any strategy reached the checks, and it couldn’t be resumed.',
+    no_data: 'This market has nothing to research yet, so the session stopped before testing anything.',
+    complete: 'It ran out of new ideas to try before any strategy reached the checks.',
+    limit: 'No strategy from this session reached the checks, so there are none to list.',
+  };
+  const runEmpty = (r) => (r.stop_reason === 'no_data' && r.error ? esc(r.error) : RUN_EMPTY[r.stop_reason] || 'This session ended before any strategy reached the checks.');
+  // What to do once a session ends. The example's log ended on "now describe a real idea" with no way
+  // to do it, and a session that passed something left it two screens down on a phone, under the log.
+  function runNext(r, strategies) {
+    if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
+    const passed = (strategies || []).filter((s) => s.status === 'passed');
+    const credits = r.out_of_credits ? 'It stopped when your credits ran out. <a href="/billing">Add credits</a>, then start a new session to keep researching. ' : '';
+    if (passed.length) {
+      const links = passed.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
+      const more = passed.length > 3 ? ` and <a href="/strategies?status=passed">${passed.length - 3} more</a>` : '';
+      // The autopilot deploys what it finds on paper itself, and its finished session still said "Open it
+      // to deploy it on paper": the strategy page then warned that a second copy doubles the positions.
+      const deployed = passed.filter((s) => s.deployed).length;
+      // Before its next check-in the autopilot hasn't deployed them yet, and the line asked for a deploy
+      // by hand all the same. The server marks the ones it will put on paper itself (autopilot_next).
+      const auto = passed.filter((s) => !s.deployed && s.autopilot_next).length;
+      const way = deployed === passed.length ? ` ${passed.length === 1 ? 'It is' : 'They are'} already deployed. <a href="/deploy">See ${passed.length === 1 ? 'it' : 'them'} on Deploy</a>.`
+        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
+        : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
+        : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
+      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}</p>`;
+    }
+    // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
+    // The server's reason is written for the customer; one that already says the session stopped
+    // stands alone ("…stopped on an error. …so the session stopped.").
+    if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`} <a href="/research?new=1">Start a new session</a></p>`;
+    if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
+    const none = !(strategies || []).length;
+    if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : 'Nothing passed before then; each idea below says which check it missed.'}</p>`;
+    if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)} <a href="/research?new=1">Try another idea</a></p>`;
+    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each idea below says which check it missed; tap one for what to try next. <a href="/research?new=1">Try another idea</a></p>`;
+    return '';
+  }
+  // The foot of a finished session, under the log's last line. The way on sat only above the log, a
+  // phone's length of scrolling back up: the example's last line said to describe a real idea, and a
+  // session where nothing passed ended on its last missed idea. Plain buttons: the line above keeps
+  // the page's one primary action. One that ran out of credits ends on adding them (autopilot would
+  // wait on credits too).
+  function runEnd(r, strategies) {
+    if (r.example) return `<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>`;
+    if (r.status !== 'succeeded' && r.status !== 'stopped') return '';
+    if (r.out_of_credits) return '<div class="run-end"><a class="btn" href="/billing">Add credits</a></div>';
+    if ((strategies || []).some((s) => s.status === 'passed')) return '';
+    return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
+  }
+  // What the session tried, one row per idea: its outcome and, for a miss, the first check it missed
+  // in plain words. Each idea's outcome sat only in the log, a scroll box that held 200+ lines on a
+  // long session; a title jumps to its card there. Passed ideas lead; past six, the rest fold.
+  const IDEA_STAMP = { passed: ['pass', 'Passed'], failed: ['void', 'Void'], rejected: ['rej', 'Rejected'], 'backtest-only': ['rej', 'Backtest only'] };
+  // An idea the agent dropped while building it never becomes a strategy, and one still being tested has
+  // none yet: the Tested figure counted them and this list didn't ("Tested 5" over "4"), so the gap is said.
+  const ideasGap = (n, listed, active) => n > listed ? ` ·\u00a0${num(n - listed)} more ${active ? 'still being tested' : 'dropped before testing'}` : '';
+  function runIdeas(strategies, whyBySid, open, gap = '') {
+    const list = (strategies || []).slice().sort((a, b) => (b.status === 'passed') - (a.status === 'passed'));
+    if (!list.length) return '';
+    const row = (s) => {
+      const [cls, label] = IDEA_STAMP[s.status] || ['', 'Testing'];
+      const why = whyBySid.get(s.id) || [];
+      const said = s.status === 'passed' ? (s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
+        : s.autopilot_next ? 'The autopilot puts it on paper at its next check-in'
+        : `<a href="/strategies/${s.id}">Open it to deploy on paper</a>`)
+        : why.length ? `${esc(why[0].label)}${why.length > 1 ? ` ·\u00a0${why.length - 1} more check${why.length > 2 ? 's' : ''}` : ''}` : '';
+      return `<li><span class="hx-stamp ${cls}">${label}</span><button type="button" class="ri-title" data-goto="${s.id}">${esc(s.title)}</button>${said ? `<span class="ri-why">${said}</span>` : ''}</li>`;
+    };
+    const SHOW = 6;
+    return `<section class="run-ideas"><div class="section-head"><h2>Ideas tested</h2><p>${list.length}${gap} ·\u00a0tap one for its story</p></div>
+      <ol class="ri-list">${list.slice(0, SHOW).map(row).join('')}</ol>${list.length > SHOW
+        ? `<details class="ri-rest"${open ? ' open' : ''}><summary>Show all ${list.length}</summary><ol class="ri-list">${list.slice(SHOW).map(row).join('')}</ol></details>` : ''}</section>`;
+  }
+  async function viewRun(id) {
+    // Pause and Cancel (and their error notice) sit beside the title, as on Meridian: at the Agent log
+    // heading they were a screen below the spend figure on a phone.
+    shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><div id="flash"></div><dl class="figures measure run-figs" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><div id="runideas"></div><p class="stale-note" id="run-stale" role="status"></p>', `
+      <div id="rsibox"></div>
+      <div id="rsiobs" class="rsiobs"></div>
+      <section><div class="section-head"><h2>Agent log</h2></div>
+        <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
+        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
+    let after = 0, tried = 0, outOfCredits = false;
+    const pauses = { ms: 0, since: null, last: null };
+    const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
+    const ideasEl = root.querySelector('#runideas');
+    ideasEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-goto]');
+      if (!b) return;
+      const find = () => root.querySelector(`#log li[data-sid="${b.dataset.goto}"]`);
+      let card = find();
+      if (!card) { stream.reveal(); card = find(); }  // its card may be among the held earlier rows
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }); else go('/strategies/' + b.dataset.goto);
+    });
+    const stream = runFeed(root.querySelector('#runfeed'));
+    const obs = rsiObservatory(root.querySelector('#rsiobs'));
+    const load = async (cfg) => {
+      const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
+      const r = d.run;
+      const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+      d.events.forEach((ev) => {
+        after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
+        runPauses(pauses, ev);
+        if (runOutOfCredits(ev)) outOfCredits = true;
+        const dd = ev.data || {};
+        if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
+      });
+      r.out_of_credits = outOfCredits && !active;
+      // The 2s poll repaints only what changed: rewriting the same title and figures each time made
+      // the phone lay the page out again (and the autopilot pill re-check what it covers).
+      paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), `${esc(marketShort(r.market))} \u00b7\u00a0${runKind(r)}${r.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : runSetup(r) ? ' \u00b7\u00a0' + runSetup(r) : ''}`));
+      const worked = runWorked(r, pauses);
+      const late = r.wait && r.wait.overdue ? r.wait : null;
+      const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
+        : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
+        : r.status === 'paused' ? 'Paused'
+        : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
+        : runDoneText(r);
+      paint(root.querySelector('#runfigs'),
+        fig('Status', statusText) +
+        fig('Time', worked == null ? '—' : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
+        runCountFigs(r, active, tried, d.strategies));
+      const next = root.querySelector('#runnext');
+      paint(next, active ? '' : runNext(r, d.strategies));
+      // Painted only when it changes: a finished run still polls, and a repaint would undo the
+      // autopilot line's "on" note or a press in flight.
+      const endEl = root.querySelector('#runend'), endHtml = active ? '' : runEnd(r, d.strategies);
+      if (endEl && endEl.dataset.h !== endHtml) { endEl.dataset.h = endHtml; endEl.innerHTML = endHtml; }
+      const rsibox = root.querySelector('#rsibox');
+      if (rsibox && d.rsi) {
+        const delta = (d.rsi.base_score != null && d.rsi.score != null)
+          ? `<span class="rsi-score">${d.rsi.base_score} <span class="rsi-arrow">→</span> ${d.rsi.score}</span>` : '';
+        // The adopted policy is arbitrary agent-evolved Python with no structured decision record
+        // behind it, so a raw-source dump isn't inspection — the human "What it changed" summary
+        // and the generalization-score delta below are the faithful, readable account.
+        // "How it searches: Self-tuning" sat among this session's figures and the explainer open under its
+        // ideas on every session, though both describe the research system, not the session: they are one
+        // folded "How research works" line (closed on every screen), its tag saying whether the search has
+        // improved. A reader's open or close holds across the 2s repaint.
+        const prev = rsibox.querySelector('details.rsidisc'), expanded = prev ? prev.open : false;
+        const focused = !!rsibox.querySelector('details.rsidisc > summary:focus');
+        const rsiHtml = `<details class="rsidisc rsi-run"${expanded ? ' open' : ''}><summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">How research works</span>${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">
+          ${d.rsi.evolved
+            ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
+               ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
+               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? ' ·\u00a0adopted ' + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+            : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can't overfit).</p>
+               ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? ' ·\u00a0' + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
+          </div></details>`;
+        if (rsibox.dataset.h !== rsiHtml) { rsibox.dataset.h = rsiHtml; rsibox.innerHTML = rsiHtml; }
+        if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
+      }
+      runControls(root.querySelector('#runact'), id, r.status, load);
+      // Painted only when it changes, so a poll never closes "Show all" or drops a focused title.
+      const gap = ideasGap(Math.max(+r.hypotheses_tried || 0, tried), (d.strategies || []).length, active);
+      const ideasKey = runIdeas(d.strategies, whyBySid, false, gap);
+      if (ideasEl.dataset.h !== ideasKey) { ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]'), gap); }
+      stream.push(d.events);
+      stream.state(active ? r.status : 'done', r.wait);
+      obs.push(d.events, r.status, r);
+      if (!active) clearTimers();
+    };
+    await load();
+    poll(load, 2000, 'run-stale');
+  }
+  const DIR_BRIEF = (k) => ((S.me.directions.find((d) => d.key === k)) || { brief: '' }).brief;
+
+  return {viewResearch, viewRun};
+});

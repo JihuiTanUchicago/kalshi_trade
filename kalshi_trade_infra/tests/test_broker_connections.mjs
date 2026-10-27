@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {bundleSource} from './bundle_source.mjs';
 
 const require = createRequire(import.meta.url);
 const {mount, authorizationUrl, callbackMessage} = require('../app/static/broker-connections.js');
@@ -39,7 +40,7 @@ test('broker modules remain available but unavailable connections are absent fro
   assert.ok(html.indexOf('broker-connections.js?v={{brokers_v}}') < html.indexOf('boot.js?v='));
   assert.match(html, /broker-connections\.css\?v=\{\{brokers_css_v\}\}/);
   for (const name of ['app.js', 'app.meridian.js']) {
-    const source = readFileSync(new URL('../app/static/' + name, import.meta.url), 'utf8');
+    const source = bundleSource(name);
     assert.doesNotMatch(source, /id="broker-connections"/);
     assert.doesNotMatch(source, /TauBrokerConnections\.mount/);
   }

@@ -41,7 +41,7 @@ from app.research import research_repository as research_repo
 from app.trading import spec as specmod
 from app.services import backtest_check, bell, book_memo, customer_text, gate_explain, page_poll, paper_checks, research_list, run_stop, trade_why
 from app.trading import track_record
-from app.web import client_errors, shell_reads, webperf
+from app.web import client_errors, page_modules, shell_reads, static_strip, webperf
 from app import worker
 from app.trading.markets import MARKETS
 from app.services import markets as market_service
@@ -425,7 +425,7 @@ ROUTES: List[Route] = [
         ("POST", "/api/ui-theme", set_ui_theme, True),
         ("POST", "/api/email-preferences", set_email_preferences, True),
         ("GET", "/unsubscribe", unsubscribe, False),
-        ("GET", "/api/version", lambda ctx: {"v": _static_versions()["app.js"]}, False),
+        ("GET", "/api/version", lambda ctx: {"v": page_modules.build_version("tau", _static_versions())}, False),
         ("GET", "/api/devlog", lambda ctx: devlog.as_json(), True),
         ("GET", "/api/users/mention", mention_candidates, True),
         ("GET", "/api/deployments", list_deployments, True),
@@ -481,7 +481,7 @@ ROUTES: List[Route] = [
 ]
 
 
-_STATIC_NAMES = ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "kalshi-perps-live.js", "kalshi-perps-live.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js")
+_STATIC_NAMES = ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "kalshi-perps-live.js", "kalshi-perps-live.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js") + page_modules.FILES
 _VERSIONS_CACHE: Dict[str, Any] = {"sig": None, "out": None}
 
 
@@ -520,6 +520,7 @@ def warm_static() -> None:
             if not webperf.compressible("text/", len(body)):
                 continue
             key = (name, hashlib.sha256(body).hexdigest()[:10])
+            body = static_strip.served(name, body, key[1])
             for coding in webperf.static_codings():
                 webperf.compress(body, coding, key)
         except Exception as e:  # noqa: BLE001 - a request compresses it on demand instead
@@ -712,6 +713,11 @@ class Handler(BaseHTTPRequestHandler):
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{ui_css}}", css).replace("{{ui}}", theme or "").replace("{{ui_bundle}}", bundle)
                     .replace("{{boot_me}}", boot_me).replace("{{boot_first}}", boot_first)
+                    .replace("{{page_preload}}", "" if account is None else page_modules.preload(theme, path, versions))
+                    .replace("{{tau_pages}}", page_modules.versions_attr("tau", versions))
+                    .replace("{{mer_pages}}", page_modules.versions_attr("meridian", versions))
+                    .replace("{{tau_build}}", page_modules.build_version("tau", versions))
+                    .replace("{{mer_build}}", page_modules.build_version("meridian", versions))
                     .replace("{{css_v}}", versions["app.css"])
                     .replace("{{js_v}}", versions["app.js"])
                     .replace("{{session_v}}", versions["session-data.js"])
@@ -764,6 +770,7 @@ class Handler(BaseHTTPRequestHandler):
         if current is not None and digest != current:
             cache = webperf.static_cache_control(f.name, query, digest)
             tag = webperf.etag(digest)
+        body = static_strip.served(f.name, body, digest)  # the bundles and stylesheets without their comments
         self._send(200, ctype + ("; charset=utf-8" if m.group(2) in ("css", "js", "svg") else ""), body,
                    [("Cache-Control", cache), ("ETag", tag)], z_key=(f.name, digest))
 

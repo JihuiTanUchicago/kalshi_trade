@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
-from app.web import webperf
+from app.web import static_strip, webperf
 
 MODERN = "gzip, deflate, br, zstd"  # what Chrome, Firefox and Safari send over HTTPS
 
@@ -93,6 +93,12 @@ def _get(port, path, accept_encoding=None, if_none_match=None):
     return r, raw
 
 
+def _as_served(name):
+    """A static file as the server sends it: the bundles and stylesheets without their comments (static_strip)."""
+    body = (server.STATIC_DIR / name).read_bytes()
+    return static_strip.served(name, body, hashlib.sha256(body).hexdigest()[:10])
+
+
 def _decode(r, raw, codec):
     coding = r.getheader("Content-Encoding")
     if coding == "br":
@@ -104,7 +110,7 @@ def _decode(r, raw, codec):
 
 
 def test_brotli_goes_only_to_clients_that_ask_for_it(web, codec):
-    original = (server.STATIC_DIR / "app.js").read_bytes()
+    original = _as_served("app.js")
     cases = {
         MODERN: "br",
         "br": "br",
@@ -131,7 +137,7 @@ def test_brotli_goes_only_to_clients_that_ask_for_it(web, codec):
 
 def test_without_the_brotli_package_static_files_fall_back_to_gzip_then_as_is(web, monkeypatch):
     monkeypatch.setattr(webperf, "_brotli", None)
-    original = (server.STATIC_DIR / "app.css").read_bytes()
+    original = _as_served("app.css")
     r, raw = _get(web, "/static/app.css", MODERN)
     assert r.getheader("Content-Encoding") == "gzip" and gzip.decompress(raw) == original
     assert r.getheader("Vary") == "Accept-Encoding"
@@ -225,7 +231,7 @@ def test_real_brotli_round_trips_and_beats_gzip(web, monkeypatch):
     brotli = pytest.importorskip("brotli")
     monkeypatch.setattr(webperf, "_brotli", brotli)
     for name in ("app.js", "app.meridian.js", "app.css", "app.meridian.css"):
-        original = (server.STATIC_DIR / name).read_bytes()
+        original = _as_served(name)
         r, br_raw = _get(web, "/static/" + name, MODERN)
         assert r.getheader("Content-Encoding") == "br" and brotli.decompress(br_raw) == original
         _, gz_raw = _get(web, "/static/" + name, "gzip")

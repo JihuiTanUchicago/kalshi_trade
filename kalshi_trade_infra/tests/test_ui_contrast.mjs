@@ -7,8 +7,10 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
+import {bundleSource} from './bundle_source.mjs';
 
-const read = (name) => readFileSync(new URL(`../app/static/${name}`, import.meta.url), 'utf8');
+// A theme bundle reads with its page files (bundle_source.mjs), wherever a view's code now lives.
+const read = (name) => (/^app(?:\.meridian)?\.js$/.test(name) ? bundleSource(name) : readFileSync(new URL(`../app/static/${name}`, import.meta.url), 'utf8'));
 
 function tokens(css) {
   const root = css.match(/:root\s*\{([^}]*)\}/)[1];

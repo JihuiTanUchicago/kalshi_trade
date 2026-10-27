@@ -1,8 +1,8 @@
 // Offline page renderer for the view fuzz test (tests/test_view_fuzz.mjs): boots a bundle in a fake DOM,
 // answers every API read from a fixture table, and records each crash the page reports (the same
 // reportBroken('view') hook that sends a broken page to /admin), plus any promise that rejects unhandled.
-import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {bundleSource} from './bundle_source.mjs';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -221,7 +221,8 @@ function compiled(source) {
   return scripts.get(source);
 }
 
-export const loadBundle = name => readFileSync(new URL('../app/static/' + name, import.meta.url), 'utf8');
+// The bundle with its page files, so every page's view is in (bundle_source.mjs).
+export const loadBundle = name => bundleSource(name);
 
 // A field's path as the contract lists name it: list positions as '*' ("deployments.*.side").
 export const pattern = path => path.map(k => typeof k === 'number' ? '*' : k).join('.');

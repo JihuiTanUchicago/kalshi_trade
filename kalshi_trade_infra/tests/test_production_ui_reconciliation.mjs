@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {bundleSource, exposing} from './bundle_source.mjs';
 
 const bundle = process.env.TAU_TEST_THEME === 'meridian' ? 'app.meridian.js' : 'app.js';
-const source = readFileSync(new URL('../app/static/' + bundle, import.meta.url), 'utf8');
+// What the checks read from the bundle and its page files (bundle_source.mjs).
+const EXPOSE = ['S', 'routes', 'apBuildShell', 'apUpdate', 'apFeedLi', 'apLiveBlock', 'viewBilling', 'viewFunds'];
+const source = bundleSource(bundle, {expose: EXPOSE, target: 'ui'});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
@@ -77,7 +80,7 @@ function frontend(transport = () => { throw new Error('Unexpected synthetic requ
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2);
-  vm.runInContext(source.replace(boot, 'shell = globalThis.testShell; alert0 = globalThis.testAlert; globalThis.ui = {S, routes, apBuildShell, apUpdate, apFeedLi, apLiveBlock, viewBilling, viewFunds};'), context);
+  vm.runInContext(source.replace(boot, 'shell = globalThis.testShell; alert0 = globalThis.testAlert; globalThis.ui = ' + exposing(EXPOSE) + ';'), context);
   context.ui.S.me = {user: {id: 7, name: 'Synthetic user'}};
   context.ui.S.ap = {mode: 'paper', model: 'sonnet', autopilot: true};
   return {...context.ui, document, root, box, requests, alerts, intervals};

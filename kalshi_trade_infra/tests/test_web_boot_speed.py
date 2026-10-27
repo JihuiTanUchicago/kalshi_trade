@@ -2,6 +2,7 @@
 the page's own reads), static files are cached for a year only under their current content hash and
 revalidate cheaply otherwise, and nothing per-user is ever left to a shared cache."""
 import gzip
+import hashlib
 import http.client
 import json
 import re
@@ -12,10 +13,16 @@ from types import SimpleNamespace
 import pytest
 
 from app import server
-from app.web import webperf
+from app.web import static_strip, webperf
 
 USER = {"id": 7, "email": "trader@example.invalid", "name": "Sample", "picture_url": None, "autopilot": 0,
         "ui_theme": "meridian"}
+
+
+def _as_served(name):
+    """A static file as the server sends it: the bundles and stylesheets without their comments (static_strip)."""
+    body = (server.STATIC_DIR / name).read_bytes()
+    return static_strip.served(name, body, hashlib.sha256(body).hexdigest()[:10])
 
 
 @pytest.fixture
@@ -142,7 +149,7 @@ def test_a_bundle_under_its_current_hash_is_immutable_with_a_validator(web):
     r, body = _get(web, "/static/app.js?v=" + v, {"Accept-Encoding": "gzip"})
     assert r.status == 200 and r.getheader("Cache-Control") == "public, max-age=31536000, immutable"
     assert r.getheader("ETag") == 'W/"%s"' % v and r.getheader("Content-Encoding") == "gzip"
-    assert gzip.decompress(body) == (server.STATIC_DIR / "app.js").read_bytes()
+    assert gzip.decompress(body) == _as_served("app.js")
 
 
 @pytest.mark.parametrize("query", ["", "?v=0123456789", "?v="])
@@ -152,7 +159,7 @@ def test_a_bundle_under_another_hash_revalidates_and_answers_304(web, query):
     v = server._static_versions()["app.css"]
     r, body = _get(web, "/static/app.css" + query)
     assert r.status == 200 and r.getheader("Cache-Control") == "no-cache"
-    assert r.getheader("ETag") == 'W/"%s"' % v and body == (server.STATIC_DIR / "app.css").read_bytes()
+    assert r.getheader("ETag") == 'W/"%s"' % v and body == _as_served("app.css")
     r, body = _get(web, "/static/app.css" + query, {"If-None-Match": 'W/"%s"' % v})
     assert r.status == 304 and body == b"" and r.getheader("ETag") == 'W/"%s"' % v
     r, body = _get(web, "/static/app.css" + query, {"If-None-Match": '"stale", W/"0000000000"'})
