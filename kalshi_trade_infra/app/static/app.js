@@ -730,7 +730,7 @@
     dlg.className = 'wl-modal pay-modal';
     dlg.innerHTML = `
       <div class="pay-split">
-        <aside class="pay-show">
+        <aside class="pay-show" aria-label="What Tau does">
           <div class="pay-show-top">${ICON.mark}<span>Tau</span></div>
           <div class="pay-stage-wrap"><div class="pay-dot-head"><span></span><span></span><span></span></div><div class="pay-stage" id="pay-stage"></div></div>
           <div class="pay-cap" id="pay-cap"></div>
@@ -2203,7 +2203,7 @@
           <div>
             <section class="sect"><div class="sect-head"><h2>Deployed</h2></div><div id="dash-deps">${deps}</div></section>
           </div>
-          <aside>
+          <aside aria-label="Positions">
             <section class="panel" id="dash-open"><h3>Open positions</h3>${stubs(d.open_positions.slice(0, DASH_ROWS), false)}${more(d.open_positions.length, 'open positions')}</section>
             <section class="panel"><h3>Settled lately</h3>${stubs(d.recent_closed.slice(0, DASH_ROWS), true)}${d.recent_closed.length ? '<a class="stub-all" href="#track-record">Every closed trade, with net P&amp;L, is in the track record \u2193</a>' : ''}</section>
           </aside>
@@ -3873,7 +3873,7 @@
             </div>
           </article>
         </div>
-        <aside>
+        <aside aria-label="Deploy and gates">
           ${!restricted && s.holdings && s.holdings.length ? (() => {
             // One summary per money book: a strategy can hold on paper and demo (or live) at once, and
             // their cost and unrealized P&L are never added together. A single book reads as before.
@@ -6283,7 +6283,7 @@
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
     document.body.classList.toggle('hot-open', hotOpen());
-    if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; document.body.appendChild(a); }
+    if (!document.getElementById('hotrail')) { const a = document.createElement('aside'); a.className = 'hotrail'; a.id = 'hotrail'; a.setAttribute('aria-label', 'Hot markets'); document.body.appendChild(a); }
     renderHotRail();
     hotSoon();
     if (!hotLoop) { hotLoop = true; setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) refreshHot().then((ok) => { if (ok) S.hotAt = Date.now(); }); }, 60000);
@@ -6403,7 +6403,7 @@
               </section>
               <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d)}</section>
             </div>
-            <aside>
+            <aside aria-label="Add credits">
               <section class="panel"><h3>Add credits</h3>
                 <label class="field"><span>Amount (USD)</span><input class="input" id="topup-amt" type="number" min="${d.min_topup}" max="${d.max_topup}" step="1" value="20"></label>
                 <p class="hint" id="topup-note" style="margin-top:8px">${feeNote}</p>
@@ -6608,7 +6608,7 @@
           <section class="sect"><div class="sect-head"><h2>Page errors</h2><span id="ce-count" class="sect-note"></span></div><div id="client-errors">${loading(80)}</div></section>
           <section class="sect"><div class="sect-head"><h2>Users</h2><span id="ucount" class="sect-note"></span></div><div id="users">${loading(200)}</div></section>
         </div>
-        <aside>
+        <aside aria-label="Operator controls">
           <form class="panel" id="grant"><h3>Grant credits</h3>
             <label class="field"><span>User email</span><input class="input" id="g-email" type="email" placeholder="someone@example.com" required></label>
             <label class="field" style="margin-top:10px"><span>Amount (USD, can be negative)</span><input class="input" id="g-amt" type="number" step="1" value="25" required></label>
@@ -6737,7 +6737,7 @@
     shell('/system', boardTitle('System', 'A live map of the pipeline — every box is a real part of the codebase, every line is data flowing. It refreshes on its own so you can see what’s running.'),
       `<div class="sysmap">
          <div class="sys-wrap"><svg viewBox="0 0 900 540" preserveAspectRatio="xMidYMid meet" id="syssvg" aria-label="System map">${edges}${nodes}</svg></div>
-         <aside class="sys-side">
+         <aside class="sys-side" aria-label="Details and live activity">
            <section class="panel" id="sys-detail"><h3>Pick a box</h3><p class="hint">Click any part of the system to see what it does and what it’s doing right now.</p></section>
            <section class="sect" style="margin-top:16px"><div class="sect-head"><h2>Live activity</h2><span class="sys-live" id="sys-stamp"></span></div><ol class="log sys-feed" id="sys-feed"></ol></section>
          </aside>

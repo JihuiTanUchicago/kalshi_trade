@@ -11,13 +11,15 @@
 // - Every signed-in page's h1 and money figures sat in #boardbody, outside <main>, so Skip to content and
 //   the focus a page change hands over both landed past the heading. <main> holds the board and the page
 //   (#main), and both land on the h1.
+// - Asides with no name: Tau's Dashboard (positions) and the strategy page (deploy and gates) were two
+//   unnamed complementary landmarks beside an unnamed hot-markets rail. Every <aside> is named.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling}) {
+export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling, source, strategyFrontend, dashboard}) {
   test(`${name}: <main> starts at the page's heading and figures, and a page change and Skip to content land there`, async () => {
     const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
     f.location.pathname = '/deploy';
@@ -44,6 +46,25 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     assert.equal(heading.scrolled, true); assert.equal(heading.focusOptions.preventScroll, true);
     assert.equal(page.focusOptions, undefined);
     f.clearTimers();
+  });
+
+  test(`${name}: every <aside> has a name of its own, on Dashboard and the strategy page as everywhere`, async () => {
+    const names = (f) => f.root.querySelectorAll('aside').map((a) => a.getAttribute('aria-label'));
+    const d = frontend({fetchImpl: (path) => path.startsWith('/api/dashboard') ? response(dashboard()) : response({})});
+    await d.viewDashboard(); await flush();
+    const s = strategyFrontend(undefined, () => response({}));
+    await s.viewStrategy(42); await flush();
+    for (const f of [d, s]) {
+      for (const label of names(f)) assert.ok(label && label.trim(), 'a named aside');
+      assert.equal(new Set(names(f)).size, names(f).length, 'no two with the same name');
+    }
+    const own = (f) => names(f).filter((n) => n !== 'Hot markets');  // Meridian's shell draws the rail
+    assert.deepEqual(own(d), name === 'Tau' ? ['Positions'] : []);
+    assert.deepEqual(own(s), ['Deploy and gates']);
+    d.clearTimers(); s.clearTimers();
+    // Every aside the bundle draws, the hot-markets rail it makes in script included, carries its name.
+    assert.deepEqual(source.match(/<aside(?![^>]*aria-label=)[^>]*>/g), null);
+    assert.deepEqual(source.match(/createElement\('aside'\)(?![^;]*;[^;]*;[^;]*; a\.setAttribute\('aria-label')/g), null);
   });
 
   test(`${name}: the autopilot pulse is written only when its words change, not on every chat poll`, async () => {
