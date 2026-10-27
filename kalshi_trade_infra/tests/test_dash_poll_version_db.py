@@ -275,3 +275,24 @@ def test_an_unchanged_dashboard_poll_keeps_the_paper_cash_until_the_ledger_moves
     empty = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "empty@example.invalid", "E", None)["id"]
     conn.commit()
     assert book_memo.paper_ledger_summary(cur, empty) == repo.paper_ledger_summary(cur, empty)
+
+
+def test_a_polled_money_page_carries_the_live_switch_and_a_flip_moves_its_version(conn, world, monkeypatch):
+    """The server's live switch (/api/me's live_trading_available) rides the dashboard's and the Deploy board's
+    answers, in their version: an open page whose switch flipped (a restart with the flag changed) gets a full
+    answer on its next poll, so it says a live deployment waits, or no longer does, without a reload or a read
+    of /api/me. The flag itself is only stubbed here, for the test."""
+    from app.trading import engine
+
+    counting = Counting(conn)
+    uid = _book(conn)[0]
+    for page, query in PAGES:
+        first, _ = _poll(counting, uid, page, query)
+        assert first["live_trading_available"] is False
+        same, _ = _poll(counting, uid, page, dict(query, v=first["v"]))
+        assert same.get("same") is True
+        monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", True)
+        flipped, _ = _poll(counting, uid, page, dict(query, v=first["v"]))
+        assert not flipped.get("same") and flipped["v"] != first["v"]
+        assert flipped["live_trading_available"] is True
+        monkeypatch.setattr(engine, "LIVE_TRADING_ENABLED", False)

@@ -7,9 +7,9 @@ window.TauPage('strategies', (T) => {
     actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
-    gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
+    gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, S, serial, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
+    researchOnly, roadDays, root, rpUnderwater, S, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -414,7 +414,7 @@ window.TauPage('strategies', (T) => {
       if (!ds.length) return '';
       const { pnl, trades: n, open } = bookTotal(s, mode, ds);
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}${mode === 'paper' ? `, ${PAPER_NET}${glo('paperfills')}` : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}${mode === 'paper' ? `, ${PAPER_NET}${glo('paperfills')}` : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together).
@@ -577,7 +577,7 @@ window.TauPage('strategies', (T) => {
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: [r.out_of_sample && overDays(r.out_of_sample.days) ? 'Out-of-sample' + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(' ·\u00a0') }) +
       fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : 'in the session that found it' });
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
-    root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(serial(s.id))} ·\u00a0${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${statusMark(s)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
+    root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${statusMark(s)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
     // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
     // profitable idea with too few trades is rejected on sample size, not for "losing money".

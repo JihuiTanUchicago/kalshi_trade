@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from app import repository as repo
 from app.adapters.stripe import billing
 from app.services import book_memo, page_poll
+from app.trading import engine
 from app.web.caches import _TRACK_RECORD, _shared
 from app.web.http import Ctx
 from app.web.routes.deployments import _paper_strategy_ids
@@ -113,6 +114,8 @@ def dashboard(ctx: Ctx):
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
         "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep, {d["id"] for d in deps}),
+        # The server's live switch (/api/me's), polled with the page as the Deploy board's is.
+        "live_trading_available": engine.LIVE_TRADING_ENABLED,
     }, ctx.query.get("v"))
 
 

@@ -7,9 +7,9 @@ window.TauPage('strategies', (T) => {
     actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
-    gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
+    gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, S, serial, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
+    researchOnly, roadDays, root, rpUnderwater, S, settleAt, shell, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
@@ -414,7 +414,7 @@ window.TauPage('strategies', (T) => {
       if (!ds.length) return '';
       const { pnl, trades: n, open } = bookTotal(s, mode, ds);
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span> ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}${mode === 'paper' ? `, ${PAPER_NET}${glo('paperfills')}` : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}${mode === 'paper' ? `, ${PAPER_NET}${glo('paperfills')}` : ''}` : 'No closed trades yet'}${open ? ` ·\u00a0${open} open` : ''}${since ? ` ·\u00a0deployed ${when(since)}` : ''}</p>${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together).
@@ -576,8 +576,9 @@ window.TauPage('strategies', (T) => {
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: [r.out_of_sample && overDays(r.out_of_sample.days) ? 'Unseen data' + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(' ·\u00a0') }) +
       fig('Hypotheses tested', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: s.hypotheses_tried ? `The agent tested ${num(s.hypotheses_tried)} distinct ideas this run${passedAll ? '; this is the one that passed' : ''}. More tries → higher chance one passes by luck (multiple testing).` : 'How many ideas the agent tried to find this one.' });
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
-    root.querySelector('.board-title').outerHTML = boardTitle(serial(s.id) + ' ·\u00a0' + marketShort(s.market),
-      `${s.example ? EXAMPLE_TAG + ' ' : ''}${esc(dirLabel(s.direction))}${s.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : ''}`);
+    // Its title is the heading: a customer never sees its internal id (the zero-padded "No. 00002" it led with).
+    root.querySelector('.board-title').outerHTML = boardTitle(s.title,
+      `${s.example ? EXAMPLE_TAG + ' ' : ''}${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}${s.example ? ' \u00b7\u00a0' + EXAMPLE_NOTE : ''}`);
     root.querySelector('#figs').innerHTML = figsFor(s);
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
     // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
@@ -697,7 +698,7 @@ window.TauPage('strategies', (T) => {
         <div>
           <article class="sheet-doc paper">
             <header class="paper-head">
-              <div class="paper-cite"><span>${esc(serial(s.id))}</span><span>${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}</div>
+              <div class="paper-cite"><span>${esc(marketShort(s.market))} ·\u00a0${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}</div>
               <h2 class="paper-title">${esc(s.title)}</h2>
               <div class="paper-byline">${statusMark(s)}${researchBadge(s)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
             </header>

@@ -147,4 +147,116 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     assert.match(row, />Fade the spike</);
     assert.doesNotMatch(row, /strategy-ref|\b0007\b/);
   });
+
+  // The rest of the surfaces with a "Live" or "running" badge: the Strategies list, a shared deployment's
+  // Community card, the autopilot panel and the dashboard's autopilot card say it waits, in the same words.
+  const WAIT_MARK = /<span class="mk quiet live-wait" title="Live trading isn’t open yet\.">Waiting<span class="vh">: live trading isn’t open yet<\/span><\/span>/;
+  const IDLE_COUNT = '1 live, placing no orders: live trading isn’t open yet';
+
+  test(`${name}: a Strategies row with a live book says it waits while live trading is closed, and why, on a phone too`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const row = (open, real = {pnl: 0, trades: 0, open: 1, mode: 'live', live: true}) => {
+      f.S.me.live_trading_available = open;
+      return f.strategySlip({id: 7, title: 'Daily drift', thesis: '', market: 'btc15m', status: 'passed', deployed: true, deploy_live: true,
+        books: ['live', 'paper'], real, out_of_sample: {pnl: 1, trades: 3, win_rate: 0.5}}, {});
+    };
+    const closed = row(false);
+    assert.match(closed, /<span class="mk live">Live \+ paper<\/span> <span class="mk quiet live-wait"/);
+    assert.match(closed, WAIT_MARK);
+    assert.match(closed, /<div class="sub-fig live-wait-why">Live trading isn’t open yet, so this places no orders\.<\/div>/);
+    // A paused live book reads Paused, not Waiting beside it; the line still says why it places nothing.
+    const paused = row(false, {pnl: 0, trades: 0, open: 0, mode: 'live', live: true, paused: true});
+    assert.doesNotMatch(paused, /live-wait"/); assert.match(paused, />Paused</); assert.match(paused, /live-wait-why/);
+    const open = row(true);
+    assert.match(open, /<span class="mk live">Live \+ paper<\/span>/);
+    assert.doesNotMatch(open, /Waiting|live-wait|places no orders/);
+  });
+
+  test(`${name}: a shared live deployment's Community card says it waits while live trading is closed`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const card = {kind: 'deployment', id: 3, title: 'Daily drift', market: 'btc15m', mode: 'live', realized_pnl: 1.25, closed_trades: 3, since: '2026-10-20T08:00:00Z'};
+    f.S.me.live_trading_available = false;
+    assert.match(f.postSnapshot(card, ''), WAIT_MARK);
+    assert.doesNotMatch(f.postSnapshot({...card, mode: 'paper'}, ''), /Waiting/);
+    f.S.me.live_trading_available = true;
+    assert.doesNotMatch(f.postSnapshot(card, ''), /Waiting/);
+  });
+
+  test(`${name}: the autopilot panel and its dashboard card count a live strategy apart while live trading is closed`, async () => {
+    const status = {autopilot: true, mode: 'paper', research: {active: [], tested_7d: 0, passed_7d: 0}, live_running: 1, paper_running: 2,
+      demo_running: 0, today_live_pnl: 0, loss_headroom: 50, daily_loss_limit: 50, autopilot_live: false, story: []};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard' || path.startsWith('/api/dashboard?')) return response(dashboard());
+      if (path === '/api/autopilot/status') return response(status);
+      return response({messages: [], models: []});
+    }});
+    f.S.me.live_trading_available = false; f.S.me.user.autopilot = true;
+    const box = new (f.root.constructor)('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
+    await f.apUpdate(box, status); await settle();
+    const stats = box.querySelector('#apf-stats').innerHTML;
+    assert.ok(stats.includes(`${IDLE_COUNT} · 2 paper`), stats);
+    assert.doesNotMatch(stats, /class="apf-live">1 live/);
+    f.S.ap = status;
+    await f.viewDashboard(); await settle();
+    f.S.ap = status; f.paintDashAp();
+    const card = f.root.querySelector('#dash-ap').innerHTML;
+    assert.match(card, new RegExp(`<dt>Strategies running</dt><dd>2<small>${IDLE_COUNT}</small></dd>`));
+    // Open, the counts read as before.
+    f.S.me.live_trading_available = true; f.paintDashAp();
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Strategies running<\/dt><dd>3<\/dd>/);
+    await f.apUpdate(box, status); await settle();
+    assert.match(box.querySelector('#apf-stats').innerHTML, /class="apf-live">1 live<\/span>/);
+    f.clearTimers();
+  });
+
+  test(`${name}: the strategy page's heading is its title, never its zero-padded id`, async () => {
+    const s = strategyFrontend(detailStrategy({id: 2, title: 'Fade the spike', market: 'btc15m'}));
+    await s.viewStrategy(42); await settle();
+    const head = s.root.querySelector('.board-title').outerHTML;
+    assert.doesNotMatch(head + s.root.querySelector('#main').innerHTML, /No\.\s*0\d+|\b0000[0-9]\b/);
+    assert.match(head, /<h1 class="page">Fade the spike<\/h1>/);
+    s.clearTimers();
+  });
+
+  test(`${name}: a dashboard whose every deployment is paused says how many, never "Nothing deployed"`, async () => {
+    const data = {...dashboard(), deployments: [dep({status: 'paused', status_reason: 'Paused by you.'}), dep({id: 2, title: 'Two', status: 'paused'})]};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard' || path.startsWith('/api/dashboard?')) return response(data);
+      return response({autopilot: false, mode: 'off'});
+    }});
+    await f.viewDashboard(); await settle();
+    const html = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#main').innerHTML;
+    assert.doesNotMatch(html, /Nothing deployed/);
+    const said = /<a class="needs-link" href="([^"]+)"><em>2 paused, needs you<\/em><\/a>/.exec(html);
+    assert.ok(said, html.slice(0, 600));
+    // Tau's status line links to Deploy, where both wait; Meridian's to the first paused card beside it.
+    assert.equal(said[1], name === 'Tau' ? '/deploy' : '#dash-paused');
+    f.clearTimers();
+  });
+
+  test(`${name}: the board's 10s poll carries the live switch, so an open board follows a flip without a reload`, async () => {
+    let answer = {deployments: [LIVE], open_positions: [], live_trading_available: true, v: 'a1'};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/deployments' || path.startsWith('/api/deployments?')) return response(answer);
+      return response({});
+    }});
+    f.S.me.live_trading_available = true; f.S.me.markets = MARKETS;
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    assert.doesNotMatch(f.root.querySelector('#deps').innerHTML, /Waiting/);
+    // The server's switch closed (a restart): the next poll's answer has a new version and says so.
+    answer = {...answer, live_trading_available: false, v: 'a2'};
+    const meReads = () => f.requests.filter(({path}) => path === '/api/me').length, before = meReads();
+    const ticks = [...f.intervals.values()];
+    for (const tick of ticks) { await tick(); await settle(); }
+    assert.equal(f.S.me.live_trading_available, false);
+    assert.match(rowOf(f.root.querySelector('#deps').innerHTML, 'Live one'), new RegExp(WAITING));
+    assert.match(f.root.querySelector('#dfigs').innerHTML, /1 live, placing no orders/);
+    // A "same" answer keeps it; no extra read of /api/me was made for it.
+    answer = {v: 'a2', same: true, marks: {}, unrealized: {}};
+    for (const tick of ticks) { await tick(); await settle(); }
+    assert.equal(f.S.me.live_trading_available, false);
+    assert.equal(meReads(), before);
+    f.clearTimers();
+  });
 }
