@@ -15,6 +15,10 @@ import pytest
 
 from trading_core.domain.slippage import contract_fills
 
+# The display reads' own columns, which the gates' list_deployments never carries: the paper after-slippage
+# estimate's input and the strategy's status (a backtest-only row's "later-period" words).
+DISPLAY_ONLY = ("contract_fills", "strategy_status")
+
 pytestmark = pytest.mark.skipif(os.getenv("APP_TEST_MYSQL") != "1", reason="needs APP_TEST_MYSQL=1 and a MySQL")
 
 
@@ -311,7 +315,9 @@ def test_autopilot_paper_week_counts_only_what_the_autopilot_put_on_paper(conn, 
     closed(d_manual, 50.0, now - timedelta(hours=1))
     cur.execute("UPDATE app_positions SET mode='demo' WHERE deployment_id=%s", (d_demo,))
     week = repo.autopilot_paper_week(cur, user["id"], since)
-    assert week == {"started": 1, "pnl": pytest.approx(1.5), "trades": 2}
+    # `fills`: those two trades' contracts times taker fills (1 contract, bought and sold: 2 each), from the same
+    # read, for the paper after-slippage estimate.
+    assert week == {"started": 1, "pnl": pytest.approx(1.5), "trades": 2, "fills": 4}
 
 
 def test_finished_session_costs_are_set_size_research_sessions_that_debited(conn, user):
@@ -761,8 +767,10 @@ def test_the_dashboard_and_strategy_list_reads_answer_as_the_ones_they_replace(c
 
     listed = repo.list_deployments_for_display(cur, uid)
     # It also sums each deployment's contract fills (the paper after-slippage estimate's input, which the
-    # gates' list_deployments never reads); every other column is list_deployments' own.
-    bare = [{k: v for k, v in d.items() if k != "contract_fills"} for d in listed]
+    # gates' list_deployments never reads) and carries its strategy's status (display only); every other
+    # column is list_deployments' own.
+    bare = [{k: v for k, v in d.items() if k not in DISPLAY_ONLY} for d in listed]
+    assert {d["strategy_status"] for d in listed} == {"passed"}
     assert bare == repo.list_deployments(cur, uid)
     assert repr(bare) == repr(repo.list_deployments(cur, uid))  # the same types too (Decimal sums, int counts)
     cur.execute("SELECT deployment_id, qty, close_reason FROM app_positions WHERE user_id=%s AND status='closed'", (uid,))
@@ -932,7 +940,7 @@ def test_the_deploy_board_and_strategy_page_reads_answer_as_the_ones_they_replac
 
     # The strategy page's deployments: the same rows list_deployments gave, filtered to the strategy.
     for sid in {big["strategy_id"], small["strategy_id"], stopped["strategy_id"]}:
-        mine = [{k: v for k, v in d.items() if k != "contract_fills"}  # the estimate's input; the rest is the same
+        mine = [{k: v for k, v in d.items() if k not in DISPLAY_ONLY}  # the display columns; the rest is the same
                 for d in repo.list_deployments_for_display(cur, uid, strategy_id=sid)]
         want = [d for d in repo.list_deployments(cur, uid) if d["strategy_id"] == sid]
         assert repr(mine) == repr(want), sid

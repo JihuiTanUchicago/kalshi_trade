@@ -6253,6 +6253,19 @@ test('an Overview paper monitor says how many of its closed trades were instant 
   assert.match(css, /\n\.monitor-config \.dep-instant \{ margin: 4px 0 10px; white-space: normal; \}/);
 });
 
+test('a backtest-only strategy’s Deploy row says "Later-period P&L", never "Unseen P&L"', async () => {
+  // Its out_of_sample is the old loose gate's later slice, which picked it (#590's strategy-page words); the server says
+  // so per row (backtest_only, from the strategy's status in the row's own read).
+  const row = (o) => ({id: 11, strategy_id: 111, title: 'S', market: 'btc15m', mode: 'paper', status: 'running', stake: 5, max_positions: 2,
+    backtest: {out_of_sample: {pnl: 12, trades: 20}}, created_at: '2026-10-17T10:00:00Z', realized_pnl: 3, unrealized_pnl: null,
+    closed_trades: 2, open_positions: 0, curve: [], ...o});
+  const f = frontend({fetchImpl: () => response({deployments: [row({backtest_only: true}), row({id: 12, strategy_id: 112, backtest_only: false})], open_positions: []})});
+  await f.viewDeploy();
+  const html = f.root.querySelector('#deps').innerHTML;
+  assert.match(html, /<span class="dep-fact" title="After the split date, which picked it: not held out">Later-period P&amp;L \+\$12\.00<\/span>/);
+  assert.equal((html.match(/Unseen P&amp;L/g) || []).length, 1, 'only the strategy with a gatekeeper record says unseen');
+});
+
 test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" with its figure', async () => {
   // Walk 2026-10-27: "· Deployed" ended one line of a row's details and "Oct 18" began the next, at 390px and in
   // the 1280px table's name column. Each fact is one .dep-fact span, which never wraps inside.

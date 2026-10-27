@@ -335,6 +335,9 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
         "unrealized_pnl": unrealized, "open_positions": d["open_positions"], "created_at": d["created_at"], "curve": curve,
         "stake": _spec_sizing(d).get("stake"), "max_positions": _spec_sizing(d).get("max_positions"),
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
+        # A backtest-only strategy's out_of_sample is its old backtest's later slice, which picked it: the row
+        # says "later-period", never "unseen" (the strategy's status, from the row's own read; display only).
+        "backtest_only": d.get("strategy_status") == "backtest-only",
     }
 
 

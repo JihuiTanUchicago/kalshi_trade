@@ -270,4 +270,17 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     // A live or demo row never carries it, even if one leaks in.
     assert.doesNotMatch(row(f, {deployed: true, books: ['demo'], real: {...real, mode: 'demo'}}), /instant/);
   });
+
+  // A backtest-only strategy comes from the old loose gate: its out_of_sample is the backtest's later slice, the one that
+  // gate picked it on, so the list says "later-period" from its status alone, as its page does (#590), never "unseen".
+  test(`${name}: a backtest-only row's backtest figure is later-period, not unseen`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const oos = {pnl: 6.2, trades: 40, win_rate: 0.61, days: 30};
+    const bt = row(f, {status: 'backtest-only', out_of_sample: oos});
+    assert.match(bt, /later-period P&amp;L over 30 days after the split date, which picked it: not held out/);
+    assert.doesNotMatch(bt, /unseen/);
+    assert.match(row(f, {status: 'passed', out_of_sample: oos}), /on unseen data over 30 days/);
+    // With only in-sample figures, it says so, as before.
+    assert.match(row(f, {status: 'backtest-only', out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}), /on the history it searched over 60 days/);
+  });
 }
