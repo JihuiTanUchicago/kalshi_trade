@@ -641,6 +641,33 @@ def test_a_sibling_dead_mechanism_gets_one_developed_idea_per_chunk(monkeypatch)
     assert any("keeps returning mechanisms" in e[1] for e in events)
 
 
+def test_a_mechanism_dead_on_this_market_gets_no_try_at_all(monkeypatch):
+    """Prod 2026-10-27: runs propose one idea per mechanism, so "one try per chunk" set nothing aside
+    and btc15m paid for a Polymarket-basis idea every run. Dead on this market: set aside even first."""
+    titles = iter([["Polymarket basis fade", "Taker burst"]] + [[]] * 3)
+    developed, prompts, events = [], [], []
+
+    class MD:
+        def __init__(self, *a, **k):
+            pass
+        def ask(self, *a, **k):
+            return [{"title": t} for t in next(titles)]
+
+    monkeypatch.setattr(agent, "AgentMarketData", MD)
+    monkeypatch.setattr(agent, "_stream_proposer", lambda m, s: m)
+    monkeypatch.setattr(agent, "_round_prompt", lambda run, ds, mem, want, chunk, dropped: prompts.append(
+        [d["why"] for d in dropped if not d.get("market")]) or "p")
+    monkeypatch.setattr(agent, "_develop_thesis", lambda h, *a, **k: developed.append(h["title"]) or None)
+    monkeypatch.setattr(agent, "_gate_and_save", lambda *a, **k: 0)
+    policy = SimpleNamespace(next_batch=lambda st: SimpleNamespace(width=2))
+    own = [{"title": "Polymarket-Kalshi spread %d" % i, "why": "t=-2"} for i in range(4)]
+    agent._explore_and_gate(None, {"market": "btc15m", "user_id": 1, "prompt": "flow"},
+                            SimpleNamespace(start_ts=0, cutoff_ts=1), {}, [], None, None,
+                            lambda *a: events.append(a), lambda: None, 50, [], policy, dropped=own)
+    assert developed == ["Taker burst"]
+    assert any("died 4 times on this market recently" in w for w in prompts[1])
+
+
 def test_a_streak_of_drops_stops_proposing_and_gates_what_was_kept(monkeypatch):
     """Eight dropped theses in a row end exploration (each costs several model calls), even mid-batch;
     survivors kept before the streak still reach the gate."""
