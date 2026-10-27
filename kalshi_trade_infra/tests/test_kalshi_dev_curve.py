@@ -233,3 +233,90 @@ def test_dev_curve_bytes_are_pinned(monkeypatch):
         assert hashlib.sha256(body).hexdigest() == want
         # The cached answer is the same bytes.
         assert _page_bytes(kalshi_dev.dev_curve_for_strategy(-1000 - k, s, "btc15m")) == body
+
+
+def test_fetched_candles_serve_every_strategy_on_the_market(monkeypatch):
+    ds = _pinned_dataset()
+    calls = []
+    _pinned_env(monkeypatch, ds, calls)
+    a, b = (specmod.validate(dict(raw)) for raw in PINNED_SPECS)
+    kalshi_dev.dev_curve_for_strategy(1, a, "btc15m")
+    first = len(calls)
+    assert first == 60  # one GET per contract, capped
+    kalshi_dev.dev_curve_for_strategy(2, b, "btc15m")
+    # The second strategy asks only for contracts the first didn't, plus the one that errored.
+    again = calls[first:]
+    assert "P100-1" in again and len(again) < first
+
+
+def test_a_lapsed_replay_is_reused_while_the_history_is_the_same(monkeypatch):
+    ds = _pinned_dataset()
+    calls = []
+    _pinned_env(monkeypatch, ds, calls)
+    s = specmod.validate(dict(PINNED_SPECS[0]))
+    computed = []
+    real = kalshi_dev._compute
+    monkeypatch.setattr(kalshi_dev, "_compute", lambda *a: computed.append(1) or real(*a))
+    body = _page_bytes(kalshi_dev.dev_curve_for_strategy(7, s, "btc15m"))
+    key = next(iter(kalshi_dev._cache))
+    lapse = lambda: kalshi_dev._cache.__setitem__(key, (0.0,) + kalshi_dev._cache[key][1:])  # noqa: E731
+    # One contract errored on the demo host, so the lapsed replay is worked out again...
+    lapse()
+    assert _page_bytes(kalshi_dev.dev_curve_for_strategy(7, s, "btc15m")) == body
+    assert len(computed) == 2
+    # ...and once every contract fetched, a lapsed replay on the same history answers from memory.
+    kalshi_dev._cache[key] = kalshi_dev._cache[key][:3] + (True,)
+    lapse()
+    assert _page_bytes(kalshi_dev.dev_curve_for_strategy(7, s, "btc15m")) == body
+    assert len(computed) == 2
+    # Newer history is a new version: replayed.
+    ds.end_ts += 60
+    lapse()
+    kalshi_dev.dev_curve_for_strategy(7, s, "btc15m")
+    assert len(computed) == 3
+
+
+def test_concurrent_requests_share_one_replay(monkeypatch):
+    import threading
+    ds = _pinned_dataset()
+    _pinned_env(monkeypatch, ds)
+    gate, computed = threading.Event(), []
+    monkeypatch.setattr(kalshi_dev, "_compute",
+                        lambda *a: computed.append(1) or gate.wait(5) and {"dev_curve": [[1, 0.0], [2, 1.0]]})
+    s = specmod.validate(dict(PINNED_SPECS[0]))
+    got = []
+    threads = [threading.Thread(target=lambda: got.append(kalshi_dev.dev_curve_for_strategy(9, s, "btc15m")))
+               for _ in range(3)]
+    for t in threads:
+        t.start()
+    gate.set()
+    for t in threads:
+        t.join(5)
+    assert len(computed) == 1 and len(got) == 3 and all(g == got[0] for g in got)
+
+
+def test_warm_replays_passed_strategies_once_in_the_background(monkeypatch):
+    from app.web.routes import strategies as routes
+    ds = _pinned_dataset()
+    _pinned_env(monkeypatch, ds)
+    monkeypatch.setattr(kalshi_dev, "WARM", True)
+    s = specmod.validate(dict(PINNED_SPECS[0]))
+    oos = {"out_of_sample": {"trades": 12}}
+    rows = [{"id": 31, "status": "passed", "market": "btc15m", "spec": s, "result": oos},
+            {"id": 32, "status": "rejected", "market": "btc15m", "spec": s, "result": {}},
+            {"id": 33, "status": "passed", "market": "btc15m", "spec": s, "result": {}}]  # nothing unseen
+    started = []
+    monkeypatch.setattr(kalshi_dev, "_warm_all", lambda todo: started.append([t[0] for t in todo]))
+    routes.warm_dev_curves(rows)
+    routes.warm_dev_curves(rows)  # the session page polls; each strategy is warmed once
+    import time
+    for _ in range(50):
+        if started:
+            break
+        time.sleep(0.01)
+    assert started == [[31]]
+    monkeypatch.setattr(kalshi_dev, "WARM", False)
+    kalshi_dev._warmed.clear()
+    routes.warm_dev_curves(rows)
+    time.sleep(0.05)
+    assert started == [[31]]

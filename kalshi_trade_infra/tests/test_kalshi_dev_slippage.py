@@ -71,8 +71,8 @@ def test_down_demo_host_yields_null_without_raising(monkeypatch):
 def test_measured_slippage_accessor_feeds_cost_model(monkeypatch):
     # dev_curve_for_strategy caches a market-level per-fill number as a side effect
     # so the what-if cost model can read it without a strategy id.
-    monkeypatch.setattr(kalshi_dev.backtest, "dataset", lambda *a, **k: object())
-    monkeypatch.setattr(kalshi_dev, "_compute", lambda spec, ds: {
+    monkeypatch.setattr(kalshi_dev.backtest, "dataset", lambda *a, **k: _oos_dataset())
+    monkeypatch.setattr(kalshi_dev, "_compute", lambda spec, ds, missed=None: {
         "dev_curve": [[1, 0.0], [2, 1.0]],
         "slippage": {"entry_cents": 2.0, "exit_cents": 1.0, "n_trades": 7, "capped": False},
     })

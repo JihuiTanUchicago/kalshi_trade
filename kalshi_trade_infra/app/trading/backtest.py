@@ -1162,6 +1162,9 @@ def score(in_sample: Dict) -> float:
 DATASET_TTL_SECONDS = 900
 _cache: Dict[str, Tuple[float, Dataset]] = {}
 _cache_lock = threading.Lock()
+# One lock per market+window, held while it loads: a second caller of a cold window (the web's dev
+# curve and what-if, or a background warm and a page read) waits for that load instead of repeating it.
+_load_locks: Dict[str, threading.Lock] = {}
 
 
 def load_dataset(market_key: str, loader: Callable[..., Dataset], history_days: Optional[int] = None) -> Dataset:
@@ -1176,9 +1179,15 @@ def load_dataset(market_key: str, loader: Callable[..., Dataset], history_days: 
         hit = _cache.get(ckey)
         if hit and time.time() - hit[0] < DATASET_TTL_SECONDS:
             return hit[1]
-    ds = loader(market, days)
-    with _cache_lock:
-        _cache[ckey] = (time.time(), ds)
+        load_lock = _load_locks.setdefault(ckey, threading.Lock())
+    with load_lock:
+        with _cache_lock:
+            hit = _cache.get(ckey)
+            if hit and time.time() - hit[0] < DATASET_TTL_SECONDS:
+                return hit[1]  # loaded while this caller waited
+        ds = loader(market, days)
+        with _cache_lock:
+            _cache[ckey] = (time.time(), ds)
     return ds
 
 

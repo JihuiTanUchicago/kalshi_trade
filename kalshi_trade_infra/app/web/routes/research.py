@@ -18,7 +18,7 @@ from app.trading.markets import MARKETS
 from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.explore import _efloat, _explore_feed, _feed_mid, _ticker_close_at
-from app.web.routes.strategies import _owned_strategy, _strategy_card
+from app.web.routes.strategies import _owned_strategy, _strategy_card, warm_dev_curves
 from app.web.settings import MAX_ACTIVE_RESEARCH, MAX_RESEARCH_PER_DAY
 from app.web.views import _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd
 
@@ -163,6 +163,7 @@ def get_run(ctx: Ctx):
     run["model_label"] = catalog.label_for_key(run.get("model"))
     customer_text.run_rows([run])
     mine = [s for s in strategies if s["run_id"] == run["id"]]
+    warm_dev_curves(mine)
     auto = _autopilot_puts_on_paper(ctx.cur, ctx.user, mine)
     return {
         "run": run,
