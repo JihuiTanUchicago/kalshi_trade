@@ -6,6 +6,8 @@ import {test} from 'node:test';
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
+// The bundles' separator (SEP in app.js and app.meridian.js; test_separator_line_start.mjs): a no-break space, "·", a space.
+const SEP = '\u00a0\u00b7 ';
 
 const REVIEWING = "Right now it's reviewing the markets to pick its next move. Each move shows up in its activity feed.";
 const FRESH_ON = {autopilot: true, mode: 'paper', research: {active: [], tested_7d: 0, passed_7d: 0}, paper_running: 0, demo_running: 0,
@@ -96,13 +98,69 @@ export function freshWalkCases({name, frontend, dashboard}) {
         : ['your research sessions', 'your strategies', 'your paper strategies', 'your live and demo']);
       assert.equal(metric('agents'), '0 running · 0 queued · 1 done');
       assert.equal(metric('backtest'), '3 strategies tested');
-      assert.equal(sub('db'), 'RDS MySQL', 'a box of the system itself is the system’s');
+      assert.equal(sub('db'), 'one source of truth', 'a box of the system itself is the system’s');
       f.root.querySelector('.sys-node[data-id="backtest"]').dispatchEvent({type: 'click'});
       const detail = f.root.querySelector('#sys-detail').innerHTML;
       if (admin) assert.doesNotMatch(detail, /Yours only/);
       else assert.match(detail, /3 strategies tested<\/p><p class="hint">Yours only: other users’ aren’t counted here\.<\/p>/);
       f.clearTimers();
     }
+  });
+
+  // Walk 2026-10-27 at 390px and 1280px, both themes: the Database box read "3 MB · 0 rows" (the row count is the
+  // database's own estimate, 0 for a new or small table) under "RDS MySQL", and Kalshi, Coinbase, Claude and Stripe
+  // each read "connected" with a green dot, though the page reads none of them. The boxes name no cloud product,
+  // a count shows as "about N" once it is big enough to mean something, an outside service's box counts what Tau
+  // stored from it or says nothing, and its dot follows the collector that reads it (grey when there is none).
+  test(`${name}: the System boxes name no cloud product, count rows as "about N" only when it means something, and never claim "connected"`, async () => {
+    const open = async (nodes) => {
+      const f = frontend({fetchImpl: (path) => (path === '/api/admin/system' ? response({nodes, events: [], now: '2026-10-27T16:00:00Z'}) : response({}))});
+      await f.viewSystem(); await settle();
+      return f;
+    };
+    const EXT = {kalshi: {kind: 'ext', series: 0, markets: 0}, coinbase: {kind: 'ext'}, bedrock: {kind: 'ext'}, stripe: {kind: 'ext'}};
+    const small = await open({...EXT, db: {rows: 0, size_mb: 3}, web: {up: true}, forward: {age: null, rows: 0, unit: 'quote rows'},
+      cb_coll: {age: 400, rows: 120, unit: 'candles'}, features: {age: 20, rows: 0, unit: 'feature rows'}});
+    const text = (f, id, k) => f.root.querySelector(`[data-${k}="${id}"]`).textContent;
+    const st = (f, id) => f.root.querySelector(`.sys-node[data-id="${id}"]`).getAttribute('data-st');
+    const label = (f, id) => f.root.querySelector(`.sys-node[data-id="${id}"] .t`).textContent;
+    assert.equal(text(small, 'db', 'm'), '3 MB', 'an estimate of 0 rows is left out');
+    assert.equal(text(small, 'forward', 'm'), '—');
+    assert.equal(text(small, 'cb_coll', 'm'), '7m ago', '120 is no count to show');
+    assert.equal(text(small, 'features', 'm'), '20s ago');
+    for (const id of ['kalshi', 'coinbase', 'bedrock', 'stripe']) assert.equal(text(small, id, 'm'), '', `${id} says nothing it can't show`);
+    // Kalshi's book comes in through the forward collector (no heartbeat: grey), Coinbase's through its collector
+    // (stale: grey, not red, as the page can't say whose end stopped); nothing on the page reads Claude or Stripe.
+    assert.deepEqual(['kalshi', 'coinbase', 'bedrock', 'stripe'].map((id) => st(small, id)), ['idle', 'idle', 'idle', 'idle']);
+    assert.equal(label(small, 'bedrock'), 'Claude');
+    small.clearTimers();
+
+    const big = await open({...EXT, kalshi: {kind: 'ext', series: 14, markets: 1234567}, db: {rows: 987654321, size_mb: 130000},
+      web: {up: true}, forward: {age: 20, rows: 123456789, unit: 'quote rows'}, cb_coll: {age: 40, rows: 2345678, unit: 'candles'},
+      features: {age: 100, rows: 54321, unit: 'feature rows'}});
+    assert.equal(text(big, 'db', 'm'), `127 GB${SEP}about 988M rows`);
+    assert.equal(text(big, 'forward', 'm'), `about 123M quotes${SEP}20s ago`);
+    assert.equal(text(big, 'cb_coll', 'm'), `about 2.3M candles${SEP}40s ago`);
+    assert.equal(text(big, 'features', 'm'), `about 54k rows${SEP}2m ago`);
+    assert.equal(text(big, 'kalshi', 'm'), `1.2M markets${SEP}14 series`);
+    assert.deepEqual(['kalshi', 'coinbase', 'bedrock', 'stripe'].map((id) => st(big, id)), ['live', 'live', 'idle', 'idle']);
+    // Every box's lines fit it: about 5 units a character at the map's narrow face, 12 in from the left.
+    for (const g of big.root.querySelectorAll('.sys-node')) {
+      const w = +g.querySelector('rect').getAttribute('width');
+      for (const t of g.querySelectorAll('text')) {
+        const line = t.querySelectorAll('tspan').length ? t.querySelectorAll('tspan').map((x) => x.textContent).sort((a, b) => b.length - a.length)[0] : t.textContent;
+        assert.ok(12 + line.length * 5 <= w, `"${line}" in the ${w}-wide ${g.dataset.id} box`);
+      }
+    }
+    // Neither the boxes nor any box's details name the cloud product, the database engine or the server's module.
+    const said = [];
+    for (const g of big.root.querySelectorAll('.sys-node')) {
+      said.push(g.querySelector('.t').textContent, g.querySelector('.s').textContent, g.querySelector('.m').textContent);
+      g.dispatchEvent({type: 'click'});
+      said.push(big.root.querySelector('#sys-detail').innerHTML);
+    }
+    assert.doesNotMatch(said.join(' | '), /Bedrock|Amazon|AWS|RDS|MySQL|app\.server|SPA\b|connected/);
+    big.clearTimers();
   });
 
   // Walk 2026-10-27 at 390px: the System map was a 640-wide picture scrolled sideways inside its frame, the research

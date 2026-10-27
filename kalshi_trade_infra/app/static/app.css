@@ -107,7 +107,7 @@ span.gain, span.loss, b.gain, b.loss, .amt { white-space: nowrap; }
 .sys-node[data-st="live"] .pulse { fill: #1A7F4B; animation: syspulse 1.6s var(--ease) infinite; }
 .sys-node[data-st="warn"] .pulse { fill: #9A6B00; }
 .sys-node[data-st="down"] .pulse { fill: var(--signal); }
-.sys-node.ext .pulse { fill: #1A7F4B; }
+/* An outside service's dot follows the collector that reads it (SYS_FED), grey when nothing on the page shows it sending. */
 @keyframes syspulse { 50% { opacity: .3; } }
 .sys-side .panel > h2, .sys-side .panel h3 { margin-bottom: 6px; }
 .sys-metric { font-family: var(--f-nar); font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--ink); letter-spacing: .02em; }
@@ -1145,6 +1145,10 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .t-ledger.stack tbody tr.ledger-day td::before { content: none; }
   .t-ledger.stack tbody tr.ledger-day .day-sum { margin-left: 0; }
   .t-dep.stack tbody td[data-lab="Market"], .t-dep.stack tbody td[data-lab="Status"], .t-dep.stack tbody td[data-lab="Since"] { order: 1; }  /* money first */
+  /* Seven figures three across left Since alone on a fourth row of the card, under an empty two thirds (walk
+     2026-10-27, 390px). The backtest estimate, the tallest cell (a two-line label over a two-line figure),
+     spans two rows, so Since tucks in under Market beside it and the card is a row shorter. */
+  .t-dep.stack tbody td[data-lab="Backtest estimate"] { grid-row: span 2; }
   /* Strategy cards get the same figure grid: three figures across, the deploy box beside the name,
      and an empty "tried" line dropped, so a phone shows three strategies a screen instead of one and a half. */
   .t-strat.stack { min-width: 0; }

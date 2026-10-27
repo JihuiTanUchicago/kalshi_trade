@@ -4,7 +4,7 @@
 window.TauPage('research', (T) => {
   'use strict';
   const {
-    alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, esc, EXAMPLE_NOTE, exampleLine,
+    alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionTitle, shell, tzName, usd, waitSpan, when, whyFailedHtml, wireMarketPicker
@@ -453,6 +453,8 @@ window.TauPage('research', (T) => {
     const all = +r.strategies_passed || 0, fell = Math.min(all, +r.not_cleared || 0);
     return { ok: all - fell, fell };
   };
+  // The most of a session's title its card shows: three lines of the 15px title at the card's narrowest.
+  const RUN_TITLE_MAX = 80;
   // `newest`: the user's newest session. When it ran out of credits its card offers Add credits, beside
   // the card (a link can't sit inside the card's own link); older ones only say so.
   function runRow(r, newest) {
@@ -473,8 +475,11 @@ window.TauPage('research', (T) => {
     // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
     // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
     const band = r.status === 'succeeded' ? (ok ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
+    // A long idea is cut at a word's end (clipWords), short enough for the card's three lines at its narrowest
+    // (about 240px a line): the line clamp alone cut it mid-word ("when the spot pri…"). Hover shows it whole.
+    const title = sessionTitle(r);
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-title"><b title="${esc(sessionTitle(r))}">${esc(sessionTitle(r))}</b>${runTag(r)}</span>
+      <span class="run-title"><b title="${esc(title)}">${esc(clipWords(title, RUN_TITLE_MAX))}</b>${runTag(r)}</span>
       <span class="run-meta">${esc(marketShort(r.market))}${r.example ? SEP + EXAMPLE_NOTE : r.spent_usd != null ? SEP + runSpent(r) : ''}${r.error ? SEP + esc(r.error) : ''}</span>
       <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;

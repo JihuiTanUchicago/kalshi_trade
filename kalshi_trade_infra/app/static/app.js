@@ -381,6 +381,16 @@
   const num = (n) => (n == null ? '—' : fmtCount.format(Number(n)));
   // Compact count for tight spaces (system-map node metrics): 1.1M, 352k, 940.
   const compact = (n) => (n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : num(n));
+  // Text cut to at most n characters at a word's end, with an ellipsis: a cut never splits a word ("each
+  // fift…"), and a cut that ends on a comma or dash drops it. One word longer than n is cut at n. Only a
+  // plain space is a place to cut: a no-break space (keepZone, whole) keeps its words together.
+  const clipWords = (s, n) => {
+    const t = String(s == null ? '' : s).replace(/[ \t\r\n]+/g, ' ').trim();
+    if (t.length <= n) return t;
+    const head = t.slice(0, n + 1);  // one past: a space there means the nth character ends a word
+    const cut = / /.test(head.slice(1)) ? head.replace(/ [^ ]*$/, '') : t.slice(0, n);
+    return cut.replace(/[ ,;:.\u2013\u2014-]+$/, '') + '\u2026';
+  };
   const age = (sec) => (sec == null ? 'never' : sec < 90 ? sec + 's' : sec < 5400 ? Math.round(sec / 60) + 'm' : sec < 172800 ? Math.round(sec / 3600) + 'h' : Math.round(sec / 86400) + 'd');
   const marketLabel = (k) => ((S.me && S.me.markets.find((m) => m.key === k)) || { label: k }).label;
   // Short, consistent chip labels for every market; unknown keys fall back to the
@@ -822,7 +832,7 @@
     // The signed-out landing keeps the plain product name; its headline is not a page name.
     // plain(): the tab title is read and copied as text, so it carries no word joiner (usd()).
     const name = root.querySelector('.services') ? plain((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
-    document.title = name ? `${name.length > 60 ? name.slice(0, 59) + '\u2026' : name}${SEP}Tau` : 'Tau';
+    document.title = name ? `${clipWords(name, 59)}${SEP}Tau` : 'Tau';
     const moved = shownPath !== null && shownPath !== path;
     shownPath = path;
     const a = document.activeElement, top = pageStart();
@@ -3182,7 +3192,7 @@
   // A deployment's pause reason, short: no "Autopilot:" prefix, no closing period, cut at a word.
   const shortReason = (r) => {
     const s = String(r).replace(/^Autopilot:\s*/, '').replace(/\.\s*$/, '');
-    return s.length <= 110 ? s : s.slice(0, 110).replace(/\s+\S*$/, '') + '\u2026';
+    return clipWords(s, 110);
   };
   // The strip's Autopilot row when it made no moves: just the switch, which syncApCopy keeps current.
   // Its newest move being the switch itself (the status read's last_action) means it was switched on and
@@ -3465,7 +3475,7 @@
     t = t.replace(/\bon ([a-z0-9_]+)$/, (all, k) => keys.has(k) || MKT_SHORT[k] ? 'on ' + marketShort(k) : all);
     if (whole(t).length > 90 && t.indexOf(': ') > 10) t = t.slice(0, t.indexOf(': '));
     t = whole(t);
-    if (t.length > 90) t = t.slice(0, 90).replace(/\s+\S*$/, '') + '\u2026';
+    t = clipWords(t, 90);
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
   }
   function apLastHtml(la) {
@@ -3841,9 +3851,10 @@
   // bottom padding (app.css) leaves a clear strip under every page's last row, so scrolling to the
   // foot of any page brings it back. Only what shows through counts: a figure clipped out of view by
   // its panel, or under the masthead, is not covered. Focus on the pill (keyboard) keeps it shown.
-  // The open panel is left alone: the user opened it.
+  // The open panel is left alone: the user opened it. A status mark counts too: on a 390px phone the pill sat on
+  // the first Deploy card's Status marks ("Paused", "Paper"), which say which money a row is and whether it trades.
   const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
-    '.figures .m', '.fig', 'td.num', 'dd', '#dash-ap'];
+    '.figures .m', '.fig', 'td.num', 'dd', '.mk', '#dash-ap'];
   const AP_UNDER_SEL = AP_UNDER.join(', ');
   // apYield hit-tests the page (elementsFromPoint), which lays it out and pre-paints it then and there. Run
   // from the pill's render, inside a page's first render, it fixed Research half drawn on a phone: the list
@@ -4139,7 +4150,7 @@
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
-    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig,
+    clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig,
     demoSpan, DEP_DONE, depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,

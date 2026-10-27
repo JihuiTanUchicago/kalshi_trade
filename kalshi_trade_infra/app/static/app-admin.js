@@ -109,13 +109,13 @@ window.TauPage('admin', (T) => {
   const SYS_NODES = [
     { id: 'kalshi', x: 40, y: 40, w: 150, label: 'Kalshi API', sub: 'markets + order book', ext: 1 },
     { id: 'coinbase', x: 40, y: 150, w: 150, label: 'Coinbase', sub: 'BTC spot price', ext: 1 },
-    { id: 'bedrock', x: 40, y: 330, w: 150, label: `Claude${SEP}Bedrock`, sub: 'the research agent', ext: 1 },
+    { id: 'bedrock', x: 40, y: 330, w: 150, label: 'Claude', sub: 'the research agent', ext: 1 },
     { id: 'stripe', x: 40, y: 460, w: 150, label: 'Stripe', sub: 'cards + credits', ext: 1 },
     { id: 'forward', x: 250, y: 30, w: 158, label: 'Forward collector', sub: 'Kalshi book → DB' },
     { id: 'cb_coll', x: 250, y: 150, w: 158, label: 'Coinbase collector', sub: '1-minute candles' },
     { id: 'features', x: 250, y: 270, w: 158, label: 'Feature builder', sub: 'per-minute features' },
-    { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: `app.server${SEP}SPA + API` },
-    { id: 'db', x: 490, y: 205, w: 150, label: 'Database', sub: 'RDS MySQL', big: 1 },
+    { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: 'pages + API' },
+    { id: 'db', x: 490, y: 205, w: 150, label: 'Database', sub: 'one source of truth', big: 1 },
     // Its count takes two lines ("12 running · 30 queued" over "1,204 done"): on one it ran past the box's edge.
     { id: 'agents', x: 720, y: 40, w: 158, h: 82, lines: 2, label: 'Research agents', sub: `app.worker${SEP}hypotheses`, mine: 'your research sessions' },
     { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'honest, out-of-sample', mine: 'your strategies' },
@@ -135,13 +135,13 @@ window.TauPage('admin', (T) => {
   const SYS_DESC = {
     kalshi: 'Kalshi’s REST + websocket feed — the markets, their order books, and settled results. The source of truth we trade against.',
     coinbase: 'Coinbase BTC spot candles — the underlying price the 15-minute and 5pm markets settle on.',
-    bedrock: 'Claude on Amazon Bedrock. The agent that reads an idea, writes strategy specs, and judges backtests. Metered per token.',
+    bedrock: 'Claude, the model behind the research agent: it reads an idea, writes strategy specs, and judges backtests. Metered per token.',
     stripe: 'Card vaulting + credit charges. Agent usage is billed per token against prepaid credits.',
     forward: 'data_pipeline/forward_collector.py — snapshots every live Kalshi market’s book on a tick, into forward_quotes / market_candles / markets.',
     cb_coll: 'data_pipeline/coinbase_collector.py — pulls 1-minute BTC candles into btc_candles_1m.',
     features: 'feature_1m_collector.py — builds the per-minute model features both the sim and live paths read.',
-    web: 'app/server.py — the stdlib HTTP server: the SPA, the JSON API, Google sign-in, sessions, billing, and the admin surfaces.',
-    db: 'Amazon RDS MySQL. Every collector writes here and every engine + the app reads here. One source of truth.',
+    web: 'app/server.py — the web server: the pages, the JSON API, Google sign-in, sessions, billing, and the admin surfaces.',
+    db: 'Every collector writes here and every engine + the app reads here. One source of truth.',
     agents: 'app/worker.py (agents) — claims research/chat runs and drives Claude through the research loop, writing strategies + a live event log.',
     backtest: 'app/trading/backtest.py — runs each hypothesis on data it never saw and applies the deployment gates. Same spec the engines run.',
     sim_engine: 'app/trading/engine.py on paper money — prices from the live book, fills against the shown size, tracks P&L without real orders.',
@@ -279,23 +279,39 @@ window.TauPage('admin', (T) => {
       g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
     });
     const fresh = (age) => age == null ? 'down' : age < 75 ? 'live' : age < 300 ? 'warn' : 'down';
+    // The page knows an outside service is sending only by the collector that reads it: Kalshi's book by the
+    // forward collector's heartbeat, Coinbase's candles by its collector's. Nothing on the page reads Claude
+    // or Stripe, so their boxes say nothing about a connection (they all read "connected", always green). A
+    // collector that stopped greys its service's dot rather than reddening it: the page can't tell whose end failed.
+    const SYS_FED = { kalshi: 'forward', coinbase: 'cb_coll' };
+    // A row count from the database's own estimate (information_schema): a new or small table's reads 0 or
+    // a few hundred off, so the figure shows only once it is large enough to mean something, as "about N",
+    // rounded as an estimate deserves (about 988M, not 987.7M), so it fits its box beside the age.
+    const aboutRows = (n, unit) => {
+      n = +n;
+      if (!(n >= 1000)) return '';
+      const r = n >= 1e9 ? (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B' : n >= 1e7 ? Math.round(n / 1e6) + 'M'
+        : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : Math.round(n / 1e3) + 'k';
+      return `about ${r} ${unit}`;
+    };
+    // A collector's count in a word short enough for its box: "123,456,789 quote rows · 20s ago" ran past it.
+    const SYS_UNIT = { forward: 'quotes', cb_coll: 'candles', features: 'rows' };
     // The research box's count as its two lines; every other box's is one.
     const metricLines = (id, L) => (id === 'agents' && L ? [`${num(L.running)} running${SEP}${num(L.queued)} queued`, `${num(L.done)} done`] : [metricText(id, L)]);
     function metricText(id, L) {
       if (!L) return '';
       const n = sysNode(id);
-      if (n && n.ext) {
-        if (id === 'kalshi' && L.markets) return `${num(L.markets)} markets${SEP}${L.series} series`;
-        return 'connected';
+      // An outside service's box counts what Tau has stored from it, when there is any; never "connected".
+      if (n && n.ext) return id === 'kalshi' && +L.markets > 0 ? `${compact(+L.markets)} markets${SEP}${num(L.series)} series` : '';
+      if (id === 'db') {
+        const size = +L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : +L.size_mb >= 1 ? num(L.size_mb) + ' MB' : '';
+        return [size, aboutRows(L.rows, 'rows')].filter(Boolean).join(SEP);
       }
-      if (id === 'db') return `${L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : num(L.size_mb) + ' MB'}${SEP}${compact(L.rows)} rows`;
       if (id === 'web') return L.users != null ? `${num(L.users)} users${SEP}serving` : `online${SEP}serving`;
       if (id === 'agents') return metricLines(id, L).join(SEP);
       if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
-      if (L.ext) return 'connected';
       const a = L.age == null ? '—' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
-      if (id === 'forward') return `${num(L.rows)} ${L.unit}${SEP}${a}`;
-      if (id === 'cb_coll' || id === 'features') return `${num(L.rows)} ${L.unit}${SEP}${a}`;
+      if (SYS_UNIT[id]) return [aboutRows(L.rows, SYS_UNIT[id]), a].filter(Boolean).join(SEP);
       // Running deployments per mode (the reader's own; every user's for the operator): live money and demo are named apart, never summed.
       if (id === 'sim_engine') return `${num(L.paper)} paper running${SEP}${a}`;
       if (id === 'live_engine') return `${num(L.live)} live${SEP}${num(L.demo)} demo${SEP}${a}`;
@@ -316,7 +332,8 @@ window.TauPage('admin', (T) => {
         const mt = svg.querySelector(`[data-m="${n.id}"]`), lines = metricLines(n.id, L), spans = mt ? mt.querySelectorAll('tspan') : [];
         if (spans.length) spans.forEach((t, i) => { t.textContent = lines[i] || ''; }); else if (mt) mt.textContent = lines[0];
         const sb = svg.querySelector(`[data-s="${n.id}"]`), sub = sysSub(n, L); if (sb && sb.textContent !== sub) sb.textContent = sub;
-        const st = n.ext ? 'live' : (L && 'age' in L) ? fresh(L.age) : (n.id === 'web' || n.id === 'db') ? 'live' : 'idle';
+        const fed = SYS_FED[n.id] && d.nodes[SYS_FED[n.id]];
+        const st = n.ext ? (fed && fed.age != null && fed.age < 300 ? fresh(fed.age) : 'idle') : (L && 'age' in L) ? fresh(L.age) : (n.id === 'web' || n.id === 'db') ? 'live' : 'idle';
         g.setAttribute('data-st', st);
       });
       // light up edges whose source is live
