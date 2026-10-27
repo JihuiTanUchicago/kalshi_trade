@@ -12,6 +12,7 @@ function loadApi(file) {
     pick(/class ApiError extends Error \{[^\n]*\}/),
     pick(/const STALE = [^\n]*/),
     pick(/const TRANSIENT = [^\n]*/),
+    pick(/const READ_MS = [^\n]*/),
     pick(/const sleep = [^\n]*/),
     pick(/const failText = [\s\S]*?;\n/),
     pick(/const reportBroken = [^\n]*/),
@@ -22,14 +23,18 @@ function loadApi(file) {
   const calls = [];
   const replies = [];
   const reports = [];
+  const deadlines = [];
+  const signals = [];
   const ctx = {
     window: {__tauReport: (kind, err) => reports.push([kind, err])},
-    S: {gen: 1, me: {}}, go: () => {}, setTimeout: (fn) => { fn(); return 0; }, clearTimeout: () => {}, AbortController,
-    fetch: async (path, opts) => { calls.push(opts.method || 'GET'); const r = replies.shift(); if (r instanceof Error) throw r; return r; },
+    S: {gen: 1, me: {}}, go: () => {}, clearTimeout: () => {}, AbortController,
+    // The retry back-off passes at once; a read's deadline (READ_MS) is held in `deadlines` for a test to fire.
+    setTimeout: (fn, ms) => { if (ms >= 10000) { deadlines.push(fn); return 1; } fn(); return 0; },
+    fetch: async (path, opts) => { calls.push(opts.method || 'GET'); signals.push(opts.signal || null); const r = replies.shift(); if (r instanceof Error) throw r; return r; },
   };
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
-  return {api: ctx.api, calls, replies, reports, ctx};
+  return {api: ctx.api, calls, replies, reports, ctx, deadlines, signals};
 }
 const reply = (status, data = {}) => ({ok: status < 400, status, json: async () => data});
 // CloudFront's own 5xx page is HTML, so json() throws.
@@ -146,5 +151,31 @@ for (const file of ['app.js', 'app.meridian.js']) {
       t.replies.push(reply(503, {error: 'source unavailable'}));
       await assert.rejects(t.api('/api/strategies/42'), (e) => e.status === 503 && e.message === 'source unavailable');
     }
+  });
+}
+
+// A read the network swallows (no answer, no error) gives up at READ_MS and says so, so the page shows its
+// Try again instead of a skeleton for good. A write keeps waiting: Tau may still be doing it.
+for (const file of ['app.js', 'app.meridian.js']) {
+  test(file + ': a read that never answers gives up once, with words and no retry', async () => {
+    const t = loadApi(file);
+    t.ctx.fetch = (path, opts) => { t.calls.push(opts.method || 'GET'); return new Promise((resolve, reject) => opts.signal.addEventListener('abort', () => reject(new Error('aborted')))); };
+    const read = t.api('/api/deployments');
+    await Promise.resolve();
+    assert.equal(t.deadlines.length, 1);
+    t.deadlines[0]();
+    await assert.rejects(read, (e) => e.status === 0 && e.message === 'Tau is taking too long to respond.');
+    assert.deepEqual(t.calls, ['GET']);
+    assert.deepEqual(t.reports, []);
+  });
+
+  test(file + ': a read that answers in time keeps its deadline from firing; a write has none', async () => {
+    const t = loadApi(file);
+    t.replies.push(reply(200, {ok: 1}), reply(200, {id: 1}));
+    assert.deepEqual(await t.api('/api/deployments'), {ok: 1});
+    assert.ok(t.signals[0], 'the read is sent with a deadline');
+    assert.deepEqual(await t.api('/api/deployments/7/pause', {}), {id: 1});
+    assert.equal(t.signals[1], null, 'a write is never cut short');
+    assert.equal(t.deadlines.length, 1);
   });
 }

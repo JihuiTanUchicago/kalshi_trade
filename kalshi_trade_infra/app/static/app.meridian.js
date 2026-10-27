@@ -419,6 +419,9 @@
   // over the new one (or arm its poll there). Widgets that outlive a page pass { keep: true }.
   const STALE = () => new Promise(() => {});
   const TRANSIENT = new Set([502, 503, 504]), RETRY_MS = [700, 1800];
+  // How long a read waits before the page says it failed and offers Try again: the edge gives up on the
+  // server at 30s too. Writes wait as long as it takes, since Tau may still be doing them.
+  const READ_MS = 30000;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // What a failed request says when Tau sent no words of its own (the edge's HTML error page, a cut-off
   // reply, no network): plain words, never the page itself. A write that Tau may have taken anyway (no
@@ -453,9 +456,11 @@
       opts.body = JSON.stringify(body);
     }
     // Optional timeout (a poll passes one so a hung read is aborted and counted as a failure).
-    // AbortController fires an abort the fetch rejects on.
+    // AbortController fires an abort the fetch rejects on. A read with none of its own gets READ_MS:
+    // one the network swallowed left its page's skeleton up for good.
     let ctl, tid;
-    if (cfg && cfg.timeoutMs) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), cfg.timeoutMs); }
+    const limit = (cfg && cfg.timeoutMs) || (body === undefined ? READ_MS : 0);
+    if (limit) { ctl = new AbortController(); opts.signal = ctl.signal; tid = setTimeout(() => ctl.abort(), limit); }
     let res;
     // A GET that hits a restart (a deploy takes the server away for a second, and CloudFront
     // answers 502/503/504 with its own non-JSON page) retries twice before the page shows an
@@ -611,10 +616,21 @@
   // figures), and a page or panel that failed to load tries again. A waker returns false once its
   // page is gone.
   const wakers = new Set();
+  const wake = () => wakers.forEach((w) => { if (w() === false) wakers.delete(w); });
   window.addEventListener('online', () => {
-    wakers.forEach((w) => { if (w() === false) wakers.delete(w); });
+    wake();
     if (document.getElementById('bootretry')) { render(); return; }
     root.querySelectorAll('.load-fail [data-retry]').forEach((b) => b.click());
+  });
+  // Back on the tab after a while: polls sit out while it is hidden, so its figures may be hours old,
+  // and they stood as current until the next tick (15s on the dashboard, a minute for the record).
+  // They read now. A glance away and back (WAKE_AWAY_MS or less) reads nothing new.
+  const WAKE_AWAY_MS = 5000;
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (hiddenAt && Date.now() - hiddenAt > WAKE_AWAY_MS) wake();
+    hiddenAt = 0;
   });
   // A new page in the app names itself in the tab title and puts keyboard focus on its heading, as a
   // full page load would: a screen reader says where it landed, and Tab starts from the page instead of
@@ -856,25 +872,43 @@
       // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
       list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
     };
-    let data = { unread: 0, items: [] };
-    // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
-    if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
-    try { data = await bellReq; paint(data); } catch (e) { return; }  // bell is best-effort
+    // A list that didn't load still opens, says so and offers Try again; the next read (bellTick) fills it
+    // too. It used to leave the bell dead for the rest of the visit: a tap did nothing and no dot ever came.
+    let data = null;
+    const unloaded = () => { list.innerHTML = '<p class="bell-empty">Notifications didn\u2019t load just now. <button type="button" class="btn sm" data-bell-retry>Try again</button></p>'; };
+    // Focus goes into the list (its first notice, or the list itself when it is empty), so Tab and a
+    // screen reader carry on from what just opened; Esc brings it back to the bell.
+    const focusIn = () => (list.querySelector('a.notif') || menu).focus({ preventScroll: true });
+    // An open list is read from here on, also for a repaint that reuses this reply; the marks clear on close.
+    const seen = () => {
+      if (menu.hidden || !data || !data.unread) return;
+      data.unread = 0; data.items.forEach((n) => { n.read = true; }); dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
+      api('/api/notifications/read', {}).catch(() => {});
+    };
+    const load = async () => {
+      // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
+      if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
+      try { data = await bellReq; paint(data); return true; } catch (e) { if (!data) unloaded(); return false; }  // bell is best-effort
+    };
+    await load();
     // Autopilot pauses or readies a strategy while the page sits open: the dot shows it within a minute,
-    // without a reload (bellTick). An open list is left as the reader sees it.
-    bellFresh = (d) => { if (menu.hidden) { data = d; paint(d); } };
+    // without a reload (bellTick). An open list is left as the reader sees it, unless it never loaded.
+    bellFresh = (d) => { if (menu.hidden || !data) { data = d; paint(d); seen(); } };
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
-      // Focus goes into the list (its first notice, or the list itself when it is empty), so Tab and a
-      // screen reader carry on from what just opened; Esc brings it back to the bell.
-      (list.querySelector('a.notif') || menu).focus({ preventScroll: true });
-      if (data.unread) {
-        // Read from here on, also for a repaint that reuses this reply; the marks clear on close.
-        data.unread = 0; data.items.forEach((n) => { n.read = true; }); dot.hidden = true; trig.setAttribute('aria-label', 'Notifications');
-        api('/api/notifications/read', {}).catch(() => {});
-      }
+      focusIn();
+      seen();
+    };
+    // Focus waits on the list itself while it reads: the browser blurs a button that goes disabled or is
+    // painted over, and focus leaving the bell closes the list.
+    const retry = async (btn) => {
+      if (btn.dataset.busy) return;
+      btn.dataset.busy = '1';
+      menu.focus({ preventScroll: true });
+      bellReqAt = 0;  // a fresh read, not the one that just failed
+      if (await load()) { focusIn(); seen(); } else { const b = list.querySelector('[data-bell-retry]'); if (b) b.focus({ preventScroll: true }); }
     };
     // Esc closes the list and gives focus back to the bell.
     wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); trig.focus(); } });
@@ -882,7 +916,10 @@
     // longer reached it: focus leaving the bell closes the list, as a click outside already does.
     wrap.addEventListener('focusout', (e) => { if (!menu.hidden && !wrap.contains(e.relatedTarget)) close(); });
     // Opening a notice closes the list first, so its click-outside listener doesn't outlive the page.
-    list.addEventListener('click', (e) => { if (e.target.closest('a.notif')) close(); });
+    list.addEventListener('click', (e) => {
+      const again = e.target.closest('[data-bell-retry]');
+      if (again) retry(again); else if (e.target.closest('a.notif')) close();
+    });
   }
 
   function shell(active, board, main) {
@@ -1092,9 +1129,17 @@
   const ARM_HOLD = 500;
   const armTurns = new WeakMap();
   function armed(btn, label, fire) {
-    if (btn.dataset.armed === '1') { btn.dataset.armed = ''; btn.classList.remove('armed'); armTurns.delete(btn); return fire(); }
+    if (btn.dataset.armed === '1') {
+      const t = armTurns.get(btn);
+      btn.dataset.armed = ''; btn.classList.remove('armed'); armTurns.delete(btn);
+      const done = fire();
+      // An action that failed left its button saying "Confirm …", where a press only armed it again: once
+      // the action answers it reads as before, unless the action relabelled it or it was armed again.
+      Promise.resolve(done).finally(() => { if (t && !btn.dataset.armed && btn.textContent === t.label) btn.innerHTML = t.orig; }).catch(() => {});
+      return done;
+    }
     if (btn.dataset.armed === 'wait') return;
-    const orig = btn.innerHTML, turn = {};
+    const orig = btn.innerHTML, turn = { orig, label };
     armTurns.set(btn, turn);
     btn.dataset.armed = 'wait'; btn.classList.add('armed'); btn.textContent = label;
     announce(`${label}: press again within 5 seconds.`);
@@ -1805,23 +1850,36 @@
   // waits for the first to come back instead of sending again. The board re-reading after an action
   // that landed is not the action: when only the re-read fails, the action is confirmed with a word to
   // reload (it read as an error and invited a second press), and the button, still offering what was
-  // just done, stays locked until the board repaints.
-  const depSending = new Set();
+  // just done, stays locked until the board repaints. A poll that repaints the board while an action is
+  // on its way draws that deployment's buttons locked, the pressed one still busy: they read as idle
+  // before, and a press on them did nothing.
+  const depSending = new Map();  // deployment id -> the action on its way
   function bindDeploymentActions(scope, after) {
     scope.querySelectorAll('[data-dep]').forEach((btn) => {
+      const going = depSending.get(btn.dataset.dep);
+      if (going) {
+        if (!btn.disabled) { btn.disabled = true; btn.dataset.sending = '1'; }
+        if (going === btn.dataset.act) btn.classList.add('busy');
+      }
       btn.onclick = () => {
         const id = btn.dataset.dep, act = btn.dataset.act;
         if (depSending.has(id) || btn.disabled) return;
         const run = async () => {
           if (depSending.has(id)) return;
-          depSending.add(id);
+          depSending.set(id, act);
           let fresh = null;
           try {
             await busy(btn, async () => {
               try { await api(`/api/deployments/${id}/${act}`, {}); } catch (e) { alert0(e.message); return; }
               fresh = await refreshed(after());
             });
-          } finally { depSending.delete(id); }
+          } finally {
+            depSending.delete(id);
+            root.querySelectorAll(`[data-dep="${id}"]`).forEach((b) => {
+              b.classList.remove('busy');
+              if (b.dataset.sending) { delete b.dataset.sending; b.disabled = false; }
+            });
+          }
           if (fresh === null) return;
           if (!fresh) btn.disabled = true;
           depActed(id, act, fresh);

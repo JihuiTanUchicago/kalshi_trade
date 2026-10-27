@@ -59,6 +59,36 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     f.clearTimers();
   });
 
+  test(`${name}: a poll that repaints the board while Pause is on its way draws that row locked, not idle`, async () => {
+    let paused = false, land, reads = 0;
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/deployments?') || path === '/api/deployments') {
+        reads++;  // a trade closed between reads, so each read repaints the board
+        return response({deployments: [dep({status: paused ? 'paused' : 'running', closed_trades: 5 + reads}), dep({id: 2, strategy_id: 2, title: 'Dep two'})], open_positions: []});
+      }
+      if (path === '/api/deployments/1/pause') return new Promise(resolve => { land = () => { paused = true; resolve(response({ok: true})); }; });
+      if (path === '/api/strategies?status=passed') return response({counts: {passed: 1}});
+      return response({});
+    }});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const first = f.root.querySelector('#deps [data-dep="1"][data-act="pause"]');
+    first.onclick(); await settle();
+    for (const tick of [...f.intervals.values()]) await tick();
+    await settle();
+    const pause = f.root.querySelector('#deps [data-dep="1"][data-act="pause"]'), remove = f.root.querySelector('#deps [data-dep="1"][data-act="stop"]');
+    assert.notEqual(pause, first, 'the poll repainted the row');
+    assert.equal(pause.disabled, true); assert.ok(pause.classList.contains('busy'));
+    assert.equal(remove.disabled, true); assert.ok(!remove.classList.contains('busy'));
+    assert.equal(f.root.querySelector('#deps [data-dep="2"][data-act="pause"]').disabled, false);  // another row is free
+    land(); await settle();
+    const resume = f.root.querySelector('#deps [data-dep="1"][data-act="resume"]');
+    assert.equal(resume.disabled, false); assert.ok(!resume.classList.contains('busy'));
+    assert.equal(f.root.querySelector('#deps [data-dep="1"][data-act="stop"]').disabled, false);
+    assert.equal(postRequests(f).length, 1);
+    f.clearTimers();
+  });
+
   // The engine sells what a paused or removed deployment holds: with positions open, Pause and Remove
   // say so on their first press, and only a second press sends the action.
   test(`${name}: Pause and Remove on a deployment holding positions say they sell them before acting`, async () => {

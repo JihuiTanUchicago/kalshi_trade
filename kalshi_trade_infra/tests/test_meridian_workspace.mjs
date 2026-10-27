@@ -70,7 +70,7 @@ class Element {
     if (this.ownerDocument?.activeElement !== this && this.contains(this.ownerDocument?.activeElement)) {
       this.ownerDocument.activeElement = this.ownerDocument.body;
     }
-    this.html = value; this.writes++; this.children.forEach(child => { child.removed = true; }); this.children = [];
+    this.html = value; this.text = undefined; this.writes++; this.children.forEach(child => { child.removed = true; }); this.children = [];
     const stack = [{element: this, start: 0}];
     const voids = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
     for (const match of value.matchAll(/<\/?([a-z][\w-]*)\b([^>]*)>/gi)) {
@@ -186,7 +186,7 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
     clearTimeout: id => timeouts.delete(id),
     fetch: async (path, options) => {
       requests.push({path, options});
-      if (path === '/api/notifications') return response(notifications || {unread: 0, items: []});
+      if (path === '/api/notifications') return typeof notifications === 'function' ? notifications() : response(notifications || {unread: 0, items: []});
       if (fetchImpl) return fetchImpl(path, options);
       throw new Error('Unexpected offline request: ' + path);
     },
@@ -1032,6 +1032,26 @@ test('Meridian: a confirm press right after arming does nothing, so a fast doubl
   assert.equal(fired, 0); assert.equal(btn.textContent, 'Confirm stop'); assert.equal(btn.dataset.armed, 'wait');
   f.elapse(500); f.armed(btn, 'Confirm stop', fire);
   assert.equal(fired, 1); assert.equal(btn.dataset.armed, '');
+});
+
+test('Meridian: a confirmed action that fails gives its button back as it was, and one that relabels it keeps its label', async () => {
+  const f = frontend(), btn = new Element('button'); btn.innerHTML = 'Remove';
+  let fired = 0;
+  const fail = async () => { fired++; throw new Error('502'); };
+  f.armed(btn, 'Confirm remove', fail); f.elapse(500);
+  await f.armed(btn, 'Confirm remove', fail).catch(() => {});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(fired, 1); assert.equal(btn.textContent, 'Remove'); assert.equal(btn.dataset.armed, '');
+  // Trying again is the same two presses: the first only arms.
+  f.armed(btn, 'Confirm remove', fail);
+  assert.equal(fired, 1); assert.equal(btn.textContent, 'Confirm remove');
+  f.elapse(500); await f.armed(btn, 'Confirm remove', fail).catch(() => {});
+  assert.equal(fired, 2);
+  const on = new Element('button'); on.innerHTML = 'Resume';
+  f.armed(on, 'Confirm resume', async () => { on.textContent = 'Pause'; }); f.elapse(500);
+  await f.armed(on, 'Confirm resume', async () => { on.textContent = 'Pause'; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(on.textContent, 'Pause');
 });
 
 test('Meridian: the autopilot Kill and Reset to amount take a deliberate second press', async () => {
