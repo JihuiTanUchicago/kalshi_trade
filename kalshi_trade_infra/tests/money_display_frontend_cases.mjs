@@ -121,3 +121,43 @@ export function unrealizedCellCases({name, frontend, dashboard}) {
     if (f.clearTimers) f.clearTimers();
   });
 }
+
+// Deploy's open positions and a market page's "Your positions here" read a bare "—" for Unrealized on a position
+// the engine hadn't priced yet (a phone walk, 2026-10-27): nothing said why, and a screen reader said "dash".
+// Each says Unavailable, as a deployment row and Meridian's dashboard positions do: Tau shows the word (its stacked
+// card has room at 390px), Meridian keeps its dash with the word for screen readers.
+export function unmarkedPositionCases({name, frontend}) {
+  const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
+  const spoken = (h) => h.replace(/<span aria-hidden="true">[^<]*<\/span>/g, '').replace(/<[^>]*>/g, '').trim();
+  const cells = (html) => [...html.matchAll(/data-lab="Unrealized">([\s\S]*?)<\/td>/g)].map((m) => m[1]);
+  const unmarked = pos({id: 7, deployment_id: 1, mode: 'paper', ticker: 'KXBTC15M-26OCT271615-15', market: 'btc15m'});
+  const marked = {...unmarked, id: 8, unrealized: .14, mark_ts: '2026-10-27T15:00:00Z'};
+
+  test(`${name}: Deploy's open position with no mark yet says Unavailable, never a bare dash`, async () => {
+    const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [{id: 1, strategy_id: 1, title: 'Drift',
+      market: 'btc15m', mode: 'paper', status: 'running', realized_pnl: 0, closed_trades: 0, open_positions: 2, unrealized_pnl: .14,
+      created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 2, backtest: {out_of_sample: null}}], open_positions: [unmarked, marked]})
+      : response({})});
+    f.S.me.markets = BTC; f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle();
+    const got = cells(f.root.querySelector('#openpos').innerHTML);
+    assert.equal(got.length, 2);
+    assert.equal(spoken(got[0]), 'Unavailable');
+    assert.match(spoken(got[1]), /^\+\$0\.14/);
+    if (f.clearTimers) f.clearTimers();
+  });
+
+  test(`${name}: a market page's own open position with no mark yet says Unavailable, never a bare dash`, async () => {
+    const page = {ticker: unmarked.ticker, series: 'KXBTC15M', title: 'BTC up or down?', sub: '', status: 'active', yes_bid: '0.55',
+      yes_ask: '0.57', last: '0.55', volume_24h: '10', open_interest: '10', close_time: '2026-10-27T16:15:00Z', as_of: '2026-10-27T16:00:00Z',
+      rules: 'Resolves Yes if up.', period_min: 1, points: [], mine: {open: [{...unmarked, status: 'open', strategy_id: 1}], closed: []}};
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/explore/market?') ? response(page) : response({})});
+    f.S.me.markets = BTC; f.location.pathname = '/explore'; f.location.search = '?m=' + encodeURIComponent(page.ticker);
+    await f.viewExplore(); await settle();
+    const got = cells(f.root.innerHTML);
+    assert.equal(got.length, 1);
+    assert.equal(spoken(got[0]), 'Unavailable');
+    assert.match(f.root.innerHTML, /awaiting first mark/);
+    if (f.clearTimers) f.clearTimers();
+  });
+}
