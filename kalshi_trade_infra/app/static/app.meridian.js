@@ -1549,6 +1549,13 @@
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
   // Draw at the column's real width on a narrow screen: a 760-wide chart shrunk to a phone has 4px labels.
   const chartWidth = () => { const m = root.querySelector('#main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
+  // The equity chart's label over its unseen-data window, in the strategy page's words ("Unseen-data P&L"):
+  // the full words when they fit, else "Unseen →", pinned to the chart's right edge when even that would run past it.
+  const unseenLabel = (cx, right, y) => {
+    const room = right - cx - 8, text = room >= 150 ? 'Unseen by the agent →' : 'Unseen →';
+    return room >= 64 ? `<text x="${cx + 8}" y="${y}" style="fill:var(--ink-2)">${text}</text>`
+      : `<text x="${right}" y="${y}" text-anchor="end" style="fill:var(--ink-2)">${text}</text>`;
+  };
   function equityChart(curve, cutoffIso, devCurve, options = {}) {
     const W = options.width || 760, H = options.height || 236, L = 52, R = 10, T = options.paper ? 16 : 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
@@ -1612,7 +1619,7 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="${options.paper ? 'group' : 'img'}" aria-label="${esc(options.label || `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}`)}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
-              <text x="${cx + 8}" y="${T - 10}" style="fill:var(--ink-2)">Out-of-sample →</text>` : ''}
+              ${unseenLabel(cx, W - R, T - 10)}` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${reference}${ticks}${zeroTick}${dates}${endLabel}
       <polyline points="${line(curve)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>

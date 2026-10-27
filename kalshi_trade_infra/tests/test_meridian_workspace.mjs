@@ -332,7 +332,9 @@ test('strategy evidence identifies run-wide trial counts and places missing vali
     assert.match(output, /Backtest results/); assert.doesNotMatch(output, /<h4 class="paper-h">Backtest<\/h4>/);
     const saved = paper.querySelector('.saved-result');
     assert.equal(saved.tag, 'details'); assert.equal(saved.open, false);
-    assert.equal(saved.textContent.includes('one passes by luck'), count != null);
+    // The luck note sits under the Ideas tested figure, in Tau's words, and the folded result doesn't repeat it.
+    assert.equal(trials.textContent.includes('More ideas tried, more chance one passes by luck (multiple testing).'), count != null);
+    assert.equal(saved.textContent.includes('passes by luck'), false);
     assert.ok(f.root.querySelector('#dep-paper')); assert.ok(f.root.querySelector('#live-confirm input'));
     assert.equal(detail.status, 'passed'); assert.equal(JSON.stringify(detail), before);
     assert.equal(postRequests(f).length, 0);
@@ -2288,7 +2290,7 @@ test('Community snapshots retain source financial values, missing versus zero, e
     assert.match(host.innerHTML, /Title &quot;quoted&quot; &lt;script&gt;unsafe&lt;\/script&gt;/);
     assert.equal(host.querySelector('.snap-meta').textContent, '&lt;unsafe&gt;');
     assert.deepEqual(host.querySelectorAll('dt').map(dt => dt.textContent),
-      ['Out-of-sample P&amp;L', ...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
+      ['Unseen-data P&amp;L', ...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
     assert.deepEqual(host.querySelectorAll('.snap-secondary dt').map(dt => dt.textContent),
       [...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
   }
@@ -3839,7 +3841,7 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   await f.viewStrategy(42); await flush();
   const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days/);
-  assert.match(figs, /Out-of-sample over 15 days · \$100 at risk at most/);
+  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
   assert.match(html, /Demo · running<br>Paper · paused/);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
@@ -3850,7 +3852,7 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   // An older result with no window length keeps its figure as it was; not on paper, no warning.
   const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
   await g.viewStrategy(42); await flush();
-  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">6 trades<\/dd>/);
+  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">6 trades the agent never saw<\/dd>/);
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
   assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again|on-paper/);
 });

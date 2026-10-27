@@ -85,6 +85,26 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(main(evil), /<img src=x>/);
   });
 
+  // Meridian's page said "Out-of-sample P&L", "Not tested out-of-sample", "On out-of-sample data, it returned ...",
+  // "In-sample / Out-of-sample" and a chart's "Out-of-sample →" where Tau, and the rest of Meridian (the glossary's
+  // "Unseen data", the Strategies list's "P&L on data it never saw"), say unseen data (walked 2026-10-27).
+  test(`${name}: an older backtest's figures, notes and abstract say "unseen data" in one set of words`, async () => {
+    const f = await open({status: 'passed', capital: 100, out_of_sample: {...{pnl: 12, trades: 6, win_rate: .5, fees: 1,
+      profit_factor: 1.2, max_drawdown: 2, sharpe: .5, roi: .1}, days: 15.2}, dataset: {out_of_sample_from: '1970-01-01T00:03:20Z'}});
+    const figs = f.root.querySelector('#figs').innerHTML, html = main(f);
+    const labels = f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent);
+    assert.deepEqual(labels, ['Unseen-data P&L', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
+    assert.match(figs, /<dd class="sub-fig">6 trades over 15 days the agent never saw<\/dd>/);
+    assert.match(figs, /<dd class="sub-fig">Unseen data over 15 days · \$100 at risk at most<\/dd>/);
+    assert.match(figs, /<dd class="sub-fig">in the session that found it; this is the one that passed\. More ideas tried, more chance one passes by luck \(multiple testing\)\.<\/dd>/);
+    assert.match(html, /On unseen data the agent never touched while iterating, it returned \$12\.00 over 6 trades, and cleared the gate as one of 5 ideas tested this run\./);
+    assert.match(html, /<h4>Tested on \(in-sample\)<\/h4>/); assert.match(html, /<h4>Never seen \(out-of-sample\)<\/h4>/);
+    assert.match(html, /UNSEEN BY THE AGENT →|Unseen by the agent →|UNSEEN →|Unseen →/);
+    assert.doesNotMatch(html, /Out-of-sample P&|Not tested out-of-sample|On out-of-sample data|<h4>Out-of-sample<\/h4>|Out-of-sample →|No unseen trades\./);
+    const none = await open({status: 'rejected', out_of_sample: null, experiment: null});
+    assert.match(f.root.querySelector('#figs').innerHTML + none.root.querySelector('#figs').innerHTML, /Rejected before the unseen test/);
+  });
+
   test(`${name}: a research strategy's unseen-data figure and abstract read its held-out record`, async () => {
     // A research session stores no backtest out_of_sample: its unseen-data result is the gatekeeper's
     // validation record, and the page read "Rejected before the unseen test" beside Passed.
