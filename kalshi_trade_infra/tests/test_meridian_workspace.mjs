@@ -2364,7 +2364,7 @@ test('Explore: an empty feed says the list has not arrived (not that a blank sea
   assert.match(body.querySelector('.empty p').textContent, /taking too long/);
   const searched = frontend({search: '?q=zzz', fetchImpl: () => response({total: 3, shown: 3, matched: 0, per: 40, page: 0, markets: []})});
   await searched.viewExplore();
-  assert.equal(searched.root.querySelector('#xbody .empty h3').textContent, 'No markets match “zzz”');
+  assert.equal(searched.root.querySelector('#xbody .empty h2').textContent, 'No markets match “zzz”');
   assert.equal(searched.root.querySelector('#xbody [data-xretry]'), null);
 });
 

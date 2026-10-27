@@ -2544,7 +2544,8 @@
     };
   }
 
-  // Explore's empty and failed states: what happened, and a way to ask again.
+  // Explore's empty and failed states: what happened, and a way to ask again. Each sits directly under the
+  // page's h1, so its heading is an h2 (styled as the other empty states' h3).
   const EXPLORE_WAIT = 'The market list refreshes about once a minute and hasn’t come in yet. Try again shortly.';
   const exploreEmpty = (title, text) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
   async function viewExplore() {
@@ -2580,7 +2581,7 @@
       figs.querySelector('.snapshot-time').setAttribute('title', Number.isFinite(snapshotAt) ? 'Source snapshot: ' + d.at : 'Source snapshot time unavailable');
       if (!d.markets.length) {
         // No search and no markets is the feed not having arrived yet, not a search that missed.
-        if (f.q) body.innerHTML = `<div class="empty"><h3>No markets match “${esc(f.q)}”</h3></div>`;
+        if (f.q) body.innerHTML = `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2></div>`;
         else { body.innerHTML = exploreEmpty('No markets to show yet', EXPLORE_WAIT); body.querySelector('[data-xretry]').onclick = load; }
         return;
       }

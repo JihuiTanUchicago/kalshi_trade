@@ -1564,6 +1564,12 @@ test('Explore with no search and no markets says the list has not arrived, and a
   await body.querySelector('[data-xretry]').onclick(); await flush();
   assert.equal(body.querySelector('.empty h2').textContent, 'Markets didn’t load');
   assert.ok(body.querySelector('[data-xretry]'));
+  // A search that missed sits directly under the page's h1 too, so its heading is the next level down.
+  const searched = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? response({total: 3, shown: 3, matched: 0, per: 40, page: 0, markets: []}) : response({}))});
+  searched.location.pathname = '/explore'; searched.location.search = '?q=zzz';
+  await searched.viewExplore(); await flush();
+  assert.equal(searched.root.querySelector('#xbody .empty h2').textContent, 'No markets match “zzz”');
+  assert.equal(searched.root.querySelector('#xbody .empty h3'), null);
 });
 
 test('a track record whose trades all closed in one minute spaces them one per trade', () => {
