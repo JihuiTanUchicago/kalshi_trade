@@ -3450,6 +3450,33 @@ test('Tau: a run says its ledger lines in plain words, with the zone of its time
   f.clearTimers();
 });
 
+// Walk 2026-10-27: the System page's research box read "1 running · 2 queued · 11 done" on one line that nearly ran
+// past its 158-wide box, and "12 running · 30 queued · 1,204 done" ran out of it (171 wide, measured with Playwright
+// at 390px and 1280px; the map scales as one, so the box and its text keep their proportion at every width). The
+// count is two lines in a box tall enough for them; each line measured 109 wide.
+test('Tau: the System page\'s research box sets its count on two lines that fit the box, with big numbers grouped', async () => {
+  const nodes = {agents: {running: 12, queued: 30, done: 1204}, backtest: {strategies: 3}, db: {rows: 10, size_mb: 5}, web: {users: 2}};
+  const f = frontend({fetchImpl: (path) => (path === '/api/admin/system' ? response({nodes, events: [], now: '2026-10-27T16:00:00Z'}) : response({}))});
+  await f.viewSystem(); await flush();
+  const g = f.root.querySelector('.sys-node[data-id="agents"]'), m = g.querySelector('[data-m="agents"]');
+  const spans = m.querySelectorAll('tspan');
+  assert.deepEqual(spans.map((t) => t.textContent), ['12 running · 30 queued', '1,204 done']);
+  const w = +g.querySelector('rect').getAttribute('width'), h = +g.querySelector('rect').getAttribute('height');
+  // About 5 units a character at the map's 10.5px narrow face: each line keeps clear of the box's right edge.
+  for (const t of spans) assert.ok(12 + t.textContent.length * 5 <= w - 8, `"${t.textContent}" in a ${w}-wide box`);
+  // Both lines sit under the name and its sub-line (y 41) and above the box's foot.
+  const ys = spans.map((t) => +t.getAttribute('y'));
+  assert.ok(ys[0] >= 41 + 13 && ys[1] >= ys[0] + 12 && ys[1] <= h - 10, `lines at ${ys} in a ${h}-tall box`);
+  // The box below it still clears the taller box, and the edges leave from its middle.
+  assert.ok(40 + h < 160 - 20);
+  const edge = f.root.querySelectorAll('.sys-edge').find((p) => p.dataset.e === 'agents');
+  assert.match(edge.getAttribute('d'), new RegExp(`^M878,${40 + h / 2} `));
+  // The detail panel reads the count as one line.
+  g.dispatchEvent({type: 'click'});
+  assert.match(f.root.querySelector('#sys-detail').innerHTML, /12 running · 30 queued · 1,204 done/);
+  f.clearTimers();
+});
+
 // The System page's live activity feed shows a verdict as the run page's plain note (server
 // gate_explain.event_note) after its title, else its own message minus the status word; escaped.
 test('Tau: the System feed reads a verdict as its plain note, else its message', async () => {
