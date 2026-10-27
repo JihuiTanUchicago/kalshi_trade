@@ -60,3 +60,50 @@ def test_the_author_deletes_a_post_with_everything_hanging_off_it(conn):
     assert [n["link"] for n in repo.list_notifications(cur, author)] == ["/community#post-%d" % pid]
 
     assert repo.delete_post(cur, pid, author) is False  # already gone
+
+
+def test_a_card_stored_before_the_flag_says_later_period_from_the_feeds_own_read(conn):
+    """A strategy card shared before its snapshot carried no_gatekeeper_record (#598) said "on unseen data" for a
+    pass from the old loose backtest gate. The feed's own read (list_posts) says which cards' strategies have no
+    gatekeeper record, and such a "passed" card gets the flag; a recorded pass, the seeded example, a failed
+    strategy's card and a deleted strategy's card are as stored. No statement of its own."""
+    from app import repository as repo
+    from app.web.routes import community
+
+    cur = conn.cursor()
+    author, reader = _user(cur), _user(cur)
+
+    def strategy(status="passed", direction="fade", recorded=False):
+        sid = repo.insert_strategy(cur, author, None, None, "btc15m", direction, "Loose", "t", {}, status,
+                                   {"out_of_sample": {"pnl": 5.5, "trades": 48}})
+        if recorded:
+            cur.execute("UPDATE app_strategies SET experiment_id=%s WHERE id=%s", (987654321, sid))
+        return sid
+
+    def share(sid, status="passed"):
+        # As stored before #598: no no_gatekeeper_record key at all.
+        return repo.create_post(cur, author, "", "strategy", {"kind": "strategy", "id": sid, "title": "Loose",
+                                                              "market": "btc15m", "status": status, "pnl": 5.5, "trades": 48})
+
+    posts = {"loose": share(strategy()), "kept": share(strategy(recorded=True)),
+             "example": share(strategy(direction=repo.DEMO_DIRECTION)), "failed": share(strategy(status="failed"), "failed"),
+             "gone": share(10 ** 12)}
+    note = repo.create_post(cur, author, "just a note", "note", None)
+    statements = []
+    real = cur.execute
+
+    def counted(*a, **k):
+        statements.append(a[0])
+        return real(*a, **k)
+    cur.execute = counted
+    try:
+        rows = {p["id"]: p for p in repo.list_posts(cur, reader, mine_only=False)}
+    finally:
+        cur.execute = real
+    assert len(statements) == 2  # the posts, then their reactions, as before
+    cards = {k: community._post_out(rows[pid])["snapshot"] for k, pid in posts.items()}
+    assert cards["loose"]["no_gatekeeper_record"] is True
+    for k in ("kept", "example", "failed", "gone"):
+        assert "no_gatekeeper_record" not in cards[k], k
+    assert community._post_out(rows[note])["snapshot"] is None
+    assert "id" not in cards["loose"]  # the reader isn't its author

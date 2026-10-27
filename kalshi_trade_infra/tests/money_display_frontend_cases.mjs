@@ -98,3 +98,26 @@ export function moneyDisplayCases({name, frontend, strategyFrontend, detailStrat
     assert.doesNotMatch(await list([paper]), /class="mk"/);
   });
 }
+
+// Walk 2026-10-27, both themes: a deployment's Unrealized cell on the Overview with no figure said "None open" or
+// "Unavailable" in Meridian and a bare "—" in Tau, which said neither. Both now say which: nothing is open, or
+// something is open and has no price to mark it at yet.
+export function unrealizedCellCases({name, frontend, dashboard}) {
+  test(`${name}: an Overview deployment with no unrealized figure says "None open" or "Unavailable", never a bare dash`, async () => {
+    const dep = (id, open) => ({id, strategy_id: id, title: 'Book ' + id, market: 'btc15m', mode: 'paper', status: 'running',
+      stake: 5, max_positions: 2, realized_pnl: 1, unrealized_pnl: null, closed_trades: 3, open_positions: open, curve: [],
+      created_at: '2026-10-25T08:00:00Z'});
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response({...dashboard(), deployments: [dep(1, 0), dep(2, 2)]});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      return response({});
+    }});
+    await f.viewDashboard(); await flush(); await flush();
+    // Tau's table cell, or Meridian's monitor row.
+    const html = ['#boardbody', '#main', '#deps'].map((sel) => f.root.querySelector(sel)).filter(Boolean).map((el) => el.innerHTML).join('');
+    const cells = [...html.matchAll(/(?:data-lab="Unrealized">|class="monitor-unrealized"><dt>[^<]*<\/dt><dd>)([\s\S]*?)<\/(?:td|dd)>/g)]
+      .map((m) => m[1].replace(/<[^>]*>/g, '').trim());
+    assert.deepEqual(cells, ['None open', 'Unavailable']);
+    if (f.clearTimers) f.clearTimers();
+  });
+}

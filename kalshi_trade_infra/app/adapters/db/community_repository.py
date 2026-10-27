@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from app.adapters.db.sql import _json, _loads, now_utc
+from app.adapters.db.strategy_repository import DEMO_DIRECTION, NO_EXPERIMENT_SQL
 
 
 def store_image(cur, user_id: int, content_type: str, data: bytes) -> int:
@@ -52,19 +53,30 @@ def delete_post(cur, post_id: int, user_id: int) -> bool:
     return True
 
 
+# A shared strategy card whose strategy has no gatekeeper record (NO_EXPERIMENT_SQL), as a column of the feed's own
+# read, not a read of its own: its author's strategy by the snapshot's id (primary key), the seeded example never.
+# A card stored before the snapshot carried `no_gatekeeper_record` (#598) said "on unseen data" for a pass from the
+# old loose backtest gate; the feed adds the flag to a "passed" card from this (community._snapshot_out). Display only.
+POST_NO_RECORD_SQL = ("(p.kind='strategy' AND EXISTS (SELECT 1 FROM app_strategies s "
+                      "WHERE s.id=CAST(JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json, '$.id')) AS UNSIGNED) "
+                      "AND s.user_id=p.user_id AND s.direction<>%s AND " + NO_EXPERIMENT_SQL + ")) AS no_gatekeeper_record")
+
+
 def list_posts(cur, viewer_id: int, before_id: int = 0, limit: int = 30, mine_only: bool = False) -> List[Dict]:
     cur.execute(
         """SELECT p.id, p.body, p.kind, p.snapshot_json, p.image_id, p.edited_at, p.likes_count, p.comments_count, p.created_at,
                   u.name, u.username, u.picture_url, (p.user_id = %s) AS mine,
-                  EXISTS(SELECT 1 FROM app_post_likes l WHERE l.post_id=p.id AND l.user_id=%s) AS liked
+                  EXISTS(SELECT 1 FROM app_post_likes l WHERE l.post_id=p.id AND l.user_id=%s) AS liked,
+                  """ + POST_NO_RECORD_SQL + """
            FROM app_posts p JOIN app_users u ON u.id=p.user_id
            WHERE (%s = 0 OR p.id < %s) AND (%s = 0 OR p.user_id = %s) ORDER BY p.id DESC LIMIT %s""",
-        (viewer_id, viewer_id, before_id, before_id, 1 if mine_only else 0, viewer_id, limit),
+        (viewer_id, viewer_id, DEMO_DIRECTION, before_id, before_id, 1 if mine_only else 0, viewer_id, limit),
     )
     rows = cur.fetchall()
     for r in rows:
         r["snapshot"] = _loads(r.pop("snapshot_json"))
         r["mine"] = bool(r["mine"]); r["liked"] = bool(r["liked"])
+        r["no_gatekeeper_record"] = bool(r.get("no_gatekeeper_record"))
     by_post = reactions_for(cur, [r["id"] for r in rows], viewer_id)
     for r in rows:
         r["reactions"] = by_post.get(r["id"], [])

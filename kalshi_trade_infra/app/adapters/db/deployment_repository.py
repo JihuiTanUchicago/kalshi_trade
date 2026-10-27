@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import contract_fills_sql, now_utc
-from app.adapters.db.strategy_repository import DEMO_DIRECTION, _strategy_row
+from app.adapters.db.strategy_repository import DEMO_DIRECTION, NO_EXPERIMENT_SQL, _strategy_row
 
 _EPOCH = datetime(1970, 1, 1)  # naive UTC, as the DATETIME columns are read
 
@@ -65,8 +65,7 @@ def list_deployments_brief(cur, user_id: int) -> List[Dict]:
 # backtest's later slice "later-period", not unseen. A column of the deployment read, not a read of its own:
 # the experiment probe (idx_exp_user_market's user_id prefix) runs only for a passed row without experiment_id,
 # a legacy row; every other row stops at its status. Display only.
-NO_RECORD_SQL = ("(s.status='passed' AND s.experiment_id IS NULL AND NOT EXISTS (SELECT 1 FROM app_experiments e "
-                 "WHERE e.user_id=s.user_id AND e.strategy_id=s.id)) AS no_gatekeeper_record")
+NO_RECORD_SQL = "(s.status='passed' AND " + NO_EXPERIMENT_SQL + ") AS no_gatekeeper_record"
 
 
 def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] = None) -> List[Dict]:
