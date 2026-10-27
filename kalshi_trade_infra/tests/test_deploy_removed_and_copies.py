@@ -49,7 +49,7 @@ def test_paper_books_says_running_when_any_paper_deployment_runs():
      "Resume its paper deployment first: this demo copy resumes with it."),
     (None, "Waiting to run on paper again: a demo copy runs only while its paper deployment does",
      "Deploy it on paper first: this demo copy resumes with its paper deployment."),
-    ("running", "Its paper deployment wasn't running when this paused. It is now, so you can resume it", None),
+    ("running", "Its paper deployment wasn’t running when this paused. It is now, so you can resume it", None),
 ])
 def test_a_paused_demo_copy_says_paused_and_what_it_waits_on(monkeypatch, paper, why, block):
     monkeypatch.setattr(demo_twins, "DEMO_TWINS", True)
@@ -65,10 +65,10 @@ def test_a_copy_reason_claims_nothing_about_paper_when_the_page_did_not_read_it_
     copy = _dep(id=2, mode="demo", status="paused", status_reason=COPY)
     monkeypatch.setattr(demo_twins, "DEMO_TWINS", True)
     out = views._deployment_out(copy, [])  # no paper_books: unknown
-    assert (out["status_why"], out["resume_block"]) == ("Its paper deployment wasn't running, so this demo copy paused with it", None)
+    assert (out["status_why"], out["resume_block"]) == ("Its paper deployment wasn’t running, so this demo copy paused with it", None)
     monkeypatch.setattr(demo_twins, "DEMO_TWINS", False)  # nothing would pause it again
     out = views._deployment_out(copy, [], paper_books={})
-    assert (out["status_why"], out["resume_block"]) == ("Its paper deployment wasn't running, so this demo copy paused with it", None)
+    assert (out["status_why"], out["resume_block"]) == ("Its paper deployment wasn’t running, so this demo copy paused with it", None)
 
 
 def test_only_a_paused_demo_copy_gets_a_resume_block(monkeypatch):

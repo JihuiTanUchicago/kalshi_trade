@@ -32,7 +32,7 @@ def test_a_demo_key_pause_says_the_key_is_back_once_it_is_connected():
     paused = _dep(mode="demo", status_reason=DEMO_KEY_REASON)
     assert views._status_why(paused) == DEMO_KEY_REASON  # no key yet: the engine's own words
     back = views._status_why(paused, demo_key_back=True)
-    assert back == "Your Kalshi demo key wasn't connected when it paused. It is now, so you can resume it"
+    assert back == "Your Kalshi demo key wasn’t connected when it paused. It is now, so you can resume it"
     assert "Funds page" not in back
     # Any other pause keeps its own words when the key is connected.
     assert views._status_why(_dep(mode="demo"), demo_key_back=True) == "You paused it"
@@ -118,4 +118,4 @@ def test_the_deploy_board_passes_the_demo_key_back_to_its_rows(monkeypatch):
     monkeypatch.setattr(dep_routes.page_poll, "answer", lambda body, v: body)
     ctx = SimpleNamespace(cur=None, uid=7, query={})
     row = dep_routes.list_deployments(ctx)["deployments"][0]
-    assert row["status_why"].startswith("Your Kalshi demo key wasn't connected when it paused")
+    assert row["status_why"].startswith("Your Kalshi demo key wasn’t connected when it paused")

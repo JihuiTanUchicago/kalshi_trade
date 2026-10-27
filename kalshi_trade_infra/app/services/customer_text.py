@@ -87,6 +87,13 @@ def curly(text: Optional[str]) -> Optional[str]:
     return _STRAIGHT_APOSTROPHE.sub("’", text) if text else text
 
 
+# The autopilot panel's line when a chat turn failed: the research agent writes it, and the chat read knows a turn
+# ended by it (chat._answer_line). One wording for both. A row stored before 2026-10-27 says "didn't" straight: it
+# reads curly (chat_rows) and still ends its turn.
+NO_ANSWER = "The agent hit an error and didn’t answer."
+NO_ANSWER_LINE = NO_ANSWER + " Send your message again, or try in a minute."
+
+
 def display_name(name: Optional[str], fallback: str) -> str:
     """A person's name as other people see it: their name, or ``fallback`` when there is none or it
     carries an email address (a Google profile with no name set can use the address as its name)."""
@@ -161,6 +168,8 @@ def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None,
     for m in messages:
         if m.get("role") == "system":
             text = m.get("content")
+            if text and curly(str(text)).startswith(NO_ANSWER):
+                text = curly(str(text))
             dep = auto_paused_id(text)
             if dep is not None:
                 text = auto_pause_line(text, (paused or {}).get(dep))

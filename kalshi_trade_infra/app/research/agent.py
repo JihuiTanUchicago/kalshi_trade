@@ -4956,8 +4956,7 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
     except Exception as e:
         print("[agents] copilot run %s failed: %r" % (run["id"], e), flush=True)
         cur = _reconnect(conn, cur)
-        repo.add_chat(cur, user["id"], "system",
-                      "The agent hit an error and didn't answer. Send your message again, or try in a minute.")
+        repo.add_chat(cur, user["id"], "system", customer_text.NO_ANSWER_LINE)
         repo.finish_run(cur, run["id"], "failed", str(e)[:2000], 0, 0, usage.input_tokens, usage.output_tokens)
         if not billing_attempted:
             billing_attempted = True

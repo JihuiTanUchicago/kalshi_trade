@@ -81,7 +81,7 @@ def set_email_preferences(ctx: Ctx):
     if not isinstance(opt_out, bool):
         raise ApiError(400, "Choose whether Tau may send you optional email.")
     if not repo.set_email_opt_out(ctx.cur, ctx.uid, opt_out):
-        raise ApiError(404, "Your account wasn't found. Sign in again.")
+        raise ApiError(404, "Your account wasn’t found. Sign in again.")
     return {"ok": True, "email_opt_out": opt_out}
 
 

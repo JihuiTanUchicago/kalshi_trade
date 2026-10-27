@@ -323,7 +323,7 @@ def delete_strategy(ctx: Ctx):
     first) and while any of its deployments, in any mode, still holds an open position."""
     s = _owned_strategy(ctx)
     if any(d["strategy_id"] == s["id"] for d in repo.list_deployments(ctx.cur, ctx.uid, include_stopped=False)):
-        raise ApiError(409, "Stop this strategy's deployment before deleting it.")
+        raise ApiError(409, "Stop this strategy’s deployment before deleting it.")
     block = _delete_block(repo.positions_for_strategy(ctx.cur, ctx.uid, s["id"], "open"))
     if block:
         raise ApiError(409, block)
@@ -343,7 +343,7 @@ def share_strategy(ctx: Ctx):
     if not recipient:
         raise ApiError(404, "No Tau account uses that email yet — they need to sign in first.")
     if recipient["id"] == ctx.uid:
-        raise ApiError(400, "That's your own account.")
+        raise ApiError(400, "That’s your own account.")
     new_id = repo.share_strategy(ctx.cur, s["id"], ctx.uid, recipient["id"])
     if new_id is None:
         return {"ok": True, "already": True}  # idempotent: they already have this one

@@ -824,9 +824,9 @@ window.TauPage('strategies', (T) => {
             <div id="wflash" aria-live="polite"></div>
           </section>`) : ''}
           ${fold('Share', `<section class="panel"><h3>Share</h3>
-            <p class="hint" style="margin-bottom:8px">${restricted ? 'Share a research-only copy using their Tau sign-in email. It keeps the same simulation limits and cannot be deployed.' : "Send a copy to a friend by the email they sign in with. They can deploy it like their own — sharing can't be undone."}</p>
+            <p class="hint" style="margin-bottom:8px">${restricted ? 'Share a research-only copy using their Tau sign-in email. It keeps the same simulation limits and cannot be deployed.' : 'Send a copy to a friend by the email they sign in with. They can deploy it like their own — sharing can’t be undone.'}</p>
             <form id="share-form" style="display:grid;gap:8px">
-              <input class="input" id="share-email" type="email" autocomplete="off" placeholder="friend@email.com" aria-label="Friend's email">
+              <input class="input" id="share-email" type="email" autocomplete="off" placeholder="friend@email.com" aria-label="Friend’s email">
               <button class="btn sm" type="submit">Share strategy</button>
             </form><div id="shareflash"></div>
           </section>`)}

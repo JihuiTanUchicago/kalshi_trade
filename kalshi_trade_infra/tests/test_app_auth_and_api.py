@@ -1041,7 +1041,7 @@ def test_shared_strategy_and_deployment_say_over_what_span(monkeypatch):
     snap = server._post_snapshot(None, 1, "deployment", 9)
     assert (snap["mode"], snap["since"]) == ("demo", "2026-10-03T12:00:00Z")
     monkeypatch.setattr(server.repo, "get_deployment", lambda cur, uid, did: None)
-    with pytest.raises(server.ApiError, match="isn't yours"):
+    with pytest.raises(server.ApiError, match="isn’t yours"):
         server._post_snapshot(None, 1, "deployment", 9)
 
 

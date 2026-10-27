@@ -70,10 +70,11 @@ def get_chat(ctx: Ctx):
 
 def _answer_line(m: Dict) -> bool:
     """A chat line that ends a turn: the agent's reply, or the note that it failed to answer."""
-    return m.get("role") == "agent" or (m.get("role") == "system" and str(m.get("content") or "").startswith(NO_ANSWER))
+    return m.get("role") == "agent" or (m.get("role") == "system"
+                                        and customer_text.curly(str(m.get("content") or "")).startswith(NO_ANSWER))
 
 
-NO_ANSWER = "The agent hit an error and didn't answer."
+NO_ANSWER = customer_text.NO_ANSWER
 
 
 def post_chat(ctx: Ctx):
@@ -85,7 +86,7 @@ def post_chat(ctx: Ctx):
     cur = ctx.cur
     _require_billing_ready(ctx, "chatting with the agent")
     if repo.count_runs(cur, ctx.uid, "chat", since=repo.now_utc() - timedelta(hours=1)) >= MAX_CHAT_PER_HOUR:
-        raise ApiError(429, "That's a lot of messages this hour. Give the agent a minute.")
+        raise ApiError(429, "That’s a lot of messages this hour. Give the agent a minute.")
     msg_id = repo.add_chat(cur, ctx.uid, "user", content)
     cur.execute("SELECT COUNT(*) AS n FROM app_agent_runs WHERE user_id=%s AND kind='chat' AND status='queued'", (ctx.uid,))
     if int(cur.fetchone()["n"]) == 0:  # a queued run will read this message too
