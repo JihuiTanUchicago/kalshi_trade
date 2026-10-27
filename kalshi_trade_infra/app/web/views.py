@@ -211,9 +211,13 @@ def _health_from(cur, uid: int, deps: List[Dict], stake: Optional[float], cash_r
     if repo.get_kalshi_dev_key(cur, uid) is None:
         if not active:
             return None  # nothing on demo; the deploy button already says to add the key
+        # Every page renders `line` escaped with `action` as the link after it, so the line names the problem
+        # and the action is the words that say where to fix it ("... isn't connected. Add it on the Funds page",
+        # the last part a link to Funds' Connect Kalshi). The line said "Add it on the Funds page." in plain text,
+        # followed by a separate "Add demo key" link.
         return {"code": "demo_key", "need": "your Kalshi demo key",
-                "line": "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page.",
-                "action": {"label": "Add demo key", "href": "/funds#connect-kalshi"}}
+                "line": "Demo isn't trading: your Kalshi demo key isn't connected.",
+                "action": {"label": "Add it on the Funds page", "href": "/funds#connect-kalshi"}}
     stakes = [float(_spec_sizing(d)["stake"]) for d in active
               if d["status"] == "running" and _spec_sizing(d).get("stake") is not None]
     if stake is not None:

@@ -211,7 +211,7 @@ def test_every_page_shows_one_number_per_figure(conn, quiet):
         assert dash[m]["closed_trades"] == fb[m]["closed_trades"] == closed_n, m
         assert dash[m]["open_positions"] == fb[m]["open_positions"] == len(held) == 1, m
         assert sum(1 for p in board["open_positions"] if p["mode"] == m) == 1, m
-        assert dash[m]["open_at_cost"] == fb[m]["open_at_cost"] == record[m]["open_at_cost"] == cost, m
+        assert dash[m]["open_at_cost"] == fb[m]["open_at_cost"] == cost, m
         # Each open row carries its own cost, rounded as the book's figure is (the pages multiplied it out).
         for listed in (dash["open_positions"], board["open_positions"]):
             [p] = [p for p in listed if p["mode"] == m]
@@ -220,7 +220,8 @@ def test_every_page_shows_one_number_per_figure(conn, quiet):
         # "$1.51 at cost" for the position Deploy and the strategy page showed at "Cost + fee $1.54". Their book
         # figure is now that same number, rounded once from the exact sum.
         with_fees = _c(sum(Decimal(r["qty"]) * r["entry_price"] + r["entry_fee"] for r in held))
-        assert dash[m]["open_cost"] == fb[m]["open_cost"] == with_fees, m
+        # The track record's open trades too: it said "before fees" beside the dashboard's "at cost + fees".
+        assert dash[m]["open_cost"] == fb[m]["open_cost"] == record[m]["open_cost"] == with_fees, m
         for listed in (dash["open_positions"], board["open_positions"]):
             assert [p["cost"] for p in listed if p["mode"] == m] == [with_fees], m
         holdings = [h for page in pages.values() for h in page.get("holdings") or [] if h["mode"] == m]

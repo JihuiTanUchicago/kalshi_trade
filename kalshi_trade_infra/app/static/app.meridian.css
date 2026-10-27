@@ -2367,7 +2367,9 @@ body.landing-body .apf { display: none; }
 .market-identity-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 10px; min-width: 0; }
 .t-explore .market-event { display: inline; color: var(--ink); font-size: 14px; line-height: 18px; font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
 .t-explore .market-name strong, .t-explore .market-event > strong { font-size: 14px; line-height: 18px; font-weight: 600; }
-.t-explore .market-ref { display: block; min-width: 0; font: 400 12px/16px var(--f-terminal); color: var(--ink-3); white-space: normal; overflow-wrap: anywhere; }
+/* The market chip ("BTC above $X at midnight ET") on its own line under the name; it wraps inside a phone row. */
+.t-explore .market-chip { display: block; margin: 3px 0 2px; }
+.t-explore .market-chip .mk { white-space: normal; max-width: 100%; }
 .t-explore .market-close { display: block; font: 400 12px/16px var(--f-ui); color: var(--ink-2); }
 /* Spot against a Bitcoin row's strike, under the contract's close; the line above the list when spot is old. */
 .t-explore .xspot { display: block; font: 400 12px/16px var(--f-ui); color: var(--ink-2); }

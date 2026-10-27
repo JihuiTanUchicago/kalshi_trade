@@ -2319,7 +2319,7 @@
       const cashInBand = !hasLive && lv.connected;
       const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>') + tradesCsv('live', lv) });
       const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]} \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : [cashAt(lv), `${money(lv.realized_pnl)} realized all time by Tau trades`].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(lv)}, not in cash</span><strong>${openFig(lv)}</strong></div></div></dd></div>`;
-      const demoFigure = (demoKeyless(d.demo) ? fig('Demo balance', 'No demo key', { small: DEMO_NO_KEY }) : fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
+      const demoFigure = (demoKeyless(d.demo) ? fig(DEMO_BOOK, 'No demo key', { small: DEMO_NO_KEY }) : fig(DEMO_BOOK, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
       // newcomer could take it for real money.
       const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span> \u00b7\u00a0<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span> \u00b7\u00a0<span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${openFig(p)}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
@@ -2557,7 +2557,7 @@
   function trackRecordPanel(m, key, th) {
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY}).`);
-    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost before fees) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
+    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_cost)} at cost + fees) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
       // A part-sold trade's sold slice is realized (the dashboard counts it) but waits here for the rest.
       + (m.open_realized_pnl ? ` Part of ${m.open_trades === 1 ? 'it' : 'them'} is already sold: ${usd(m.open_realized_pnl, true)} realized, not yet in these figures.` : ''));
     if (key === 'live' && m.trades) caveats.push('Live results count only the trades Tau placed, net of Kalshi fees. Your Kalshi cash also moves with deposits, withdrawals and anything you trade yourself.');
@@ -2710,8 +2710,9 @@
   // Many markets share one event title (every strike of "Bitcoin price on Oct 14?"), so the
   // strike sub-title is what tells them apart.
   // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
-  // above $200000 by Jan 1…? · Above $200000" repeated the title.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} ·\u00a0${s}` : s) : (t || m.t); };
+  // above $200000 by Jan 1…? · Above $200000" repeated the title. A contract the feed sends untitled is named
+  // as a position is (contractName: its market's words, else "Kalshi contract"), never by its raw ticker.
+  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} ·\u00a0${s}` : s) : (t || contractName(m.t)); };
   const compactCondition = label => label.replace(/^(\$[\d,]+(?:\.\d+)?) or above$/i, '≥ $1').replace(/^(\$[\d,]+(?:\.\d+)?) or below$/i, '≤ $1').replace(/^Above (\$[\d,]+(?:\.\d+)?)$/i, '> $1').replace(/^Below (\$[\d,]+(?:\.\d+)?)$/i, '< $1');
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
@@ -2976,7 +2977,11 @@
         const conditionDisplay = compactCondition(separateCondition);
         const titleParts = title.split(' · ');
         const eventDisplay = titleParts.length > 1 ? `<strong>${esc(titleParts[0])}</strong>` : esc(title);
-        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc(label === m.t ? label : label + ' ·\u00a0' + m.t)}" title="${esc(m.t)}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || m.t)}</strong>`}<span class="market-ref">${esc(m.t)}</span>${m.ct ? `<span class="market-close">Closes ${esc(settleAt(m.ct))}</span>` : ''}</a>${vsHtml(m)}`;
+        // Under the name, the market as the app names it (contractShort: "BTC above $X at noon ET"), as Tau's
+        // Explore chips it, then when the contract closes. The raw ticker (KXBTCD-26OCT2812-T112999.99) carries the
+        // series key, so a row never prints it, as Tau's rows don't: the market page names it on its own line.
+        const chip = contractShort(m.t), closes = m.ct ? 'Closes ' + settleAt(m.ct) : '';
+        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc([label, chip, closes].filter(Boolean).join(' ·\u00a0'))}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? `<span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${closes ? `<span class="market-close">${esc(closes)}</span>` : ''}</a>${vsHtml(m)}`;
         return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(' ·\u00a0'))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
           <td class="num yes-price" data-lab="YES Price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="YES Bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="YES Ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
@@ -3244,6 +3249,9 @@
   }
   // What demo is, for a reader who has never used it: real exchange fills, pretend money.
   const DEMO_WHAT = 'real fills on Kalshi’s sandbox, not real money';
+  // The demo figure's one name, on every page that shows it (the dashboard, Funds): Tau's own book, never a balance
+  // at Kalshi. The dashboard called it "Demo Sandbox" (Meridian: "Demo balance") beside Funds' "Tau's demo book".
+  const DEMO_BOOK = 'Tau\u2019s demo book';
   // The demo figure is Tau's own book, not a balance at Kalshi: the capital Tau sets for demo (app_users.demo_capital,
   // $1,000 for a new account) plus its closed demo trades. Without a demo key nothing can trade on it, and a new
   // account's dashboard said "Demo sandbox $1,000.00" while Funds said a key was needed: a book with no key that
@@ -3710,6 +3718,9 @@
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }
+  // apLiveBlock's line as the panel shows it: "the Funds page" links to Funds' Connect Kalshi. It was plain text,
+  // with nothing to press. The flash a refused press shows (apFlash) keeps the plain words.
+  const apLiveBlockHtml = (d) => esc(apLiveBlock(d)).replace('the Funds page', '<a href="/funds#connect-kalshi">the Funds page</a>');
   // Read out as well as shown: the live switch, the kill switch and an unmet gate answered only in
   // print, so a reader heard nothing after pressing them.
   function apFlash(box, msg, kind) {
@@ -3755,11 +3766,11 @@
   const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? `<span>Closes ${esc(settleAt(m.ct))}</span>` : ''}${vsHtml(m)}</span>` : '');
   const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot))}</p>` : '');
   function hotRowHtml(m) {
-    const compactName = contractShort(m.t) || (m.ti || '').trim() || m.t;
+    const compactName = contractShort(m.t) || (m.ti || '').trim() || contractName(m.t);
     const when = (m.ct ? ` · Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? ` · ${vsLab(m.t)} ${vsText(m.vs)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
-    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc(mktLabel(m))} ·\u00a0${esc(m.t)} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours${when} ·\u00a0Opens Kalshi in a new tab">
+    return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(' ·\u00a0'))} ·\u00a0${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? ` ·\u00a0${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''} ·\u00a0${kfmt(m.v24)} volume over 24 hours${when} ·\u00a0Opens Kalshi in a new tab">
       <span class="hot-quote"><span class="hot-title" title="${esc(mktLabel(m))}"><strong>${esc(compactName)}</strong>${m.su && m.su.trim() !== (m.ti || '').trim() ? `<span>${esc(compactCondition(m.su))}</span>` : ''}</span><span class="hot-price" title="Midpoint quote"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}" title="Change across available price history">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
       <span class="hot-foot"><span class="hot-meta"><span class="hot-vol" title="24-hour volume">${kfmt(m.v24)} ·\u00a024h</span></span><span class="vh">Opens Kalshi in a new tab</span></span>${hotWhen(m)}</a>`;
   }
@@ -3942,11 +3953,11 @@
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
     actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
-    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
+    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
-    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig, demoSpan,
+    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig, demoSpan,
     DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,

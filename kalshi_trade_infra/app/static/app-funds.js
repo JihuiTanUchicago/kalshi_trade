@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, loading, openCost, pageAssets,
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, loading, openCost, pageAssets,
     paint, painted, poll, refreshed, root, S, shell, tone, usd, when
   } = T;
 
@@ -42,7 +42,8 @@ window.TauPage('funds', (T) => {
   // Funds shows two demo figures, each named for what it is: Tau's demo book (the capital Tau sets, app_users.demo_capital,
   // plus closed demo trades) and the cash in the reader's own account on Kalshi's sandbox, which the demo key reads.
   // Both were "balance", side by side with different amounts.
-  const DEMO_BOOK = 'Tau\u2019s demo book', DEMO_CASH = 'Kalshi demo account cash';
+  // DEMO_BOOK is the bundle's (the dashboard names the figure the same).
+  const DEMO_CASH = 'Kalshi demo account cash';
   // How you know it worked: the existing balance read, right under the panel title. No balance means Kalshi
   // didn't answer for this key just now (Kalshi down, or the key deleted there), so it gets no check mark.
   // `at` is when the balance memo was read (the server's balance_at), so the line says how old it is.

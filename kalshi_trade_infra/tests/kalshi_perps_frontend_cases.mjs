@@ -287,9 +287,9 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = frontend({fetchImpl: () => response({})});
     const th = {min_sharpe_days: 14, min_trades: 30};
     const m = {trades: 4, wins: 2, losses: 2, label: 'Paper', net_pnl: 3, fees: 0, monthly: [], strategies: [], curve: [],
-      open_trades: 1, open_at_cost: 6, open_realized_pnl: -1.66, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
+      open_trades: 1, open_cost: 6, open_realized_pnl: -1.66, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
     assert.match(f.trackRecordPanel(m, 'paper', th),
-      /1 open trade \(\$6\.00 at cost before fees\) joins the record when it closes\. Part of it is already sold: −\$1\.66 realized, not yet in these figures\./);
+      /1 open trade \(\$6\.00 at cost \+ fees\) joins the record when it closes\. Part of it is already sold: −\$1\.66 realized, not yet in these figures\./);
     assert.doesNotMatch(f.trackRecordPanel({...m, open_realized_pnl: 0}, 'paper', th), /already sold/);
   });
 
@@ -297,15 +297,17 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = frontend({fetchImpl: () => response({})});
     const th = {min_sharpe_days: 14, min_trades: 30};
     const m = {trades: 4, wins: 2, losses: 2, label: 'Paper', net_pnl: 3, fees: 0, monthly: [], strategies: [], curve: [],
-      open_trades: 0, open_at_cost: 0, open_realized_pnl: 0, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
+      open_trades: 0, open_cost: 0, open_realized_pnl: 0, sample: {level: 'thin', edge: 'unclear', text: 'Too early.'}};
     const none = f.trackRecordPanel(m, 'paper', th);
     assert.doesNotMatch(none, /open trade|join the record|joins the record/);
-    const one = f.trackRecordPanel({...m, open_trades: 1, open_at_cost: 6}, 'paper', th);
-    assert.match(one, /1 open trade \(\$6\.00 at cost before fees\) joins the record when it closes\./);
+    const one = f.trackRecordPanel({...m, open_trades: 1, open_cost: 6}, 'paper', th);
+    // The figure has its entry fees, as the dashboard's "at cost + fees" beside it: the record said "before fees".
+    assert.match(one, /1 open trade \(\$6\.00 at cost \+ fees\) joins the record when it closes\./);
+    assert.doesNotMatch(one, /at cost before fees/);
     assert.doesNotMatch(one, /open trades|join the record|they close/);
     for (const n of [2, 12]) {
-      const many = f.trackRecordPanel({...m, open_trades: n, open_at_cost: 9.5, open_realized_pnl: 0.5}, 'paper', th);
-      assert.match(many, new RegExp(`${n} open trades \\(\\$9\\.50 at cost before fees\\) join the record when they close\\. Part of them is already sold`));
+      const many = f.trackRecordPanel({...m, open_trades: n, open_cost: 9.5, open_realized_pnl: 0.5}, 'paper', th);
+      assert.match(many, new RegExp(`${n} open trades \\(\\$9\\.50 at cost \\+ fees\\) join the record when they close\\. Part of them is already sold`));
       assert.doesNotMatch(many, /joins the record|when it closes|Part of it /);
     }
   });
@@ -549,8 +551,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     line: "Demo isn't trading: your Kalshi demo account has $0.00. Add demo funds on Kalshi's demo site.",
     action: {label: 'Open Kalshi demo', href: 'https://demo.kalshi.co'}};
   const demoKey = {code: 'demo_key', need: 'your Kalshi demo key',
-    line: "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page.",
-    action: {label: 'Add demo key', href: '/funds'}};
+    line: "Demo isn't trading: your Kalshi demo key isn't connected.",
+    action: {label: 'Add it on the Funds page', href: '/funds#connect-kalshi'}};
   const fundsLine = /<span class="demo-health">Demo isn&#39;t trading: your Kalshi demo account has \$0\.00\. Add demo funds on Kalshi&#39;s demo site\. <a href="https:\/\/demo\.kalshi\.co" target="_blank" rel="noopener">Open Kalshi demo ↗<\/a><\/span>/;
 
   test(`${name}: the Deploy board says plainly when demo can't trade, and what to do`, async () => {
@@ -566,7 +568,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const funds = await board(demoFunds);
     assert.match(funds, /class="notice bad" role="status"/); assert.match(funds, fundsLine);
     // An app page opens in place; only Kalshi's site opens a new tab.
-    assert.match(await board(demoKey), /Add it on the Funds page\. <a href="\/funds">Add demo key<\/a>/);
+    assert.match(await board(demoKey), /key isn&#39;t connected\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a>/);
     assert.equal(await board(null), '');
     assert.equal(await board(undefined), '');  // an older server without the field
   });
@@ -587,7 +589,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(refused, /<span class="mk dep">Demo<\/span> 0 closed trades ·\u00a0(?:<span[^>]*>)?\+?\$0\.00(?:<\/span>)? realized ·\u00a0<span class="demo-health">/);
     assert.match(refused, fundsLine);
     assert.doesNotMatch(refused, /Demo<\/span> running/); assert.match(refused, /Paper<\/span> running ·\u00a04 closed trades/);
-    assert.match(await ladder({deployments: both, demo_health: demoKey}), /Demo<\/span> 0 closed trades[^<]*(?:<span[^>]*>[^<]*<\/span>)?[^<]* ·\u00a0<span class="demo-health">Demo isn&#39;t trading: your Kalshi demo key isn&#39;t connected\. Add it on the Funds page\. <a href="\/funds">Add demo key<\/a>/);
+    assert.match(await ladder({deployments: both, demo_health: demoKey}), /Demo<\/span> 0 closed trades[^<]*(?:<span[^>]*>[^<]*<\/span>)?[^<]* ·\u00a0<span class="demo-health">Demo isn&#39;t trading: your Kalshi demo key isn&#39;t connected\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a><\/span>/);
     assert.match(await ladder({deployments: both, demo_health: null}), /Demo<\/span> running ·\u00a00 closed trades/);
     // Only on paper, key saved, demo account empty: the next rung names the funds and where to add them.
     const paperOnly = await ladder({deployments: [d(1, 'paper', 4, 1.9)], demo_health: demoFunds});

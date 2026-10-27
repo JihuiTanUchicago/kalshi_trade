@@ -306,7 +306,11 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
         assert t["net_pnl"] == _money(sum(x["pnl"] for x in b["done"])), mode
         assert t["open_trades"] == len(b["still_open"]) == 1, mode
         assert t["open_realized_pnl"] == _money(sum(x["pnl"] for x in b["still_open"])), mode
-        assert t["open_at_cost"] == _money(b["open_cost"]), mode  # what is still held, not the whole entry
+        # What is still held (not the whole entry), with its entry fee: the dashboard's and Funds' open_cost for this
+        # book, one figure on one basis. Its own book only: never live with paper or demo.
+        assert t["open_cost"] == bucket["open_cost"] == fb["open_cost"], mode
+        assert t["open_cost"] == _money(b["open_cost"] + float(b["held"]["entry_fee"])), mode
+        assert "open_at_cost" not in t, mode
         assert t["excluded_instant_fills"] == len(b["instant"]), mode
         # Round trips and closed rows are two counts of one book: they add back up to the CSV.
         left_out = _money(sum(x["pnl"] for x in b["instant"]))
@@ -447,7 +451,7 @@ def test_a_deleted_strategys_open_position_stays_in_the_book(conn, monkeypatch):
     assert _money(cash) == _money(repo.STARTING_PAPER_BALANCE - cost - fee)  # the ledger paid for it
     assert [p["id"] for p in dash["open_positions"]] == [held["id"]] == [p["id"] for p in board["open_positions"]]
     assert dash["paper"]["open_positions"] == 1 and dash["paper"]["open_at_cost"] == _money(cost)
-    assert dash["paper"]["open_at_cost"] == record["open_at_cost"] and record["open_trades"] == 1
+    assert dash["paper"]["open_cost"] == record["open_cost"] == _money(cost + fee) and record["open_trades"] == 1
     assert dash["paper"]["equity"] == _money(cash + cost) == _money(repo.STARTING_PAPER_BALANCE - fee)
     assert dash["paper"]["total_pnl"] == _money(-fee)  # it lost only the fee, not the whole position
     # The reset still sees the open paper position, so it can't wipe the cost it already paid.

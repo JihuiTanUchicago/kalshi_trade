@@ -286,6 +286,10 @@ test('with live trading off on the server, the panel says so in one line instead
   f.apUpdate(f.box, status({live_enabled: true, kalshi_connected: false}));
   assert.match(controls(), /<button class="btn sm" data-ap="livearm" aria-disabled="true">Enable live autopilot<\/button>/);
   assert.match(gates(), /Connect your Kalshi key on the Funds page first/);
+  // "the Funds page" is a link to Funds' Connect Kalshi: it was plain text, with nothing to press.
+  assert.match(f.box.querySelector('#apf-gates').innerHTML,
+    /^Connect your Kalshi key on <a href="\/funds#connect-kalshi">the Funds page<\/a> first\. $/);
+  assert.equal(f.apLiveBlock(status({live_enabled: true, kalshi_connected: false})), 'Connect your Kalshi key on the Funds page first. ');
   f.apUpdate(f.box, status({live_enabled: true, kalshi_connected: true}));
   assert.match(controls(), /<button class="btn sm" data-ap="livearm" >Enable live autopilot<\/button>/);
   // Live already on (or running) keeps its off switch and Kill, whatever the flag says now.

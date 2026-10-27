@@ -1,5 +1,6 @@
 """Track record math (app/trading/track_record.py): pure functions over repo.track_record_rows output."""
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -72,8 +73,20 @@ def test_partly_open_trade_is_open_not_closed():
     # What its sold slice realized is reported beside the record, and only the held part is at cost.
     part = dict(row("paper", 4, cost=10.0, open_slices=1), open_cost=6.0)
     p = tr.build([part, row("paper", 1)], NOW)["modes"]["paper"]
-    assert p["open_realized_pnl"] == 4 and p["open_at_cost"] == 6
+    assert p["open_realized_pnl"] == 4 and p["open_cost"] == 6 and "open_at_cost" not in p
     assert p["net_pnl"] + p["open_realized_pnl"] == 5  # every closed row's P&L
+
+
+def test_open_trades_are_at_cost_plus_fees_summed_exactly_then_rounded_once():
+    # The repository's open_cost is contracts x entry price + entry fee for what is still held (the dashboard's
+    # open_cost basis). Three trades of $0.3350 each: $1.0050 exactly, $1.01 rounded once. Rounded one by one
+    # ($0.34 x 3) or added as floats it could read $1.02 or $1.00.
+    held = [dict(row("paper", 0, cost=0.30, open_slices=1, ref="sim:o%d" % i), open_cost=Decimal("0.3350")) for i in range(3)]
+    p = tr.build(held + [row("paper", 1)], NOW)["modes"]["paper"]
+    assert p["open_trades"] == 3 and p["open_cost"] == 1.01
+    # Floats from a cache that went through JSON add up the same.
+    p = tr.build([dict(t, open_cost=0.335) for t in held] + [row("paper", 1)], NOW)["modes"]["paper"]
+    assert p["open_cost"] == 1.01
 
 
 def test_win_rate_drawdown_and_profit_factor():

@@ -230,7 +230,8 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
     """Every trade in the user's book for the track record page (app/trading/track_record.py): one row per
     (mode, deployment, entry fill). Partial-exit slices share the entry's order_ref and are summed;
     `open_slices` > 0 marks a trade not yet fully closed; its `pnl` is what the sold slices already
-    realized and `open_cost` what is still held at cost. A row with no order_ref is its own trade.
+    realized and `open_cost` what is still held at cost plus its entry fees (contracts x entry price +
+    entry fee, the dashboard's and Funds' open_cost for the same rows). A row with no order_ref is its own trade.
     Two reads: the user's positions grouped alone through idx_pos_user (joined to every deployment, the
     planner walked all users' deployments and their positions), then the strategy of each deployment
     in it, once. Rows come in the order of the group key, as the single join returned them. A trade
@@ -250,7 +251,7 @@ def track_record_rows(cur, user_id: int) -> List[Dict]:
 _TRADE_PACKED = (
     "CONCAT_WS(',', SUM(CASE WHEN p.status='open' THEN 1 ELSE 0 END), COALESCE(SUM(p.pnl),0), "
     "COALESCE(SUM(p.entry_fee + COALESCE(p.exit_fee,0)),0), COALESCE(SUM(p.qty * p.entry_price),0), "
-    "COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price END),0), "
+    "COALESCE(SUM(CASE WHEN p.status='open' THEN p.qty * p.entry_price + COALESCE(p.entry_fee,0) END),0), "
     "COALESCE(TIMESTAMPDIFF(SECOND, '1970-01-01', MIN(p.opened_at)),''), "
     "COALESCE(TIMESTAMPDIFF(SECOND, '1970-01-01', MAX(p.closed_at)),''))")
 _TRADE_FIELDS = ("open_slices", "pnl", "fees", "cost", "open_cost")

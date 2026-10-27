@@ -2246,7 +2246,7 @@
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-deps') : ''}
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : 'Connect your Kalshi account on <a href="/funds#connect-kalshi">Funds</a> to trade real money') + tradesCsv('live', lv) })}
-          ${(demoKeyless(d.demo) ? fig('<span class="mk dep">Demo</span> Sandbox', 'No demo key', { small: DEMO_NO_KEY }) : fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
+          ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${openCost(p)}${inBalance(p) ? ', ' + inBalance(p) : ''} \u00b7\u00a0<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${PAPER_NET}${glo('paperfills')}${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
@@ -2435,7 +2435,7 @@
   function trackRecordPanel(m, key, th) {
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY}).`);
-    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_at_cost)} at cost before fees) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
+    if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_cost)} at cost + fees) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
       // A part-sold trade's sold slice is realized (the dashboard counts it) but waits here for the rest.
       + (m.open_realized_pnl ? ` Part of ${m.open_trades === 1 ? 'it' : 'them'} is already sold: ${usd(m.open_realized_pnl, true)} realized, not yet in these figures.` : ''));
     if (key === 'live' && m.trades) caveats.push('Live results count only the trades Tau placed, net of Kalshi fees. Your Kalshi cash also moves with deposits, withdrawals and anything you trade yourself.');
@@ -2588,8 +2588,9 @@
   // Many markets share one event title (every strike of "Bitcoin price on Oct 14?"), so the
   // strike sub-title is what tells them apart.
   // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
-  // above $200000 by Jan 1…? · Above $200000" repeated the title.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} ·\u00a0${s}` : s) : (t || m.t); };
+  // above $200000 by Jan 1…? · Above $200000" repeated the title. A contract the feed sends untitled is named
+  // as a position is (contractName: its market's words, else "Kalshi contract"), never by its raw ticker.
+  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t} ·\u00a0${s}` : s) : (t || contractName(m.t)); };
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 172800 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };
@@ -3115,6 +3116,9 @@
   }
   // What demo is, for a reader who has never used it: real exchange fills, pretend money.
   const DEMO_WHAT = 'real fills on Kalshi’s sandbox, not real money';
+  // The demo figure's one name, on every page that shows it (the dashboard, Funds): Tau's own book, never a balance
+  // at Kalshi. The dashboard called it "Demo Sandbox" (Meridian: "Demo balance") beside Funds' "Tau's demo book".
+  const DEMO_BOOK = 'Tau\u2019s demo book';
   // The demo figure is Tau's own book, not a balance at Kalshi: the capital Tau sets for demo (app_users.demo_capital,
   // $1,000 for a new account) plus its closed demo trades. Without a demo key nothing can trade on it, and a new
   // account's dashboard said "Demo sandbox $1,000.00" while Funds said a key was needed: a book with no key that
@@ -3659,6 +3663,9 @@
     if (!d.kalshi_connected) return 'Connect your Kalshi key on the Funds page first. ';
     return '';
   }
+  // apLiveBlock's line as the panel shows it: "the Funds page" links to Funds' Connect Kalshi. It was plain text,
+  // with nothing to press. The flash a refused press shows (apFlash) keeps the plain words.
+  const apLiveBlockHtml = (d) => esc(apLiveBlock(d)).replace('the Funds page', '<a href="/funds#connect-kalshi">the Funds page</a>');
   // Read out as well as shown: the live switch, the kill switch and an unmet gate answered only in
   // print, so a reader heard nothing after pressing them.
   function apFlash(box, msg, kind) {
@@ -3880,11 +3887,11 @@
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
     actionLink, adminViewOn, alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
-    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
+    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
-    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig,
+    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig,
     demoSpan, DEP_DONE, depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
