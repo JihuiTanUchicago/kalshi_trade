@@ -70,7 +70,7 @@ export function runPageCases({name, frontend}) {
 
   test(`${name}: an idea that passed validation and then missed the final holdout says so, not "deploy it"`, async () => {
     const later = [{gate: 'significance', label: 'The edge could be luck on the locked holdout', measured: 'p 0.48', needed: '0.10', next: 'Try a simpler version.'}];
-    const fell = {id: 42, title: 'Cheap NO after a spike', status: 'passed', market: 'btc15m', direction: 'custom', later_missed: later};
+    const fell = {id: 42, title: 'Cheap NO after a spike', status: 'passed', verdict: 'missed_final', market: 'btc15m', direction: 'custom', later_missed: later};
     let f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [fell]);
     const next = f.root.querySelector('#runnext').innerHTML;
     assert.match(next, /Cheap NO after a spike<\/a> passed its first test on unseen data, then missed the one-time final test \(the edge could be luck on the locked holdout\)\./);
@@ -82,6 +82,29 @@ export function runPageCases({name, frontend}) {
     const ok = {id: 43, title: 'Far-strike fade', status: 'passed', market: 'btc_daily', direction: 'custom'};
     f = await open({status: 'succeeded', hypotheses_tried: 2, strategies_passed: 2}, [], [fell, ok]);
     assert.match(f.root.querySelector('#runnext').innerHTML, /^<p class="run-next">Passed: <a href="\/strategies\/43">Far-strike fade<\/a>\. Open it to deploy it on paper\. <a href="\/strategies\/42">/);
+  });
+
+  test(`${name}: an idea the diversification check held back says it was held back and why, not "deploy it"`, async () => {
+    const why = [{gate: 'diversification', label: 'Too similar to “Late fade”', measured: 'a 0.93 correlation of daily results with “Late fade”', needed: '0.80 or less', next: 'Point it elsewhere.'}];
+    const held = {id: 44, title: 'Late fade, tighter', status: 'passed', verdict: 'held_back', market: 'btc15m', direction: 'custom', later_missed: why};
+    let f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [held]);
+    const next = f.root.querySelector('#runnext').innerHTML;
+    assert.match(next, /Late fade, tighter<\/a> was held back after passing its tests: too similar to “Late fade”, so it isn’t cleared to trade\./);
+    assert.match(next, /Nothing cleared every check this time\./);
+    assert.doesNotMatch(next, /deploy it on paper|Passed:|final test/);
+    assert.match(list(f), /Held back/); assert.match(list(f), /too similar to “Late fade”/i);
+    assert.doesNotMatch(list(f), /Open it to deploy on paper|>Passed</);
+    // Beside a true pass: the pass leads, the held-back one is said after it. An older server's held-back
+    // idea without its line still says it was held back, in the check's own words.
+    const ok = {id: 43, title: 'Far-strike fade', status: 'passed', market: 'btc_daily', direction: 'custom'};
+    f = await open({status: 'succeeded', hypotheses_tried: 2, strategies_passed: 2}, [], [{...held, later_missed: undefined}, ok]);
+    const both = f.root.querySelector('#runnext').innerHTML;
+    assert.match(both, /^<p class="run-next">Passed: <a href="\/strategies\/43">Far-strike fade<\/a>\. Open it to deploy it on paper\. <a href="\/strategies\/44">/);
+    assert.match(both, /was held back after passing its tests: too similar to a strategy you already run/);
+    // A probation idea held back after passing on paper is stamped Held back, not Void.
+    f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 0}, [], [{...held, status: 'failed'}]);
+    assert.match(list(f), /Held back/); assert.doesNotMatch(list(f), />Void</);
+    assert.match(f.root.querySelector('#runnext').innerHTML, /was held back after passing its tests/);
   });
 
   test(`${name}: a finished autopilot session says what the autopilot does next, while the switch is on`, async () => {

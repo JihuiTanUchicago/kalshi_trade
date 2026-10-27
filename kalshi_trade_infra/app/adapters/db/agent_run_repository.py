@@ -363,19 +363,25 @@ def set_run_counts(cur, run_id: int, tried: int, passed: int) -> None:
                 (tried, passed, run_id))
 
 
-def forward_verdict(cur, run_id: int, title: str) -> Optional[Dict]:
-    """The diversification verdict a run logged for one of its strategies (agent._promote_if_forward_validated's
-    phase 'forward' event: marginal_ok and the gatekeeper's reason), newest first, or None. Read through
-    idx_events_run_kind; the run's verdict rows are sorted here, as _newest_events does."""
+def forward_verdicts(cur, run_id: int) -> Dict[str, Dict]:
+    """{title: the newest diversification verdict the run logged for it} (agent._promote_if_forward_validated's
+    phase 'forward' event: marginal_ok and the gatekeeper's reason), every strategy of the run in one read
+    through idx_events_run_kind; the run's verdict rows are sorted here, as _newest_events does."""
     cur.execute(
         "SELECT id, data_json FROM app_agent_events WHERE run_id=%s AND kind='verdict' "
         "AND message LIKE %s", (run_id, "%: diversification gate %"),
     )
+    out: Dict[str, Dict] = {}
     for r in sorted(cur.fetchall(), key=lambda r: r.get("id") or 0, reverse=True):
         data = _loads(r.get("data_json")) or {}
-        if data.get("phase") == "forward" and data.get("title") == title:
-            return data
-    return None
+        if data.get("phase") == "forward" and data.get("title") is not None:
+            out.setdefault(data["title"], data)
+    return out
+
+
+def forward_verdict(cur, run_id: int, title: str) -> Optional[Dict]:
+    """The diversification verdict a run logged for one of its strategies (forward_verdicts), or None."""
+    return forward_verdicts(cur, run_id).get(title)
 
 
 def run_events(cur, run_id: int, after_id: int = 0) -> List[Dict]:

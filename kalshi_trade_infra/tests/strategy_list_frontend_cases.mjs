@@ -102,6 +102,26 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.match(ex, /example-tag/); assert.doesNotMatch(ex, /ap-run-tag/);
   });
 
+  test(`${name}: a row stamps what its page says: Missed final test or Held back, never Passed or Void`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const stamp = html => (html.match(/data-lab="Status"><span class="mk[^"]*">([^<]*)<\/span>/) || [])[1];
+    const pnl = html => html.slice(html.indexOf('data-lab="Backtest P&amp;L'), html.indexOf('data-lab="Trades"'));
+    const oos = {pnl: 3.1, trades: 40, win_rate: 0.6};
+    assert.equal(stamp(row(f, {status: 'passed', out_of_sample: oos})), 'Passed');
+    const missed = row(f, {status: 'passed', verdict: 'missed_final', out_of_sample: oos});
+    assert.equal(stamp(missed), 'Missed final test');
+    // Its unseen-data gain is muted, as a Void one's is: the final test it missed is the evidence that counts.
+    assert.match(pnl(missed), /pnl-nopass/); assert.match(pnl(missed), /missed the final test/);
+    const held = row(f, {status: 'passed', verdict: 'held_back', out_of_sample: oos});
+    assert.equal(stamp(held), 'Held back'); assert.match(held, /<span class="mk quiet">Held back<\/span>/);
+    assert.doesNotMatch(pnl(held), /pnl-nopass/);
+    // A probation strategy held back after passing on paper no longer reads Void.
+    assert.equal(stamp(row(f, {status: 'failed', verdict: 'held_back', out_of_sample: oos})), 'Held back');
+    assert.equal(stamp(row(f, {status: 'failed', out_of_sample: oos})), 'Void');
+    // A verdict the page doesn't know keeps the status.
+    assert.equal(stamp(row(f, {status: 'passed', verdict: '<b>x</b>'})), 'Passed');
+  });
+
   test(`${name}: a row says what its removed deployments made, each book on its own line`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const html = row(f, {deployed: false, past: {paper: {pnl: -13.56, trades: 9, deployments: 1}, demo: {pnl: 0, trades: 0, deployments: 1}}});

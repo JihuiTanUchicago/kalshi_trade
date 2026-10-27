@@ -1096,11 +1096,17 @@ window.TauPage('research', (T) => {
   const runEmpty = (r) => (r.stop_reason === 'no_data' && r.error ? esc(r.error) : RUN_EMPTY[r.stop_reason] || 'This session ended before any strategy reached the checks.');
   // What to do once a session ends. The example's log ended on "now describe a real idea" with no way
   // to do it, and a session that passed something left it two screens down on a phone, under the log.
-  // An idea that passed validation and then missed its one-time locked holdout keeps the status "passed"; the
-  // server sends what it missed (later_missed, the lines its strategy page shows). The page said "Passed: …
-  // Open it to deploy it on paper" over a final test it had failed.
-  const laterMissed = (s) => s.status === 'passed' && Array.isArray(s.later_missed) && s.later_missed.length > 0;
+  // An idea that passed validation and then missed its one-time locked holdout keeps the status "passed", and
+  // so does one the diversification check after the holdout held back; a probation idea held back after
+  // passing on paper keeps its Void. The server says which (`verdict`) and sends what it missed or what held
+  // it back (later_missed, the lines its strategy page shows). The page said "Passed: … Open it to deploy it
+  // on paper" over a final test it had failed, and over a pass the gatekeeper didn't clear to trade.
+  const laterLines = (s) => (Array.isArray(s.later_missed) ? s.later_missed : []);
+  const laterMissed = (s) => s.verdict === 'missed_final' && laterLines(s).length > 0;
+  const heldBack = (s) => s.verdict === 'held_back';
+  const cleared = (s) => s.status === 'passed' && !s.verdict;
   const lcFirst = (t) => String(t).charAt(0).toLowerCase() + String(t).slice(1);
+  const heldWhy = (s) => (laterLines(s).length ? esc(lcFirst(laterLines(s)[0].label)) : 'too similar to a strategy you already run');
   // What the autopilot does next, at the end of a session it started: the page ended on "Try another idea"
   // as if the reader had to. A finished session hands straight back to the autopilot, which starts the next
   // one itself (worker.enqueue_review_after_research, and the research floor when nothing has started for a
@@ -1108,10 +1114,12 @@ window.TauPage('research', (T) => {
   const apNext = (r) => +r.by_autopilot && !r.example ? ` <span data-ap-next${S.me && S.me.user && S.me.user.autopilot ? '' : ' hidden'}>The autopilot takes these results into its next ideas and starts its next session on its own.</span>` : '';
   function runNext(r, strategies) {
     if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
-    const passed = (strategies || []).filter((s) => s.status === 'passed' && !laterMissed(s));
-    const fell = (strategies || []).filter(laterMissed);
-    const fellLine = fell.length ? `${fell.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ')} passed ${fell.length === 1 ? 'its' : 'their'} first test on unseen data, then missed the one-time final test (${esc(lcFirst(fell[0].later_missed[0].label))}).` : '';
-    const nothing = fell.length ? 'Nothing cleared every check' : 'Nothing passed';
+    const passed = (strategies || []).filter(cleared);
+    const fell = (strategies || []).filter(laterMissed), held = (strategies || []).filter(heldBack);
+    const named = (xs) => xs.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
+    const fellLine = [fell.length ? `${named(fell)} passed ${fell.length === 1 ? 'its' : 'their'} first test on unseen data, then missed the one-time final test (${esc(lcFirst(fell[0].later_missed[0].label))}).` : '',
+      held.length ? `${named(held)} ${held.length === 1 ? 'was' : 'were'} held back after passing ${held.length === 1 ? 'its' : 'their'} tests: ${heldWhy(held[0])}, so ${held.length === 1 ? 'it isn’t' : 'they aren’t'} cleared to trade.` : ''].filter(Boolean).join(' ');
+    const nothing = fellLine ? 'Nothing cleared every check' : 'Nothing passed';
     const credits = r.out_of_credits ? 'It stopped when your credits ran out. <a href="/billing">Add credits</a>, then start a new session to keep researching. ' : '';
     if (passed.length) {
       const links = passed.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
@@ -1148,23 +1156,26 @@ window.TauPage('research', (T) => {
     if (r.example) return `<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>`;
     if (r.status !== 'succeeded' && r.status !== 'stopped') return '';
     if (r.out_of_credits) return '<div class="run-end"><a class="btn" href="/billing">Add credits</a></div>';
-    if ((strategies || []).some((s) => s.status === 'passed' && !laterMissed(s))) return '';
+    if ((strategies || []).some(cleared)) return '';
     return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
   }
   // What the session tried, one row per idea: its outcome and, for a miss, the first check it missed
   // in plain words. Each idea's outcome sat only in the log, a scroll box that held 200+ lines on a
-  // long session; a title jumps to its card there. Passed ideas lead; past six, the rest fold.
-  const IDEA_STAMP = { passed: ['pass', 'Passed'], failed: ['void', 'Void'], rejected: ['rej', 'Rejected'], 'backtest-only': ['rej', 'Backtest only'] };
+  // long session; a title jumps to its card there. Passed ideas lead; past six, the rest fold. A later
+  // check its status leaves out (`verdict`) stamps it instead, as its strategy page does.
+  const IDEA_STAMP = { passed: ['pass', 'Passed'], failed: ['void', 'Void'], rejected: ['rej', 'Rejected'], 'backtest-only': ['rej', 'Backtest only'],
+    missed_final: ['rej', 'Missed final test'], held_back: ['rej', 'Held back'] };
   // An idea the agent dropped while building it never becomes a strategy, and one still being tested has
   // none yet: the Tested figure counted them and this list didn't ("Tested 5" over "4"), so the gap is said.
   const ideasGap = (n, listed, active) => n > listed ? ` ·\u00a0${num(n - listed)} more ${active ? 'still being tested' : 'dropped before testing'}` : '';
   function runIdeas(strategies, whyBySid, open, gap = '') {
-    const list = (strategies || []).slice().sort((a, b) => (b.status === 'passed') - (a.status === 'passed'));
+    const list = (strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
     if (!list.length) return '';
     const row = (s) => {
-      const [cls, label] = IDEA_STAMP[s.status] || ['', 'Testing'];
+      const [cls, label] = IDEA_STAMP[laterMissed(s) || heldBack(s) ? s.verdict : s.status] || ['', 'Testing'];
       const why = whyBySid.get(s.id) || [];
       const said = laterMissed(s) ? `Passed validation, then missed the final test: ${esc(lcFirst(s.later_missed[0].label))}`
+        : heldBack(s) ? `Held back after passing its tests: ${heldWhy(s)}`
         : s.status === 'passed' ? (s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
         : s.autopilot_next ? 'The autopilot puts it on paper at its next check-in'
         : `<a href="/strategies/${s.id}">Open it to deploy on paper</a>`)

@@ -429,15 +429,19 @@ def corr_peer(reason: Optional[str]) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
-def held_back(reason: Optional[str], peer: Optional[str] = None) -> List[Line]:
-    """The check after the one-time holdout, for a strategy that held up there and was not promoted
-    to a deployment candidate: the diversification line, named for the strategy it repeats (`peer`,
-    that strategy's title) when known. `reason` is the run's own verdict event; without a figure
-    there, the line says the check was not recorded rather than guessing one."""
+_HELD_ON = {"holdout": "it held up on the locked holdout", "paper": "it passed its one judgment on paper"}
+
+
+def held_back(reason: Optional[str], peer: Optional[str] = None, on: str = "holdout") -> List[Line]:
+    """The check after the one-time holdout (or, `on` "paper", after a probation strategy's one paper
+    judgment), for a strategy that passed there and was not promoted to a deployment candidate: the
+    diversification line, named for the strategy it repeats (`peer`, that strategy's title) when known.
+    `reason` is the gatekeeper's recorded reason; without a figure there, the line says the check was
+    not recorded rather than guessing one."""
     m = _CORR.search(str(reason or ""))
     line = diversification(reason if m else None)[0]
     if not m:
-        line["measured"] = "not recorded, but it held up on the locked holdout and was not cleared to trade, so this check failed"
+        line["measured"] = "not recorded, but %s and was not cleared to trade, so this check failed" % _HELD_ON.get(on, _HELD_ON["holdout"])
     if peer:
         name = "“%s”" % str(peer).strip()[:80]
         line["label"] = "Too similar to " + name

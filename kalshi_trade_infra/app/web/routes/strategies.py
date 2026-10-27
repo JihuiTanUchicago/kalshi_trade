@@ -12,7 +12,7 @@ from app import repository as repo
 from app.adapters.kalshi import kalshi_dev
 from app.research import agent, gatekeeper
 from app.research import research_repository as research_repo
-from app.services import backtest_check, book_memo, gate_explain, trade_why
+from app.services import backtest_check, book_memo, forward_gate, gate_explain, trade_why
 from app.trading import backtest, track_record
 from app.trading import spec as specmod
 from app.trading.markets import MARKETS
@@ -124,10 +124,22 @@ def list_strategies(ctx: Ctx):
     rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per,
                                 q=search, deployed=deployed, hide_noise=hide_noise, sort=sort)
     cards = [_strategy_card(s) for s in rows]
+    _attach_verdicts(ctx.cur, ctx.uid, rows, cards)
     _attach_real_records(ctx.cur, ctx.uid, cards)
     _attach_past_records(ctx.cur, ctx.uid, cards, [s["id"] for s in rows if s.get("removed_deps")])
     return {"strategies": cards, "counts": counts,
             "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
+
+
+def _attach_verdicts(cur, uid: int, rows: List[Dict], cards: List[Dict]) -> Dict[int, Tuple[str, Dict]]:
+    """Stamp each card whose stored status leaves out a later check with `verdict` (MISSED_FINAL or
+    HELD_BACK), the stamp its own page shows, from _later_verdicts' two reads for the whole list. A list
+    stamped "Passed" for a strategy whose page said "Missed final test" or "Held back". Returns them."""
+    got = _later_verdicts(cur, uid, rows)
+    for c in cards:
+        if c["id"] in got:
+            c["verdict"] = got[c["id"]][0]
+    return got
 
 
 def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:
@@ -316,6 +328,22 @@ def _rationale(raw) -> Dict:
     }
 
 
+def _later_fields(results: List[Dict]) -> Dict:
+    """The experiment block's verdicts after validation, from its result rows (oldest first): the one-time
+    holdout, a probation strategy's one paper judgment (with when it was judged), and whether it was promoted
+    all the way to a deployment candidate (agent._is_deployment_candidate's own test). A strategy page reads
+    them from all its rows, a list from research_repo.later_results' rows, so both judge alike."""
+    latest = lambda phase: next((r for r in reversed(results) if r.get("phase") == phase), None)
+    paper = latest("paper")
+    return {
+        "holdout": _phase_block(latest("holdout"), holdout=True),
+        "paper": dict(_phase_block(paper), verdict_at=paper.get("verdict_at")) if paper else None,
+        # A holdout (or paper) pass that isn't was held back by the diversification check after it.
+        "promoted": any(r.get("classification") == gatekeeper.Classification.DEPLOYMENT_CANDIDATE.value
+                        for r in results),
+    }
+
+
 def _experiment_block(cur, strategy_id: int, experiment_id: Optional[int] = None) -> Optional[Dict]:
     """The §D research-paper `experiment` block for a strategy, or None when the strategy
     predates the rigorous-research pipeline (no ledger row). Resolves by the strategy's stored
@@ -326,13 +354,12 @@ def _experiment_block(cur, strategy_id: int, experiment_id: Optional[int] = None
         return None
     exp = rec["experiment"]
     results = rec["results"] or []
-    latest = lambda phase: next((r for r in reversed(results) if r.get("phase") == phase), None)
-    val_row = latest("validation")
+    val_row = next((r for r in reversed(results) if r.get("phase") == "validation"), None)
     val = _phase_block(val_row)
-    hold = _phase_block(latest("holdout"), holdout=True)
     rat = _rationale(exp.get("economic_rationale"))
     overall = results[-1]["classification"] if results else None
     return {
+        **_later_fields(results),
         "classification": overall,
         "registered_at": exp.get("registered_at"),
         "mechanism": rat["mechanism"],
@@ -349,11 +376,6 @@ def _experiment_block(cur, strategy_id: int, experiment_id: Optional[int] = None
         "correction_method": exp.get("correction_method"),
         "n_trials_audited": (val or {}).get("n_trials_audited"),
         "validation": val,
-        "holdout": hold,
-        # Promoted all the way to a deployment candidate (agent._is_deployment_candidate's own test): a holdout
-        # pass that isn't was held back by the diversification check after it.
-        "promoted": any(r.get("classification") == gatekeeper.Classification.DEPLOYMENT_CANDIDATE.value
-                        for r in results),
         # Prefer the gatekeeper's recorded cross-day folds (validation phase); fall back to any
         # folds embedded in the older rationale JSON so pre-pipeline experiments still render.
         "folds": (val_row or {}).get("folds") or rat["folds"],
@@ -388,26 +410,86 @@ def _autopilot_puts_on_paper(cur, user: Optional[Dict], strategies: List[Dict]) 
     return out
 
 
-def _held_back(cur, uid: int, s: Dict, exp: Optional[Dict]) -> List[Dict]:
-    """gate_explain.held_back for a passed strategy whose one-time holdout held up but which was not promoted
-    to a deployment candidate: the diversification check after the holdout held it back. Its status stays
-    "passed" (validation), and its page said "Passed. It cleared every check". The reason is the run's own
-    verdict event, and the strategy it repeats is named by its title. [] for any other strategy. Display only:
-    nothing is judged again."""
-    hold = (exp or {}).get("holdout") or {}
-    if (s.get("status") != "passed" or not exp or exp.get("promoted")
-            or hold.get("classification") != gatekeeper.Classification.FORWARD_VALIDATED.value
-            or specmod.has_perpetual_market(s["spec"], s.get("market"))):  # research only: never promoted
-        return []
-    own_run = s.get("run_id") and not s.get("shared_from_user_id")
-    ev = repo.forward_verdict(cur, s["run_id"], s["title"]) if own_run else None
-    reason = ev.get("reason") if ev and ev.get("marginal_ok") is False else None
-    peer_eid, peer = gate_explain.corr_peer(reason), None
-    row = research_repo.experiment_row_by_id(cur, peer_eid) if peer_eid else None
-    if row and row.get("strategy_id"):
-        peer_s = repo.get_strategy(cur, uid, int(row["strategy_id"]))
-        peer = peer_s["title"] if peer_s else None
-    return gate_explain.held_back(reason, peer)
+# What a strategy's stored status leaves out (its card's `verdict`). The status is written once, at
+# validation (or, for a probation strategy, at its validation miss), and a later check doesn't change it:
+# a validation pass whose one-time locked holdout then failed still reads "passed", and so does one the
+# diversification check after the holdout held back; a probation strategy that passed its one paper
+# judgment and was then held back by that check keeps its Void or Rejected.
+MISSED_FINAL, HELD_BACK = "missed_final", "held_back"
+
+
+def _later_verdict(s: Dict, exp: Optional[Dict]) -> Optional[str]:
+    """MISSED_FINAL, HELD_BACK or None for one strategy, from its experiment block (a page's
+    _experiment_block, or _later_verdicts' slim one built from the same rows by _later_fields). Display
+    only: it reads the gatekeeper's record and judges nothing again."""
+    if not exp:
+        return None
+    if s.get("status") == "passed" and _gate_lines(gate_explain.for_strategy, "passed", None, exp):
+        return MISSED_FINAL  # for_strategy reads a failed holdout first, as the page's why_failed does
+    if exp.get("promoted") or specmod.has_perpetual_market(s["spec"], s.get("market")):  # research only: never promoted
+        return None
+    fv = gatekeeper.Classification.FORWARD_VALIDATED.value
+    if s.get("status") == "passed" and (exp.get("holdout") or {}).get("classification") == fv:
+        return HELD_BACK
+    if s.get("status") in ("failed", "rejected") and (exp.get("paper") or {}).get("classification") == fv:
+        return HELD_BACK
+    return None
+
+
+def _later_verdicts(cur, uid: int, strategies: List[Dict]) -> Dict[int, Tuple[str, Dict]]:
+    """{strategy id: (its _later_verdict, the slim experiment block it was judged on)} for the strategies a
+    list shows, those with one only. At most two reads for the whole list, never one per row: only for a
+    passed strategy stored before app_strategies.experiment_id existed, the experiment experiments_for_strategy
+    falls back to (by idx_exp_user_market's user_id), then their experiments' holdout, paper and forward rows
+    (research_repo.later_results, by primary key and idx_res_exp)."""
+    eids = {s["id"]: int(s["experiment_id"]) for s in strategies if s.get("experiment_id")}
+    legacy = [s["id"] for s in strategies if s.get("status") == "passed" and s["id"] not in eids]
+    if legacy:
+        eids.update(research_repo.newest_experiment_ids(cur, uid, legacy))
+    later = research_repo.later_results(cur, list(eids.values()))
+    out: Dict[int, Tuple[str, Dict]] = {}
+    for s in strategies:
+        rec = later.get(eids.get(s["id"]))
+        if rec is None:
+            continue
+        try:
+            exp = dict(_later_fields(rec["results"]), min_sample=_exp_int(rec, "min_sample"))
+        except (TypeError, ValueError):  # a record it can't read never fails the list
+            continue
+        v = _later_verdict(s, exp)
+        if v:
+            out[s["id"]] = (v, exp)
+    return out
+
+
+def _held_back_lines(cur, uid: int, held: List[Tuple[Dict, Dict]]) -> Dict[int, List[Dict]]:
+    """{strategy id: gate_explain.held_back} for strategies _later_verdict holds back, each with its
+    experiment block. The reason is the gatekeeper's own, from its one record: a holdout pass's run verdict
+    event (repo.forward_verdicts, one read per run), or a paper pass's line in the autopilot chat
+    (forward_gate.held_reason, the first such line at or after its paper judgment, one read in all). The
+    strategy it repeats is named by its title (one read), never by experiment id. Display only."""
+    reasons: Dict[int, Optional[str]] = {}
+    events: Dict[int, Dict[str, Dict]] = {}
+    chat: Optional[List[Dict]] = None
+    for s, exp in held:
+        reason = None
+        if s.get("status") == "passed":
+            if s.get("run_id") and not s.get("shared_from_user_id"):
+                if s["run_id"] not in events:
+                    events[s["run_id"]] = repo.forward_verdicts(cur, s["run_id"])
+                ev = events[s["run_id"]].get(s["title"])
+                reason = ev.get("reason") if ev and ev.get("marginal_ok") is False else None
+        else:
+            if chat is None:
+                chat = list(reversed(repo.chat_lines_like(cur, uid, "system", forward_gate.HELD_LIKE)))
+            at = (exp.get("paper") or {}).get("verdict_at")
+            reason = next((r for r in (forward_gate.held_reason(c["content"], s["title"]) for c in chat
+                                       if at is None or c["created_at"] >= at) if r), None)
+        reasons[s["id"]] = reason
+    peers = research_repo.strategy_titles(cur, uid, [e for e in map(gate_explain.corr_peer, reasons.values()) if e])
+    return {s["id"]: gate_explain.held_back(reasons[s["id"]], peers.get(gate_explain.corr_peer(reasons[s["id"]])),
+                                            on="holdout" if s.get("status") == "passed" else "paper")
+            for s, _ in held}
 
 
 def get_strategy(ctx: Ctx):
@@ -422,6 +504,10 @@ def get_strategy(ctx: Ctx):
         # Which research-paper figures their gate passed or missed, by the same checks as
         # why_failed, so a figure is red exactly when its line says it missed (display only).
         exp = dict(exp, gate_tints=_gate_tints(s.get("status"), exp))
+    verdict = _later_verdict(s, exp)
+    held_back = _gate_lines(_held_back_lines, ctx.cur, ctx.uid, [(s, exp)]) if verdict == HELD_BACK else {}
+    if verdict:
+        out["verdict"] = verdict
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
@@ -429,9 +515,9 @@ def get_strategy(ctx: Ctx):
         # one noise level for a trade count, deliberately stricter than the gate's floor, which it names.
         sample_caution={"min_trades": track_record.MIN_TRADES, "gate_min_oos_trades": backtest.GATES["min_oos_trades"]},
         experiment=exp,
-        # One plain line per gate it missed: measured, needed, and what to try next (display only).
-        why_failed=(_gate_lines(gate_explain.for_strategy, s.get("status"), res, exp)
-                    or _gate_lines(_held_back, ctx.cur, ctx.uid, s, exp)),
+        # One plain line per gate it missed: measured, needed, and what to try next (display only). One held
+        # back after passing on paper names that check, not the validation miss that put it on probation.
+        why_failed=(held_back or {}).get(s["id"]) or _gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
         deployments=[_deployment_out(d, [], demo_key_back=key_back, paper_books=_paper_books(deps)) for d in deps],
         # Its deployments summed per book ({mode: {pnl, trades, open, paused}}), as the strategies list sums them.
         book_totals=_book_totals(deps).get(s["id"], {}),

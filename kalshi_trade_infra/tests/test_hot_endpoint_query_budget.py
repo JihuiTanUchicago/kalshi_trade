@@ -77,7 +77,10 @@ BUDGET = {"autopilot_status": 9, "me": 5, "get_run": 6, "dashboard": 14}  # dash
 # board's Realized can name what it leaves out and the strategy page list its past deployments (+1 each).
 BUDGET.update({"list_deployments": 9, "get_strategy": 7})
 # The track record (cached a minute per user; a returning user pays it cold) and the Strategies page.
-BUDGET.update({"get_track_record": 3, "list_strategies": 4})
+# The Strategies page's last two are its strategies' later verdicts (Missed final test, Held back): their
+# experiments' holdout, paper and forward rows, and, for a passed one stored without its experiment id,
+# that experiment first. One each for the whole page.
+BUDGET.update({"get_track_record": 3, "list_strategies": 6})
 # The trades download (user-clicked, not polled): the mode's closed trades, then their strategies once.
 BUDGET.update({"trades_csv": 2})
 
