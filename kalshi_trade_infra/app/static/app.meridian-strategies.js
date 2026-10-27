@@ -453,7 +453,9 @@ window.TauPage('strategies', (T) => {
       ? `${money(p.realized_pnl)} over ${num(p.closed_trades)} closed trade${+p.closed_trades === 1 ? '' : 's'}${BOOK_NET[p.mode] ? `, ${BOOK_NET[p.mode]}` : ''}`
       : `no closed trades${BOOK_MONEY[p.mode] ? `, ${BOOK_MONEY[p.mode]}` : ''}`);
     const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—');
-    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${day(p.created_at)}\u2013${day(p.removed_at)}, ${pastFig(p)}`).join(' ·\u00a0')}${past.length > 3 ? ` ·\u00a0${num(past.length - 3)} earlier` : ''}</p>` : '';
+    // Deployed and removed the same day read "Oct 27–Oct 27" (walked 2026-10-27): one date says it.
+    const daySpan = (from, to) => (day(from) === day(to) ? day(from) : `${day(from)}\u2013${day(to)}`);
+    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${daySpan(p.created_at, p.removed_at)}, ${pastFig(p)}`).join(' ·\u00a0')}${past.length > 3 ? ` ·\u00a0${num(past.length - 3)} earlier` : ''}</p>` : '';
     return lines || pastLine ? `<section class="real-record" aria-label="Since deploying"><h2 class="paper-h">Since deploying</h2>${lines}${pastLine}</section>` : '';
   }
   // Road to live in words, from the checks the server sends (live-readiness): what is left, each with

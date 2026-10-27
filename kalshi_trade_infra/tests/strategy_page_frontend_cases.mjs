@@ -418,6 +418,10 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(parts[2], /real money|demo book/);
     // Each book apart: never one figure across them.
     assert.doesNotMatch(text, /\$7\.47|\$1\.75|\$4\.22/);
+    // Deployed and removed the same day (walked 2026-10-27: "Paper Oct 27–Oct 27"): one date.
+    const same = await open({status: 'passed', deployments: [], past_deployments: [{id: 6, mode: 'paper',
+      created_at: '2026-10-27T08:00:00+00:00', removed_at: '2026-10-27T09:00:00+00:00', realized_pnl: 0, closed_trades: 0}]});
+    assert.match(same.root.querySelector('.past-deps').textContent.replace(/\s+/g, ' '), /Past deployments: Paper Oct 27, no closed trades, not real money/);
   });
 
   test(`${name}: a past deployment with no closed trades says so, with which money it was, not "$0.00 over 0 closed trades"`, async () => {
