@@ -109,7 +109,7 @@ window.TauPage('community', (T) => {
         <div id="feed-note"></div>
         <div id="feed">${loading(120)}${loading(120)}</div>
         <form class="panel composer-post" id="composer-post">
-          <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" aria-describedby="post-hint" placeholder="Share an idea, a strategy, or how it's going…"></textarea>
+          <textarea class="input" id="post-body" maxlength="2000" rows="1" aria-label="Write a post" aria-describedby="post-hint" placeholder="Share an idea or how it’s going…"></textarea>
           <div id="photo-preview" hidden><img id="photo-img" alt="Attached photo preview"><button type="button" class="photo-x" id="photo-remove" aria-label="Remove photo">${ICON.cross}</button></div>
           <div class="post-tools">
             <button class="btn sm" type="button" id="photo-btn">${ICON.image}Photo</button>

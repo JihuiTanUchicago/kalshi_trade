@@ -6331,3 +6331,12 @@ test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" wi
   assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Unseen P&amp;L \+\$12\.00<\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
 newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});
+
+test('a Share my P&L card lines its Paper and Live labels up at the top', () => {
+  // Walk 2026-10-27: Paper's figure carries "on 17 trades" under it, so with the row aligned to the bottom
+  // "Live (real money)" sat 16px below "Paper".
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\n\.feedwrap \.snap-pnl \.snap-metrics \{ align-items: start; \}/);
+  const f = frontend();
+  assert.match(f.postSnapshot({kind: 'pnl', paper_pnl: 12.34, live_pnl: 0, paper_trades: 17, live_trades: 0}), /^<div class="snap snap-pnl">[\s\S]*<dl class="snap-metrics">/);
+});

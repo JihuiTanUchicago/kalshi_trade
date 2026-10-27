@@ -2275,6 +2275,9 @@ body.landing-body .apf { display: none; }
 .feedwrap .snap-kind, .feedwrap .snap-meta { color: var(--ink-2); font-size: 12px; line-height: 18px; }
 .feedwrap .snap-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 4px 16px; margin: 8px 0 0; padding: 0; text-align: left; }
 .feedwrap .snap-evidence-metrics { grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr)); }
+/* Share my P&L: "Paper" carries a trade count under its figure and "Live (real money)" may read "No trades yet",
+   so the two labels line up at the top, not sit at different heights. */
+.feedwrap .snap-pnl .snap-metrics { align-items: start; }
 .feedwrap .snap-metrics > div { min-width: 0; margin: 0; padding: 0; }
 .feedwrap .snap-metrics dt { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 16px; }
 .feedwrap .snap-metrics dd { margin: 2px 0 0; font: 500 20px/24px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; overflow-wrap: anywhere; }

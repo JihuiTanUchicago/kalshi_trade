@@ -5371,3 +5371,16 @@ test('Tau phone: a folded paper section does not count, so the numbered sections
   assert.match(body, /<details class="fold"[^>]*><summary class="fold-h">Methodology<\/summary><section class="paper-sec">/);
 });
 newUserCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, billingPage, cardedBilling, apStatus: apOn});
+
+test('Tau: the composer’s hint fits its one line at 390px, with a curly apostrophe, and the picker takes its own row', async () => {
+  // Walk 2026-10-27 at 390px: "Share an idea, a strategy, or how it's going…" wrapped in the one-line box (cut
+  // after "it's", a straight apostrophe), and the strategy picker beside Photo read "Attach a strategy… (optiona".
+  const f = frontend({fetchImpl: path => path === '/api/community' ? response({posts: []}) : response({strategies: []})});
+  await f.viewCommunity(); await flush();
+  const hint = f.root.querySelector('#post-body').getAttribute('placeholder');
+  assert.equal(hint, 'Share an idea or how it’s going…');
+  assert.ok(!hint.includes("'") && hint.length <= 34);
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  assert.match(css, /@media \(max-width: 680px\) \{[^\n]*\.post-tools > \.post-strat-f \{ flex-basis: 100%; \}/);
+  f.clearTimers();
+});
