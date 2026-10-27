@@ -2851,6 +2851,25 @@ test('Hot Markets reports source snapshot age without changing quotes or perform
   assert.equal(f.intervals.size, 0); assert.equal(f.timeouts.size, 0);
 });
 
+test('Hot Markets keeps a 15-minute window’s "Target Price:" with its amount, on a row of its own', () => {
+  // Walk 2026-10-27 at 1280px: the condition sat in the ~80px name column beside the volume, cut to "Target Price:…".
+  const f = frontend({storage: new Map([['tau_hotrail', '1']])});
+  f.root.innerHTML = '<aside id="hotrail"></aside>';
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin'}];
+  f.S.hot = {at: new Date().toISOString(), markets: [
+    {t: 'KXBTC15M-26OCT271830-30', s: 'KXBTC15M', ti: 'Bitcoin price up or down in next 15 mins?', su: 'Target Price: $113,512.08', bid: .54, ask: .56, v24: 10, h: [.4, .5]},
+    {t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above', bid: .5, ask: .52, v24: 10, h: [.4, .5]}]};
+  f.renderHotRail();
+  const rows = f.root.querySelectorAll('.hot-row');
+  assert.match(rows[0].innerHTML, /<span class="hot-cond-wide"><span class="nobr">Target Price: \$113,512\.08<\/span><\/span>/);
+  assert.match(rows[1].innerHTML, /<span>≥ \$113,000<\/span>/);  // a strike keeps its place beside the volume
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const wide = (css.match(/\n\.hot-title > span\.hot-cond-wide \{([^}]*)\}/) || [])[1] || '';
+  for (const want of [/grid-column: 1 \/ -1;/, /white-space: normal;/, /overflow: visible;/]) assert.match(wide, want);
+  assert.match(css, /\n\.hot-row:has\(\.hot-cond-wide\) \.hot-when \{ grid-row: 4; \}/);
+  f.clearTimers();
+});
+
 test('Hot Markets preserves dated contract identity and escapes full accessible quote names', () => {
   const f = frontend({storage: new Map([['tau_hotrail', '1']])});
   f.root.innerHTML = '<aside id="hotrail"></aside>';

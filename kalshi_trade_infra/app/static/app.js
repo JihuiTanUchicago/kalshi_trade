@@ -2841,6 +2841,10 @@
   // yet" under that heading. With no stored strike it is read from there and says so; which side pays stays with
   // the rules, as for any strike read without its record. Spot is measured against it as the server measures a line.
   const TARGET_IN = /\btarget price:?\s*\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?/i;
+  // A contract name's "Target Price: $113,512.08" stays on one line, label and amount together: the hot rail's
+  // narrow column at 1280px ended a line on "Target Price:" with its amount on the next (or cut it off).
+  // Takes escaped HTML and returns it with the phrase in a .nobr span, its space a no-break one.
+  const glueTarget = (html) => String(html).replace(/\b(target price:?)\s+(\$\s*[\d,]+(?:\.\d+)?)/gi, '<span class="nobr">$1\u00a0$2</span>');
   function titleStrike(d) {
     const t = [d && d.sub, d && d.title].map((x) => TARGET_IN.exec(String(x || ''))).find(Boolean);
     const value = t ? +(t[1].replace(/,/g, '') + (t[2] || '')) : NaN;
@@ -3959,7 +3963,7 @@
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener">
-      <span class="hot-title">${esc(mktLabel(m))}</span>${hotWhen(m)}
+      <span class="hot-title">${glueTarget(esc(mktLabel(m)))}</span>${hotWhen(m)}
       <span class="hot-mid">${hotChart(h)}<span class="hot-price"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
       <span class="hot-foot">${contractShort(m.t) ? `<span class="mk quiet">${esc(contractShort(m.t))}</span>` : ''}<span class="hot-vol">${kfmt(m.v24)} vol${SEP}24h</span>${ICON.ext}</span></a>`;
   }

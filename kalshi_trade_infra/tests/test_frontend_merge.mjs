@@ -3692,6 +3692,19 @@ test('Tau: a hot-markets row keeps its chip and volume on one line, the chip giv
   assert.match(html, /<span class="hot-foot"><span class="mk quiet">BTC range at midnight ET<\/span><span class="hot-vol">1\.2M vol · 24h<\/span><svg/);
 });
 
+test('Tau: a hot-markets row keeps "Target Price:" on one line with its amount', () => {
+  // Walk 2026-10-27 at 1280px: the rail's title wrapped between "Target Price:" and "$113,512.08".
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}];
+  const html = f.hotRowHtml({t: 'KXBTC15M-26OCT271830-30', s: 'KXBTC15M', ti: 'Bitcoin price up or down in next 15 mins?', su: 'Target Price: $113,512.08',
+    bid: .54, ask: .56, v24: 1200, h: [.4, .5]});
+  assert.match(html, /<span class="hot-title">Bitcoin price up or down in next 15 mins\? · <span class="nobr">Target Price: \$113,512\.08<\/span><\/span>/);
+  // Any other title is as before.
+  assert.match(f.hotRowHtml({t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price?', su: '$113,000 or above', bid: .48, ask: .52, v24: 1, h: [.4, .5]}),
+    /<span class="hot-title">Bitcoin price\? · \$113,000 or above<\/span>/);
+  assert.match(readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8'), /\n\.nobr \{ white-space: nowrap; \}/);
+});
+
 test('Tau: a hot-markets row for an hourly Bitcoin contract carries its own hour, never the 5pm chip', () => {
   const f = frontend();
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];

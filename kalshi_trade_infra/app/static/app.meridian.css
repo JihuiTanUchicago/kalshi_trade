@@ -1999,6 +1999,10 @@ body.landing-body .apf { display: none; }
 .hot-vol { grid-column: 2 / 4; grid-row: 2; font-size: 12px; line-height: 1.3; letter-spacing: 0; text-align: right; }
 .hot-when { grid-column: 1 / -1; grid-row: 3; display: flex; flex-wrap: wrap; gap: 0 10px; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
 .hot-when .xspot { color: var(--ink-2); }
+/* A 15-minute window's "Target Price: $113,512.08" is too wide for the name column beside the volume: cut to
+   "Target Price:…", its amount was lost. It takes a row of its own, the whole rail wide, label and amount together. */
+.hot-title > span.hot-cond-wide { grid-column: 1 / -1; grid-row: 3; white-space: normal; overflow: visible; text-overflow: clip; }
+.hot-row:has(.hot-cond-wide) .hot-when { grid-row: 4; }
 .hot-note { margin: 8px 0; font-size: 12px; line-height: 1.35; color: #8A5D18; }
 .hot-list { flex: none; overflow-y: auto; padding: 0 14px; max-height: calc(100% - 112px); }
 .hot-ft { margin-top: 4px; padding: 8px 12px; border-top: 0; font-size: 12px; }
