@@ -253,6 +253,9 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     f.paintDashAp();
     const cell = f.root.querySelector('#dash-ap .apcard-figs').textContent;
     assert.match(cell, /Furthest on paper\s*0 of 30 realistic paper trades\s*instant-fill paper trades left out \(fills real execution would not get\)/);
+    // Read as text, the link and its note stay apart (the <small> sits on its own line on screen; its text ran on).
+    assert.match(cell, /0 of 30 realistic paper trades instant-fill paper trades left out/);
+    assert.doesNotMatch(cell, /trades<\/a><small>|tradesinstant-fill|\$[\d.]+after/);
     f.clearTimers();
     // The track record's own caveat keeps the same words.
     const record = frontend({fetchImpl: () => response({})}), host = record.document.createElement('section');

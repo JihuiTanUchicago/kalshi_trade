@@ -202,7 +202,7 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     await f.viewDashboard(); await settle();
     f.S.ap = status; f.paintDashAp();
     const card = f.root.querySelector('#dash-ap').innerHTML;
-    assert.match(card, new RegExp(`<dt>Strategies running</dt><dd>2<small>${IDLE_COUNT}</small></dd>`));
+    assert.match(card, new RegExp(`<dt>Strategies running</dt><dd>2 <small>${IDLE_COUNT}</small></dd>`));
     // Open, the counts read as before.
     f.S.me.live_trading_available = true; f.paintDashAp();
     assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Strategies running<\/dt><dd>3<\/dd>/);

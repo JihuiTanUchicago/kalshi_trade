@@ -3200,11 +3200,13 @@
     // change (total_pnl) is a fourth number: it takes off open positions' entry fees and drops every
     // trade before a reset, so "Paper P&L" read $5.19 here beside a $5.61 track record.
     const pnl = S.dashPaper ? S.dashPaper.realized_pnl : null;
+    // Each cell's note sits on its own line (a block <small>), with a space before it: read as text (a screen
+    // reader's line, a copy, a page's text) the figure ran into it, "0 of 30 realistic paper tradesinstant-fill …".
     const cells = [
-      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : `${money(pnl)}<small>${PAPER_NET}</small>`],
-      ['Strategies running', `${running ? String(running) : 'None yet'}${liveIdle ? `<small>${liveIdleCount(liveIdle)}</small>` : ''}`],
+      d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : `${money(pnl)} <small>${PAPER_NET}</small>`],
+      ['Strategies running', `${running ? String(running) : 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
-      prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a><small>${PAPER_COUNT_WHY}</small>`]
+      prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${PAPER_COUNT_WHY}</small>`]
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
     ].filter(Boolean);
     const now = d.billing_blocked

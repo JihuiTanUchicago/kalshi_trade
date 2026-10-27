@@ -245,7 +245,8 @@ window.TauPage('billing', (T) => {
   // that add up. Only what was bought and debited, never a rate.
   function billMath(m) {
     if (!m) return '';
-    const rows = [[`Balance ${m.days} days ago`, usd(m.start)],
+    // An account younger than the statement starts from when it joined (the server's `joined`), not "30 days ago".
+    const rows = [[m.joined ? 'Balance when you joined' : `Balance ${m.days} days ago`, usd(m.start)],
       [`Credits bought${m.purchases ? ` (${m.purchases} card charge${m.purchases === 1 ? '' : 's'})` : ''}`, usd(m.bought, true)],
       ...(+m.other ? [['Welcome and other credits', usd(m.other, true)]] : []),
       ['Agent usage', usd(-m.usage)], ['Balance now', usd(m.end)]];
@@ -265,23 +266,56 @@ window.TauPage('billing', (T) => {
     .sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SPEND_SOURCE[k]} ${usd(v)}`).join(' \u00b7\u00a0');
   // Billing's statement (/api/billing ledger): the last days, newest first, under a heading per day that
   // says what the day used and added. Each usage line is one session's model calls that day.
+  // Usage in cents that add up (largest remainder): each day's "used" is the sum of the lines under it, and the
+  // days add up to the statement's "Agent usage" when no day was cut. Rounded each on its own, "Fri $6.99 used"
+  // sat over −$6.96 and −$0.04, and the days summed a cent short of the usage above. Every figure stays within a
+  // cent of its exact amount; a line under a cent keeps its three places (and the day counts it). Exact amounts
+  // are in the receipt. Returns a Map of line -> cents and day -> cents, or null to show each rounded alone.
+  const halfCents = (micros) => Math.floor((micros + 5000) / 1e4);
+  function apportion(micros, cents) {
+    const base = micros.map((v) => Math.floor(v / 1e4));
+    let left = cents - base.reduce((a, b) => a + b, 0);
+    if (left < 0 || left > micros.length) return micros.map(halfCents);
+    micros.map((v, i) => [v % 1e4, i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).forEach(([, i]) => { if (left > 0) { base[i] += 1; left -= 1; } });
+    return base;
+  }
+  function usageCents(d, days) {
+    if (days.some((g) => !g.day)) return null;
+    const used = (r) => Math.round(-r.amount * 1e6);
+    const usage = days.map((g) => g.rows.filter((r) => r.kind === 'usage'));
+    if (usage.some((rs) => rs.some((r) => used(r) < 0))) return null;
+    const exact = usage.map((rs) => rs.reduce((a, r) => a + used(r), 0));
+    const total = !d.ledger_cut && d.math && d.math.usage != null ? Math.round(+d.math.usage * 100) : null;
+    const dayCents = total == null ? exact.map(halfCents) : apportion(exact, total);
+    const out = new Map();
+    days.forEach((g, i) => {
+      out.set(g, dayCents[i]);
+      const whole = usage[i].filter((r) => used(r) >= 5000), part = usage[i].filter((r) => used(r) < 5000);
+      const each = apportion(whole.map(used), dayCents[i] - halfCents(part.reduce((a, r) => a + used(r), 0)));
+      // A line of half a cent or more never shows $0.00: that day keeps each line rounded on its own.
+      const fair = each.every((c) => c > 0);
+      whole.forEach((r, j) => out.set(r, fair ? each[j] : halfCents(used(r))));
+    });
+    return out;
+  }
   function ledgerTable(d) {
     const rows = d.ledger || [], feePct = d.topup_fee_pct;
     if (!rows.length) return billMath(d.math) + '<p class="hint">No credit activity yet.</p>';
     const days = [];
     rows.forEach((r) => { const last = days[days.length - 1]; if (last && last.day === (r.day || '')) last.rows.push(r); else days.push({ day: r.day || '', rows: [r] }); });
+    const cents = usageCents(d, days);
     const line = (r) => `<tr>
       <td class="hint" data-lab="When"><time datetime="${esc(r.created_at)}">${r.day ? lineWhen(r) : settleAt(r.created_at)}</time></td>
       <td class="name" data-lab="Item">${esc((r.kind === 'usage' && r.item) || KIND_LABEL[r.kind] || r.kind)}${ledgerNote(r, feePct) ? `<div class="sub-fig">${ledgerNote(r, feePct)}</div>` : ''}</td>
-      <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${ledgerAmount(r.amount)}</span></td></tr>`;
+      <td class="num" data-lab="Amount"><span class="${r.amount >= 0 ? 'gain' : ''}">${ledgerAmount(cents && cents.has(r) ? -cents.get(r) / 100 : r.amount)}</span></td></tr>`;
     const head = (g) => {
       // Summed in millionths (the ledger's six places): a float sum can land a hair under a half cent.
       const micros = (rows) => rows.reduce((s, r) => s + Math.round(r.amount * 1e6), 0) / 1e6;
-      const used = -micros(g.rows.filter((r) => r.kind === 'usage'));
+      const used = cents ? cents.get(g) / 100 : -micros(g.rows.filter((r) => r.kind === 'usage'));
       const added = micros(g.rows.filter((r) => r.kind !== 'usage'));
       return `<tr class="ledger-day"><td colspan="3" data-lab="Day"><b>${ledgerDay(g.day)}</b><span class="day-sum">${[used >= 0.005 ? `${usd(used)} used` : '', added ? `${usd(added, true)} credits` : ''].filter(Boolean).join(' · ')}</span></td></tr>`;
     };
-    const key = d.math ? `Last ${d.math.days} days, newest first. Each research line is one session's model calls that day; open it to see the session. The receipt has every call and every card charge.`
+    const key = d.math ? `Last ${d.math.days} days, newest first. Each research line is one session's model calls that day; open it to see the session. Lines are rounded to the cent so they add up to their day; the receipt has every call and every card charge, exactly.`
       : 'Newest first. The receipt has every line, with exact amounts.';
     return `${billMath(d.math)}<p class="hint ledger-key">${key}</p><div class="sheet"><table class="table stack t-dep t-ledger"><thead><tr><th>When</th><th>Item</th><th class="num">Amount</th></tr></thead><tbody>${
       days.map((g) => (g.day ? head(g) : '') + g.rows.map(line).join('')).join('')}</tbody></table></div>${d.ledger_cut ? '<p class="hint">Older days are in the receipt.</p>' : ''}`;

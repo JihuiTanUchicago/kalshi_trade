@@ -240,7 +240,8 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     math = dict(state["math"])
     assert abs(math.pop("start")) <= 0.01
     assert math == {"days": 30, "bought": 35.0, "purchases": 2, "other": 20.0,
-                    "usage": float(_cents(spent_total)), "end": float(_cents(balance))}
+                    "usage": float(_cents(spent_total)), "end": float(_cents(balance)),
+                    "joined": True}  # a minutes-old account: the sum starts when it joined
     # A minutes-old account has no pace yet; a week-old one's runway is the balance above the research
     # floor over a week's spend (research pauses there, not at $0), and auto-reload, on with a card,
     # next charges it when the balance falls to its $8 trigger.
@@ -281,20 +282,21 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     table = rows[rows.index(billing_routes.RECEIPT_HEADER) + 1:]
     assert len(table) == len(ledger)
     # Each card purchase names what the card paid and the payment; each debit names the run it billed.
-    assert sorted((r[1], r[5], r[6]) for r in table if r[1] in ("topup", "autoreload")) == sorted(
-        (c["metadata"]["purpose"], "%.2f" % (c["cents"] / 100), "pi_" + c["idem"]) for c in charges)
+    word = billing_routes.RECEIPT_TYPE  # the Type column says each kind in Billing's words
+    assert sorted((r[1], r[5], r[6]) for r in table if r[1] in (word["topup"], word["autoreload"])) == sorted(
+        (word[c["metadata"]["purpose"]], "%.2f" % (c["cents"] / 100), "pi_" + c["idem"]) for c in charges)
     # A research debit names its session as the Research list numbers it ("Session 2"), never the global run
     # id; the chat turn's debit says what it was in its memo, with no session.
     said = {"Session %d" % runs[r["run_id"]]["seq"] if r["run_id"] in (first, second) else "" for r in usage}
-    assert sorted(r[4] for r in table if r[1] == "usage") == sorted(
+    assert sorted(r[4] for r in table if r[1] == word["usage"]) == sorted(
         "Session %d" % runs[r["run_id"]]["seq"] if r["run_id"] in (first, second) else "" for r in usage)
     assert {"Session %d" % runs[first]["seq"], "Session %d" % runs[second]["seq"], ""} == said
     assert runs[second]["seq"] == runs[first]["seq"] + 1
-    assert sorted(r[1] for r in table) == sorted(r["kind"] for r in ledger)
+    assert sorted(r[1] for r in table) == sorted(word[r["kind"]] for r in ledger)
     # Each row is its ledger amount to 4 places, rounded half up from the exact decimal (-4.666650 -> -4.6667).
     assert sorted(r[2] for r in table) == sorted(_four(r["amount_usd"]) for r in ledger)
     assert _cents(sum(Decimal(r[2]) for r in table)) == _cents(balance)
-    assert _cents(-sum(Decimal(r[2]) for r in table if r[1] == "usage")) == _cents(spent_total)
+    assert _cents(-sum(Decimal(r[2]) for r in table if r[1] == word["usage"])) == _cents(spent_total)
 
     # -- /api/me ---------------------------------------------------------------------------------
     me = server.me(ctx())
@@ -338,8 +340,8 @@ def test_an_admin_grant_never_shows_who_made_it(conn, monkeypatch):
     _kind, _name, _ctype, data = server.billing_receipt(ctx)
     rows = list(csv.reader(io.StringIO(data)))
     table = rows[rows.index(billing_routes.RECEIPT_HEADER) + 1:]
-    assert sorted(r[3] for r in table if r[1] == "admin_grant") == sorted(
+    assert sorted(r[3] for r in table if r[1] == billing_routes.RECEIPT_TYPE["admin_grant"]) == sorted(
         [billing_routes.ADMIN_GRANT_MEMO, billing_routes.ADMIN_DEBIT_MEMO])
-    assert sorted(r[2] for r in table if r[1] == "admin_grant") == ["-1.5000", "5.0000"]
+    assert sorted(r[2] for r in table if r[1] == billing_routes.RECEIPT_TYPE["admin_grant"]) == ["-1.5000", "5.0000"]
     assert settings.ADMIN_EMAIL not in data
     assert customer_text.leaks(data.replace(email, "")) == []  # the account row is the customer's own address

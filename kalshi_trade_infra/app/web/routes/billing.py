@@ -162,7 +162,7 @@ def billing_state(ctx: Ctx):
             cards = billing.list_cards(cust["stripe_customer_id"])
         except billing.StripeError:
             cards = []
-    return dict(state, cards=cards, **_statement(ctx.cur, ctx.uid, since, _tz_minutes(ctx), totals, balance))
+    return dict(state, cards=cards, **_statement(ctx.cur, ctx.uid, since, _tz_minutes(ctx), totals, balance, ctx.user.get("created_at")))
 
 
 def billing_figures(ctx: Ctx):
@@ -173,7 +173,7 @@ def billing_figures(ctx: Ctx):
     since = repo.now_utc() - timedelta(days=STATEMENT_DAYS)
     state, _, totals, balance = _figures(ctx, since)
     if ctx.query.get("statement") == "1":
-        state.update(_statement(ctx.cur, ctx.uid, since, _tz_minutes(ctx), totals, balance))
+        state.update(_statement(ctx.cur, ctx.uid, since, _tz_minutes(ctx), totals, balance, ctx.user.get("created_at")))
     return state
 
 
@@ -258,14 +258,16 @@ def _tz_minutes(ctx: Ctx) -> int:
 _cents = credit_cents  # every credits figure rounds one way (app.web.views.credit_cents)
 
 
-def _statement(cur, uid: int, since, tz: int, totals: Dict, balance: float) -> Dict:
+def _statement(cur, uid: int, since, tz: int, totals: Dict, balance: float, created_at=None) -> Dict:
     """Billing's history and the sum that explains the balance. `ledger`: the last STATEMENT_DAYS
     as lines, newest first. A usage line is one session's model calls on one of the viewer's days
     with one model (`calls`, `first_at`, and `session` when it billed a research session the user
     can open); a card purchase says what the card was charged and its Stripe reference.
     `ledger_cut`: the line cap left older days out. `math`: the balance STATEMENT_DAYS ago, plus
     credits bought by card, plus other credits, minus agent usage, is the balance now, in cents that
-    add up (the starting balance takes the rounding). Only what was charged or debited; never a rate."""
+    add up (the starting balance takes the rounding). Only what was charged or debited; never a rate.
+    `joined`: the account (made at `created_at`) is younger than the statement, so the sum starts when it
+    joined: a new subscriber read "Balance 30 days ago $0.00" for an account a day old."""
     rows = repo.credit_statement(cur, uid, since, tz, STATEMENT_LINES)
     cut = len(rows) >= STATEMENT_LINES
     if cut:  # the oldest day listed may be missing lines: drop it, so every day shown is whole
@@ -294,8 +296,11 @@ def _statement(cur, uid: int, since, tz: int, totals: Dict, balance: float) -> D
     other = _cents(since_usd(lambda k: k != "usage" and k not in _CARD_KINDS))
     end = _cents(balance)
     purchases = sum(int(v["n_since"]) for k, v in totals.items() if k in _CARD_KINDS)
+    start = end - bought - other + usage
+    # Nothing can come before an account's first day; the start may still carry a cent of the parts' rounding.
+    joined = isinstance(created_at, datetime) and created_at >= since and abs(start) <= billing.CENT
     return {"ledger": lines, "ledger_cut": cut, "math": {
-        "days": STATEMENT_DAYS, "start": float(end - bought - other + usage), "bought": float(bought),
+        "days": STATEMENT_DAYS, "start": float(start), "bought": float(bought), "joined": joined,
         "purchases": purchases, "other": float(other), "usage": float(usage), "end": float(end)}}
 
 
@@ -370,6 +375,15 @@ def _usd4(v) -> str:
 # the Research list names it; a chat or check-in debit says what it was in its memo). Card charged: what the card
 # paid for credits bought (the credits plus the purchase fee). Stripe reference: that payment's id.
 RECEIPT_HEADER = ["Date (UTC)", "Type", "Amount (USD)", "Memo", "Session", "Card charged (USD)", "Stripe reference"]
+# The Type column in the words Billing's statement uses (the bundles' KIND_LABEL), never the ledger's own kind
+# key: the receipt said "usage", "topup", "autoreload", "bonus" and "admin_grant".
+RECEIPT_TYPE = {"bonus": "Welcome credits", "topup": "Added credits", "autoreload": "Auto-reload",
+                "usage": "Agent usage", "admin_grant": "Credits from Tau support"}
+
+
+def receipt_type(kind: Optional[str]) -> str:
+    """A ledger kind as the receipt's Type column says it; a kind this list doesn't know, in plain words."""
+    return RECEIPT_TYPE.get(kind or "") or (kind or "").replace("_", " ").strip().capitalize()
 
 
 def billing_receipt(ctx: Ctx):
@@ -395,7 +409,7 @@ def billing_receipt(ctx: Ctx):
     for r in ledger:
         card = r["kind"] in _CARD_KINDS
         n = seq.get(int(r["run_id"])) if r["kind"] == "usage" and r.get("run_id") else None
-        row([r["created_at"], r["kind"], _usd4(r["amount_usd"]), _ledger_memo(r),
+        row([r["created_at"], receipt_type(r["kind"]), _usd4(r["amount_usd"]), _ledger_memo(r),
              "Session %d" % n if n else "",
              "%.2f" % (billing.topup_charge_cents(Decimal(str(r["amount_usd"]))) / 100) if card else "",
              (r.get("stripe_ref") or "") if card else ""])

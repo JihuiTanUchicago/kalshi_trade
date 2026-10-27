@@ -134,7 +134,7 @@ def test_the_balance_sum_closes_to_the_cent(monkeypatch):
     # The balance as the ledger holds it (the page rounds it half up: $25.00, the math's end); the
     # spend to the cent from its exact decimal. Through four places it read 100.005, then $100.01.
     assert data["balance"] == 24.995001 and data["spent"] == 100.0
-    assert m == {"days": 30, "start": 16.12, "bought": 65.0, "purchases": 2, "other": 5.0, "usage": 61.12, "end": 25.0}
+    assert m == {"days": 30, "start": 16.12, "bought": 65.0, "purchases": 2, "other": 5.0, "usage": 61.12, "end": 25.0, "joined": False}
     cents = lambda v: round(v * 100)
     assert cents(m["start"]) + cents(m["bought"]) + cents(m["other"]) - cents(m["usage"]) == cents(m["end"])
 
@@ -240,6 +240,53 @@ def test_the_receipt_says_each_card_charge_its_reference_and_each_debits_session
     assert [r[4:] for r in rows[head + 1:]] == [["Session 3", "", ""], ["", "%.2f" % (server.billing.topup_charge_cents(Decimal("25")) / 100), "pi_3Reload"],
                                                 ["", "", ""]]
     assert len(numbers) == 1  # one read of the numbers, only because a research debit is in the file
+
+
+def test_the_receipts_type_column_says_each_line_in_billings_words_never_the_ledger_key(monkeypatch):
+    # Walk 2026-10-27: the receipt's Type column read "usage", "topup", "autoreload", "bonus", "admin_grant",
+    # the ledger's own keys, beside a statement that says "Agent usage", "Added credits", "Auto-reload".
+    import json
+    import re
+    from decimal import Decimal
+    from pathlib import Path
+    monkeypatch.setattr(server.repo, "get_user", lambda cur, uid: {"email": "t@example.invalid"})
+    monkeypatch.setattr(server.repo, "credit_balance", lambda cur, uid: 9.32)
+    monkeypatch.setattr(server.repo, "credit_spent_total", lambda cur, uid: 0.68)
+    line = lambda kind, amount, memo: {"kind": kind, "amount_usd": Decimal(amount), "memo": memo, "created_at": datetime(2026, 10, 25),
+                                       "run_id": None, "stripe_ref": None, "run_kind": None, "run_brief": None}
+    monkeypatch.setattr(server.repo, "credit_rows", lambda cur, uid, limit: [
+        line("usage", "-0.25", "Agent usage · us.anthropic.claude-opus-4-6-v1"), line("autoreload", "25", "Auto-reload $25"),
+        line("topup", "10", "Added $10 credits"), line("admin_grant", "5", "Admin grant by someone"), line("bonus", "20", "Welcome credits"),
+        line("promo_credit", "3", "Promo")])
+    _kind, _name, _ctype, body = server.billing_receipt(_ctx())
+    rows = list(csv.reader(io.StringIO(body)))
+    table = rows[rows.index(billing_routes.RECEIPT_HEADER) + 1:]
+    assert [r[1] for r in table] == ["Agent usage", "Auto-reload", "Added credits", "Credits from Tau support", "Welcome credits",
+                                     "Promo credit"]
+    assert not {"usage", "autoreload", "topup", "admin_grant", "bonus"} & {r[1] for r in table}
+    # The same words as Billing's statement in both bundles (their KIND_LABEL).
+    static = Path(__file__).resolve().parents[1] / "app" / "static"
+    for bundle in ("app.js", "app.meridian.js"):
+        found = re.search(r"const KIND_LABEL = (\{[^}]*\});", (static / bundle).read_text())
+        assert found, bundle
+        labels = json.loads(re.sub(r"(\w+):", r'"\1":', found.group(1)).replace("'", '"'))
+        assert labels == billing_routes.RECEIPT_TYPE, bundle
+
+
+def test_the_statement_of_an_account_younger_than_it_starts_when_the_account_joined(monkeypatch):
+    # Walk 2026-10-27: a subscriber of a day read "Balance 30 days ago $0.00" for an account that didn't exist.
+    monkeypatch.setattr(server.repo, "credit_statement", lambda cur, uid, since, tz, limit: [])
+    since = datetime(2026, 9, 27)
+    welcome = {"bonus": {"all": 20.0, "n": 1, "since": 20.0, "n_since": 1}}
+    new = billing_routes._statement(object(), 7, since, 0, welcome, 20.0, datetime(2026, 10, 26))
+    assert new["math"]["joined"] is True and new["math"]["start"] == 0.0
+    old = billing_routes._statement(object(), 7, since, 0, welcome, 20.0, datetime(2026, 8, 1))
+    assert old["math"]["joined"] is False
+    # A balance before the window means it existed then: never "when you joined" over a non-zero start.
+    carried = billing_routes._statement(object(), 7, since, 0, {"bonus": {"all": 20.0, "n": 1, "since": 0.0, "n_since": 0}},
+                                        20.0, datetime(2026, 10, 26))
+    assert carried["math"]["joined"] is False and carried["math"]["start"] == 20.0
+    assert billing_routes._statement(object(), 7, since, 0, welcome, 20.0)["math"]["joined"] is False  # age unknown
 
 
 class _Cur:
