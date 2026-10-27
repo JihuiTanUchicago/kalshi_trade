@@ -65,3 +65,31 @@ def test_a_card_the_list_did_not_judge_claims_nothing():
     cards = [{"id": 7, "status": "passed"}, {"id": 8, "status": "passed"}]
     strategy_routes._attach_no_record(cards, [{"id": 8, "status": "passed"}], set())
     assert "no_gatekeeper_record" not in cards[0] and cards[1]["no_gatekeeper_record"] is True
+
+
+def test_the_session_page_flags_a_pass_with_no_record_from_its_own_reads(monkeypatch):
+    """A research session page renders the same strategy rows (strategySlip) and judges its strategies with
+    _later_verdicts too, so its rows carry the flag from those same reads: no read of its own."""
+    from types import SimpleNamespace
+    from app.web.routes import research
+
+    calls = []
+    _fake_reads(monkeypatch, calls)
+    run = {"id": 9, "kind": "research", "status": "succeeded", "created_at": None, "heartbeat_at": None, "finished_at": None}
+    # The session's strategies, plus one the seeded example made (never judged, so never flagged).
+    rows = [dict(s, run_id=9, direction="momentum") for s in _judged()] + [
+        {"id": 6, "run_id": 9, "status": "passed", "experiment_id": None, "spec": {}, "direction": server.repo.DEMO_DIRECTION}]
+    monkeypatch.setattr(server.repo, "get_run", lambda cur, uid, rid: dict(run))
+    monkeypatch.setattr(server.repo, "runs_spent", lambda *a: {})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [dict(r) for r in rows])
+    monkeypatch.setattr(server.repo, "get_policy", lambda *a: None)
+    monkeypatch.setattr(server.repo, "latest_dream_event", lambda *a: None)
+    monkeypatch.setattr(server.repo, "run_events", lambda *a: [])
+    monkeypatch.setattr(research, "warm_dev_curves", lambda *a: None)
+    monkeypatch.setattr(research, "_strategy_card", lambda s: {"id": s["id"], "status": s["status"]})
+    monkeypatch.setattr(research, "_autopilot_puts_on_paper", lambda *a: set())
+    ctx = server.Ctx(SimpleNamespace(cursor=lambda: object()), {"id": 7, "autopilot": 0}, ("9",), {}, {}, SimpleNamespace())
+    out = server.get_run(ctx)["strategies"]
+    flagged = {c["id"]: c.get("no_gatekeeper_record", False) for c in out}
+    assert flagged == {1: False, 2: False, 3: True, 4: True, 5: False, 6: False}
+    assert calls == [("newest", [2, 3]), ("later", [11, 22, 44, 55])]  # the same two reads as before

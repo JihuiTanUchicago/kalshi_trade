@@ -320,4 +320,17 @@ export function runPageCases({name, frontend}) {
     assert.doesNotMatch(f.strategySlip({id: 3, title: 'T', thesis: '', market: 'btc15m', status: 'queued', in_sample: {}}, {}), /sub-fig">on /);
     f.clearTimers();
   });
+  test(`${name}: a session's pass with no gatekeeper record says its figure is later-period, as on the Strategies list`, async () => {
+    // The session page renders the same rows (strategySlip on Meridian) from the same server flag, read with its
+    // own later checks (no_gatekeeper_record): a pass from the old loose gate never reads "on unseen data" there.
+    const m = (pnl) => ({pnl, trades: 40, win_rate: 0.54, days: 30});
+    const row = (extra) => ({id: 51, title: 'Loose pass', thesis: '', market: 'btc15m', direction: 'momentum', status: 'passed',
+      out_of_sample: m(6.2), in_sample: m(2), ...extra});
+    let f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [row({no_gatekeeper_record: true})]);
+    const html = list(f);
+    assert.match(html, /Loose pass/); assert.doesNotMatch(html, /unseen data/);
+    if (/Backtest P&amp;L/.test(html)) assert.match(html, /later-period P&amp;L over 30 days after the split date, which picked it: not held out/);
+    f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [row({})]);
+    if (/Backtest P&amp;L/.test(list(f))) assert.match(list(f), /on unseen data over 30 days/);
+  });
 }

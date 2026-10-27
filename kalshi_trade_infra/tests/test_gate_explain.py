@@ -434,7 +434,7 @@ def test_the_run_page_done_line_counts_apart_the_passes_a_later_check_left_uncle
     monkeypatch.setattr(research, "_strategy_card", lambda s: {"id": s["id"]})
     monkeypatch.setattr(research, "_autopilot_puts_on_paper", lambda *a: set())
     later = {42: {"verdict": "held_back"}, 43: {"verdict": "held_back"}}
-    monkeypatch.setattr(research, "_later_missed", lambda cur, uid, strategies: dict(later))
+    monkeypatch.setattr(research, "_later_missed", lambda cur, uid, strategies, **k: dict(later))
     out = server.get_run(_ctx(("9",)))["events"]
     assert out[0]["data"]["note"] == "Passed its first test on data it never saw."
     assert out[1]["data"]["note"] == ("1 of 18 ideas cleared every check (5 dropped before testing); 1 more passed its first "
@@ -473,7 +473,7 @@ def test_the_run_page_progress_lines_count_apart_the_passes_a_later_check_left_u
     monkeypatch.setattr(research, "_strategy_card", lambda s: {"id": s["id"]})
     monkeypatch.setattr(research, "_autopilot_puts_on_paper", lambda *a: set())
     later = {42: {"verdict": "missed_final"}, 43: {"verdict": "held_back"}, 44: {"verdict": "held_back"}}
-    monkeypatch.setattr(research, "_later_missed", lambda cur, uid, strategies: dict(later))
+    monkeypatch.setattr(research, "_later_missed", lambda cur, uid, strategies, **k: dict(later))
     out = server.get_run(_ctx(("9",)))["events"]
     assert [e["data"]["note"] for e in out] == [
         "3 tested so far, 1 passed. Looking for more; you can stop it anytime.",

@@ -263,6 +263,20 @@ def test_the_list_flags_a_pass_with_no_gatekeeper_record_as_its_page_does(conn, 
     counting.sqls = []
     server.list_strategies(server.Ctx(conn, user, (), {"status": "", "page": "0"}, {}, None))
     assert len(counting.sqls) == sent
+    # The session page renders the same rows and gives the same answer, from its own later-check reads.
+    monkeypatch.undo()
+    monkeypatch.setattr(conn, "cursor", lambda *a, **k: counting)
+    counting.sqls = []
+    session = server.get_run(server.Ctx(conn, user, (str(run),), {}, {}, None))
+    in_run = {c["id"]: c.get("no_gatekeeper_record", False) for c in session["strategies"]}
+    assert {k: in_run[v] for k, v in sid.items()} == {"linked": False, "legacy": False, "loose": True, "void": False}
+    counting.sqls = []  # warm now (its first call fills the page's short caches), count a second call each way
+    server.get_run(server.Ctx(conn, user, (str(run),), {}, {}, None))
+    sent = len(counting.sqls)
+    monkeypatch.setattr("app.web.routes.research._attach_no_record", lambda *a: None)
+    counting.sqls = []
+    server.get_run(server.Ctx(conn, user, (str(run),), {}, {}, None))
+    assert len(counting.sqls) == sent
 
 
 def test_the_since_strip_judges_every_pass_since_the_visit_in_one_read(conn):
