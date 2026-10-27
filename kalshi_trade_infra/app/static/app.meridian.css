@@ -512,6 +512,8 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 
 .skeleton { background: linear-gradient(90deg, var(--stock-sunk), var(--stock-raised), var(--stock-sunk)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: var(--radius); }
 @keyframes shimmer { to { background-position: -200% 0; } }
+.dev-pending { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dev-pending .skeleton { flex: none; width: 48px; height: 8px; }
 
 /* ===================== PANELS / LAYOUTS ===================== */
 
