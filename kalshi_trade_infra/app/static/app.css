@@ -107,7 +107,7 @@ span.gain, span.loss, b.gain, b.loss, .amt { white-space: nowrap; }
 .sys-node[data-st="live"] .pulse { fill: #1A7F4B; animation: syspulse 1.6s var(--ease) infinite; }
 .sys-node[data-st="warn"] .pulse { fill: #9A6B00; }
 .sys-node[data-st="down"] .pulse { fill: var(--signal); }
-.sys-node.ext .pulse { fill: #1A7F4B; }
+/* An outside service's dot follows the collector that reads it (SYS_FED), grey when nothing on the page shows it sending. */
 @keyframes syspulse { 50% { opacity: .3; } }
 .sys-side .panel > h2, .sys-side .panel h3 { margin-bottom: 6px; }
 .sys-metric { font-family: var(--f-nar); font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--ink); letter-spacing: .02em; }
