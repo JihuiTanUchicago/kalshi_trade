@@ -69,6 +69,27 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     g.clearTimers();
   });
 
+  // A 15-minute window's market page names its line "Target price" whether it is read from the title or stored, but
+  // its Explore row (and the hot rail) said "Spot vs strike" once a strike was stored (no `vs.from: 'title'`).
+  test(`${name}: a 15-minute row with a stored strike still says target price, as its market page does`, async () => {
+    const m15 = row('KXBTC15M-26OCT271145-45', {ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,512.08', vs: {side: 'below', diff: -92.08, pct: -0.081}});
+    const {f, rows} = await list({markets: [m15, ROWS[0]], spot: SPOT});
+    const spot = rows.map((r) => r.querySelector('.xspot'));
+    assert.equal(spot[0].textContent.replace(/ /g, ' '), 'Spot vs target price −$92 · 0.08%');
+    assert.equal(spot[0].getAttribute('title'), null, 'a stored line is not read from the title');
+    assert.equal(spot[1].textContent.replace(/ /g, ' '), 'Spot vs strike +$420 · 0.4%', 'a daily contract keeps "strike"');
+    f.clearTimers();
+    const at = await list({markets: [{...m15, vs: {side: 'at', diff: 0, pct: 0, from: 'record'}}], spot: SPOT});
+    assert.equal(at.rows[0].querySelector('.xspot').textContent, 'Spot vs target price at the target price');
+    at.f.clearTimers();
+    const {f: g, el} = await rail({markets: [{...m15, h: [.4, .5]}], spot: SPOT});
+    assert.match(el.querySelector('.hot-when').textContent, /Spot vs target price −\$92 ·\s0\.08%$/);
+    const label = el.querySelector('.hot-row').getAttribute('aria-label');
+    if (label) assert.match(label, /Spot vs target price −\$92/);
+    assert.doesNotMatch(el.textContent + (label || ''), /strike/);
+    g.clearTimers();
+  });
+
   test(`${name}: an old, missing or failed spot leaves the figures out and says why in one line above the list`, async () => {
     const strip = (ms) => ms.map(({vs, ...m}) => m);  // the server sends no `vs` then
     for (const [spot, words] of [[{...SPOT, age_s: 840, stale: true}, 'Bitcoin’s spot feed is 14 min old, so distances to the strike are left out until it catches up.'],
