@@ -379,3 +379,32 @@ def test_with_every_allowed_market_on_cooldown_the_review_is_told_to_research_wi
     assert "does NOT mean stop" in line and "WITHOUT a market" in line
     monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily", "btc15m_tick"])
     assert "do NOT propose these markets" in agent._cooldown_line(None, 1)  # btc15m_tick is still open
+
+
+def test_an_angle_that_names_its_market_is_only_tested_there(monkeypatch):
+    # Prod 2026-10-27 runs 3826/3847/3851 (~$10): daily-ladder angles went to the one-strike 15-minute
+    # markets while btc_daily was on cooldown, and every idea died as wrong_fit.
+    ready = ["btc15m", "btc15m_tick", "btc_daily"]
+    assert agent._named_markets("Cross-strike arbitrage on BTC dailies: test the ladder", ready) == ["btc_daily"]
+    assert agent._named_markets("BTC daily contracts 1-3 hours before the 5pm ET close", ready) == ["btc_daily"]
+    assert agent._named_markets("Late-session drift on BTC 15m or tick", ready) == ["btc15m", "btc15m_tick"]
+    assert agent._named_markets("Order-flow imbalance with ret_15m and vol_15m", ready) == []
+    assert agent._named_markets("SOL dailies", ["btc_daily", "sol_daily"]) == ["sol_daily"]
+    cool = {"btc_daily": "btc_daily was just researched (run #3, succeeded) and is on a short cooldown"}
+    assert agent._keys_for_angle("the BTC daily ladder", ready, ["btc15m", "btc15m_tick"], cool) == ["btc_daily"]
+    busy = {"btc_daily": "a research line is already running on btc_daily (run #4)"}
+    assert agent._keys_for_angle("the BTC daily ladder", ready, ["btc15m"], busy) == ["btc15m"]
+    assert agent._keys_for_angle("Order-flow imbalance", ready, ["btc15m"], cool) == ["btc15m"]
+    # On autopilot the review is told no instead of the angle being rerouted to a market that can't test it.
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [
+        {"id": 3, "market": "btc_daily", "status": "succeeded", "finished_at": agent.repo.now_utc()}])
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ready)
+    for market in (None, "btc_daily"):
+        text, pid = agent.act(None, USER, {"type": "research", "market": market,
+                              "idea": "Cross-strike arbitrage on BTC dailies: ladder monotonicity"}, True)
+        assert pid is None and "didn't start" in text and "Bitcoin above $X at 5pm ET" in text, text
+    assert rec["runs"] == []
+    agent.act(None, USER, {"type": "research", "idea": "Order-flow imbalance near expiry"}, True)
+    agent.act(None, USER, {"type": "research", "market": "btc_daily", "idea": "Another angle on overreaction."}, True)
+    assert [r[0] for r in rec["runs"]] == [None, None]

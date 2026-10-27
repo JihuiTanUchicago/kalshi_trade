@@ -786,6 +786,48 @@ def autopilot_off_scope_coin(idea: str) -> Optional[str]:
     return m.group(0) if m else None
 
 
+_DAILY_NAMED = (r"\bdailies\b|\bdaily\s+(?:ladder|contract|strike|market|close|settle|event|binar|series)"
+                r"|\b5\s?pm\b|\b(?:%s)['’]?s?\s+dail(?:y|ies)\b")
+_15M_NAMED = r"\b15.?m(?:in(?:ute)?s?)?\b(?!\s+(?:vol|return|momentum|window|lookback|bar|candle))"
+_TICK_NAMED = r"\bper.?second\b|\btick\s+(?:data|features|archive|replay)\b"
+
+
+def _named_markets(idea: str, keys: List[str]) -> List[str]:
+    """The markets in `keys` an angle names by their contract shape ("BTC dailies", "the daily
+    ladder", "BTC 15m", "per-second"), or [] when it names none. Prod 2026-10-27 runs 3826/3847/3851
+    (~$10): angles about the daily ladder went to the 15-minute markets (the daily was on cooldown),
+    which have one strike per event, so every ladder idea died as wrong_fit."""
+    aliases = _coin_aliases()
+    coins = {t for t, names in aliases.items() if re.search(r"\b(?:%s)\b" % "|".join(map(re.escape, names)), idea)}
+    out = []
+    for k in keys:
+        m = MARKETS.get(k)
+        tag = _underlying_tag(k)
+        if m is None or not tag or m.kind != "binary" or (coins and tag not in coins):
+            continue
+        names = "|".join(re.escape(n) for n in aliases.get(tag) or [tag.upper()])
+        if m.close_hour_et is not None:
+            pat = _DAILY_NAMED % names
+        elif m.source == "ticks":
+            pat = _15M_NAMED + "|" + _TICK_NAMED
+        elif "15M" in m.series:
+            pat = _15M_NAMED
+        else:
+            continue
+        if re.search(pat, idea, re.I):
+            out.append(k)
+    return out
+
+
+def _keys_for_angle(idea: str, ready: List[str], keys: List[str], blocked: Dict[str, str]) -> List[str]:
+    """The pick's choices for an angle: when it names its market ("BTC dailies") only those, even past
+    a cooldown (anywhere else every idea dies as wrong_fit), never one with a run already going."""
+    named = _named_markets(idea, ready)
+    return ([k for k in named if k in keys]
+            or [k for k in named if not blocked.get(k, "").startswith("a research line is already running")]
+            or keys)
+
+
 # -- the autopilot's own scorecard -------------------------------------------------------------
 # The research scoreboard (app.research.rsi) grades the research pipeline; this grades the autopilot as the
 # manager that spends on it: did it follow the user's focus, and did its spend go where ideas reach
@@ -2709,6 +2751,7 @@ def run_research(
                 if not ready:
                     raise RuntimeError("No market inside your autopilot focus is open for research right now.")
                 keys = [k for k in ready if k not in blocked] or _least_recent_markets(cur, user_id, ready)
+                keys = _keys_for_angle(run.get("prompt") or "", ready, keys, blocked)
                 market = _pick_market(run, model, usage, log, keys, _research_history_line(cur, user_id))
             run = {**run, "market": market}
             repo.set_run_market(cur, run_id, market)
@@ -4313,6 +4356,18 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return ("Started a new research session digging deeper into “%s”: I'll refine and "
                     "stress-test its mechanism, and every variant still has to pass the same gates. "
                     "Follow it on the Research page." % strat["title"], None)
+        if autopilot and not sid:
+            blocked = _research_blocked_markets(cur, user_id)
+            if market is None or market in blocked:
+                named = _named_markets(idea, focus_keys(cur, user_id, [k for k in _researchable_keys(cur)
+                                                                       if autopilot_scope_ok(k)]))
+                if named and all(k in blocked for k in named):
+                    # Rerouting it (below) sends it to a market that cannot test it: prod 2026-10-27 run
+                    # 3847, a daily-ladder angle on the one-strike 15-minute market, 7 of 8 ideas wrong_fit.
+                    return ("I didn't start that: this angle is about %s, which was researched in the last few "
+                            "hours, and no other market can test it. I'll come back to it after the cooldown "
+                            "or pick an angle for another market." % " and ".join(
+                                MARKETS[k].label for k in named)), None
         # Dedup/cooldown: don't re-launch a line on a market that's already running or just finished
         # — the review should hunt a DIFFERENT market, not re-spam the same dead/running idea. Only
         # when a market is named; market=None lets the proposer pick, so there's nothing to dedup yet.
