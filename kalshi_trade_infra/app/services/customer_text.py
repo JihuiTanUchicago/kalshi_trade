@@ -182,10 +182,38 @@ _ONCE_MARKER = re.compile(r"^\[[a-z-]+ #\d+\]\s*")
 
 
 def unmarked(text: Optional[str]) -> Optional[str]:
-    """``text`` without its leading once-only marker ("[live-ready #12] "), else as given."""
+    """``text`` without its leading once-only marker ("[live-ready #12] "), and a paper tournament line
+    (tournament_line) in the app's words, else as given."""
     if not text:
         return text
-    return _ONCE_MARKER.sub("", str(text), count=1)
+    return tournament_line(_ONCE_MARKER.sub("", str(text), count=1))
+
+
+# The hourly paper tournament (research/tournament.rebalance) leads its chat lines with "[tournament]" and says
+# them in its own terms: a "paper entrant", "Retired", a "posterior mean", "the live book", the "next near miss",
+# the "forward sample". The panel showed them so. The stored line keeps them (it is the record); a customer
+# reads what happened in the words the app uses elsewhere: a deployment taken off paper is "removed" (Deploy's
+# Remove button), and a strategy that came close to passing research takes its place.
+_TOURNAMENT = re.compile(r"^\[tournament\]\s*")
+_TOURNAMENT_WORDS = (
+    (re.compile(r"^Retired paper entrant (“.+?”): "), r"Removed \1 from paper: "),
+    (re.compile(r"^Resumed paper entrant (“.+?”) "), r"Resumed \1 on paper "),
+    (re.compile(r" \(posterior mean [+-]?\d+(?:\.\d+)?% of stake\)"), ""),
+    (re.compile(r"\bno trade in (\d+) days on paper: its entry rule never fires on the live book\b"),
+     r"no trade in \1 days, as its entry rule never fired on the market's real prices"),
+    (re.compile(r"\bIts slot goes to the next near miss\."), "Its place goes to the next strategy that came close to passing research."),
+    (re.compile(r"\bpausing would cut the forward sample short\."), "pausing would cut its paper test short."),
+)
+
+
+def tournament_line(text: Optional[str]) -> Optional[str]:
+    """A "[tournament] ..." chat line without its marker and in plain words; any other text as given."""
+    if not text or not _TOURNAMENT.match(str(text)):
+        return text
+    s = _TOURNAMENT.sub("", str(text), count=1)
+    for rx, words in _TOURNAMENT_WORDS:
+        s = rx.sub(words, s)
+    return s
 
 
 def auto_paused_ids(messages: List[Dict]) -> List[int]:
