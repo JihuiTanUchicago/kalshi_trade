@@ -2437,7 +2437,7 @@
       ${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}
       <div id="rexample"></div>
       <form class="panel dispatch" id="dispatch">
-        <h3>${ICON.spark2}New research session</h3>
+        <h2>${ICON.spark2}New research session</h2>
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won't be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
         <label class="field"><span>Describe your idea</span>
@@ -4235,9 +4235,9 @@
     }).join('');
     return `${notice(s.text, good ? 'good' : '')}${cav}${figs}
       <div class="rp-figs">
-        <div class="rp-fig wide"><h5>Equity curve</h5>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">${trCurveCap(m)}</div></div>
-        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(trCurve(m.curve), m.underwater && trCurve(m.underwater))}</div>
-        <div class="rp-fig"><h5>Risk and trade detail</h5>${risk}</div>
+        <div class="rp-fig wide"><h3>Equity curve</h3>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">${trCurveCap(m)}</div></div>
+        <div class="rp-fig"><h3>Drawdown (underwater)</h3>${rpUnderwater(trCurve(m.curve), m.underwater && trCurve(m.underwater))}</div>
+        <div class="rp-fig"><h3>Risk and trade detail</h3>${risk}</div>
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
@@ -4379,7 +4379,7 @@
       root.querySelector('#main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
-          <h3>Kalshi account (live money)</h3>
+          <h2>Kalshi account (live money)</h2>
           ${k.connected ? `
             ${keyOk(k.balance, 'live', k.balance_at)}<dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">This is your real Kalshi balance. Deposits and withdrawals happen at Kalshi, in your own account — we never hold your money. Tau only places trades for strategies you deploy live. To use a different key, disconnect this one and connect the new one.</p>
@@ -4398,7 +4398,7 @@
           <div id="kflash" style="margin-top:10px"></div>
         </section>
         <section class="panel">
-          <h3>Kalshi demo (sandbox) account</h3>
+          <h2>Kalshi demo (sandbox) account</h2>
           <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
           <p class="lede" style="margin-bottom:14px">Demo places real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is ours to set: reload it to any amount; this never touches your Kalshi demo account’s balance. A reload starts realized P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
@@ -4422,7 +4422,7 @@
           <div id="kdflash" style="margin-top:10px"></div>
         </section>
         <section class="panel">
-          <h3>Paper account (simulation)</h3>
+          <h2>Paper account (simulation)</h2>
           <p class="lede" style="margin-bottom:14px">App-controlled practice money. Add funds, take some out, or reset to a fresh starting balance. Paper strategies trade the real market with it, so results are realistic, but nothing real is at stake.</p>
           <form id="paper" class="amount">
             <label class="field"><span>Amount</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="500"></label>
@@ -4436,7 +4436,7 @@
         </div>
         <div class="funds-col funds-history">
         <section class="panel">
-          <h3>Paper history</h3>
+          <h2>Paper history</h2>
           <p class="hint ledger-how">${LEDGER_HOW}${d.paper.ledger.length >= 50 ? ' The latest 50 entries.' : ''}</p>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
             ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}

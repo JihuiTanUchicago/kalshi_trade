@@ -4965,6 +4965,6 @@ test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, 
 firstHourCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))}), billingPage, cardedBilling,
-  source, strategyFrontend, dashboard: emptyDashboard});
+  source, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: funds});
 creditsCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn});
 declinedCardCases({name: 'Tau', frontend, dashboard: emptyDashboard});

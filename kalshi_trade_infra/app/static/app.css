@@ -509,7 +509,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 
 .panel { border: 1px solid var(--rule); background: var(--stock-raised); padding: 16px; margin-top: 14px; }
 .panel:first-child { margin-top: 0; }
-.panel h3 { font-family: var(--f-nar); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 10px; }
+.panel h3, .panel > h2 { font-family: var(--f-nar); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 10px; }
 .figures.measure { margin: 0; }
 /* A run's figures (status, time, cost, tested, passed) share one row on a
    desktop, each column as wide as its content needs: auto-fit's 160px floor pushed the sixth onto a
@@ -583,8 +583,8 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 
 /* ---- Research cockpit ---- */
 #rsimo .rsi-card { margin: 16px 0 0; }
-.dispatch > h3 { display: flex; align-items: center; gap: 8px; }
-.dispatch > h3 svg { width: 15px; height: 15px; color: var(--ink-2); }
+.dispatch > h2 { display: flex; align-items: center; gap: 8px; }
+.dispatch > h2 svg { width: 15px; height: 15px; color: var(--ink-2); }
 .dispatch-tune { display: flex; gap: 18px 24px; flex-wrap: wrap; align-items: flex-end; }
 .dispatch-tune select.input { min-width: 184px; }
 .dispatch-tune input[type="number"].input { width: 92px; }
@@ -1837,7 +1837,7 @@ body.landing-body .apf { display: none; }
 .rp-figs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
 .rp-fig { border: 1px solid var(--rule); background: var(--stock); padding: 12px 14px; min-width: 0; }
 .rp-fig.wide { grid-column: 1 / -1; }
-.rp-fig h5 { margin: 0; font-family: var(--f-nar); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+.rp-fig h5, .rp-fig h3 { margin: 0; font-family: var(--f-nar); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
 .rp-fig .cap { font-size: 11px; color: var(--ink-3); margin-top: 8px; line-height: 1.45; }
 .rp-fig .chart { margin-top: 8px; }
 .rp-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 11.5px; color: var(--ink-2); font-family: var(--f-nar); letter-spacing: .02em; }

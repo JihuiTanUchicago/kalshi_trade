@@ -13,13 +13,22 @@
 //   (#main), and both land on the h1.
 // - Asides with no name: Tau's Dashboard (positions) and the strategy page (deploy and gates) were two
 //   unnamed complementary landmarks beside an unnamed hot-markets rail. Every <aside> is named.
+// - Heading levels that skipped: Funds' panels and Tau's research form were h3 under the page's h1, the
+//   track record's figure titles h5 under its h2, and Meridian's "Since deploying" h3 under the h1.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling, source, strategyFrontend, dashboard}) {
+// Each heading's level against the one before it, in document order: a step down of more than one
+// (h1 then h3) is a skip a screen reader's heading list shows as a missing level.
+const headingSkips = (host) => {
+  const levels = host.querySelectorAll('h1, h2, h3, h4, h5, h6').map((h) => [+h.tag.slice(1), h.textContent.trim()]);
+  return levels.filter(([level], i) => level > (i ? levels[i - 1][0] : 0) + 1).map(([level, text]) => `h${level} ${text}`);
+};
+
+export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling, source, strategyFrontend, detailStrategy, dashboard, fundsData}) {
   test(`${name}: <main> starts at the page's heading and figures, and a page change and Skip to content land there`, async () => {
     const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
     f.location.pathname = '/deploy';
@@ -65,6 +74,35 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     // Every aside the bundle draws, the hot-markets rail it makes in script included, carries its name.
     assert.deepEqual(source.match(/<aside(?![^>]*aria-label=)[^>]*>/g), null);
     assert.deepEqual(source.match(/createElement\('aside'\)(?![^;]*;[^;]*;[^;]*; a\.setAttribute\('aria-label')/g), null);
+  });
+
+  test(`${name}: Funds, the research form, the track record and a deployed strategy's page skip no heading level`, async () => {
+    const funds = frontend({fetchImpl: (path) => path === '/api/funds' ? response(fundsData()) : response({})});
+    await funds.viewFunds(); await flush();
+    assert.ok(funds.root.querySelector('#main h2'), 'Funds has its section headings');
+    assert.deepEqual(headingSkips(funds.root), []);
+    const research = frontend({fetchImpl: (path) => {
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/runs')) return response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: null, v: 'v1'});
+      return response({});
+    }});
+    research.S.me.user.autopilot = false; research.location.pathname = '/research';
+    await research.viewResearch(); for (let i = 0; i < 6; i++) await flush();
+    assert.ok(research.root.querySelector('#dispatch'), 'the research form is on the page');
+    assert.deepEqual(headingSkips(research.root), []);
+    research.clearTimers();
+    // The track record mounts under its own h2 (dashTrackRecord); its figure titles come next.
+    const record = frontend({fetchImpl: () => response({})}), host = record.document.createElement('section');
+    host.innerHTML = '<h1>Dashboard</h1><h2>Track record</h2>' + record.trackRecordPanel({trades: 3, wins: 2, losses: 1, label: 'Paper', net_pnl: 4, fees: 0.2,
+      monthly: [], strategies: [], curve: [], sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge.'}}, 'paper', {min_sharpe_days: 14, min_trades: 30});
+    assert.ok(host.querySelectorAll('h3').some((h) => h.textContent === 'Equity curve'));
+    assert.deepEqual(headingSkips(host), []);
+    const deployments = [{id: 1, mode: 'paper', status: 'running', realized_pnl: 2.5, closed_trades: 4, open_positions: 1, created_at: '2026-10-20T08:00:00Z'}];
+    const deployed = strategyFrontend(detailStrategy({deployments}), () => response({}));
+    await deployed.viewStrategy(42); await flush();
+    assert.match(deployed.root.querySelector('#main').innerHTML, /Since deploying/);
+    assert.deepEqual(headingSkips(deployed.root), []);
+    deployed.clearTimers();
   });
 
   test(`${name}: the autopilot pulse is written only when its words change, not on every chat poll`, async () => {

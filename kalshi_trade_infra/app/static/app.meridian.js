@@ -3625,7 +3625,7 @@
     const past = Array.isArray(s.past_deployments) ? s.past_deployments : [];
     const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—');
     const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${day(p.created_at)}\u2013${day(p.removed_at)}, ${money(p.realized_pnl)} over ${num(p.closed_trades)} closed trade${p.closed_trades === 1 ? '' : 's'}`).join(' ·\u00a0')}${past.length > 3 ? ` ·\u00a0${num(past.length - 3)} earlier` : ''}</p>` : '';
-    return lines || pastLine ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}${pastLine}</section>` : '';
+    return lines || pastLine ? `<section class="real-record" aria-label="Since deploying"><h2 class="paper-h">Since deploying</h2>${lines}${pastLine}</section>` : '';
   }
   // Road to live in words, from the checks the server sends (live-readiness): what is left, each with
   // what it has and what it needs, and when the trades, events and hours could be in at the pace it
@@ -4234,9 +4234,9 @@
     }).join('');
     return `${notice(s.text, good ? 'good' : '')}${cav}${figs}
       <div class="rp-figs">
-        <div class="rp-fig wide"><h5>Equity curve</h5>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">${trCurveCap(m)}</div></div>
-        <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(trCurve(m.curve), m.underwater && trCurve(m.underwater))}</div>
-        <div class="rp-fig"><h5>Risk and trade detail</h5>${risk}</div>
+        <div class="rp-fig wide"><h3>Equity curve</h3>${equityChart(trCurve(m.curve), null, null, { width: chartWidth() })}<div class="cap">${trCurveCap(m)}</div></div>
+        <div class="rp-fig"><h3>Drawdown (underwater)</h3>${rpUnderwater(trCurve(m.curve), m.underwater && trCurve(m.underwater))}</div>
+        <div class="rp-fig"><h3>Risk and trade detail</h3>${risk}</div>
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
@@ -4378,7 +4378,7 @@
       root.querySelector('#main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
-          <h3>Kalshi account (live money)</h3>
+          <h2>Kalshi account (live money)</h2>
           ${k.connected ? `
             ${keyOk(k.balance, 'live', k.balance_at)}<dl class="kv"><dt>API key</dt><dd>${esc(k.key_id)}</dd><dt>Cash at Kalshi</dt><dd>${k.balance == null ? 'Couldn’t read it just now' : usd(k.balance)}</dd></dl>
             <p class="lede" style="margin-bottom:14px">Funds stay in your Kalshi account. Manage deposits and withdrawals at Kalshi. To change keys, disconnect and connect the new one.</p>
@@ -4397,7 +4397,7 @@
           <div id="kflash" style="margin-top:10px"></div>
         </section>
         <section class="panel">
-          <h3>Kalshi demo (sandbox) account</h3>
+          <h2>Kalshi demo (sandbox) account</h2>
           <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
           <p class="lede" style="margin-bottom:14px">Real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is simulated. Reloading changes Tau’s balance only and starts realized P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
@@ -4421,7 +4421,7 @@
           <div id="kdflash" style="margin-top:10px"></div>
         </section>
         <section class="panel">
-          <h3>Paper account (simulation)</h3>
+          <h2>Paper account (simulation)</h2>
           <p class="lede" style="margin-bottom:14px">Simulated funds. No real orders.</p>
           <form id="paper" class="amount">
             <label class="field"><span>Amount</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="500"></label>
@@ -4435,7 +4435,7 @@
         <div class="funds-col funds-history">
         ${S.me.perps_live_available ? '<section id="kalshi-perps-live" aria-label="Bitcoin perpetual trading"></section>' : ''}
         <section class="panel">
-          <h3>Paper history</h3>
+          <h2>Paper history</h2>
           <p class="hint ledger-how">${LEDGER_HOW}${d.paper.ledger.length >= 50 ? ' The latest 50 entries.' : ''}</p>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
             ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
