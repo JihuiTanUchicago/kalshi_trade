@@ -68,6 +68,22 @@ export function runPageCases({name, frontend}) {
     assert.match(f.root.querySelector('#runboard').innerHTML, /Fade late YES takers/);
   });
 
+  test(`${name}: an idea that passed validation and then missed the final holdout says so, not "deploy it"`, async () => {
+    const later = [{gate: 'significance', label: 'The edge could be luck on the locked holdout', measured: 'p 0.48', needed: '0.10', next: 'Try a simpler version.'}];
+    const fell = {id: 42, title: 'Cheap NO after a spike', status: 'passed', market: 'btc15m', direction: 'custom', later_missed: later};
+    let f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [fell]);
+    const next = f.root.querySelector('#runnext').innerHTML;
+    assert.match(next, /Cheap NO after a spike<\/a> passed its first test on unseen data, then missed the one-time final test \(the edge could be luck on the locked holdout\)\./);
+    assert.match(next, /Nothing cleared every check this time\./);
+    assert.doesNotMatch(next, /deploy it on paper|Passed:/);
+    assert.match(list(f), /the edge could be luck on the locked holdout/i);
+    assert.doesNotMatch(list(f), /Open it to deploy on paper/);
+    // Beside a strategy that cleared everything, the passed one leads and the other is said after it.
+    const ok = {id: 43, title: 'Far-strike fade', status: 'passed', market: 'btc_daily', direction: 'custom'};
+    f = await open({status: 'succeeded', hypotheses_tried: 2, strategies_passed: 2}, [], [fell, ok]);
+    assert.match(f.root.querySelector('#runnext').innerHTML, /^<p class="run-next">Passed: <a href="\/strategies\/43">Far-strike fade<\/a>\. Open it to deploy it on paper\. <a href="\/strategies\/42">/);
+  });
+
   test(`${name}: the example's cost says it was free, not "from your credits"`, async () => {
     let f = await open({status: 'succeeded', example: true, spent_usd: 0});
     assert.match(figs(f), /\$0\.00\s*free: Tau ran it for you/); assert.doesNotMatch(figs(f), /from your credits/);

@@ -1044,9 +1044,17 @@ window.TauPage('research', (T) => {
   const runEmpty = (r) => (r.stop_reason === 'no_data' && r.error ? esc(r.error) : RUN_EMPTY[r.stop_reason] || 'This session ended before any strategy reached the checks.');
   // What to do once a session ends. The example's log ended on "now describe a real idea" with no way
   // to do it, and a session that passed something left it two screens down on a phone, under the log.
+  // An idea that passed validation and then missed its one-time locked holdout keeps the status "passed"; the
+  // server sends what it missed (later_missed, the lines its strategy page shows). The page said "Passed: …
+  // Open it to deploy it on paper" over a final test it had failed.
+  const laterMissed = (s) => s.status === 'passed' && Array.isArray(s.later_missed) && s.later_missed.length > 0;
+  const lcFirst = (t) => String(t).charAt(0).toLowerCase() + String(t).slice(1);
   function runNext(r, strategies) {
     if (r.example) return `<p class="run-next">That’s what a session looks like. <a class="btn primary" href="/research?new=1">Describe your own idea</a></p>`;
-    const passed = (strategies || []).filter((s) => s.status === 'passed');
+    const passed = (strategies || []).filter((s) => s.status === 'passed' && !laterMissed(s));
+    const fell = (strategies || []).filter(laterMissed);
+    const fellLine = fell.length ? `${fell.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ')} passed ${fell.length === 1 ? 'its' : 'their'} first test on unseen data, then missed the one-time final test (${esc(lcFirst(fell[0].later_missed[0].label))}).` : '';
+    const nothing = fell.length ? 'Nothing cleared every check' : 'Nothing passed';
     const credits = r.out_of_credits ? 'It stopped when your credits ran out. <a href="/billing">Add credits</a>, then start a new session to keep researching. ' : '';
     if (passed.length) {
       const links = passed.slice(0, 3).map((s) => `<a href="/strategies/${s.id}">${esc(s.title)}</a>`).join(', ');
@@ -1061,7 +1069,7 @@ window.TauPage('research', (T) => {
         : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
         : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
         : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
-      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}</p>`;
+      return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}${fellLine ? ' ' + fellLine : ''}</p>`;
     }
     // A failed or cancelled session said nothing: the reason sat in a folded log, the way on nowhere.
     // The server's reason is written for the customer; one that already says the session stopped
@@ -1069,9 +1077,9 @@ window.TauPage('research', (T) => {
     if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`} <a href="/research?new=1">Start a new session</a></p>`;
     if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
     const none = !(strategies || []).length;
-    if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : 'Nothing passed before then; each strategy below says which check it missed.'}</p>`;
+    if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : `${fellLine ? fellLine + ' ' : ''}${nothing} before then; each strategy below says which check it missed.`}</p>`;
     if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)} <a href="/research?new=1">Try another idea</a></p>`;
-    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">Nothing passed this time. Most ideas don’t. Each strategy below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
+    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">${fellLine ? fellLine + ' ' : ''}${nothing} this time. Most ideas don’t. Each strategy below says which check it missed and what to try next. <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
   // The foot of a finished session. The way on sat only above the list and the log: the example's
@@ -1082,7 +1090,7 @@ window.TauPage('research', (T) => {
     if (r.example) return `<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>`;
     if (r.status !== 'succeeded' && r.status !== 'stopped') return '';
     if (r.out_of_credits) return '<div class="run-end"><a class="btn" href="/billing">Add credits</a></div>';
-    if ((strategies || []).some((s) => s.status === 'passed')) return '';
+    if ((strategies || []).some((s) => s.status === 'passed' && !laterMissed(s))) return '';
     return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
   }
   async function viewRun(id) {
@@ -1148,7 +1156,7 @@ window.TauPage('research', (T) => {
       const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => (b.status === 'passed') - (a.status === 'passed'));
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;
-      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${strategies.length}</button>` : ''}` : '';
+      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${strategies.length}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: s.status === 'passed' ? (laterMissed(s) ? s.later_missed : null) : whyBySid.get(s.id) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${strategies.length}</button>` : ''}` : '';
       // Compared with what was last written, not with innerHTML: the browser's serialization never matched
       // the template (&nbsp;, quoting), so the table was rebuilt every 2s.
       paint(artifacts, artifactHtml);
