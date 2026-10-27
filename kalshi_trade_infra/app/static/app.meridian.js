@@ -1551,8 +1551,10 @@
   const chartWidth = () => { const m = root.querySelector('#main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
   // The equity chart's label over its unseen-data window, in the strategy page's words ("Unseen-data P&L"):
   // the full words when they fit, else "Unseen →", pinned to the chart's right edge when even that would run past it.
-  const unseenLabel = (cx, right, y) => {
-    const room = right - cx - 8, text = room >= 150 ? 'Unseen by the agent →' : 'Unseen →';
+  // `words` ([full, short]) names another window: a strategy with no gatekeeper record has no unseen window, only
+  // the backtest's later slice, which its loose gate used to pick it.
+  const unseenLabel = (cx, right, y, words = ['Unseen by the agent →', 'Unseen →']) => {
+    const room = right - cx - 8, text = room >= 150 ? words[0] : words[1];
     return room >= 64 ? `<text x="${cx + 8}" y="${y}" style="fill:var(--ink-2)">${text}</text>`
       : `<text x="${right}" y="${y}" text-anchor="end" style="fill:var(--ink-2)">${text}</text>`;
   };
@@ -1619,7 +1621,7 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="${options.paper ? 'group' : 'img'}" aria-label="${esc(options.label || `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}`)}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
-              ${unseenLabel(cx, W - R, T - 10)}` : ''}
+              ${unseenLabel(cx, W - R, T - 10, options.cutLabel)}` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${reference}${ticks}${zeroTick}${dates}${endLabel}
       <polyline points="${line(curve)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
