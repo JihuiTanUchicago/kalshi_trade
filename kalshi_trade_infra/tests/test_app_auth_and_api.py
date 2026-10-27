@@ -848,6 +848,7 @@ def test_notifications_endpoint_shape(monkeypatch):
     monkeypatch.setattr(server.repo, "count_unread_notifications", lambda cur, uid: 1)
     out = server.notifications(ctx())
     assert out["unread"] == 1 and out["items"][0]["read"] is False and out["items"][0]["link"] == "/strategies/9"
+    assert out["unread_kinds"] == {"share": 1}
 
 
 def test_slug_and_mention_regex():

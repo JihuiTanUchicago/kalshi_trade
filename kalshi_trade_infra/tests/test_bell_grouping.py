@@ -52,3 +52,12 @@ def test_the_endpoint_reads_a_bounded_window_and_groups_it(monkeypatch):
     out = server.notifications(type("C", (), {"cur": None, "uid": 1})())
     assert asked["limit"] == bell.READ_ROWS
     assert out["unread"] == 1 and [(n["id"], n["more"], n["read"]) for n in out["items"]] == [(3, 1, False), (1, 0, True)]
+
+
+def test_the_unread_notices_are_counted_by_kind_for_the_lists_summary():
+    rows = [_row(9, "deployed", "/strategies/9", read=False), _row(8, "deployed", "/strategies/8", read=False),
+            _row(7, "paused", "/strategies/3", read=False), _row(6, "paused", "/strategies/3", read=False),
+            _row(5, "passed", "/strategies/1"), _row(4, "deployed", "/strategies/4")]
+    # Stored rows, not grouped lines: two pauses of one strategy in a row are one line and two notices.
+    assert bell.unread_kinds(rows) == {"deployed": 2, "paused": 2}
+    assert bell.unread_kinds([_row(1, "share", None)]) == {}

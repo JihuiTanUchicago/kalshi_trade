@@ -846,6 +846,23 @@
     bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now();
     bellReq.then((d) => bellFresh && bellFresh(d)).catch(() => {});  // best-effort, like the first read
   }
+  // A list that filled up while the user was away opens with what it holds, by kind (the server's
+  // unread_kinds): a week back, seven "Autopilot put ... on paper" lines ran past the first screen
+  // before the pause among them. Shown from BELL_SUM_MIN new notices; the lines below are unchanged.
+  const BELL_SUM_MIN = 4;
+  const BELL_SUM = [['deployed', (n) => `${n === 1 ? '1 strategy' : num(n) + ' strategies'} put on paper`],
+    ['paused', (n) => `${num(n)} paused`], ['passed', (n) => `${num(n)} passed ${n === 1 ? 'its' : 'their'} paper test`],
+    ['live_ready', (n) => `${num(n)} ready for live`], ['reload_failed', () => 'auto-reload couldn\u2019t charge your card'],
+    ['comment', (n) => `${num(n)} comment${n === 1 ? '' : 's'}`], ['mention', (n) => `${num(n)} mention${n === 1 ? '' : 's'}`],
+    ['share', (n) => `${num(n)} shared with you`]];
+  function bellSummary(d) {
+    const by = d.unread_kinds || {};
+    if (!(d.unread >= BELL_SUM_MIN) || !Object.keys(by).length) return '';
+    const parts = BELL_SUM.filter(([k]) => by[k] > 0).map(([k, say]) => say(+by[k]));
+    const rest = Object.entries(by).filter(([k]) => !BELL_SUM.some(([b]) => b === k)).reduce((a, [, n]) => a + n, 0);
+    if (rest) parts.push(`${num(rest)} other${rest === 1 ? '' : 's'}`);
+    return `<p class="bell-sum">${num(d.unread)} new: ${parts.join(' \u00b7\u00a0')}</p>`;
+  }
   async function wireBell() {
     const wrap = root.querySelector('.bell-wrap');
     if (!wrap) return;
@@ -857,7 +874,7 @@
     const close = () => {
       menu.hidden = true; trig.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', onDoc, true);
       list.querySelectorAll('.notif.unread').forEach((n) => n.classList.remove('unread'));
-      list.querySelectorAll('.notif-new').forEach((n) => n.remove());
+      list.querySelectorAll('.notif-new, .bell-sum').forEach((n) => n.remove());
       const c = head.querySelector('.bell-new'); if (c) c.remove();
     };
     const onDoc = (e) => { if (!wrap.contains(e.target)) close(); };
@@ -872,7 +889,7 @@
       trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
       head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${d.unread} new</span>` : '');
       // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
-      list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
+      list.innerHTML = d.items.length ? bellSummary(d) + d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
     };
     // A list that didn't load still opens, says so and offers Try again; the next read (bellTick) fills it
     // too. It used to leave the bell dead for the rest of the visit: a tap did nothing and no dot ever came.

@@ -4105,6 +4105,30 @@ test('the bell keeps new items marked while it is open, says how many, and clear
   assert.ok(wrap.querySelectorAll('.notif-new').every((e) => e.removed));
 });
 
+test('a bell that filled up while the user was away opens with what it holds, by kind, until it is closed', async () => {
+  // A week away: five strategies put on paper, one paused, one forward-test pass, one unknown kind.
+  const at = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+  const items = [['passed', 3], ['paused', 20], ['deployed', 30], ['deployed', 50], ['deployed', 70], ['deployed', 90], ['deployed', 110]]
+    .map(([kind, h], i) => ({id: 20 - i, kind, body: `${kind} ${i}`, link: `/strategies/${i}`, created_at: at(h), read: false}));
+  const f = bellFrontend({unread: 8, items, unread_kinds: {deployed: 5, paused: 1, passed: 1, digest: 1}});
+  await f.viewDashboard(); await flush(); await flush();
+  const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig');
+  const list = wrap.querySelector('#bell-list');
+  assert.match(list.innerHTML, /^<p class="bell-sum">8 new: 5 strategies put on paper ·\s1 paused ·\s1 passed its paper test ·\s1 other<\/p>/);
+  assert.equal(wrap.querySelectorAll('.notif').length, 7);  // every line still listed under it
+  await trig.onclick({stopPropagation() {}});
+  assert.ok(list.querySelector('.bell-sum'), 'the summary stays while the list is open');
+  await trig.onclick({stopPropagation() {}});  // close: read now, so the summary goes with the marks
+  assert.ok(wrap.querySelectorAll('.bell-sum').every((e) => e.removed));
+  // A few new ones need no summary, nor does a list with nothing new.
+  for (const d of [{unread: 3, items: items.slice(0, 3), unread_kinds: {passed: 1, paused: 1, deployed: 1}},
+    {unread: 0, items: items.map((n) => ({...n, read: true})), unread_kinds: {}}]) {
+    const g = bellFrontend(d);
+    await g.viewDashboard(); await flush(); await flush();
+    assert.equal(g.root.querySelector('.bell-sum'), null);
+  }
+});
+
 test('a bell item older than a day shows its day and clock, and every item its full time on hover', async () => {
   const f = bellFrontend(bellNotes());
   await f.viewDashboard(); await flush(); await flush();

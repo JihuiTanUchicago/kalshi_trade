@@ -27,3 +27,14 @@ def grouped(rows: List[Dict], shown: int = SHOWN) -> List[Dict]:
         out.append({"id": r["id"], "kind": r["kind"], "body": r["body"], "link": r.get("link"),
                     "created_at": r["created_at"], "read": r.get("read_at") is not None, "more": 0})
     return out
+
+
+def unread_kinds(rows: List[Dict]) -> Dict[str, int]:
+    """{kind: unread notices} among `rows`, so a list that filled up while the user was away can open
+    with what it holds ("5 put on paper, 1 paused, 1 passed its paper test") before 20 lines of it.
+    Counts stored rows, not grouped lines."""
+    out: Dict[str, int] = {}
+    for r in rows:
+        if r.get("read_at") is None:
+            out[r["kind"]] = out.get(r["kind"], 0) + 1
+    return out
