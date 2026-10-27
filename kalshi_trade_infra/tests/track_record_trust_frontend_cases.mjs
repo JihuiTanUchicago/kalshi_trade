@@ -87,4 +87,20 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     assert.match(f.strategySlip({...s, out_of_sample: null}), /<div class="sub-fig">on the history it searched over 90 days<\/div>/);
     assert.match(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: null}}), /<div class="sub-fig">on unseen data<\/div>/);
   });
+
+  test(`${name}: the equity curve labels its break-even line when the record has been both above and below it`, () => {
+    // The track record's curve read "$78.09 / $26.69 / −$24.72" beside an unlabelled grey line: where $0 sat was a guess.
+    const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
+    const svg = f.equityChart(paperBook().curve, null, null, {width: 760});
+    const labels = [...svg.matchAll(/<text[^>]*text-anchor="end">([^<]*)<\/text>/g)].map((m) => m[1]);
+    assert.deepEqual(labels.slice(0, 3), ['−$24.72', '$26.69', '$78.09']);
+    const zero = svg.match(/<text class="chart-zero" x="44" y="([\d.]+)" text-anchor="end">\$0<\/text>/);
+    assert.ok(zero, 'the $0 line is labelled');
+    // On the zero line itself: the label sits where the grey line is drawn.
+    const lineY = +svg.match(/<line x1="52" x2="750" y1="([\d.]+)" y2="[\d.]+" stroke="var\(--rule-2\)"\/>/)[1];
+    assert.ok(Math.abs(+zero[1] - (lineY + 4)) < 0.01, `${zero[1]} vs ${lineY}`);
+    // Never on a curve that stays on one side (its low or high tick is $0 then), nor crowding a tick next to it.
+    assert.doesNotMatch(f.equityChart([[1, 0], [2, 5], [3, 12]], null, null, {width: 760}), /chart-zero/);
+    assert.doesNotMatch(f.equityChart([[1, -0.4], [2, 60], [3, 80]], null, null, {width: 760}), /chart-zero/);
+  });
 }

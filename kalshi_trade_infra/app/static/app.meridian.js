@@ -1581,6 +1581,10 @@
     const reference = options.paper ? levels.filter(v => v !== 0).map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)"/>`).join('') : '';
     const wholePaperAxis = options.paper && levels.every(Number.isInteger);
     const ticks = levels.map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${wholePaperAxis ? `${v < 0 ? '−' : ''}$${num(Math.abs(v))}` : usd(v)}</text>`).join('');
+    // The grey line across the plot is $0, break-even: unlabelled, a curve that dipped under it read against ticks
+    // like −$24.72 and $26.69, with nothing saying where it had gained or lost. It gets its own label unless a
+    // tick already sits on it or so close the two would overlap.
+    const zeroTick = lo < 0 && hi > 0 && levels.every((v) => Math.abs(y(v) - y(0)) >= 14) ? `<text class="chart-zero" x="${L - 8}" y="${y(0) + 4}" text-anchor="end">$0</text>` : '';
     const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(options.paper ? { timeZone: 'UTC' } : {}) });
     const dates = options.paper ? [t0, (t0 + t1) / 2, t1].map((t, i) => `<text x="${x(t)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === 2 ? 'end' : 'middle'}">${day(t)}</text>`).join('') : `<text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>`;
     const endLabel = options.paper && options.endLabel !== false ? `<text class="chart-end ${tone(curve[curve.length - 1][1])}" x="${W - R}" y="${Math.max(12, Math.min(H - B - 6, y(curve[curve.length - 1][1]) - 10))}" text-anchor="end">${usd(curve[curve.length - 1][1], true)}</text>` : '';
@@ -1605,7 +1609,7 @@
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
               <text x="${cx + 8}" y="${T - 10}" style="fill:var(--ink-2)">Out-of-sample →</text>` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
-      ${reference}${ticks}${dates}${endLabel}
+      ${reference}${ticks}${zeroTick}${dates}${endLabel}
       <polyline points="${line(curve)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
       ${dev ? `<polyline points="${line(dev)}" fill="none" stroke="var(--l-accent, #F05A28)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ''}
       ${legend}
