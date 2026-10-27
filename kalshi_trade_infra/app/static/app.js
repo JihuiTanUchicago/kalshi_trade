@@ -4999,7 +4999,7 @@
   // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page.
   const hotOpen = () => !phone() && localStorage.getItem('tau_hotrail') !== '0';
   const hotShown = () => !phone();  // app.css hides the rail under 761px, the width phone() asks
-  let hotLoop = false;
+  let hotLoop = false, hotMoving = 0;
   let apLoop = false, apReq = null;
 
   // ---------- floating autopilot window ----------
@@ -6216,6 +6216,8 @@
     rail.querySelectorAll('[data-hot="toggle"]').forEach((b) => b.onclick = (e) => {
       if (e.currentTarget.classList.contains('hot-tab') && open) return; // the spine only expands
       const next = !hotOpen(); localStorage.setItem('tau_hotrail', next ? '1' : '0');
+      // It slides only when you open or close it (hot-moving, app.css): a page load draws it where it is.
+      document.body.classList.add('hot-moving'); clearTimeout(hotMoving); hotMoving = setTimeout(() => document.body.classList.remove('hot-moving'), 300);
       document.body.classList.toggle('hot-open', next); renderHotRail();
       const to = rail.querySelector(next ? '.hot-x' : '.hot-tab'); if (to && to.focus) to.focus({ preventScroll: true });
     });
