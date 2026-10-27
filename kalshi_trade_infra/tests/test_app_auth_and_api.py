@@ -238,9 +238,9 @@ def test_dashboard_mode_buckets_do_not_double_count(monkeypatch):
     # Three money buckets (live / demo / paper), each from its own positions + deployments only.
     open_pos = [
         {"mode": "paper", "qty": 10, "entry_price": 0.4},
-        {"mode": "demo", "qty": 5, "entry_price": 0.5},
+        {"mode": "demo", "qty": 5, "entry_price": 0.5, "entry_fee": 0.02},
         {"mode": "live", "qty": 2, "entry_price": 0.6},
-        {"mode": "demo", "qty": 4, "entry_price": 0.25},
+        {"mode": "demo", "qty": 4, "entry_price": 0.25, "entry_fee": 0.0350},
     ]
     deps = [
         {"mode": "live", "status": "running"}, {"mode": "demo", "status": "running"},
@@ -251,8 +251,10 @@ def test_dashboard_mode_buckets_do_not_double_count(monkeypatch):
     live = server._mode_bucket(None, 1, "live", open_pos, deps, object())
     demo = server._mode_bucket(None, 1, "demo", open_pos, deps, object())
     paper = server._mode_bucket(None, 1, "paper", open_pos, deps, object())
-    assert live == {"closed_trades": 0, "open_at_cost": 1.2, "open_positions": 1, "running": 1, "realized_pnl": 7.0, "today_pnl": 7.0}
+    assert live == {"closed_trades": 0, "open_at_cost": 1.2, "open_cost": 1.2, "open_positions": 1, "running": 1, "realized_pnl": 7.0, "today_pnl": 7.0}
     assert demo["open_positions"] == 2 and demo["open_at_cost"] == 3.5 and demo["running"] == 1
+    # With the entry fees, summed exactly and rounded once ($3.5550 is $3.56): the basis every page names a cost on.
+    assert demo["open_cost"] == 3.56
     assert paper["open_positions"] == 1 and paper["running"] == 0  # a stopped deployment isn't "running"
     # Every open position lands in exactly one bucket — the three never overlap.
     assert live["open_positions"] + demo["open_positions"] + paper["open_positions"] == len(open_pos)

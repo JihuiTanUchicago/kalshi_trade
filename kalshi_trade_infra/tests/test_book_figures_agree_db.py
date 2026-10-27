@@ -339,6 +339,9 @@ def test_every_page_shows_the_same_book_to_the_cent(conn, monkeypatch):
         [hold] = pages[mode]["holdings"]
         assert hold["mode"] == mode and hold["qty"] == int(b["held"]["qty"])
         assert hold["cost"] == _money(b["open_cost"] + float(b["held"]["entry_fee"]))
+        # The dashboard and Funds name this book's open cost on the same basis, with its fee: one number on every page.
+        assert bucket["open_cost"] == fb["open_cost"] == hold["cost"], mode
+        assert [p["cost"] for p in board["open_positions"] if p["mode"] == mode] == [hold["cost"]], mode
 
     # -- the stopped deployment: off the board and the dashboard, still in the book -----------------
     for listed in (dash["deployments"], board["deployments"], pages["paper"]["deployments"]):

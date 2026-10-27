@@ -24,6 +24,7 @@ import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
+import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -791,7 +792,7 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
     f.S.me.user.autopilot = on;
     await f.viewDashboard(); await flush();
     const body = f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#dash-deps').innerHTML;
-    assert.match(body, /on <a href="\/funds">Funds<\/a> to trade real money/);
+    assert.match(body, /on <a href="\/funds#connect-kalshi">Funds<\/a> to trade real money/);
     assert.match(body, on ? /Autopilot is on\. Strategies that pass/ : /Research an idea</);
     assert.doesNotMatch(body, on ? /Research an idea</ : /See its research/);
     if (!on) assert.match(body, /Turn on autopilot above and the strategies that pass every research test/);  // points at the card's switch
@@ -1022,15 +1023,16 @@ test('Funds names the live figure Kalshi cash, open positions not included', asy
 test('Funds says when Kalshi cash was read, what each book has open, and matches the dashboard paper figure', async () => {
   const read = new Date(Date.now() - 5 * 60000).toISOString();
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
-    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, balance_at: read, open_positions: 2, open_at_cost: 8.09, funding_url: 'https://kalshi.com'};
-    d.demo = {...d.demo, open_positions: 1, open_at_cost: 3.05};
-    d.paper = {...d.paper, cash: 991.91, equity: 1000, open_positions: 3, open_at_cost: 8.09}; return response(d); }});
+    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, balance_at: read, open_positions: 2, open_at_cost: 8.09, open_cost: 8.25, funding_url: 'https://kalshi.com'};
+    d.demo = {...d.demo, open_positions: 1, open_at_cost: 3.05, open_cost: 3.11};
+    d.paper = {...d.paper, cash: 991.91, equity: 1000, open_positions: 3, open_at_cost: 8.09, open_cost: 8.25}; return response(d); }});
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
-  assert.match(figs, /Your real cash at Kalshi, read 5m ago\. 2 open live positions \(\$8\.09 at cost\) not included/);
-  assert.match(figs, /\$1,000\.00 capital ·\u00a01 open \(\$3\.05 at cost\) ·\u00a0needs a demo key ·\u00a0real fills/);
-  // Paper is the dashboard's figure (cash + open at cost), never cash alone under another name.
-  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.09 at cost\)/); assert.doesNotMatch(figs, /Paper cash/);
+  assert.match(figs, /Your real cash at Kalshi, read 5m ago\. 2 open live positions \(\$8\.25 at cost \+ fees\) not included/);
+  assert.match(figs, /\$1,000\.00 capital ·\u00a01 open \(\$3\.11 at cost \+ fees\) ·\u00a0needs a demo key ·\u00a0real fills/);
+  // Paper is the dashboard's figure (cash + open at their price), never cash alone under another name; its open
+  // positions are named at cost + fees, with the part the balance holds.
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
   // Each book stays its own figure: no sum of live, demo and paper anywhere.
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);
   // Nothing open says so; Kalshi not answering says what to do instead of a bare "Unavailable".
@@ -1073,13 +1075,13 @@ test('Funds paper history says prices in cents, a lost settlement as lost, and e
 test('Funds says what each book has made, realized, never summed, and when a new book’s P&L will show', async () => {
   // Each book's realized P&L from its closed trades: the dashboard's, Deploy's and the track record's figure.
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
-    d.kalshi = {connected: true, key_id: 'k', balance: 1234.56, open_positions: 1, open_at_cost: 4, realized_pnl: 3.11, closed_trades: 5};
+    d.kalshi = {connected: true, key_id: 'k', balance: 1234.56, open_positions: 1, open_at_cost: 4, open_cost: 4, realized_pnl: 3.11, closed_trades: 5};
     d.demo = {...d.demo, realized: 9.77, before_reload: 40, closed_trades: 5};
-    d.paper = {...d.paper, cash: 995.19, equity: 1005.19, open_positions: 1, open_at_cost: 10, realized_pnl: 5.61, closed_trades: 5}; return response(d); }});
+    d.paper = {...d.paper, cash: 995.19, equity: 1005.19, open_positions: 1, open_at_cost: 10, open_cost: 10, realized_pnl: 5.61, closed_trades: 5}; return response(d); }});
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Your real cash at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time\. 1 open live position/);
-  assert.match(figs, /1 open \(\$10\.00 at cost\) ·\u00a0\+\$5\.61 realized all time ·\u00a0practice money/);
+  assert.match(figs, /1 open \(\$10\.00 at cost \+ fees\) ·\u00a0\+\$5\.61 realized all time ·\u00a0practice money/);
   assert.match(figs, /\+\$9\.77 realized since reload ·\u00a0needs a demo key/);  // demo's P&L restarts at a reload
   assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
   // A book with no closed trade says when its P&L shows, instead of a $0.00 that reads as flat.
@@ -3023,8 +3025,8 @@ test('connecting a Kalshi key confirms it with the balance: "Connected ✓ (bala
   assert.match(f.root.querySelector('#kflash').innerHTML, /Connected ✓ \(balance \$1,234\.50\)\. Kalshi confirmed the key\./);
   assert.match(f.root.querySelector('#main').innerHTML, /<p class="key-ok"><b>Connected ✓<\/b> \(balance \$1,234\.50\)<\/p>/);
   await submitKey(f, 'kalshi-dev', KID, PEM);
-  assert.match(f.root.querySelector('#kdflash').innerHTML, /Connected ✓ \(balance \$25,000\.00\)\. Kalshi’s demo exchange confirmed the key\./);
-  assert.match(f.root.querySelector('#main').innerHTML, /<b>Connected ✓<\/b> \(balance \$25,000\.00\) <span class="hint">in your Kalshi demo account<\/span>/);
+  assert.match(f.root.querySelector('#kdflash').innerHTML, /Connected ✓ \(Kalshi demo account cash \$25,000\.00\)\. Kalshi’s demo exchange confirmed the key\./);
+  assert.match(f.root.querySelector('#main').innerHTML, /<b>Connected ✓<\/b> \(Kalshi demo account cash \$25,000\.00\)<\/p>/);
   const sent = postRequests(f).map(({path}) => path);
   assert.deepEqual(sent, ['/api/kalshi-key', '/api/kalshi-dev-key']);
   assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /MIIE|BEGIN RSA PRIVATE KEY-----\n/);  // the key is never shown back
@@ -3673,7 +3675,8 @@ test('money pages: an open position names its market and settles with a date and
   const side = s.root.querySelector('#main').innerHTML;
   assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
   assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="pos-name"><a href="\/explore\?m=KXBTCD-26OCT2617-T68499\.99">Bitcoin above \$68,499\.99 at 5pm ET<\/a>/);
-  // Dashboard: an unmarked position's figure is its cost, never a bare dollar amount beside the marked rows' P&L.
+  // Dashboard: an unmarked position's figure is its cost, never a bare dollar amount beside the marked rows' P&L, and
+  // the same cost as Deploy's and the strategy page's: with its fee ($9.00 + $0.41), never "$9.00 at cost" beside "$9.41".
   const g = frontend({fetchImpl: path => {
     if (path.startsWith('/api/dashboard')) return response({...emptyDashboard(), open_positions: [pos(), pos({qty: 10, entry_price: .47, unrealized: 0.32})]});
     if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
@@ -3681,7 +3684,7 @@ test('money pages: an open position names its market and settles with a date and
   }});
   await g.viewDashboard(); await flush();
   const main = g.root.querySelector('#main').innerHTML;
-  assert.match(main, /<span>\$9\.00 at cost<\/span>/); assert.match(main, /<span><span class="gain">\+\$0\.32<\/span><\/span>/);
+  assert.match(main, /<span>\$9\.41 at cost \+ fees<\/span>/); assert.doesNotMatch(main, /\$9\.00/); assert.match(main, /<span><span class="gain">\+\$0\.32<\/span><\/span>/);
 });
 
 test('track record: the calendar-day count is named as such, so it never contradicts the sample line\'s elapsed days', () => {
@@ -4252,7 +4255,7 @@ test('the reconciliation warning names the contracts and where to compare them; 
 });
 
 test('a new account\'s paper card says nothing is on paper yet instead of "$0.00 at cost"', async () => {
-  const fresh = {...emptyDashboard(), paper: {equity: 1000, cash: 1000, open_at_cost: 0, total_pnl: 0, realized_pnl: 0, open_positions: 0, closed_trades: 0}};
+  const fresh = {...emptyDashboard(), paper: {equity: 1000, cash: 1000, open_at_cost: 0, open_cost: 0, total_pnl: 0, realized_pnl: 0, open_positions: 0, closed_trades: 0}};
   const dep = {id: 1, strategy_id: 1, title: 'S', market: 'btc15m', mode: 'paper', status: 'running', stake: 5, max_positions: 2,
     realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, created_at: '2026-10-25T08:00:00Z'};
   for (const [d, empty] of [[fresh, true], [{...fresh, deployments: [dep]}, false]]) {
@@ -4263,7 +4266,7 @@ test('a new account\'s paper card says nothing is on paper yet instead of "$0.00
     await f.viewDashboard(); await flush();
     const board = f.root.querySelector('#boardbody').innerHTML;
     if (empty) { assert.match(board, /\$1,000\.00 of practice money ·\u00a0no paper strategies yet/); assert.doesNotMatch(board, /at cost/); }
-    else assert.match(board, /\$1,000\.00 cash ·\u00a0\$0\.00 at cost ·\u00a0<span class="amt">\$0\.00<\/span> realized all time/);  // a strategy on paper: its book, zeros and all
+    else assert.match(board, /\$1,000\.00 cash ·\u00a0\$0\.00 at cost \+ fees ·\u00a0<span class="amt">\$0\.00<\/span> realized all time/);  // a strategy on paper: its book, zeros and all
   }
 });
 
@@ -4318,7 +4321,7 @@ test('Funds says what demo proves, where it sits on the ladder, and why a small 
 
 test('Funds says when the demo key\'s balance was read, as it does for Kalshi cash', async () => {
   const read = new Date(Date.now() - 5 * 60000).toISOString();
-  for (const [at, said] of [[read, /\(balance \$25\.00, read 5m ago\) <span class="hint">in your Kalshi demo account/], [undefined, /\(balance \$25\.00\) <span class="hint">in your Kalshi demo account/]]) {
+  for (const [at, said] of [[read, /\(Kalshi demo account cash \$25\.00, read 5m ago\)<\/p>/], [undefined, /\(Kalshi demo account cash \$25\.00\)<\/p>/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds');
       return response({...funds(), kalshi_dev: {connected: true, key_id: 'DEVK…1234', balance: 25, balance_at: at}}); }});
     await f.viewFunds();
@@ -5164,6 +5167,7 @@ test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, 
 
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn, fundsData: funds});
+fundsTrustCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))}), billingPage, cardedBilling,
   source, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: funds});

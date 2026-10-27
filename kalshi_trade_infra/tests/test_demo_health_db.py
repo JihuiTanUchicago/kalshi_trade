@@ -236,7 +236,7 @@ def test_each_demo_state_says_one_plain_thing(conn, offline):
     key_line = "Demo isn't trading: your Kalshi demo key isn't connected. Add it on the Funds page."
     for where, health in _seen(conn, uid, sid).items():
         assert health["code"] == "demo_key" and health["line"] == key_line, where
-        assert health["action"] == {"label": "Add demo key", "href": "/funds"}, where
+        assert health["action"] == {"label": "Add demo key", "href": "/funds#connect-kalshi"}, where
     # Paused by the user, there's nothing demo is failing to do.
     repo.set_deployment_status(cur, uid, ids["demo"], "paused", "By you")
     seen = _seen(conn, uid, sid)

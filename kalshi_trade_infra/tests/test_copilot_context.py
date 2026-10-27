@@ -17,6 +17,7 @@ def _wire(monkeypatch, **over):
     monkeypatch.setattr(r, "paper_balance", over.get("paper_balance", lambda cur, uid: 1000.0))
     monkeypatch.setattr(r, "demo_equity", lambda cur, uid: {"equity": 500.0})
     monkeypatch.setattr(r, "credit_balance", lambda cur, uid: 42.0)
+    monkeypatch.setattr(r, "get_kalshi_dev_key", lambda cur, uid: over.get("dev_key"))
 
 
 USER = {"id": 7}
@@ -155,3 +156,19 @@ def test_the_customer_correction_names_titles_and_says_a_live_one_waits_while_li
     # The review's own fact check keeps the ids it acts on.
     assert agent.false_live_line("Live: #83", deps) == ("Correction: #83 trades paper, not real money. "
                                                          "Live deployments right now: #7.")
+
+
+def test_budget_line_says_there_is_no_demo_key_instead_of_a_demo_figure(monkeypatch):
+    # Tau's demo book starts at a capital Tau sets ($1,000 for a new account), so a review of an account with no
+    # demo key read "demo equity $1000" and offered demo as if it were funded. Without a key nothing trades there.
+    _wire(monkeypatch, paper_balance=lambda cur, uid: 250.0)
+    monkeypatch.setattr(agent.repo, "demo_equity", lambda cur, uid: {"equity": 1000.0})
+    ctx = agent._copilot_context(None, USER)
+    assert "no Kalshi demo key connected, so demo can't trade until the user adds one on Funds" in ctx
+    assert "demo equity" not in ctx and "$1000" not in ctx and "demo book" not in ctx
+    assert "paper cash $250.00" in ctx and "research credits $42.00 left" in ctx  # the rest of the line stands
+    # With a key the figure is named for what it is: Tau's own book, not cash at Kalshi.
+    _wire(monkeypatch, dev_key={"key_id": "DEVK-1"})
+    ctx = agent._copilot_context(None, USER)
+    assert "Tau's demo book $500.00 (Tau's own figure, not the Kalshi demo account's cash)" in ctx
+    assert "no Kalshi demo key" not in ctx and "demo equity" not in ctx

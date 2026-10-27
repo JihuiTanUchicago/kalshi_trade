@@ -249,11 +249,11 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
         assert.match(liveFig(f), /Kalshi cash ?\$900\.00 ?Your real cash at Kalshi, read 1m ago\.|Kalshi cash ?\$900\.00 ?Real money at Kalshi, read 1m ago\./, String(age));
         assert.doesNotMatch(liveFig(f), /[Cc]hecking/);
         assert.equal(spot(f, 'live-cell'), '$900.00');
-        assert.match(spot(f, 'demo-ok'), /Connected ✓<\/b> \(balance \$250\.00, read 1m ago\)/);
+        assert.match(spot(f, 'demo-ok'), /Connected ✓<\/b> \(Kalshi demo account cash \$250\.00, read 1m ago\)/);
       } else {
         assert.match(liveFig(f), /Kalshi cash ?\$900\.00 ?Read 2m ago; checking Kalshi for the latest…/);
         assert.equal(spot(f, 'live-cell'), '$900.00, read 2m ago; checking…');
-        assert.match(spot(f, 'demo-ok'), /balance \$250\.00, read 2m ago; checking for the latest…/);
+        assert.match(spot(f, 'demo-ok'), /Kalshi demo account cash \$250\.00, read 2m ago; checking for the latest…/);
       }
       f.clearTimers();
     }
@@ -284,7 +284,7 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
       assert.match(liveFig(f), /Kalshi cash ?\$1,300\.00/, 'the follow-up out at the poll lands');
       assert.doesNotMatch(liveFig(f), /[Cc]hecking/);
       assert.equal(spot(f, 'live-cell'), '$1,300.00');
-      assert.match(spot(f, 'demo-ok'), /balance \$250\.00/);
+      assert.match(spot(f, 'demo-ok'), /Kalshi demo account cash \$250\.00/);
       assert.equal(polls, 2, 'filled in place, not read again');
       if (typing) assert.equal(f.root.querySelector('#paper input[name=amount]').value, '25', 'what was typed stays');
       f.clearTimers();
@@ -317,7 +317,7 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
     const KID = 'a952bcbe-ec3b-4b5b-b8f9-11dae589608c';
     for (const [answer, said] of [
       [() => response({book: 'demo', connected: true, balance: 250, balance_at: ago(0)}),
-        /Connected ✓ \(balance \$250\.00\)\. Kalshi’s demo exchange confirmed the key\./],
+        /Connected ✓ \(Kalshi demo account cash \$250\.00\)\. Kalshi’s demo exchange confirmed the key\./],
       [() => response({error: 'Traceback (most recent call last): RuntimeError: demo read timed out'}, 500),
         /Connected ✓\. Kalshi’s demo exchange confirmed the key\. Tau couldn’t read its balance just now\. Reload in a minute to try again\./],
     ]) {

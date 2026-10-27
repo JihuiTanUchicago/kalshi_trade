@@ -2421,7 +2421,7 @@ body.landing-body .apf { display: none; }
   .t-positions .settled-position td:last-child::before { content: "Realized P&L"; }
   .t-positions td.position-expiry-cell::before { content: "Expiry "; font-size: 12px; color: var(--ink-3); }
   .t-positions td.position-entry::before { content: "Entry"; display: block; font: 400 12px/18px var(--f-ui); color: var(--ink-3); }
-  .t-positions td:has(.position-cost)::before { content: "Cost"; display: block; font: 400 12px/18px var(--f-ui); color: var(--ink-3); }
+  .t-positions td:has(.position-cost)::before { content: "Cost + fee"; display: block; font: 400 12px/18px var(--f-ui); color: var(--ink-3); }
 }
 @container dashboard (max-width: 679px) {
   .account-band .portfolio-numbers { grid-template-columns: minmax(0, 1fr); gap: 12px; }

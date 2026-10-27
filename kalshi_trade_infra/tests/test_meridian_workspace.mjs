@@ -25,6 +25,7 @@ import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
+import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -745,7 +746,7 @@ test('Overview live summary says it is Kalshi cash, apart from what Tau trades r
   const live = f.root.querySelector('.live-summary');
   assert.equal(live.querySelector('dt.lab').textContent, 'Kalshi cash');
   assert.match(live.textContent, /\+\$17\.00 realized all time by Tau trades/);
-  assert.match(live.textContent, /Open at cost, not in cash\$50\.00/); assert.match(live.textContent, /Realized today \(UTC\)−\$2\.00/);
+  assert.match(live.textContent, /Open at cost before fees, not in cash\$50\.00/); assert.match(live.textContent, /Realized today \(UTC\)−\$2\.00/);
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00/);
 });
 
@@ -761,14 +762,14 @@ test('Funds names the live figure Kalshi cash, open positions not included', asy
 test('Funds says when Kalshi cash was read, what each book has open, and matches the Overview paper figure', async () => {
   const read = new Date(Date.now() - 5 * 60000).toISOString();
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
-    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, balance_at: read, open_positions: 1, open_at_cost: 3.05, funding_url: 'https://kalshi.com'};
-    d.demo = {...d.demo, open_positions: 2, open_at_cost: 8.09};
-    d.paper = {...d.paper, cash: 991.91, equity: 1000, open_positions: 3, open_at_cost: 8.09}; return response(d); }});
+    d.kalshi = {connected: true, key_id: 'abcd-wxyz', balance: 120, balance_at: read, open_positions: 1, open_at_cost: 3.05, open_cost: 3.11, funding_url: 'https://kalshi.com'};
+    d.demo = {...d.demo, open_positions: 2, open_at_cost: 8.09, open_cost: 8.25};
+    d.paper = {...d.paper, cash: 991.91, equity: 1000, open_positions: 3, open_at_cost: 8.09, open_cost: 8.25}; return response(d); }});
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
-  assert.match(figs, /Real money at Kalshi, read 5m ago\. 1 open live position \(\$3\.05 at cost\) not included/);
-  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.09 at cost\) ·\u00a0needs a demo key ·\u00a0real fills/);
-  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.09 at cost\)/); assert.doesNotMatch(figs, /Paper cash/);
+  assert.match(figs, /Real money at Kalshi, read 5m ago\. 1 open live position \(\$3\.11 at cost \+ fees\) not included/);
+  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.25 at cost \+ fees\) ·\u00a0needs a demo key ·\u00a0real fills/);
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);  // books are never summed
   const h = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: null, open_positions: 0, open_at_cost: 0}; return response(d); }});
   await h.viewFunds(); await flush();
@@ -805,13 +806,13 @@ test('Funds paper history says prices in cents, a lost settlement as lost, and e
 
 test('Funds says what each book has made, realized, never summed, and when a new book’s P&L will show', async () => {
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds();
-    d.kalshi = {connected: true, key_id: 'k', balance: 1234.56, open_positions: 1, open_at_cost: 4, realized_pnl: 3.11, closed_trades: 5};
+    d.kalshi = {connected: true, key_id: 'k', balance: 1234.56, open_positions: 1, open_at_cost: 4, open_cost: 4, realized_pnl: 3.11, closed_trades: 5};
     d.demo = {...d.demo, realized: 9.77, before_reload: 40, closed_trades: 5};
-    d.paper = {...d.paper, cash: 995.19, equity: 1005.19, open_positions: 1, open_at_cost: 10, realized_pnl: 5.61, closed_trades: 5}; return response(d); }});
+    d.paper = {...d.paper, cash: 995.19, equity: 1005.19, open_positions: 1, open_at_cost: 10, open_cost: 10, realized_pnl: 5.61, closed_trades: 5}; return response(d); }});
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Real money at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time\. 1 open live position/);
-  assert.match(figs, /\$995\.19 cash ·\u00a01 open \(\$10\.00 at cost\) ·\u00a0\+\$5\.61 realized all time</);
+  assert.match(figs, /\$995\.19 cash ·\u00a01 open \(\$10\.00 at cost \+ fees\) ·\u00a0\+\$5\.61 realized all time</);
   assert.match(figs, /\+\$9\.77 realized since reload ·\u00a0needs a demo key/);
   assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
   const g = frontend({fetchImpl: () => { const d = funds();
@@ -1410,7 +1411,7 @@ test('Overview contract identities use the catalog and expiry, keep the raw tick
   await f.viewDashboard();
   const rows = f.root.querySelectorAll('.open-position'); assert.equal(rows.length, samples.length);
   const headers = f.root.querySelector('.t-positions thead tr').querySelectorAll('th');
-  assert.deepEqual(headers.map(th => th.textContent), ['Market / contract', 'Position', 'Expiry', 'Entry', 'Cost', 'Unrealized P&amp;L']);
+  assert.deepEqual(headers.map(th => th.textContent), ['Market / contract', 'Position', 'Expiry', 'Entry', 'Cost + fee', 'Unrealized P&amp;L']);
   assert.ok(headers.every(th => th.getAttribute('scope') === 'col'));
   samples.forEach((sample, index) => {
     const row = rows[index], detail = row.querySelector('.position-details'), summary = detail.querySelector('summary');
@@ -1635,7 +1636,7 @@ test('Overview chooses the correct primary money bucket and preserves disconnect
     for (const amount of ['$1,111.25', '+$98.40', '−$7.50', '$900.00', '$211.25']) assert.ok(paper.textContent.includes(amount), label + ' paper ' + amount);
     assert.match(accounts.textContent, /\$2,222\.50/); assert.match(accounts.textContent, /\$2,200\.00 capital/);
     const liveHost = livePrimary || cashInBand ? primary : accounts;
-    if (!data.live.connected) assert.equal(liveHost.querySelector('a').getAttribute('href'), '/funds', label);
+    if (!data.live.connected) assert.equal(liveHost.querySelector('a').getAttribute('href'), '/funds#connect-kalshi', label);
     if (data.live.connected && data.live.balance == null) assert.match(liveHost.textContent, /read your Kalshi balance/, label);
     if (livePrimary) {
       for (const amount of ['−$2.00', '$50.00']) assert.ok(primary.textContent.includes(amount), label + ' live ' + amount);
@@ -4126,8 +4127,8 @@ test('connecting a Kalshi key confirms it with the balance: "Connected ✓ (bala
   assert.match(f.root.querySelector('#kflash').innerHTML, /Connected ✓ \(balance \$1,234\.50\)\. Kalshi confirmed the key\./);
   assert.match(f.root.querySelector('#main').innerHTML, /<p class="key-ok"><b>Connected ✓<\/b> \(balance \$1,234\.50\)<\/p>/);
   await submitKey(f, 'kalshi-dev', KID, PEM);
-  assert.match(f.root.querySelector('#kdflash').innerHTML, /Connected ✓ \(balance \$25,000\.00\)\. Kalshi’s demo exchange confirmed the key\./);
-  assert.match(f.root.querySelector('#main').innerHTML, /<b>Connected ✓<\/b> \(balance \$25,000\.00\) <span class="hint">in your Kalshi demo account<\/span>/);
+  assert.match(f.root.querySelector('#kdflash').innerHTML, /Connected ✓ \(Kalshi demo account cash \$25,000\.00\)\. Kalshi’s demo exchange confirmed the key\./);
+  assert.match(f.root.querySelector('#main').innerHTML, /<b>Connected ✓<\/b> \(Kalshi demo account cash \$25,000\.00\)<\/p>/);
   const sent = postRequests(f).map(({path}) => path);
   assert.deepEqual(sent, ['/api/kalshi-key', '/api/kalshi-dev-key']);
   assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /MIIE|BEGIN RSA PRIVATE KEY-----\n/);  // the key is never shown back
@@ -5164,7 +5165,7 @@ test('Overview\'s reconciliation warning names the contracts and where to compar
 
 test('Funds says when the demo key\'s balance was read, as it does for Kalshi cash', async () => {
   const read = new Date(Date.now() - 5 * 60000).toISOString();
-  for (const [at, said] of [[read, /\(balance \$25\.00, read 5m ago\) <span class="hint">in your Kalshi demo account/], [undefined, /\(balance \$25\.00\) <span class="hint">in your Kalshi demo account/]]) {
+  for (const [at, said] of [[read, /\(Kalshi demo account cash \$25\.00, read 5m ago\)<\/p>/], [undefined, /\(Kalshi demo account cash \$25\.00\)<\/p>/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds');
       return response({...funds(), kalshi_dev: {connected: true, key_id: 'DEVK…1234', balance: 25, balance_at: at}}); }});
     await f.viewFunds();
@@ -6024,6 +6025,7 @@ test('Meridian: a strategy that did not pass shows its backtest P&L muted, at th
 
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus, fundsData: funds});
+fundsTrustCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
 a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling, source, strategyFrontend, detailStrategy,
   dashboard: dashboardData, fundsData: funds});

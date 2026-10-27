@@ -206,7 +206,7 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     assert.match(spot(f, 'live-cell'), /^Checking…$/);
     assert.match(spot(f, 'live-ok'), /checking your balance at Kalshi/);
     // Demo answered: its line is filled in place.
-    assert.match(spot(f, 'demo-ok'), /Connected ✓<\/b> \(balance \$500\.00, read just now\)/);
+    assert.match(spot(f, 'demo-ok'), /Connected ✓<\/b> \(Kalshi demo account cash \$500\.00, read just now\)/);
     answerLive(); await settle();
     assert.match(liveFig(f), /Kalshi cash\s*\$1,234\.56/);
     assert.doesNotMatch(liveFig(f), /Checking/);
@@ -225,7 +225,7 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     assert.match(liveFig(f), /Kalshi cash\s*\$900\.00\s*Read 5m ago; checking Kalshi for the latest…/);
     assert.equal(spot(f, 'live-cell'), '$900.00, read 5m ago; checking…');
     // An old $0 demo figure is shown as old, and raises no "your demo account is empty" notice from it.
-    assert.match(spot(f, 'demo-ok'), /balance \$0\.00, read 5m ago; checking for the latest…/);
+    assert.match(spot(f, 'demo-ok'), /Kalshi demo account cash \$0\.00, read 5m ago; checking for the latest…/);
     assert.doesNotMatch(spot(f, 'demo-ok'), /refuses demo orders/);
     f.clearTimers();
   });
