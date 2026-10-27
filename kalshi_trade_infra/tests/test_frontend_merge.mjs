@@ -586,6 +586,27 @@ test('the research headline uses all-time totals, not the 50 newest runs', async
   assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> hypotheses and kept <em>4<\/em>/);
 });
 
+test('Tau: a new user\'s first idea reads "1 hypothesis tested", not "1 hypotheses"', async () => {
+  const at = (counts) => frontend({fetchImpl: path => {
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path === '/api/research/context') return response({markets: []});
+    if (path === '/api/runs') return response({runs: [], counts, policy: null, totals: {tried: 1, passed: 0}});
+    if (path.startsWith('/api/research/scoreboard')) return response({});
+    if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  let f = at({research_running: 1, research_queued: 0});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— <em>1<\/em> hypothesis tested, <em>0<\/em> through every gate\./);
+  f.clearTimers();
+  f = at({research_running: 0, research_queued: 0});
+  f.S.me.user.autopilot = false;
+  await f.viewResearch(); await flush(); await flush();
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1<\/em> hypothesis and kept <em>0<\/em>/);
+  f.clearTimers();
+});
+
 test('the seeded example session is listed as an example, not counted as the user\'s research', async () => {
   const example = {id: 1, status: 'succeeded', market: 'btc15m', direction: 'random_walk', example: true, prompt: 'Random walk',
     hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};

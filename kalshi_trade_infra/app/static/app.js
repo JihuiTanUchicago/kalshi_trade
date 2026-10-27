@@ -2576,9 +2576,9 @@
       // A paused session holds one of the two session slots but isn't researching: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
       const said = running || paused
-        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(' ·\u00a0')} — <em>${tried}</em> hypotheses tested, <em>${passed}</em> through every gate.`
+        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(' ·\u00a0')} — <em>${tried}</em> hypothes${+tried === 1 ? 'is' : 'es'} tested, <em>${passed}</em> through every gate.`
         : tried
-          ? `Your engine has tested <em>${tried}</em> hypotheses and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
+          ? `Your engine has tested <em>${tried}</em> hypothes${+tried === 1 ? 'is' : 'es'} and kept <em>${passed}</em> that beat every gate. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
           : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
       paint(root.querySelector('#rstatus .said'), said);
       paint(root.querySelector('#rfigs'), fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
