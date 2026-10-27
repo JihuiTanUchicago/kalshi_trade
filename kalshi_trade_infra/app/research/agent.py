@@ -58,6 +58,7 @@ from app.services import customer_text
 from app.research.agent_market_data import AgentMarketData, DataScope
 from app.research.agent_knowledge import AgentKnowledge
 from app.research.agent_news import AgentNews
+from trading_core.domain.money import cents
 
 _LOG = logging.getLogger(__name__)
 
@@ -4510,14 +4511,32 @@ def _copilot_context(cur, user: Dict) -> str:
                   % (paper, demo, credits)]
     except Exception:
         pass
-    # PORTFOLIO VIEW: aggregate open exposure vs the user's caps, so the review manages the whole
-    # book (concentration, headroom) and not one deployment at a time.
+    # PORTFOLIO VIEW: each book's open exposure vs the user's caps, so the review manages the whole
+    # book (concentration, headroom) and not one deployment at a time. The engine applies the caps to
+    # one book at a time, and live money is never added to paper or demo: the line summed all three,
+    # so a reply could quote one open figure mixing real and practice money.
     try:
-        expo = repo.user_open_exposure(cur, user["id"])
-        lines.append("Aggregate open exposure: %s open positions, $%.2f entry notional (caps: max_open_positions=%s, "
-                     "max_open_notional=%s). Manage the book as a whole — don't let exposure concentrate in one market."
-                     % (expo.get("n"), float(expo.get("notional") or 0), risk.get("max_open_positions"),
-                        risk.get("max_open_notional")))
+        expo = {m: repo.user_open_exposure(cur, user["id"], m) for m in ("paper", "demo", "live")}
+        lines.append("Open exposure by book (each cap applies to each book on its own; never add books together): %s "
+                     "(caps: max_open_positions=%s, max_open_notional=%s). Manage each book as a whole — don't let "
+                     "exposure concentrate in one market."
+                     % ("; ".join("%s %s open, $%.2f entry notional" % (m, e.get("n"), cents(e.get("notional")))
+                                  for m, e in expo.items()), risk.get("max_open_positions"), risk.get("max_open_notional")))
+    except Exception:
+        pass
+    # What each book has realized, as the dashboard shows it (one read of the closed positions), so a
+    # reply asked "what have I made" quotes the page's figure: the per-deployment lines above leave
+    # out removed deployments and deleted strategies, and adding them up mixed rounded figures.
+    try:
+        realized, closed, _ = repo.closed_book_totals(cur, user["id"], repo.now_utc().replace(hour=0, minute=0, second=0))
+        demo_since = repo.demo_equity(cur, user["id"], realized=realized["demo"][0])
+        usd = lambda v: ("-$%.2f" % -v) if v < 0 else "$%.2f" % v  # noqa: E731
+        lines.append("Realized P&L by book, closed trades only (the dashboard's figures; never add books together): "
+                     "paper %s over %d closed trades, all time; demo %s %s; live (real money) %s over %d "
+                     "closed trades, all time. Removed deployments and deleted strategies are included."
+                     % (usd(cents(realized["paper"][0])), closed.get("paper", 0), usd(demo_since["realized"]),
+                        "since its last reload" if demo_since.get("before_reload") else "all time",
+                        usd(cents(realized["live"][0])), closed.get("live", 0)))
     except Exception:
         pass
     try:

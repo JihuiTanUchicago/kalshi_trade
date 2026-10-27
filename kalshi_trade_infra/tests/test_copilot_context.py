@@ -61,6 +61,24 @@ def test_finished_runs_say_whether_anything_passed(monkeypatch):
     assert "[succeeded]" not in ctx
 
 
+def test_open_exposure_and_realized_pnl_come_book_by_book_never_summed(monkeypatch):
+    # The engine applies the caps to one book at a time (user_open_exposure per mode), and the line summed
+    # all three books: a reply could quote real and practice money as one figure. The realized figures are
+    # the dashboard's (closed_book_totals), removed deployments and deleted strategies included.
+    _wire(monkeypatch)
+    expo = {"paper": {"n": 2, "notional": 3.0050}, "demo": {"n": 1, "notional": 2.1}, "live": {"n": 3, "notional": 0.9}}
+    monkeypatch.setattr(agent.repo, "user_open_exposure", lambda cur, uid, mode=None: expo[mode])
+    monkeypatch.setattr(agent.repo, "closed_book_totals", lambda cur, uid, day: (
+        {"paper": (-0.745, 0.0), "demo": (0.6335, 0.0), "live": (1.5225, 0.0)}, {"paper": 12, "demo": 3, "live": 3}, {}))
+    monkeypatch.setattr(agent.repo, "demo_equity", lambda cur, uid, realized=None: {"equity": 749.91, "realized": -0.09,
+                                                                                  "before_reload": 0.73})
+    ctx = agent._copilot_context(None, USER)
+    assert "Aggregate open exposure" not in ctx
+    assert "paper 2 open, $3.01 entry notional; demo 1 open, $2.10 entry notional; live 3 open, $0.90 entry notional" in ctx
+    assert "paper -$0.75 over 12 closed trades, all time; demo -$0.09 since its last reload; live (real money) $1.52 over 3" in ctx
+    assert "$6.01" not in ctx and "6 open" not in ctx  # no open figure across books
+
+
 def test_context_counts_running_deployments_up_front(monkeypatch):
     dep = {"id": 75, "strategy_id": 5, "title": "t", "market": "sol_daily", "mode": "paper", "status": "running", "closed_trades": 0,
            "wins": 0, "realized_pnl": 0, "open_positions": 0, "spec": {}, "result": {}}
