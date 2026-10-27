@@ -35,7 +35,7 @@ def test_the_list_and_the_run_page_carry_the_title_and_leave_the_prompt(monkeypa
     monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
     monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, silent_before=None: {})
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)
-    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
+    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid, judged=None: {"tried": 0, "passed": 0})
     out = {r["id"]: r for r in server.list_runs(_ctx())["runs"]}
     assert out[2]["title"] == "New idea picked by the autopilot for Bitcoin up or down in 15 minutes"
     assert out[2]["prompt"] == worker.RESEARCH_FLOOR_IDEA

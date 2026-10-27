@@ -534,12 +534,13 @@ def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apar
     monkeypatch.setattr(server.repo, 'research_week', lambda *a, **k: [{'model': None, 'runs': 3, 'tried': 41, 'passed': 0,
                                                                         'input_tokens': 0, 'output_tokens': 0}])
     monkeypatch.setattr(server.repo, 'strategies_passed_since', lambda *a, **k: 2)
+    monkeypatch.setattr(server.repo, 'passed_strategies', lambda *a, **k: [])  # judged: none left uncleared
     monkeypatch.setattr(server.repo, 'research_spent_since', lambda *a, **k: 7.256)
     seen = []
     monkeypatch.setattr(server.repo, 'autopilot_paper_week',
                         lambda cur, uid, since: seen.append((uid, since)) or {'started': 1, 'pnl': -3.456, 'trades': 4})
     week = server.autopilot_status(ctx)['week']
-    assert week == {'research_credits': 7.26, 'tested': 41, 'passed': 2, 'paper_started': 1,
+    assert week == {'research_credits': 7.26, 'tested': 41, 'passed': 2, 'not_cleared': 0, 'paper_started': 1,
                     'paper_pnl': -3.46, 'paper_trades': 4,
                     'checkin_credits': 0.0, 'credits_left': 10.0, 'runway_days': None, 'reload_days': None,
                     'pace_days': 7.0}

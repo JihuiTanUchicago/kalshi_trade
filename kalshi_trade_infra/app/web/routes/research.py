@@ -18,7 +18,7 @@ from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.explore import _efloat, _explore_feed, _feed_mid, _ticker_close_at
 from app.web.routes.strategies import (HELD_BACK, _autopilot_puts_on_paper, _held_back_lines, _later_verdicts, _owned_strategy,
-                                       _strategy_card, warm_dev_curves)
+                                       _research_pass_verdicts, _strategy_card, warm_dev_curves)
 from app.web.settings import MAX_ACTIVE_RESEARCH, MAX_RESEARCH_PER_DAY
 from app.web.views import (_gate_lines, _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd,
                            session_title)
@@ -39,7 +39,8 @@ def list_runs(ctx: Ctx):
     # The page polls every 5s and sends back its last answer's version as `since`: while nothing it
     # shows has moved, two statements answer "same" (services.research_list).
     counts = repo.active_run_counts(ctx.cur, ctx.uid, silent_before=_silent_before())
-    totals = _research_totals(ctx.cur, ctx.uid)
+    judged: Dict = {}  # the headline's judged passes, when it read them this request: the rows reuse them
+    totals = _research_totals(ctx.cur, ctx.uid, judged)
     v = research_list.version(repo.list_runs_version(ctx.cur, ctx.uid), counts, totals)
     if v is not None and ctx.query.get("since") == v:
         return {"v": v, "same": True}
@@ -55,7 +56,7 @@ def list_runs(ctx: Ctx):
     runs = repo.list_runs(ctx.cur, ctx.uid)
     _with_spent(ctx.cur, ctx.uid, runs)
     _mark_example(runs)
-    _with_not_cleared(ctx.cur, ctx.uid, runs)
+    _with_not_cleared(ctx.cur, ctx.uid, runs, judged or None)
     _number_sessions(ctx.cur, ctx.uid, runs)
     for r in runs:  # why a finished session stopped (out of credits, by you, an error, finished): services.run_stop
         r["stop_reason"] = run_stop.stop_reason(r)
@@ -81,22 +82,28 @@ def _mark_example(runs: List[Dict]) -> None:
         r["example"] = r.get("direction") == repo.DEMO_DIRECTION
 
 
-def _with_not_cleared(cur, uid: int, runs: List[Dict]) -> None:
+def _with_not_cleared(cur, uid: int, runs: List[Dict], judged: Optional[Dict] = None) -> None:
     """Stamp each listed session that counted a pass a later check left uncleared (its one-time holdout
     then failed, or the diversification check held it back: strategies._later_verdicts, the stamps
     "Missed final test" and "Held back") with `not_cleared`, how many. Its stored counter still counts
     them, so a row read "2 of 10 passed" over a session whose page says "Passed 1" and "1 not cleared";
     the row now takes them off as the session page does. Only sessions whose counter holds a pass are
     read, the seeded example left out as on its page: their passes in one read (idx_strat_run), then
-    their experiments' later rows in one (later_results), never a read per row. The holdout and the
-    diversification check are judged in the session's own gating transaction, with the pass itself
-    (agent._promote_if_forward_validated), so the counter the list's version reads moves with them.
-    Display only."""
+    their experiments' later rows in one (later_results), never a read per row. `judged` is the
+    headline's own judgment of every research pass ({"passes", "got"} from _research_totals, read this
+    request because its cache had lapsed): every listed session's passes are among them, so then nothing
+    more is read. The holdout and the diversification check are judged in the session's own gating
+    transaction, with the pass itself (agent._promote_if_forward_validated), so the counter the list's
+    version reads moves with them. Display only."""
     ids = [int(r["id"]) for r in runs if int(r.get("strategies_passed") or 0) > 0 and not r.get("example")]
     if not ids:
         return
-    passes = repo.passed_strategies(cur, uid, run_ids=ids)
-    got = _later_verdicts(cur, uid, [p for p in passes if p.get("direction") != repo.DEMO_DIRECTION])
+    if judged is not None:
+        listed = set(ids)
+        passes, got = [p for p in judged["passes"] if p.get("run_id") in listed], judged["got"]
+    else:
+        passes = repo.passed_strategies(cur, uid, run_ids=ids)
+        got = _later_verdicts(cur, uid, [p for p in passes if p.get("direction") != repo.DEMO_DIRECTION])
     n: Dict[int, int] = {}
     for p in passes:
         if p["id"] in got and p.get("run_id"):
@@ -131,20 +138,30 @@ RUN_TOTALS_TTL = 30.0  # seconds; the Research page polls /api/runs every 5s
 _RUN_TOTALS: Dict[int, Tuple[float, Dict]] = {}
 
 
-def _research_totals(cur, uid: int) -> Dict:
-    """All-time ideas tested and strategies that passed every gate, for the Research headline.
+def _research_totals(cur, uid: int, judged: Optional[Dict] = None) -> Dict:
+    """All-time ideas tested, strategies that passed every gate and were cleared to trade, and passes a
+    later check left uncleared, for the Research headline: {"tried", "passed", "not_cleared"}.
     The page summed its 50 newest runs, so a busy autopilot (250+ runs a week) read a fraction of
     its real total, and the runs' strategies_passed counter overcounts (it once held 68
-    backtest-only rows). Same sources as the autopilot panel's week: research_week and
-    strategies_passed_since. The seeded example session is left out: a new account read "Your engine
-    has tested 2 hypotheses" for research it never ran; the list marks that row as an example
-    instead. Cached per user like the track record."""
+    backtest-only rows). Same sources as the autopilot panel's week: research_week and the passes
+    strategies_passed_since counts. Of those, a pass whose one-time holdout then failed or that the
+    diversification check held back (stamped Missed final test and Held back on its page, the session
+    rows and the Strategies list) counts under "not_cleared", not "passed": "kept 3 that beat every
+    gate" sat over sessions reading "1 passed, 2 not cleared". Every pass is judged at once
+    (strategies._research_pass_verdicts: one read of the passes, one of their experiments' later rows).
+    The seeded example session is left out: a new account read "Your engine has tested 2 hypotheses"
+    for research it never ran; the list marks that row as an example instead. Cached per user like the
+    track record. When it reads (its cache lapsed) and `judged` is given, the judged passes go in it
+    ({"passes", "got"}) for the session rows (_with_not_cleared) to reuse."""
     hit = _RUN_TOTALS.get(uid)
     if hit and time.time() - hit[0] < RUN_TOTALS_TTL:
         return hit[1]
     since = repo.now_utc() - timedelta(days=365 * 50)
-    val = {"tried": sum(int(r.get("tried") or 0) for r in repo.research_week(cur, uid, since)),
-           "passed": repo.strategies_passed_since(cur, uid, since)}
+    tried = sum(int(r.get("tried") or 0) for r in repo.research_week(cur, uid, since))
+    passes, got = _research_pass_verdicts(cur, uid, since)
+    if judged is not None:
+        judged.update(passes=passes, got=got)
+    val = {"tried": tried, "passed": len(passes) - len(got), "not_cleared": len(got)}
     _RUN_TOTALS[uid] = (time.time(), val)
     return val
 

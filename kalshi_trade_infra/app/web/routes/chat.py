@@ -4,6 +4,7 @@ app.server, which re-imports every name for its route table."""
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -28,6 +29,7 @@ from app.web.routes.billing import (
     runway_days,
 )
 from app.web.routes.brokers import _paper_call, _perps_live_call
+from app.web.routes.strategies import _research_pass_verdicts
 from app.web.settings import MAX_CHAT_PER_HOUR
 from app.web.views import (
     _demo_health,
@@ -225,14 +227,43 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
     # The week's totals come from one aggregate, not the 50 newest runs: a busy autopilot starts
     # 250+ runs a week, and the capped list told Todd it had tested 73 ideas when it was hundreds.
     # Passed counts strategies that cleared every gate: an old run's counter held 68 backtest-only.
+    # Of those, the ones a later check left uncleared count apart (_week_not_cleared).
+    not_cleared = _week_not_cleared(cur, uid, since, pulse["passed_7d"])
     return {"active": [MARKETS[r["market"]].label if r.get("market") in MARKETS else (r.get("market") or "a market it's still picking")
                        for r in active],
             "tested_7d": pulse["tested_7d"],
-            "passed_7d": pulse["passed_7d"],
+            "passed_7d": pulse["passed_7d"] - not_cleared,
+            "not_cleared_7d": not_cleared,
             "runs_7d": pulse["runs_7d"],
             # What research actually debited this week (the credit ledger), not tokens re-priced:
             # re-pricing billed a screen-arm run's screen tokens at the developer model's rate.
             "cost_7d": credit_usd(spent if spent is not None else repo.credit_week(cur, uid, since)["research"])}
+
+
+WEEK_PASSES_TTL = 30.0  # seconds; the panel polls every 20s
+
+
+_WEEK_PASSES: Dict[int, Tuple[float, int, int]] = {}  # {user id: (when, the week's stored passes, not cleared)}
+
+
+def _week_not_cleared(cur, uid: int, since, stored: int) -> int:
+    """How many of the week's passes (the pulse's passed_7d, strategies_passed_since's count) a later check
+    left uncleared: the one-time holdout then failed, or the diversification check held it back, stamped
+    Missed final test and Held back on its page, the session rows and the Strategies list. The panel read
+    "3 passed" this week beside sessions reading "1 passed, 2 not cleared". Judged as the Research
+    headline judges them (strategies._research_pass_verdicts: one read of the passes, one of their
+    experiments' later rows), only when something passed, and kept per user for WEEK_PASSES_TTL while
+    the stored count holds: the holdout and the diversification check are judged in the pass's own
+    gating transaction, so a new verdict comes with a new pass. Display only."""
+    if stored <= 0:
+        return 0
+    hit = _WEEK_PASSES.get(uid)
+    if hit and hit[1] == stored and time.time() - hit[0] < WEEK_PASSES_TTL:
+        return hit[2]
+    _, got = _research_pass_verdicts(cur, uid, since)
+    n = min(stored, len(got))
+    _WEEK_PASSES[uid] = (time.time(), stored, n)
+    return n
 
 
 def _research_cents(credits: Dict) -> float:
@@ -268,12 +299,23 @@ def _autopilot_story(d: Dict) -> List[str]:
     if d.get("focus"):
         lines.append("It sticks to the focus you set: %s." % ", ".join(d["focus"]))
     tested, passed = int(research.get("tested_7d") or 0), int(research.get("passed_7d") or 0)
+    # passed_7d counts only passes cleared to trade; one a later check left uncleared (Missed final test,
+    # Held back) is said apart, as the session rows and the Strategies list say it.
+    fell = int(research.get("not_cleared_7d") or 0)
     if tested:
         cost = float(research.get("cost_7d") or 0)
+        if passed:
+            outcome = "{:,} passed".format(passed) + (
+                ", and {:,} more passed but {} cleared to trade".format(fell, "wasn't" if fell == 1 else "weren't")
+                if fell else "")
+        elif fell:
+            outcome = ("none has been cleared to trade yet: %s, but a later check didn't clear %s. Each one's "
+                       "page says which check" % (_plural(fell, "passed", "passed"), "it" if fell == 1 else "them"))
+        else:
+            outcome = ("none has passed its tests yet. That's normal: most ideas fail. Each session's page names "
+                       "the test each idea missed and what to try next")
         lines.append("This week it tested %s%s and %s." % (
-            _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01 else "",
-            "none has passed its tests yet. That's normal: most ideas fail. Each session's page names the test "
-            "each idea missed and what to try next" if not passed else "{:,} passed".format(passed)))
+            _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01 else "", outcome))
     paper, prog = int(d.get("paper_running") or 0), d.get("paper_progress")
     if idle and (idle == "engine" or not paper):
         pass  # the idle line (shown above the story) says why nothing trades; this one would repeat or contradict it
@@ -843,7 +885,8 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
     since = repo.now_utc() - timedelta(days=7)
     paper = repo.autopilot_paper_week(cur, uid, since)
     out = {"research_credits": research.get("cost_7d", 0.0), "tested": research.get("tested_7d", 0),
-           "passed": research.get("passed_7d", 0), "paper_started": paper["started"],
+           "passed": research.get("passed_7d", 0), "not_cleared": research.get("not_cleared_7d", 0),
+           "paper_started": paper["started"],
            "paper_pnl": cents(paper["pnl"]), "paper_trades": paper["trades"],
            "checkin_credits": None, "credits_left": None, "runway_days": None, "reload_days": None, "pace_days": None}
     if billing.configured():

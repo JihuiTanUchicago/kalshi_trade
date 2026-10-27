@@ -496,6 +496,19 @@ def _later_verdicts(cur, uid: int, strategies: List[Dict]) -> Dict[int, Tuple[st
     return out
 
 
+def _research_pass_verdicts(cur, uid: int, since) -> Tuple[List[Dict], Dict[int, Tuple[str, Dict]]]:
+    """(the passes from research sessions started since `since`, _later_verdicts for them): what the
+    research headlines ("kept N that beat every gate", the autopilot's "N passed this week") count, and
+    which of those a later check left uncleared (Missed final test, Held back), so a headline counts only
+    what cleared and says how many didn't, as the session rows and the Strategies chips do. One read of
+    the passes (repo.passed_strategies, idx_strat_user, each pass's session by primary key), then one of
+    their experiments' later rows (later_results), plus the legacy fallback only for a pass stored
+    without its experiment id; none when nothing passed. The seeded example is never judged, as on its
+    page. Display only."""
+    passes = repo.passed_strategies(cur, uid, research_since=since)
+    return passes, _later_verdicts(cur, uid, [p for p in passes if p.get("direction") != repo.DEMO_DIRECTION])
+
+
 def _held_back_lines(cur, uid: int, held: List[Tuple[Dict, Dict]]) -> Dict[int, List[Dict]]:
     """{strategy id: gate_explain.held_back} for strategies _later_verdict holds back, each with its
     experiment block. The reason is the gatekeeper's own, from its one record: a holdout pass's run verdict

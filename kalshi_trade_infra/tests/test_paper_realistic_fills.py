@@ -359,6 +359,9 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
     seen = []
     monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: seen.append(since) or week)
     monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 1)
+    # The week's pass, judged for a later check: nothing left it uncleared (test_hot_endpoint_query_budget
+    # covers one that did).
+    monkeypatch.setattr(server.repo, "passed_strategies", lambda cur, uid, **k: [])
     # The week's cost is what the ledger debited for research, never the week's tokens re-priced.
     spent = []
     monkeypatch.setattr(server.repo, "research_spent_since", lambda cur, uid, since: spent.append(since) or 12.3456)
@@ -370,6 +373,23 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
     story = server._autopilot_story({"autopilot": True, "research": dict(out, active=["a market it's still picking"])})
     assert story[0] == "Right now it's picking a market to research."
     assert story[1] == "This week it tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
+
+
+def test_the_story_says_a_pass_a_later_check_left_uncleared_apart_from_what_passed():
+    """passed_7d counts only passes cleared to trade; one whose holdout then failed or that the
+    diversification check held back (not_cleared_7d) is said apart, never as passed."""
+    from app import server
+
+    def line(passed, fell):
+        return server._autopilot_story({"autopilot": True, "research": {
+            "active": [], "tested_7d": 12, "passed_7d": passed, "not_cleared_7d": fell}})[1]
+    assert line(1, 0) == "This week it tested 12 ideas and 1 passed."
+    assert line(1, 1) == "This week it tested 12 ideas and 1 passed, and 1 more passed but wasn't cleared to trade."
+    assert line(2, 3) == "This week it tested 12 ideas and 2 passed, and 3 more passed but weren't cleared to trade."
+    assert line(0, 2) == ("This week it tested 12 ideas and none has been cleared to trade yet: 2 passed, but a later "
+                          "check didn't clear them. Each one's page says which check.")
+    assert line(0, 1).endswith("1 passed, but a later check didn't clear it. Each one's page says which check.")
+    assert "none has passed its tests yet" in line(0, 0)
 
 
 def test_research_activity_counts_only_runs_that_are_working_now(monkeypatch):
