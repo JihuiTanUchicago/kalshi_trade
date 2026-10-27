@@ -125,16 +125,28 @@ window.TauPage('funds', (T) => {
     // cashAsk: each book's follow-up for the answer last read in full, resolving to its cash once back (the demo
     // key's save says its balance from it).
     let cashAsk = {};
+    // A poll that lands while a follow-up is out and doesn't repaint the panels (nothing in them moved, or someone
+    // is using them) asks no follow-up of its own, yet becomes the answer shown: the follow-up still out then
+    // lands on it while it has the same key's cash pending (its fill was dropped until the next read). A read
+    // that asked its own follow-up (a repaint, a write) takes that one instead.
+    const landed = (b, next) => {
+      if (next.failed) return { ...b, pending: false, failed: true };
+      const { pending, last_balance, last_balance_at, ...kept } = b;
+      return { ...kept, connected: next.connected, balance: next.balance, balance_at: next.balance_at };
+    };
     const fillCash = (d) => { cashAsk = {}; [['live', 'kalshi'], ['demo', 'kalshi_dev']].forEach(([book, key]) => {
       const b = d[key];
       if (!b || !b.pending) return;
       const fill = (next) => {
-        if (gen !== S.gen || shown !== d) return;
-        d[key] = next;
+        if (gen !== S.gen) return;
+        const s = shown && shown[key];
+        const now = shown === d ? d : cashAsk[book] === ask && s && s.pending && s.key_id === b.key_id ? shown : null;
+        if (!now) return;
+        now[key] = landed(now[key], next);
         // The key went in the meantime: read it all afresh. Otherwise only the cash changed.
-        (next.connected ? load(null, d) : load()).catch(() => {});
+        (next.connected ? load(null, now) : load()).catch(() => {});
       };
-      cashAsk[book] = cashRead(b, book).then((next) => { fill(next); return next; });
+      const ask = cashAsk[book] = cashRead(b, book).then((next) => { fill(next); return next; });
     }); };
     // After a demo key's save: its cash is read after the save (the old key's was forgotten), so the flash says the
     // balance is being checked and then names it once that follow-up is back, unless something else has been said

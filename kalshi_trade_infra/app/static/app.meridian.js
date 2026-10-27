@@ -1244,6 +1244,8 @@
     const { pending, last_balance, last_balance_at, ...kept } = b;
     return { ...kept, balance: last_balance, balance_at: last_balance_at };
   };
+  // cashAt: when a figure Kalshi answered was read ("Read from Kalshi 2m ago"), or '' with no read time.
+  const cashAt = (b) => b && b.balance_at ? `Read from Kalshi ${when(b.balance_at)}` : '';
   const cashFig = (b) => b.pending ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}; checking Kalshi for the latest\u2026`] : ['Checking\u2026', 'Asking Kalshi for your real cash now.'])
     : b.failed ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}. ${CASH_FAILED}`] : ['Unavailable', CASH_FAILED]) : null;
   const cashRead = (b, book) => api('/api/funds/cash?book=' + book).then((c) => {
@@ -2276,7 +2278,7 @@
       // Drawn from cashNow: a pending cash read under two minutes ago shows as current while its follow-up is out.
       const lv = cashNow(d.live);
       const liveCf = lv.connected && cashFig(lv);
-      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(lv, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>') + tradesCsv('live', lv) });
+      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : '<a href="/funds">Connect Kalshi</a>') + tradesCsv('live', lv) });
       const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]} \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now \u00b7\u00a0${money(lv.realized_pnl)} realized all time by Tau trades` : `${money(lv.realized_pnl)} realized all time by Tau trades${lv.balance_at ? ` \u00b7\u00a0cash read from Kalshi ${when(lv.balance_at)}` : ''}`) : '<a href="/funds">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost, not in cash</span><strong>${usd(lv.open_at_cost)}</strong></div></div></dd></div>`;
       const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` });
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
@@ -3872,7 +3874,7 @@
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
-    busy, cardFormFail, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
+    busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
     CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoCashRead, demoHealthLine, demoSpan,
     DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,

@@ -151,7 +151,7 @@ class _NoCash(Exception):
     """The demo cash a check needs isn't in the memo (or is too old to stand in), and Kalshi isn't asked."""
 
 
-def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None, ask_kalshi: bool = False):
+def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None):
     """Why the demo book can't trade, as one plain line and the one thing to do, or None when nothing
     known stops it. A demo deployment looks healthy (running, capital, a P&L) while every order it
     sends is refused, so the pages that show demo say this instead:
@@ -159,13 +159,9 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None,
       - demo_funds: the Kalshi demo account holds less than one stake, so Kalshi refuses its orders.
     `deps` are deployment rows (with spec). `stake` asks about a strategy that could go on demo but
     isn't there yet (the strategy page's next rung), so funds are checked even with nothing running.
-    Unknown cash is never a problem. With ask_kalshi False (the default) it never waits on Kalshi: when the
-    demo cash memo isn't kept it answers DEMO_HEALTH_PENDING. ask_kalshi True reads the cached demo GET
-    (_demo_cash: demo_twins.balance_cached, one at a time per user); no page read asks so. The pages read
-    demo_health_memo, which also keeps a line from a figure read under RECENT_ENOUGH ago. Display only:
-    nothing that gates or sizes an order reads this."""
-    if ask_kalshi:
-        return _health_from(cur, uid, deps, stake, lambda: _demo_cash(cur, uid))
+    Unknown cash is never a problem. It never waits on Kalshi: when the demo cash memo isn't kept it answers
+    DEMO_HEALTH_PENDING. The pages read demo_health_memo, which also keeps a line from a figure read under
+    RECENT_ENOUGH ago. Display only: nothing that gates or sizes an order reads this."""
     health, pending = demo_health_memo(cur, uid, deps, stake, recent=0.0)
     return DEMO_HEALTH_PENDING if pending else health
 
