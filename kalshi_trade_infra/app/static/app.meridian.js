@@ -264,8 +264,18 @@
     if (d.mode !== 'live' || liveOpen()) return null;
     const n = +d.open_positions || 0;
     const held = n ? `, and Tau can’t sell ${n === 1 ? 'its open position, which stays open until its market settles' : `its ${n} open positions, which stay open until their markets settle`}` : '';
-    return { tag: 'Waiting', state: 'Waiting: live trading isn’t open yet', why: `Live trading isn’t open yet, so this places no orders${held}. Tau pauses it the next time it checks the market.` };
+    return { tag: 'Waiting', state: LIVE_WAITING, why: `${LIVE_NO_ORDERS}${held}. Tau pauses it the next time it checks the market.` };
   };
+  const LIVE_WAITING = 'Waiting: live trading isn’t open yet', LIVE_NO_ORDERS = 'Live trading isn’t open yet, so this places no orders';
+  // Live deployments counted running that place no orders, as Deploy's Money figure counts them.
+  const liveIdleCount = (n) => `${n} live, placing no orders: live trading isn’t open yet`;
+  // A "Live" badge on a list or card while live trading is closed (a strategy's books, a shared deployment):
+  // the badge waits beside it, in depIdle's words, and a line under it says why on a phone too ('' while open).
+  const liveWaitMark = () => liveOpen() ? '' : ` <span class="mk quiet live-wait" title="${LIVE_CLOSED}">Waiting<span class="vh">: live trading isn’t open yet</span></span>`;
+  const liveWaitLine = () => liveOpen() ? '' : `<div class="sub-fig live-wait-why">${LIVE_NO_ORDERS}.</div>`;
+  // The live switch rides the board's and the dashboard's polled answers (live_trading_available, in their
+  // version), so an open tab follows a flip without a reload or a read of /api/me.
+  const followLive = (d) => { if (d && typeof d.live_trading_available === 'boolean' && S.me) S.me.live_trading_available = d.live_trading_available; return d; };
   // Resume the server refuses (a live deployment while live trading is closed, a Bitcoin perpetual one) is
   // offered disabled, saying why, as a demo copy waiting on its paper run is (the server's resume_block).
   const resumeBlock = (d) => d.resume_block || (isPerpetual(d) ? 'Bitcoin perpetuals are research-only and can’t be resumed for trading.'
@@ -277,7 +287,6 @@
   const tradePrice = (v, perpetual) => perpetual ? (!['number', 'string'].includes(typeof v) || String(v).trim() === '' || !Number.isFinite(Number(v)) ? '—' : perpsPrice.format(Number(v))) : cents(v);
   const PERPS_SCENARIO = 'Research scenario: at most 1× capital, fixed 12 bps taker fees and 5 bps adverse slippage per fill, plus settled funding. These are uncalibrated cost assumptions; fills use the next bar’s open. No margin or liquidation model. Short losses can exceed capital.';
   const tone = (v) => (v > 0 ? 'gain' : v < 0 ? 'loss' : '');
-  const serial = (n) => 'No. ' + String(n).padStart(5, '0');
   const when = (iso) => {
     if (!iso) return '';
     const d = new Date(iso);
@@ -1606,11 +1615,14 @@
   const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying \u00b7\u00a0${realTrades(r.trades)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)} \u00b7\u00a0${realTrades(r.demo.trades)}` : 'no closed trades yet'}</div>` : ''}` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
+  const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));
   const bookBadge = (s) => {
-    const books = Array.isArray(s.books) ? s.books : [], live = s.deploy_live || books.includes('live');
+    const books = Array.isArray(s.books) ? s.books : [], live = bookLive(s);
     const rest = books.filter((m) => m === 'paper' || m === 'demo');
     const text = live ? ['Live', ...rest].join(' + ') : rest.length ? 'On ' + rest.join(' + ') : 'Deployed';
-    return `<span class="mk ${live ? 'live' : 'dep'}">${text}</span>`;
+    // A live book while live trading is closed places no orders: the badge says it waits (liveWaitMark), unless
+    // its row already says Paused.
+    return `<span class="mk ${live ? 'live' : 'dep'}">${text}</span>${live && !(s.real && s.real.paused) ? liveWaitMark() : ''}`;
   };
   // What its removed deployments made, one line per book (the server's `past`), never added to the
   // book it runs in now: a removed strategy read as if it had never traded.
@@ -1639,7 +1651,7 @@
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       ${opts.inRun ? '' : `<td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>`}
-      <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
+      <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${bookLive(s) ? liveWaitLine() : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">Realized P&amp;L</th><th class="num">Unrealized</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
@@ -1723,7 +1735,7 @@
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${depState(d, live)}</span></header>
       <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketShort(d.market))} ·\u00a0${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? ' \u00b7\u00a0' + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + esc(d.status_why || d.status_reason) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}</div>
       <dl class="monitor-metrics">
-        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig">${PAPER_NET}</dd>` : ''}</div>
+        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${PAPER_NET}${glo('paperfills')}</dd>` : ''}</div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}</dd></div>
       </dl>
       <div class="monitor-footer"><dl class="monitor-counts"><div><dt>Closed / open</dt><dd aria-label="${esc(d.closed_trades)} closed trades, ${esc(d.open_positions || 0)} open positions">${esc(d.closed_trades)} / ${esc(d.open_positions || 0)}</dd></div></dl><div class="monitor-controls">${deploymentActions(d, false)}${deploymentEvidence(d, true)}</div></div>
@@ -2168,7 +2180,7 @@
     const load = async (cfg) => {
       const q = [visitAt ? 'since=' + visitAt : '', kept && kept.v ? 'v=' + encodeURIComponent(kept.v) : ''].filter(Boolean).join('&');
       const got = await api('/api/dashboard' + (q ? '?' + q : ''), undefined, cfg);
-      const d = pollAnswer(kept, got);
+      const d = followLive(pollAnswer(kept, got));
       if (!got.same) kept = got;
       if (gen !== S.gen) return;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
@@ -2332,7 +2344,7 @@
     let kept = null;  // the last full answer, whose version the 10s poll sends back (pollAnswer)
     const loadBoard = async () => {
       const got = await api('/api/deployments' + (kept && kept.v ? '?v=' + encodeURIComponent(kept.v) : ''));
-      const d = withUnrealized(pollAnswer(kept, got));
+      const d = withUnrealized(followLive(pollAnswer(kept, got)));
       if (!got.same) kept = got;
       if (!d.deployments.length && !askedPassed) {
         askedPassed = true;
@@ -2377,7 +2389,7 @@
           : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), usd(paperRealized, true), { v: paperRealized, small: `paper money, not real${removedNote('paper')} ·\u00a0${PAPER_NET}${glo('paperfills')}` }) : '') +
         (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}` }) : '') +
         fig('Open positions', openSplit) +
-        fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? `${liveIdle} live, placing no orders: live trading isn\u2019t open yet` : 'nothing on live money' }));
+        fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? liveIdleCount(liveIdle) : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
       replaceDeploymentContent(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, true, regs)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.' : 'Open a passed strategy and deploy it here. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">New session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>'}</div>`);
@@ -3123,14 +3135,16 @@
     }
     if (!d) { host.className = 'apcard on'; host.innerHTML = ''; return; }  // on, status still loading
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
-    const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
+    // A live one while live trading is closed places no orders: counted apart, as Deploy counts it.
+    const liveIdle = liveOpen() ? 0 : +d.live_running || 0;
+    const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0) - liveIdle;
     // Realized, as the paper portfolio, the Closed P&L chart, the track record, Deploy and the strategy
     // page count it. The equity change (total_pnl) took off open positions' entry fees and dropped every
     // trade before a reset, so "All-time P&L +$5.19" sat beside "Closed P&L +$5.61" for one book.
     const pnl = S.dashPaper ? S.dashPaper.realized_pnl : null;
     const cells = [
       d.live_running ? ['Live realized today (UTC)', money(d.today_live_pnl || 0)] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : `${money(pnl)}<small>${PAPER_NET}</small>`],
-      ['Strategies running', running ? String(running) : 'None yet'],
+      ['Strategies running', `${running ? String(running) : 'None yet'}${liveIdle ? `<small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested ·\u00a0${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a>`]
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
@@ -3294,7 +3308,7 @@
   // A billing pause stops the autopilot's research and check-ins; the engine keeps trading what is
   // already deployed (credits never gate a trade). "Paused" alone read as if every strategy had stopped.
   const apStillTrading = (d) => {
-    const n = (+d.live_running || 0) + (+d.demo_running || 0) + (+d.paper_running || 0);
+    const n = (liveOpen() ? +d.live_running || 0 : 0) + (+d.demo_running || 0) + (+d.paper_running || 0);  // live places no orders while closed
     return n ? ` ${n === 1 ? 'The strategy already running keeps' : `The ${n} strategies already running keep`} trading.` : '';
   };
   // Beside the week's spend: what is left, how long it lasts at that pace (the Billing page's runway),
@@ -3756,7 +3770,7 @@
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
-    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveOpen, dateFmt, DEMO_WHAT, demoHealthLine, demoSpan,
+    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoHealthLine, demoSpan,
     DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,
@@ -3764,7 +3778,7 @@
     paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
     researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S,
-    serial, sessionNo, sessionTitle, settleAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
+    sessionNo, sessionTitle, settleAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
     stripeFail, syncMeBilling, tone, topupCharge, tradePrice, trDay, tzName, usd, waitNote, waitSpan, wakers,
     WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
   }, { get: (all, k) => { if (!(k in all)) throw new Error('A page file asks for ' + String(k) + ', which this build does not share.'); return all[k]; } }));

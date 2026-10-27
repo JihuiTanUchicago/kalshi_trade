@@ -5,7 +5,7 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, busy, clock, deploymentMode, esc, flash, ICON,
-    loading, marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S,
+    liveWaitMark, loading, marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S,
     shell, statusMark, tone, trDay, usd, when
   } = T;
 
@@ -25,7 +25,7 @@ window.TauPage('community', (T) => {
       return owner ? `<div class="snap snap-strategy">${body}</div>` : `<a class="snap snap-strategy" href="/strategies/${snap.id}">${body}</a>`;
     }
     if (snap.kind === 'deployment') {
-      return `<div class="snap snap-deployment"><div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${deploymentMode(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Deployment</span><span class="snap-meta">${esc(marketShort(snap.market))}</span>${snap.since ? `<span class="snap-kind snap-since">since ${trDay(Date.parse(snap.since) / 1000)}</span>` : ''}</div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Realized P&amp;L</dt><dd class="${tone(snap.realized_pnl)}">${usd(snap.realized_pnl, true)}</dd></div><div class="snap-secondary"><dt>Closed trades</dt><dd>${esc(snap.closed_trades)}</dd></div></dl></div>`;
+      return `<div class="snap snap-deployment"><div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${deploymentMode(snap)}${snap.mode === 'live' ? liveWaitMark() : ''}</span><div class="snap-meta-line"><span class="snap-kind">Deployment</span><span class="snap-meta">${esc(marketShort(snap.market))}</span>${snap.since ? `<span class="snap-kind snap-since">since ${trDay(Date.parse(snap.since) / 1000)}</span>` : ''}</div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Realized P&amp;L</dt><dd class="${tone(snap.realized_pnl)}">${usd(snap.realized_pnl, true)}</dd></div><div class="snap-secondary"><dt>Closed trades</dt><dd>${esc(snap.closed_trades)}</dd></div></dl></div>`;
     }
     return '';
   }

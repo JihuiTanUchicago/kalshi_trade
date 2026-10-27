@@ -7,7 +7,7 @@ window.TauPage('autopilot', (T) => {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apMarketNames, apReloadFailed, apShowFocus,
     apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, go, ICON, mdLite,
-    paced, paintDashAp, paperCount, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
+    liveIdleCount, liveOpen, paced, paintDashAp, paperCount, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
     wakers
   } = T;
 
@@ -447,8 +447,9 @@ window.TauPage('autopilot', (T) => {
     const stats = box.querySelector('#apf-stats');
     // Count running strategies across every mode, not just paper — a lone demo strategy
     // used to read as "0 paper", which looked like nothing was running. Match the dashboard.
+    // A live one while live trading is closed places no orders, and says so, as Deploy's Money figure does.
     const runParts = [
-      d.live_running ? `<span class="apf-live">${d.live_running} live</span>` : '',
+      d.live_running ? (liveOpen() ? `<span class="apf-live">${d.live_running} live</span>` : liveIdleCount(d.live_running)) : '',
       d.demo_running ? `${d.demo_running} demo` : '',
       d.paper_running ? `${d.paper_running} paper` : '',
     ].filter(Boolean);

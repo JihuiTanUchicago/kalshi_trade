@@ -5966,6 +5966,16 @@ test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / 
   assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/p><div class="monitor-limits"><span> · Max 3 open<\/span>/);
 });
 
+test('Meridian: a paper card on the dashboard says "after Kalshi fees and the spread" as the small explainer it is elsewhere', () => {
+  const f = frontend();
+  const html = f.deploymentMonitor(nullStakeDep({mode: 'paper', status: 'running', stake: 5}));
+  // The phrase (customer_text.PAPER_NET) with its PAPER_FILLS bubble, under the P&L, not a 20px figure of its own.
+  assert.match(html, /<dd class="sub-fig paper-net">after Kalshi fees and the spread<button type="button" class="info" data-glo="paperfills"/);
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\n\.monitor-metrics dd\.paper-net \{[^}]*font: 400 12px\/16px var\(--f-ui\);[^}]*color: var\(--ink-3\);/);
+  assert.doesNotMatch(f.deploymentMonitor(nullStakeDep({mode: 'live', status: 'running', stake: 5})), /paper-net/);
+});
+
 test('Meridian: a research session the autopilot started says so on the active card, the list and its page', async () => {
   const ap = {...researchRun(15, 'running'), by_autopilot: 1};
   const apDone = {...researchRun(14, 'succeeded'), by_autopilot: 1};
