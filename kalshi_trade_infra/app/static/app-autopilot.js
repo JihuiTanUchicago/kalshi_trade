@@ -415,6 +415,9 @@ window.TauPage('autopilot', (T) => {
     sel.innerHTML = opts.map(([v, label]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`).join('');
     sel.dataset.cur = cur;
   }
+  // The note after "Furthest on paper"'s net, as its own sentence: it ran on from "+$15.26 net on them" into
+  // "instant-fill paper trades left out" with nothing between.
+  const PAPER_COUNT_WHY_SAID = PAPER_COUNT_WHY.charAt(0).toUpperCase() + PAPER_COUNT_WHY.slice(1) + '.';
   function apUpdate(box, d) {
     const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
     box.className = 'apf open' + (m.cls ? ' ' + m.cls : '');
@@ -475,7 +478,7 @@ window.TauPage('autopilot', (T) => {
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${budgetShown ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${+d.research.not_cleared_7d ? `, ${Number(d.research.not_cleared_7d).toLocaleString('en-US')} not cleared` : ''}${d.research.cost_7d ? ', ' + usd(d.research.cost_7d) + ' spent' : ''}</dd></div>` : ''}
-      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)} net on them <small>${PAPER_COUNT_WHY}</small></dd></div>` : ''}`;
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)} net on them. <small>${PAPER_COUNT_WHY_SAID}</small></dd></div>` : ''}`;
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.
