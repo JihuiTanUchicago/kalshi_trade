@@ -3,7 +3,7 @@ final test" for a validation pass whose one-time holdout failed, "Held back" for
 check then held back (a holdout pass, a pass stored before app_strategies.experiment_id, or a probation
 strategy that passed on paper), nothing for a true pass or a plain miss. The list judges all of them with
 one read of their experiments' later rows (plus one for a strategy stored without its experiment id),
-whatever the page size.
+whatever the page size. The research session page names the strategy a held-back pass repeats, by title.
 Written through the repository layer only (no engine, no order). Opt in as for test_app_engine_db.py
 (APP_TEST_MYSQL=1).
 """
@@ -44,6 +44,7 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     from app import repository as repo
     from app import server
     from app.research import research_repository as rr
+    from app.web.routes import research
     from app.trading import spec as specmod
 
     cur = conn.cursor()
@@ -105,3 +106,11 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     page = server.get_strategy(server.Ctx(conn, user, (str(sid["paper held"]),), {}, {}, None))
     assert [(ln["gate"], ln["label"]) for ln in page["why_failed"]] == [("diversification", "Too similar to “Late fade”")]
     assert page["why_failed"][0]["measured"] == "a 0.93 correlation of daily results with “Late fade”"
+
+    # The session page: the held-back pass says so by name; the missed one lists its holdout checks.
+    later = research._later_missed(counting, uid, repo.list_strategies(cur, uid, run_id=run))
+    assert later[sid["held"]]["verdict"] == "held_back"
+    assert later[sid["held"]]["later_missed"][0]["label"] == "Too similar to “Late fade”"
+    assert later[sid["missed"]]["verdict"] == "missed_final"
+    assert later[sid["missed"]]["later_missed"][0]["label"] == "The edge could be luck on the locked holdout"
+    assert sid["true pass"] not in later and str(peer_eid) not in str(later)

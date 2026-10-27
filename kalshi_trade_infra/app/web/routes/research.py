@@ -17,8 +17,8 @@ from app.trading.markets import MARKETS
 from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.explore import _efloat, _explore_feed, _feed_mid, _ticker_close_at
-from app.web.routes.strategies import (_autopilot_puts_on_paper, _experiment_block, _owned_strategy, _strategy_card,
-                                       warm_dev_curves)
+from app.web.routes.strategies import (HELD_BACK, _autopilot_puts_on_paper, _held_back_lines, _later_verdicts, _owned_strategy,
+                                       _strategy_card, warm_dev_curves)
 from app.web.settings import MAX_ACTIVE_RESEARCH, MAX_RESEARCH_PER_DAY
 from app.web.views import (_gate_lines, _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd,
                            session_title)
@@ -168,29 +168,33 @@ def get_run(ctx: Ctx):
     mine = [s for s in strategies if s["run_id"] == run["id"]]
     warm_dev_curves(mine)
     auto = _autopilot_puts_on_paper(ctx.cur, ctx.user, mine)
-    later = _later_missed(ctx.cur, mine)
+    later = _later_missed(ctx.cur, ctx.uid, mine)
     return {
         "run": run,
         "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after))),
         "strategies": [{**_strategy_card(s), **({"autopilot_next": True} if s["id"] in auto else {}),
-                        **({"later_missed": later[s["id"]]} if s["id"] in later else {})} for s in mine],
+                        **later.get(s["id"], {})} for s in mine],
         "rsi": _rsi_block(pol, dream),
     }
 
 
-def _later_missed(cur, strategies: List[Dict]) -> Dict[int, List[Dict]]:
-    """{strategy id: the checks it missed after passing validation}, for the session's passed strategies
-    whose one-time locked holdout then failed: the same lines (gate_explain.for_strategy, from the
-    gatekeeper's record) its strategy page shows. The status stays "passed" (validation), so the session
-    page said "Passed: ... Open it to deploy it on paper" for an idea whose final test failed. Display only."""
-    out: Dict[int, List[Dict]] = {}
+def _later_missed(cur, uid: int, strategies: List[Dict]) -> Dict[int, Dict]:
+    """{strategy id: {"verdict", "later_missed"}} for the session's strategies whose stored status leaves out
+    a later check (strategies._later_verdicts: a passed one whose one-time locked holdout then failed or that
+    the diversification check then held back, or a probation one held back after passing on paper), with
+    the lines its strategy page shows: the holdout checks it missed (gate_explain.for_strategy) or the check
+    that held it back (strategies._held_back_lines). The session page said "Passed: ... Open it to deploy it
+    on paper" for both. Reads the whole session at once, not each strategy. Display only."""
+    got = _later_verdicts(cur, uid, [s for s in strategies if s.get("direction") != repo.DEMO_DIRECTION])
+    held = _gate_lines(_held_back_lines, cur, uid, [(s, got[s["id"]][1]) for s in strategies
+                                                    if s["id"] in got and got[s["id"]][0] == HELD_BACK]) or {}
+    out: Dict[int, Dict] = {}
     for s in strategies:
-        if s["status"] != "passed" or s.get("direction") == repo.DEMO_DIRECTION:
+        if s["id"] not in got:
             continue
-        lines = _gate_lines(gate_explain.for_strategy, "passed", s.get("result"),
-                            _experiment_block(cur, s["id"], s.get("experiment_id")))
-        if lines:
-            out[s["id"]] = lines
+        verdict, exp = got[s["id"]]
+        lines = held.get(s["id"]) if verdict == HELD_BACK else _gate_lines(gate_explain.for_strategy, "passed", s.get("result"), exp)
+        out[s["id"]] = {"verdict": verdict, **({"later_missed": lines} if lines else {})}
     return out
 
 
