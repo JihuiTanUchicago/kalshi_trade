@@ -94,6 +94,18 @@ def test_the_chat_says_its_own_lines_curly_and_an_older_stored_line_still_ends_a
     assert not chat._answer_line({"role": "system", "content": "Autopilot deployed Rain on paper."})
 
 
+@pytest.mark.parametrize("name", ("app-strategies.js", "app.meridian-strategies.js"))
+def test_the_strategy_pages_research_paper_and_pace_lines_are_curly(name):
+    # Walk 2026-10-27: the page mixed "Kalshi's taker fee", "the agent's own numbers", "each trade's net return",
+    # "each slice's average", "The holdout's is ... than validation's" and "the backtest's ... pace" with its curly
+    # "isn’t" and "can’t".
+    src = (APP / "static" / name).read_text(encoding="utf-8")
+    for word in ("The holdout’s is", "than validation’s", "each trade’s net return", "each slice’s average",
+                 "At the backtest’s ${", "Kalshi’s taker fee", "the agent’s own in-sample", "of the backtest’s ${"):
+        assert word in src, word
+        assert word.replace("’", "'") not in src and word.replace("’", "\\'") not in src, word
+
+
 def test_the_strategy_pages_share_note_is_curly():
     tau = (APP / "static" / "app-strategies.js").read_text(encoding="utf-8")
     assert "sharing can’t be undone" in tau and "sharing can't be undone" not in tau

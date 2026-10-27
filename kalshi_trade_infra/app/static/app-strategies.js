@@ -112,7 +112,7 @@ window.TauPage('strategies', (T) => {
     let note = holdMean == null ? '<div class="cap">The locked holdout hasn’t run yet, so there is nothing to compare the validation average with.</div>' : '';
     if (valMean != null && holdMean != null && valMean > 0) {
       const shr = Math.round((1 - holdMean / valMean) * 100);
-      note = `<div class="cap">Average net return per trade, as % of its stake. The holdout's is ${shr >= 0 ? shr + '% smaller' : Math.abs(shr) + '% larger'} than validation's — ${shr >= 100 ? 'the edge did not hold up on fresh data' : shr >= 40 ? 'heavy shrinkage, a sign the validation edge was partly luck' : 'it held up on fresh data'}.</div>`;
+      note = `<div class="cap">Average net return per trade, as % of its stake. The holdout’s is ${shr >= 0 ? shr + '% smaller' : Math.abs(shr) + '% larger'} than validation’s — ${shr >= 100 ? 'the edge did not hold up on fresh data' : shr >= 40 ? 'heavy shrinkage, a sign the validation edge was partly luck' : 'it held up on fresh data'}.</div>`;
     }
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Validation versus locked holdout average net return per trade">
       <line x1="${L}" x2="${W - R}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="var(--rule-2)"/>${cells}
@@ -245,11 +245,11 @@ window.TauPage('strategies', (T) => {
         <div class="rp-fig wide"><h5>Equity by phase</h5>${rpPhaseEquity([
           { key: 'validation', label: 'Validation', color: 'var(--ink)', curve: rpCum(v.equity_curve) },
           { key: 'holdout', label: 'Holdout', color: 'var(--signal)', curve: exp.holdout && rpCum(exp.holdout.equity_curve) },
-        ])}<div class="cap">Running total of each trade's net return, counted in stakes: +2× means it made twice what one trade puts in, after fees. Each phase is its own run on data the agent never saw; the dashed divider marks the one-way handoff from validation to the locked holdout.</div></div>
+        ])}<div class="cap">Running total of each trade’s net return, counted in stakes: +2× means it made twice what one trade puts in, after fees. Each phase is its own run on data the agent never saw; the dashed divider marks the one-way handoff from validation to the locked holdout.</div></div>
         <div class="rp-fig"><h5>Validation vs holdout</h5>${rpShrinkage(v.mean_net_return, exp.holdout ? exp.holdout.mean_net_return : null)}</div>
         <div class="rp-fig"><h5>Drawdown (underwater)</h5>${rpUnderwater(rpCum(v.equity_curve), null, rpStakes)}<div class="cap">Validation, counted in stakes: the deepest drop from a running high.</div></div>
         <div class="rp-fig wide"><h5>Per-trade return distribution</h5>${rpReturnDist((v.equity_curve || []).map((p) => +p[1]), v.ci_lo, v.ci_hi, v.mean_net_return)}<div class="cap">Bars: the net return of each validation trade, as % of its stake. Shaded band: the 90% bootstrap confidence interval of the mean. Dashed line: the mean. A band entirely right of break-even means the edge clears fees.</div></div>
-        <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds)}<div class="cap">The validation window cut into consecutive slices, with each slice's average net return per trade (as % of its stake) and its trade count. The same sign in most slices is robustness; one slice carrying the whole edge is a warning.</div></div>
+        <div class="rp-fig wide"><h5>Walk-forward windows</h5>${rpWalkforward(exp.folds)}<div class="cap">The validation window cut into consecutive slices, with each slice’s average net return per trade (as % of its stake) and its trade count. The same sign in most slices is robustness; one slice carrying the whole edge is a warning.</div></div>
       </div>`;
       parts.results += sub('Validation-window evidence', `<p class="rp-sub" style="margin-top:0">The agent searched and tuned on earlier data (in-sample). These numbers come from the validation window after it: data the agent never saw while searching.</p><div class="rp-stats">${stats}</div>${figs}`);
     }
@@ -425,7 +425,7 @@ window.TauPage('strategies', (T) => {
       const m = ds.reduce((a, d) => a + real(d), 0);
       if (!m) return '';
       const exp = ds.reduce((a, d) => a + real(d) * per * ((+d.stake || stake) / stake), 0);
-      return `<p class="sub-fig real-pace">At the backtest's ${!s.experiment && ['passed', 'backtest-only'].includes(s.status) ? 'later-period' : 'unseen-data'} pace, ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? ' ·\u00a0too few trades to judge yet' : ''}</p>`;
+      return `<p class="sub-fig real-pace">At the backtest’s ${!s.experiment && ['passed', 'backtest-only'].includes(s.status) ? 'later-period' : 'unseen-data'} pace, ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? ' ·\u00a0too few trades to judge yet' : ''}</p>`;
     };
     // A server that compares each book with the backtest sends backtest_checks; it replaces the pace line.
     const checks = Array.isArray(s.backtest_checks) ? s.backtest_checks : null;
@@ -703,7 +703,7 @@ window.TauPage('strategies', (T) => {
             <div><dt>History window</dt><dd>${esc((s.dataset.start || '').slice(0, 10)) || '—'} → ${esc((s.dataset.end || '').slice(0, 10)) || '—'}</dd></div>
             <div><dt>${splitOnly ? 'Split date' : 'Unseen (held out) from'}</dt><dd>${esc((s.dataset.out_of_sample_from || '').slice(0, 10)) || '—'}</dd></div>
           </dl>
-          <p class="rp-sub" style="margin-top:8px">${perpetual ? 'The agent only saw the research partition. ' + PERPS_SCENARIO : (splitOnly ? 'The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out. ' : 'The agent only ever saw data before the held-out date. ') + "Every simulated fill pays the ask or bid plus Kalshi's taker fee — results are net of fees or they do not count."}</p></div>` : '';
+          <p class="rp-sub" style="margin-top:8px">${perpetual ? 'The agent only saw the research partition. ' + PERPS_SCENARIO : (splitOnly ? 'The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out. ' : 'The agent only ever saw data before the held-out date. ') + "Every simulated fill pays the ask or bid plus Kalshi’s taker fee — results are net of fees or they do not count."}</p></div>` : '';
     // What it does, in plain words: the paper's first section. It sat inside the Methodology fold,
     // which a phone opens closed, under the pre-registration, so the rule took digging to find.
     const ruleBlock = `${(s.rules || []).length ? `<ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
@@ -711,7 +711,7 @@ window.TauPage('strategies', (T) => {
     const methodologyBody = rp.methodology + dataBlock + (perpetual && !s.dataset ? `<p class="hint">${PERPS_SCENARIO}</p>` : '');
     const resultsBody = rp.results
       + `<div class="paper-sub"><h4 class="paper-h">${perpetual ? 'Perpetual research scenario' : hasExp ? 'Backtest &amp; Kalshi demo replay' : 'Backtest'}</h4>
-          ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent\'s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
+          ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent’s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
           <div id="sheet-results">
             <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth(), ...cutWords }) : ''}${!perpetual && s.equity && oos ? DEV_PENDING(splitOnly ? 'later' : 'unseen') : ''}</div>
             <div class="split"><div><h4>Tested on (in-sample)</h4>${s.in_sample ? metricRows(ins) : '<p class="hint">No in-sample result recorded.</p>'}</div><div><h4>${oosHead}</h4>${metricRows(oos)}</div></div>
@@ -891,7 +891,7 @@ window.TauPage('strategies', (T) => {
         const auto = r.live_autopilot && r.live_autopilot.ok;
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = roadSummary(r, s, liveWhy, rows.length, apPaper) + gatesHtml(rows)
-          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money on ${splitOnly ? 'the data after its split date' : 'unseen data'}.` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's ${splitOnly ? 'later-period' : 'unseen-data'} P&amp;L per trade.`}</p>` : '')
+          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money on ${splitOnly ? 'the data after its split date' : 'unseen data'}.` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest’s ${splitOnly ? 'later-period' : 'unseen-data'} P&amp;L per trade.`}</p>` : '')
           + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book (bought at the ask, sold at the bid, after Kalshi fees), from every paper run of this strategy, removed ones included, so these figures are not its realized P&amp;L above. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading on this server: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
       } catch (e) {
         // A read that failed (a bad connection) says why and offers Try again: it said "unavailable" for the

@@ -153,7 +153,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.match(html, /AFTER THE SPLIT DATE →|After the split date →|LATER →|Later →/);
       assert.match(html, /Replaying the later window against Kalshi’s demo book/);
       assert.match(html, /Most recent later-period trades/); assert.match(html, /No later-period trades to show\./);
-      assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest's later-period pace, 2 trades would have made/);
+      assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest’s later-period pace, 2 trades would have made/);
       assert.doesNotMatch(html, /never saw|never touched|Unseen-data P&|in-sample only|Never seen \(out-of-sample\)|UNSEEN|Unseen by the agent|Unseen →|Unseen \(held out\)|unseen window|unseen trades|unseen-data pace|only ever saw/);
       if (status === 'passed') {
         assert.match(html, /Not validated \(record missing\)/);
@@ -422,7 +422,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
   });
 
   test(`${name}: the backtest pace line counts realistic paper fills only, as the instant-fill note above it says`, async () => {
-    // Walk 2026-10-27: with no backtest_checks from the server, "At the backtest's unseen-data pace, 3 trades would have
+    // Walk 2026-10-27: with no backtest_checks from the server, "At the backtest’s unseen-data pace, 3 trades would have
     // made …" counted the instant fill the note above it says the track record (and the count toward live) leaves out.
     // Each paper deployment's `instant_fills` comes off its own closed trades; the backtest is +$12 over 6 trades at a
     // $5 stake, $2 a trade, scaled to each deployment's stake.
@@ -436,9 +436,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       return el ? el.textContent : null;
     };
     // 1 realistic trade at $5 (+$2) and 1 at $10 (+$4): 2 trades, +$6.00; the instant fill is left out.
-    assert.equal(await pace(deployments, 1), "At the backtest's unseen-data pace, 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
+    assert.equal(await pace(deployments, 1), "At the backtest’s unseen-data pace, 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
     // None instant: the line is as before, over all 3 trades.
-    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest's unseen-data pace, 3 trades would have made +$8.00 · too few trades to judge yet");
+    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest’s unseen-data pace, 3 trades would have made +$8.00 · too few trades to judge yet");
     // Every one an instant fill: no realistic trade to hold against the backtest, so no line.
     assert.equal(await pace([{...deployments[0], instant_fills: 2}], 2), null);
   });
