@@ -2430,8 +2430,11 @@
       // Each Unrealized figure says when its mark was read (the engine's mark_ts, the time with its zone, as Settles is):
       // the column had no "as of" time. A figure the answer gives no time for is still its last mark's, and says so.
       const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? 'as of ' + settleAt(p.mark_ts) : 'at the last mark'}</div>`;
+      // The figure and its time are one block: a phone's stacked card set the time on a row of its own under the
+      // card's labels, one more row a position; it sits under its figure, in the Unrealized cell.
+      const posUnreal = (p) => `<div class="pos-unreal">${money(p.unrealized)}${posMarked(p)}</div>`;
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized) + posMarked(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : posUnreal(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
@@ -2711,7 +2714,10 @@
   // Spot and strikes to the cent: usd() rounds six figures to the dollar, which drew a $112,999.99 strike
   // as $113,000 beside a distance to it in cents.
   const btcUsd = (v) => '$' + fmt2.format(+v);
-  const SPOT_SECT = '<section class="sect" id="mk-spot"><div class="sect-head"><h2>Bitcoin vs the strike</h2><p>Latest stored price, refreshed every 15s</p></div><div id="mk-spot-body"><p class="hint">Reading Bitcoin’s latest stored price…</p></div><p class="stale-note" id="mk-spot-stale" role="status"></p></section>';
+  // A 15-minute window's line is what Kalshi's own name for it calls it ("Target Price: $X"): its section, figure and
+  // placeholder say "target price"; every other Bitcoin contract keeps "strike".
+  const M15_CONTRACT = /^KXBTC15M-/;
+  const spotSect = (ticker) => '<section class="sect" id="mk-spot"><div class="sect-head"><h2>Bitcoin vs the ' + (M15_CONTRACT.test(ticker || '') ? 'target price' : 'strike') + '</h2><p>Latest stored price, refreshed every 15s</p></div><div id="mk-spot-body"><p class="hint">Reading Bitcoin’s latest stored price…</p></div><p class="stale-note" id="mk-spot-stale" role="status"></p></section>';
   const spotAge = (s) => (s < 60 ? s + 's ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 172800 ? Math.round(s / 3600) + ' hr ago' : Math.round(s / 86400) + ' days ago');
   const spotOld = (s) => (s < 5400 ? Math.max(2, Math.round(s / 60)) + ' min' : s < 172800 ? Math.round(s / 3600) + ' hr' : Math.round(s / 86400) + ' days');
   const leftText = (s) => (s < 60 ? 'Under a minute' : s < 3600 ? Math.floor(s / 60) + ' min' : s < 172800 ? `${Math.floor(s / 3600)} hr ${Math.floor((s % 3600) / 60)} min` : Math.floor(s / 86400) + ' days');
@@ -2732,19 +2738,20 @@
   function marketSpot(s, d) {
     const sp = s.spot && s.spot.price != null ? s.spot : null, stored = s.strike && s.strike.value != null ? s.strike : null;
     const k = stored || titleStrike(d);
+    const m15 = M15_CONTRACT.test((d && d.ticker) || s.ticker || '');
+    // A target read from the contract's title is named as the title and Explore's list name it: "target price".
+    const line = m15 || (k && k.from === 'title') ? 'target price' : 'strike', Line = line[0].toUpperCase() + line.slice(1);
     const v = stored ? (s.vs && s.vs.side ? s.vs : null) : k && sp ? lineVs(+sp.price, k.value) : null;
     const bucket = k && k.kind === 'range', edges = bucket && k.lo != null && k.hi != null;
     const now = sp ? fig('Bitcoin now', btcUsd(sp.price), sp.stale ? { small: `Spot feed is ${spotOld(+sp.age_s || 0)} old`, cls: 'fig-behind' } : { small: `Coinbase · ${spotAge(+sp.age_s || 0)}` })
       : fig('Bitcoin now', '—', { small: 'No stored price in the last day' });
-    const strike = !k ? fig('Strike', '—', { small: /^KXBTC15M-/.test(s.ticker || '') ? 'This window’s start price isn’t stored yet' : 'Not stored for this contract' })
+    const strike = !k ? fig(Line, '—', { small: m15 ? 'This window’s start price isn’t stored yet' : 'Not stored for this contract' })
       : edges ? fig('Bucket', `${btcUsd(k.lo)} to ${btcUsd(k.hi)}`, { small: 'Yes if Bitcoin settles inside it' })
       : bucket ? fig('Bucket centre', btcUsd(k.value), { small: 'its edges aren’t stored' })
-      : k.from === 'title' ? fig('Strike', btcUsd(k.value), { small: 'Target price from the contract’s title' })
-      : fig('Strike', btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind} it` : 'Kalshi’s rules say which side pays' });
+      : k.from === 'title' ? fig(Line, btcUsd(k.value), { small: 'Read from the contract’s title' })
+      : fig(Line, btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind} it` : 'Kalshi’s rules say which side pays' });
     // Which side of the strike (or the bucket's edge it is outside of) spot is on, by how much, and which
     // side of the contract that is when the strike says.
-    // A target read from the contract's title is named as the title and Explore's list name it: "target price".
-    const line = k && k.from === 'title' ? 'target price' : 'strike';
     const where = !v ? '' : edges ? (v.side === 'below' ? 'below its floor' : 'above its top') : bucket ? v.side + ' its centre' : `${v.side} the ${line}`;
     const yes = v && v.yes === true ? 'on the Yes side' : v && v.yes === false ? 'on the No side' : '';
     // Measured from an old price, the label says so beside the figure, not only under Bitcoin's.
@@ -2797,7 +2804,7 @@
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? SPOT_SECT : ''}
+        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? spotSect(d.ticker || ticker) : ''}
       <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
       <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(d.rules)}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(d.rules_more)}</p>` : ''}`

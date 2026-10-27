@@ -100,4 +100,49 @@ export function freshWalkCases({name, frontend, dashboard}) {
       f.clearTimers();
     }
   });
+
+  // Walk 2026-10-27 at 390px: the System map was a 640-wide picture scrolled sideways inside its frame, the research
+  // box starting at x 537, off the screen. On a phone its boxes stack by stage, two to a row, in a map as wide as
+  // the column (340, drawn at about its own size), with a short arrow from each stage into the next instead of
+  // edges that would cross the stack. A desktop keeps the 900-wide signal-flow map and its edges.
+  test(`${name}: on a phone the System map stacks its boxes by stage in a map the width of the column`, async () => {
+    const nodes = {agents: {running: 12, queued: 30, done: 1204}, backtest: {strategies: 3}, db: {rows: 10, size_mb: 5}, web: {users: 2}};
+    const open = async (narrow) => {
+      const f = frontend({fetchImpl: (path) => (path === '/api/admin/system' ? response({nodes, events: [], now: '2026-10-27T16:00:00Z'}) : response({}))});
+      f.window.matchMedia = (q) => ({matches: narrow && /max-width: 760px/.test(q), addEventListener() {}, removeEventListener() {}});
+      await f.viewSystem(); await settle();
+      return f;
+    };
+    const f = await open(true), svg = f.root.querySelector('#syssvg');
+    const vb = svg.getAttribute('viewBox').split(' ').map(Number);
+    assert.deepEqual(vb.slice(0, 3), [0, 0, 340]);
+    assert.match(svg.getAttribute('class') || '', /\bsys-stack\b/);
+    const boxes = f.root.querySelectorAll('.sys-node').map((g) => {
+      const [x, y] = /translate\(([\d.]+),([\d.]+)\)/.exec(g.getAttribute('transform')).slice(1).map(Number), r = g.querySelector('rect');
+      return {id: g.dataset.id, x, y, w: +r.getAttribute('width'), h: +r.getAttribute('height')};
+    });
+    assert.equal(boxes.length, 13);
+    for (const b of boxes) {
+      assert.ok(b.x >= 8 && b.x + b.w <= 340 - 8, `${b.id} at x ${b.x}, ${b.w} wide, inside the 340-wide map`);
+      assert.ok(b.y >= 8 && b.y + b.h <= vb[3], `${b.id} inside the map's height`);
+      assert.ok(b.w >= 150, `${b.id} keeps its desktop width, so its words fit as they do there`);
+    }
+    for (const a of boxes) for (const b of boxes) if (a !== b) {
+      assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, `${a.id} and ${b.id} don't overlap`);
+    }
+    // Stage by stage, down the screen: outside services, collectors, the database, research and the engines.
+    const y = (id) => boxes.find((b) => b.id === id).y;
+    assert.ok(y('stripe') < y('forward') && y('web') < y('db') && y('db') < y('agents'));
+    assert.equal(f.root.querySelectorAll('.sys-edge').length, 0, 'no edges cross the stack');
+    assert.equal(f.root.querySelectorAll('.sys-tier').length, 3, 'an arrow from each stage into the next');
+    assert.deepEqual(f.root.querySelectorAll('.sys-tier-cap').map((t) => t.textContent), ['Outside services', 'Collectors and web server', 'Research and engines']);
+    // The live counts still fill the boxes, the research box's on its two lines.
+    assert.deepEqual(f.root.querySelector('[data-m="agents"]').querySelectorAll('tspan').map((t) => t.textContent.replace(/\u00a0/g, ' ')), ['12 running · 30 queued', '1,204 done']);
+    f.clearTimers();
+    const d = await open(false);
+    assert.equal(d.root.querySelector('#syssvg').getAttribute('viewBox'), '0 0 900 540');
+    assert.equal(d.root.querySelectorAll('.sys-edge').length, 16);
+    assert.equal(d.root.querySelectorAll('.sys-tier').length, 0);
+    d.clearTimers();
+  });
 }

@@ -87,6 +87,11 @@ span.gain, span.loss, b.gain, b.loss, .amt { white-space: nowrap; }
 .sys-edge.active { stroke: var(--ink-2); stroke-width: 1.6; stroke-dasharray: 3 5; animation: sysflow .7s linear infinite; }
 @keyframes sysflow { to { stroke-dashoffset: -8; } }
 @media (prefers-reduced-motion: reduce) { .sys-edge.active { animation: none; } }
+/* On a phone the map stacks by stage at about its own size (sysPhoneLayout): it fits the column, so nothing in it
+   scrolls sideways; a short arrow leads each stage into the next. Kept to a phone's width if the screen turns. */
+.sys-wrap svg.sys-stack { max-width: 420px; margin-inline: auto; }
+.sys-tier { fill: none; stroke: var(--rule-2); stroke-width: 1.4; }
+.sys-tier-cap { font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; fill: var(--ink-3); }
 .sys-node { cursor: pointer; }
 .sys-node rect { fill: var(--stock); stroke: var(--rule-2); stroke-width: 1; transition: stroke .12s; }
 .sys-node.ext rect { fill: var(--ink); stroke: var(--ink); }
@@ -1103,6 +1108,8 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
   .stack tbody td.name::before, .stack tbody td.act::before { content: none; }
   .stack tbody td.act.st::before { content: attr(data-lab); }
   .stack tbody td .sub-fig { flex: 1 0 100%; }
+  /* An open position's mark time sits close under its Unrealized figure, in the figure's own block (pos-unreal). */
+  .stack tbody td .pos-unreal .sub-fig { margin-top: 1px; }
   .stack tbody td .spark { margin-left: 0; }  /* a stacked cell reads left-aligned */
   .stack tbody tr:hover td { background: transparent; }
   /* A deployment card reads as a small figure grid (label over value, three across) instead of
@@ -2199,9 +2206,6 @@ body.landing-body .apf { display: none; }
   /* The pipeline caption's chevron stays on the first line, not on a row of its own. */
   .pipecap { position: relative; padding-right: 44px; }
   .pipecap > .pipechev { position: absolute; right: 16px; top: 14px; }
-  /* System map: wide enough to read and tap (nodes ~45px tall), scrolled sideways inside its frame. */
-  .sys-wrap { overflow-x: auto; overscroll-behavior-x: contain; }
-  .sys-wrap svg { width: 640px; max-width: none; }
 }
 /* Touch: every control at least 40px tall. Inline links grow with padding, which leaves the line
    box alone; block links pair it with a negative margin so the layout does not move. */

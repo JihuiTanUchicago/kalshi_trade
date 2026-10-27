@@ -232,3 +232,29 @@ test('Meridian: the collapsed autopilot pill sits in the masthead, so it never c
   assert.equal(decl(all, '.apf.open', 'position'), 'fixed', 'only the opened panel floats, over the page by choice');
   assert.match(read('app.meridian.js'), /root\.querySelector\('\.masthead-in'\)\.appendChild\(box\)/);
 });
+
+// Walk 2026-10-27 at 390px: the System map was a fixed 640px picture scrolled sideways inside its frame (the research
+// box at x 537). It now draws a phone layout as wide as the column (sysPhoneLayout), so on a phone the picture is the
+// frame's width, as on a desktop, and nothing in the frame scrolls sideways; turned to landscape it keeps to a
+// phone's width rather than growing huge. Its stage arrows are drawn as lines, not filled shapes.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: on a phone the System map fits its frame instead of scrolling sideways in it`, () => {
+    const all = rules(read(file));
+    assert.equal(decl(all, '.sys-wrap svg', 'width'), '100%');
+    assert.equal(decl(all, '.sys-wrap svg', 'width', PHONE), undefined, 'no fixed phone width');
+    assert.equal(decl(all, '.sys-wrap svg', 'max-width', PHONE), undefined);
+    for (const media of ['', PHONE]) assert.equal(decl(all, '.sys-wrap', 'overflow-x', media), undefined, 'the frame does not scroll sideways');
+    assert.equal(decl(all, '.sys-wrap svg.sys-stack', 'max-width'), '420px');
+    assert.equal(decl(all, '.sys-tier', 'fill'), 'none');
+  });
+}
+
+// Walk 2026-10-27 at 390px: on Deploy's stacked open-position cards each Unrealized figure's "as of" time sat on a
+// row of its own under the card's labels. It is in the figure's own block (pos-unreal), set close under the figure.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: a stacked open position's mark time sits close under its Unrealized figure`, () => {
+    const all = rules(read(file));
+    assert.equal(decl(all, '.stack tbody td .pos-unreal .sub-fig', 'margin-top', PHONE), '1px');
+    assert.equal(decl(all, '.stack tbody td .pos-unreal', 'display', PHONE), undefined, 'a block: its time goes under the figure, not beside it');
+  });
+}

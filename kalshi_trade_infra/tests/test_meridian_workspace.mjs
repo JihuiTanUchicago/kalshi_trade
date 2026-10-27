@@ -3670,10 +3670,10 @@ test('Meridian phone polish: a glossary marker keeps its last word, one rule whe
   assert.match(css, /#rsibox:not\(:empty\) \+ \.rsiobs \{ border-top: 0; \}/);
   assert.match(css, /@container dashboard \(max-width: 779px\) \{\n  \.t-positions tbody > tr:last-child \{ border-bottom: 0; \}\n\}/);
   assert.match(css, /\.pipefig:not\(\[open\]\) > \.pipecap \{ border-bottom: 0; \}/);
-  // Phone: the RSI tag sits under the title, the system map scrolls sideways at a readable size.
+  // Phone: the RSI tag sits under the title; the system map stacks to the column's width (fresh_walk_frontend_cases).
   const phone = css.slice(css.lastIndexOf('@media (max-width: 760px)'));
   assert.match(phone, /\.rsidisc-cap > \.rsi-tag, \.rsidisc-cap > \.rsidisc-delta \{ grid-column: 2;/);
-  assert.match(phone, /\.sys-wrap \{ overflow-x: auto;/);
+  assert.doesNotMatch(phone, /\.sys-wrap \{ overflow-x: auto;|width: 640px/);
   // Touch: every field, summary, slider and small link that measured under 40px at 360px.
   const touch = css.slice(css.lastIndexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
