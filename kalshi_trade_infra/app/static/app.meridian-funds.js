@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, loading, openCost, pageAssets,
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, loading, openCost, pageAssets, PAPER_NET,
     paint, painted, poll, refreshed, root, S, settleAt, shell, tone, usd, when
   } = T;
 
@@ -72,9 +72,12 @@ window.TauPage('funds', (T) => {
   // What each book has made: its realized P&L from closed trades, the figure the dashboard, Deploy and the
   // track record show, never added to another book's. Before a book's first close it says when one shows.
   // An API without the figure says nothing. Demo's is since its last reload, as on the dashboard.
+  // Each says what it is net of, as Deploy's and the strategy page's do: every book's P&L is after Kalshi's fees, and
+  // paper's after the spread too (PAPER_NET). It said "+$9.77 realized all time" beside Deploy's "after Kalshi fees".
+  const BOOK_NET = { paper: PAPER_NET, demo: 'after Kalshi fees', live: 'after Kalshi fees' };
   const bookPnl = (b, mode, pnl = b.realized_pnl, span = 'all time') => b.closed_trades == null ? ''
-    : b.closed_trades ? `${usd(pnl, true)} realized ${span} ·\u00a0` : `P&amp;L shows once a ${mode} trade closes ·\u00a0`;
-  const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time.`
+    : b.closed_trades ? `${usd(pnl, true)} realized ${span}, ${BOOK_NET[mode]} ·\u00a0` : `P&amp;L shows once a ${mode} trade closes ·\u00a0`;
+  const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time, ${BOOK_NET.live}.`
     : k.connected ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : '';
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
   // A key's cash the shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes

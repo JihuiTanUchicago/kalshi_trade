@@ -2518,9 +2518,9 @@
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
       paint(root.querySelector('#dfigs'), fig('Running', active.length, { small: `${d.deployments.length - running.length} paused${idle ? ` ·\u00a0${idle} placing no orders` : ''}` }) +
         (liveDeps.length
-          ? fig(listedLab('Live realized', liveDeps), usd(liveRealized, true), { v: liveRealized, small: `real money${removedNote('live')}${paperDeps.length ? ` ·\u00a0${usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
+          ? fig(listedLab('Live realized', liveDeps), usd(liveRealized, true), { v: liveRealized, small: `real money${removedNote('live')} ·\u00a0after Kalshi fees${paperDeps.length ? ` ·\u00a0${usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
           : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), usd(paperRealized, true), { v: paperRealized, small: `paper money, not real${removedNote('paper')} ·\u00a0${PAPER_NET}${glo('paperfills')}` }) : '') +
-        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}` }) : '') +
+        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), usd(demoRealized, true), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')} ·\u00a0after Kalshi fees` }) : '') +
         fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? liveIdleCount(liveIdle) : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
