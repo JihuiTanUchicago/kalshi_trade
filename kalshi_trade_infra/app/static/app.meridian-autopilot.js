@@ -554,7 +554,7 @@ window.TauPage('autopilot', (T) => {
         ? `<button class="btn sm" data-ap="livetoggle" data-on="0">Turn off live</button>`
         : d.autopilot && d.live_enabled ? `<button class="btn sm" data-ap="livearm" ${d.kalshi_connected ? '' : 'aria-disabled="true"'}>Enable live autopilot</button>` : ''}
         ${d.autopilot_live || d.live_running ? '<button class="btn sm danger" data-ap="kill">Kill</button>' : ''}
-        <a class="btn sm ghost" href="/deploy">See what's trading</a>`;
+        <a class="btn sm ghost" href="/deploy">See what’s trading</a>`;
       controls.querySelectorAll('[data-ap]').forEach((b) => (b.onclick = (e) => apAction(box, b.dataset.ap, e)));
     }
   }

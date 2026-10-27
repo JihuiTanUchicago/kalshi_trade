@@ -68,7 +68,7 @@ def test_the_runs_list_carries_stop_reason_not_the_raw_flag(monkeypatch):
     ("paused", "By you", "You paused it"),
     ("stopped", "By you", "You removed it"),
     ("paused", "Kill switch", "You pressed Kill"),
-    ("paused", "Approved agent proposal", "You approved the agent's proposal to pause it"),
+    ("paused", "Approved agent proposal", "You approved the agent’s proposal to pause it"),
     ("paused", "force-closed: position down 33.0% >= stop 30.0%",
      "Its safety stop sold a position that had lost 33% of its cost"),
     ("paused", "drawdown 23.4% >= limit 20.0%", "It lost 23% of its money, past its 20% limit"),

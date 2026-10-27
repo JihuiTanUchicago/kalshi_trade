@@ -84,8 +84,8 @@ def test_only_a_paused_demo_copy_gets_a_resume_block(monkeypatch):
 
 
 def test_the_phone_panel_says_a_copy_paused_not_stopped():
-    assert views._plain_pause_reason(COPY) == "its paper deployment wasn't running, so its demo copy paused with it"
-    assert views._pause_clause(COPY) == "its paper deployment wasn't running, so its demo copy paused with it"
+    assert views._plain_pause_reason(COPY) == "its paper deployment wasn’t running, so its demo copy paused with it"
+    assert views._pause_clause(COPY) == "its paper deployment wasn’t running, so its demo copy paused with it"
 
 
 def test_realized_by_book_names_what_the_board_leaves_out_one_book_at_a_time():

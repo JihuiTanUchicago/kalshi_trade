@@ -366,12 +366,12 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
     spent = []
     monkeypatch.setattr(server.repo, "research_spent_since", lambda cur, uid, since: spent.append(since) or 12.3456)
     out = server._research_activity(None, 7)
-    assert out["active"] == [server.MARKETS["nhl_game"].label, "a market it's still picking"]
+    assert out["active"] == [server.MARKETS["nhl_game"].label, "a market it’s still picking"]
     assert (out["tested_7d"], out["passed_7d"], out["runs_7d"]) == (2668, 1, 277)
     assert out["cost_7d"] == 12.35
     assert abs((now - seen[0]).total_seconds() - 7 * 86400) < 5 and spent == seen  # one window for both
-    story = server._autopilot_story({"autopilot": True, "research": dict(out, active=["a market it's still picking"])})
-    assert story[0] == "Right now it's picking a market to research."
+    story = server._autopilot_story({"autopilot": True, "research": dict(out, active=["a market it’s still picking"])})
+    assert story[0] == "Right now it’s picking a market to research."
     assert story[1] == "This week it tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
 
 
@@ -384,17 +384,17 @@ def test_the_story_says_a_pass_a_later_check_left_uncleared_apart_from_what_pass
         return server._autopilot_story({"autopilot": True, "research": {
             "active": [], "tested_7d": 12, "passed_7d": passed, "not_cleared_7d": fell}})[1]
     assert line(1, 0) == "This week it tested 12 ideas and 1 passed."
-    assert line(1, 1) == "This week it tested 12 ideas and 1 passed, and 1 more passed but wasn't cleared to trade."
-    assert line(2, 3) == "This week it tested 12 ideas and 2 passed, and 3 more passed but weren't cleared to trade."
+    assert line(1, 1) == "This week it tested 12 ideas and 1 passed, and 1 more passed but wasn’t cleared to trade."
+    assert line(2, 3) == "This week it tested 12 ideas and 2 passed, and 3 more passed but weren’t cleared to trade."
     assert line(0, 2) == ("This week it tested 12 ideas and none has been cleared to trade yet: 2 passed, but a later "
-                          "check didn't clear them. Each one's page says which check.")
-    assert line(0, 1).endswith("1 passed, but a later check didn't clear it. Each one's page says which check.")
+                          "check didn’t clear them. Each one’s page says which check.")
+    assert line(0, 1).endswith("1 passed, but a later check didn’t clear it. Each one’s page says which check.")
     assert "none has passed its tests yet" in line(0, 0)
 
 
 def test_research_activity_counts_only_runs_that_are_working_now(monkeypatch):
     """A paused run isn't researching, and a running run silent past the reaper's limit (its worker
-    died) is not either: both left "Right now it's researching ..." on every page after the work stopped."""
+    died) is not either: both left "Right now it’s researching ..." on every page after the work stopped."""
     from datetime import timedelta
     from app import server
     now = server.repo.now_utc()
@@ -414,7 +414,7 @@ def test_research_activity_counts_only_runs_that_are_working_now(monkeypatch):
     assert out["active"] == [server.MARKETS["nhl_game"].label, server.MARKETS["high_ny"].label]
     runs[:] = runs[1:3]
     assert server._research_activity(None, 7)["active"] == []
-    assert server._autopilot_now({"research": server._research_activity(None, 7)}).startswith("Right now it's between research runs.")
+    assert server._autopilot_now({"research": server._research_activity(None, 7)}).startswith("Right now it’s between research runs.")
 
 
 def test_active_run_counts_can_leave_out_a_run_whose_worker_went_quiet():
@@ -451,7 +451,7 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
          "research": {"active": ["NYC daily high temperature", "NYC daily high temperature", "NHL Game"],
                       "tested_7d": 8, "passed_7d": 0}}
     story = server._autopilot_story(d)
-    assert story[0] == "Right now it's researching NYC daily high temperature and NHL Game."
+    assert story[0] == "Right now it’s researching NYC daily high temperature and NHL Game."
     assert "tested 8 ideas" in story[1] and "most ideas fail" in story[1]
     assert "3 strategies are on paper" in story[2] and "none has traded yet" in story[2]
     assert "%d trades" % server.agent.MIN_REALISTIC_PAPER_TRADES in story[3] and "live autopilot" in story[3]
@@ -459,13 +459,13 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     d2 = dict(d, research={"active": [], "tested_7d": 0, "passed_7d": 0},
               paper_progress={"trades": 4, "trades_needed": 30, "net_pnl": -1.5})
     story = server._autopilot_story(d2)
-    assert story[0].startswith("Right now it's between research runs")
+    assert story[0].startswith("Right now it’s between research runs")
     assert "4 of the 30 realistic paper trades live needs and is down $1.50 on them net of fees and spread, across all its paper runs" in story[1]
     assert "from %d separate events" % server.agent.MIN_PAPER_EVENTS in story[-1]
     soon = server._autopilot_story(dict(d2, paper_progress=dict(d2["paper_progress"], soonest_days=6.6,
                                                                 soonest_title="Rain over NYC — v2")))
     assert soon[2] == ("At the pace they trade, the soonest one could have enough for the live check is about 7 days "
-                       "(Rain over NYC), and only if it's up by then.")
+                       "(Rain over NYC), and only if it’s up by then.")
     assert "about a day" in server._autopilot_story(dict(d2, paper_progress=dict(
         d2["paper_progress"], soonest_days=1.2, soonest_title="X")))[2]
     # Bought but not settled: it says so instead of "none has traded yet".
@@ -478,11 +478,11 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
     assert "1 strategy is trading real money." in server._autopilot_story(dict(d, live_running=1, live_enabled=True))
     # With the server's live switch closed a running live strategy places no orders: it waits, never "trading".
     closed = server._autopilot_story(dict(d, live_running=1, live_enabled=False))
-    assert "1 strategy is live but waiting: live trading isn't open yet, so it places no orders." in closed
+    assert "1 strategy is live but waiting: live trading isn’t open yet, so it places no orders." in closed
     assert not any("trading real money" in line for line in closed)
-    assert "2 strategies are live but waiting: live trading isn't open yet, so they place no orders." in \
+    assert "2 strategies are live but waiting: live trading isn’t open yet, so they place no orders." in \
         server._autopilot_story(dict(d, live_running=2))
-    assert server._autopilot_story(d)[-1].endswith("and you turn on live autopilot. Live trading isn't open yet.")
+    assert server._autopilot_story(d)[-1].endswith("and you turn on live autopilot. Live trading isn’t open yet.")
     assert server._autopilot_story(dict(d, live_enabled=True))[-1].endswith("and you turn on live autopilot.")
     why = "no open contract costs 85c to 95c (of 12; nearest is 3c outside)"
     waiting = [{"title": "SOL momentum", "why": why}]

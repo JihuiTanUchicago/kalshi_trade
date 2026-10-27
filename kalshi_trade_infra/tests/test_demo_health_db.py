@@ -174,7 +174,7 @@ def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_s
 
     # What the user is now told, in every place that shows demo.
     seen = _seen(conn, uid, sid)
-    line = "Demo isn't trading: your Kalshi demo account has $0.00. Add demo funds on Kalshi's demo site."
+    line = "Demo isn’t trading: your Kalshi demo account has $0.00. Add demo funds on Kalshi’s demo site."
     for where, health in seen.items():
         assert health["code"] == "demo_funds" and health["line"] == line, where
         assert health["action"] == {"label": "Open Kalshi demo", "href": "https://demo.kalshi.co"}, where
@@ -226,8 +226,8 @@ def test_each_demo_state_says_one_plain_thing(conn, offline):
     offline(uid, 3.2)
     seen = _seen(conn, uid, sid)
     assert {h["line"] for h in seen.values()} == {
-        "Demo isn't trading: your Kalshi demo account has $3.20, less than one $10.00 stake. "
-        "Add demo funds on Kalshi's demo site."}
+        "Demo isn’t trading: your Kalshi demo account has $3.20, less than one $10.00 stake. "
+        "Add demo funds on Kalshi’s demo site."}
 
     # No demo key: the engine pauses the copy (its own reason); every page names the key instead.
     repo.delete_kalshi_dev_key(cur, uid)
@@ -235,7 +235,7 @@ def test_each_demo_state_says_one_plain_thing(conn, offline):
     assert engine.decide(conn, dep, [], {}, engine.Sources(demo_kernel=lambda u: None)) == {"paused": "demo disabled"}
     paused = repo.get_deployment(cur, uid, ids["demo"])
     assert paused["status"] == "paused" and "demo (sandbox) key" in paused["status_reason"]
-    key_line = "Demo isn't trading: your Kalshi demo key isn't connected."
+    key_line = "Demo isn’t trading: your Kalshi demo key isn’t connected."
     for where, health in _seen(conn, uid, sid).items():
         assert health["code"] == "demo_key" and health["line"] == key_line, where
         assert health["action"] == {"label": "Add it on the Funds page", "href": "/funds#connect-kalshi"}, where

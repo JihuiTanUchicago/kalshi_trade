@@ -76,6 +76,17 @@ def clean(text: Optional[str], fallback: Optional[str] = "") -> Optional[str]:
     return MODEL_ID.sub(A_MODEL, EMAIL.sub(SOMEONE, s))
 
 
+# The pages write an apostrophe curly ("isn’t"), and so do the autopilot panel's own summary lines (its story and
+# idle line). Words another module wrote that a line quotes (the engine's entry scan, a stored pause reason) go
+# through ``curly`` on the way out, so one line never mixes the two. Only an apostrophe inside a word changes.
+_STRAIGHT_APOSTROPHE = re.compile(r"(?<=[A-Za-z])'(?=[A-Za-z])")
+
+
+def curly(text: Optional[str]) -> Optional[str]:
+    """``text`` with each in-word straight apostrophe ("isn't") curly ("isn’t"); None and "" as given."""
+    return _STRAIGHT_APOSTROPHE.sub("’", text) if text else text
+
+
 def display_name(name: Optional[str], fallback: str) -> str:
     """A person's name as other people see it: their name, or ``fallback`` when there is none or it
     carries an email address (a Google profile with no name set can use the address as its name)."""
@@ -202,7 +213,7 @@ _TOURNAMENT_WORDS = (
     (re.compile(r"^Resumed paper entrant (“.+?”) "), r"Resumed \1 on paper "),
     (re.compile(r" \(posterior mean [+-]?\d+(?:\.\d+)?% of stake\)"), ""),
     (re.compile(r"\bno trade in (\d+) days on paper: its entry rule never fires on the live book\b"),
-     r"no trade in \1 days, as its entry rule never fired on the market's real prices"),
+     r"no trade in \1 days, as its entry rule never fired on the market’s real prices"),
     (re.compile(r"\bIts slot goes to the next near miss\."), "Its place goes to the next strategy that came close to passing research."),
     (re.compile(r"\bpausing would cut the forward sample short\."), "pausing would cut its paper test short."),
 )

@@ -96,7 +96,7 @@ TOURNAMENT = [
      "Its place goes to the next strategy that came close to passing research."),
     ("[tournament] Retired paper entrant “Wick fade NO”: no trade in 7 days on paper: its entry rule never fires on "
      "the live book. Its slot goes to the next near miss.",
-     "Removed “Wick fade NO” from paper: no trade in 7 days, as its entry rule never fired on the market's real "
+     "Removed “Wick fade NO” from paper: no trade in 7 days, as its entry rule never fired on the market’s real "
      "prices. Its place goes to the next strategy that came close to passing research."),
     ("I left “Fade” running: it is a paper tournament entrant with 3 of 30 independent events ($-1.20 net of fees and "
      "spread), and the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
@@ -170,7 +170,7 @@ def test_a_tournament_reason_reads_as_the_feed_says_it():
     assert "posterior" in losing and "live book" in dormant  # what tournament.verdict writes, unchanged
     assert customer_text.tournament_reason(losing) == "after 31 paper events it is 97% likely to be losing money per event"
     assert customer_text.tournament_reason(dormant) == ("no trade in 7 days, as its entry rule never fired on the "
-                                                       "market's real prices")
+                                                       "market’s real prices")
     # The feed's removal line says the same words after "Removed “X” from paper: ".
     line = customer_text.tournament_line("[tournament] Retired paper entrant “Fade”: %s. Its slot goes to the next "
                                          "near miss." % losing)

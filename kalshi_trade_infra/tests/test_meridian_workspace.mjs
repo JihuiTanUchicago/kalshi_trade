@@ -902,7 +902,7 @@ test('Overview autopilot card says what switching it on costs, and a running fir
   const card = () => f.root.querySelector('#dash-ap'), cost = () => f.root.querySelector('#dash-ap .apcard-cost');
   f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 18.4, auto_reload: {amount: 20, charge: 21.1, threshold: 5}};
   await f.viewDashboard(); await flush();
-  assert.match(cost().innerHTML, /uses your credits while it's on \(\$18\.40 left\)\. When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
+  assert.match(cost().innerHTML, /uses your credits while it’s on \(\$18\.40 left\)\. When they fall to \$5\.00, auto-reload charges your card \$21\.10 for \$20\.00 more\./);
   f.S.me.auto_reload = null;
   await f.viewDashboard(); await flush();
   assert.match(cost().innerHTML, /and pauses when they run out\. Turn it off any time\./);
@@ -929,7 +929,7 @@ test('Meridian: while its paper strategy holds nothing, the autopilot card also 
   f.S.apAt = Date.now();
   await f.viewDashboard(); await flush();
   const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
-  assert.match(now(), /Its last check: no edge\. Meanwhile it's researching BTC 15-min up\/down\.$/);
+  assert.match(now(), /Its last check: no edge\. Meanwhile it’s researching BTC 15-min up\/down\.$/);
   f.S.ap = {...f.S.ap, research: {tested_7d: 3, passed_7d: 0, active: []}};
   await f.viewDashboard(); await flush();
   assert.doesNotMatch(now(), /Meanwhile/);
@@ -3405,7 +3405,7 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money<\/small><\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>3 strategies <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a01 closed trade<\/small><\/dd>/);
+  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a01 closed trade<\/small><\/dd>/);
   assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
   await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   const box = f.root.parent.querySelector('#autopilot-float');
@@ -4931,7 +4931,7 @@ test('autopilot (Meridian): the market it researches reads by its label, never a
   // series or label alike; a key only the app knows (eth15m, not in this catalog) by its short one.
   f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi', 'eth15m']}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
-  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it's still picking"]}};
+  f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it’s still picking"]}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
   // The server sends a listed market's catalog label; it reads as it is.
   f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
@@ -5179,7 +5179,7 @@ test('the autopilot switch card says it would wait for credits when the balance 
   f.S.me = {...f.S.me, billing_enabled: true, needs_card: false, credit_balance: 0.4, min_run_balance: 1, auto_reload: null};
   f.S.me.user.autopilot = false; f.S.ap = null;
   await f.viewDashboard(); await flush();
-  assert.equal(f.root.querySelector('#dash-ap .apcard-cost').innerHTML, 'It uses your credits while it\'s on. You have $0.40, under the $1.00 a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.');
+  assert.equal(f.root.querySelector('#dash-ap .apcard-cost').innerHTML, 'It uses your credits while it’s on. You have $0.40, under the $1.00 a research session needs to start, so it waits until you <a href="/billing">add credits</a>. Turn it off any time.');
   f.clearTimers();
 });
 

@@ -482,7 +482,7 @@ def test_the_autopilot_week_counts_only_cleared_passes_and_judges_them_once_per_
     out, reads, log = poll(3)
     assert (out["research"]["passed_7d"], out["research"]["not_cleared_7d"]) == (2, 1)
     assert (out["week"]["passed"], out["week"]["not_cleared"]) == (2, 1)
-    assert any("This week it tested 12 ideas and 2 passed, and 1 more passed but wasn't cleared to trade." in s
+    assert any("This week it tested 12 ideas and 2 passed, and 1 more passed but wasn’t cleared to trade." in s
                for s in out["story"])
     assert reads == [(7, "passed", datetime(2026, 10, 18))]  # the week's passes from research sessions
     assert sum("LEFT JOIN app_experiment_results r" in s for s, _ in log) == 1

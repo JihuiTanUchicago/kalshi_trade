@@ -59,7 +59,7 @@ def test_the_demo_key_line_links_to_connect_kalshi_through_its_action(monkeypatc
     health = views._health_from(None, 7, [_dep(mode="demo", status="running", status_reason=None)], None,
                                 lambda: pytest.fail("no demo cash read without a key"))
     assert health == {"code": "demo_key", "need": "your Kalshi demo key",
-                      "line": "Demo isn't trading: your Kalshi demo key isn't connected.",
+                      "line": "Demo isn’t trading: your Kalshi demo key isn’t connected.",
                       "action": {"label": "Add it on the Funds page", "href": "/funds#connect-kalshi"}}
     assert "Funds page" not in health["line"] and "<" not in health["line"]
 
@@ -85,7 +85,7 @@ def test_a_deployment_the_tournament_stopped_says_why_in_plain_words():
     assert views._status_why(_dep(status="stopped", status_reason="Tournament: retired, " + losing)) == (
         "The paper tournament removed it: after 31 paper events it is 97% likely to be losing money per event")
     assert views._status_why(_dep(status="stopped", status_reason="Tournament: retired, " + dormant)) == (
-        "The paper tournament removed it: no trade in 7 days, as its entry rule never fired on the market's real prices")
+        "The paper tournament removed it: no trade in 7 days, as its entry rule never fired on the market’s real prices")
     assert views._status_why(_dep(status="stopped", status_reason="By you")) == "You removed it"
 
 
