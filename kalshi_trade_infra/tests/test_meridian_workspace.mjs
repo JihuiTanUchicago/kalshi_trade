@@ -2103,6 +2103,26 @@ test('Meridian: Research counts a paused session as paused, not as running', asy
   f.clearTimers();
 });
 
+test('a session row’s cost keeps its own line in the Market column, and the example’s note sits under its title', async () => {
+  // Walk 2026-10-27 at 1280px: the 120px Market column read "BTC above $X at / 5pm ET · Cost: / $0.06", and the
+  // example's "An example Tau ran f…" was cut there.
+  const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};
+  const mine = {...researchRun(6, 'succeeded'), example: false, spent_usd: 0.06};
+  const f = researchFrontend([mine, example]);
+  await f.viewResearch(); await flush();
+  const [own, ex] = f.root.querySelectorAll('#runs a.run-card').map((a) => a.innerHTML);
+  assert.match(own, /<span class="run-cost"><span class="run-sep"> · <\/span>Cost: \$0\.06<\/span>/);
+  assert.match(ex, /<span class="run-note">An example Tau ran for you when you signed up\. It cost you nothing\.<\/span>/);
+  assert.doesNotMatch(ex.match(/<span class="run-meta">.*?<\/span><span class="run-when">/s)[0], /example Tau ran|Cost/);
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const rule = (sel) => [...css.matchAll(new RegExp('\\n' + sel.replace(/[.()]/g, '\\$&') + ' \\{([^}]*)\\}', 'g'))].map((m) => m[1]).join(';');
+  assert.match(rule('.research-history .run-cost'), /display: block; white-space: nowrap;/);
+  assert.match(rule('.research-history .run-cost .run-sep'), /display: none;/);
+  assert.match(rule('.research-history .run-meta'), /-webkit-line-clamp: none;/);
+  assert.match(rule('.research-history .run-note'), /grid-column: 1; grid-row: 2;/);
+  f.clearTimers();
+});
+
 test('Research lists the seeded example as an example and does not count it as a session', async () => {
   const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};
   const mine = {...researchRun(6, 'succeeded'), example: false, spent_usd: 0.42};
