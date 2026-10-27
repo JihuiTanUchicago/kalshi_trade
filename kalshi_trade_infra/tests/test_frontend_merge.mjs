@@ -9,7 +9,7 @@ import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
-import {moneyDisplayCases} from './money_display_frontend_cases.mjs';
+import {moneyDisplayCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
@@ -5399,6 +5399,7 @@ flakyNetworkCases({name: 'Tau', frontend});
 deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postRequests});
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
+unrealizedCellCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
 slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 

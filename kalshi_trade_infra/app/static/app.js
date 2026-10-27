@@ -1902,6 +1902,8 @@
     // "no closed trades" under "Backtest estimate" read as if the backtest itself had no trades.
     const pace = exp && +exp.trades > 0 ? (+exp.pnl || 0) / +exp.trades : null;
     const live = d.mode === 'live', idle = depIdle(d);
+    // No Unrealized figure says why, as Meridian's monitor row does: nothing open, or open with no price yet.
+    // A bare "—" said neither.
     // A paused row names its book too: "Paused" alone didn't say whether real money had stopped.
     const modeTag = live ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">DEMO</span>' : '<span class="mk">PAPER</span>';
     const actions = controls ? `<td class="act" data-lab="">
@@ -1914,7 +1916,7 @@
       <td data-lab="Market"><span class="tick">${esc(marketFull(d.market))}</span></td>
       <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
-      <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
+      <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
       <td class="num" data-lab="Backtest estimate" title="${d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig">${live ? 'no live trades closed yet' : d.mode === 'demo' ? 'no demo trades closed yet' : 'no paper trades closed yet'}</span>`}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
