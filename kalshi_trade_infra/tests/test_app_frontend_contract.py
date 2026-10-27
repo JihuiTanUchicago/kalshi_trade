@@ -229,6 +229,8 @@ def test_system_engine_boxes_count_running_deployments_per_mode_and_read_the_eng
     assert nodes['sim_engine']['paper'] == 5
     assert 20 <= nodes['live_engine']['age'] < 30 and nodes['sim_engine']['age'] == nodes['live_engine']['age']
     assert 'deployments' not in nodes['live_engine']  # no one figure that sums the modes
+    # The candle collector's box counts "candles" (its sub-line says "1-minute candles"): "0 1m candles" read as "01m".
+    assert nodes['cb_coll']['unit'] == 'candles'
 
 
 @pytest.mark.parametrize('admin', [False, True])

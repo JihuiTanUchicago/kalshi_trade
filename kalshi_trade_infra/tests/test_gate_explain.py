@@ -570,12 +570,31 @@ def test_the_system_feed_reads_a_verdict_as_the_run_pages_note():
                                                "screened_out": 1, "handed_over": 2}})
     assert tier["data"] == {"note": "A quicker model screened the ideas first: 1 set aside, 2 passed on to be developed.", "title": None}
     # No note (its own message already reads plainly), no data, unreadable data, or not a verdict: the message as written.
-    for r in ({"kind": "verdict", "message": "REJECTED (challenger) - T: no mechanism", "data_json": '{"title": "T", "status": "rejected"}'},
-              {"kind": "verdict", "message": "PASSED - Old", "data_json": None},
+    for r in ({"kind": "verdict", "message": "PASSED - Old", "data_json": None},
               {"kind": "verdict", "message": "PASSED - Old", "data_json": "{not json"},
               {"kind": "step", "message": "Froze 2 finalists", "data_json": '{"note": "x"}'}):
         out = server._system_event(dict(r, created_at=None))
         assert "data" not in out and out["message"] == r["message"]
+
+
+def test_the_system_feed_says_a_rejection_a_review_and_an_idea_in_the_session_pages_words():
+    # Walk 2026-10-27: the System page's feed read "REJECTED - Momentum into the close: not a finalist, so never
+    # tested on unseen data (research pnl $-0.6 over 48 trades).", "Challenger approved - Fade: ..." and a bare
+    # idea title, where the session page says what the idea missed, "Skeptic’s review" and "Hypothesis".
+    rej = {"kind": "verdict", "created_at": None,
+           "message": "REJECTED - Momentum into the close: not a finalist, so never tested on unseen data (research pnl $-0.6 over 48 trades).",
+           "data_json": '{"title": "Momentum into the close", "status": "rejected", "in_sample": {"pnl": -0.6, "trades": 48}}'}
+    ev = server._system_event(rej)
+    assert ev["data"] == {"note": "Lost money on the research data.", "title": "Momentum into the close"}
+    skeptic = server._system_event({"kind": "verdict", "created_at": None, "message": "REJECTED (challenger) - T: no mechanism",
+                                    "data_json": '{"title": "T", "status": "rejected"}'})
+    assert skeptic["data"]["title"] == "T" and "skeptic" in skeptic["data"]["note"]
+    said = lambda kind, msg: server._system_event({"kind": kind, "message": msg, "created_at": None, "data_json": None})["message"]
+    assert said("challenger", "Challenger approved - Fade late spikes: the counterparty chases.") == (
+        "Skeptic’s review approved Fade late spikes: the counterparty chases.")
+    assert said("challenger", "Challenger revised - Fade: tighten the band.") == "Skeptic’s review asked for changes to Fade: tighten the band."
+    assert said("challenger", "Something else") == "Something else"
+    assert said("hypothesis", "Fade late spikes") == "New idea: Fade late spikes"
 
 
 def test_the_system_feed_says_steps_errors_and_counts_as_the_session_page(monkeypatch):
