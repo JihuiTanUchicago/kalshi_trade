@@ -730,8 +730,8 @@ test('Overview offers each mode its own trades CSV only when that mode has close
 test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
     [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital\u00a0· No demo deployments\u00a0· real fills on Kalshi’s sandbox, not real money/],
-    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital\u00a0· 0 open\u00a0· \+\$12\.00 realized since reload\u00a0· real fills/],
-    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 realized all time\u00a0· real fills/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital\u00a0· 0 open\u00a0· \+\$12\.00 realized since reload, after Kalshi fees\u00a0· real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 realized all time, after Kalshi fees\u00a0· real fills/],
   ]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({demo})); }});
     await f.viewDashboard(); await flush();
@@ -820,7 +820,10 @@ test('Funds paper history says prices in cents, a lost settlement as lost, and e
   assert.match(rows[1], /settled YES<span class="hint">\u00a0· won, paid \$1 a contract<\/span>[\s\S]*\+\$25\.00/);
   assert.match(rows[2], /Sold 8\/25 YES KXBTC15M-P at 25¢ \(stop loss, partial\)/);
   assert.match(rows[3], /Paper replay: 10 YES KXBTC15M-R at 40¢ → 55¢ \(take profit\)/);
-  assert.match(rows[4], /Bought 25 YES KXBTC15M-W at 40¢<\/td>[\s\S]*−\$10\.42/);
+  assert.match(rows[4], /Bought 25 YES KXBTC15M-W at 40¢<\/span><\/td>[\s\S]*−\$10\.42/);
+  // The words and the settled note are one inline run (.ledger-said): the stacked cell is a flex row, and at 390px
+  // the note was its own item, so "· won, paid $1 a contract" began a line (walk 2026-10-27).
+  assert.match(rows[1], /<span class="ledger-said">[^<]*settled YES<span class="hint">\u00a0· won, paid \$1 a contract<\/span><\/span>/);
   assert.match(rows[5], /&lt;b&gt;Starting&lt;\/b&gt; paper balance/);  // still escaped
   for (const r of rows) assert.doesNotMatch(r, /@ 0\.|stop_loss|take_profit/);
   const how = f.root.querySelector('.ledger-how').textContent;
@@ -6285,6 +6288,20 @@ test('the hot rail wraps a market’s name instead of cutting its close hour, an
   assert.equal(f.root.querySelector('.hot-title strong').textContent, 'BTC above $X at 5pm ET', 'the whole name, its hour included');
   // A pause reason's "the Funds page" in a Deploy row is underlined; the row's strategy name still isn't.
   assert.match(css, /\n\.t-dep td\.name \.sub-fig a, \.monitor-limits a \{ text-decoration: underline;/);
+});
+
+test('an Overview demo or live monitor names its book and fees under Realized P&L, as a paper one does', async () => {
+  // Walk 2026-10-27 (paper + a demo key): a demo monitor read "Realized P&L +$2.17" with nothing under it, while each
+  // paper one said "after Kalshi fees and the spread". It says its book and fees, as the strategy page's book lines do.
+  const deployments = [{...dashboardDeployment('demo'), id: 71, closed_trades: 1, realized_pnl: 2.17},
+    {...dashboardDeployment('live'), id: 72, closed_trades: 2, realized_pnl: -1.5},
+    {...dashboardDeployment('demo'), id: 73, closed_trades: 0, realized_pnl: 0}];
+  const f = frontend({fetchImpl: () => response(dashboardData({deployments}))});
+  await f.viewDashboard();
+  const notes = [...f.root.querySelectorAll('#dash-deps article.dep-monitor .monitor-realized')].map((m) => {
+    const n = m.querySelector('.book-net'); return n ? n.textContent : null;
+  });
+  assert.deepEqual(notes, ['after Kalshi fees, in Tau’s demo book: not real money', 'real money, after Kalshi fees', null]);
 });
 
 test('an Overview paper monitor says how many of its closed trades were instant fills', async () => {
