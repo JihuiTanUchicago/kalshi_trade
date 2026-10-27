@@ -55,6 +55,8 @@ export function bellCases({name, frontend}) {
     await g.root.querySelector('.bell-trig').onclick({stopPropagation() {}});
     assert.equal(gm.focusOptions && gm.focusOptions.preventScroll, true);
     assert.match(gm.querySelector('.bell-empty').textContent, /No notifications yet/);
+    // Empty, it says what will ring it, so a quiet first hour doesn't read as a broken bell.
+    assert.match(gm.querySelector('.bell-empty').textContent, /It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can’t charge your card\./);
   });
 
   test(`${name}: a notice that arrives while the page sits open reaches the bell within a minute, without a reload`, async () => {

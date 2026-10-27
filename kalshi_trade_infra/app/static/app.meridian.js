@@ -844,7 +844,8 @@
       dot.hidden = !d.unread;
       trig.setAttribute('aria-label', d.unread ? `Notifications, ${d.unread} unread` : 'Notifications');  // the dot alone is colour
       head.innerHTML = '<b>Notifications</b>' + (d.unread ? `<span class="bell-new">${d.unread} new</span>` : '');
-      list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet.</p>';
+      // Empty, it says what rings it: through a new user's first research session it said only "No notifications yet."
+      list.innerHTML = d.items.length ? d.items.map(item).join('') : '<p class="bell-empty">No notifications yet. It rings when a strategy goes on paper or is paused, passes its paper test or is ready for live, and if auto-reload can\u2019t charge your card.</p>';
     };
     let data = { unread: 0, items: [] };
     // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
