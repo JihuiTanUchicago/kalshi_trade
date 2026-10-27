@@ -25,6 +25,7 @@ import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
+import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -1081,9 +1082,9 @@ test('Funds says what each book has made, realized, never summed, and when a new
     d.paper = {...d.paper, cash: 995.19, equity: 1005.19, open_positions: 1, open_at_cost: 10, open_cost: 10, realized_pnl: 5.61, closed_trades: 5}; return response(d); }});
   await f.viewFunds();
   const figs = f.root.querySelector('#ffigs').innerHTML;
-  assert.match(figs, /Your real cash at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time\. 1 open live position/);
-  assert.match(figs, /1 open \(\$10\.00 at cost \+ fees\) ·\u00a0\+\$5\.61 realized all time ·\u00a0practice money/);
-  assert.match(figs, /\+\$9\.77 realized since reload ·\u00a0needs a demo key/);  // demo's P&L restarts at a reload
+  assert.match(figs, /Your real cash at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time, after Kalshi fees\. 1 open live position/);
+  assert.match(figs, /1 open \(\$10\.00 at cost \+ fees\) ·\u00a0\+\$5\.61 realized all time, after Kalshi fees and the spread ·\u00a0practice money/);
+  assert.match(figs, /\+\$9\.77 realized since reload, after Kalshi fees ·\u00a0needs a demo key/);  // demo's P&L restarts at a reload
   assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
   // A book with no closed trade says when its P&L shows, instead of a $0.00 that reads as flat.
   const g = frontend({fetchImpl: () => { const d = funds();
@@ -1118,7 +1119,7 @@ test('Deploy realized says it counts only the strategies listed, never summing l
     realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
     backtest: {out_of_sample: null}});
   for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money ·\u00a0\+\$2\.00 on paper from the deployments listed, counted apart/]]) {
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money ·\u00a0after Kalshi fees ·\u00a0\+\$2\.00 on paper from the deployments listed, counted apart/]]) {
     const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions: []}) : response({})});
     await f.viewDeploy(); await flush(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;
@@ -2374,7 +2375,7 @@ test('Tau: separators wrap with the item after them, the phone tabs show which e
   // A strategy card's status cell is labelled; the Funds paper ledger names its cells like the credits ledger.
   assert.match(f.strategySlip({id: 1, title: 'T', thesis: '', market: 'btc15m', status: 'passed', out_of_sample: {pnl: 1, trades: 3, win_rate: .5}}, {}),
     /<td class="act st" data-lab="Status">/);
-  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{when\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
+  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{ledgerAt\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
 });
 
 test('the floating autopilot pill also steps aside from a figure under it', () => {
@@ -5218,6 +5219,7 @@ test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, 
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn, fundsData: funds});
 fundsTrustCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
+fundsWalkCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))}), billingPage, cardedBilling,
   source, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: funds});

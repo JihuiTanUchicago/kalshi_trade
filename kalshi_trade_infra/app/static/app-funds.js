@@ -4,8 +4,8 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, loading, openCost, pageAssets,
-    paint, painted, poll, refreshed, root, S, shell, tone, usd, when
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, loading, openCost, pageAssets, PAPER_NET,
+    paint, painted, poll, refreshed, root, S, settleAt, shell, tone, usd, when
   } = T;
 
   // ---------- funds ----------
@@ -72,10 +72,17 @@ window.TauPage('funds', (T) => {
   // What each book has made: its realized P&L from closed trades, the figure the dashboard, Deploy and the
   // track record show, never added to another book's. Before a book's first close it says when one shows.
   // An API without the figure says nothing. Demo's is since its last reload, as on the dashboard.
+  // Each says what it is net of, as Deploy's and the strategy page's do: every book's P&L is after Kalshi's fees, and
+  // paper's after the spread too (PAPER_NET). It said "+$9.77 realized all time" beside Deploy's "after Kalshi fees".
+  const BOOK_NET = { paper: PAPER_NET, demo: 'after Kalshi fees', live: 'after Kalshi fees' };
   const bookPnl = (b, mode, pnl = b.realized_pnl, span = 'all time') => b.closed_trades == null ? ''
-    : b.closed_trades ? `${usd(pnl, true)} realized ${span} \u00b7\u00a0` : `P&amp;L shows once a ${mode} trade closes \u00b7\u00a0`;
-  const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time.`
+    : b.closed_trades ? `${usd(pnl, true)} realized ${span}, ${BOOK_NET[mode]} \u00b7\u00a0` : `P&amp;L shows once a ${mode} trade closes \u00b7\u00a0`;
+  const livePnl = (k) => k.closed_trades == null ? '' : k.closed_trades ? ` Tau\u2019s live trades: ${usd(k.realized_pnl, true)} realized all time, ${BOOK_NET.live}.`
     : k.connected ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : '';
+  // Not connected: the Kalshi cash figure links to the live key's form, in Connect Kalshi while no key of either
+  // kind is in (its fold), else in the page. It said "Connect a key to trade real money" with nowhere to go
+  // (Meridian said nothing at all).
+  const connectLive = (kd) => `<a href="${kd.connected ? '#kalshi' : '#connect-kalshi'}">Connect a Kalshi key</a> below to trade real money`;
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
   // A key's cash the shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes
   // pending (the bundle's cashFig and cashRead, which the dashboard shares): it reads Checking\u2026, never $0,
@@ -98,8 +105,16 @@ window.TauPage('funds', (T) => {
     const memo = String(r.memo || r.kind || '').replace(/ (@|->) (\d*\.\d+)/g, (m, w, p) => ` ${w === '@' ? 'at' : '\u2192'} ${Math.round(+p * 100)}\u00a2`)
       .replace(/\(([a-z]+(?:_[a-z]+)+)/g, (m, c) => '(' + c.replace(/_/g, ' '));
     const settled = r.kind === 'settlement' ? (+r.amount > 0 ? ' \u00b7\u00a0won, paid $1 a contract' : ' \u00b7\u00a0lost, paid $0') : '';
-    return esc(memo) + (settled ? `<span class="hint">${settled}</span>` : '');
+    // The contract goes by its plain name, as an open position does (contractName: "Bitcoin up or down in 15
+    // minutes"); its ticker carries the raw series key, so it moves to the small line under it (kalshiRef).
+    const t = LEDGER_TICKER.exec(memo);
+    const said = t ? esc(memo.slice(0, t.index)) + esc(contractName(t[0])) + esc(memo.slice(t.index + t[0].length)) : esc(memo);
+    return said + (settled ? `<span class="hint">${settled}</span>` : '') + (t ? `<div class="sub-fig">${kalshiRef(t[0])}</div>` : '');
   };
+  // A Kalshi contract ticker in a memo: its series, then the event's date (KXBTCD-26OCT2617-T114999.99).
+  const LEDGER_TICKER = /\b[A-Z][A-Z0-9]*-\d{2}[A-Z]{3}\d{2}(?:[A-Z0-9.-]*[A-Z0-9])?/;
+  // When cash moved: the clock and its zone, with the date on any day but today (settleAt), never a bare "Oct 24".
+  const ledgerAt = (iso) => `<time datetime="${esc(iso || '')}">${esc(settleAt(iso))}</time>`;
   // Fees and settlement, once, in plain words, where the cash moves.
   const LEDGER_HOW = 'Cash in and out of your paper account, newest first. A buy takes the contracts\u2019 price plus Kalshi\u2019s fee, as a real order would. When a market settles, each winning contract pays $1 and each losing one pays $0; a sale before then pays the price it sold at, less the fee. A trade\u2019s P&amp;L is what it brought back less everything it cost, fees included.';
   async function viewFunds() {
@@ -191,7 +206,7 @@ window.TauPage('funds', (T) => {
       // No demo key and a demo book that never traded: no demo figure (the bundle's demoKeyless).
       const demoNone = demoKeyless(dm, !!kd.connected);
       const cf = k.connected && cashFig(k);
-      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
+      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? connectLive(kd) + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
         (!demoNone ? fig(DEMO_BOOK, usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) : fig(DEMO_BOOK, 'No demo key', { small: `<a href="#connect-kalshi">Connect a demo key</a> below to trade Kalshi’s sandbox ·\u00a0${DEMO_WHAT}` })) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper, true)}${bookPnl(d.paper, 'paper')}practice money` }));
       // A new account (no Kalshi key of either kind) reads Paper first, the account the autopilot trades, and the
@@ -268,7 +283,7 @@ window.TauPage('funds', (T) => {
           <h2>Paper history</h2>
           <p class="hint ledger-how">${LEDGER_HOW}${d.paper.ledger.length >= 50 ? ' The latest 50 entries.' : ''}</p>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
-            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
+            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${ledgerAt(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
         </section>
         </div></div>`;

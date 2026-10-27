@@ -180,8 +180,8 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     const books = await board({deployments: [dep({id: 1, mode: 'live', realized_pnl: 2}), dep({id: 2, mode: 'paper', realized_pnl: 40}), dep({id: 3, mode: 'demo', realized_pnl: -10})],
       realized_by_book: {live: {listed: 2, removed: 1, removed_deployments: 1, all: 3}, paper: {listed: 40, removed: 7, removed_deployments: 3, all: 47},
         demo: {listed: -10, removed: 4, removed_deployments: 1}}});
-    assert.match(books, /Live realized, deployments listed below[\s\S]*real money ·\u00a0\+\$1\.00 from 1 removed deployment, \+\$3\.00 in all ·\u00a0\+\$40\.00 on paper from the deployments listed, counted apart/);
-    assert.match(books, /Demo realized, deployments listed below[\s\S]*not real money ·\u00a0\+\$4\.00 from 1 removed deployment</);
+    assert.match(books, /Live realized, deployments listed below[\s\S]*real money ·\u00a0\+\$1\.00 from 1 removed deployment, \+\$3\.00 in all ·\u00a0after Kalshi fees ·\u00a0\+\$40\.00 on paper from the deployments listed, counted apart/);
+    assert.match(books, /Demo realized, deployments listed below[\s\S]*not real money ·\u00a0\+\$4\.00 from 1 removed deployment ·\u00a0after Kalshi fees</);
     assert.doesNotMatch(books, /\$42\.00|\$32\.00|\$50\.00/);
     // An empty board with removed deployments: no "listed below" over an empty list.
     const empty = await board({deployments: [], realized_by_book: {paper: {listed: 0, removed: 5.72, removed_deployments: 2, all: 5.72}}});

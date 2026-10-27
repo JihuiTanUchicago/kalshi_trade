@@ -149,3 +149,35 @@ def test_the_card_names_a_figure_under_a_cent_as_billing_does(monkeypatch):
     state, card = both(dict(WEEK))
     assert (card['research_credits'], card['checkin_credits']) == (100.01, 0.09)
     assert card['research_under_cent'] is False and card['checkin_under_cent'] is False
+
+
+def _quiet_research(monkeypatch, spent_usd):
+    """The research week's reads stubbed (test_paper_realistic_fills' set): no runs, `spent_usd` debited."""
+    from tests.autopilot_status_parts import stub_merged_reads
+
+    stub_merged_reads(monkeypatch)
+    monkeypatch.setattr(server.repo, "list_runs", lambda cur, uid, limit=50: [])
+    monkeypatch.setattr(server.repo, "research_week", lambda cur, uid, since: [
+        {"model": None, "runs": 1, "tried": 3, "passed": 0, "input_tokens": 0, "output_tokens": 0}])
+    monkeypatch.setattr(server.repo, "strategies_passed_since", lambda cur, uid, since: 0)
+    monkeypatch.setattr(server.repo, "passed_strategies", lambda cur, uid, **k: [])
+    monkeypatch.setattr(server.repo, "research_spent_since", lambda cur, uid, since: spent_usd)
+
+
+def test_research_under_half_a_cent_says_under_a_cent_on_the_autopilot_panel(monkeypatch):
+    """The panel's Research line and story left a week's research spend out when it rounded to $0.00, as if
+    research had cost nothing; Billing names such a part "under $0.01" (spent_7d_under_cent)."""
+    for exact, cost, under in ((0.003, 0.0, True), (0.0, 0.0, False), (0.12, 0.12, False), (0.005, 0.01, False)):
+        _quiet_research(monkeypatch, exact)
+        out = server._research_activity(None, 7)
+        assert (out["cost_7d"], out["cost_7d_under_cent"]) == (cost, under), exact
+    # The status passes the card's rounded figure (Billing's split) and the week's exact debit beside it.
+    _quiet_research(monkeypatch, 0.0)
+    assert server._research_activity(None, 7, None, 0.0, 0.004)["cost_7d_under_cent"] is True
+    assert server._research_activity(None, 7, None, 0.0, 0.0)["cost_7d_under_cent"] is False
+    assert server._research_activity(None, 7, None, 0.12, 0.1203)["cost_7d_under_cent"] is False
+    story = server._autopilot_story({"autopilot": True, "research": {"active": [], "tested_7d": 3, "passed_7d": 0,
+                                                                      "cost_7d": 0.0, "cost_7d_under_cent": True}})
+    assert story[1].startswith("This week it tested 3 ideas for under $0.01 and none has passed")
+    plain = server._autopilot_story({"autopilot": True, "research": {"active": [], "tested_7d": 3, "passed_7d": 0, "cost_7d": 0.0}})
+    assert plain[1].startswith("This week it tested 3 ideas and none has passed")

@@ -26,6 +26,7 @@ import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
+import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -812,9 +813,9 @@ test('Funds says what each book has made, realized, never summed, and when a new
     d.paper = {...d.paper, cash: 995.19, equity: 1005.19, open_positions: 1, open_at_cost: 10, open_cost: 10, realized_pnl: 5.61, closed_trades: 5}; return response(d); }});
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
-  assert.match(figs, /Real money at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time\. 1 open live position/);
-  assert.match(figs, /\$995\.19 cash ·\u00a01 open \(\$10\.00 at cost \+ fees\) ·\u00a0\+\$5\.61 realized all time</);
-  assert.match(figs, /\+\$9\.77 realized since reload ·\u00a0needs a demo key/);
+  assert.match(figs, /Real money at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time, after Kalshi fees\. 1 open live position/);
+  assert.match(figs, /\$995\.19 cash ·\u00a01 open \(\$10\.00 at cost \+ fees\) ·\u00a0\+\$5\.61 realized all time, after Kalshi fees and the spread</);
+  assert.match(figs, /\+\$9\.77 realized since reload, after Kalshi fees ·\u00a0needs a demo key/);
   assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
   const g = frontend({fetchImpl: () => { const d = funds();
     d.kalshi = {connected: false, realized_pnl: 0, closed_trades: 0};
@@ -875,7 +876,7 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
   for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money ·\u00a0\+\$2\.00 on paper from the deployments listed, counted apart/]]) {
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money ·\u00a0after Kalshi fees ·\u00a0\+\$2\.00 on paper from the deployments listed, counted apart/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments, open_positions: []}); }});
     await f.viewDeploy(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;
@@ -3679,7 +3680,7 @@ test('Meridian: separators wrap with the item after them, the phone tabs show wh
   // A strategy card's status cell is labelled; the Funds paper ledger names its cells like the credits ledger.
   assert.match(f.strategySlip({id: 1, title: 'T', thesis: '', market: 'btc15m', status: 'passed', out_of_sample: {pnl: 1, trades: 3, win_rate: .5}}, {}),
     /<td class="act st" data-lab="Status">/);
-  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{when\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
+  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{ledgerAt\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
 });
 
 test('Meridian: a finished session says what to do next: your own idea after the example, the passed strategy after yours', async () => {
@@ -6082,6 +6083,7 @@ test('Meridian: a strategy that did not pass shows its backtest P&L muted, at th
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus, fundsData: funds});
 fundsTrustCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
+fundsWalkCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
 a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling, source, strategyFrontend, detailStrategy,
   dashboard: dashboardData, fundsData: funds});

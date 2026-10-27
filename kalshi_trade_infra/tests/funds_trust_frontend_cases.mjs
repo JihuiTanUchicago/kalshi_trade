@@ -158,7 +158,7 @@ export function fundsTrustCases({name, frontend, fundsData, dashboard, detailStr
     const f = frontend({fetchImpl: (path) => path === '/api/funds' ? response(fresh) : response({})});
     f.location.pathname = '/funds'; f.location.hash = '';
     await f.viewFunds(); await settle();
-    const link = f.root.querySelectorAll('a').find((a) => a.getAttribute('href') === '#connect-kalshi');
+    const link = f.root.querySelectorAll('a').find((a) => a.getAttribute('href') === '#connect-kalshi' && a.textContent === 'Connect a demo key');
     assert.ok(link, 'the keyless demo figure links to Connect Kalshi');
     assert.equal(link.textContent, 'Connect a demo key');
     const [, onClick] = f.documentListeners.find(([type, cb]) => type === 'click' && String(cb).includes('a[href^="#"]'));
