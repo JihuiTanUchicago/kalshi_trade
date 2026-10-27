@@ -2831,3 +2831,5 @@ loop now improves real research where headroom exists and honestly adopts nothin
 - *Throttle*: dreaming is ~1k in / ~1.3k out tokens (~$0.02) per eligible run and is monotonic
   (never harmful), so a throttle is low-value. If wanted: persist the tree size at last dream and
   skip when it hasn't grown by N new gated nodes (needs a schema column; deferred).
+
+- 2026-10-27 00:30Z: autopilot fact-checks "live" claims. User 1's stored plan said "Live: #83 ... trading real money" while #83 was paper, the claim fed back every review, and a reply told Todd #83 was on real money. The review context now adds a FACT CHECK line under a plan that calls a paper deployment live, and any agent reply that does so gets a "Correction: #83 trades paper, not real money" system line (agent.false_live_line).

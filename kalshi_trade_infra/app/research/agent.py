@@ -4282,6 +4282,42 @@ def _deployment_age_text(d: Dict) -> str:
     return "deployed %s ago%s; " % (age, note)
 
 
+# Prod 2026-10-26 23:36Z: user 1's stored plan said "Live: #83 btc15m ... trading real money" and
+# "#83 promoted to real money" while #83 was paper and nothing was live. The plan is fed back every
+# review, so the claim kept itself alive, the reviews spent their actions on refused deploy_live
+# tries, and a reply told Todd "#83 earning steadily ... on real money". These find the deployment
+# ids a text says are live; the caller drops the ones that really are.
+_LIVE_CLAIMS = (
+    re.compile(r"\blive\s*:\s*(#\d+(?:\s*(?:,|/|&|and)\s*#?\d+)*)", re.I),
+    re.compile(r"#(\d+)[^.;\n]{0,60}?\b(?:on|trading|with|using)\s+real money", re.I),
+    re.compile(r"#(\d+)[^.;\n]{0,40}?\bpromoted\s+to\s+(?:real money|live)", re.I),
+    re.compile(r"#(\d+)\s+(?:is\s+)?(?:now\s+)?live\b(?!\s+(?:promotion|gate|check|autopilot|readiness))", re.I),
+)
+
+
+def live_claim_ids(text: str) -> List[int]:
+    """Deployment ids `text` calls live or real-money, in order of first mention."""
+    out: List[int] = []
+    for rx in _LIVE_CLAIMS:
+        for m in rx.finditer(text or ""):
+            for n in re.findall(r"\d+", m.group(1)):
+                if int(n) not in out:
+                    out.append(int(n))
+    return out
+
+
+def false_live_line(text: str, deps: List[Dict]) -> Optional[str]:
+    """A correction when `text` calls a deployment live that isn't, else None."""
+    live = {int(d["id"]) for d in deps if d.get("mode") == "live" and d.get("status") != "stopped"}
+    known = {int(d["id"]) for d in deps}
+    wrong = [i for i in live_claim_ids(text) if i in known and i not in live]
+    if not wrong:
+        return None
+    return ("Correction: %s %s paper, not real money. Live deployments right now: %s."
+            % (", ".join("#%d" % i for i in wrong), "trades" if len(wrong) == 1 else "trade",
+               ", ".join("#%d" % i for i in sorted(live)) if live else "none"))
+
+
 def _copilot_context(cur, user: Dict) -> str:
     deps = repo.list_deployments(cur, user["id"])
     passed = [s for s in repo.list_strategies(cur, user["id"], status="passed", limit=20)]
@@ -4330,6 +4366,10 @@ def _copilot_context(cur, user: Dict) -> str:
         for k in ("goals", "agenda", "deployments", "posture"):
             if plan.get(k):
                 lines.append("- %s: %s" % (k, plan[k]))
+        wrong = false_live_line(" ".join(str(v) for v in plan.values()), deps)
+        if wrong:
+            lines.append("- FACT CHECK on this plan: %s Rewrite the plan from the Deployments list below, and "
+                         "never tell the user a paper deployment trades real money." % wrong)
     else:
         lines.append("- none yet — SET one this review (goals + research agenda + capital posture).")
     lines += ["", "Deployments:"]
@@ -4701,6 +4741,12 @@ def run_copilot(conn, run: Dict, model: Optional[ModelFn] = None, dataset_fn=bac
             notes.append((text, proposal_id))
         if run["kind"] != "review" or (out["actions"] and refused < len(out["actions"])):
             repo.add_chat(cur, user["id"], "agent", out["reply"])
+            try:
+                wrong = false_live_line(out["reply"], repo.list_deployments(cur, user["id"]))
+            except Exception:  # best-effort: a lookup hiccup must not fail the run after it replied
+                wrong = None
+            if wrong:
+                repo.add_chat(cur, user["id"], "system", wrong)
         for text, proposal_id in notes:
             # A scheduled review that keeps hitting the same refusal ("you already have research
             # running") posted it every 10 minutes. Say it once per REPEAT_NOTE_WINDOW; anything
