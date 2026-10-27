@@ -119,6 +119,24 @@ def test_a_shared_non_pass_or_example_never_claims_a_missing_record(monkeypatch,
         assert "no_gatekeeper_record" not in share("strategy", 4711)["snapshot"], over
 
 
+def test_a_card_stored_before_the_flag_gets_it_from_the_feed_read(share):
+    # A card shared before #598 has no no_gatekeeper_record; the feed's read says its strategy has no record
+    # (community_repository.POST_NO_RECORD_SQL), so a "passed" card says later-period as its page does. A card
+    # with a later verdict, or any other status, claims nothing; nor does a card the read didn't flag.
+    snap = share("strategy", 4711)["snapshot"]
+    assert "no_gatekeeper_record" not in snap
+
+    def read(snapshot, flagged):
+        return community._post_out({"id": 77, "body": "", "kind": snapshot["kind"], "snapshot": snapshot, "likes_count": 0,
+                                    "comments_count": 0, "created_at": None, "name": "A", "username": "ann",
+                                    "picture_url": None, "mine": False, "no_gatekeeper_record": flagged})["snapshot"]
+    assert read(snap, True)["no_gatekeeper_record"] is True
+    assert "no_gatekeeper_record" not in read(snap, False)
+    assert "no_gatekeeper_record" not in read(dict(snap, verdict="missed_final"), True)
+    assert "no_gatekeeper_record" not in read(dict(snap, status="failed"), True)
+    assert "no_gatekeeper_record" not in read({"kind": "deployment", "title": "x", "mode": "paper"}, True)
+
+
 def test_the_author_alone_gets_the_id_their_card_links(share):
     assert _as_read(share("strategy", 4711), mine=True)["snapshot"]["id"] == 4711
 

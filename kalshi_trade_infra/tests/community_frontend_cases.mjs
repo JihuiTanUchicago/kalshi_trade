@@ -128,7 +128,8 @@ export function communityCases({name, frontend}) {
     for (const over of [{no_gatekeeper_record: true}, {status: 'backtest-only'}]) {
       const html = f.postSnapshot({...card, ...over}, '@maya');
       assert.match(html, /later-period/i, JSON.stringify(over));
-      assert.match(html, /after the split date/); assert.match(html, /not held out/);
+      // In the strategy page's words: the split date picked it, so it isn't held out.
+      assert.match(html, /after the split date, which picked it: not held out/);
       assert.doesNotMatch(html, /unseen|never saw/i, JSON.stringify(over));
     }
     const kept = f.postSnapshot(card, '@maya');

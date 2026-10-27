@@ -10,6 +10,13 @@ from app.adapters.db.sql import _json, _loads, now_utc
 # The user never ran it, so headline counts leave it out; lists still show it, marked as an example.
 DEMO_DIRECTION = "random_walk"
 
+# A strategy row `s` with no gatekeeper record: no stored experiment_id and no experiment linked by its strategy_id
+# (relabel_backtest_only's own test). The experiment probe (idx_exp_user_market's user_id prefix) runs only for a
+# row without experiment_id, a legacy row. Shared by the reads that carry it as a column (NO_RECORD_SQL, the
+# Community feed's). Display only.
+NO_EXPERIMENT_SQL = ("s.experiment_id IS NULL AND NOT EXISTS (SELECT 1 FROM app_experiments e "
+                     "WHERE e.user_id=s.user_id AND e.strategy_id=s.id)")
+
 
 def strategies_passed_since(cur, user_id: int, since) -> int:
     """Strategies that cleared every gate (status 'passed') from research runs started since

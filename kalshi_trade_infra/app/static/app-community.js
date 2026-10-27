@@ -25,7 +25,7 @@ window.TauPage('community', (T) => {
       // later-period figure: the slice after the split date that picked it, not held out, as its page and list say.
       const later = snap.status === 'backtest-only' || snap.no_gatekeeper_record;
       const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
-        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}${later ? `later-period backtest${overDays(snap.days)} after the split date, not held out` : `backtest on unseen data${overDays(snap.days)}`}: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
+        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}${later ? `later-period backtest${overDays(snap.days)} after the split date, which picked it: not held out` : `backtest on unseen data${overDays(snap.days)}`}: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
       return owner ? `<div class="snap">${head}<div class="snap-note">Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
         : `<a class="snap" href="/strategies/${snap.id}">${head}</a>`;
     }
