@@ -1801,6 +1801,17 @@
   // at the sync's next pass, so it is offered disabled with the server's reason (resume_block), which
   // the row's status line also says.
   const resumeButton = (d, why = resumeBlock(d)) => `<button class="btn sm" data-dep="${d.id}" data-act="resume"${why ? ` disabled title="${esc(why)}"` : ''}>Resume<span class="vh"> ${esc(d.title)}${why ? ': ' + esc(why) : ''}</span></button>`;
+  // A paper row's closed trades that were instant fills (the server's `instant_fills`: its closed trades less those
+  // filled through the simulated order book, the track record's split). "2 closed" sat beside "0/30 trades" toward
+  // live with no word why: the track record leaves those trades out, and so does the count of realistic paper trades
+  // toward live (paper_evidence). Display only: what counts toward live is the server's alone.
+  const depInstant = (d) => {
+    const k = +d.instant_fills || 0, n = +d.closed_trades || 0;
+    if (d.mode !== 'paper' || !(k > 0) || !(n > 0)) return '';
+    const lead = k >= n ? (n === 1 ? 'Its 1 closed trade was an instant fill' : `All ${num(n)} of its closed trades were instant fills`)
+      : `${num(k)} of its ${num(n)} closed trades ${k === 1 ? 'was an instant fill' : 'were instant fills'}`;
+    return `<div class="sub-fig dep-instant">${lead}, left out of the track record and of the count of realistic paper trades toward live.</div>`;
+  };
   const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   function deploymentSlip(d, regs, controls) {
     const exp = d.backtest && d.backtest.out_of_sample;
@@ -1818,7 +1829,7 @@
         <button class="btn sm danger" data-dep="${d.id}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}</span></button></td>` : '';
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
-        <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</div>${idle ? `<div class="sub-fig dep-idle">${esc(idle.why)}</div>` : ''}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
+        <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</div>${idle ? `<div class="sub-fig dep-idle">${esc(idle.why)}</div>` : ''}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${depInstant(d)}${roadLine(d)}</td>
       <td data-lab="Market"><span class="tick">${esc(marketFull(d.market))}</span></td>
       <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>

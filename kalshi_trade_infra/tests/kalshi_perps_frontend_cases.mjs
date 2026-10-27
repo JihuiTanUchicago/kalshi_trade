@@ -550,6 +550,26 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.ok(lines.includes('Its paper record toward live: every check cleared. Live money only if you deploy it there'));
   });
 
+  test(`${name}: a paper row on Deploy says how many of its closed trades were instant fills, beside its count toward live`, async () => {
+    // Walk 2026-10-27: a row read "2 closed" beside "0/30 trades" toward live with no reason given. The server's
+    // `instant_fills` (its closed trades less those through the simulated order book) says how many, just above the
+    // road line. A demo row, or a paper row with none, says nothing of the sort.
+    const r = {trades: 0, trades_needed: 30, events: 0, events_needed: 20, span_hours: 0, span_needed_hours: 48, running: true, eta_days: null};
+    const dep = (id, mode, closed, instant) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
+      realized_pnl: 1.3, closed_trades: closed, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5,
+      max_positions: 1, backtest: {}, road: mode === 'paper' ? r : null, ...(instant == null ? {} : {instant_fills: instant})});
+    const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [
+      dep(1, 'paper', 2, 2), dep(2, 'paper', 3, 1), dep(3, 'paper', 1, 1), dep(4, 'paper', 2), dep(5, 'demo', 2, 2)], open_positions: []}) : response({})});
+    await f.viewDeploy(); await flush(); await flush();
+    const notes = f.root.querySelectorAll('.dep-instant').map((el) => el.innerHTML);
+    const cell = f.root.querySelectorAll('td.name')[0].innerHTML;
+    f.clearTimers && f.clearTimers();
+    const tail = ', left out of the track record and of the count of realistic paper trades toward live.';
+    assert.deepEqual(notes, ['All 2 of its closed trades were instant fills' + tail, '1 of its 3 closed trades was an instant fill' + tail,
+      'Its 1 closed trade was an instant fill' + tail]);
+    assert.ok(cell.indexOf('dep-instant') < cell.indexOf('road-line'), cell);  // right above "0/30 trades"
+  });
+
   test(`${name}: a demo row on Deploy says it is the sandbox, what it copies, and why its fills differ from paper's`, async () => {
     const dep = (id, mode, demo_copy = false) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null, demo_copy,
       realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1, backtest: {}});

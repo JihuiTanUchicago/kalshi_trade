@@ -151,5 +151,15 @@ def test_the_list_flags_a_paper_book_of_instant_fills_as_the_track_record_leaves
     for title, n in (("instant", 2), ("venue", 0), ("mixed", 1)):
         books = server.get_strategy(server.Ctx(conn, user, (str(sid[title]),), {}, {}, None))["book_totals"]
         assert books["paper"].get("instant_fills", 0) == n and books["paper"]["trades"] == 2
+    # Each paper deployment row says the same, on Deploy (beside "0/30 trades" toward live), the dashboard and
+    # the strategy page; its closed count is unchanged.
+    for read in (lambda: server.list_deployments(server.Ctx(conn, user, (), {}, {}, None))["deployments"],
+                 lambda: server.dashboard(server.Ctx(conn, user, (), {}, {}, None))["deployments"]):
+        rows = {r["title"]: r for r in read() if r["mode"] == "paper"}
+        assert {t: (r["closed_trades"], r.get("instant_fills", 0)) for t, r in rows.items()} == {
+            "instant": (2, 2), "venue": (2, 0), "mixed": (2, 1)}
+    for title, n in (("instant", 2), ("venue", 0), ("mixed", 1)):
+        deps = server.get_strategy(server.Ctx(conn, user, (str(sid[title]),), {}, {}, None))["deployments"]
+        assert [d.get("instant_fills", 0) for d in deps] == [n]
     # Kept while the positions are unchanged: a second page read asks again for nothing.
     assert server.list_strategies(server.Ctx(conn, user, (), {"status": ""}, {}, None))["strategies"] == out["strategies"]

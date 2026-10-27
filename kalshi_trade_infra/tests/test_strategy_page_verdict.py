@@ -169,6 +169,8 @@ def test_the_page_says_how_many_of_its_paper_trades_were_instant_fills(monkeypat
     paper = out["book_totals"]["paper"]
     assert asked == [[1, 2]] and paper["instant_fills"] == 2 and (paper["trades"], paper["pnl"]) == (3, 4.8)
     assert "instant_only" not in paper and "instant_fills" not in out["book_totals"]["demo"]
+    # Each paper deployment says its own, from the same read (the backtest pace line counts realistic fills only).
+    assert asked == [[1, 2]] and [d.get("instant_fills") for d in out["deployments"]] == [2, None, None]
     # Every one an instant fill: all of them counted, and flagged so.
     monkeypatch.setattr(server.repo, "realistic_paper_closed", lambda cur, ids: {})
     out, _ = _page(monkeypatch, _row(), _exp(FV, promoted=True), deps=deps, totals=_BOOK_TOTALS)

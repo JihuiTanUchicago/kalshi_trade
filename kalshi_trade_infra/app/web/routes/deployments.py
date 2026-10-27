@@ -15,7 +15,7 @@ from app.trading import spec as specmod
 from app.trading.markets import MARKETS
 from app.web.caches import _ROADS, _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param
-from app.web.routes.strategies import _backtest_checks, _with_marks, _with_why
+from app.web.routes.strategies import _backtest_checks, _stamp_row_instant_fills, _with_marks, _with_why
 from app.web.settings import MAX_ACTIVE_DEPLOYMENTS
 from app.web.views import _demo_key_back, _deployment_out, _paper_books, _realized_by_book, demo_health_memo
 
@@ -43,15 +43,19 @@ def list_deployments(ctx: Ctx):
     # demo_health_pending, and the page asks /api/funds/cash?book=demo, then reads the board again once.
     health, health_pending = demo_health_memo(ctx.cur, ctx.uid, deps)
     # The board polls every 10s with its last answer's version (?v=): services.page_poll.
+    # Each row carries its own book's backtest comparison (same strategy, same mode), and a paper
+    # row its strategy's paper record toward the live check (all its paper deployments, as the
+    # strategy page counts it).
+    rows = [{**_deployment_out(d, curves.get(d["id"], []), paper_sids=paper_sids, demo_key_back=key_back,
+                               paper_books=books),
+             "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None),
+             "road": roads.get(d["strategy_id"]) if d["mode"] == "paper" else None}
+            for d in deps]
+    # A paper row's closed trades that were instant fills, which its count toward live leaves out (the
+    # Strategies list's kept read, only when a paper row has a closed trade). Display only.
+    _stamp_row_instant_fills(lambda ids: book_memo.realistic_paper_closed(memo, ids), rows)
     return page_poll.answer({
-        # Each row carries its own book's backtest comparison (same strategy, same mode), and a paper
-        # row its strategy's paper record toward the live check (all its paper deployments, as the
-        # strategy page counts it).
-        "deployments": [{**_deployment_out(d, curves.get(d["id"], []), paper_sids=paper_sids, demo_key_back=key_back,
-                                           paper_books=books),
-                         "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None),
-                         "road": roads.get(d["strategy_id"]) if d["mode"] == "paper" else None}
-                        for d in deps],
+        "deployments": rows,
         "demo_health": health,
         **({"demo_health_pending": True} if health_pending else {}),
         # Each book's realized P&L: the listed deployments', the removed ones', and (paper, live) both,

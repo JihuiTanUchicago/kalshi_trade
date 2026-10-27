@@ -6202,6 +6202,25 @@ test('the hot rail wraps a market’s name instead of cutting its close hour, an
   assert.match(css, /\n\.t-dep td\.name \.sub-fig a, \.monitor-limits a \{ text-decoration: underline;/);
 });
 
+test('an Overview paper monitor says how many of its closed trades were instant fills', async () => {
+  // Walk 2026-10-27: a paper monitor read "Closed / open 2 / 0" with no word that the track record and the count of
+  // realistic paper trades toward live leave its instant fills out. The server's `instant_fills` says how many.
+  const deployments = [{...dashboardDeployment('paper'), id: 93, closed_trades: 2, instant_fills: 1},
+    {...dashboardDeployment('paper'), id: 94, closed_trades: 2, instant_fills: 2},
+    {...dashboardDeployment('paper'), id: 95, closed_trades: 1, instant_fills: 1},
+    {...dashboardDeployment('paper'), id: 96, closed_trades: 2},
+    {...dashboardDeployment('demo'), id: 97, closed_trades: 2, instant_fills: 2}];
+  const f = frontend({fetchImpl: () => response(dashboardData({deployments}))});
+  await f.viewDashboard();
+  const monitors = f.root.querySelectorAll('#dash-deps article.dep-monitor'); assert.equal(monitors.length, 5);
+  const line = (m) => { const el = m.querySelector('.monitor-config .dep-instant'); return el ? el.innerHTML : null; };
+  const tail = ', left out of the track record and of the count of realistic paper trades toward live.';
+  assert.deepEqual(monitors.map(line), ['1 of its 2 closed trades was an instant fill' + tail, 'All 2 of its closed trades were instant fills' + tail,
+    'Its 1 closed trade was an instant fill' + tail, null, null]);
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\n\.monitor-config \.dep-instant \{ margin: 4px 0 10px; white-space: normal; \}/);
+});
+
 test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" with its figure', async () => {
   // Walk 2026-10-27: "· Deployed" ended one line of a row's details and "Oct 18" began the next, at 390px and in
   // the 1280px table's name column. Each fact is one .dep-fact span, which never wraps inside.

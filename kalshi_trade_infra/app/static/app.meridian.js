@@ -1821,6 +1821,17 @@
   // max_positions as null: it says the stake is not set and leaves out the cap, instead of "$ / trade".
   const depStake = (d) => d.stake != null ? `$${esc(d.stake)} / trade` : 'Stake not set';
   const depCap = (d) => d.max_positions != null ? `Max ${esc(d.max_positions)} open` : '';
+  // A paper row's closed trades that were instant fills (the server's `instant_fills`: its closed trades less those
+  // filled through the simulated order book, the track record's split). "2 closed" sat beside "0/30 trades" toward
+  // live with no word why: the track record leaves those trades out, and so does the count of realistic paper trades
+  // toward live (paper_evidence). Display only: what counts toward live is the server's alone.
+  const depInstant = (d) => {
+    const k = +d.instant_fills || 0, n = +d.closed_trades || 0;
+    if (d.mode !== 'paper' || !(k > 0) || !(n > 0)) return '';
+    const lead = k >= n ? (n === 1 ? 'Its 1 closed trade was an instant fill' : `All ${num(n)} of its closed trades were instant fills`)
+      : `${num(k)} of its ${num(n)} closed trades ${k === 1 ? 'was an instant fill' : 'were instant fills'}`;
+    return `<div class="sub-fig dep-instant">${lead}, left out of the track record and of the count of realistic paper trades toward live.</div>`;
+  };
   const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   // A running deployment's state: "Running", or what it is waiting on when it places no orders (depIdle).
   const depState = (d, live) => d.status !== 'running' ? mark(d.status, live)
@@ -1833,7 +1844,7 @@
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
         <div class="dep-meta"><span class="sub-fig">${[esc(marketFull(d.market)), depStake(d), depCap(d)].filter(Boolean).join(' \u00b7\u00a0')}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span>
-        ${deploymentEvidence(d)}</div>${depIdleLine(d)}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
+        ${deploymentEvidence(d)}</div>${depIdleLine(d)}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${depInstant(d)}${roadLine(d)}</td>
       <td data-lab="Status">${depState(d, live)}<div class="sub-fig">${modeTag}</div></td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? ' <div class="sub-fig">est.</div>' : ''}</td>
@@ -1845,7 +1856,7 @@
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${depState(d, live)}</span></header>
-      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketFull(d.market))} ·\u00a0${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? ' \u00b7\u00a0' + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}</div>
+      <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketFull(d.market))} ·\u00a0${depStake(d)}</p><div class="monitor-limits"><span>${depCap(d) ? ' \u00b7\u00a0' + depCap(d) : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' ·\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}${depInstant(d)}</div>
       <dl class="monitor-metrics">
         <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${PAPER_NET}${glo('paperfills')}</dd>` : ''}</div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}</dd></div>

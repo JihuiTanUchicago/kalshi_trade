@@ -231,6 +231,22 @@ def _stamp_instant_fills(read_sim, paper: Dict[int, Dict], deps: List[Dict]) -> 
             r["instant_only"] = True
 
 
+def _stamp_row_instant_fills(read_sim, rows: List[Dict]) -> None:
+    """Stamp `instant_fills` on each paper deployment row (as _deployment_out sends it) whose closed trades
+    were partly or all instant fills: its closed rows less those filled through the simulated venue
+    (`read_sim`: repo.realistic_paper_closed over those deployments, kept or not). The Deploy board and the
+    dashboard showed "2 closed" beside "0/30 trades" toward live with no word why. Read only when a paper row
+    has a closed trade. Display only: nothing here feeds a gate."""
+    paper = [r for r in rows if r.get("mode") == "paper" and int(r.get("closed_trades") or 0) > 0 and r.get("id")]
+    if not paper:
+        return
+    sim = read_sim([r["id"] for r in paper])
+    for r in paper:
+        n = int(r["closed_trades"]) - int(sim.get(int(r["id"]), 0))
+        if n > 0:
+            r["instant_fills"] = n
+
+
 BOOK_ORDER = ("live", "paper", "demo")
 
 
@@ -598,8 +614,15 @@ def get_strategy(ctx: Ctx):
     # How many of its paper book's closed trades were instant fills, which the track record leaves out (one
     # read over its own paper deployments, only when that book has a closed trade): the page's lines say so.
     # Display only.
-    if "paper" in books:
-        _stamp_instant_fills(lambda ids: repo.realistic_paper_closed(ctx.cur, ids), {s["id"]: books["paper"]}, deps)
+    # The same read stamps each paper deployment's own count, so the page's backtest pace line counts realistic
+    # fills only, as its backtest check and its count toward live do.
+    sim: Optional[Dict[int, int]] = None
+    if (books.get("paper") or {}).get("trades"):
+        sim = repo.realistic_paper_closed(ctx.cur, [d["id"] for d in deps if d["mode"] == "paper" and d.get("id")])
+        _stamp_instant_fills(lambda ids: sim, {s["id"]: books["paper"]}, deps)
+    deps_out = [_deployment_out(d, [], demo_key_back=key_back, paper_books=_paper_books(deps)) for d in deps]
+    if sim is not None:
+        _stamp_row_instant_fills(lambda ids: sim, deps_out)
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
@@ -610,7 +633,7 @@ def get_strategy(ctx: Ctx):
         # One plain line per gate it missed: measured, needed, and what to try next (display only). One held
         # back after passing on paper names that check, not the validation miss that put it on probation.
         why_failed=(held_back or {}).get(s["id"]) or _gate_lines(gate_explain.for_strategy, s.get("status"), res, exp),
-        deployments=[_deployment_out(d, [], demo_key_back=key_back, paper_books=_paper_books(deps)) for d in deps],
+        deployments=deps_out,
         # Its deployments summed per book ({mode: {pnl, trades, open, paused}}), as the strategies list sums them.
         book_totals=books,
         # Its removed deployments, newest first: book, dates and realized P&L (they left the list above).

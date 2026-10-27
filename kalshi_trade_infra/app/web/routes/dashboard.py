@@ -15,7 +15,7 @@ from app.web.caches import _TRACK_RECORD, _shared
 from app.web.http import Ctx
 from app.web.routes.deployments import _paper_strategy_ids
 from app.web.routes.funds import kalshi_cash
-from app.web.routes.strategies import _later_verdicts, _with_marks, _with_why
+from app.web.routes.strategies import _later_verdicts, _stamp_row_instant_fills, _with_marks, _with_why
 from app.web.views import (
     demo_health_memo,
     _demo_key_back,
@@ -108,6 +108,11 @@ def dashboard(ctx: Ctx):
     live.update(kalshi_cash(cur, ctx.uid))
     paper_sids = _paper_strategy_ids(deps)
     key_back = _demo_key_back(cur, ctx.uid, deps)
+    rows = [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"]), paper_sids, key_back,
+                            _paper_books(deps)) for d in deps]
+    # A paper row's closed trades that were instant fills, as Deploy says them (the same kept read, only when
+    # a paper row has a closed trade). Display only.
+    _stamp_row_instant_fills(lambda ids: book_memo.realistic_paper_closed(memo, ids), rows)
     # The page polls every 15s with its last answer's version (?v=): an unchanged answer is sent as
     # "same" with only the marks and data ages, which move every tick (services.page_poll).
     return page_poll.answer({
@@ -119,8 +124,7 @@ def dashboard(ctx: Ctx):
         # Live book-vs-Kalshi reconciliation: empty list = book matches the exchange; any rows are
         # open discrepancies the reconciler flagged (shown as a trust badge on the Live bucket).
         "reconcile": repo.open_reconcile_rows(cur, ctx.uid),
-        "deployments": [_deployment_out(d, curves.get(d["id"], []), unreal_by_dep.get(d["id"]), paper_sids, key_back,
-                                        _paper_books(deps)) for d in deps],
+        "deployments": rows,
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
         "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep, {d["id"] for d in deps}),
