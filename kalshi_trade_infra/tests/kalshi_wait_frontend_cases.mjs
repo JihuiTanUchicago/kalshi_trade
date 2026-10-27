@@ -256,9 +256,20 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
       f.window.__TAU_FIRST__ = [{url: '/api/funds', body: fundsAnswer({balance: 250, balance_at: ago(5000), closed_trades: 0, realized_pnl: 0})}];
       await f.viewFunds(); await settle();
       assert.match(liveFig(f), open ? /Tau’s live P&(amp;)?L shows once a live trade closes\. No open live positions\.\s*$/
-        : /Live trading isn’t open yet, so Tau places no live trades\. No open live positions\.\s*$/);
+        : /Live trading isn’t open yet, so Tau places no live trades\.\s*$/);
+      // Walk 2026-10-27: closed, with nothing open, it went on "No open live positions.", which the sentence before had said.
+      if (!open) assert.doesNotMatch(liveFig(f), /No open live positions/);
       f.clearTimers();
     }
+    // Something still open at Kalshi is said whether or not live trading is open.
+    const f = frontend({fetchImpl: () => response({})});
+    f.S.me.live_trading_available = false;
+    f.location.pathname = '/funds';
+    f.window.__TAU_FIRST__ = [{url: '/api/funds', body: fundsAnswer({balance: 250, balance_at: ago(5000), closed_trades: 0, realized_pnl: 0,
+      open_positions: 1, open_at_cost: 2.93})}];
+    await f.viewFunds(); await settle();
+    assert.match(liveFig(f), /Live trading isn’t open yet, so Tau places no live trades\. 1 open live position \(\$2\.93 at cost[^)]*\) not included\.\s*$/);
+    f.clearTimers();
   });
   const spot = (f, name) => f.root.querySelector(`[data-cash="${name}"]`).innerHTML;
 
