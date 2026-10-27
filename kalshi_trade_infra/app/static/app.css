@@ -389,7 +389,7 @@ tr.live-row td.name a { color: var(--signal); }
 .btn.ghost[disabled], .btn.ghost[aria-disabled="true"] { border-color: var(--ink-3); }
 .btn.danger { border-color: var(--signal); color: var(--signal); }
 .btn.danger:hover, .btn.armed { background: var(--signal); color: #FDF2F3; border-color: var(--signal); }
-.btn.sm { font-size: 11px; padding: 5px 10px 4px; }
+.btn.sm { font-size: 11px; padding: 5px 10px 4px; min-height: 24px; }  /* 23px tall without it: under WCAG 2.2's 24px target */
 .btn svg { width: 14px; height: 14px; }
 .btn.busy { pointer-events: none; opacity: .7; }
 .gbtn { display: inline-flex; align-items: center; gap: 10px; }
@@ -2136,6 +2136,15 @@ body.landing-body .apf { display: none; }
   .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
   .demo-bar .replay { min-height: 40px; }
   .dispatch-go .ex-run { min-height: 40px; }
+  /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
+     the autopilot card's figures, a held contract's ticker): 40px tall, the line box left alone. */
+  .since-row dd a, .apcard-figs dd a, .tick a, .ri-why a { padding-block: 12px; margin-block: -12px; }
+  a.apcard-alt { padding-block: 8px; margin-block: -8px; }
+  /* A research result's title (20px) and a community post's Reply, Edit and reactions (25-28px). */
+  .ri-title { padding-block: 10px; margin-block: -10px; }
+  /* Room between the title and its Deploy link (and the next result), so the two grown targets don't overlap. */
+  .ri-list li { row-gap: 22px; padding-block: 12px; }
+  .post-actions .thread-link, .reactions .rx { min-height: 40px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */

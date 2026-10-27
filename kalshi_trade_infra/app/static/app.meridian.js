@@ -1047,8 +1047,10 @@
   }
   // One measured cell. Money direction rides a tint field behind the figure
   // (opts.v), never a colour on the digits and never the reserved signal red.
+  // Its sub-line ("paper money, not real") is a second <dd> of the same term: as a bare <div> in the <dl>
+  // it fell outside the list, and a screen reader read the figure without what kind of money it is.
   const fig = (label, value, opts = {}) =>
-    `<div class="m ${opts.cls || ''}"><dt class="lab">${label}</dt><dd><span class="fig ${opts.v > 0 ? 'tint pos' : opts.v < 0 ? 'tint neg' : ''}">${value}</span></dd>${opts.small ? `<div class="sub-fig">${opts.small}</div>` : ''}</div>`;
+    `<div class="m ${opts.cls || ''}"><dt class="lab">${label}</dt><dd><span class="fig ${opts.v > 0 ? 'tint pos' : opts.v < 0 ? 'tint neg' : ''}">${value}</span></dd>${opts.small ? `<dd class="sub-fig">${opts.small}</dd>` : ''}</div>`;
   const dirTag = () => '';
   // quiet: the words go out through announce(), so the notice leaves off its own live role (read once).
   const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
@@ -3350,7 +3352,7 @@
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
       <details class="run-history" id="run-history" open><summary class="section-head"><h2>Agent log</h2>${ICON.chev}</summary>${tzName() ? `<p class="hint" style="margin:0 0 8px">Times are ${esc(tzName())}.</p>` : ''}
-        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" role="log" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div><div id="runend-log"></div></details>`);
+        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div><div id="runend-log"></div></details>`);
     let after = 0, tried = 0, runActive = true, loaded = false, outOfCredits = false;
     const pauses = { ms: 0, since: null, last: null };
     // A long session's strategy cards (40+, a screen each on a phone) buried the agent log under
@@ -5716,11 +5718,19 @@
       pulse.className = 'runpulse apf-pulse-row';
       // Past the reaper's limit the spinner would claim work nobody is doing; say how long instead.
       const w = d.agent_wait;
-      pulse.innerHTML = w
-        ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it'} for ${waitSpan(w.seconds)}, longer than usual</span>`
-        : d.agent_busy
-        ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
-        : `<span data-ap-idle>${esc(apIdleLine(box))}</span>`;
+      // The pulse is a polite live region and this runs on every chat poll (3s): rewriting the same words
+      // made a screen reader say "Between reviews · 2 on paper" again each time. Only a change is written.
+      const idle = !w && !d.agent_busy ? apIdleLine(box) : null;
+      const say = w ? `${w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it'} for ${waitSpan(w.seconds)}, longer than usual`
+        : d.agent_busy ? 'Working on its next move' : 'idle:' + idle;
+      if (pulse.apSaid !== say) {
+        pulse.apSaid = say;
+        pulse.innerHTML = w
+          ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${say}</span>`
+          : d.agent_busy
+          ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
+          : `<span data-ap-idle>${esc(idle)}</span>`;
+      }
     }
     if (stick) msgs.scrollTop = msgs.scrollHeight; else if (follow === 'keep') msgs.scrollTop = kept[0];
     if (stickSheet) box.scrollTop = box.scrollHeight; else if (follow === 'keep') box.scrollTop = kept[1];
@@ -5823,7 +5833,7 @@
       </div>
       <div class="apf-session">
         <div class="apf-session-head"><span class="say-kind">Activity feed</span></div>
-        <ol class="log stream apf-log" id="apf-messages" role="log" aria-label="Autopilot activity" aria-live="polite"></ol>
+        <ol class="log stream apf-log" id="apf-messages" aria-label="Autopilot activity" aria-live="polite"></ol>
         <div class="runpulse apf-pulse-row" id="apf-pulse" aria-live="polite" hidden></div>
       </div>
       <form class="composer apf-composer-row" id="apf-composer">
@@ -6012,7 +6022,8 @@
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.
-    const idleEl = box.querySelector('[data-ap-idle]'); if (idleEl) idleEl.textContent = apIdleLine(box);
+    const idleEl = box.querySelector('[data-ap-idle]'), idleLine = idleEl && apIdleLine(box);
+    if (idleEl && idleEl.textContent !== idleLine) { idleEl.textContent = idleLine; box.querySelector('#apf-pulse').apSaid = 'idle:' + idleLine; }
     const lastEl = box.querySelector('#apf-last'); if (lastEl) lastEl.innerHTML = d.autopilot ? apLastHtml(d.last_action) : '';
     const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week, d) : '';
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;

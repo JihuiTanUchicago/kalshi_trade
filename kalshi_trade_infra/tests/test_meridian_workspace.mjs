@@ -22,6 +22,7 @@ import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
+import {a11yCases} from './a11y_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -1743,7 +1744,8 @@ test('the current research run renders a safe streaming log and its paused statu
   const run = {id: 9, prompt: '<script>unsafe</script>', status: 'paused', market: 'btc15m', created_at: '2026-10-17T10:00:00Z'};
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/runs/9?after=0'); return response({run, events: []}); }});
   await f.viewRun(9);
-  assert.match(f.root.innerHTML, /role="log"/);
+  // A list that announces what is added (a role="log" on the <ol> took away its list semantics).
+  assert.equal(f.root.querySelector('#log').getAttribute('aria-live'), 'polite'); assert.equal(f.root.querySelector('#log').getAttribute('role'), null);
   assert.match(f.root.querySelector('#runboard').innerHTML, /&lt;script&gt;/);
   assert.doesNotMatch(f.root.querySelector('#runboard').innerHTML, /<script>/);
   assert.match(f.root.querySelector('#runfigs').innerHTML, /Paused/);
@@ -3666,8 +3668,8 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   // An older result with no window length keeps its figure as it was; not on paper, no warning.
   const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
   await g.viewStrategy(42); await flush();
-  assert.match(g.root.querySelector('#figs').innerHTML, /<div class="sub-fig">6 trades<\/div>/);
-  assert.match(g.root.querySelector('#figs').innerHTML, /<div class="sub-fig">\$100 at risk at most<\/div>/);
+  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">6 trades<\/dd>/);
+  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
   assert.doesNotMatch(g.root.querySelector('main').innerHTML, /paper-again/);
 });
 
@@ -5224,7 +5226,7 @@ test('a market page says when the reader has no positions there, or when they di
 test('a settled market shows its result in place of a live price', async () => {
   const f = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'no'});
   await f.ready;
-  assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><div class="sub-fig">each No contract paid \$1/);
+  assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><dd class="sub-fig">each No contract paid \$1/);
   assert.match(f.root.innerHTML, /Settled ·\u00a0KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });
 
@@ -5797,5 +5799,6 @@ test('Meridian: a strategy that did not pass shows its backtest P&L muted, at th
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
+a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling});
 creditsCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus});
 declinedCardCases({name: 'Meridian', frontend, dashboard: dashboardData});

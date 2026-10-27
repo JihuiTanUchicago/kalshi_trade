@@ -125,3 +125,33 @@ test('Tau: the dashboard paper line keeps its all-time figure whole, and a clamp
   assert.match(js, /<span class="amt">\$\{usd\(p\.realized_pnl, true\)\}<\/span> realized all time/);
   assert.match(js, /<span class="run-title"><b title="\$\{esc\(sessionTitle\(r\)\)\}">/);
 });
+
+// Tap targets from the accessibility pass (2026-10-27, Playwright at 390px with a coarse pointer, both
+// themes): links set in a line of figures (the "Since your last visit" strip, the autopilot card) and a
+// held contract's ticker measured 16-20px tall, Tau's research result titles 20px and a post's Reply, Edit
+// and reactions 25-28px. Each reaches 40px under a coarse pointer, the inline ones without moving the line;
+// Tau's small buttons (Pause, Remove) reach WCAG 2.2's 24px on a desktop.
+const COARSE = '@media (pointer: coarse)';
+const px = (v) => parseFloat(v);
+for (const [bundle, file, extra] of [['Tau', 'app.css', ['.ri-why a']], ['Meridian', 'app.meridian.css', []]]) {
+  const all = rules(read(file));
+  test(`${bundle}: links in a line of figures and a contract's ticker are 40px tall to a thumb, the line left alone`, () => {
+    for (const sel of ['.since-row dd a', '.apcard-figs dd a', '.tick a', ...extra]) {
+      const pad = decl(all, sel, 'padding-block', COARSE), margin = decl(all, sel, 'margin-block', COARSE);
+      assert.ok(pad && 16 + 2 * px(pad) >= 40, `${sel}: padding-block ${pad}`);
+      assert.equal(px(margin), -px(pad), `${sel}: the margin gives the padding back`);
+    }
+    assert.ok(24 + 2 * px(decl(all, 'a.apcard-alt', 'padding-block', COARSE)) >= 40);  // "or research by hand", 24px tall
+    assert.equal(decl(all, '.dispatch-go .ex-run', 'min-height', COARSE), '40px');
+  });
+}
+
+test('Tau: a research result\'s title and a post\'s Reply, Edit and reactions are 40px to a thumb; a small button is 24px on a desktop', () => {
+  const all = rules(read('app.css'));
+  const pad = px(decl(all, '.ri-title', 'padding-block', COARSE));
+  assert.ok(20 + 2 * pad >= 40);
+  assert.equal(px(decl(all, '.ri-title', 'margin-block', COARSE)), -pad);
+  assert.equal(decl(all, '.post-actions .thread-link', 'min-height', COARSE), '40px');
+  assert.equal(decl(all, '.reactions .rx', 'min-height', COARSE), '40px');
+  assert.equal(decl(all, '.btn.sm', 'min-height'), '24px');
+});
