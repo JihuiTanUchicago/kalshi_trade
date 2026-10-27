@@ -2601,6 +2601,9 @@
         : key === 'demo' ? 'Deploy a strategy to the Kalshi demo exchange to build a record with real fills and no real money.'
         : apOn ? 'Autopilot runs the strategies that pass every research test on paper, with pretend money. Every closed trade is recorded here.'
         : onPaper ? `${onPaper === 1 ? 'Your strategy is' : `${num(onPaper)} strategies are`} running on paper. ${onPaper === 1 ? 'It trades' : 'Each trades'} only when its rule fires, so the first trade can take a while. Every closed trade is recorded here.`
+        // A new account with no session of its own has no passed strategy to deploy: "Deploy a passed strategy"
+        // sat over a "Start a research session" button. It says where a paper strategy comes from instead.
+        : S.dashDeps === 0 && S.dashNoSessions ? 'Nothing has run on paper yet: a strategy gets there by passing its tests in a research session. Every closed trade is recorded here.'
         : 'Deploy a passed strategy on paper. Every closed trade is recorded here.';
       // With nothing deployed (the dashboard's board says so), Deploy is an empty board too and sent a
       // new user Deploy → Strategies → Research; the button goes straight to the step that comes first.

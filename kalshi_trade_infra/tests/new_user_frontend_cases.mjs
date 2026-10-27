@@ -100,6 +100,21 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     f.clearTimers();
   });
 
+  // A new account with autopilot off and no session of its own: the empty paper record said "Deploy a passed strategy
+  // on paper" over a "Start a research session" button, and it had no passed strategy. It says where one comes from.
+  test(`${name}: an empty paper record doesn't ask a new account to deploy a strategy it doesn't have`, () => {
+    const f = frontend(), th = {min_sharpe_days: 30};
+    f.S.me = {user: {autopilot: false}};
+    f.S.dashDeps = 0; f.S.dashNoSessions = true;
+    const fresh = f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th);
+    assert.match(fresh, /Nothing has run on paper yet: a strategy gets there by passing its tests in a research session\. Every closed trade is recorded here\./);
+    assert.match(fresh, /href="\/research\?new=1">(?:Start a research session|New session)</);
+    assert.doesNotMatch(fresh, /Deploy a passed strategy/);
+    // With a session of its own (a passed strategy may be waiting), it still points at deploying one.
+    f.S.dashNoSessions = false;
+    assert.match(f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th), /Deploy a passed strategy on paper\./);
+  });
+
   // A new account has spent nothing: Billing read "Spent, last 7 days $0.00 · $0.00 in the last 24 hours · $0.00 all
   // time" under its free credits. It says none yet and what will draw on them; once something is spent, the figures.
   test(`${name}: Billing says nothing is spent yet on a new account, not three $0.00 figures`, async () => {
