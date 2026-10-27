@@ -1802,7 +1802,9 @@
   };
   // Each fact keeps its label with its value (.dep-fact never wraps inside): "· Deployed" ended one line and
   // "Oct 18" began the next, on a phone and in the Deploy table's name column on a desktop.
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}<span class="dep-fact">Unseen P&amp;L ${d.backtest && d.backtest.out_of_sample ? usd(d.backtest.out_of_sample.pnl, true) : '\u2014'}</span> ·\u00a0<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  // A strategy from a research session keeps its unseen result with the gatekeeper, not in its backtest: its row read
+  // "Unseen P&L —" as though it had none. The fact shows only with a backtest figure to give.
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact">Unseen P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span> ·\u00a0` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   // One plain line on how a book is doing against its backtest, written by the server
   // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
   // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.

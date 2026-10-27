@@ -986,7 +986,9 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.equal(field('Closed').textContent, `${d.closed_trades} / ${d.open_positions}`);
     assert.equal(field('Closed').getAttribute('aria-label'), `${d.closed_trades} closed trades, ${d.open_positions} open positions`);
     const evidence = evidenceFor(monitor, d.id); assert.equal(evidence.tag, 'details'); assert.equal(evidence.open, false);
-    assert.ok(evidence.textContent.includes(`Unseen P&amp;L ${d.status === 'running' ? '—' : d.status === 'paused' ? '$0.00' : '+$7.25'}`));
+    // No backtest figure (a research session's strategy keeps its unseen result with the gatekeeper): no "Unseen P&L —".
+    if (d.status === 'running') assert.ok(!evidence.textContent.includes('Unseen P&amp;L'), evidence.textContent);
+    else assert.ok(evidence.textContent.includes(`Unseen P&amp;L ${d.status === 'paused' ? '$0.00' : '+$7.25'}`));
     assert.ok(evidence.textContent.includes('Deployed ' + new Date(d.created_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})));
     assert.deepEqual(monitor.querySelectorAll('[data-dep]').map(button => button.dataset.act),
       d.status === 'running' ? ['pause', 'stop'] : d.status === 'paused' ? ['resume', 'stop'] : ['stop']);
