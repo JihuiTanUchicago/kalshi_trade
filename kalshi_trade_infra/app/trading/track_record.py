@@ -48,6 +48,8 @@ METHOD = [
     "Every figure comes from closed trades in your own book. Nothing here is a backtest.",
     "A trade is one entry fill, round trip. Partial exits are summed into it, and a trade that is still partly open is left out until it closes.",
     "P&L is net of all Kalshi fees.",
+    # What a paper fill assumes: app.services.customer_text.PAPER_FILLS, word for word (a test pins it).
+    "Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second before a real order lands, so live fills can come in slightly worse.",
     "Stopped strategies, removed deployments and deleted strategies keep their trades in every figure: nothing is dropped for doing badly.",
     "Paper trades that filled instantly, without the simulated order book, are left out, because real execution would not get those fills.",
     "Capital is what the record needed: the most money ever at risk at once plus the worst drawdown, so the smallest bankroll that could have taken every trade. Return and drawdown percentages use it.",

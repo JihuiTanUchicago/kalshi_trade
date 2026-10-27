@@ -858,7 +858,7 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
 
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real</],
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
     [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money ·\u00a0\+\$2\.00 on paper from the deployments listed, counted apart/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments, open_positions: []}); }});
     await f.viewDeploy(); await flush();
@@ -1371,7 +1371,7 @@ test('Overview paper context follows the whole displayed book through mode chang
       assert.equal(mode.contains(state.querySelector('.deployment-state')), false, name + ' status stays independent from mode');
     });
     const performanceMode = dashboard.querySelector('.performance-mode');
-    assert.equal(performanceMode.textContent, 'Paper ·\u00a0cumulative', name + ' source performance scope remains available');
+    assert.equal(performanceMode.textContent, 'Paper ·\u00a0cumulative, after Kalshi fees and the spread', name + ' source performance scope remains available');
     assert.equal(performanceMode.querySelector('.performance-mode-prefix').textContent, 'Paper ·\u00a0', name);
     assert.equal(performanceMode.getAttribute('aria-hidden'), null, name);
     assert.equal(JSON.stringify(data), before, name + ' source records are immutable');
@@ -3295,7 +3295,7 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money<\/small><\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>3 strategies <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money ·\u00a01 closed trade<\/small><\/dd>/);
+  assert.match(card, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a01 closed trade<\/small><\/dd>/);
   assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
   await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   const box = f.root.parent.querySelector('#autopilot-float');
@@ -5881,9 +5881,9 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
 test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / trade"', async () => {
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Both', stake: 5, max_positions: 3})]);
-  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*· Stake not set<\/span>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*Stake not set · Max 3 open<\/span>/);
-  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\$5 \/ trade · Max 3 open<\/span>/);
+  assert.match(html, /Neither<\/a>\s*<div class="dep-meta"><span class="sub-fig">BTC[^<]*· Stake not set · P&amp;L after Kalshi fees and the spread<\/span>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*Stake not set · Max 3 open · P&amp;L after Kalshi fees and the spread<\/span>/);
+  assert.match(html, /Both<\/a>\s*<div class="dep-meta"><span class="sub-fig">[^<]*\$5 \/ trade · Max 3 open · P&amp;L after Kalshi fees and the spread<\/span>/);
   assert.doesNotMatch(html, /\$ \/ trade|Max\s+open|null|NaN/);
   const f = frontend();
   const none = f.deploymentMonitor(nullStakeDep({status: 'paused', status_why: 'You paused it'}));

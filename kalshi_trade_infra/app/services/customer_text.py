@@ -250,3 +250,24 @@ def auto_pause_line(text: Optional[str], deployment: Optional[Dict]) -> Optional
     name = ("your %s strategy %s" % (book, title) if book else title) if title else "one of your strategies"
     why = _pause_reason(m.group(1))
     return "Paused %s automatically%s." % (name, (": " + why) if why else "")
+
+
+# -- what a paper P&L includes ----------------------------------------------------------------------
+# Every page that shows a paper P&L says what a paper fill assumes: PAPER_NET beside the figure, and
+# PAPER_FILLS where there is room (the track record's method, the pages' info bubble). Both bundles and
+# track_record.METHOD carry the same words, and tests/test_paper_fill_copy.py pins them to these and to
+# the fill model. They say what the fill model does today:
+#   price   a buy fills at the ask and a sell at the bid of a quote at most 2s old (SimulatedVenue,
+#           data_pipeline/architecture/simulated_venue.py; the legacy instant fill buys at the ask too)
+#   fee     Kalshi's taker fee on every fill (kalshi_fees.taker_fee_dollars), none at settlement
+#   size    only the contracts resting at that price; the rest of the order doesn't fill
+#   settle  $1 or $0 on Kalshi's result (engine.settle_due)
+# That already pays the taker cost measured on Kalshi's books (app/trading/exec_cost_model.py: about
+# 0.45c of half-spread plus 1.75c of fee a contract at the median book), so the pages add no live-cost
+# estimate. What it leaves out is the ask moving in the second before a real order lands. A change to
+# the fill model changes these words with it.
+PAPER_NET = "after Kalshi fees and the spread"
+PAPER_FILLS = ("Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays "
+               "Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A "
+               "contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second "
+               "before a real order lands, so live fills can come in slightly worse.")
