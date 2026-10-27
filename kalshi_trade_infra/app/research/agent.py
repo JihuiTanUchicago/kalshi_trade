@@ -1577,13 +1577,17 @@ _DROPPED_SHOWN = 15
 
 
 _SIBLING_MIN_DROPS, _SIBLING_MIN_MARKETS, _SIBLING_SHOWN = 3, 2, 6
+# Own drops read for rationing: about the last 10 runs (8 ideas each). The prompt still lists only the
+# newest _DROPPED_SHOWN. With the old 20 (2.5 runs) no mechanism reached _RATION_MIN_OWN: btc15m dropped
+# 15 options-IV ideas in 8 runs (prod 2026-10-27 07:00-09:30Z) and none was set aside.
+_OWN_DROPS_READ = 80
 
 
 def _recent_drops(cur, user_id: int, market: str) -> List[Dict]:
     """This market's recent drops, then its siblings' (same family; rows carry "market").
     Advisory only: a failed read just means the proposer isn't warned off old dead ends."""
     try:
-        own = repo.dropped_theses(cur, user_id, market)
+        own = repo.dropped_theses(cur, user_id, market, limit=_OWN_DROPS_READ)
     except Exception:
         return []
     from app.research import rsi
@@ -1625,8 +1629,10 @@ _RATION_MIN_DROPS, _RATION_MIN_MARKETS = 6, 3
 # re-testing options IV variants it had already killed (prod 2026-10-26).
 # Unlike a sibling-dead one, it gets no free try per run: runs propose one idea per mechanism, so
 # "one try per chunk" set nothing aside and btc15m still paid for a Polymarket-basis idea every run
-# (prod 2026-10-27: 9 of 56 drops in 3h, 0 set aside). The proposer is told and proposes another.
-_RATION_MIN_OWN = 4
+# (prod 2026-10-27: 9 of 56 drops in 3h, 0 set aside). The proposer is told up front
+# (_own_dead_block) and proposes another. Counted over _OWN_DROPS_READ, so a mechanism comes back once
+# its drops age out of the last ~10 runs.
+_RATION_MIN_OWN = 5
 _NEVER_RATIONED = ("generic learned recalibration (logistic / multi-factor)",)
 
 
@@ -1643,6 +1649,17 @@ def _own_dead_mechanisms(dropped: Optional[List[Dict]], run: Dict) -> Dict[str, 
         if mech:
             own[mech] += 1
     return {m: c for m, c in own.items() if c >= _RATION_MIN_OWN and m not in _NEVER_RATIONED and m != asked}
+
+
+def _own_dead_block(dropped: Optional[List[Dict]], run: Dict) -> str:
+    """The mechanisms this run will set aside untested on its own market, told before proposing so
+    the proposer spends its rounds elsewhere instead of on ideas that never reach a backtest."""
+    dead = _own_dead_mechanisms(dropped, run)
+    if not dead:
+        return ""
+    lines = ["- %s: dropped %d times" % (m, c) for m, c in sorted(dead.items(), key=lambda kv: -kv[1])]
+    return ("\n\nMECHANISMS ALREADY DEAD ON THIS MARKET (its recent runs, research fold only). Ideas built "
+            "on these will be set aside untested, under any name. Propose other mechanisms:\n" + "\n".join(lines))
 
 
 def _rationed_mechanisms(dropped: Optional[List[Dict]], run: Dict) -> Dict[str, int]:
@@ -1706,7 +1723,8 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
                   dropped: Optional[List[Dict]] = None) -> str:
     """Round 1 asks fresh; later rounds show the agent its own in-sample results so it
     refines — the loop is a conversation with the data, not a fixed two-shot."""
-    base = _research_prompt(run, ds, memory, want) + _dropped_block(dropped, run.get("market"))
+    base = (_research_prompt(run, ds, memory, want) + _dropped_block(dropped, run.get("market"))
+            + _own_dead_block(dropped, run))
     if not chunk:
         return base + THINK_ALOUD
     # Digest, not a dump: full detail for the best few to refine, bare titles for the rest so the
