@@ -328,8 +328,15 @@ def test_adjustment_is_backtest_only_not_passed_and_cannot_be_deployed(monkeypat
     monkeypatch.setattr(r, "create_proposal", lambda *a, **k: 1)
     monkeypatch.setattr(r, "set_deployment_strategy", lambda *a: None)
     ds = lambda m: _dataset(n_contracts=60)
-    agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"entry": {"min_edge": 0.12}}}, True, ds)
+    text, _ = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"entry": {"min_edge": 0.12}}}, True, ds)
     assert inserted["status"] == "backtest-only"  # strictly stricter: not "passed"
+    # The chat/autopilot line says what a re-backtest is in plain words: it said "It passed the backtest gates." of a
+    # strategy the page calls Backtest only, as though it had passed.
+    assert text == ("Autopilot applied an adjustment to T on paper. The change held up in a backtest, which isn’t a "
+                    "test on data it hadn’t seen.")
+    text, _ = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 3, "changes": {"entry": {"min_edge": 0.12}}}, False, ds)
+    assert text == "Proposed adjustment to T. The change held up in a backtest, which isn’t a test on data it hadn’t seen."
+    assert "passed" not in text and "gate" not in text
 
     # The deploy gate rejects it precisely because status != "passed" (never weakened/reordered).
     monkeypatch.setattr(r, "get_strategy", lambda cur, uid, sid: {

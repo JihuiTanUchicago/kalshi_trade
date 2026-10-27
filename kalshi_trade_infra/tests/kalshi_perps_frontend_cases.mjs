@@ -538,12 +538,12 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const r = {trades: 12, trades_needed: 30, events: 10, events_needed: 20, span_hours: 50.2, span_needed_hours: 48, running: true, eta_days: 1.9, trades_per_day: 9.6, rate_from: 'paper'};
     const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [
       dep(1, r), dep(2, {...r, running: false, eta_days: null}, 'paused'), dep(3, {...r, trades: 40, events: 30, failing: ['edge', 'demo']}),
-      dep(4, {...r, trades: 40, events: 30, failing: []}), dep(5, null)], open_positions: []}) : response({})});
+      dep(4, {...r, trades: 40, events: 30, failing: []}), dep(5, null), dep(6, {...r, trades: 40, events: 30, failing: ['candidate', 'net_pnl']})], open_positions: []}) : response({})});
     await f.viewDeploy(); await flush(); await flush();
     const html = f.root.querySelectorAll('.road-line').map((el) => el.innerHTML);
     const lines = html.map((h) => h.replace(/<[^>]+>/g, '').replace(/ /g, ' '));
     f.clearTimers && f.clearTimers();
-    assert.equal(lines.length, 4, 'paper rows only');
+    assert.equal(lines.length, 5, 'paper rows only');
     // Walk 2026-10-27 at 390px: a line began "· 10/20 events". Each "12/30 trades" piece is one unbreakable span
     // and each "·" ends its line: a no-break space before it, a plain space after it.
     assert.ok(html.includes('Its paper record toward live: <span class="nobr">12/30\u00a0trades</span>\u00a0· <span class="nobr">10/20\u00a0events</span>\u00a0· enough in about 2 days at its pace'), html.join('\n'));
@@ -552,6 +552,9 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · paused, so not growing'));
     assert.ok(lines.includes('Its paper record toward live: trades, events and hours are in; 2 checks left: edge, demo record'));
     assert.ok(lines.includes('Its paper record toward live: every check cleared. Live money only if you deploy it there'));
+    // The research clearance in the words the Strategies list uses ("cleared to trade"), never the internal "gatekeeper".
+    assert.ok(lines.includes('Its paper record toward live: trades, events and hours are in; 2 checks left: clearance to trade, P&amp;L'), lines.join('\n'));
+    assert.ok(lines.every((l) => !/gatekeeper|candidate/.test(l)), lines.join('\n'));
   });
 
   test(`${name}: a paper row on Deploy says how many of its closed trades were instant fills, beside its count toward live`, async () => {

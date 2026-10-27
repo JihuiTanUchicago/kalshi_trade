@@ -1861,7 +1861,7 @@
   // A paper row's strategy record toward the live check (the server's `road`: all its paper
   // deployments, counted as the strategy page's Road to live counts them) and when the trades, events
   // and hours could be in at its pace; once they are, which checks still refuse it (`failing`).
-  const ROAD_FAILING = { candidate: 'gatekeeper', legacy_trades: 'trade count', legacy_pnl: 'P&amp;L', net_pnl: 'P&amp;L', edge: 'edge', recent: 'recent form', demo: 'demo record' };
+  const ROAD_FAILING = { candidate: 'clearance to trade', legacy_trades: 'trade count', legacy_pnl: 'P&amp;L', net_pnl: 'P&amp;L', edge: 'edge', recent: 'recent form', demo: 'demo record' };
   // When, in words (also the strategy page's Road to live).
   const roadDays = (d) => d < 1 ? 'under a day' : d < 1.5 ? 'about a day' : `about ${Math.round(d)} days`;
   const roadLine = (d) => {

@@ -736,13 +736,13 @@ window.TauPage('strategies', (T) => {
       + fold(`Most recent ${splitOnly ? 'later-period' : 'unseen'} trades`, `<div class="paper-sub"><h4 class="paper-h">Most recent ${splitOnly ? 'later-period' : 'unseen'} trades</h4>${trades}</div>`);
     let verdictBody = rp.verdict;
     if (!hasExp) {
-      const btOnly = ['sig', 'armed', 'Backtest only', 'Backtest-only — never put through statistical validation (no pre-registration, one-time holdout, or multiple-testing control). These numbers come from a sample too small to separate skill from luck. ' + (perpetual ? 'This market remains research only.' : restricted ? 'Agent-written code stays in research.' : 'It can’t be deployed: only a strategy put through those checks can be.')];
+      const btOnly = ['sig', 'armed', 'Backtest only', 'It never went through the held-out tests: no test on data it hadn’t seen, no one-time final test and no correction for how many ideas were tried. These numbers come from a sample too small to separate skill from luck. ' + (perpetual ? 'This market remains research only.' : restricted ? 'Agent-written code stays in research.' : 'It can’t be deployed: only a strategy put through those checks can be.')];
       const vmap = {
         // No experiment resolved (by experiment_id OR strategy_id) means NO gatekeeper record
         // exists — so this was NOT validated, whatever the status says. Never claim it "cleared
         // the gatekeeper" (that would be a lie); flag the missing record honestly. A correctly
         // validated 'passed' always has an experiment and takes the rich path above, not this one.
-        passed: ['sig', 'armed', 'Not validated (record missing)', 'Marked passed, but no statistical-gatekeeper record (pre-registration, validation, holdout) can be found for it, so nothing on this page is held-out evidence: ' + (oos ? 'its figures come from the history it searched and from the data after the split date, which picked it.' : 'its only figures are from the history it searched.') + ' Treat it as unvalidated.'],
+        passed: ['sig', 'armed', 'Not validated', 'It’s marked Passed, but there’s no record of its held-out tests (a test on data it hadn’t seen and the one-time final test), so nothing on this page is held-out evidence: ' + (oos ? 'its figures come from the history it searched and from the data after the split date, which picked it.' : 'its only figures are from the history it searched.') + ' Treat it as unvalidated.'],
         'backtest-only': btOnly,
         failed: ['sig', 'armed', 'Void', 'It reached the unseen-data gate and failed it, so it was not validated.'],
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
@@ -830,7 +830,7 @@ window.TauPage('strategies', (T) => {
                   <button class="btn" type="submit">Confirm live deployment</button>
                 </form></div>`)}
                 <div id="depflash"></div>
-              </div>` : restricted ? `<p class="hint">${perpetual ? 'Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.' : CODE_RESEARCH_ONLY}</p>` : `<p class="hint">${s.status === 'backtest-only' ? 'A backtest-only strategy can’t be deployed: it never went through the held-out checks. To test this idea properly, ask for it in a new research session.' : 'This strategy isn’t ready to deploy yet.'}</p>`}
+              </div>` : restricted ? `<p class="hint">${perpetual ? 'Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.' : CODE_RESEARCH_ONLY}</p>` : `<p class="hint">${s.status === 'backtest-only' ? 'A strategy tested only on a backtest can’t be deployed: it never went through the held-out checks. To test this idea properly, ask for it in a new research session.' : 'This strategy isn’t ready to deploy yet.'}</p>`}
             ${!restricted && s.deployments.length ? `<p class="hint" style="margin-top:12px">Already deployed: ${s.deployments.map((d) => `${bookName(d)} (${esc(depIdle(d) ? depIdle(d).state.toLowerCase() : d.status)})`).join(', ')}. <a href="/deploy">See them on the Deploy page</a></p>` : ''}
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open ${esc(marketShort(s.market))} on Kalshi ↗</a></p>` : ''}
           </section>

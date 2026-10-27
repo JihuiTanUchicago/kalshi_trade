@@ -324,7 +324,7 @@ test('a strategy page stamps its status once: the verdict under the head drops a
   const stamps = (f, said) => [...f.root.querySelector('.strategy-pagehead').querySelectorAll('.mk'), ...f.root.querySelector('article.paper').querySelectorAll('.mk')]
     .filter(el => el.textContent.trim() === said).length;
   for (const [status, said, words] of [['failed', 'Void', /It reached the unseen-data gate and failed it/], ['rejected', 'Rejected', /Rejected — /],
-    ['backtest-only', 'Backtest only', /never put through statistical validation/]]) {
+    ['backtest-only', 'Backtest only', /It never went through the held-out tests: no test on data it hadn’t seen, no one-time final test and no correction for how many ideas were tried\./]]) {
     const f = strategyFrontend(detailStrategy({status, experiment: null}));
     await f.viewStrategy(42); await flush();
     assert.equal(stamps(f, said), 1, `${status}: one "${said}" stamp`);
@@ -335,7 +335,7 @@ test('a strategy page stamps its status once: the verdict under the head drops a
   const f = strategyFrontend(detailStrategy({status: 'passed', experiment: null}));
   await f.viewStrategy(42); await flush();
   assert.equal(stamps(f, 'Passed'), 1);
-  assert.equal(f.root.querySelector('.legacy-verdict .mk').textContent, 'Not validated (record missing)');
+  assert.equal(f.root.querySelector('.legacy-verdict .mk').textContent, 'Not validated');
   assert.match(readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8'), /\.legacy-verdict \.rp-verdict p:first-child \{ margin-top: 0; \}/);
 });
 
@@ -348,7 +348,7 @@ test('strategy evidence identifies run-wide trial counts and places missing vali
     const trials = paper.querySelectorAll('#figs .m').find(el => el.querySelector('dt').textContent === 'Ideas tested');
     assert.equal(trials.querySelector('.fig').textContent, expected);
     assert.equal(paper.querySelectorAll('.rp-verdict').length, 1);
-    assert.match(paper.querySelector('.legacy-verdict').textContent, /Not validated \(record missing\)/);
+    assert.match(paper.querySelector('.legacy-verdict').textContent, /^Not validated\s*It’s marked Passed, but there’s no record of its held-out tests/);
     assert.ok(output.indexOf('class="legacy-verdict"') < output.indexOf('id="figs"'));
     assert.match(output, /Backtest results/); assert.doesNotMatch(output, /<h4 class="paper-h">Backtest<\/h4>/);
     const saved = paper.querySelector('.saved-result');

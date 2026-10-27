@@ -159,8 +159,12 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.match(html, /Most recent later-period trades/); assert.match(html, /No later-period trades to show\./);
       assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest’s later-period pace, 2 trades would have made/);
       assert.doesNotMatch(html, /never saw|never touched|Unseen-data P&|in-sample only|Never seen \(out-of-sample\)|UNSEEN|Unseen by the agent|Unseen →|Unseen \(held out\)|unseen window|unseen trades|unseen-data pace|only ever saw/);
+      // Plain words for what it is, never the pipeline's own ("statistical-gatekeeper record", "pre-registration",
+      // "record missing", "reclassified to backtest-only").
+      assert.doesNotMatch(html, /[Gg]atekeeper|[Pp]re-registration|[Mm]ultiple-testing|record missing|Marked passed|reclassif|[Bb]acktest-only/);
+      if (status === 'backtest-only') assert.match(html, /It never went through the held-out tests: no test on data it hadn’t seen, no one-time final test and no correction for how many ideas were tried\./);
       if (status === 'passed') {
-        assert.match(html, /Not validated \(record missing\)/);
+        assert.match(html, /<span class="mk armed">Not validated<\/span><p>It’s marked Passed, but there’s no record of its held-out tests \(a test on data it hadn’t seen and the one-time final test\), so nothing/);
         assert.match(html, /so nothing on this page is held-out evidence: its figures come from the history it searched and from the data after the split date, which picked it\. Treat it as unvalidated\./);
       }
     }
@@ -203,7 +207,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const f = await open({status: 'backtest-only', experiment: null});
     assert.doesNotMatch(main(f), /Deploying it is your decision/);
     assert.match(main(f), /It can’t be deployed: only a strategy put through those checks can be\./);
-    assert.match(main(f), /A backtest-only strategy can’t be deployed: it never went through the held-out checks\./);
+    assert.match(main(f), /A strategy tested only on a backtest can’t be deployed: it never went through the held-out checks\./);
     assert.equal(f.root.querySelector('#dep-paper'), null);
   });
 
