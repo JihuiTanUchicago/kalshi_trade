@@ -653,20 +653,24 @@ def activity_since(cur, user_id: int, since) -> Dict:
 
 def autopilot_paper_week(cur, user_id: int, since) -> Dict:
     """The autopilot's paper week for its scorecard, in one read: strategies it first put on paper
-    since `since`, and the closed paper trades of its strategies since then (count and P&L)."""
+    since `since`, and the closed paper trades of its strategies since then (count and P&L). `fills` is
+    those trades' contracts times taker fills (sql.contract_fills_sql), summed in the same pass from the
+    qty and close_reason of the rows it already reads, for the paper after-slippage estimate (display only)."""
     cur.execute(
-        "SELECT st.started, pt.pnl, pt.trades FROM "
+        "SELECT st.started, pt.pnl, pt.trades, pt.fills FROM "
         "(SELECT COUNT(*) AS started FROM (SELECT d.strategy_id FROM app_deployments d "
         "  WHERE d.user_id=%s AND d.mode='paper' AND d.strategy_id IN (" + _AUTOPILOT_STRATEGIES + ") "
         "  GROUP BY d.strategy_id HAVING MIN(d.created_at) >= %s) s) st, "
-        "(SELECT COALESCE(SUM(p.pnl),0) AS pnl, COUNT(*) AS trades FROM app_positions p "
+        "(SELECT COALESCE(SUM(p.pnl),0) AS pnl, COUNT(*) AS trades, "
+        "  COALESCE(SUM(" + contract_fills_sql("p.") + "),0) AS fills FROM app_positions p "
         "  JOIN app_deployments d ON d.id=p.deployment_id "
         "  WHERE p.user_id=%s AND p.status='closed' AND p.closed_at >= %s AND p.mode='paper' "
         "  AND d.strategy_id IN (" + _AUTOPILOT_STRATEGIES + ")) pt",
         (user_id, user_id, since, user_id, since, user_id),
     )
     r = cur.fetchone() or {}
-    return {"started": int(r.get("started") or 0), "pnl": float(r.get("pnl") or 0), "trades": int(r.get("trades") or 0)}
+    return {"started": int(r.get("started") or 0), "pnl": float(r.get("pnl") or 0), "trades": int(r.get("trades") or 0),
+            "fills": int(r.get("fills") or 0)}
 
 
 def paper_board_users(cur, limit: int) -> List[int]:

@@ -109,12 +109,18 @@ def paper_ledger_summary(cur, uid: int) -> Dict:
     return dict(hit[1])
 
 
-def realized_since(memo: BookMemo, modes: Tuple[str, ...], since: datetime) -> Dict[str, float]:
+def realized_since(memo: BookMemo, modes: Tuple[str, ...], since: datetime, fills: bool = False):
     """repo.realized_pnl_by_mode (each book's realized P&L of the trades closed since `since`), kept: a
     closed row's pnl and closed_at are never written again, so the sum moves only with a position (or a
-    new `since`, part of the key). No position, nothing realized: no read."""
+    new `since`, part of the key). No position, nothing realized: no read. With `fills`, ({mode: realized},
+    {mode: contract fills}) from the same read, for the paper after-slippage estimate (display only)."""
     if not memo.version()[0]:
-        return {m: 0.0 for m in modes}
+        none = {m: 0.0 for m in modes}
+        return (none, {m: 0 for m in modes}) if fills else none
+    if fills:
+        pnl, taker = memo.get("realized_since_fills", (tuple(modes), since),
+                              lambda: repo.realized_pnl_by_mode(memo.cur, memo.uid, tuple(modes), since, fills=True))
+        return dict(pnl), dict(taker)
     return dict(memo.get("realized_since", (tuple(modes), since),
                          lambda: repo.realized_pnl_by_mode(memo.cur, memo.uid, tuple(modes), since)))
 

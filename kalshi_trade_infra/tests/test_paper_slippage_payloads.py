@@ -18,6 +18,7 @@ from app.services import forward_gate
 from app.trading import engine
 from app.trading import track_record as tr
 from app.web.routes import dashboard as dashboard_routes
+from app.web.routes import deployments as deployment_routes
 from app.web.routes import strategies as strategy_routes
 from tests.test_app_auth_and_api import ctx
 
@@ -115,6 +116,54 @@ def test_since_deploying_sums_each_books_fills_and_estimates_paper_only():
     assert "slippage_estimate" not in strategy_routes._book_totals([_dep(9, "paper", "0", 0, 0, 6)])[9]["paper"]
 
 
+def test_the_strategies_lists_paper_card_carries_its_books_estimate_and_a_live_card_none(monkeypatch):
+    # The list's card shows one book (live, else paper, else demo) from _book_totals: a paper card carries its
+    # paper book's estimate; a live card shows live and carries none; a paper card's demo beside it, none.
+    deps = [_dep(7, "paper", "1.2000", 2, 8, 1), _dep(7, "demo", "0.4000", 1, 2, 2),
+            _dep(8, "live", "5.0000", 4, 16, 3), _dep(8, "paper", "2.0000", 3, 12, 4)]
+    monkeypatch.setattr(strategy_routes.book_memo, "deployments_for_display", lambda memo: [dict(d) for d in deps])
+    monkeypatch.setattr(strategy_routes.book_memo, "realistic_paper_closed", lambda memo, ids: {i: 99 for i in ids})
+    cards = [{"id": 7, "deployed": True}, {"id": 8, "deployed": True}]
+    strategy_routes._attach_real_records(object(), 1, cards)
+    assert cards[0]["real"]["mode"] == "paper" and cards[0]["real"]["slippage_estimate"] == {"pnl": 1.16, "per_fill_cents": 0.5}
+    assert "slippage_estimate" not in cards[0]["real"]["demo"]
+    assert cards[1]["real"]["mode"] == "live" and "slippage_estimate" not in cards[1]["real"]
+
+
+def test_the_deploy_boards_paper_realized_carries_the_listed_deployments_estimate_only():
+    deps = [_dep(7, "paper", "1.2000", 2, 8, 1), _dep(8, "paper", "2.0000", 3, 12, 2),
+            _dep(7, "live", "5.0000", 4, 16, 3), _dep(7, "demo", "0.4000", 1, 2, 4)]
+    removed = [{"mode": "paper", "realized_pnl": Decimal("-0.3000")}, {"mode": "live", "realized_pnl": Decimal("1.0000")}]
+    books = deployment_routes._realized_with_estimate(deps, removed)
+    # Beside `listed` ($3.20 over 20 fills), never in place of it; the removed and "in all" figures are as before.
+    assert books["paper"] == {"listed": 3.2, "removed": -0.3, "removed_deployments": 1, "all": 2.9,
+                              "slippage_estimate": {"pnl": 3.10, "per_fill_cents": 0.5}}
+    assert "slippage_estimate" not in books["live"] and "slippage_estimate" not in books["demo"]
+    assert books["live"]["listed"] == 5.0
+    # No listed paper deployment, or none with a closed trade: no estimate.
+    assert "slippage_estimate" not in deployment_routes._realized_with_estimate([], removed)["paper"]
+    assert "slippage_estimate" not in deployment_routes._realized_with_estimate([_dep(7, "paper", "0", 0, 0, 1)], [])["paper"]
+
+
+def test_the_autopilots_day_and_week_sum_their_fills_in_the_reads_they_already_make():
+    cur = _Rows([{"mode": "paper", "p": Decimal("1.2340"), "f": 12}, {"mode": "live", "p": Decimal("-2.0000"), "f": 40}])
+    pnl, fills = position_repository.realized_pnl_by_mode(cur, 7, ("live", "paper"), datetime(2026, 10, 27), fills=True)
+    assert len(cur.log) == 1 and "qty * (CASE WHEN close_reason='settled' THEN 1 ELSE 2 END)" in cur.log[0][0]
+    assert pnl == {"live": -2.0, "paper": 1.234} and fills == {"live": 40, "paper": 12}
+    # Without `fills`, the read and its answer are as before.
+    plain = _Rows([{"mode": "paper", "p": Decimal("1.2340")}])
+    assert position_repository.realized_pnl_by_mode(plain, 7, ("live", "paper"), datetime(2026, 10, 27)) == {"live": 0.0, "paper": 1.234}
+    assert "close_reason" not in plain.log[0][0]
+
+    class _One(_Rows):
+        def fetchone(self):
+            return self.rows[0]
+
+    week = _One([{"started": 1, "pnl": Decimal("3.2000"), "trades": 4, "fills": 30}])
+    assert deployment_repository.autopilot_paper_week(week, 7, datetime(2026, 10, 20)) == {"started": 1, "pnl": 3.2, "trades": 4, "fills": 30}
+    assert len(week.log) == 1 and "p.qty * (CASE WHEN p.close_reason='settled'" in week.log[0][0]
+
+
 def _trade(mode, pnl, fills, ref="sim:1", open_slices=0, closed=True):
     now = datetime(2026, 10, 26, 12, tzinfo=timezone.utc)
     return {"mode": mode, "strategy_id": 1, "title": "Fade", "market": "btc15m", "order_ref": ref, "open_slices": open_slices,
@@ -158,7 +207,10 @@ def _imports(path: Path):
 def test_only_the_three_display_pages_read_the_estimate():
     readers = sorted(str(p.relative_to(ROOT)) for top in ("app", "data_pipeline", "trading_core") for p in (ROOT / top).rglob("*.py")
                      if "trading_core.domain.slippage" in set(_imports(p)))
-    assert readers == ["app/trading/track_record.py", "app/web/routes/dashboard.py", "app/web/routes/strategies.py"]
+    # Display routes only: the dashboard, the strategy list and page, the Deploy board (deployments) and the
+    # autopilot panel's status (chat), plus the track record's summary. No gate, engine or research module.
+    assert readers == ["app/trading/track_record.py", "app/web/routes/chat.py", "app/web/routes/dashboard.py",
+                       "app/web/routes/deployments.py", "app/web/routes/strategies.py"]
 
 
 def test_the_gate_inputs_and_the_engine_never_read_it():

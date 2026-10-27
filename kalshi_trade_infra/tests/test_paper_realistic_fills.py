@@ -312,8 +312,10 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     monkeypatch.setattr(server.repo, "deployment_strategies", lambda *a: {})
     monkeypatch.setattr(server.repo, "engine_last_tick_age_seconds", lambda cur: 20)
     monkeypatch.setattr(server.repo, "get_kalshi_key", lambda *a: None)
+    # The day's sums, and from the same read each book's contract fills (the paper after-slippage estimate's input).
     monkeypatch.setattr(server.repo, "realized_pnl_by_mode",
-                        lambda cur, uid, modes, since: {m: {"live": -2.0, "paper": 1.234}[m] for m in modes})
+                        lambda cur, uid, modes, since, fills=False: ({m: {"live": -2.0, "paper": 1.234}[m] for m in modes},
+                                                                     {m: {"live": 40, "paper": 12}[m] for m in modes}))
     monkeypatch.setattr(server.repo, "last_autopilot_action", lambda *a: None)
     monkeypatch.setattr(server.repo, "last_review_at", lambda *a: None)
     monkeypatch.setattr(server.repo, "active_agent_run", lambda *a: None)
@@ -332,6 +334,9 @@ def test_autopilot_status_reports_paper_strategy_closest_to_live(monkeypatch):
     out = server.autopilot_status(ctx)
     assert out["paper_open"] == 4, "open PAPER positions only"
     assert (out["today_live_pnl"], out["today_paper_pnl"]) == (-2.0, 1.23), "each book's own day"
+    # Beside the paper day only: $1.234 less 12 contract fills x 0.5c. Live never carries one.
+    assert out["today_paper_slippage_estimate"] == {"pnl": 1.17, "per_fill_cents": 0.5}
+    assert [k for k in out if "slippage" in k] == ["today_paper_slippage_estimate"]
     assert seen["sids"] == [1, 2], "only running paper strategies are counted"
     assert out["paper_progress"] == {"strategy_id": 2, "title": "Fast", "trades": 11,
                                      "trades_needed": agent.MIN_REALISTIC_PAPER_TRADES,

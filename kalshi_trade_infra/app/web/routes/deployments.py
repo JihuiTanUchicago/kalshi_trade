@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from decimal import Decimal
 from typing import Dict, List, Optional
 
 from app import repository as repo
@@ -18,6 +19,23 @@ from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.strategies import _backtest_checks, _stamp_row_instant_fills, _with_marks, _with_why
 from app.web.settings import MAX_ACTIVE_DEPLOYMENTS
 from app.web.views import _demo_key_back, _deployment_out, _paper_books, _realized_by_book, demo_health_memo
+from trading_core.domain.slippage import PAPER, paper_estimate
+
+
+def _realized_with_estimate(deps: List[Dict], removed: List[Dict]) -> Dict[str, Dict]:
+    """_realized_by_book, with the paper book's `slippage_estimate` beside its `listed` figure (the board's
+    headline): the listed paper deployments' realized P&L after the slippage a live order typically pays
+    (trading_core.domain.slippage), from their contract fills, which the display read already sums from the
+    qty and close_reason of the rows it fetches. No extra read. Beside `listed`, never in place of it, and
+    never on `removed` or `all`, whose rows the board doesn't read. Live and demo never carry one."""
+    books = _realized_by_book(deps, removed)
+    paper = [d for d in deps if d["mode"] == PAPER]
+    if PAPER in books and paper:
+        est = paper_estimate(PAPER, sum((Decimal(str(d.get("realized_pnl") or 0)) for d in paper), Decimal(0)),
+                             sum(int(d.get("contract_fills") or 0) for d in paper))
+        if est:
+            books[PAPER]["slippage_estimate"] = est
+    return books
 
 
 def _paper_strategy_ids(deps: List[Dict]) -> set:
@@ -60,7 +78,8 @@ def list_deployments(ctx: Ctx):
         **({"demo_health_pending": True} if health_pending else {}),
         # Each book's realized P&L: the listed deployments', the removed ones', and (paper, live) both,
         # which is the dashboard's all-time figure. One book at a time, never summed together.
-        "realized_by_book": _realized_by_book(deps, removed),
+        # The paper book's listed figure also carries its after-slippage estimate (display only).
+        "realized_by_book": _realized_with_estimate(deps, removed),
         "open_positions": _with_why(_with_marks(repo.user_positions(ctx.cur, ctx.uid, "open")), deps),
         "recent_closed": _with_why(repo.user_positions(ctx.cur, ctx.uid, "closed", 20), deps),
         # The server's live switch, as /api/me says it: in the answer (and so its version), the 10s poll

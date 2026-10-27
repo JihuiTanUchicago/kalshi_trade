@@ -162,3 +162,89 @@ def test_each_pages_estimate_agrees_with_the_positions_and_the_gates_never_see_i
     assert dash2["paper"]["realized_pnl"] == dash["paper"]["realized_pnl"]
     assert page2["book_totals"]["paper"]["pnl"] == books["paper"]["pnl"]
     assert record2["paper"]["net_pnl"] == record["paper"]["net_pnl"]
+
+
+def test_deploy_the_strategies_list_and_the_autopilot_carry_it_from_the_reads_they_already_make(conn, monkeypatch):
+    """The Deploy board's paper Realized, the Strategies list's paper card, the autopilot's paper day and its
+    week each carry the estimate, held to the position rows that figure counts; live and demo never do. The
+    gate's list_deployments carries none of it."""
+    from app import repository as repo
+    from app import server
+    from app.services import book_memo
+    from app.trading import spec as specmod
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "slip2@example.com", "S", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "exit": {"stop_loss": 0.1},
+                             "sizing": {"stake": 10.0, "max_positions": 4}})
+    a = repo.insert_strategy(cur, uid, None, None, "btc15m", "volatility", "Paper and demo", "t", spec, "passed", dict(RESULT))
+    c = repo.insert_strategy(cur, uid, None, None, "btc15m", "volatility", "Live and paper", "t", spec, "passed", dict(RESULT))
+    b = repo.insert_strategy(cur, uid, None, None, "btc15m", "volatility", "Old loose gate", "t", spec, "backtest-only", dict(RESULT))
+    repo.create_proposal(cur, uid, "deploy", "Autopilot", None, a, "applied")  # the autopilot put A on paper
+    dep = {"a_paper": repo.create_deployment(cur, uid, a, "btc15m", "paper"),
+           "a_demo": repo.create_deployment(cur, uid, a, "btc15m", "demo"),
+           "c_live": repo.create_deployment(cur, uid, c, "btc15m", "live"),
+           "c_paper": repo.create_deployment(cur, uid, c, "btc15m", "paper"),
+           "b_paper": repo.create_deployment(cur, uid, b, "btc15m", "paper")}
+    removed = repo.create_deployment(cur, uid, a, "btc15m", "paper")
+    tag = uuid.uuid4().hex[:6].upper()
+    close = repo.now_utc() + timedelta(hours=1)
+    n = iter(range(100))
+
+    def closed(did, mode, qty, price, exit_price, reason, ref):
+        fee = 0.07
+        pnl = qty * (exit_price - price) - fee - (0.0 if reason == "settled" else fee)
+        repo.insert_closed_position(cur, did, uid, mode, "KXSLIQ%s-%d" % (tag, next(n)), "yes", qty, price, fee, exit_price,
+                                    0.0 if reason == "settled" else fee, pnl, reason, close, order_ref=ref)
+
+    closed(dep["a_paper"], "paper", 10, 0.40, 0.55, "take_profit", "sim:a1")  # 20 fills
+    closed(dep["a_paper"], "paper", 6, 0.62, 1.00, "settled", "sim:a2")      # 6 fills
+    closed(dep["a_demo"], "demo", 4, 0.40, 1.00, "settled", "demo:a")
+    closed(dep["c_live"], "live", 9, 0.40, 0.55, "take_profit", "live:c")
+    closed(dep["c_paper"], "paper", 3, 0.50, 0.00, "settled", "sim:c")       # 3 fills
+    closed(dep["b_paper"], "paper", 2, 0.30, 0.36, "take_profit", "sim:b")   # 4 fills
+    closed(removed, "paper", 7, 0.33, 0.41, "take_profit", "sim:r")          # 14 fills, no longer listed
+    assert repo.set_deployment_status(cur, uid, removed, "stopped")
+
+    cur.execute("SELECT deployment_id, mode, qty, pnl, status, close_reason FROM app_positions WHERE user_id=%s", (uid,))
+    rows = list(cur.fetchall())
+    paper = [r for r in rows if r["mode"] == "paper" and r["status"] == "closed"]
+
+    def est(rs):
+        return {"pnl": _expected(rs)[0], "per_fill_cents": 0.5}
+
+    def of(*ids):
+        return [r for r in paper if r["deployment_id"] in ids]
+
+    ctx = server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None)
+    book_memo.clear()
+
+    # Deploy: the listed paper deployments' Realized, never the removed one's (its "all" counts it, unestimated).
+    board = server.list_deployments(ctx)
+    books = board["realized_by_book"]
+    listed = of(dep["a_paper"], dep["c_paper"], dep["b_paper"])
+    assert books["paper"]["listed"] == _expected(listed)[1]
+    assert books["paper"]["slippage_estimate"] == est(listed)
+    assert books["paper"]["all"] == _expected(paper)[1] and books["paper"]["removed_deployments"] == 1
+    assert "slippage_estimate" not in books["live"] and "slippage_estimate" not in books["demo"]
+
+    # The Strategies list: a paper card carries its listed paper book's estimate; a live card shows live, unestimated.
+    cards = {s["id"]: s for s in server.list_strategies(ctx)["strategies"]}
+    assert cards[a]["real"]["mode"] == "paper" and cards[a]["real"]["slippage_estimate"] == est(of(dep["a_paper"]))
+    assert "slippage_estimate" not in cards[a]["real"]["demo"]
+    assert cards[c]["real"]["mode"] == "live" and "slippage_estimate" not in cards[c]["real"]
+    assert cards[b]["real"]["slippage_estimate"] == est(of(dep["b_paper"])) and cards[b]["status"] == "backtest-only"
+
+    # The autopilot: the paper day (every paper trade closed today, the removed deployment's included), and its
+    # week (the paper trades of the strategies it put on paper: A's, listed or removed).
+    status = server.autopilot_status(ctx)
+    assert status["today_paper_pnl"] == _expected(paper)[1]
+    assert status["today_paper_slippage_estimate"] == est(paper)
+    week = server._autopilot_week(cur, uid, {})
+    mine = of(dep["a_paper"], removed)
+    assert week["paper_pnl"] == _expected(mine)[1] and week["paper_trades"] == len(mine)
+    assert week["paper_slippage_estimate"] == est(mine)
+
+    # The gate's read carries none of the display columns.
+    assert all("contract_fills" not in d
+               for d in repo.list_deployments(cur, uid, include_stopped=True))

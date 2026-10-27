@@ -311,7 +311,9 @@ def test_autopilot_paper_week_counts_only_what_the_autopilot_put_on_paper(conn, 
     closed(d_manual, 50.0, now - timedelta(hours=1))
     cur.execute("UPDATE app_positions SET mode='demo' WHERE deployment_id=%s", (d_demo,))
     week = repo.autopilot_paper_week(cur, user["id"], since)
-    assert week == {"started": 1, "pnl": pytest.approx(1.5), "trades": 2}
+    # `fills`: those two trades' contracts times taker fills (1 contract, bought and sold: 2 each), from the same
+    # read, for the paper after-slippage estimate.
+    assert week == {"started": 1, "pnl": pytest.approx(1.5), "trades": 2, "fills": 4}
 
 
 def test_finished_session_costs_are_set_size_research_sessions_that_debited(conn, user):

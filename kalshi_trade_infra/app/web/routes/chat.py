@@ -45,6 +45,7 @@ from app.web.views import (
     _start_of_day_utc,
 )
 from trading_core.domain.money import cents
+from trading_core.domain.slippage import PAPER, paper_estimate
 
 
 def get_chat(ctx: Ctx):
@@ -802,7 +803,8 @@ def autopilot_status(ctx: Ctx):
     live_on = bool(u.get("autopilot_live")) and gates_ok and on
     mode = "live" if (live_on and live_run) else ("live-armed" if live_on else ("paper" if on else "off"))
     # Each book's day, summed apart (never together) and kept until a position moves.
-    today = book_memo.realized_since(memo, ("live", "paper"), _start_of_day_utc())
+    # The same read sums each book's contract fills, for the paper day's after-slippage estimate (display only).
+    today, today_fills = book_memo.realized_since(memo, ("live", "paper"), _start_of_day_utc(), fills=True)
     today_live = cents(today["live"])
     limit = float(u.get("autopilot_daily_loss_limit") or 50)
     # The week's credit figures and, when a figure below needs it, the balance: one read of the ledger.
@@ -850,6 +852,9 @@ def autopilot_status(ctx: Ctx):
         "today_live_pnl": today_live,
         # The paper book's day, so a paper-only panel shows its own money instead of a live $0.00.
         "today_paper_pnl": cents(today["paper"]),
+        # Beside it, never in place of it: the paper day after the slippage a live order typically pays
+        # (trading_core.domain.slippage). None before a paper trade closes today; live never carries one.
+        "today_paper_slippage_estimate": paper_estimate(PAPER, today["paper"], today_fills.get(PAPER)),
         "daily_loss_limit": limit,
         "loss_headroom": cents(max(0.0, limit + min(0.0, today_live))),  # how much loss budget is left today
         "last_action": _last_move(_last_action(cur, ctx.uid, pulse["chat"]), deps),
@@ -928,6 +933,9 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
            "passed": research.get("passed_7d", 0), "not_cleared": research.get("not_cleared_7d", 0),
            "paper_started": paper["started"],
            "paper_pnl": cents(paper["pnl"]), "paper_trades": paper["trades"],
+           # Beside paper_pnl, never in place of it: those closed trades after the slippage a live order typically
+           # pays (trading_core.domain.slippage), from their contract fills in the same read. None with no trade.
+           "paper_slippage_estimate": paper_estimate(PAPER, paper["pnl"], paper.get("fills")) if paper["trades"] else None,
            "checkin_credits": None, "credits_left": None, "runway_days": None, "reload_days": None, "pace_days": None,
            # Whether a card was ever charged for credits (the panel's credit read, with the balance): until
            # then every credit spent was a free one, and the page says so beside the spend, not "real money".
