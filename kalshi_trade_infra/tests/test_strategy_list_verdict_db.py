@@ -112,6 +112,13 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     assert {k: by_id[v] for k, v in sid.items()} == {
         "true pass": None, "missed": "missed_final", "held": "held_back", "legacy held": "held_back",
         "awaiting holdout": None, "paper held": "held_back", "paper missed": None, "void": None}
+    # The research list's row for the session: its counter holds the 5 stored passes, and the row takes off the
+    # 3 its page says weren't cleared (Passed 2, 3 not cleared), in one read of the later rows for the list.
+    repo.set_run_counts(cur, run, 8, 5)
+    counting.later = 0
+    runs = server.list_runs(server.Ctx(conn, user, (), {}, {}, None))["runs"]
+    assert {r["id"]: r.get("not_cleared") for r in runs if not r.get("example")} == {run: 3}
+    assert counting.later == 1
     # Each page says the same, and a held-back one names what held it back, never an experiment id.
     for name, s in sid.items():
         page = server.get_strategy(server.Ctx(conn, user, (str(s),), {}, {}, None))

@@ -77,6 +77,45 @@ export function stopReasonCases({name, frontend}) {
     f.clearTimers();
   });
 
+  test(`${name}: a research row counts only what cleared, and says how many passes a later check left uncleared`, async () => {
+    // The server's not_cleared: passes whose one-time holdout then failed, or that the diversification check held
+    // back (Missed final test, Held back on the session page). The run's counter still holds them.
+    const f = frontend();
+    const words = (html) => html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+    const band = (html) => html.match(/class="run-card ([a-z]+)"/)[1];
+    let row = f.runRow(run({hypotheses_tried: 10, strategies_passed: 2, not_cleared: 1}));
+    assert.match(words(row), /\b1(?: of |\/)10 passed, 1 not cleared/);
+    assert.doesNotMatch(words(row), /\b2(?: of |\/)10\b/);
+    assert.equal(band(row), 'ok');
+    // Nothing cleared: no green, a neutral band, and the passes still said as not cleared.
+    row = f.runRow(run({hypotheses_tried: 10, strategies_passed: 2, not_cleared: 2}));
+    assert.match(words(row), /\b0(?: of |\/)10 passed, 2 not cleared/);
+    assert.equal(band(row), 'void');
+    assert.doesNotMatch(row, /class="gain"/);
+    // A stopped session says the same; one with nothing uncleared reads as before.
+    row = f.runRow(run({status: 'stopped', hypotheses_tried: 10, strategies_passed: 3, not_cleared: 1}));
+    assert.match(words(row), /\b2(?:\/10)? passed, 1 not cleared/);
+    row = f.runRow(run({hypotheses_tried: 10, strategies_passed: 2}));
+    assert.match(words(row), /\b2(?: of |\/)10 passed/);
+    assert.doesNotMatch(row, /not cleared/);
+    // Never more uncleared than counted, and never a negative pass count.
+    row = f.runRow(run({hypotheses_tried: 10, strategies_passed: 1, not_cleared: 3}));
+    assert.match(words(row), /\b0(?: of |\/)10 passed, 1 not cleared/);
+    // On the list, the rows say so too.
+    const g = research([run({id: 4, hypotheses_tried: 10, strategies_passed: 2, not_cleared: 1})]);
+    await g.viewResearch(); await settle();
+    assert.match(words(g.root.querySelector('#runs').innerHTML), /\b1(?: of |\/)10 passed, 1 not cleared/);
+    g.clearTimers();
+    // Meridian's running-session card counts its passes the same way (Tau's list shows none while it runs).
+    const h = research([run({id: 5, status: 'running', stop_reason: null, hypotheses_tried: 6, strategies_passed: 2, not_cleared: 1})]);
+    await h.viewResearch(); await settle();
+    const card = h.root.querySelector('#active-research');
+    if (card) {
+      assert.match(card.innerHTML, /<dt>Passed<\/dt><dd>1<\/dd><\/div><div><dt>Not cleared<\/dt><dd>1<\/dd>/);
+    }
+    h.clearTimers();
+  });
+
   test(`${name}: a paused Deploy row says who or what paused it in plain words`, async () => {
     const dep = {id: 1, strategy_id: 1, title: 'Dep one', market: 'btc15m', mode: 'paper', status: 'paused', status_reason: 'By you',
       status_why: 'You paused it', realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null,

@@ -596,13 +596,19 @@ def test_list_strategies_narrows_to_or_leaves_out_ids():
     cur.sql = None
     assert server.repo.list_strategies(cur, 1, only_ids=[]) == [] and cur.sql is None  # no read for nothing
     server.repo.passed_strategies(cur, 1, None, "btc15m", "fade", True)
-    assert cur.sql.startswith("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id FROM app_strategies s")
+    assert cur.sql.startswith("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id, s.run_id "
+                              "FROM app_strategies s")
     assert "s.status=%s AND s.market=%s" in cur.sql and cur.params[:3] == [1, "passed", "btc15m"] and "EXISTS" in cur.sql
     # With paper_passed, the void and rejected strategies that passed on paper ride the same read.
     server.repo.passed_strategies(cur, 1, None, "btc15m", None, False, paper_passed="forward_validated")
     assert ("s.status IN ('passed',%s,%s) AND (s.status='passed' OR EXISTS (SELECT 1 FROM app_experiment_results x"
             in cur.sql) and "x.phase='paper' AND x.classification=%s" in cur.sql
     assert cur.params == [1, "btc15m", "rejected", "failed", "forward_validated"]
+    # The research list's sessions only; none, no read.
+    server.repo.passed_strategies(cur, 1, run_ids=[8, 9])
+    assert cur.sql.endswith("AND s.run_id IN (%s,%s)") and cur.params == [1, "passed", 8, 9]
+    cur.sql = None
+    assert server.repo.passed_strategies(cur, 1, run_ids=[]) == [] and cur.sql is None
     # The Kept view lists a held-back probation strategy beside the kept ones.
     server.repo.list_strategies(cur, 1, hide_noise=True, keep_ids=[5], limit=50)
     assert "AND (s.status NOT IN (%s,%s) OR s.id IN (%s))" in cur.sql and cur.params[:4] == [1, "rejected", "failed", 5]
