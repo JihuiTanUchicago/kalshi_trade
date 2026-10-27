@@ -80,6 +80,13 @@
     ? `<span class="slip-est">≈ ${usd(e.pnl, true)} after typical live slippage (estimate: ${+e.per_fill_cents}¢ a contract each time an order fills)</span>` : '');
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
+  // Text, its glossary button, then a separator (SEP's "·" and space). Chrome breaks a line after an inline button
+  // even before a no-break space, so "· since Oct 20" and "· 1 open" began lines, and before the button, which then
+  // began one: the text's last word, the button and its "·" stay together (.nobr), and the line still ends on "·".
+  const gloSep = (key, before = '') => {
+    const i = before.lastIndexOf(' ') + 1;
+    return `${before.slice(0, i)}<span class="nobr">${before.slice(i)}${glo(key)}\u00a0\u00b7</span> `;
+  };
   // A label with its marker: the last word and the marker never break apart, so the marker can't wrap onto a line of its own.
   const gl = (label, key) => { const i = label.lastIndexOf(' '); return `${label.slice(0, i + 1)}<span class="nobr">${label.slice(i + 1)}${glo(key)}</span>`; };
   function setupGlossary() {
@@ -2310,7 +2317,7 @@
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(SEP)) : 'Connect your Kalshi account on <a href="/funds#connect-kalshi">Funds</a> to trade real money') + tradesCsv('live', lv) })}
           ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${d.demo.open_positions} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital${SEP}no demo strategies yet`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
-          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash${SEP}${openCost(p)}${inBalance(p) ? ', ' + inBalance(p) : ''}${SEP}<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${PAPER_NET}${glo('paperfills')}${tradesCsv('paper', p)}${slipEst(p.slippage_estimate)}` : `${usd(p.cash)} of practice money${SEP}no paper strategies yet` })}
+          ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash${SEP}${openCost(p)}${inBalance(p) ? ', ' + inBalance(p) : ''}${SEP}<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${tradesCsv('paper', p, 'paperfills', PAPER_NET)}${slipEst(p.slippage_estimate)}` : `${usd(p.cash)} of practice money${SEP}no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
       // The dashboard is a summary: the first few deployments (paused ones, which need the user, then
@@ -2566,7 +2573,7 @@
     const s = m.sample;
     const good = s.level === 'solid' && s.edge === 'positive';
     const figs = `<dl class="figures measure tr-figs">
-      ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `${key === 'paper' ? `${PAPER_NET} (${usd(m.fees)} in fees)${glo('paperfills')}` : `after ${usd(m.fees)} in fees`}${m.first_trade_at ? `\u00a0\u00b7 since ${trDay(m.first_trade_at)}` : ''}${key === 'paper' ? slipEst(m.slippage_estimate) : ''}` })}
+      ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `${key === 'paper' ? (m.first_trade_at ? gloSep('paperfills', `${PAPER_NET} (${usd(m.fees)} in fees)`) : `${PAPER_NET} (${usd(m.fees)} in fees)${glo('paperfills')}`) : `after ${usd(m.fees)} in fees${m.first_trade_at ? SEP : ''}`}${m.first_trade_at ? `since ${trDay(m.first_trade_at)}` : ''}${key === 'paper' ? slipEst(m.slippage_estimate) : ''}` })}
       ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? `${SEP}${pct(m.annualized_return)} a year` : ''}` })}
       ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
       ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)}${SEP}Sortino ${trFix(m.sortino)}` })}
@@ -3266,8 +3273,12 @@
   }
   // One mode's closed trades as a CSV, offered only where that mode has some, so the reader can
   // check its P&L line by line. The server never mixes modes in one file.
-  function tradesCsv(mode, b) {
-    return b && b.closed_trades > 0 ? `\u00a0· <a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>` : '';
+  // `before`, the text ahead of it, and `info`, the key of a glossary button after that text: the button comes first,
+  // glued to its last word and the separator (gloSep).
+  function tradesCsv(mode, b, info = '', before = '') {
+    const has = b && b.closed_trades > 0, link = has ? `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>` : '';
+    if (info) return (has ? gloSep(info, before) : before + glo(info)) + link;
+    return before + (has ? SEP : '') + link;
   }
   // What demo is, for a reader who has never used it: real exchange fills, pretend money.
   const DEMO_WHAT = 'real fills on Kalshi’s sandbox, not real money';
@@ -4052,7 +4063,7 @@
   // drawing with undefined, and its page fails with Try again.
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
-    actionLink, adminViewOn, alert0, announce, SEP, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
+    actionLink, adminViewOn, alert0, announce, SEP, gloSep, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,

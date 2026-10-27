@@ -7,7 +7,7 @@ window.TauPage('strategies', (T) => {
     actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
-    gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
+    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, SEP, settleAt, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
@@ -440,7 +440,11 @@ window.TauPage('strategies', (T) => {
       const { pnl, trades: n, open, instant, slip } = bookTotal(s, mode, ds);
       // "deployed Oct 18" stays whole (.nobr): at 390px in Meridian "deployed" ended a line and "Oct 18" began the next.
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}` : 'No closed trades yet'}${open ? `${SEP}${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : ''}${since ? `${SEP}<span class="nobr">deployed ${when(since)}</span>` : ''}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      // What follows the figure: its open positions and when it was deployed. After the paper fills button the first "·"
+      // stays with the button (gloSep): "· 1 open" began a line.
+      const head = n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}` : 'No closed trades yet';
+      const tail = [open ? `${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : '', since ? `<span class="nobr">deployed ${when(since)}</span>` : ''].filter(Boolean).join(SEP);
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : head + glo('paperfills')) : head + (tail ? SEP : '')}${tail}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together), and,
