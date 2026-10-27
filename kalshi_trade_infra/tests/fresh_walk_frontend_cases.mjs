@@ -59,7 +59,7 @@ export function freshWalkCases({name, frontend, dashboard}) {
       return html;
     };
     const fresh = await card({closed_trades: 0, realized_pnl: 0, total_pnl: 0, today_pnl: 0, open_positions: 0}, {...FRESH_ON, week});
-    assert.match(fresh, /<dt>Paper P&amp;L, realized all time<\/dt><dd>None yet<small>no paper trade has closed<\/small><\/dd>/);
+    assert.match(fresh, /<dt>Paper P&amp;L, realized all time<\/dt><dd>None yet <small>no paper trade has closed<\/small><\/dd>/);
     assert.match(fresh, /<dt>Autopilot's paper P&amp;L<\/dt><dd>None yet <small>none of its paper trades has closed<\/small><\/dd>/);
     assert.doesNotMatch(fresh, /\$0\.00/);
     const used = await card({closed_trades: 4, realized_pnl: 1.32, total_pnl: 1.32, today_pnl: 1.32, open_positions: 0},
