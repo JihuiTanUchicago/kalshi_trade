@@ -269,6 +269,13 @@
   const LIVE_WAITING = 'Waiting: live trading isn’t open yet', LIVE_NO_ORDERS = 'Live trading isn’t open yet, so this places no orders';
   // Live deployments counted running that place no orders, as Deploy's Money figure counts them.
   const liveIdleCount = (n) => `${n} live, placing no orders: live trading isn’t open yet`;
+  // The autopilot panel's Running figure shares a row with another figure (two to a row on a phone), where
+  // the count above wrapped to four lines: there it reads "1 live (waiting)", the reason in its hover and
+  // screen-reader text (the panel's story says it in full on its own line).
+  const liveIdleShort = (n) => {
+    const why = `live trading isn’t open yet, so ${n === 1 ? 'it places' : 'they place'} no orders`;
+    return `<span class="apf-live-wait" title="${why.charAt(0).toUpperCase() + why.slice(1)}.">${n} live (waiting)<span class="vh">: ${why}</span></span>`;
+  };
   // A "Live" badge on a list or card while live trading is closed (a strategy's books, a shared deployment):
   // the badge waits beside it, in depIdle's words, and a line under it says why on a phone too ('' while open).
   const liveWaitMark = () => liveOpen() ? '' : ` <span class="mk quiet live-wait" title="${LIVE_CLOSED}">Waiting<span class="vh">: live trading isn’t open yet</span></span>`;
@@ -3812,7 +3819,7 @@
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashFig, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
-    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoHealthLine, demoSpan,
+    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoHealthLine, demoSpan,
     DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,

@@ -169,6 +169,13 @@ test('a paper-only panel shows paper realized today and no live loss budget; liv
   let html = f.box.querySelector('#apf-stats').innerHTML;
   assert.match(html, /<dt>Paper realized today \(UTC\)<\/dt>/); assert.match(html, /\+\$1\.25/);
   assert.doesNotMatch(html, /Live realized today|Loss budget/);
+  // While live trading is closed nothing live trades, so the live loss budget isn't shown; a live position
+  // still settling counts in Live realized today.
+  f.S.me.live_trading_available = false;
+  f.apUpdate(f.box, status({today_paper_pnl: 1.25, today_live_pnl: -3, loss_headroom: 17, daily_loss_limit: 20, live_running: 1}));
+  html = f.box.querySelector('#apf-stats').innerHTML;
+  assert.match(html, /<dt>Live realized today \(UTC\)<\/dt>/); assert.doesNotMatch(html, /Loss budget|Live also stops/);
+  f.S.me.live_trading_available = true;
   for (const live of [{live_running: 1}, {autopilot_live: true}]) {
     f.apUpdate(f.box, status({today_paper_pnl: 1.25, today_live_pnl: -3, loss_headroom: 17, daily_loss_limit: 20, ...live}));
     html = f.box.querySelector('#apf-stats').innerHTML;

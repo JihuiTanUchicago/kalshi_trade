@@ -872,7 +872,27 @@ def test_adjust_missing_deployment_lists_current_ones_not_a_dead_end(monkeypatch
         {"id": 42, "title": "Live BTC edge", "market": "btc15m", "status": "running"}])
     msg, pid = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 999, "changes": {"x": 1}}, True)
     assert pid is None
-    assert "999" in msg and "#42" in msg and "Live BTC edge" in msg  # self-correcting, not a dead end
+    # Self-correcting, not a dead end. The line is posted to the customer's chat, so each deployment is
+    # named by title, market label and book, never by a row number or a market key.
+    assert msg == ("That deployment no longer exists (removed or stopped). Your current deployments: "
+                   "“Live BTC edge” (Bitcoin up or down in 15 minutes, paper, running).")
+    assert not re.search(r"#\d|\b(999|42)\b|btc15m", msg)
+    monkeypatch.setattr(r, "list_deployments", lambda cur, uid: [])
+    msg, _ = agent.act(None, {"id": 1}, {"type": "pause", "deployment_id": 999}, True)
+    assert msg.startswith("That deployment no longer exists") and "You have no active deployments" in msg
+
+
+def test_a_missing_deployments_list_says_a_live_one_waits_while_live_trading_is_closed(monkeypatch):
+    r = agent.repo
+    monkeypatch.setattr(r, "get_deployment", lambda cur, uid, did: None)
+    monkeypatch.setattr(r, "list_deployments", lambda cur, uid: [
+        {"id": 42, "title": "Live BTC edge", "market": "btc15m", "mode": "live", "status": "running"}])
+    monkeypatch.setattr(agent, "_live_switch_open", lambda: False)
+    msg, _ = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 999, "changes": {"x": 1}}, True)
+    assert "“Live BTC edge” (Bitcoin up or down in 15 minutes, live, waiting: live trading isn’t open yet)" in msg
+    monkeypatch.setattr(agent, "_live_switch_open", lambda: True)
+    msg, _ = agent.act(None, {"id": 1}, {"type": "adjust", "deployment_id": 999, "changes": {"x": 1}}, True)
+    assert "(Bitcoin up or down in 15 minutes, live, running)" in msg
 
 
 def test_finished_research_run_prints_one_outcome_line(monkeypatch, capsys):

@@ -147,11 +147,13 @@ def test_the_receipt_never_names_staff_or_a_model_id(monkeypatch):
     monkeypatch.setattr(repo, "credit_balance", lambda cur, uid: 32.5)
     monkeypatch.setattr(repo, "credit_spent_total", lambda cur, uid: 0.5)
     monkeypatch.setattr(repo, "credit_rows", lambda cur, uid, limit: _ledger())
+    monkeypatch.setattr(repo, "research_session_numbers", lambda cur, uid: {3: 1})
     _kind, _name, _ctype, body = billing_routes.billing_receipt(_ctx())
     rows = list(csv.reader(io.StringIO(body)))
     table = rows[rows.index(billing_routes.RECEIPT_HEADER) + 1:]
     assert [r[3] for r in table] == ["Credits added by Tau support", "Credits adjusted by Tau support",
                                      "Research session · Claude Opus 4.6", "Welcome credits", ""]
+    assert [r[4] for r in table] == ["", "", "Session 1", "", ""]  # the user's own count, never the run id
     _no_leak(body, own_email="trader@example.invalid")
 
 

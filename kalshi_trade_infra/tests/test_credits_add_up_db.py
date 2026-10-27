@@ -283,7 +283,13 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     # Each card purchase names what the card paid and the payment; each debit names the run it billed.
     assert sorted((r[1], r[5], r[6]) for r in table if r[1] in ("topup", "autoreload")) == sorted(
         (c["metadata"]["purpose"], "%.2f" % (c["cents"] / 100), "pi_" + c["idem"]) for c in charges)
-    assert sorted(int(r[4]) for r in table if r[1] == "usage") == sorted(r["run_id"] for r in usage)
+    # A research debit names its session as the Research list numbers it ("Session 2"), never the global run
+    # id; the chat turn's debit says what it was in its memo, with no session.
+    said = {"Session %d" % runs[r["run_id"]]["seq"] if r["run_id"] in (first, second) else "" for r in usage}
+    assert sorted(r[4] for r in table if r[1] == "usage") == sorted(
+        "Session %d" % runs[r["run_id"]]["seq"] if r["run_id"] in (first, second) else "" for r in usage)
+    assert {"Session %d" % runs[first]["seq"], "Session %d" % runs[second]["seq"], ""} == said
+    assert runs[second]["seq"] == runs[first]["seq"] + 1
     assert sorted(r[1] for r in table) == sorted(r["kind"] for r in ledger)
     # Each row is its ledger amount to 4 places, rounded half up from the exact decimal (-4.666650 -> -4.6667).
     assert sorted(r[2] for r in table) == sorted(_four(r["amount_usd"]) for r in ledger)

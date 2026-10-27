@@ -310,6 +310,19 @@ def count_own_research(cur, user_id: int) -> int:
     return int((cur.fetchone() or {}).get("n") or 0)
 
 
+def research_session_numbers(cur, user_id: int) -> Dict[int, int]:
+    """{run id: its number among the user's own research sessions}, 1 their first, the seeded example
+    left out: the "Session 3" the Research list shows (count_own_research numbers the newest the same
+    way), for a download that names the session a charge billed instead of its global run id. One
+    read of ids through idx_runs_user."""
+    cur.execute(
+        "SELECT id FROM app_agent_runs WHERE user_id=%s AND kind='research' "
+        "AND (direction IS NULL OR direction<>%s) ORDER BY id",
+        (user_id, DEMO_DIRECTION),
+    )
+    return {int(r["id"]): k for k, r in enumerate(cur.fetchall(), 1)}
+
+
 def example_run_id(cur, user_id: int) -> Optional[int]:
     """The id of the user's seeded example session (repository.seed_demo_session; the newest if there
     are several), or None. What /example opens: it looked for the example in list_runs, which holds only

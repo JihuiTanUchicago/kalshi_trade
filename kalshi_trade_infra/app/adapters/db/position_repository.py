@@ -472,7 +472,9 @@ def closed_trades_for_export(cur, user_id: int, mode: str, limit: int) -> List[D
     amount its 4-place text ('' for NULL), which is what "%.4f" of its float printed. They ride one
     packed column (with qty, id and the deployment); the text columns stay their own. Then each
     deployment's strategy is read once, as the LEFT JOINs gave it: a deployment or strategy that is
-    gone leaves strategy_id or title None."""
+    gone leaves strategy_id or title None. The strategy's market and when it was made ride along
+    (strategy_market, strategy_created), so the file can tell two strategies with one title apart in
+    plain words instead of by their ids."""
     cur.execute(
         "SELECT p.mode, p.ticker, p.side, p.close_reason, " + _EXPORT_PACKED + """ AS v
            FROM app_positions p
@@ -490,13 +492,15 @@ def closed_trades_for_export(cur, user_id: int, mode: str, limit: int) -> List[D
         return rows
     dep_ids = sorted(set(dep_of))
     cur.execute(
-        "SELECT d.id, d.strategy_id, s.title FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id "
+        "SELECT d.id, d.strategy_id, s.title, s.market AS strategy_market, s.created_at AS strategy_created "
+        "FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id "
         "WHERE d.id IN (" + ",".join(["%s"] * len(dep_ids)) + ")",
         tuple(dep_ids),
     )
-    deps = {d["id"]: (d["strategy_id"], d["title"]) for d in cur.fetchall()}
+    deps = {d["id"]: (d["strategy_id"], d["title"], d.get("strategy_market"), d.get("strategy_created"))
+            for d in cur.fetchall()}
     for r, did in zip(rows, dep_of):
-        r["strategy_id"], r["title"] = deps.get(did, (None, None))
+        r["strategy_id"], r["title"], r["strategy_market"], r["strategy_created"] = deps.get(did, (None, None, None, None))
     return rows
 
 

@@ -11,6 +11,7 @@ from app import repository as repo
 from app.adapters.llm import models_catalog as catalog
 from app.adapters.stripe import billing
 from app.services import customer_text
+from app.trading.markets import MARKETS
 from app.web.http import ApiError, Ctx, _num
 from app.web.views import credit_cents, credit_exact, credit_usd, session_title
 
@@ -362,7 +363,8 @@ def _usd4(v) -> str:
     return str(Decimal(str(v)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
 
 
-# Session: the research session (or chat, or check-in) a usage row billed. Card charged: what the card
+# Session: the research session a usage row billed, by its number among the user's own ("Session 3", as
+# the Research list names it; a chat or check-in debit says what it was in its memo). Card charged: what the card
 # paid for credits bought (the credits plus the purchase fee). Stripe reference: that payment's id.
 RECEIPT_HEADER = ["Date (UTC)", "Type", "Amount (USD)", "Memo", "Session", "Card charged (USD)", "Stripe reference"]
 
@@ -382,10 +384,16 @@ def billing_receipt(ctx: Ctx):
     row(["Total spent (USD)", _usd4(repo.credit_spent_total(cur, ctx.uid))])
     row([])
     row(RECEIPT_HEADER)
-    for r in repo.credit_rows(cur, ctx.uid, 100000):  # full history, newest first
+    ledger = repo.credit_rows(cur, ctx.uid, 100000)  # full history, newest first
+    # A research debit names its session as the Research list does ("Session 3", the user's own count),
+    # never the global run id; a check-in or chat debit says what it was in its memo.
+    seq = repo.research_session_numbers(cur, ctx.uid) if any(
+        r["kind"] == "usage" and r.get("run_id") and r.get("run_kind") == "research" for r in ledger) else {}
+    for r in ledger:
         card = r["kind"] in _CARD_KINDS
+        n = seq.get(int(r["run_id"])) if r["kind"] == "usage" and r.get("run_id") else None
         row([r["created_at"], r["kind"], _usd4(r["amount_usd"]), _ledger_memo(r),
-             r.get("run_id") if r["kind"] == "usage" and r.get("run_id") else "",
+             "Session %d" % n if n else "",
              "%.2f" % (billing.topup_charge_cents(Decimal(str(r["amount_usd"]))) / 100) if card else "",
              (r.get("stripe_ref") or "") if card else ""])
     fname = "tau-credits-%s.csv" % repo.now_utc().strftime("%Y%m%d")
@@ -411,6 +419,48 @@ def _dec(v: Any, places: int = 4) -> str:
     return "" if v is None else "%.*f" % (places, float(v))
 
 
+def _made(v: Any, minute: bool = False) -> str:
+    """When a strategy was made, as the file says it: "made Oct 25, 2026" (to the minute, in UTC, when
+    the day alone doesn't tell two apart); '' when unknown."""
+    if not isinstance(v, datetime):
+        return ""
+    v = v.astimezone(timezone.utc).replace(tzinfo=None) if v.tzinfo else v
+    return "made %s %d, %d%s" % (v.strftime("%b"), v.day, v.year, v.strftime(" %H:%M UTC") if minute else "")
+
+
+def _strategy_names(rows: List[Dict]) -> Dict[int, str]:
+    """The trades file's strategy column: each strategy by its title, the name the customer gave it or
+    saw it under, never its internal id (the file once said "No. 00042"). Two strategies in the file
+    with one title are told apart in plain words: by market, then also the day each was made, then the
+    minute, and, made in the same minute, by the order they were made ("2 of 2"). A trade whose
+    strategy is gone has none ('')."""
+    first: Dict[int, Dict] = {}
+    for r in rows:
+        sid = r.get("strategy_id")
+        if sid is not None and (r.get("title") or "").strip() and sid not in first:
+            first[sid] = r
+    names = {sid: r["title"].strip() for sid, r in first.items()}
+    same: Dict[str, List[int]] = {}
+    for sid, name in names.items():
+        same.setdefault(name.casefold(), []).append(sid)
+    for sids in same.values():
+        if len(sids) < 2:
+            continue
+        sids.sort(key=lambda s: (_iso_utc(first[s].get("strategy_created")), s))  # the order they were made
+        market = {s: MARKETS[first[s]["strategy_market"]].label if first[s].get("strategy_market") in MARKETS
+                  else "" for s in sids}
+        for how in ((), (False,), (True,)):
+            tags = {s: ", ".join(p for p in [market[s]] + [_made(first[s].get("strategy_created"), m) for m in how] if p)
+                    for s in sids}
+            if len(set(tags.values())) == len(sids):
+                break
+        else:
+            tags = {s: ", ".join(p for p in (tags[s], "%d of %d" % (k + 1, len(sids))) if p) for k, s in enumerate(sids)}
+        for s in sids:
+            names[s] = "%s (%s)" % (names[s], tags[s])
+    return names
+
+
 def trades_csv(ctx: Ctx):
     """One mode's closed trades as a CSV the user can check the P&L from: realized_pnl summed over the
     file is the mode's realized P&L on the dashboard (demo's is since the last reload, so it can
@@ -424,11 +474,11 @@ def trades_csv(ctx: Ctx):
     buf = io.StringIO()
     row = _csv_rows(buf)
     row(TRADES_CSV_HEADER)
+    names = _strategy_names(rows[:TRADES_CSV_MAX_ROWS])
     for r in reversed(rows[:TRADES_CSV_MAX_ROWS]):  # oldest first, the order a reader checks a book in
-        sid = r.get("strategy_id")
         row([
             _iso_utc(r["closed_at"]), _iso_utc(r["opened_at"]), r["mode"],
-            "No. %05d" % sid if sid is not None else "", r.get("title") or "", r["ticker"], r["side"], int(r["qty"]),
+            names.get(r.get("strategy_id"), ""), r.get("title") or "", r["ticker"], r["side"], int(r["qty"]),
             _dec(r["entry_price"]), _dec(r["exit_price"]), _dec(r["entry_fee"]), _dec(r["exit_fee"]),
             _dec(r["pnl"]), r.get("close_reason") or "", r["id"]])
     if cut:

@@ -124,10 +124,33 @@ def _decide(monkeypatch, proposal, decision, dep=None, strategy=None):
     ({"kind": "pause", "deployment_id": 3}, "approve", None, None, "You approved the proposal."),
 ])
 def test_the_decision_line_names_the_proposal_and_what_changed(monkeypatch, proposal, decision, dep, strategy, line):
+    monkeypatch.setattr(chat_routes.engine, "LIVE_TRADING_ENABLED", True)  # the server's live switch open
     text = _decide(monkeypatch, dict(proposal, id=5, status="pending"), decision, dep, strategy)
     assert text == line
     assert text.startswith("You %s the proposal" % ("approved" if decision == "approve" else "declined"))  # heads "Your decision"
     assert "utopilot" not in text  # the user's decision is never read back as the autopilot's last move
+
+
+@pytest.mark.parametrize("kind,line", [
+    ("pause", "You approved the proposal to pause BTC fade. It is paused. Live trading isn’t open yet, so Tau can’t sell "
+              "what it holds in your Kalshi account; that stays open until its market settles."),
+    ("resume", "You approved the proposal to resume BTC fade. It is set to run again on live, but live trading isn’t "
+               "open yet, so it places no orders."),
+    ("adjust", "You approved the proposal to tune BTC fade. It now runs the tuned version on live, but live trading "
+               "isn’t open yet, so it places no orders."),
+])
+def test_a_live_deployments_decision_line_says_it_waits_while_live_trading_is_closed(monkeypatch, kind, line):
+    # The server's live switch is closed: a live deployment places no orders and can't sell what it holds,
+    # so the line never says it runs "LIVE, with real money" or that its holdings are sold.
+    monkeypatch.setattr(chat_routes.engine, "LIVE_TRADING_ENABLED", False)
+    text = _decide(monkeypatch, {"kind": kind, "deployment_id": 3, "strategy_id": 8, "id": 5, "status": "pending"},
+                   "approve", {"title": "BTC fade", "mode": "live"})
+    assert text == line
+    assert "real money" not in text and "is sold" not in text
+    # A paper one reads as before.
+    paper = _decide(monkeypatch, {"kind": kind, "deployment_id": 3, "strategy_id": 8, "id": 5, "status": "pending"},
+                    "approve", {"title": "BTC fade", "mode": "paper"})
+    assert "live trading" not in paper
 
 
 def _chat(monkeypatch, msgs, after, configured=True, cost=0.153):

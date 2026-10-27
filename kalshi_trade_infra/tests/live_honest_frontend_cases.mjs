@@ -194,7 +194,9 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     const box = new (f.root.constructor)('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
     await f.apUpdate(box, status); await settle();
     const stats = box.querySelector('#apf-stats').innerHTML;
-    assert.ok(stats.includes(`${IDLE_COUNT} · 2 paper`), stats);
+    // The panel's half-row figure says it short (its own case below); the dashboard card's line says it in full.
+    assert.ok(stats.includes('1 live (waiting)<span class="vh">: live trading isn’t open yet, so it places no orders</span></span> · 2 paper'), stats);
+    assert.ok(!stats.includes(IDLE_COUNT), stats);
     assert.doesNotMatch(stats, /class="apf-live">1 live/);
     f.S.ap = status;
     await f.viewDashboard(); await settle();
@@ -209,12 +211,46 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     f.clearTimers();
   });
 
+  // The panel's Running figure shares its row with another figure (two to a row on a phone): "1 live, placing
+  // no orders: live trading isn't open yet · 2 paper" wrapped to four lines there. It reads "1 live (waiting)",
+  // kept on one line, and the reason rides its hover and screen-reader text.
+  test(`${name}: the autopilot panel's Running figure says a live strategy waits in a few words, the reason on hover and read out`, async () => {
+    const status = {autopilot: true, mode: 'paper', research: {active: [], tested_7d: 0, passed_7d: 0}, live_running: 1, paper_running: 2,
+      demo_running: 0, today_live_pnl: 0, loss_headroom: 50, daily_loss_limit: 50, autopilot_live: false, story: []};
+    const f = frontend({fetchImpl: () => response({messages: [], models: []})});
+    f.S.me.live_trading_available = false; f.S.me.user.autopilot = true;
+    const box = new (f.root.constructor)('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
+    const running = async (st) => {
+      await f.apUpdate(box, st); await settle();
+      const html = box.querySelector('#apf-stats').innerHTML;
+      return /<dt>Running<\/dt><dd>(.*?)<\/dd>/.exec(html)[1];
+    };
+    const one = await running(status);
+    assert.equal(one, '<span class="apf-live-wait" title="Live trading isn’t open yet, so it places no orders.">1 live (waiting)'
+      + '<span class="vh">: live trading isn’t open yet, so it places no orders</span></span> · 2 paper');
+    // What a sighted reader sees: short enough for a phone's half-row cell.
+    const seen = one.replace(/<span class="vh">.*?<\/span>/g, '').replace(/<[^>]+>/g, '');
+    assert.equal(seen, '1 live (waiting) · 2 paper');
+    assert.ok(seen.length <= 28, seen);
+    assert.doesNotMatch(one, /placing no orders: live trading/);
+    const two = await running({...status, live_running: 2});
+    assert.match(two, /title="Live trading isn’t open yet, so they place no orders\.">2 live \(waiting\)/);
+    // Open, it is the plain live count.
+    f.S.me.live_trading_available = true;
+    assert.equal(await running(status), '<span class="apf-live">1 live</span> · 2 paper');
+    f.clearTimers();
+  });
+
   test(`${name}: the strategy page's heading is its title, never its zero-padded id`, async () => {
     const s = strategyFrontend(detailStrategy({id: 2, title: 'Fade the spike', market: 'btc15m'}));
     await s.viewStrategy(42); await settle();
     const head = s.root.querySelector('.board-title').outerHTML;
     assert.doesNotMatch(head + s.root.querySelector('#main').innerHTML, /No\.\s*0\d+|\b0000[0-9]\b/);
     assert.match(head, /<h1 class="page">Fade the spike<\/h1>/);
+    // Said once: Tau's paper header just below the heading said it again as a second, 34px heading.
+    const headings = s.root.querySelectorAll('h1, h2, h3').map((h) => h.textContent.trim());
+    assert.deepEqual(headings.filter((t) => t === 'Fade the spike'), ['Fade the spike'], headings.join(' | '));
+    assert.equal(s.root.querySelectorAll('.paper-title').length, 0);
     s.clearTimers();
   });
 

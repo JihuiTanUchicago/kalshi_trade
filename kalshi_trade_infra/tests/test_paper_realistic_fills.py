@@ -475,7 +475,15 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
         "1 strategy is on paper (pretend money). 1 position is open")
     assert server._autopilot_story({"autopilot": False})[0].startswith("Autopilot is off.")
     assert server._autopilot_story(dict(d, billing_blocked=True)) == []
-    assert "1 strategy is trading real money." in server._autopilot_story(dict(d, live_running=1))
+    assert "1 strategy is trading real money." in server._autopilot_story(dict(d, live_running=1, live_enabled=True))
+    # With the server's live switch closed a running live strategy places no orders: it waits, never "trading".
+    closed = server._autopilot_story(dict(d, live_running=1, live_enabled=False))
+    assert "1 strategy is live but waiting: live trading isn't open yet, so it places no orders." in closed
+    assert not any("trading real money" in line for line in closed)
+    assert "2 strategies are live but waiting: live trading isn't open yet, so they place no orders." in \
+        server._autopilot_story(dict(d, live_running=2))
+    assert server._autopilot_story(d)[-1].endswith("and you turn on live autopilot. Live trading isn't open yet.")
+    assert server._autopilot_story(dict(d, live_enabled=True))[-1].endswith("and you turn on live autopilot.")
     why = "no open contract costs 85c to 95c (of 12; nearest is 3c outside)"
     waiting = [{"title": "SOL momentum", "why": why}]
     story = server._autopilot_story(dict(d, paper_waiting=waiting))
