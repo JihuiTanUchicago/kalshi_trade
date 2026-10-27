@@ -205,7 +205,7 @@ bellCases({name: 'Tau', frontend});
 communityCases({name: 'Tau', frontend});
 researchPollCases({name: 'Tau', frontend});
 runPageCases({name: 'Tau', frontend});
-moneyPollCases({name: 'Tau', frontend});
+moneyPollCases({name: 'Tau', frontend, stripe: () => ({stripe: STRIPE_STUB})});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Tau', frontend, detailStrategy});
 explorePageCases({name: 'Tau', frontend});

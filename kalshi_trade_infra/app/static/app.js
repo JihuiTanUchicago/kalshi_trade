@@ -4432,18 +4432,29 @@
   const LEDGER_HOW = 'Cash in and out of your paper account, newest first. A buy takes the contracts\u2019 price plus Kalshi\u2019s fee, as a real order would. When a market settles, each winning contract pays $1 and each losing one pays $0; a sale before then pays the price it sold at, less the fee. A trade\u2019s P&amp;L is what it brought back less everything it cost, fees included.';
   async function viewFunds() {
     const gen = S.gen;
-    shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl>', loading(300));
+    shell('/funds', boardTitle('Funds') + '<dl class="figures measure" id="ffigs" style="margin-top:14px"></dl><p class="stale-note" id="funds-stale" role="status"></p>', loading(300));
     root.querySelector('.wrap').classList.add('funds-page');
-    const load = async () => {
-      const d = await api('/api/funds');
+    // While the page is open its figures follow Kalshi's cash and the books (every 30s; the Kalshi and demo
+    // cash are each read at most once a minute on the server, as on the dashboard). A write re-reads it all.
+    // The poll (cfg) redraws the panels below only when a figure in them moved and nobody is using them:
+    // a field with focus or something typed, a press on its way or waiting for its confirm, or what an action
+    // just said. The perps panel keeps its own state, so the poll leaves it alone.
+    const FLASHES = ['#flash', '#kflash', '#dmflash', '#pflash', '#kdflash'];
+    const inUse = (el) => {
+      const a = document.activeElement;
+      return !!(a && a !== document.body && el.contains(a)) || [...el.querySelectorAll('input, textarea')].some((x) => x.value)
+        || !!el.querySelector('.busy, .armed') || FLASHES.some((sel) => { const x = el.querySelector(sel); return !!(x && x.innerHTML); });
+    };
+    const load = async (cfg) => {
+      const d = await api('/api/funds', undefined, cfg);
       if (gen !== S.gen) return;
       const k = d.kalshi;
       const kd = d.kalshi_dev || { connected: false };
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
-      root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
+      paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
-        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}practice money` });
-      root.querySelector('#main').innerHTML = `<div id="flash"></div><div class="funds">
+        fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}practice money` }));
+      const host = root.querySelector('#main'), main = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
           <h2>Kalshi account (live money)</h2>
@@ -4510,6 +4521,8 @@
           </tbody></table>
         </section>
         </div></div>`;
+      if (cfg && (painted.get(host) === main || S.perps || inUse(host))) return;
+      host.innerHTML = main; painted.set(host, main);
       if (S.perps) { S.perps.destroy(); S.perps = null; }
       const perpsHost = root.querySelector('#kalshi-perps-live');
       if (window.TAU_PERPS_LIVE && perpsHost) S.perps = window.TAU_PERPS_LIVE.mount(perpsHost, {api, proposalId: new URLSearchParams(location.search).get('perps_proposal')});
@@ -4579,6 +4592,7 @@
       return d;
     };
     await load();
+    poll(load, 30000, 'funds-stale');
   }
 
   // ---------- community ----------
@@ -6417,15 +6431,22 @@
   // A days figure as when something happens: "in about 2 days", "in under a day".
   const inDays = (days) => 'in ' + runwayLabel(days).toLowerCase();
   async function viewBilling() {
+    const gen = S.gen;
     shell('/billing', boardTitle('Billing', 'Credits pay for agent research and chat, billed per token for the model you pick. Paper and live trading themselves are free. The <a href="/research">research form</a> shows what a session usually costs before you start.') +
-      '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl><p class="hint bill-split" id="bsplit"></p>', loading(360));
+      '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl><p class="hint bill-split" id="bsplit"></p><p class="stale-note" id="bill-stale" role="status"></p>', loading(360));
     let stripe = null, card = null;
-    const load = async () => {
-      const d = await api('/api/billing?tz=' + new Date().getTimezoneOffset());  // the statement's days are yours
-      syncMeBilling(d);
-      // Below the research floor no new research starts, so the balance reads as a problem, not a gain.
-      const low = d.configured && d.min_run_balance != null && d.balance < d.min_run_balance;
-      root.querySelector('#bfigs').innerHTML =
+    // Below the research floor no new research starts, so the balance reads as a problem, not a gain.
+    const isLow = (d) => d.configured && d.min_run_balance != null && d.balance < d.min_run_balance;
+    // Out of credits (under the floor a research session needs): say what stopped and the next step.
+    const lowNote = (d) => {
+      const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
+      return !isLow(d) ? '' : `<div class="notice" role="status">${ICON.warn}<span>${d.balance <= 0 ? 'You’re out of credits' : `You have ${usd(d.balance)} in credits`}. New research needs at least ${usd(d.min_run_balance)} to start, so none is starting${apOn ? ' and autopilot is paused' : ''}. ${
+        !d.cards.length ? 'Add a card, then add credits.' : d.auto_reload && d.reload_failed ? 'Auto-reload couldn’t charge your card (see below). Update the card first, then add credits here: they go on the same card.' : d.auto_reload ? 'Auto-reload is on but hasn’t topped you up: add credits here, or check your card.' : 'Add credits here, or turn on auto-reload so it doesn’t stop again.'}${apOn ? ' Autopilot picks up again on its own.' : ''}</span></div>`;
+    };
+    // The figures, the week's split and the out-of-credits note: drawn by the page's read and again by its poll.
+    const paintFigs = (d) => {
+      const low = isLow(d);
+      paint(root.querySelector('#bfigs'),
         fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : (d.balance > 0 ? 1 : 0) }) +
         fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(' · ') }) +
         // How long it lasts means until research pauses (under min_run_balance; with payments off nothing
@@ -6438,9 +6459,17 @@
           : d.runway_days != null
           ? fig(d.configured ? 'Research pauses in' : 'Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}${d.configured && d.min_run_balance != null ? `, when credits fall under ${usd(d.min_run_balance)}` : ''}` })
           : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? fig('Credits last', 'Too soon to tell', { small: 'your first day of research sets the pace' })
-          : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' }));
+          : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' })));
       const split = spendSplit(d.spent_7d_by);
-      root.querySelector('#bsplit').innerHTML = split ? `Last 7 days: ${split}.` : '';
+      paint(root.querySelector('#bsplit'), split ? `Last 7 days: ${split}.` : '');
+      const note = root.querySelector('#blow'); if (note) paint(note, lowNote(d));
+    };
+    let shown = null;  // the read the page shows; the poll keeps its figures current
+    const load = async () => {
+      const d = await api('/api/billing?tz=' + new Date().getTimezoneOffset());  // the statement's days are yours
+      syncMeBilling(d);
+      shown = d;
+      paintFigs(d);
       const feeNote = `Credits plus a ${d.topup_fee_pct}% purchase fee.`;
       const payCard = d.cards.find((c) => c.id === d.default_pm) || d.cards[0];
       const payName = payCard ? `your ${esc((payCard.brand || 'card').toUpperCase())} •••• ${esc(payCard.last4 || '')}` : 'your card';
@@ -6449,10 +6478,6 @@
         : d.min_run_balance != null
           ? `<b>Off.</b> Below ${usd(d.min_run_balance)} no new research starts and autopilot pauses; a session already running stops at $0. Add credits and it all picks up again.`
           : '<b>Off.</b> When your credits run low, new research sessions won’t start until you add more.';
-      // Out of credits (under the floor a research session needs): say what stopped and the next step.
-      const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
-      const lowNote = !low ? '' : `<div class="notice" role="status">${ICON.warn}<span>${d.balance <= 0 ? 'You’re out of credits' : `You have ${usd(d.balance)} in credits`}. New research needs at least ${usd(d.min_run_balance)} to start, so none is starting${apOn ? ' and autopilot is paused' : ''}. ${
-        !d.cards.length ? 'Add a card, then add credits.' : d.auto_reload && d.reload_failed ? 'Auto-reload couldn’t charge your card (see below). Update the card first, then add credits here: they go on the same card.' : d.auto_reload ? 'Auto-reload is on but hasn’t topped you up: add credits here, or check your card.' : 'Add credits here, or turn on auto-reload so it doesn’t stop again.'}${apOn ? ' Autopilot picks up again on its own.' : ''}</span></div>`;
       const cardLines = d.cards.length
         ? `<table class="table stack t-dep"><thead><tr><th>Card</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>${d.cards.map((c) => `<tr>
             <td class="name" data-lab="Card">${esc((c.brand || 'card').toUpperCase())} •••• ${esc(c.last4 || '')}</td>
@@ -6462,8 +6487,8 @@
         : '<p class="hint">No card on file. Add one to buy credits or turn on auto-reload.</p>';
       const main = !d.configured
         ? `<div class="notice">${ICON.warn}<span>Payments aren’t enabled on this server yet. You can still use your free credits.</span></div>
-           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d)}</section>`
-        : `${lowNote}<div class="detail bill-detail">
+           <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div><div id="bledger">${ledgerTable(d)}</div></section>`
+        : `<div id="blow">${lowNote(d)}</div><div class="detail bill-detail">
             <div>
               <section class="panel"><h3>Payment method</h3><div id="cards">${cardLines}</div>
                 <div id="card-add" style="margin-top:14px">
@@ -6482,7 +6507,7 @@
                   <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
                 </div>
               </section>
-              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div>${ledgerTable(d)}</section>
+              <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div><div id="bledger">${ledgerTable(d)}</div></section>
             </div>
             <aside aria-label="Add credits">
               <section class="panel"><h3>Add credits</h3>
@@ -6581,7 +6606,24 @@
         });
       } catch (err) { flash('#card-flash', cardFormFail(err).replace('then try again', 'then reload the page'), 'bad'); }
     };
+    // Open, the page's figures follow the balance as research and chat spend it and auto-reload adds to it:
+    // every 30s it reads the figures alone, from the database, never Stripe's card list (the page's own read
+    // waits on Stripe for a paying account). When the balance moved, the statement comes along too, so its
+    // sum still ends at the balance shown. The card form, top-up and auto-reload controls are left as they are.
+    const refresh = async (cfg) => {
+      const was = shown;
+      if (!was) return;
+      let f = await api('/api/billing/figures', undefined, cfg);
+      if (f.balance !== was.balance) f = await api('/api/billing/figures?statement=1&tz=' + new Date().getTimezoneOffset(), undefined, cfg);
+      if (gen !== S.gen || shown !== was) return;  // left, or a write's re-read drew the page meanwhile
+      Object.assign(was, f);
+      syncMeBilling(was);
+      paintFigs(was);
+      const ledger = root.querySelector('#bledger');
+      if (f.ledger && ledger) paint(ledger, ledgerTable(was));
+    };
     await load();
+    poll(refresh, 30000, 'bill-stale');
   }
   // What a ledger line is, under its name: usage is one model call (the memo names the model), and credits
   // bought show the credits, while the card paid those plus the purchase fee. Amounts are the server's.

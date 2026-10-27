@@ -233,7 +233,7 @@ communityCases({name: 'Meridian', frontend});
 settingsCases({name: 'Meridian', frontend, current: 'meridian', storageFor: m => m, cardWallOpts: () => ({stripeLoader: async () => STRIPE_STUB})});
 researchPollCases({name: 'Meridian', frontend});
 runPageCases({name: 'Meridian', frontend});
-moneyPollCases({name: 'Meridian', frontend});
+moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async () => STRIPE_STUB})});
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
 explorePageCases({name: 'Meridian', frontend});

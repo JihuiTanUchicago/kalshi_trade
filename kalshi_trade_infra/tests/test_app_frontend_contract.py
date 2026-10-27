@@ -118,6 +118,37 @@ def test_billing_runway_is_absent_without_recent_usage_or_balance(monkeypatch):
     assert server.billing_state(context())['runway_days'] is None
 
 
+def test_billing_figures_poll_reads_the_page_figures_without_stripe_or_the_statement(monkeypatch):
+    # The open Billing page polls this. The full read asks Stripe for the saved cards of a paying account
+    # (up to its timeout) and reads the 300-line statement; the poll does neither, and its figures are
+    # the full read's, to the cent.
+    customer = {'stripe_customer_id': 'cus_fixture', 'default_pm_id': 'pm_fixture', 'auto_reload': 1,
+                'reload_amount': 25, 'reload_threshold': 5}
+    monkeypatch.setattr(server.billing, 'configured', lambda: True)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: customer)
+    monkeypatch.setattr(server.repo, 'credit_totals', lambda *a: _totals(topup=50.0, bonus=20.0, usage=-3.456789))
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a, **k: 1.5)
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE, research=1.5))
+    asked = []
+    monkeypatch.setattr(server.billing, 'list_cards', lambda cid: asked.append(cid) or [{'id': 'pm_fixture', 'last4': '4242'}])
+    monkeypatch.setattr(server.repo, 'credit_statement', lambda *a: asked.append('statement') or [])
+    full = server.billing_state(context())
+    assert asked == ['cus_fixture', 'statement'] and full['cards'] and 'ledger' in full
+    asked.clear()
+    figures = server.billing_figures(context())
+    assert asked == []
+    assert 'cards' not in figures and 'ledger' not in figures and 'math' not in figures
+    assert figures == {k: v for k, v in full.items() if k not in ('cards', 'ledger', 'ledger_cut', 'math')}
+    assert figures['balance'] == pytest.approx(66.543211) and figures['default_pm'] == 'pm_fixture'
+    # The balance moved since the page drew it: the statement comes with the figures, still without Stripe.
+    moved = server.billing_figures(server.Ctx(SimpleNamespace(cursor=lambda: object()), context().user, (),
+                                              {'statement': '1', 'tz': '240'}, {}, SimpleNamespace()))
+    assert asked == ['statement'] and 'cards' not in moved
+    assert moved == {k: v for k, v in full.items() if k != 'cards'}
+    assert [(m, rx.pattern, signed_in) for m, rx, fn, signed_in in server.ROUTES if fn is server.billing_figures] == [
+        ('GET', '^/api/billing/figures$', True)]
+
+
 def test_admin_read_endpoint_keeps_server_side_authorization():
     with pytest.raises(server.ApiError) as error:
         server.admin_overview(context())

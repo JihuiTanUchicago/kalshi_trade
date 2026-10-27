@@ -151,23 +151,46 @@ def asks_stripe(ctx: Ctx) -> bool:
 
 
 def billing_state(ctx: Ctx):
-    cur = ctx.cur
-    cust = repo.get_stripe_customer(cur, ctx.uid)
-    cards, default_pm, auto_reload, reload_failed = [], None, True, None
-    reload_amount, reload_threshold = float(billing.AUTORELOAD_AMOUNT), float(billing.AUTORELOAD_THRESHOLD)
+    """Billing's page: billing_figures, plus the saved cards (asked of Stripe for an account with a
+    Stripe customer) and the statement."""
+    since = repo.now_utc() - timedelta(days=STATEMENT_DAYS)
+    state, cust, totals, balance = _figures(ctx, since)
+    cards: List[Dict] = []
     if cust and billing.configured():
-        reload_failed = _reload_failed(cur, ctx.uid)
         try:
             cards = billing.list_cards(cust["stripe_customer_id"])
         except billing.StripeError:
             cards = []
+    return dict(state, cards=cards, **_statement(ctx.cur, ctx.uid, since, _tz_minutes(ctx), totals, balance))
+
+
+def billing_figures(ctx: Ctx):
+    """GET /api/billing/figures: Billing's figures (the balance, the spend and its pace, how long credits
+    last, the next auto-reload and the saved auto-reload) for the open page's poll. The database only:
+    never the Stripe card list, which waits on Stripe. With ?statement=1 (the page saw the balance move)
+    the statement comes too, so the sum under it still ends at the balance the figures show."""
+    since = repo.now_utc() - timedelta(days=STATEMENT_DAYS)
+    state, _, totals, balance = _figures(ctx, since)
+    if ctx.query.get("statement") == "1":
+        state.update(_statement(ctx.cur, ctx.uid, since, _tz_minutes(ctx), totals, balance))
+    return state
+
+
+def _figures(ctx: Ctx, since):
+    """(the page's figures, the Stripe customer row, and credit_totals since `since` and the balance they
+    sum to, which the statement explains)."""
+    cur = ctx.cur
+    cust = repo.get_stripe_customer(cur, ctx.uid)
+    default_pm, auto_reload, reload_failed = None, True, None
+    reload_amount, reload_threshold = float(billing.AUTORELOAD_AMOUNT), float(billing.AUTORELOAD_THRESHOLD)
+    if cust and billing.configured():
+        reload_failed = _reload_failed(cur, ctx.uid)
         default_pm = cust.get("default_pm_id")
         auto_reload = bool(cust.get("auto_reload"))
         if cust.get("reload_amount") is not None:
             reload_amount = float(cust["reload_amount"])
         if cust.get("reload_threshold") is not None:
             reload_threshold = float(cust["reload_threshold"])
-    since = repo.now_utc() - timedelta(days=STATEMENT_DAYS)
     # One grouped read gives the balance, the all-time spend and how the balance came to be (the
     # kinds add up to it, from the same snapshot, so the page's sum always closes).
     totals = repo.credit_totals(cur, ctx.uid, since)
@@ -200,7 +223,7 @@ def billing_state(ctx: Ctx):
         "min_reload_amount": float(billing.AUTORELOAD_AMOUNT),
         "min_reload_threshold": float(billing.AUTORELOAD_THRESHOLD),
         "min_topup": float(billing.MIN_TOPUP), "max_topup": float(billing.MAX_TOPUP),
-        "cards": cards, "default_pm": default_pm, "auto_reload": auto_reload,
+        "default_pm": default_pm, "auto_reload": auto_reload,
         # The last auto-reload failed (what it tried to add and why, in the user's words): Billing
         # shows it by the auto-reload switch with a way to update the card. None when it didn't.
         "reload_failed": reload_failed,
@@ -210,8 +233,7 @@ def billing_state(ctx: Ctx):
         "spent_7d_by": {k: credit_usd(v) for k, v in
                         repo.usage_by_source(cur, ctx.uid, repo.now_utc() - timedelta(days=7)).items()},
         "min_run_balance": float(billing.MIN_RUN_BALANCE),
-        **_statement(cur, ctx.uid, since, _tz_minutes(ctx), totals, balance),
-    }
+    }, cust, totals, balance
 
 
 STATEMENT_DAYS = 30     # Billing lists the last 30 days; the receipt has every row
