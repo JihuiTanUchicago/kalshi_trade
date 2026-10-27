@@ -256,8 +256,9 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
       const html = f.trackRecordPanel(m, key, th);
       assert.ok(html.includes(`${book} net P&amp;L`), key);
       // Paper says what its fills include (customer_text.PAPER_NET); live and demo are real fills.
-      assert.ok(html.includes(key === 'paper' ? 'after Kalshi fees and the spread ($1.26 in fees)<button' : `after $1.26 in fees · since ${day}`), key);
-      assert.ok(html.includes(`</button> · since ${day}`) === (key === 'paper'), key);
+      // Walk 2026-10-27 at 390px: "· since Oct 25, 2026" began a line; the "·" now has a no-break space before it.
+      assert.ok(html.includes(key === 'paper' ? 'after Kalshi fees and the spread ($1.26 in fees)<button' : `after $1.26 in fees · since ${day}`), key);
+      assert.ok(html.includes(`</button> · since ${day}`) === (key === 'paper'), key);
     }
     assert.doesNotMatch(f.trackRecordPanel({...m, first_trade_at: null}, 'paper', th), /since/);  // no date, no window claimed
   });
