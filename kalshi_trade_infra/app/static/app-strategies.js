@@ -581,7 +581,9 @@ window.TauPage('strategies', (T) => {
     const figsFor = (r) => (held && !r.out_of_sample ? heldFig(held, 'Unseen-data P&L') : fig('Unseen-data P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
       fig('In-sample P&L', r.in_sample ? usd(r.in_sample.pnl, true) : '—', { v: r.in_sample && r.in_sample.pnl, small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: [r.out_of_sample && overDays(r.out_of_sample.days) ? 'Unseen data' + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(' ·\u00a0') }) +
-      fig('Hypotheses tested', s.hypotheses_tried ? `1 of ${s.hypotheses_tried}` : '—', { small: s.hypotheses_tried ? `The agent tested ${num(s.hypotheses_tried)} distinct ideas this run${passedAll ? '; this is the one that passed' : ''}. More tries → higher chance one passes by luck (multiple testing).` : 'How many ideas the agent tried to find this one.' });
+      // "Ideas tested", the session's count, as Meridian and the strategy lists say it: "Hypotheses tested 1 of 18"
+      // said neither word the other pages use nor what the 1 was.
+      fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
     // Its title is the heading: a customer never sees its internal id (the zero-padded "No. 00002" it led with).
     root.querySelector('.board-title').outerHTML = boardTitle(s.title,

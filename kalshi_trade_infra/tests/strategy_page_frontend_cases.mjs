@@ -280,6 +280,19 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(main(g), /<p class="hint ap-paper" data-ap-next hidden>/);
   });
 
+  test(`${name}: the ideas-tested figure says "Ideas tested" over the session's count, in the words the lists use`, async () => {
+    // Walk 2026-10-27: Tau's figure read "Hypotheses tested 1 of 18" while Meridian and both strategy lists
+    // said "Ideas tested" over 18; Meridian's abstract still said "hypotheses tested this run".
+    const f = await open({status: 'passed', hypotheses_tried: 18});
+    const figs = f.root.querySelector('#figs').textContent;
+    assert.match(figs, /Ideas tested\s*18\s*in the session that found it/);
+    assert.doesNotMatch(figs, /1 of 18/);
+    assert.doesNotMatch(main(f) + figs, /hypotheses tested/i);
+    assert.match(main(f), /18 ideas tested this run/);
+    const none = await open({status: 'passed', hypotheses_tried: null});
+    assert.match(none.root.querySelector('#figs').textContent, /Ideas tested\s*—\s*Count unavailable\./);
+  });
+
   test(`${name}: Road to live that didn't load says why and offers Try again, which fills it`, async () => {
     const road = {ready: false, deployment_candidate: true, live_autopilot: {ok: false},
       paper: {trades: 12, trades_needed: 30, net_pnl: 3.4, events: 12, events_needed: 20, span_hours: 50, span_needed_hours: 48,
