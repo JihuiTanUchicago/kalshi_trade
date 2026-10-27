@@ -3270,6 +3270,37 @@ test('the since strip says what demo needs in a sentence, and a book with nothin
   assert.match(old, /Demo isn.+t trading: your Kalshi demo key isn.+t connected\./); assert.doesNotMatch(old, /trade: \./);
 });
 
+test('the since strip says a demo book paused for its demo key once, beside the link to add it', async () => {
+  const since = {at: '2026-10-25T08:00:00+00:00', first: false, books: {demo: {pnl: 0, trades: 0}},
+    passed: {n: 0, items: []}, autopilot: {}, runs: {}};
+  const dep = (id, title, mode, why) => ({id, strategy_id: id, title, market: 'btc15m', mode, status: 'paused', status_reason: why,
+    stake: 5, max_positions: 2, realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, curve: [], created_at: '2026-10-25T08:00:00Z'});
+  const KEY = 'Add your Kalshi demo (sandbox) key on the Funds page to run this on demo.';
+  const LIVE = 'Add your live Kalshi key on the Funds page to run this on live money.';
+  const strip = async (deployments, health) => {
+    const base = emptyDashboard();
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...base, deployments, since, demo: {...base.demo, health}});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    return f.root.querySelector('#dash-since').innerHTML;
+  };
+  const health = {code: 'demo_key', need: 'your Kalshi demo key', line: "Demo isn't trading: your Kalshi demo key isn't connected.",
+    action: {label: 'Add it on the Funds page', href: '/funds#connect-kalshi'}};
+  const html = await strip([dep(4, 'Fade <tails>', 'demo', KEY), dep(5, 'Live one', 'live', LIVE)], health);
+  // The demo key is said once, on the demo line with its link; the paused row only names the strategy.
+  assert.match(html, />Fade &lt;tails&gt;<\/a> is paused<br>/);
+  assert.equal((html.match(/demo \(sandbox\) key|your Kalshi demo key/g) || []).length, 1, html);
+  assert.match(html, /Demo can’t trade: it needs your Kalshi demo key\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a>/);
+  // Another reason that sends someone to Funds links "the Funds page", as its Deploy row does.
+  assert.match(html, />Live one<\/a> is paused<span class="since-sub">: Add your live Kalshi key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on live money<\/span>/);
+  // With no demo-key line to say it (an older server), the row keeps its reason, linked.
+  const alone = await strip([dep(4, 'Fade', 'demo', KEY)], null);
+  assert.match(alone, />Fade<\/a> is paused<span class="since-sub">: Add your Kalshi demo \(sandbox\) key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on demo<\/span>/);
+});
+
 test('past its paper-trade target the autopilot card says how many and how many were needed, never "67 of 30"', async () => {
   for (const [trades, said] of [[4, '4 of 30 realistic paper trades'], [67, '67 realistic paper trades (30 needed)'], [30, '30 realistic paper trades (30 needed)']]) {
     const f = frontend({fetchImpl: path => {
@@ -3543,6 +3574,23 @@ test('Tau: a hot-markets row names its market the app’s way, never by the raw 
   // A series no market here covers loses the chip rather than showing the ticker.
   assert.doesNotMatch(row('KXWEIRD'), /mk quiet|>KXWEIRD</);
   for (const s of ['KXBTC15M', 'KXETHD']) assert.doesNotMatch(row(s), new RegExp('>' + s + '<'));
+});
+
+test('Tau: a hot-markets row keeps its chip and volume on one line, the chip giving way', () => {
+  // Walk 2026-10-27 at 1280px: "BTC range at midnight ET" beside "1.2M vol · 24h" wrapped the volume to two
+  // lines and the row grew 15px. The volume never wraps or shrinks; the chip may shrink, cut with an ellipsis.
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const rule = (sel) => (css.match(new RegExp('\\n' + sel.replace(/[.$]/g, '\\$&') + ' \\{([^}]*)\\}')) || [])[1] || '';
+  assert.match(rule('.hot-foot'), /display: flex;/);
+  assert.doesNotMatch(rule('.hot-foot'), /flex-wrap: wrap/);
+  assert.match(rule('.hot-vol'), /flex: none;/); assert.match(rule('.hot-vol'), /white-space: nowrap;/);
+  const chip = rule('.hot-foot .mk');
+  for (const want of [/min-width: 0;/, /overflow: hidden;/, /text-overflow: ellipsis;/]) assert.match(chip, want);
+  // Still one row's markup: the chip, then the volume, then the Kalshi icon.
+  const f = frontend();
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
+  const html = f.hotRowHtml({t: 'KXBTC-26OCT2700-B114750', s: 'KXBTC', ti: 'Bitcoin price range?', su: '$114,500 to $114,999.99', bid: .11, ask: .13, v24: 1234567, h: [.15, .12]});
+  assert.match(html, /<span class="hot-foot"><span class="mk quiet">BTC range at midnight ET<\/span><span class="hot-vol">1\.2M vol · 24h<\/span><svg/);
 });
 
 test('Tau: a hot-markets row for an hourly Bitcoin contract carries its own hour, never the 5pm chip', () => {

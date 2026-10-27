@@ -3208,8 +3208,16 @@
     const auto = (did.length ? `It ${did.join(', ')}.` : `<span data-since-ap>${sinceApWord(apOn)}</span>`)
       + (guarded ? ` ${plural(guarded, 'strategy was', 'strategies were')} paused automatically to stop a loss.` : '');
     const needs = (ms.live_ready || []).slice(0, 3).map((sid) => `${named(sid)} is ready for live trading. Going live is your call.`);
-    needs.push(...d.deployments.filter((x) => x.status === 'paused').slice(0, 3)
-      .map((x) => `<a href="${pausedHref}">${esc(x.title)}</a> is paused${x.status_why || x.status_reason ? `<span class="since-sub">: ${esc(shortReason(x.status_why || x.status_reason))}</span>` : ''}`));
+    // A demo book paused for its missing demo key says the reason once: the demo line below says what it needs,
+    // with "Add it on the Funds page" as its link. The row said the engine's "Add your Kalshi demo (sandbox) key on
+    // the Funds page to run this on demo" and the next line said it again. Any other reason that sends someone to
+    // Funds links "the Funds page" as the Deploy row does (fundsLinked).
+    const keyNeed = !!(d.demo && d.demo.health && d.demo.health.code === 'demo_key');
+    needs.push(...d.deployments.filter((x) => x.status === 'paused').slice(0, 3).map((x) => {
+      const why = x.status_why || x.status_reason;
+      const said = why && !(keyNeed && x.mode === 'demo' && /demo \(sandbox\) key/.test(why));
+      return `<a href="${pausedHref}">${esc(x.title)}</a> is paused${said ? `<span class="since-sub">: ${fundsLinked(esc(shortReason(why)))}</span>` : ''}`;
+    }));
     const pausedN = d.deployments.filter((x) => x.status === 'paused').length;
     if (pausedN > 3) needs.push(`<a href="${pausedHref}">${num(pausedN - 3)} more paused</a>`);
     if (d.demo && d.demo.health) needs.push(d.demo.health.need ? `Demo can’t trade: it needs ${esc(d.demo.health.need)}.${actionLink(d.demo.health)}` : demoHealthLine(d.demo.health));

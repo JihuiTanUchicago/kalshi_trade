@@ -456,8 +456,9 @@ window.TauPage('research', (T) => {
     const why = RUN_STOP[r.stop_reason] || '', late = runLate(r), { ok, fell } = runPassed(r);
     // Its own item in the state's wrapping row: a bare ", 1 not cleared" became a line of its own that
     // began with the comma, and "0 of 2 passed, 1 not cleared" read as if nothing had passed. It says the
-    // uncleared ones passed too, as the headline's "2 more passed but weren't cleared to trade" does.
-    const unclear = fell ? `<span class="run-fell">\u00b7\u00a0${num(fell)} more passed but not cleared</span>` : '';
+    // uncleared ones passed too, as the headline's "2 more passed but weren't cleared to trade" does, in
+    // words short enough for one line of a card beside the hot rail ("1 more passed but not cleared" took two).
+    const unclear = fell ? `<span class="run-fell">\u00b7\u00a0+${num(fell)} passed, not cleared</span>` : '';
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
       : r.status === 'succeeded' ? `${why ? why + ' \u00b7\u00a0' : ''}<span class="${ok ? 'gain' : ''}">${ok} of ${r.hypotheses_tried} passed</span>${unclear}`

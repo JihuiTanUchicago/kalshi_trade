@@ -94,7 +94,10 @@ def refusal_reason(refusal: Optional[Dict]) -> str:
     if code == "insufficient_balance":
         return "the Kalshi demo account doesn't have enough balance; add demo funds on Kalshi's demo site"
     if status in (401, 403):
-        return "it didn't accept the demo key; check the Kalshi demo key on the Funds page"
+        # Inside "Kalshi refused its 2 demo orders (...)". It read "it didn't accept the demo key; check the Kalshi
+        # demo key on the Funds page": "it" for Kalshi and the key named twice. "the Funds page" is what the
+        # app's pages link to Connect Kalshi (fundsLinked) where this shows as HTML.
+        return "your Kalshi demo key wasn't accepted; check it on the Funds page"
     # The exchange's own words when they are a plain sentence; a body that is a proxy's error page or
     # names a host or path is not for the customer (services.customer_text).
     said = customer_text.clean(r.get("message") or "", "") or customer_text.clean(code, "") \

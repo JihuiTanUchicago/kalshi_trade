@@ -4379,6 +4379,37 @@ test('the since strip says what demo needs in a sentence, and a book with nothin
   assert.match(old, /Demo isn.+t trading: your Kalshi demo key isn.+t connected\./); assert.doesNotMatch(old, /trade: \./);
 });
 
+test('the since strip says a demo book paused for its demo key once, beside the link to add it', async () => {
+  const since = {at: '2026-10-25T08:00:00+00:00', first: false, books: {demo: {pnl: 0, trades: 0}},
+    passed: {n: 0, items: []}, autopilot: {}, runs: {}};
+  const dep = (id, title, mode, why) => ({id, strategy_id: id, title, market: 'btc15m', mode, status: 'paused', status_reason: why,
+    stake: 5, max_positions: 2, realized_pnl: 0, unrealized_pnl: null, closed_trades: 0, open_positions: 0, curve: [], created_at: '2026-10-25T08:00:00Z'});
+  const KEY = 'Add your Kalshi demo (sandbox) key on the Funds page to run this on demo.';
+  const LIVE = 'Add your live Kalshi key on the Funds page to run this on live money.';
+  const strip = async (deployments, health) => {
+    const base = dashboardData();
+    const f = frontend({fetchImpl: path => {
+      if (path.startsWith('/api/dashboard')) return response({...base, deployments, since, demo: {...base.demo, health}});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    await f.viewDashboard(); await flush();
+    return f.root.querySelector('#dash-since').innerHTML;
+  };
+  const health = {code: 'demo_key', need: 'your Kalshi demo key', line: "Demo isn't trading: your Kalshi demo key isn't connected.",
+    action: {label: 'Add it on the Funds page', href: '/funds#connect-kalshi'}};
+  const html = await strip([dep(4, 'Fade <tails>', 'demo', KEY), dep(5, 'Live one', 'live', LIVE)], health);
+  // The demo key is said once, on the demo line with its link; the paused row only names the strategy.
+  assert.match(html, />Fade &lt;tails&gt;<\/a> is paused<br>/);
+  assert.equal((html.match(/demo \(sandbox\) key|your Kalshi demo key/g) || []).length, 1, html);
+  assert.match(html, /Demo can’t trade: it needs your Kalshi demo key\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a>/);
+  // Another reason that sends someone to Funds links "the Funds page", as its Deploy row does.
+  assert.match(html, />Live one<\/a> is paused<span class="since-sub">: Add your live Kalshi key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on live money<\/span>/);
+  // With no demo-key line to say it (an older server), the row keeps its reason, linked.
+  const alone = await strip([dep(4, 'Fade', 'demo', KEY)], null);
+  assert.match(alone, />Fade<\/a> is paused<span class="since-sub">: Add your Kalshi demo \(sandbox\) key on <a href="\/funds#connect-kalshi">the Funds page<\/a> to run this on demo<\/span>/);
+});
+
 test('past its paper-trade target the autopilot card says how many and how many were needed, never "67 of 30"', async () => {
   for (const [trades, said] of [[4, '4 of 30 realistic paper trades'], [67, '67 realistic paper trades (30 needed)'], [30, '30 realistic paper trades (30 needed)']]) {
     const f = frontend({fetchImpl: path => {
@@ -6042,6 +6073,30 @@ moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
 }});
+
+test('the strategies sort shows "P&L on data it never saw" whole, and the filter row still fits one line at 1366', () => {
+  // Measured in DM Sans 14px: the label is ~160px of text; at 175px the select cut it. The market filter and the
+  // search give up the 25px, so chips, market, sort and search sum to what they did.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const px = (re) => { const m = css.match(re); return m ? +m[1] : null; };
+  const sort = px(/\n\.stratfilters \.strat-sort \{ flex-basis: (\d+)px; max-width: \1px; \}/);
+  const market = px(/\n\.stratfilters #strat-market \{ flex-basis: (\d+)px; max-width: \1px; \}/);
+  const search = px(/\n\.stratfilters \.searchwrap \{ flex: 0 1 (\d+)px; margin-left: auto; \}/);
+  assert.ok(sort >= 200, String(sort));
+  assert.ok(sort + market + search <= 175 + 175 + 220, `${sort} + ${market} + ${search}`);
+  assert.ok(search >= 205, 'its placeholder, "Search name or thesis…", stays whole');
+});
+
+test('a research row’s Outcome column holds "+12 passed, not cleared" on one line', () => {
+  // At 112px the uncleared line took two at 1280px. Measured in DM Sans 12px: "+12 passed, not cleared" is ~130px.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const grid = css.match(/\n\.research-history \.run-card, \.run-columns \{[^}]*grid-template-columns: minmax\(0, 1fr\) 120px 88px (\d+)px;/);
+  assert.ok(grid && +grid[1] >= 136, grid && grid[1]);
+  const f = frontend();
+  const row = f.runRow({id: 1, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Idea',
+    hypotheses_tried: 40, strategies_passed: 13, not_cleared: 12, spent_usd: 1, error: null, created_at: '2026-10-25T08:00:00Z', stop_reason: 'limit'});
+  assert.match(row, /<span class="run-denominator run-fell">\+12 passed, not cleared<\/span>/);
+});
 
 test('the hot rail wraps a market’s name instead of cutting its close hour, and a Deploy row’s link reads as a link', () => {
   // The rail's name column is ~80px: "BTC above $X at 5pm ET" read "BTC above…", the hour lost.
