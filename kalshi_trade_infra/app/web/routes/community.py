@@ -28,10 +28,17 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
         oos = (strat.get("result") or {}).get("out_of_sample") or {}
         # A later check its status leaves out (Missed final test, Held back) rides as `verdict`, the stamp its
         # page and list show: the card said Passed for a strategy its own page didn't.
-        later = _later_verdicts(cur, user_id, [strat]).get(strat["id"])
+        # A pass with no gatekeeper record (the old loose backtest gate) gets `no_gatekeeper_record`, from the same
+        # read: its out_of_sample is the later-period slice that picked it, not held out, as its page and the
+        # Strategies list say (#590); the card said "on unseen data". The seeded example is never judged.
+        recorded: set = set()
+        later = _later_verdicts(cur, user_id, [strat], recorded=recorded).get(strat["id"])
+        unrecorded = (strat["status"] == "passed" and strat.get("direction") != repo.DEMO_DIRECTION
+                      and strat["id"] not in recorded)
         # The backtest's held-out window: `days` is its span, so the feed can say over what.
         return {"kind": "strategy", "id": strat["id"], "title": strat["title"], "market": strat["market"],
-                "status": strat["status"], **({"verdict": later[0]} if later else {}), "pnl": oos.get("pnl"),
+                "status": strat["status"], **({"verdict": later[0]} if later else {}),
+                **({"no_gatekeeper_record": True} if unrecorded else {}), "pnl": oos.get("pnl"),
                 "trades": oos.get("trades"), "win_rate": oos.get("win_rate"), "days": oos.get("days")}
     if kind == "deployment":
         dep = repo.get_deployment(cur, user_id, ref_id)
@@ -54,7 +61,7 @@ def _post_snapshot(cur, user_id: int, kind: str, ref_id: int) -> Optional[Dict]:
 # What a shared card shows every reader, by kind: the figures the feed prints, never a spec, rules, the
 # run behind it, or a credit balance. A stored snapshot holds no more today; this keeps it so.
 SNAPSHOT_FIELDS = {
-    "strategy": ("kind", "title", "market", "status", "verdict", "pnl", "trades", "win_rate", "days"),
+    "strategy": ("kind", "title", "market", "status", "verdict", "no_gatekeeper_record", "pnl", "trades", "win_rate", "days"),
     "deployment": ("kind", "title", "market", "mode", "realized_pnl", "closed_trades", "since"),
     "pnl": ("kind", "paper_pnl", "live_pnl", "paper_trades", "live_trades"),
 }
