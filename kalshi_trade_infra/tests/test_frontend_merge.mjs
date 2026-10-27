@@ -1100,7 +1100,7 @@ test('Deploy realized says it counts only the strategies listed, never summing l
   const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
     realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
     backtest: {out_of_sample: null}});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real</],
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
     [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money ·\u00a0\+\$2\.00 on paper from the deployments listed, counted apart/]]) {
     const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions: []}) : response({})});
     await f.viewDeploy(); await flush(); await flush();
@@ -1974,7 +1974,7 @@ test('the autopilot card and panel show the last 7 days with real credits and pa
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$7\.26 <small>real money<\/small><\/dd>/);
   assert.match(card, /<dt>Ideas<\/dt><dd>1,234 tested ·\u00a02 passed<\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>1 strategy <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money ·\u00a04 closed trades<\/small><\/dd>/);
+  assert.match(card, /<dt>Autopilot's paper P&amp;L<\/dt><dd><span class="neg">−\$3\.46<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a04 closed trades<\/small><\/dd>/);
   assert.match(card, /The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here/);
   assert.doesNotMatch(card, /\$3\.80|\$10\.72/);  // never netted or summed
   assert.doesNotMatch(f.root.querySelector('#dash-ap').innerHTML, /Ideas this week/);  // the scorecard says it
@@ -5022,10 +5022,10 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
 test('a Deploy row with no stake says so instead of "$ a trade, up to  open"', async () => {
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Stake only', stake: 5}), nullStakeDep({id: 4, title: 'Both', stake: 5, max_positions: 3})]);
-  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not set<\/div>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not set, up to 3 open<\/div>/);
-  assert.match(html, /Stake only<\/a>\s*<div class="sub-fig">\$5 a trade<\/div>/);
-  assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open<\/div>/);
+  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not set · P&amp;L after Kalshi fees and the spread<\/div>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not set, up to 3 open · P&amp;L after Kalshi fees and the spread<\/div>/);
+  assert.match(html, /Stake only<\/a>\s*<div class="sub-fig">\$5 a trade · P&amp;L after Kalshi fees and the spread<\/div>/);
+  assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open · P&amp;L after Kalshi fees and the spread<\/div>/);
   assert.doesNotMatch(html, /\$ a trade|up to\s+open|null|NaN/);
 });
 

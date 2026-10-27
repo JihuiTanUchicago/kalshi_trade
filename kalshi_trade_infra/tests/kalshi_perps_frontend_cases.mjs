@@ -95,7 +95,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     await f.viewStrategy(42); await flush();
     const html = f.root.querySelector('#main').innerHTML;
     assert.match(html, /Since deploying/);
-    assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades ·\u00a02 open/);
+    assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades, after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button> ·\u00a02 open/);
     assert.match(html, /Demo<\/span> No closed trades yet/);
     assert.ok(html.indexOf('>Demo<') < html.indexOf('>Paper<'), 'demo before paper');
     // Unseen-data backtest: +$12 over 6 trades at a $5 stake = $2 a trade, so 7 paper trades -> +$14.
@@ -255,7 +255,9 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     for (const [key, book] of [['paper', 'Paper'], ['demo', 'Demo'], ['live', 'Live']]) {
       const html = f.trackRecordPanel(m, key, th);
       assert.ok(html.includes(`${book} net P&amp;L`), key);
-      assert.ok(html.includes(`after $1.26 in fees · since ${day}`), key);
+      // Paper says what its fills include (customer_text.PAPER_NET); live and demo are real fills.
+      assert.ok(html.includes(key === 'paper' ? 'after Kalshi fees and the spread ($1.26 in fees)<button' : `after $1.26 in fees · since ${day}`), key);
+      assert.ok(html.includes(`</button> · since ${day}`) === (key === 'paper'), key);
     }
     assert.doesNotMatch(f.trackRecordPanel({...m, first_trade_at: null}, 'paper', th), /since/);  // no date, no window claimed
   });
