@@ -1,5 +1,6 @@
 """Web server speed and observability: keep-alive, gzip, request timing, and /internal/perf."""
 import gzip
+import hashlib
 import http.client
 import json
 import re
@@ -15,7 +16,13 @@ import pytest
 from app import server
 from app.web import caches
 from app.web.routes import explore as explore_routes
-from app.web import webperf
+from app.web import static_strip, webperf
+
+
+def _as_served(name):
+    """A static file as the server sends it: the bundles and stylesheets without their comments (static_strip)."""
+    body = (server.STATIC_DIR / name).read_bytes()
+    return static_strip.served(name, body, hashlib.sha256(body).hexdigest()[:10])
 
 
 @pytest.fixture
@@ -90,7 +97,7 @@ def test_static_bundle_is_gzipped_when_accepted_and_identical_when_unzipped(web)
     raw = r.read()
     assert r.status == 200 and r.getheader("Content-Encoding") == "gzip"
     assert r.getheader("Vary") == "Accept-Encoding"
-    original = (server.STATIC_DIR / "app.js").read_bytes()
+    original = _as_served("app.js")
     assert gzip.decompress(raw) == original and len(raw) < len(original) / 2
     conn.request("GET", "/static/app.js")
     r = conn.getresponse()

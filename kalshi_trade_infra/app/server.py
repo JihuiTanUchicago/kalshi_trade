@@ -41,7 +41,7 @@ from app.research import research_repository as research_repo
 from app.trading import spec as specmod
 from app.services import backtest_check, bell, book_memo, customer_text, gate_explain, page_poll, paper_checks, research_list, run_stop, trade_why
 from app.trading import track_record
-from app.web import client_errors, page_modules, shell_reads, webperf
+from app.web import client_errors, page_modules, shell_reads, static_strip, webperf
 from app import worker
 from app.trading.markets import MARKETS
 from app.services import markets as market_service
@@ -520,6 +520,7 @@ def warm_static() -> None:
             if not webperf.compressible("text/", len(body)):
                 continue
             key = (name, hashlib.sha256(body).hexdigest()[:10])
+            body = static_strip.served(name, body, key[1])
             for coding in webperf.static_codings():
                 webperf.compress(body, coding, key)
         except Exception as e:  # noqa: BLE001 - a request compresses it on demand instead
@@ -769,6 +770,7 @@ class Handler(BaseHTTPRequestHandler):
         if current is not None and digest != current:
             cache = webperf.static_cache_control(f.name, query, digest)
             tag = webperf.etag(digest)
+        body = static_strip.served(f.name, body, digest)  # the bundles and stylesheets without their comments
         self._send(200, ctype + ("; charset=utf-8" if m.group(2) in ("css", "js", "svg") else ""), body,
                    [("Cache-Control", cache), ("ETag", tag)], z_key=(f.name, digest))
 
