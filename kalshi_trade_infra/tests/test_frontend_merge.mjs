@@ -2308,7 +2308,7 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   const touch = css.slice(css.indexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.bell-trig \{ min-width: 44px;/);
-  assert.match(block, /\.apf-pill \{ min-height: 40px; \}/);
+  assert.match(block, /:root \{ --apf-h: 40px; \}\s*\.apf-pill \{ min-height: var\(--apf-h\); \}/);  // the height the page's bottom room counts
   assert.match(block, /\.t-explore \.xlink a \{ min-width: 44px; min-height: 44px;/);
   assert.match(block, /\.info \{ width: 40px; height: 40px;/);
   // Inline text buttons get a 41px tall hit area from padding that a matching negative margin cancels out.
@@ -2426,8 +2426,9 @@ test('the floating autopilot pill steps aside from any control or value under it
   f.document.activeElement = null; els[3].getBoundingClientRect = rect(0, 0, 0, 0);
   f.apYield(); assert.equal(box.classes.has('yield'), false);
   const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
-  assert.match(css, /body:not\(\.landing-body\) \{ padding-bottom: 72px; \}/);
-  assert.match(css, /@media \(max-width: 600px\) \{ \.apf \{ right: 10px; bottom: 10px; \}/);  // 10 + 40 + 8 < 72
+  // The room under the page is the pill's own offset and height plus apYield's margin (test_ui_layout.mjs has the sums).
+  assert.match(css, /body:not\(\.landing-body\) \{ padding-bottom: calc\(var\(--apf-gap\) \+ var\(--apf-h\) \+ 22px \+ env\(safe-area-inset-bottom, 0px\)\); \}/);
+  assert.match(css, /\.apf \{ position: fixed; right: var\(--apf-gap\); bottom: var\(--apf-gap\);/);
 });
 
 test('the autopilot says the market it researches by its label, never a raw key or series', () => {

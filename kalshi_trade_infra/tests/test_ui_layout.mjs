@@ -195,3 +195,40 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.ok(width + offset <= 0 && -offset < 22, 'inside the button and clear of its icon');
   });
 }
+
+// Walk 2026-10-27 (390px phone): content sat under the floating autopilot pill (Billing's "Add another card" form,
+// a market page's settlement note). The room under every page is now worked out from the pill's own offset and
+// height, which the pill itself is placed and sized by, so the two can't drift apart; the pill keeps to one line
+// so its height is that figure, and an iPhone's home-indicator strip is added on top. Tau's collapsed pill floats;
+// Meridian's sits in the masthead (in the page's flow), so nothing there can cover a page's foot.
+const PHONE_SHEET = '@media (max-width: 600px)';
+const tokens = (all, media = '') => Object.fromEntries(all.filter((r) => r.media === media && sels(r).includes(':root'))
+  .flatMap((r) => [...r.body.matchAll(/(--apf-[\w-]+)\s*:\s*([^;]+)/g)].map((m) => [m[1], m[2].trim()])));
+test('Tau: every page leaves room under its last line for the floating autopilot pill, its offset and height, on a phone and a desktop', () => {
+  const all = rules(read('app.css'));
+  const desk = tokens(all), phone = {...desk, ...tokens(all, PHONE_SHEET)}, thumb = {...phone, ...tokens(all, COARSE)};
+  // The pill is placed by the offset and, to a thumb, sized by the height the padding counts.
+  assert.equal(decl(all, '.apf', 'position'), 'fixed');
+  assert.equal(decl(all, '.apf', 'bottom'), 'var(--apf-gap)');
+  assert.equal(decl(all, '.apf', 'right'), 'var(--apf-gap)');
+  assert.equal(decl(all, '.apf-pill', 'min-height', COARSE), 'var(--apf-h)');
+  assert.equal(decl(all, '.apf-pill', 'white-space'), 'nowrap', 'one line, so its height is --apf-h');
+  assert.equal(decl(all, '.apf', 'bottom', PHONE_SHEET), undefined, 'a phone moves the pill by the token, not a fixed number');
+  const pad = decl(all, 'body:not(.landing-body)', 'padding-bottom');
+  const m = /^calc\(var\(--apf-gap\) \+ var\(--apf-h\) \+ (\d+)px \+ env\(safe-area-inset-bottom, 0px\)\)$/.exec(pad || '');
+  assert.ok(m, `padding-bottom ${pad}`);
+  for (const [where, t] of [['desktop', desk], ['phone', phone], ['phone, thumb', thumb]]) {
+    const room = px(t['--apf-gap']) + px(t['--apf-h']) + +m[1];
+    const pill = px(t['--apf-gap']) + px(t['--apf-h']) + 8;  // apYield's 8px margin round the pill
+    assert.ok(room >= pill + 12, `${where}: ${room}px of room under a ${pill}px pill strip`);
+  }
+  assert.equal(phone['--apf-gap'], '10px'); assert.equal(thumb['--apf-h'], '40px');
+  // The pill's measured height (Playwright, 390px): 40px to a thumb, 37px with a mouse.
+  assert.ok(px(desk['--apf-h']) >= 37);
+});
+test('Meridian: the collapsed autopilot pill sits in the masthead, so it never covers a page\'s foot', () => {
+  const all = rules(read('app.meridian.css'));
+  assert.equal(decl(all, '.apf', 'position'), 'relative');
+  assert.equal(decl(all, '.apf.open', 'position'), 'fixed', 'only the opened panel floats, over the page by choice');
+  assert.match(read('app.meridian.js'), /root\.querySelector\('\.masthead-in'\)\.appendChild\(box\)/);
+});
