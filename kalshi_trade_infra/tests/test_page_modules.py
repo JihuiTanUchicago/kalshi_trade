@@ -147,3 +147,26 @@ def test_each_page_file_returns_the_views_its_bundle_stands_in_for(theme):
         assert returned == stood_in and returned, (theme, name)
         for view in returned:  # the view is the file's own, not left behind in the bundle
             assert re.search(r"\n  async function %s\(" % view, src) and not re.search(r"\n  async function %s\(" % view, bundle)
+
+
+# What the autopilot panel's file holds, the open panel: its feed, its chat and its controls. None of it
+# is drawn until the panel opens, so a cold load of any page goes without it.
+PANEL_CODE = ("async function apLoadChat(", "function apFeedLi(", "const AP_ACT = {", "async function apEnableLive(",
+              "function apSheetTab(", "const CHAT_UNSURE = ")
+
+
+@pytest.mark.parametrize("theme", ["tau", "meridian"])
+def test_the_autopilot_panel_is_in_its_own_file_and_the_bundle_only_forwards_to_it(theme):
+    bundle = (STATIC / page_modules.BUNDLE[theme]).read_text()
+    src = (STATIC / page_modules.file_name(theme, "autopilot")).read_text()
+    assert page_modules.PANELS == ("autopilot",) and "autopilot:" in page_modules.versions_attr(theme, server._static_versions())
+    assert src.count("window.TauPage('autopilot', (T) => {") == 1
+    for code in PANEL_CODE:
+        assert code in src and code not in bundle, (theme, code)
+    # The bundle keeps one stand-in per function the pill calls, each forwarding once the file has run.
+    returned = set(re.search(r"\n  return \{([\w, ]+)\};\n\}\);\n$", src).group(1).split(", "))
+    forwarded = set(re.findall(r"PAGES\.autopilot\.(\w+)\(", bundle))
+    assert returned == forwarded == {"apBuildShell", "apStopChat", "apUpdate"}
+    for name in returned:
+        assert re.search(r"\n  function %s\(" % name, src) and re.search(r"\n  function %s\(" % name, bundle)
+    assert all(page_modules.page_for(path) != "autopilot" for path in PATHS)  # no page's shell preloads it

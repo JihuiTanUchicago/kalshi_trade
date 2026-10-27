@@ -220,7 +220,8 @@ phoneSpeedCases({name: 'Tau', frontend, source, railOpenWide: [['tau_hotrail', '
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 exploreSpotListCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
-pageFileCases({name: 'Tau', frontend, prefix: 'app-', pagesKey: 'tauPages'});
+pageFileCases({name: 'Tau', frontend, prefix: 'app-', pagesKey: 'tauPages',
+  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 settingsCases({name: 'Tau', frontend, current: 'tau', cardWallOpts: () => ({stripe: STRIPE_STUB}),
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
