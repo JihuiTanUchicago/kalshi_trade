@@ -770,7 +770,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Real money at Kalshi, read 5m ago\. 1 open live position \(\$3\.11 at cost \+ fees\) not included/);
-  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.25 at cost \+ fees\) ·\u00a0needs a demo key ·\u00a0real fills/);
+  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.25 at cost \+ fees, all of it in Tau’s demo book\) ·\u00a0needs a demo key ·\u00a0real fills/);
   assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);  // books are never summed
   const h = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: null, open_positions: 0, open_at_cost: 0}; return response(d); }});
@@ -2938,6 +2938,32 @@ test('System: the live activity feed reads a verdict as its plain note, else its
     'Froze 2 finalists',
   ]);
   assert.doesNotMatch(html, /gatekeeper-held|classification=|Model tiering|<b>/);
+  f.clearTimers();
+});
+
+// Walk 2026-10-27: the System page's research box read "12 running · 30 queued · 1,204 done" on one line, which ran
+// out of its 158-wide box (171 wide at 390px and 1280px; the map scales as one, so the box and its text keep their
+// proportion at every width). As on Tau, the count is two lines in a box tall enough for them, every figure grouped.
+test('System: the research box sets its count on two lines that fit the box, with big numbers grouped', async () => {
+  const nodes = {agents: {running: 12, queued: 30, done: 1204}, backtest: {strategies: 3}, db: {rows: 10, size_mb: 5}, web: {users: 2}};
+  const f = frontend({fetchImpl: path => (path === '/api/admin/system' ? response({nodes, events: [], now: '2026-10-27T16:00:00Z'}) : response({}))});
+  await f.viewSystem(); await flush();
+  const g = f.root.querySelector('.sys-node[data-id="agents"]'), m = g.querySelector('[data-m="agents"]');
+  const spans = m.querySelectorAll('tspan');
+  assert.deepEqual(spans.map(t => t.textContent), ['12 running · 30 queued', '1,204 done']);
+  const w = +g.querySelector('rect').getAttribute('width'), h = +g.querySelector('rect').getAttribute('height');
+  // About 5 units a character at the map's 10.5px narrow face: each line keeps clear of the box's right edge.
+  for (const t of spans) assert.ok(12 + t.textContent.length * 5 <= w - 8, `"${t.textContent}" in a ${w}-wide box`);
+  // Both lines sit under the name and its sub-line (y 41) and above the box's foot.
+  const ys = spans.map(t => +t.getAttribute('y'));
+  assert.ok(ys[0] >= 41 + 13 && ys[1] >= ys[0] + 12 && ys[1] <= h - 10, `lines at ${ys} in a ${h}-tall box`);
+  // The box below it still clears the taller box, and the edges leave from its middle.
+  assert.ok(40 + h < 160 - 20);
+  const edge = f.root.querySelectorAll('.sys-edge').find(p => p.dataset.e === 'agents');
+  assert.match(edge.getAttribute('d'), new RegExp(`^M878,${40 + h / 2} `));
+  // The detail panel reads the count as one line.
+  g.dispatchEvent({type: 'click'});
+  assert.match(f.root.querySelector('#sys-detail').innerHTML, /12 running · 30 queued · 1,204 done/);
   f.clearTimers();
 });
 

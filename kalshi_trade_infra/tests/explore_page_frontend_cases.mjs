@@ -127,14 +127,21 @@ export function explorePageCases({name, frontend}) {
     assert.match(f.root.querySelector('h1').textContent, /Target Price: \$113,512\.08/);
     let html = body().innerHTML;
     assert.match(html, />Strike<\/dt><dd><span class="fig ">\$113,512\.08<\/span><\/dd><dd class="sub-fig">Target price from the contract’s title</);
-    // Spot is measured against it as the server measures a strike line: by how much, never which side pays.
-    assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">−\$92\.08<\/span><\/dd><dd class="sub-fig">0\.08% below the strike</);
-    assert.doesNotMatch(html, /isn’t stored yet|on the (Yes|No) side/);
+    // Spot is measured against it as the server measures a strike line: by how much, never which side pays. It is
+    // named as the title names it (and as Explore's list does), "target price", not "strike".
+    assert.match(html, />Spot vs target price<\/dt><dd><span class="fig ">−\$92\.08<\/span><\/dd><dd class="sub-fig">0\.08% below the target price</);
+    assert.doesNotMatch(html, /isn’t stored yet|on the (Yes|No) side|Spot vs strike|the strike/);
+    // Spot exactly on it says so in the same words.
+    ({body} = await openSpot(() => response({...none, spot: {...SPOT.spot, price: 113512.08}}), M15));
+    html = body().innerHTML;
+    assert.match(html, />Spot vs target price<\/dt><dd><span class="fig ">At the target price</);
     // A stored strike still wins over the title, with the server's distance.
     ({body} = await openSpot(() => response({...SPOT, ticker: M15.ticker, strike: {...SPOT.strike, value: 113384.12, inclusive: true, from: 'record'}}), M15));
     html = body().innerHTML;
     assert.match(html, />\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
-    assert.match(html, /\+\$420\.01/); assert.doesNotMatch(html, /contract’s title/);
+    assert.match(html, /\+\$420\.01/); assert.doesNotMatch(html, /contract’s title|target price/);
+    // A stored strike keeps "strike".
+    assert.match(html, />Spot vs strike<\/dt>/);
     // Neither stored nor in the title: the honest line stays.
     ({body} = await openSpot(() => response(none), {...M15, sub: ''}));
     html = body().innerHTML;

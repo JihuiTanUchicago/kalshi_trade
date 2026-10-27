@@ -134,7 +134,8 @@ window.TauPage('admin', (T) => {
     { id: 'features', x: 250, y: 270, w: 158, label: 'Feature builder', sub: 'per-minute features' },
     { id: 'web', x: 250, y: 455, w: 158, label: 'Web server', sub: 'app.server ·\u00a0SPA + API' },
     { id: 'db', x: 490, y: 205, w: 150, label: 'Database', sub: 'RDS MySQL', big: 1 },
-    { id: 'agents', x: 720, y: 40, w: 158, label: 'Research agents', sub: 'app.worker ·\u00a0hypotheses', mine: 'your research sessions' },
+    // Its count takes two lines ("12 running · 30 queued" over "1,204 done"): on one it ran past the box's edge.
+    { id: 'agents', x: 720, y: 40, w: 158, h: 82, lines: 2, label: 'Research agents', sub: 'app.worker ·\u00a0hypotheses', mine: 'your research sessions' },
     { id: 'backtest', x: 720, y: 160, w: 158, label: 'Backtester', sub: 'honest, out-of-sample', mine: 'your strategies' },
     { id: 'sim_engine', x: 720, y: 300, w: 158, label: 'Paper engine', sub: 'simulated fills', mine: 'your paper strategies' },
     { id: 'live_engine', x: 720, y: 460, w: 158, label: 'Live engine', sub: 'real Kalshi orders', mine: 'your live and demo' },
@@ -165,9 +166,10 @@ window.TauPage('admin', (T) => {
     live_engine: 'app/trading/engine.py (the same engine) — places real orders: live money in a user’s own Kalshi account, demo on Kalshi’s sandbox. Live money also needs Tau’s live switch on, the user’s own opt-in and enough paper evidence.',
   };
   const sysNode = (id) => SYS_NODES.find((n) => n.id === id);
+  const sysH = (n) => n.h || (n.big ? SYS_DBH : SYS_H);
   function sysEdgePath(a, b) {
     const na = sysNode(a), nb = sysNode(b);
-    const ha = na.big ? SYS_DBH : na.ext ? SYS_H : SYS_H, hb = nb.big ? SYS_DBH : SYS_H;
+    const ha = sysH(na), hb = sysH(nb);
     const x1 = na.x + na.w, y1 = na.y + ha / 2, x2 = nb.x, y2 = nb.y + hb / 2;
     const dx = Math.max(40, (x2 - x1) * 0.5);
     return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
@@ -176,12 +178,15 @@ window.TauPage('admin', (T) => {
     const gen = S.gen;
     const edges = SYS_EDGES.map(([a, b], i) => `<path class="sys-edge" data-e="${a}" id="se${i}" d="${sysEdgePath(a, b)}" />`).join('');
     const nodes = SYS_NODES.map((n) => {
-      const h = n.big ? SYS_DBH : SYS_H;
+      const h = sysH(n);
+      // A two-line count is a line apiece, each set from metricLines on every read.
+      const m = n.lines === 2 ? `<text class="m" data-m="${n.id}"><tspan x="12" y="${h - 26}"></tspan><tspan x="12" y="${h - 12}"></tspan></text>`
+        : `<text class="m" x="12" y="${h - 12}" data-m="${n.id}"></text>`;
       return `<g class="sys-node ${n.ext ? 'ext' : ''}" data-id="${n.id}" transform="translate(${n.x},${n.y})" tabindex="0" role="button" aria-label="${esc(n.label)}">
         <rect width="${n.w}" height="${h}" rx="${n.ext ? 9 : 3}"></rect>
         <text class="t" x="12" y="23">${esc(n.label)}</text>
         <text class="s" x="12" y="41" data-s="${n.id}">${esc(sysSub(n))}</text>
-        <text class="m" x="12" y="${h - 12}" data-m="${n.id}"></text>
+        ${m}
         <circle class="pulse" cx="${n.w - 13}" cy="15" r="4"></circle>
       </g>`;
     }).join('');
@@ -261,6 +266,8 @@ window.TauPage('admin', (T) => {
       g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
     });
     const fresh = (age) => age == null ? 'down' : age < 75 ? 'live' : age < 300 ? 'warn' : 'down';
+    // The research box's count as its two lines; every other box's is one.
+    const metricLines = (id, L) => (id === 'agents' && L ? [`${num(L.running)} running ·\u00a0${num(L.queued)} queued`, `${num(L.done)} done`] : [metricText(id, L)]);
     function metricText(id, L) {
       if (!L) return '';
       const n = sysNode(id);
@@ -270,7 +277,7 @@ window.TauPage('admin', (T) => {
       }
       if (id === 'db') return `${L.size_mb >= 1024 ? (L.size_mb / 1024).toFixed(0) + ' GB' : num(L.size_mb) + ' MB'} ·\u00a0${compact(L.rows)} rows`;
       if (id === 'web') return L.users != null ? `${num(L.users)} users ·\u00a0serving` : 'online ·\u00a0serving';
-      if (id === 'agents') return `${L.running} running ·\u00a0${L.queued} queued ·\u00a0${num(L.done)} done`;
+      if (id === 'agents') return metricLines(id, L).join(' ·\u00a0');
       if (id === 'backtest') return `${num(L.strategies)} strategies tested`;
       if (L.ext) return 'connected';
       const a = L.age == null ? '—' : L.age < 90 ? `${L.age}s ago` : L.age < 5400 ? `${Math.round(L.age / 60)}m ago` : 'stale';
@@ -297,7 +304,8 @@ window.TauPage('admin', (T) => {
       S.sysLive = d.nodes;
       SYS_NODES.forEach((n) => {
         const L = d.nodes[n.id]; const g = svg.querySelector(`.sys-node[data-id="${n.id}"]`);
-        const mt = svg.querySelector(`[data-m="${n.id}"]`); if (mt) mt.textContent = metricText(n.id, L);
+        const mt = svg.querySelector(`[data-m="${n.id}"]`), lines = metricLines(n.id, L), spans = mt ? mt.querySelectorAll('tspan') : [];
+        if (spans.length) spans.forEach((t, i) => { t.textContent = lines[i] || ''; }); else if (mt) mt.textContent = lines[0];
         const sb = svg.querySelector(`[data-s="${n.id}"]`), sub = sysSub(n, L); if (sb && sb.textContent !== sub) sb.textContent = sub;
         const st = n.ext ? 'live' : (L && 'age' in L) ? fresh(L.age) : (n.id === 'web' || n.id === 'db') ? 'live' : 'idle';
         g.setAttribute('data-st', st);

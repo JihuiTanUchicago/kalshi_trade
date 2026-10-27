@@ -115,7 +115,10 @@ export function fundsTrustCases({name, frontend, fundsData, dashboard, detailStr
     await f.viewFunds(); await settle();
     const figs = text(f.root.querySelector('#ffigs'));
     assert.match(figs, /1 open live position \(\$1\.94 at cost \+ fees\) not included/);
-    assert.match(figs, /capital · 1 open \(\$1\.94 at cost \+ fees\) ·/);
+    // Tau's demo book is its capital plus closed demo trades: an open demo position's whole cost is still inside it,
+    // and the line says so (it said only "1 open ($1.94 at cost + fees)"). It never says paper's balance or Kalshi's cash.
+    assert.match(figs, /capital · 1 open \(\$1\.94 at cost \+ fees, all of it in Tau’s demo book\) ·/);
+    assert.doesNotMatch(figs, /\$1\.90 of it in Tau’s demo book|all of it in the balance/);
     // Paper's balance is cash plus the position at its price ($998.06 + $1.90): the line says which part that is.
     assert.match(figs, /\$998\.06 cash · 1 open \(\$1\.94 at cost \+ fees, \$1\.90 of it in the balance\)/);
     assert.doesNotMatch(figs, /\$1\.90 at cost/);

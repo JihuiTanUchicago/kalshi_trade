@@ -2544,8 +2544,11 @@
       // Every open position says its book, paper included: a paper row had no mark beside a Demo one, so on a
       // board holding both, its Cost + fee read as nobody's money (or real money).
       const posBook = (p) => p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>';
+      // Each Unrealized figure says when its mark was read (the engine's mark_ts, the time with its zone, as Settles is):
+      // the column had no "as of" time. A figure the answer gives no time for is still its last mark's, and says so.
+      const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? 'as of ' + settleAt(p.mark_ts) : 'at the last mark'}</div>`;
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : money(p.unrealized) + posMarked(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
@@ -2843,13 +2846,15 @@
       : fig('Strike', btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind} it` : 'Kalshi’s rules say which side pays' });
     // Which side of the strike (or the bucket's edge it is outside of) spot is on, by how much, and which
     // side of the contract that is when the strike says.
-    const where = !v ? '' : edges ? (v.side === 'below' ? 'below its floor' : 'above its top') : bucket ? v.side + ' its centre' : v.side + ' the strike';
+    // A target read from the contract's title is named as the title and Explore's list name it: "target price".
+    const line = k && k.from === 'title' ? 'target price' : 'strike';
+    const where = !v ? '' : edges ? (v.side === 'below' ? 'below its floor' : 'above its top') : bucket ? v.side + ' its centre' : `${v.side} the ${line}`;
     const yes = v && v.yes === true ? 'on the Yes side' : v && v.yes === false ? 'on the No side' : '';
     // Measured from an old price, the label says so beside the figure, not only under Bitcoin's.
     const lab = (l) => (sp && sp.stale ? `${l}, ${spotAge(+sp.age_s || 0)}` : l);
     const vs = !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor · ${usd(v.to_hi)} below its top · on the Yes side` })
-      : v.side === 'at' ? fig(lab('Spot vs strike'), 'At the strike', { small: yes })
-      : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs strike'), usd(v.diff, true), { small: [`${Math.abs(+v.pct || 0).toFixed(2)}% ${where}`, yes].filter(Boolean).join(' · ') });
+      : v.side === 'at' ? fig(lab('Spot vs ' + line), 'At the ' + line, { small: yes })
+      : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line), usd(v.diff, true), { small: [`${Math.abs(+v.pct || 0).toFixed(2)}% ${where}`, yes].filter(Boolean).join(' · ') });
     const left = s.secs_left == null ? fig('Time left', '—') : fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed', { small: s.close_time ? 'closes ' + settleAt(s.close_time) : '' });
     return `<dl class="figures measure">${now}${strike}${vs}${left}</dl><p class="hint mk-spot-note">Kalshi settles on the CF Benchmarks Bitcoin index averaged over the last minute before the close; Coinbase’s price usually sits within a few dollars of it.</p>`;
   }
