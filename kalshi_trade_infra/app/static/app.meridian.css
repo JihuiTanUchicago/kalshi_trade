@@ -2718,7 +2718,9 @@ body.landing-body .apf { display: none; }
    find it on Kalshi, sits on a small line under it (.kalshi-ref), never as the headline. */
 .pos-name { overflow-wrap: anywhere; }
 .kalshi-ref { font-size: 12px; color: var(--ink-3); }
-.kalshi-ref .tick { overflow-wrap: anywhere; }
+/* The ticker moves to the next line whole when it fits there, and breaks inside only when it is wider than a line:
+   a market page at 390px split "KXBTCD-26OCT2717-" from "T112999.99". */
+.kalshi-ref .tick { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 /* On a market page it is the line under the name ("Open for trading · Kalshi contract KX…"), at that line's size. */
 .deck .kalshi-ref { font-size: inherit; color: inherit; }
 /* Deploy's open positions: the why line and a long strategy name wrap inside their cells; a cell's

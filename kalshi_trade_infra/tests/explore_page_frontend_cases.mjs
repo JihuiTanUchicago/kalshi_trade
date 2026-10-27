@@ -109,14 +109,14 @@ export function explorePageCases({name, frontend}) {
     assert.deepEqual(asked.filter((p) => p.startsWith('/api/explore/spot?')), ['/api/explore/spot?ticker=KXBTCD-26OCT2617-T112999.99']);
     const html = body().innerHTML;
     assert.match(html, /Bitcoin now<\/dt><dd><span class="fig ">\$113,420\.00<\/span><\/dd><dd class="sub-fig">Coinbase · 4s ago</);
-    assert.match(html, />Strike<\/dt>.*>\$112,999\.99<.*Yes if Bitcoin settles above it/);
+    assert.match(html, />Strike<\/dt>.*>\$112,999\.99<.*Yes if Bitcoin settles above\u00a0it/);
     assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the strike · on the Yes side</);
     assert.match(html, />Time left<\/dt>.*>1 hr 12 min<.*closes /);
     assert.doesNotMatch(html, /fig-behind|KXBTCD ·|BTC-USD/);
     // A 15-minute window's start price pays Yes at or above it (greater_or_equal), and the page says so.
     const {body: m15} = await openSpot(() => response({...SPOT, strike: {...SPOT.strike, value: 113384.12, inclusive: true, from: 'record'}}),
       {ticker: 'KXBTC15M-26OCT262345-45', series: 'KXBTC15M'});
-    assert.match(m15().innerHTML, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
+    assert.match(m15().innerHTML, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above\u00a0it</);
   });
 
   // A 15-minute window's page said "This window's start price isn't stored yet" under a heading reading "Target Price:
@@ -143,7 +143,7 @@ export function explorePageCases({name, frontend}) {
     // its target price, as Kalshi names it.
     ({body} = await openSpot(() => response({...SPOT, ticker: M15.ticker, strike: {...SPOT.strike, value: 113384.12, inclusive: true, from: 'record'}}), M15));
     html = body().innerHTML;
-    assert.match(html, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
+    assert.match(html, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above\u00a0it</);
     assert.match(html, />Spot vs target price<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the target price\u00a0· on the Yes side</);
     assert.doesNotMatch(html, /contract’s title|>Strike<|the strike/);
     // A stored strike on any other market keeps "strike" (the first case above).
@@ -263,5 +263,21 @@ export function explorePageCases({name, frontend}) {
     g.location.pathname = '/research'; g.location.search = '?market=nope';
     await g.viewResearch(); await settle();
     assert.ok(g.root.querySelectorAll('input[name=market]').filter((r) => r.value).every((r) => !r.checked));
+  });
+
+  // Walk 2026-10-27, a Bitcoin market page at 390px: Kalshi's rules read "CF Benchmarks' Bitcoin" with a straight
+  // apostrophe and broke "before 5" from "PM EDT"; "bid 58¢" ended a line and "/ ask 61¢" began the next; "Closes Oct
+  // 28, 02:45" left "UTC" alone; "Yes if Bitcoin settles above" left "it" alone.
+  test(`${name}: a Bitcoin market page keeps its times, quote and Kalshi's rules on readable lines`, async () => {
+    const rules = 'If the simple average of the sixty seconds of CF Benchmarks\' Bitcoin Real-Time Index (BRTI) before 5 PM EDT is above 112999.99 at 5 PM EDT on Oct 27, 2026, then the market resolves to Yes.';
+    const f = await open(page({rules, rules_more: 'Kalshi\'s rules don\'t change after a market opens.'}));
+    const [main, more] = f.root.querySelectorAll('p.mk-rules').map((p) => p.textContent);
+    assert.equal(main, 'If the simple average of the sixty seconds of CF Benchmarks’ Bitcoin Real-Time Index (BRTI) before 5 PM EDT is above 112999.99 at 5 PM EDT on Oct 27, 2026, then the market resolves to Yes.');
+    assert.equal(more, 'Kalshi’s rules don’t change after a market opens.');
+    assert.doesNotMatch(f.root.innerHTML, /[A-Za-z]'/, 'no straight apostrophe after a letter anywhere on the page');
+    const html = f.root.innerHTML;
+    assert.match(html, /bid 55¢ \/ ask 57¢/);
+    assert.match(html, /as of [^<·]* [A-Z]{2,5}<\/dd>/, 'the read time keeps its zone');
+    assert.match(html, /Closes<\/dt><dd><span class="fig ">[^<]*\d [A-Z]{2,5}<\/span>/, 'the close keeps its zone');
   });
 }

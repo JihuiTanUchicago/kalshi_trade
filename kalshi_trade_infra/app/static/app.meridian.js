@@ -59,7 +59,7 @@
     unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
-    pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade on unseen data. Compare it with Realized: well below it means trading is falling short of the test.'],
+    pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade after its split date. For a strategy with a gatekeeper record, that data was held out: the agent never saw it. For one without (backtest only, or a pass from the old backtest gate), it is the later period that picked it, so not held out. Compare it with Realized: well below it means trading is falling short of the test.'],
     // A research verdict's figures, each named in plain words with its term of art after it (statGrid).
     pvalue: ['Chance it’s luck (p-value)', 'How likely a strategy with no edge after fees would have done this well on this data by chance. Lower is better.'],
     dsr: ['Edge after correcting for many tries (DSR)', 'The deflated Sharpe ratio: how likely the edge is real once every idea tried is counted, since trying many ideas makes one look good by luck. Closer to 1 is better.'],
@@ -375,6 +375,8 @@
     const today = d.toDateString() === new Date().toDateString();
     return dateFmt(d, today ? CLOCK_ZONE : LOG_STAMP);
   };
+  // A time with its zone on one line: the market page's "Closes Oct 28, 02:45" left "UTC" alone on the next.
+  const keepZone = (t) => String(t).replace(/ (?=\S+$)/, '\u00a0');
   const fmtCount = new Intl.NumberFormat('en-US');  // what Number#toLocaleString('en-US') builds on every call
   const num = (n) => (n == null ? '—' : fmtCount.format(Number(n)));
   // Compact count for tight spaces (system-map node metrics): 1.1M, 352k, 940.
@@ -1811,8 +1813,9 @@
     // since the locked holdout keeps its unseen numbers with the gatekeeper, so most rows are that kind.
     // And over how long: "+$6.20 on unseen data" beside "58% win" said neither period nor pace (its page says both).
     // A backtest-only strategy (the old loose gate) has no gatekeeper record: its out_of_sample is the backtest's
-    // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590).
-    const pnlSub = [m.pnl == null ? '' : oos && s.status === 'backtest-only' ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
+    // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590). So is
+    // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's own reads).
+    const pnlSub = [m.pnl == null ? '' : oos && (s.status === 'backtest-only' || s.no_gatekeeper_record) ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
       : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
@@ -2929,6 +2932,11 @@
     return `<svg class="pchart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Yes price history, ${esc(fmt(t0))} to ${esc(fmt(t1))}${zone ? ' ' + esc(zone) : ''}">${grid}<polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><text x="${pl}" y="${H - 6}" class="pc-xlab">${fmt(t0)}</text><text x="${W - pr}" y="${H - 6}" class="pc-xlab" text-anchor="end">${fmt(t1)}${zone ? ' ' + esc(zone) : ''}</text></svg>`;
   }
   // Kalshi's market status in words: "active" read as jargon, and "finalized" never said it had settled.
+  // Kalshi's settlement rules, shown as Kalshi wrote them but typeset: an apostrophe after a letter is curly
+  // ("CF Benchmarks' index" read with a straight one), and a clock time keeps its AM/PM and zone ("before 5" ended
+  // a line and "PM EDT" began the next). Words and figures are untouched.
+  const rulesText = (t) => String(t || '').replace(/(\w)'/g, '$1\u2019').replace(/(\d) ([AP]M)\b/g, '$1\u00a0$2')
+    .replace(/\b([AP]M) (E[SD]T|ET|C[SD]T|UTC)\b/g, '$1\u00a0$2');
   const MKT_STATUS = { initialized: 'Not open yet', unopened: 'Not open yet', active: 'Open for trading', open: 'Open for trading', paused: 'Trading paused', closed: 'Closed, result pending', determined: 'Result in, paying out', settled: 'Settled', finalized: 'Settled' };
   // The reader's own positions in this contract, one block per money book: paper, demo and live
   // money are never added into one figure. Each strategy links to its page.
@@ -3006,7 +3014,7 @@
       : edges ? fig('Bucket', `${btcUsd(k.lo)} to ${btcUsd(k.hi)}`, { small: 'Yes if Bitcoin settles inside it' })
       : bucket ? fig('Bucket centre', btcUsd(k.value), { small: 'its edges aren’t stored' })
       : k.from === 'title' ? fig(Line, btcUsd(k.value), { small: 'Read from the contract’s title' })
-      : fig(Line, btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind} it` : 'Kalshi’s rules say which side pays' });
+      : fig(Line, btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind}\u00a0it` : 'Kalshi’s rules say which side pays' });
     // Which side of the strike (or the bucket's edge it is outside of) spot is on, by how much, and which
     // side of the contract that is when the strike says.
     const where = !v ? '' : edges ? (v.side === 'below' ? 'below its floor' : 'above its top') : bucket ? v.side + ' its centre' : `${v.side} the ${line}`;
@@ -3016,7 +3024,7 @@
     const vs = !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor${SEP}${usd(v.to_hi)} below its top${SEP}on the Yes side` })
       : v.side === 'at' ? fig(lab('Spot vs ' + line), 'At the ' + line, { small: yes })
       : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line), usd(v.diff, true), { small: [`${Math.abs(+v.pct || 0).toFixed(2)}% ${where}`, yes].filter(Boolean).join(SEP) });
-    const left = s.secs_left == null ? fig('Time left', '—') : fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed', { small: s.close_time ? 'closes ' + settleAt(s.close_time) : '' });
+    const left = s.secs_left == null ? fig('Time left', '—') : fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed', { small: s.close_time ? 'closes ' + keepZone(settleAt(s.close_time)) : '' });
     return `<dl class="figures measure">${now}${strike}${vs}${left}</dl><p class="hint mk-spot-note">Kalshi settles on the CF Benchmarks Bitcoin index averaged over the last minute before the close; Coinbase’s price usually sits within a few dollars of it.</p>`;
   }
   function mountSpot(ticker, first, d) {
@@ -3052,8 +3060,8 @@
     // The price says what it is (a Yes pays $1, so 42¢ is about a 42% chance), the book it comes from,
     // and when it was read; the Explore feed's snapshot (Kalshi unreachable) says how old it is.
     const bid = +d.yes_bid, ask = +d.yes_ask;
-    const priceSub = [mid == null ? '' : `≈\u00a0${Math.round(mid * 100)}% chance of Yes`, bid > 0 && ask > 0 ? `bid ${cents(bid)} / ask ${cents(ask)}` : '',
-      d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as of ${settleAt(d.as_of)}`) : ''].filter(Boolean).join(SEP);
+    const priceSub = [mid == null ? '' : `≈\u00a0${Math.round(mid * 100)}% chance of Yes`, bid > 0 && ask > 0 ? `bid\u00a0${cents(bid)}\u00a0/ ask\u00a0${cents(ask)}` : '',
+      d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as\u00a0of\u00a0${keepZone(settleAt(d.as_of))}`) : ''].filter(Boolean).join(SEP);
     const settled = d.result === 'yes' || d.result === 'no';
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
     // The line under the name says what the code is, as a position does (kalshiRef): "Kalshi contract KX…", not a bare ticker.
@@ -3061,10 +3069,10 @@
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', settleAt(d.close_time)) + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? spotSect(d.ticker || ticker) : ''}
+        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', keepZone(settleAt(d.close_time))) + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? spotSect(d.ticker || ticker) : ''}
       <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
       <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
-        ${d.rules ? `<p class="mk-rules">${esc(d.rules)}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(d.rules_more)}</p>` : ''}`
+        ${d.rules ? `<p class="mk-rules">${esc(rulesText(d.rules))}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(rulesText(d.rules_more))}</p>` : ''}`
           : `<p class="hint mk-rules">Kalshi’s settlement rules didn’t come with this snapshot. <a href="${kalshiLink}" target="_blank" rel="noopener">Read them on Kalshi ↗</a></p>`}</section>
       <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : `${SEP}Kalshi ${gran} candles`}</p></div>
         <div class="pchart-wrap">${d.history_unavailable
@@ -3167,7 +3175,7 @@
       if (exploreNoFeed(d)) { paint(figs, '<dl class="explore-counts">' + EXPLORE_NO_FEED + '</dl>'); return; }
       const snapshotAt = d.at ? Date.parse(d.at) : NaN;
       const snapshotOld = !Number.isFinite(snapshotAt) || Date.now() - snapshotAt > 180000;
-      paint(figs, '<dl class="explore-counts">' + fig('Available markets', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig('Prices updated', Number.isFinite(snapshotAt) ? `<span class="snapshot-age">${sinceMin(d.at)}</span><time datetime="${esc(d.at)}">${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}</time>${snapshotOld ? '<span class="snapshot-behind">Behind: prices normally refresh each minute</span>' : ''}` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>');
+      paint(figs, '<dl class="explore-counts">' + fig('In this list', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig('Prices updated', Number.isFinite(snapshotAt) ? `<span class="snapshot-age">${sinceMin(d.at)}</span><time datetime="${esc(d.at)}">${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}</time>${snapshotOld ? '<span class="snapshot-behind">Behind: prices normally refresh each minute</span>' : ''}` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>');
       figs.querySelector('.snapshot-time').setAttribute('title', Number.isFinite(snapshotAt) ? 'Source snapshot: ' + d.at : 'Source snapshot time unavailable');
     };
     // The list stays current while it shows (EXPLORE_POLL_MS, paused while the tab is hidden, read at once on

@@ -217,6 +217,54 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     assert "experiment" not in str(later).lower()
 
 
+def test_the_list_flags_a_pass_with_no_gatekeeper_record_as_its_page_does(conn, monkeypatch):
+    """A pass from the old loose backtest gate has no gatekeeper record: its page reads "Not validated (record
+    missing)" (experiment None) and calls its out_of_sample later-period. The list says which passes have none
+    (no_gatekeeper_record) from the reads it already makes for every pass: the same answer as each page, and
+    no statement it didn't send before."""
+    from app import repository as repo
+    from app import server
+    from app.research import research_repository as rr
+    from app.trading import spec as specmod
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "norecord@example.invalid", "N", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": 5.0, "max_positions": 1}})
+    run = repo.create_run(cur, uid, "research", "btc15m", "custom", "idea")
+    oos = {"in_sample": {"pnl": 2.0, "trades": 20}, "out_of_sample": {"pnl": 6.2, "trades": 40, "days": 30}}
+
+    def strategy(title, status, link):
+        sid = repo.insert_strategy(cur, uid, run, None, "btc15m", "custom", title, "t", spec, status, dict(oos))
+        if link is None:
+            return sid
+        eid = rr.preregister(cur, {"user_id": uid, "run_id": run, "strategy_id": sid, "market": "btc15m",
+                                   "hypothesis_hash": uuid.uuid4().hex, "spec": spec, "economic_rationale": "{}",
+                                   "primary_metric": "m", "null_hypothesis": "", "alt_hypothesis": "", "planned_test": "t",
+                                   "falsification_criteria": "", "min_sample": 30, "cost_assumptions": {},
+                                   "research_partition_id": 0, "planned_n_tests": 2, "correction_method": "BH"})
+        if link == "id":
+            cur.execute("UPDATE app_strategies SET experiment_id=%s WHERE id=%s", (eid, sid))
+        return sid
+
+    sid = {"linked": strategy("Linked pass", "passed", "id"), "legacy": strategy("Legacy pass", "passed", "strategy"),
+           "loose": strategy("Loose pass", "passed", None), "void": strategy("Loose void", "failed", None)}
+    user = repo.get_user(cur, uid)
+    counting = _Counting(cur)
+    monkeypatch.setattr(conn, "cursor", lambda *a, **k: counting)
+    listed = server.list_strategies(server.Ctx(conn, user, (), {"status": "", "page": "0"}, {}, None))
+    sent = len(counting.sqls)
+    flags = {c["id"]: c.get("no_gatekeeper_record", False) for c in listed["strategies"]}
+    assert {k: flags.get(v) for k, v in sid.items() if v in flags} == {"linked": False, "legacy": False, "loose": True}
+    for k in ("linked", "legacy", "loose"):  # each page: experiment None exactly when the list flags it
+        page = server.get_strategy(server.Ctx(conn, user, (str(sid[k]),), {}, {}, None))
+        assert (page.get("experiment") is None) == flags[sid[k]], k
+    # The list's statements: the reads it made before (the later rows once, the legacy pass's experiment once).
+    monkeypatch.setattr("app.web.routes.strategies._attach_no_record", lambda *a: None)
+    counting.sqls = []
+    server.list_strategies(server.Ctx(conn, user, (), {"status": "", "page": "0"}, {}, None))
+    assert len(counting.sqls) == sent
+
+
 def test_the_since_strip_judges_every_pass_since_the_visit_in_one_read(conn):
     """The dashboard's "since your last visit" judged only the newest 50 passes: with 60, of which the 10
     oldest then missed their one-time holdout, it said "60 strategies passed" and named none as not cleared.

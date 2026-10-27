@@ -119,7 +119,8 @@ def list_strategies(ctx: Ctx):
     # or Rejected (it read "Held back" under the Void chip).
     judged = repo.passed_strategies(ctx.cur, ctx.uid, direction, market, search, deployed,
                                     paper_passed=gatekeeper.Classification.FORWARD_VALIDATED.value)
-    got = _later_verdicts(ctx.cur, ctx.uid, judged)
+    recorded: set = set()  # the judged passes with a gatekeeper record, from the same reads
+    got = _later_verdicts(ctx.cur, ctx.uid, judged, recorded=recorded)
     uncleared = [p for p in judged if p["id"] in got]
     _split_not_cleared(counts, judged, got)
     # Default ("Kept") view hides rejected/void — the big-run noise — but keeps every row in the
@@ -140,6 +141,7 @@ def list_strategies(ctx: Ctx):
     matched = (counts.get(status, 0) if status else counts["total"] - noise) + shown_ex
     cards = [_strategy_card(s) for s in rows]
     _attach_verdicts(cards, got)
+    _attach_no_record(cards, judged, recorded)
     _attach_real_records(ctx.cur, ctx.uid, cards)
     _attach_past_records(ctx.cur, ctx.uid, cards, [s["id"] for s in rows if s.get("removed_deps")])
     return {"strategies": cards, "counts": counts,
@@ -153,6 +155,18 @@ def _attach_verdicts(cards: List[Dict], got: Dict[int, Tuple[str, Dict]]) -> Non
     for c in cards:
         if c["id"] in got:
             c["verdict"] = got[c["id"]][0]
+
+
+def _attach_no_record(cards: List[Dict], judged: List[Dict], recorded: set) -> None:
+    """Stamp each passed card with no gatekeeper record with `no_gatekeeper_record`: a pass from the old loose
+    backtest gate, whose page reads "Not validated (record missing)" and calls its out_of_sample the
+    later-period figure, the slice after the split date that picked it, not held out (#590). Its list row
+    said "on unseen data". Whether it has one is what _later_verdicts' reads for every judged pass already
+    found (`recorded`), so no extra read. A card the list didn't judge claims nothing. Display only."""
+    passes = {p["id"] for p in judged if p.get("status") == "passed"}
+    for c in cards:
+        if c.get("status") == "passed" and c["id"] in passes and c["id"] not in recorded:
+            c["no_gatekeeper_record"] = True
 
 
 # The Strategies list's chip for passes a later check left uncleared (Missed final test, Held back): a
@@ -532,12 +546,16 @@ def _later_verdict(s: Dict, exp: Optional[Dict]) -> Optional[str]:
     return None
 
 
-def _later_verdicts(cur, uid: int, strategies: List[Dict]) -> Dict[int, Tuple[str, Dict]]:
+def _later_verdicts(cur, uid: int, strategies: List[Dict],
+                    recorded: Optional[set] = None) -> Dict[int, Tuple[str, Dict]]:
     """{strategy id: (its _later_verdict, the slim experiment block it was judged on)} for the strategies a
     list shows, those with one only. At most two reads for the whole list, never one per row: only for a
     passed strategy stored before app_strategies.experiment_id existed, the experiment experiments_for_strategy
     falls back to (by idx_exp_user_market's user_id), then their experiments' holdout, paper and forward rows
-    (research_repo.later_results, by primary key and idx_res_exp)."""
+    (research_repo.later_results, by primary key and idx_res_exp).
+    `recorded`, when given, is filled with the ids of the strategies whose experiment those same reads found:
+    the gatekeeper record a strategy page resolves (_experiment_block). A passed strategy left out of it has
+    none, so its list row says its backtest figure is later-period, as its page does. Display only."""
     eids = {s["id"]: int(s["experiment_id"]) for s in strategies if s.get("experiment_id")}
     legacy = [s["id"] for s in strategies if s.get("status") == "passed" and s["id"] not in eids]
     if legacy:
@@ -548,6 +566,8 @@ def _later_verdicts(cur, uid: int, strategies: List[Dict]) -> Dict[int, Tuple[st
         rec = later.get(eids.get(s["id"]))
         if rec is None:
             continue
+        if recorded is not None:
+            recorded.add(s["id"])
         try:
             exp = dict(_later_fields(rec["results"]), min_sample=_exp_int(rec, "min_sample"))
         except (TypeError, ValueError):  # a record it can't read never fails the list
