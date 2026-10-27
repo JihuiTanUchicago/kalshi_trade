@@ -347,6 +347,21 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .t-strat td.name, .t-dep td.name { min-width: 14em; }
   .t-strat td[data-lab="Market"], .t-dep td[data-lab="Market"], .t-dep td[data-lab="Status"], .t-strat td.st, .t-dep th.num, .t-dep td.act { white-space: normal; }
 }
+/* Still the board ran ~935px wide, and with the rail open a 1100-1280 window gives it 745-920: the
+   Resume and Remove buttons sat past the sheet's edge ("RESUM", "REMOV"), and their hidden labels
+   scrolled the whole page sideways. Under ~1040px the cells pad less, the backtest line and the
+   age wrap and the sparkline shrinks, so every action fits; the sheet holds anything that still overflows. */
+.dep-sheet { container: deployments / inline-size; position: relative; }
+@media (min-width: 761px) {
+  @container deployments (max-width: 1040px) {
+    .t-dep th, .t-dep td { padding-left: 7px; padding-right: 7px; }
+    .t-dep td:first-child, .t-dep th:first-child { padding-left: 0; }
+    .t-dep td:last-child, .t-dep th:last-child { padding-right: 0; }
+    .t-dep th, .t-dep td[data-lab="Backtest estimate"], .t-dep td[data-lab="Since"] { white-space: normal; }
+    .t-dep td.name { min-width: 10em; }
+    .t-dep .spark { width: 56px; }
+  }
+}
 th, td { padding: 10px 12px 9px; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--rule); white-space: nowrap; }
 th { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--rule-2); }
 td:first-child, th:first-child { padding-left: 0; }
