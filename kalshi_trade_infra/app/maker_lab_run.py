@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Sequence
 
@@ -22,6 +23,7 @@ from app.services.maker_lab import S3Ledger, run_lab, split, summary_lines
 from trading_core.engine.maker_policy import MAKER_SERIES
 
 PREFIX = "research-watch/maker/runs/"
+STATUS = "research-watch/maker/status/"   # <UTC time>_<series>.json: started, then done or failed
 PRIOR_RUNS = 3
 ROTATION = ("KXBTCD", "KXBTC15M", "KXBTC")
 
@@ -66,8 +68,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
     choice = catalog.resolve(a.model)
     model = lambda system, messages, on_delta=None: claude(system, messages, choice.model_id)  # noqa: E731
     s3 = boto3.client("s3")
-    out = run_lab(series, research, holdout, model, Usage(), S3Ledger(s3, BUCKET), evaluate, a.rounds,
-                  a.per_round, a.workers, prior=prior_lines(s3, BUCKET, series))
+    # Nobody can read the box log from outside, so the run's fate is written next to its results: a
+    # status that stays "started" means the process was killed (out of memory or the unit timeout).
+    started = datetime.now(timezone.utc)
+    status_key = "%s%s_%s.json" % (STATUS, started.strftime("%Y%m%dT%H%M"), series)
+
+    def status(state: str, **extra) -> None:
+        doc = dict(state=state, series=series, started=started.isoformat(), at=datetime.now(timezone.utc).isoformat(),
+                   workers=a.workers, **extra)
+        s3.put_object(Bucket=BUCKET, Key=status_key, Body=json.dumps(doc, default=str).encode())
+
+    status("started")
+    try:
+        out = run_lab(series, research, holdout, model, Usage(), S3Ledger(s3, BUCKET), evaluate, a.rounds,
+                      a.per_round, a.workers, prior=prior_lines(s3, BUCKET, series))
+    except Exception:
+        status("failed", error=traceback.format_exc()[-4000:])
+        raise
     out["model"] = choice.model_id
     body = json.dumps(out, indent=1, default=str)
     key = "research-watch/maker/runs/%s_%s.json" % (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M"), series)
@@ -75,6 +92,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
     if a.out:
         with open(a.out, "w") as f:
             f.write(body)
+    status("done", result=key)
     print("saved s3://%s/%s" % (BUCKET, key))
     return 0
 
