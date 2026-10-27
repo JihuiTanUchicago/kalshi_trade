@@ -239,6 +239,28 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     assert.doesNotMatch(some, /Not in yet/);
   });
 
+  test(`${name}: "Furthest on paper" says why it counts fewer trades than the paper book, in the track record's words`, async () => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response(dashboard());
+      if (path === '/api/autopilot/status') return response(apStatus);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      return response({});
+    }});
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    f.S.ap = {...apStatus, paper_progress: {strategy_id: 3, title: 'Momentum', trades: 0, trades_needed: 30, net_pnl: 0, strategies: 1}};
+    f.paintDashAp();
+    const cell = f.root.querySelector('#dash-ap .apcard-figs').textContent;
+    assert.match(cell, /Furthest on paper\s*0 of 30 realistic paper trades\s*instant-fill paper trades left out \(fills real execution would not get\)/);
+    f.clearTimers();
+    // The track record's own caveat keeps the same words.
+    const record = frontend({fetchImpl: () => response({})}), host = record.document.createElement('section');
+    host.innerHTML = record.trackRecordPanel({trades: 3, wins: 2, losses: 1, label: 'Paper', net_pnl: 4, fees: 0.2, excluded_instant_fills: 12,
+      monthly: [], strategies: [], curve: [], sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge.'}}, 'paper', {min_sharpe_days: 14, min_trades: 30});
+    assert.match(host.innerHTML, /12 instant-fill paper trades left out \(fills real execution would not get\)\./);
+  });
+
   test(`${name}: Research counts your sessions as sessions, never "runs"`, async () => {
     const example = {id: 1, seq: 1, status: 'succeeded', market: 'btc15m', direction: 'random_walk', example: true, prompt: 'Random walk',
       hypotheses_tried: 2, strategies_passed: 0, spent_usd: 0, created_at: '2026-10-17T08:00:00Z'};
