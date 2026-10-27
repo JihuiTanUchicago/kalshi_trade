@@ -113,6 +113,10 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const f = await open({status: 'passed', out_of_sample: null, experiment: exp});
     const figs = f.root.querySelector('#figs').innerHTML;
     assert.match(figs, /\+\$20\.46/); assert.match(figs, /after fees, over 132 trades the agent never saw/);
+    // Its record has no return on capital (that is the old backtest's later slice): "Return on capital —" stood on every
+    // research session's strategy page. With no figure it is left out.
+    assert.deepEqual(f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['Unseen-data P&L', 'In-sample P&L', 'Ideas tested']);
+    assert.doesNotMatch(figs, /Return on capital/);
     assert.doesNotMatch(figs + main(f), /Rejected before the unseen test|Not tested out-of-sample|not advanced to the unseen-data test/);
     assert.match(main(f), /On 132 trades of data the agent never saw while iterating, it made \$20\.46 after fees \(\+3\.10% of the stake per trade\), one of 5 ideas tested this run\./);
     // Too few trades to judge: the loss and the count it had, still not "rejected before the test".
@@ -162,7 +166,8 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     }
     // With no later-period result its only figures are in-sample: no unseen-data figure, and no "rejected before the test".
     const bare = await open({status: 'passed', experiment: null, out_of_sample: null, recent_trades: []});
-    assert.deepEqual(bare.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['In-sample P&L', 'Return on capital', 'Ideas tested']);
+    // No later-period result, no return on it: the figure is left out, never "Return on capital —".
+    assert.deepEqual(bare.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['In-sample P&L', 'Ideas tested']);
     assert.match(main(bare), /It has no held-out result: its only figures are from the history it searched\./);
     assert.match(main(bare), /so nothing on this page is held-out evidence: its only figures are from the history it searched\. Treat it as unvalidated\./);
     assert.match(main(bare), /No result after the split date recorded: its only figures are from the history it searched\./);
