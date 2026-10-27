@@ -118,6 +118,21 @@ def test_billing_runway_is_absent_without_recent_usage_or_balance(monkeypatch):
     assert server.billing_state(context())['runway_days'] is None
 
 
+def test_billing_says_whether_the_card_was_ever_charged_from_the_same_ledger_read(monkeypatch):
+    # Welcome credits only: the page says under the balance that the card hasn't been charged. A top-up or
+    # an auto-reload ever made (from the grouped read the balance already comes from) turns that off.
+    monkeypatch.setattr(server.billing, 'configured', lambda: False)
+    monkeypatch.setattr(server.repo, 'get_stripe_customer', lambda *a: None)
+    monkeypatch.setattr(server.repo, 'credit_statement', lambda *a: [])
+    monkeypatch.setattr(server.repo, 'usage_by_source', lambda *a: dict(_NO_USAGE))
+    monkeypatch.setattr(server.repo, 'credit_spent_total', lambda *a, **k: 0.84)
+    for totals, charged in ((_totals(bonus=20.0, usage=-0.84), False), (_totals(bonus=20.0, topup=25.0, usage=-3.0), True),
+                            (_totals(bonus=20.0, autoreload=20.0, usage=-16.0), True)):
+        monkeypatch.setattr(server.repo, 'credit_totals', lambda *a, t=totals: t)
+        assert server.billing_figures(context())['card_charged'] is charged
+        assert server.billing_state(context())['card_charged'] is charged
+
+
 def test_billing_figures_poll_reads_the_page_figures_without_stripe_or_the_statement(monkeypatch):
     # The open Billing page polls this. The full read asks Stripe for the saved cards of a paying account
     # (up to its timeout) and reads the 300-line statement; the poll does neither, and its figures are
@@ -543,7 +558,7 @@ def test_autopilot_status_carries_a_weekly_scorecard_with_credits_and_paper_apar
     assert week == {'research_credits': 7.26, 'tested': 41, 'passed': 2, 'not_cleared': 0, 'paper_started': 1,
                     'paper_pnl': -3.46, 'paper_trades': 4,
                     'checkin_credits': 0.0, 'credits_left': 10.0, 'runway_days': None, 'reload_days': None,
-                    'pace_days': 7.0}
+                    'pace_days': 7.0, 'card_charged': None}  # the stubbed credit read doesn't say
     assert seen[0][0] == 7 and abs((server.repo.now_utc() - seen[0][1]).total_seconds() - 7 * 86400) < 5
     off = server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))
     assert 'week' not in off and len(seen) == 1  # an off autopilot reads nothing extra

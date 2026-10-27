@@ -6,6 +6,8 @@
 // - Sign out that Tau didn't confirm stays on the page and says the reader is still signed in, from
 //   the profile menu and from the card wall's "Sign out instead"; a confirmed one (or a session that
 //   had already ended) goes to sign-in.
+// - the card wall's Save tapped before the card form is up says the form is still loading, and never
+//   submits the bare form (which reloaded the page to "/?" and started the form over).
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -147,4 +149,26 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
       assert.match(dlg.querySelector('#pay-hint').innerHTML, /You’re still signed in: Tau didn’t confirm the sign-out\./);
     });
   }
+
+  test(`${name}: the card wall's Save tapped before the card form is up says it is loading instead of reloading the page`, async () => {
+    let answer;
+    const billingRead = new Promise((resolve) => { answer = resolve; });
+    const f = frontend({...cardWallOpts(), fetchImpl: path => {
+      if (/^\/api\/billing(\?|$)/.test(path)) return billingRead;
+      if (path === '/api/billing/setup-intent') return response({client_secret: 'synthetic'});
+      return response({});
+    }});
+    f.location.pathname = '/'; Object.assign(f.S.me, {needs_card: true, free_bonus: 20});
+    const gate = f.paymentGate(); await settle();
+    const dlg = f.document.body.querySelector('.pay-modal'), hint = () => dlg.querySelector('#pay-hint').innerHTML;
+    let prevented = false;
+    dlg.querySelector('#payform').onsubmit({preventDefault: () => { prevented = true; }});
+    assert.equal(prevented, true, 'the bare form never submits');
+    assert.match(hint(), /The card form is still loading\. Enter your card once it appears\./);
+    assert.ok(!posts(f).includes('/api/billing/card-added'));
+    // Once the form is up, the note goes and Save is the real save again.
+    answer(response({configured: true, publishable_key: 'synthetic-only', auto_reload: false, balance: 0, spent: 0, free_bonus: 20}));
+    await gate; await settle();
+    assert.equal(hint(), '');
+  });
 }

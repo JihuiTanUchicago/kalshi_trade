@@ -88,4 +88,104 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     assert.match(line(), /about 10 days at this week’s pace\./);
     f.clearTimers();
   });
+
+  test(`${name}: the autopilot's week calls free credits free until a card was ever charged, as the strip above it does`, async () => {
+    const week = {research_credits: 0.84, tested: 2, passed: 1, paper_started: 0, paper_pnl: 0, paper_trades: 0,
+      checkin_credits: 0, credits_left: 19.16, runway_days: null, pace_days: 0.01};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard') return response(dashboard());
+      if (path === '/api/autopilot/status') return response({...apStatus, week});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 19.16, min_run_balance: 1, auto_reload: null};
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    const spent = () => f.root.querySelector('#dash-ap .ap-week dd').textContent;
+    f.S.ap = {...apStatus, week: {...week, card_charged: false}}; f.paintDashAp();
+    assert.match(spent(), /^\$0\.84 free credits so far: your card hasn’t been charged$/);
+    assert.doesNotMatch(spent(), /real money/);
+    // Once a card was charged, or from a server that doesn't say: real money, as before.
+    for (const charged of [true, undefined]) {
+      f.S.ap = {...apStatus, week: {...week, card_charged: charged}}; f.paintDashAp();
+      assert.match(spent(), /^\$0\.84 real money$/);
+    }
+    f.clearTimers();
+  });
+
+  test(`${name}: switched on a moment ago, the strip's Autopilot row says so instead of "It made no changes"`, async () => {
+    const flip = {text: 'Autopilot is ON: the agent may research, deploy and tune paper strategies.', at: new Date().toISOString()};
+    let status = {...apStatus, autopilot: false, mode: 'off', last_action: null};
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response({...dashboard(), since: {at: '2026-10-25T08:00:00+00:00', first: true,
+        books: {}, passed: {n: 0, items: []}, autopilot: {}, runs: {}, own_sessions: false}});
+      if (path === '/api/settings') return response({ok: true});
+      if (path === '/api/autopilot/status') return response(status);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = false; f.S.ap = null;
+    await f.viewDashboard(); await flush();
+    const row = () => f.root.querySelector('#dash-since [data-since-ap]').textContent;
+    assert.equal(row(), 'Off.');
+    status = {...apStatus, autopilot: true, last_action: flip};
+    await f.root.querySelector('#dash-ap [data-apcard="on"]').onclick(); await flush(); await flush();
+    assert.equal(row(), 'Switched on just now. Its moves show up here as it makes them.');
+    // Once it has made a move of its own, the switch is no longer the news.
+    status = {...status, last_action: {text: 'Started a fresh research session on Bitcoin.', at: flip.at}};
+    f.S.ap = status; f.paintDashAp();
+    assert.equal(row(), 'On. It made no changes.');
+    f.clearTimers();
+  });
+
+  test(`${name}: on a new account with the autopilot off, its card comes before the empty strip, and stays there once on`, async () => {
+    const order = async ({own, on}) => {
+      let status = on ? {...apStatus, autopilot: true} : {...apStatus, autopilot: false, mode: 'off'};
+      const f = frontend({fetchImpl: (path) => {
+        if (path.startsWith('/api/dashboard')) return response({...dashboard(), since: {at: '2026-10-25T08:00:00+00:00', first: true,
+          books: {}, passed: {n: 0, items: []}, autopilot: {}, runs: {}, own_sessions: own}});
+        if (path === '/api/settings') { status = {...apStatus, autopilot: true}; return response({ok: true}); }
+        if (path === '/api/autopilot/status') return response(status);
+        if (path === '/api/models') return response({models: [], default: ''});
+        if (path.startsWith('/api/chat')) return response({messages: []});
+        return response({});
+      }});
+      f.S.me.user.autopilot = on; f.S.ap = null;
+      await f.viewDashboard(); await flush();
+      // The two sections' places in the markup that holds them both.
+      const html = () => f.root.querySelector('#dash-ap').parentElement.innerHTML, at = () => [html().indexOf('id="dash-ap"'), html().indexOf('id="dash-since"')];
+      return {f, at};
+    };
+    // Brand new and off: Turn on autopilot is the first thing under the status line.
+    const fresh = await order({own: false, on: false});
+    let [ap, since] = fresh.at();
+    assert.ok(ap > 0 && since > ap, 'the card leads');
+    // Switched on, then the board's poll repaints: the card keeps its place for the rest of the visit.
+    await fresh.f.root.querySelector('#dash-ap [data-apcard="on"]').onclick(); await flush(); await flush();
+    for (const tick of [...fresh.f.intervals.values()]) { await tick(); await flush(); }
+    [ap, since] = fresh.at();
+    assert.ok(ap > 0 && since > ap, 'still leads after the switch and a poll');
+    fresh.f.clearTimers();
+    // Anyone with a session of their own, or with the autopilot on, reads the strip first, as before.
+    for (const o of [{own: true, on: false}, {own: false, on: true}]) {
+      const {f, at} = await order(o);
+      [ap, since] = at();
+      assert.ok(since > 0 && ap > since, JSON.stringify(o));
+      f.clearTimers();
+    }
+  });
+
+  test(`${name}: Billing says under the balance that it is free credits until the card was ever charged`, async () => {
+    const balanceFig = async (o) => {
+      const f = billingPage(cardedBilling({balance: 19.16, spent_7d: 0.84, runway_days: null, pace_days: 0.01, ...o}));
+      await f.viewBilling(); await flush();
+      return f.root.querySelector('#bfigs .m').textContent;
+    };
+    assert.match(await balanceFig({card_charged: false}), /Credit balance\s*\$19\.16\s*free credits so far: your card hasn’t been charged/);
+    // Charged once, from a server that doesn't say, or with nothing left: no such line.
+    for (const o of [{card_charged: true}, {}, {card_charged: false, balance: 0}])
+      assert.doesNotMatch(await balanceFig(o), /free credits so far/, JSON.stringify(o));
+  });
 }

@@ -234,6 +234,9 @@ def _figures(ctx: Ctx, since):
         "spent_7d_by": {k: credit_usd(v) for k, v in
                         repo.usage_by_source(cur, ctx.uid, repo.now_utc() - timedelta(days=7)).items()},
         "min_run_balance": float(billing.MIN_RUN_BALANCE),
+        # Whether the card was ever charged for credits (a top-up or an auto-reload row in the same grouped
+        # read): until then the balance is free credits, and the page says so under it.
+        "card_charged": any((totals.get(k) or {}).get("n", 0) > 0 for k in _CARD_KINDS),
     }, cust, totals, balance
 
 

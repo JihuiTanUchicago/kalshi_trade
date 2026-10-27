@@ -27,7 +27,9 @@ window.TauPage('billing', (T) => {
     const paintFigs = (d) => {
       const low = isLow(d);
       paint(root.querySelector('#bfigs'),
-        fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0 }) +
+        // Until a card was ever charged for credits (the server's card_charged), the balance is free credits: a
+        // new user read $19.16 with no word that their card hadn't been charged.
+        fig('Credit balance', usd(d.balance), { v: low || d.balance < 0 ? -1 : 0, small: d.card_charged === false && d.balance > 0 ? 'free credits so far: your card hasn’t been charged' : undefined }) +
         fig('Spent, last 7 days', usd(d.spent_7d), { small: [d.spent_24h != null ? `${usd(d.spent_24h)} in the last 24 hours` : '', `${usd(d.spent)} all time`].filter(Boolean).join(' \u00b7\u00a0') }) +
         // How long it lasts means until research pauses (under min_run_balance; with payments off nothing
         // pauses, so until $0), and with auto-reload on, when the card is next charged and for how much:

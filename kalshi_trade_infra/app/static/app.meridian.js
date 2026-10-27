@@ -868,9 +868,12 @@
     advance();
     restart();
     const hint = dlg.querySelector('#pay-hint');
+    // Save tapped before the card form is up (Stripe's script is slow on a phone) submitted the bare form:
+    // the page reloaded to "/?" and the form started over, with no word why. Until it is up, Save says so.
+    dlg.querySelector('#payform').onsubmit = (e) => { e.preventDefault(); hint.innerHTML = '<p class="wl-note" role="status">The card form is still loading. Enter your card once it appears.</p>'; };
     try {
       const state = await api('/api/billing', undefined, { keep: true });
-      if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
+      if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); dlg.querySelector('#payform').onsubmit = (e) => e.preventDefault(); return; }
       // What the card will be charged, before it is saved: nothing now, and auto-reload is on by default.
       // The charge is split as Billing splits it: "$21.10 for $20.00 more" left the $1.10 unexplained.
       const terms = dlg.querySelector('#pay-terms');
@@ -886,6 +889,7 @@
       const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: { country: 'never' } } } });
       dlg.querySelector('#pay-el').innerHTML = '';
       pe.mount('#pay-el');
+      hint.innerHTML = '';  // the form is up: a "still loading" from an early tap no longer holds
       dlg.querySelector('#payform').onsubmit = (e) => {
         e.preventDefault();
         busy(dlg.querySelector('#pay-submit'), async () => {
@@ -2200,6 +2204,11 @@
     if (trFirst) trFirst.catch(() => {});  // a failure is drawn by dashTrackRecord, with its retry
     S.trReread = null;  // set by dashTrackRecord once this view's record is mounted
     let booksSeen = null;  // each book's closed and open trade counts at the last poll
+    // A new account (no session of its own yet) with the autopilot off: its card, the page's one primary
+    // button, goes above the strip, which has nothing to report yet. Below it, Turn on autopilot sat under
+    // the fold on a phone, behind five rows of "No"s. Decided at the visit's first paint and kept for the
+    // visit, so the card doesn't jump down under the strip once it is switched on.
+    let apFirst = null;
     const gen = S.gen;
     const visitAt = visitStart();
     let kept = null;  // the last full answer, whose version the poll sends back (pollAnswer)
@@ -2213,6 +2222,7 @@
       if (gen !== S.gen) return;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
+      if (apFirst == null) apFirst = S.dashNoSessions && !(S.me.user && S.me.user.autopilot);
       const depsWas = S.dashDeps, paperWas = S.dashOnPaper;
       S.dashDeps = d.deployments.length;  // the empty track record's button reads it (trackRecordPanel)
       S.dashOnPaper = d.deployments.filter((x) => x.mode === 'paper' && x.status === 'running').length;  // and its copy reads this
@@ -2309,7 +2319,7 @@
       const paperPlot = (width) => equityChart(periodCurve, null, null, { width: Math.max(280, width || root.querySelector('#main').clientWidth), height: 180, paper: true, endLabel: false, label: `Cumulative closed paper profit and loss from ${days[0].d} through ${days[days.length - 1].d}; ends at ${usd(periodPnl, true)}` });
       const periodLabel = days.length > 1 ? new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'}).formatRange(new Date(days[0].d + 'T12:00:00Z'), new Date(days[days.length - 1].d + 'T12:00:00Z')) : '';
       const performance = days.length > 1 ? `<details class="overview-performance" id="paper-performance"${performanceOpen ? ' open' : ''}><summary><span class="performance-heading"><span class="performance-caption"><h2>Closed P&amp;L</h2>${ICON.chev}</span><strong class="${tone(periodPnl)}" title="Cumulative closed P&L over this period">${usd(periodPnl, true)}</strong></span><span class="performance-meta"><span class="performance-mode"><span class="performance-mode-prefix">Paper ·\u00a0</span>cumulative, ${PAPER_NET}</span><span class="sect-note" title="${esc(days[0].d)} – ${esc(days[days.length - 1].d)}">${esc(periodLabel)}</span></span></summary><div class="paper-plot">${paperPlot()}</div></details>` : '';
-      const main = `${sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section><div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
+      const main = `${apFirst ? '' : sinceStrip(d, '#dash-paused')}<section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-paused') : ''}<div class="dash${paperWorkspace ? ' paper-workspace' : ''}"><div class="dash-layout">
         <section class="account-band"><dl class="figures measure dashboard-figures ${hasLive ? 'live-primary' : ''}">${hasLive ? liveSummary : paperFigure}</dl><p class="stale-note" id="dash-stale" role="status"></p></section>
         <section class="positions-ledger" id="dash-open"><div class="sect-head"><h2>Open positions <span class="section-count">${d.open_positions.length}</span>${paperOnly(d.open_positions) ? ' <span class="position-group-mode">Paper</span>' : ''}</h2></div>
           ${d.open_positions.length ? positionTable(d.open_positions, false) : '<p class="hint">No open positions.</p>'}
@@ -3021,7 +3031,14 @@
     return s.length <= 110 ? s : s.slice(0, 110).replace(/\s+\S*$/, '') + '\u2026';
   };
   // The strip's Autopilot row when it made no moves: just the switch, which syncApCopy keeps current.
-  const sinceApWord = (on) => on ? 'On. It made no changes.' : 'Off.';
+  // Its newest move being the switch itself (the status read's last_action) means it was switched on and
+  // has made no move yet: "On. It made no changes." read as a dud the moment the switch was pressed.
+  const sinceApWord = (on) => {
+    if (!on) return 'Off.';
+    const la = S.ap && S.ap.autopilot ? S.ap.last_action : null;
+    return la && la.at && apMoveText(la) === 'Autopilot switched on'
+      ? `Switched on ${sinceMin(la.at)}. Its moves show up here as it makes them.` : 'On. It made no changes.';
+  };
   // Where the sessions counted in "N research sessions started" are now (the server sends {status: n}),
   // so a session still queued isn't offered as if its ideas had been judged: "still queued", "all
   // running", "1 running, 2 finished". `point` (nothing passed) adds the link: what each idea missed
@@ -3130,7 +3147,7 @@
     // What the time away cost, in credits: real money, so its own row, never added to a book above.
     // Until a card was ever charged (the server's card_charged) every credit spent was a free one, and
     // "real money" beside a new user's first cents read as a charge to their card.
-    const paid = spent && spent.card_charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
+    const paid = creditsPaid(spent && spent.card_charged);
     // A card charged while they were away (the server's charges, reloads of them auto-reload's): the time
     // away's real-money moment, which only Billing's statement told. Credits bought, never netted with spent.
     const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
@@ -3345,11 +3362,15 @@
   // The autopilot's last 7 days (d.week). Credits are real money and paper P&L is not, so they are two
   // labelled figures, never added together. Research counts every session; paper counts only the
   // strategies the autopilot put on paper itself (the server attributes them by their deploy record).
+  // What spent credits were, beside a spend: real money once a card was ever charged for credits (the
+  // server's card_charged), and until then free ones. The autopilot's week said "real money" under a new
+  // user's first cents while the strip above it said the card hadn't been charged.
+  const creditsPaid = (charged) => charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
   function apWeek(w, d) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>real money${+w.checkin_credits >= 0.01 ? ` ·\u00a0plus ${usd(w.checkin_credits)} on its check-ins` : ''}</small></dd></div>
+      <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>${creditsPaid(w.card_charged)}${+w.checkin_credits >= 0.01 ? ` ·\u00a0plus ${usd(w.checkin_credits)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot's paper P&amp;L</dt><dd><span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET} ·\u00a0${trades} closed trade${trades === 1 ? '' : 's'}</small></dd></div>

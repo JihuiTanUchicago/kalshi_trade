@@ -142,7 +142,8 @@ def _usage_key(run_kind: Optional[str], brief) -> str:
 def credit_week(cur, user_id: int, since, balance: bool = False) -> Dict:
     """The autopilot panel's credit figures in one read of the ledger: {"research": research_spent_since,
     "by_source": usage_by_source, "spent": credit_spent_total, each over usage since `since`, and with
-    `balance` "balance": credit_balance (None without)}. The usage rows are grouped once, by their run's
+    `balance` "balance": credit_balance and "card_charged": card_charged (None without both)}. The usage
+    rows are grouped once, by their run's
     kind, brief flag and whether it is the seeded example (research_spent_since leaves that out), and the
     balance rides the same statement. Sums stay Decimal until each figure is made, so every figure is
     the float its own read returned. Every part reads the ledger as it stands at this one statement."""
@@ -154,15 +155,20 @@ def credit_week(cur, user_id: int, since, balance: bool = False) -> Dict:
     params: Tuple = (user_id, since)
     if balance:
         sql += (" UNION ALL SELECT 'balance', NULL, NULL, NULL, COALESCE(SUM(amount_usd),0) "
-                "FROM app_credit_ledger WHERE user_id=%s")
-        params += (user_id,)
+                "FROM app_credit_ledger WHERE user_id=%s"
+                " UNION ALL SELECT 'paid', NULL, NULL, NULL, COUNT(*) FROM (SELECT id FROM app_credit_ledger "
+                "WHERE user_id=%s AND kind IN " + _CARD_KINDS_SQL + " LIMIT 1) p")
+        params += (user_id, user_id)
     cur.execute(sql, params)
     groups: Dict[Tuple, Decimal] = {}
-    research, spent, bal = Decimal(0), Decimal(0), None
+    research, spent, bal, paid = Decimal(0), Decimal(0), None, None
     for r in cur.fetchall():
         s = Decimal(str(r["s"] if r["s"] is not None else 0))
         if r["part"] == "balance":
             bal = float(s)
+            continue
+        if r["part"] == "paid":
+            paid = s > 0
             continue
         key = (r["run_kind"], int(r["brief"] or 0))
         groups[key] = groups.get(key, Decimal(0)) + s
@@ -172,7 +178,20 @@ def credit_week(cur, user_id: int, since, balance: bool = False) -> Dict:
     by_source = {"research": 0.0, "autopilot_research": 0.0, "autopilot_review": 0.0, "chat": 0.0, "other": 0.0}
     for (kind, brief), s in groups.items():
         by_source[_usage_key(kind, brief)] += float(s)
-    return {"research": float(research), "by_source": by_source, "spent": float(spent), "balance": bal}
+    return {"research": float(research), "by_source": by_source, "spent": float(spent), "balance": bal,
+            "card_charged": paid}
+
+
+# The ledger kinds a card charge writes (a top-up, an auto-reload): until one exists every credit the
+# user spent was a free one (the welcome credits), and the pages say so instead of "real money".
+_CARD_KINDS_SQL = "('topup','autoreload')"
+
+
+def card_charged(cur, user_id: int) -> bool:
+    """Whether the user's card was ever charged for credits: one LIMIT 1 probe of the ledger."""
+    cur.execute("SELECT id FROM app_credit_ledger WHERE user_id=%s AND kind IN " + _CARD_KINDS_SQL + " LIMIT 1",
+                (user_id,))
+    return cur.fetchone() is not None
 
 
 def forever_session_rates(cur, since, user_id: Optional[int] = None, limit: int = 500) -> List[Tuple[Optional[str], float, float]]:

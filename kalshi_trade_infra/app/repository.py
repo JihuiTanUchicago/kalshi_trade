@@ -17,7 +17,7 @@ from app.adapters.db.billing_repository import (  # noqa: F401
     add_credit, credit_balance, credit_rows, credit_spent_total, credit_statement, credit_totals, get_stripe_customer,
     finished_session_costs, finished_session_costs_by_model, forever_session_rates, recent_session_costs, research_spent_since, runs_spent,
     last_credit_at, usage_by_source, save_stripe_customer, set_auto_reload, set_default_pm, user_by_email,
-    credit_week, _usage_key,
+    credit_week, card_charged, _usage_key,
 )
 from app.adapters.db.autopilot_pulse_repository import _pulse_at, _pulse_list, _pulse_secs, autopilot_pulse  # noqa: F401
 from app.adapters.db.kalshi_keys_repository import (  # noqa: F401
