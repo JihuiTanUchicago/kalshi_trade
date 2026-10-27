@@ -168,7 +168,7 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     const paper = await board({deployments: [dep({realized_pnl: 146.04})],
       realized_by_book: {paper: {listed: 146.04, removed: 5.72, removed_deployments: 2, all: 151.76}}});
     assert.match(paper, /<dt class="lab">Realized, deployments listed below<\/dt>[\s\S]*\+\$146\.04/);
-    assert.match(paper, /paper money, not real ·\u00a0\+\$5\.72 from 2 removed deployments, \+\$151\.76 in all/);
+    assert.match(paper, /paper money, not real\u00a0· \+\$5\.72 from 2 removed deployments, \+\$151\.76 in all/);
     // One removed deployment, a loss: singular, signed.
     const one = await board({deployments: [dep({realized_pnl: 3})],
       realized_by_book: {paper: {listed: 3, removed: -1.25, removed_deployments: 1, all: 1.75}}});
@@ -180,9 +180,12 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     const books = await board({deployments: [dep({id: 1, mode: 'live', realized_pnl: 2}), dep({id: 2, mode: 'paper', realized_pnl: 40}), dep({id: 3, mode: 'demo', realized_pnl: -10})],
       realized_by_book: {live: {listed: 2, removed: 1, removed_deployments: 1, all: 3}, paper: {listed: 40, removed: 7, removed_deployments: 3, all: 47},
         demo: {listed: -10, removed: 4, removed_deployments: 1}}});
-    assert.match(books, /Live realized, deployments listed below[\s\S]*real money ·\u00a0\+\$1\.00 from 1 removed deployment, \+\$3\.00 in all ·\u00a0after Kalshi fees ·\u00a0\+\$40\.00 on paper from the deployments listed, counted apart/);
-    assert.match(books, /Demo realized, deployments listed below[\s\S]*not real money ·\u00a0\+\$4\.00 from 1 removed deployment ·\u00a0after Kalshi fees</);
+    assert.match(books, /Live realized, deployments listed below[\s\S]*real money\u00a0· \+\$1\.00 from 1 removed deployment, \+\$3\.00 in all\u00a0· after Kalshi fees\u00a0· \+\$40\.00 on paper from the deployments listed, counted apart/);
+    assert.match(books, /Demo realized, deployments listed below[\s\S]*not real money\u00a0· \+\$4\.00 from 1 removed deployment\u00a0· after Kalshi fees</);
     assert.doesNotMatch(books, /\$42\.00|\$32\.00|\$50\.00/);
+    // Walk 2026-10-27 at 390px: "· +$0.75 from 1 removed deployment" and "· after Kalshi fees" began lines. Each "·" now
+    // has a no-break space before it and a plain one after, so it ends its line.
+    for (const html of [paper, books]) assert.ok(!/ ·/.test(html) && html.includes(' · '), html);
     // An empty board with removed deployments: no "listed below" over an empty list.
     const empty = await board({deployments: [], realized_by_book: {paper: {listed: 0, removed: 5.72, removed_deployments: 2, all: 5.72}}});
     assert.match(empty, /<dt class="lab">Realized<\/dt>[\s\S]*\+\$5\.72 from 2 removed deployments, \+\$5\.72 in all/);

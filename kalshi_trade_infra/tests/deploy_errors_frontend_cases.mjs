@@ -197,7 +197,7 @@ export function deployErrorCases({name, frontend, strategyFrontend, detailStrate
     assert.equal(count(paper.row(3), PAPER_NET_SHORT) + count(paper.row(3), PAPER_NET), 0, 'demo says nothing of the kind');
     // A board led by live money says it beside the paper amount it names, once; live money never gets it.
     const live = await deploys({deployments: [dep({id: 1, mode: 'live', realized_pnl: 2}), dep({id: 2, strategy_id: 2, title: 'Dep two', realized_pnl: 40})]});
-    assert.match(live.figs, /real money · after Kalshi fees · \+\$40\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the spread/);
+    assert.match(live.figs, /real money · after Kalshi fees · \+\$40\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the spread/);
     assert.equal(count(live.figs, PAPER_NET), 1);
     assert.equal(count(live.rows, PAPER_NET), 0);
   });

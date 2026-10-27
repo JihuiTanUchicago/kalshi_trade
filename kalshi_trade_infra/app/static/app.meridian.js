@@ -2559,14 +2559,14 @@
       const removedNote = (m) => {
         const b = books[m];
         if (!b || !b.removed_deployments) return '';
-        return ` ·\u00a0${usd(b.removed, true)} from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, ${usd(b.all, true)} in all` : ''}`;
+        return `\u00a0· ${usd(b.removed, true)} from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, ${usd(b.all, true)} in all` : ''}`;
       };
       const listedLab = (lab, xs) => (xs.length ? `${lab}, deployments listed below` : lab);
       // A book with no closed trade yet, listed or removed, has no P&L: it says "None yet" and when one shows, as the
       // dashboard's and the autopilot's paper P&L do, never a $0.00 that reads as trading flat.
       const noneYet = (m, xs) => !listed(m, xs) && xs.every((x) => !+x.closed_trades && !+x.realized_pnl) && !(books[m] && +books[m].removed_deployments);
       const realizedFig = (m, xs, v) => (noneYet(m, xs) ? 'None yet' : usd(v, true));
-      const noneLine = (m, xs) => (noneYet(m, xs) ? ` \u00b7\u00a0shows once a ${m} trade closes` : '');
+      const noneLine = (m, xs) => (noneYet(m, xs) ? `\u00a0· shows once a ${m} trade closes` : '');
       const byMode = (m) => d.deployments.filter((x) => x.mode === m);
       const liveDeps = byMode('live'), paperDeps = byMode('paper'), demoDeps = byMode('demo');
       const liveRealized = listed('live', liveDeps), paperRealized = listed('paper', paperDeps), demoRealized = listed('demo', demoDeps);
@@ -2583,9 +2583,9 @@
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
       paint(root.querySelector('#dfigs'), fig('Running', active.length, { small: `${d.deployments.length - running.length} paused${idle ? ` ·\u00a0${idle} placing no orders` : ''}` }) +
         (liveDeps.length
-          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}${noneLine('live', liveDeps)} ·\u00a0after Kalshi fees${paperDeps.length ? ` ·\u00a0${usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
-          : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}${noneLine('paper', paperDeps)} ·\u00a0${PAPER_NET}${glo('paperfills')}` }) : '') +
-        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}${noneLine('demo', demoDeps)} ·\u00a0after Kalshi fees` }) : '') +
+          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}${noneLine('live', liveDeps)}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
+          : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}${noneLine('paper', paperDeps)}\u00a0· ${PAPER_NET}${glo('paperfills')}` }) : '') +
+        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}${noneLine('demo', demoDeps)}\u00a0· after Kalshi fees` }) : '') +
         fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? liveIdleCount(liveIdle) : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);

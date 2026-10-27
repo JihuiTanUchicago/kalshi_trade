@@ -877,8 +877,8 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
 
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money ·\u00a0after Kalshi fees ·\u00a0\+\$2\.00 on paper from the deployments listed, counted apart/]]) {
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments, open_positions: []}); }});
     await f.viewDeploy(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;
