@@ -35,6 +35,7 @@ from app.web.views import (
     demo_health_memo,
     credit_cents,
     credit_exact,
+    credit_split,
     credit_usd,
     _needs_card,
     _pause_clause,
@@ -280,16 +281,18 @@ def _week_not_cleared(cur, uid: int, since, stored: int) -> int:
 
 def _research_cents(credits: Dict) -> float:
     """The week's research credits (repo.credit_week) as Billing's week split shows them: "your research
-    sessions" plus "autopilot research", each to the cent first (credit_cents), so the autopilot card's
-    research is the sum of the two figures Billing shows. Rounded once, $40.936666 + $59.066899 read
-    $100.00 on the card beside Billing's $40.94 and $59.07. The seeded example session is left out of
-    research; it debits nothing, and if it ever did, the figure is the research total to the cent."""
+    sessions" plus "autopilot research", each as Billing's split rounds it (credit_split: the parts add up
+    to the week), so the autopilot card's research is the sum of the two figures Billing shows. Rounded
+    once, $40.936666 + $59.066899 read $100.00 on the card beside Billing's $40.94 and $59.07. The seeded
+    example session is left out of research; it debits nothing, and if it ever did, the figure is the
+    research total to the cent."""
     if not credits["research"]:
         return 0.0  # no research debits this week: nothing to split
     by = credits["by_source"]
     if abs(by["research"] + by["autopilot_research"] - credits["research"]) > 1e-9:
         return credit_usd(credits["research"])
-    return credit_usd(credit_cents(by["research"]) + credit_cents(by["autopilot_research"]))
+    split = credit_split(by)
+    return credit_usd(credit_cents(split["research"]) + credit_cents(split["autopilot_research"]))
 
 
 def _plural(n: int, one: str, many: str = "") -> str:
@@ -930,7 +933,7 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
         balance = reads.balance()
         days = pace_days(created_at)
         # Billing's two countdowns: until research pauses, and until auto-reload next charges the card.
-        out.update(checkin_credits=credit_usd(used["autopilot_review"]), credits_left=credit_usd(balance),
+        out.update(checkin_credits=credit_split(used)["autopilot_review"], credits_left=credit_usd(balance),
                    runway_days=runway_days(balance, spent_7d, days, stop_at=pause_at()),
                    reload_days=reload_days(reads.customer(), balance, spent_7d, days), pace_days=days)
     return out

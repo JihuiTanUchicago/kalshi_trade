@@ -13,7 +13,7 @@ from app.adapters.stripe import billing
 from app.services import customer_text
 from app.trading.markets import MARKETS
 from app.web.http import ApiError, Ctx, _num
-from app.web.views import credit_cents, credit_exact, credit_usd, session_title
+from app.web.views import credit_cents, credit_exact, credit_split, credit_usd, session_title
 
 
 def _stripe_failed(ctx: Ctx, e: "billing.StripeError", status: int, doing: str, fallback: str) -> ApiError:
@@ -199,6 +199,8 @@ def _figures(ctx: Ctx, since):
     created_at = ctx.user.get("created_at")
     balance, spent_7d, runway = _credit_runway(cur, ctx.uid, balance=balance, created_at=created_at)
     # When auto-reload next charges the card at that pace; none while its last attempt stands failed.
+    by_7d = repo.usage_by_source(cur, ctx.uid, repo.now_utc() - timedelta(days=7))
+    split_7d = credit_split(by_7d, spent_7d)
     reload_in = None if reload_failed or not billing.configured() else reload_days(cust, balance, spent_7d,
                                                                                   pace_days(created_at))
     return {
@@ -228,11 +230,13 @@ def _figures(ctx: Ctx, since):
         # The last auto-reload failed (what it tried to add and why, in the user's words): Billing
         # shows it by the auto-reload switch with a way to update the card. None when it didn't.
         "reload_failed": reload_failed,
-        # Read-only spend pace: the last day, and the week split by what spent it (the parts add up
-        # to spent_7d). The research floor tells the page when new research can't start.
+        # Read-only spend pace: the last day, and the week split by what spent it, in cents that add up to
+        # spent_7d as shown (credit_split). A part that spent something but shows $0.00 is named in
+        # spent_7d_under_cent, so the page says "under $0.01" instead of dropping it. The research floor
+        # tells the page when new research can't start.
         "spent_24h": credit_usd(repo.credit_spent_total(cur, ctx.uid, repo.now_utc() - timedelta(days=1))),
-        "spent_7d_by": {k: credit_usd(v) for k, v in
-                        repo.usage_by_source(cur, ctx.uid, repo.now_utc() - timedelta(days=7)).items()},
+        "spent_7d_by": split_7d,
+        "spent_7d_under_cent": [k for k, v in by_7d.items() if credit_exact(v) > 0 and not split_7d.get(k)],
         "min_run_balance": float(billing.MIN_RUN_BALANCE),
         # Whether the card was ever charged for credits (a top-up or an auto-reload row in the same grouped
         # read): until then the balance is free credits, and the page says so under it.
