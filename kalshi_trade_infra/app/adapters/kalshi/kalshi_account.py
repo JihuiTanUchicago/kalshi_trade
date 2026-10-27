@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import base64
 import os
+import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Hashable, Optional, Tuple, TypeVar
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
@@ -79,6 +80,7 @@ _BALANCE_TTL = 60.0
 # A memo counts as kept only with this long still to run, so a page read that checked it a moment
 # earlier still answers from it.
 KEPT_MARGIN = 5.0
+T = TypeVar("T")
 
 
 def remember_balance(user_id: int, value: Optional[float]) -> None:
@@ -87,18 +89,71 @@ def remember_balance(user_id: int, value: Optional[float]) -> None:
     _BALANCE_CACHE[user_id] = (time.monotonic(), value)
 
 
+class _Flight:
+    """One read in flight: its answer (or what it raised) once `done` is set."""
+
+    __slots__ = ("done", "value", "error")
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.value: Any = None
+        self.error: Optional[BaseException] = None
+
+
+_FLIGHTS: Dict[Hashable, _Flight] = {}
+_FLIGHTS_LOCK = threading.Lock()
+
+
+def single_flight(key: Hashable, read: Callable[[], T]) -> T:
+    """read() for `key` (("live" | "demo", user id)), with at most one in flight per key: a caller that finds
+    one in flight waits for it and takes its answer instead of asking Kalshi again. Two tabs open, or a poll
+    and its page's follow-up at once, were each a Kalshi balance read the moment the memo ran out. For
+    display reads only (the read-only balance GETs): nothing that sizes or gates an order goes through it.
+    No timeout of its own: the read under it has Kalshi's, and a waiter waits no longer than it."""
+    with _FLIGHTS_LOCK:
+        flight = _FLIGHTS.get(key)
+        lead = flight is None
+        if lead:
+            flight = _FLIGHTS[key] = _Flight()
+    if not lead:
+        flight.done.wait()
+        if flight.error is not None:
+            raise flight.error
+        return flight.value
+    try:
+        flight.value = read()
+        return flight.value
+    except BaseException as e:  # noqa: BLE001 - handed to the waiters, then raised here as it was
+        flight.error = e
+        raise
+    finally:
+        with _FLIGHTS_LOCK:
+            _FLIGHTS.pop(key, None)
+        flight.done.set()
+
+
 def balance_cached(user_id: int, creds: KalshiCredentials, ttl: float = _BALANCE_TTL) -> Optional[float]:
     """Best-effort live cash balance with a short TTL memo. Returns None (never raises) when
-    Kalshi can't be reached, so callers degrade to a 'couldn't read it' state."""
+    Kalshi can't be reached, so callers degrade to a 'couldn't read it' state. One Kalshi read per user
+    at a time (single_flight): reads that miss the memo together share it. Display only."""
+    hit = _BALANCE_CACHE.get(user_id)
+    if hit and time.monotonic() - hit[0] < ttl:
+        return hit[1]
+    return single_flight(("live", user_id), lambda: _read_into_memo(user_id, creds, ttl))
+
+
+def _read_into_memo(user_id: int, creds: KalshiCredentials, ttl: float) -> Optional[float]:
     now = time.monotonic()
     hit = _BALANCE_CACHE.get(user_id)
-    if hit and now - hit[0] < ttl:
+    if hit and now - hit[0] < ttl:  # a read that finished just before this one started
         return hit[1]
     try:
         value = balance(creds)
     except Exception:
         value = None
-    _BALANCE_CACHE[user_id] = (now, value)
+    # A key saved meanwhile seeded the memo with its own cash (remember_balance): that stays.
+    if _BALANCE_CACHE.get(user_id) is hit:
+        _BALANCE_CACHE[user_id] = (now, value)
     return value
 
 

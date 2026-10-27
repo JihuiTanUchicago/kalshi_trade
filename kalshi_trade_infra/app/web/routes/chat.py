@@ -768,10 +768,10 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
     return _idle(code, "Nothing is on paper yet: no strategy has passed its research tests. %s" % doing)
 
 
-def autopilot_status(ctx: Ctx, ask_kalshi: bool = True):
-    """Lightweight status for the floating autopilot window. With ask_kalshi False (the dashboard shell's
-    first read) it never waits on Kalshi: a demo-funds idle line that would read the demo cash is left
-    out and marked idle_pending, and the page reads the status again once that cash is read."""
+def autopilot_status(ctx: Ctx, ask_kalshi: bool = False):
+    """Lightweight status for the floating autopilot window, polled on every page. It never waits on Kalshi
+    (ask_kalshi False): a demo-funds idle line that would read the demo cash is left out and marked
+    idle_pending, and the page asks /api/funds/cash?book=demo, then the status again once that cash is read."""
     cur, u = ctx.cur, ctx.user
     on = bool(u.get("autopilot"))
     # Without the per-deployment position totals: this polls, and only _paused_recent needs them.

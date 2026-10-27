@@ -376,7 +376,12 @@ def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balanc
     monkeypatch.setattr(demo_twins, "_read_balance", lambda cur, uid, timeout=15: reads.append(uid) or 25000.0)
     demo_twins._BALANCE_CACHE.clear()
     monkeypatch.setattr(demo_twins, "DEMO_TWINS", True)
-    out = server.funds(ctx())
+    # Funds' own read never asks Kalshi: with nothing memoized the demo cash is pending, for the page to ask.
+    assert server.funds(ctx())["kalshi_dev"] == {"connected": True, "key_id": "DEVK…1234", "balance": None, "pending": True,
+                                                 "copies_from": demo_twins.DEMO_TWIN_MIN_BALANCE}
+    assert reads == []
+    assert server.funds_cash(ctx(query={"book": "demo"}))["balance"] == 25000.0 and reads == [1]  # the page's follow-up
+    out = server.funds(ctx())  # the next read takes the memo the follow-up filled
     at = out["kalshi_dev"].pop("balance_at")  # when that memo was filled, like the Kalshi cash line
     # copies_from: the demo cash the autopilot's demo copies wait for, so Funds can say why a small balance starts none.
     assert out["kalshi_dev"] == {"connected": True, "key_id": "DEVK…1234", "balance": 25000.0,

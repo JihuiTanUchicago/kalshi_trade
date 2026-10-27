@@ -50,11 +50,13 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
     }
 
 
-def dashboard(ctx: Ctx, ask_kalshi: bool = True):
-    """The home dashboard's read. With ask_kalshi False (the page shell's first read) it never waits on
-    Kalshi: the live cash comes from its memo or is marked pending, as Funds' is (funds.kalshi_cash), and
-    the page asks /api/funds/cash?book=live for it; a demo-funds check that would read the demo cash is
-    marked health_pending, and the page reads the dashboard again once that cash is read."""
+def dashboard(ctx: Ctx, ask_kalshi: bool = False):
+    """The home dashboard's read: the shell's first read, an in-app visit and the 15s poll alike. It never
+    waits on Kalshi (ask_kalshi False): the live cash comes from its memo or is marked pending (with the last
+    figure read and its age), as Funds' is (funds.kalshi_cash), and the page asks /api/funds/cash?book=live
+    for it; a demo-funds check that would read the demo cash is marked health_pending, and the page reads
+    the dashboard again once that cash is read. The poll's version covers the cash, its read time and its
+    pending mark, so a cash read since the page's last answer sends the page a full one."""
     cur = ctx.cur
     day = _start_of_day_utc()
     open_pos = _with_marks(repo.user_positions(cur, ctx.uid, "open"))

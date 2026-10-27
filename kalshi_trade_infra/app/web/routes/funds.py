@@ -13,7 +13,7 @@ from app.services import book_memo
 from app.web.http import ApiError, Ctx, _num
 from app.web.routes.brokers import _perps_live_call
 from app.web.settings import MAX_PAPER_BALANCE, MAX_WAITLIST_PER_MINUTE
-from app.web.views import _live_balance, _open_book, _paper_equity
+from app.web.views import FOLLOW_UP_TTL, _demo_cash, _live_balance, _open_book, _paper_equity
 from trading_core.domain.money import cents
 
 
@@ -37,10 +37,10 @@ def _memo_cash(memo, kept: bool) -> Dict[str, Any]:
 _UNREAD = object()
 
 
-def kalshi_cash(cur, uid: int, ask_kalshi: bool = True, key: Any = _UNREAD) -> Dict[str, Any]:
+def kalshi_cash(cur, uid: int, ask_kalshi: bool = False, key: Any = _UNREAD) -> Dict[str, Any]:
     """The live key's cash at Kalshi as Funds and the dashboard show it: {"connected", "funding_url",
-    "balance" (cents) [, "balance_at"]}. With ask_kalshi False (a page shell's first read) it never waits on
-    Kalshi: the cash comes from its memo when kept, else is marked pending (_memo_cash), and the page asks
+    "balance" (cents) [, "balance_at"]}. With ask_kalshi False, as every page read takes it, it never waits
+    on Kalshi: the cash comes from its memo when kept, else is marked pending (_memo_cash), and the page asks
     /api/funds/cash?book=live for it. `key` is the user's live key row (None: none) when the caller has
     read it; else it is read here, once."""
     if ask_kalshi:
@@ -55,9 +55,10 @@ def kalshi_cash(cur, uid: int, ask_kalshi: bool = True, key: Any = _UNREAD) -> D
             **_memo_cash(kalshi_account.balance_memo(uid), kalshi_account.balance_kept(uid))}
 
 
-def funds(ctx: Ctx, ask_kalshi: bool = True):
-    """Funds' read. With ask_kalshi False (the page shell's first read) it never waits on Kalshi: a key's
-    cash comes from its memo or is marked pending, and the page asks /api/funds/cash for it."""
+def funds(ctx: Ctx, ask_kalshi: bool = False):
+    """Funds' read: the shell's first read, an in-app visit and the 30s poll alike. It never waits on Kalshi
+    (ask_kalshi False): a key's cash comes from its memo or is marked pending (with the last figure read and
+    its age), and the page asks /api/funds/cash for it, the one page read that may wait on Kalshi."""
     from app.trading import demo_twins
 
     cur = ctx.cur
@@ -72,7 +73,7 @@ def funds(ctx: Ctx, ask_kalshi: bool = True):
         # The demo account's cash at Kalshi (the same cached read demo health makes), so Funds can
         # say "Connected ✓ (balance $X)". None when it can't be read just now.
         if ask_kalshi:
-            kalshi_dev_key["balance"] = _cash(demo_twins.balance_cached(cur, ctx.uid))
+            kalshi_dev_key["balance"] = _cash(_demo_cash(cur, ctx.uid))
             if kalshi_dev_key["balance"] is not None:
                 kalshi_dev_key["balance_at"] = demo_twins.balance_read_at(ctx.uid)  # up to a minute old, like Kalshi cash
         else:
@@ -106,14 +107,16 @@ def funds(ctx: Ctx, ask_kalshi: bool = True):
 
 
 def funds_cash(ctx: Ctx):
-    """The follow-up to a Funds page drawn from its shell's read: one book's cash at Kalshi (?book=live or
-    demo), the figure /api/funds shows, read the same way (memoized a minute; this may ask Kalshi, up to its
-    timeout). Only that book's cash: never added to another book or to paper."""
+    """The follow-up to a page whose read marked a Kalshi cash pending (Funds, the dashboard, the autopilot
+    status): one book's cash at Kalshi (?book=live or demo), the figure /api/funds shows. The only page read
+    that may wait on Kalshi, up to its timeout: memoized, and asked again once the memo is no longer kept
+    (FOLLOW_UP_TTL), one Kalshi read per user and book at a time (asks that come together share it). Only
+    that book's cash: never added to another book or to paper."""
     from app.trading import demo_twins
 
     book = ctx.query.get("book")
     if book == "live":
-        live = _live_balance(ctx.cur, ctx.uid)
+        live = _live_balance(ctx.cur, ctx.uid, FOLLOW_UP_TTL)
         out: Dict[str, Any] = {"book": "live", "connected": live["connected"], "balance": _cash(live["balance"])}
         if live.get("balance_at") is not None:
             out["balance_at"] = live["balance_at"]
@@ -121,7 +124,8 @@ def funds_cash(ctx: Ctx):
     if book == "demo":
         if repo.get_kalshi_dev_key(ctx.cur, ctx.uid) is None:
             return {"book": "demo", "connected": False, "balance": None}
-        out = {"book": "demo", "connected": True, "balance": _cash(demo_twins.balance_cached(ctx.cur, ctx.uid))}
+        cash = _demo_cash(ctx.cur, ctx.uid, demo_twins.BALANCE_TTL - kalshi_account.KEPT_MARGIN)
+        out = {"book": "demo", "connected": True, "balance": _cash(cash)}
         if out["balance"] is not None:
             out["balance_at"] = demo_twins.balance_read_at(ctx.uid)
         return out
