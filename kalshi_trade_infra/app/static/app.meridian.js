@@ -73,11 +73,15 @@
   // above is its PAPER_FILLS). Paper already fills at the ask and bid and pays Kalshi's fee.
   const PAPER_NET = 'after Kalshi fees and the spread';
   // What it leaves out is the price moving before a real order lands. Beside the paper headline figures (the
-  // dashboard's, the strategy page's "Since deploying", the track record's paper tab), the server's
+  // dashboard's, the strategy page's "Since deploying" and its ladder, the track record's paper tab, the
+  // Strategies list's paper card, Deploy's paper Realized, the autopilot's paper figures), the server's
   // slippage_estimate (trading_core/domain/slippage.py) says what they might have been after it: muted, an
   // estimate with its assumption, never in place of the P&L. Paper only: live and demo never carry one.
-  const slipEst = (e) => (e && e.pnl != null && Number.isFinite(+e.pnl)
-    ? `<span class="slip-est">≈ ${usd(e.pnl, true)} after typical live slippage (estimate: ${+e.per_fill_cents}¢ a contract each time an order fills)</span>` : '');
+  // slipTip says the same words as a title, where a figure sits inside a line about another book.
+  const slipText = (e) => (e && e.pnl != null && Number.isFinite(+e.pnl)
+    ? `≈ ${usd(e.pnl, true)} after typical live slippage (estimate: ${+e.per_fill_cents}¢ a contract each time an order fills)` : '');
+  const slipEst = (e) => (slipText(e) ? `<span class="slip-est">${slipText(e)}</span>` : '');
+  const slipTip = (e) => (slipText(e) ? ` title="${esc(slipText(e))}"` : '');
   // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
   const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
   // Text, its glossary button, then a separator (SEP's "·" and space). Chrome breaks a line after an inline button
@@ -1741,7 +1745,9 @@
   // no longer reads as the record beside a track record that counts 1 and says 1 instant fill was left out.
   const realSome = (r) => (r.mode === 'paper' && +r.instant_fills > 0 && +r.instant_fills < r.trades
     ? `, ${num(+r.instant_fills)} of them ${+r.instant_fills === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record` : '');
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
+  // A paper card's book also says it after typical live slippage (the server's slippage_estimate), on a line of
+  // its own under the figure; a live card shows live money and a demo line beside paper is never estimated.
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.mode === 'paper' && r.trades && slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
   const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));
@@ -2603,6 +2609,8 @@
       const byMode = (m) => d.deployments.filter((x) => x.mode === m);
       const liveDeps = byMode('live'), paperDeps = byMode('paper'), demoDeps = byMode('demo');
       const liveRealized = listed('live', liveDeps), paperRealized = listed('paper', paperDeps), demoRealized = listed('demo', demoDeps);
+      // The listed paper deployments' figure after typical live slippage (the server's, beside `listed` only).
+      const paperSlip = books.paper && books.paper.slippage_estimate;
       // Running and placing orders: a live deployment while live trading is closed, or a Bitcoin perpetual
       // one, is marked running but places none (depIdle), so it is counted apart, never as on live money.
       const active = running.filter((x) => !depIdle(x)), idle = running.length - active.length;
@@ -2616,8 +2624,8 @@
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
       paint(root.querySelector('#dfigs'), fig('Running', active.length, { small: `${d.deployments.length - running.length} paused${idle ? `${SEP}${idle} placing no orders` : ''}` }) +
         (liveDeps.length
-          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}${noneLine('live', liveDeps)}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
-          : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}${noneLine('paper', paperDeps)}\u00a0· ${PAPER_NET}${glo('paperfills')}` }) : '') +
+          ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}${noneLine('live', liveDeps)}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${PAPER_NET}${glo('paperfills')}` : ''}` })
+          : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}${noneLine('paper', paperDeps)}\u00a0· ${PAPER_NET}${glo('paperfills')}${slipEst(paperSlip)}` }) : '') +
         (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}${noneLine('demo', demoDeps)}\u00a0· after Kalshi fees` }) : '') +
         fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? liveIdleCount(liveIdle) : 'nothing on live money' }));
@@ -3518,7 +3526,7 @@
     // A paper book that has never closed a trade has no P&L yet: "$0.00" read as a result to a new account.
     const paperNone = pnl != null && !+S.dashPaper.closed_trades && !+pnl;
     const cells = [
-      d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>`],
+      d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEst(S.dashPaper.slippage_estimate)}`],
       ['Strategies running', `${running ? String(running) : 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${PAPER_COUNT_WHY}</small>`]
@@ -3683,7 +3691,7 @@
       <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? `${SEP}plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
-      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${trades} closed trade${trades === 1 ? '' : 's'}</small>`}</dd></div>
+      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${trades} closed trade${trades === 1 ? '' : 's'}</small>${slipEst(w.paper_slippage_estimate)}`}</dd></div>
     </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot’s. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
@@ -4171,7 +4179,7 @@
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,
     marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money, notice, num, overDays,
-    paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount, slipEst, PAPER_COUNT_WHY,
+    paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount, slipEst, slipTip, PAPER_COUNT_WHY,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
     researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S,
     sessionNo, sessionTitle, settleAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,

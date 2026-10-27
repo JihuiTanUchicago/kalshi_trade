@@ -949,6 +949,11 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .slip-est { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; line-height: 1.4; color: var(--ink-3); font-style: normal; overflow-wrap: anywhere; }
 .real-record .real-slip { margin-top: 2px; }
 .real-record .real-slip .slip-est { margin-top: 0; }
+.rung-books .rung-slip { margin-top: 2px; }
+.rung-books .rung-slip .slip-est, .real-fig.real-slip .slip-est { margin-top: 0; }
+/* Inside a line about the live figure (Deploy), the paper amount carries the estimate as a title: dotted, so it
+   reads as having more to say. */
+.slip-tip { text-decoration: underline dotted var(--ink-3); text-underline-offset: 2px; cursor: help; }
 .rung-books { font-size: 13.5px; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .rung-books p + p { margin-top: 6px; }
 .demo-health { color: var(--ink); font-weight: 500; }

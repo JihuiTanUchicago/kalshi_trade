@@ -530,7 +530,7 @@ window.TauPage('strategies', (T) => {
     const running = LADDER.filter(([m]) => deps.some((d) => d.mode === m && d.status !== 'stopped'));
     const books = running.map(([m, label, cls]) => {
       const ds = deps.filter((d) => d.mode === m);
-      const { trades: n, pnl, instant } = bookTotal(s, m, ds);
+      const { trades: n, pnl, instant, slip } = bookTotal(s, m, ds);
       const stats = `${num(n)} closed trade${n === 1 ? '' : 's'}${SEP}${money(pnl)} realized${m === 'paper' && n ? `, ${PAPER_NET}` : ''}`;
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats}${SEP}${demoHealthLine(s.demo_health)}</p>`;
@@ -538,7 +538,8 @@ window.TauPage('strategies', (T) => {
       // Its demo check is still reading the demo cash (demo_health_pending): not "running" until that is in.
       const state = !runs ? 'paused' : m === 'live' && !liveOpen() ? 'waiting: live trading isn\u2019t open yet, so it places no orders'
         : m === 'demo' && s.demo_health_pending ? 'checking your Kalshi demo account\u2026' : 'running';
-      return `<p><span class="mk ${cls}">${label}</span> ${state}${SEP}${stats}</p>${m === 'paper' ? instantNote(instant, n, 'hint rung-instant') : ''}`;
+      // The paper rung's realized also says it after typical live slippage (the server's estimate), on its own line.
+      return `<p><span class="mk ${cls}">${label}</span> ${state}${SEP}${stats}</p>${m === 'paper' && n && slipEst(slip) ? `<p class="rung-slip">${slipEst(slip)}</p>` : ''}${m === 'paper' ? instantNote(instant, n, 'hint rung-instant') : ''}`;
     });
     // Paper proves the edge, demo the order path: say so under the demo book, with its settled demo
     // orders against what the live check needs once Road to live is in.
