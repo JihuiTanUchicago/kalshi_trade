@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, DEMO_WHAT, demoSpan, esc, fig, flash, holdFocus, ICON, loading, pageAssets,
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashRead, DEMO_WHAT, demoSpan, esc, fig, flash, holdFocus, ICON, loading, pageAssets,
     paint, painted, poll, refreshed, root, S, shell, tone, usd, when
   } = T;
 
@@ -66,13 +66,9 @@ window.TauPage('funds', (T) => {
     : k.connected ? ' Tau\u2019s live P&amp;L shows once a live trade closes.' : '';
   const KALSHI_UNREAD = 'Kalshi didn\u2019t answer just now. Reload in a minute to try again.';
   // A key's cash the shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes
-  // pending: it reads Checking\u2026, never $0, and a figure the server read earlier shows only with its age.
-  // `failed` is the follow-up read for it not coming back: plain words, never the error.
-  const CASH_FAILED = 'Tau couldn\u2019t check your Kalshi cash just now. Reload in a minute to try again.';
+  // pending (the bundle's cashFig and cashRead, which the dashboard shares): it reads Checking\u2026, never $0,
+  // and a figure the server read earlier shows only with its age; a follow-up that fails says so plainly.
   const lastRead = (b) => `${usd(b.last_balance)}, read ${when(b.last_balance_at)}`;
-  // The headline figure for a connected key whose cash is pending or failed: [figure, the line under it].
-  const cashFig = (b) => b.pending ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}; checking Kalshi for the latest\u2026`] : ['Checking\u2026', 'Asking Kalshi for your real cash now.'])
-    : b.failed ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}. ${CASH_FAILED}`] : ['Unavailable', CASH_FAILED]) : null;
   // The key line under a panel title, and the Cash at Kalshi cell, in the same states; keyOk otherwise.
   const keyLine = (b, kind) => b.pending ? `<p class="key-ok key-unread"><b>Key saved</b> (${b.last_balance != null ? 'balance ' + lastRead(b) + '; checking for the latest' : 'checking your balance at Kalshi'}\u2026)</p>`
     : b.failed ? `<p class="key-ok key-unread"><b>Key saved</b> (${b.last_balance != null ? 'balance ' + lastRead(b) + '; ' : ''}Tau couldn\u2019t check it just now. Reload in a minute to try again.)</p>`
@@ -129,10 +125,7 @@ window.TauPage('funds', (T) => {
         // The key went in the meantime: read it all afresh. Otherwise only the cash changed.
         (next.connected ? load(null, d) : load()).catch(() => {});
       };
-      const { pending, last_balance, last_balance_at, ...kept } = b;
-      api('/api/funds/cash?book=' + book).then(
-        (c) => fill({ ...kept, connected: c.connected !== false, balance: c.balance == null ? null : c.balance, balance_at: c.balance_at }),
-        () => fill({ ...b, pending: false, failed: true }));
+      cashRead(b, book).then(fill);
     });
     // `got`: the page's own answer with a key's cash filled in (fillCash); else /api/funds is read.
     const load = async (cfg, got) => {

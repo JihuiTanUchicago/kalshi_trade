@@ -61,12 +61,21 @@ def _wire(value):
     return json.loads(json.dumps(value, default=_json_default))
 
 
+class _Calls(list):
+    """(params, query, uid) per call; `kw` the keyword arguments of each call (ask_kalshi)."""
+
+    def __init__(self):
+        super().__init__()
+        self.kw = []
+
+
 def _record(monkeypatch, name, answer):
     """Stand in for one route as the shell calls it (patched where shell_reads reads it); log its calls."""
-    calls = []
+    calls = _Calls()
 
-    def fake(ctx):
+    def fake(ctx, **kw):
         calls.append((ctx.params, dict(ctx.query), ctx.uid))
+        calls.kw.append(kw)
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -95,6 +104,9 @@ def test_an_app_page_shell_carries_its_first_read_under_the_url_the_page_asks(we
         # Its autopilot card sits above the figures: drawn a round trip after them, it pushed them down.
         reads.append({"url": "/api/autopilot/status", "body": _wire(status_answer)})
     assert _first(html) == reads and len(status) == (1 if route == "dashboard" else 0)
+    if route == "dashboard":
+        # Neither of the dashboard's two reads may wait on Kalshi (the live cash, a demo-funds check).
+        assert calls.kw == [{"ask_kalshi": False}] and status.kw == [{"ask_kalshi": False}]
     block = html.split('id="tau-first">', 1)[1].split("</script>", 1)[0]
     assert "<" not in block and ">" not in block
     # After the scripts: the browser finds and starts the bundles before the data's bytes arrive.
@@ -284,6 +296,104 @@ def test_funds_cash_reads_one_books_cash_in_cents(monkeypatch):
     assert e.value.status == 400
     _funds_db(monkeypatch, live_key=False, demo_key=False)
     assert ask("live")["connected"] is False and ask("demo") == {"book": "demo", "connected": False, "balance": None}
+
+
+def _dashboard_db(monkeypatch, deps=()):
+    """The dashboard's own-database reads answered without a database, for user 7 with a live and a demo key;
+    its Kalshi client raises (_funds_db), so a read that would ask Kalshi fails the test."""
+    from app.services import book_memo
+    from app.web.routes import dashboard as dashboard_routes
+
+    kalshi_account, demo_twins = _funds_db(monkeypatch)
+    r = dashboard_routes.repo
+    for name, fn in {
+        "user_positions": lambda *a, **k: [], "list_deployments_for_display": lambda *a, **k: [dict(d) for d in deps],
+        "deployment_curves": lambda *a, **k: {}, "positions_version": lambda cur, uid: (0, 0, 0),
+        "paper_ledger_summary": lambda cur, uid: {"balance": 1000.0, "deposited": 1000.0, "reset_at": None},
+        "paper_ledger_version": lambda cur, uid: (1, 1),
+        "daily_pnl": lambda *a, **k: [], "activity_since": lambda cur, uid, since: {"autopilot": {}, "runs": {}},
+        "passed_since": lambda cur, uid, since, **k: {"n": 0, "items": []},
+        "demo_equity": lambda cur, uid, realized=None: {"capital": 1000.0, "equity": 1003.5, "realized": 3.5, "roi": .0035,
+                                                        "before_reload": 0},
+        "open_reconcile_rows": lambda cur, uid: [], "active_run_counts": lambda cur, uid, **kw: {},
+        "deployment_strategies": lambda cur, uid: {},
+    }.items():
+        monkeypatch.setattr(r, name, fn)
+    monkeypatch.setattr(book_memo, "closed_book_totals", lambda memo, day, visit=None, split=False: (
+        {m: (0.0, 0.0) for m in ("paper", "demo", "live")}, {"live": 2},
+        {m: (0.0, 0) for m in ("paper", "demo", "live")}) + (({},) if split else ()))
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda cur: {})
+    monkeypatch.setattr(dashboard_routes, "_deployment_out", lambda d, *a: {"id": d["id"], "mode": d["mode"], "status": d["status"]})
+    monkeypatch.setattr(book_memo, "_LEDGER", {})
+    monkeypatch.setattr(book_memo, "_KEPT", {})
+    return kalshi_account, demo_twins
+
+
+# A running demo deployment with a stake: the dashboard's demo-funds check reads the demo cash for it.
+DEMO_DEP = {"id": 31, "strategy_id": 5, "mode": "demo", "status": "running", "status_reason": None,
+            "spec": {"sizing": {"stake": 5.0, "max_positions": 1}}}
+
+
+@pytest.mark.parametrize("path", ["/", "/dashboard"])
+def test_the_dashboard_shell_carries_its_read_for_an_account_with_kalshi_keys_and_never_asks_kalshi(web, monkeypatch, path):
+    # The live cash (and the demo cash a demo-funds check reads) wait on Kalshi, up to its timeout per key: the
+    # shell carries everything from our own database, the cash pending, and names the follow-ups ("then").
+    _dashboard_db(monkeypatch, deps=[DEMO_DEP])
+    _record(monkeypatch, "autopilot_status", {"mode": "paper"})
+    r, html = _shell(web, path)
+    first = _first(html)
+    assert r.status == 200 and [x["url"] for x in first] == ["/api/dashboard", "/api/autopilot/status"]
+    body = first[0]["body"]
+    live = body["live"]
+    assert live["connected"] is True and live["pending"] is True and live["balance"] is None and "last_balance" not in live
+    assert (live["closed_trades"], live["realized_pnl"]) == (2, 0.0)  # Tau's own live book, from our database
+    assert body["demo"]["health"] is None and body["demo"]["health_pending"] is True
+    assert body["paper"]["cash"] == 1000.0 and body["demo"]["equity"] == 1003.5  # each book its own, never added
+    assert first[0]["then"] == ["/api/funds/cash?book=live", "/api/funds/cash?book=demo"]
+    assert "LIVEKEY-ABCD-1234" not in html and "DEVKEY-WXYZ-5678" not in html
+
+
+def test_the_dashboard_without_kalshi_reads_the_cash_from_its_memo_alone(monkeypatch):
+    from datetime import timezone
+    from app.web.views import DEMO_HEALTH_PENDING, _demo_health
+    kalshi_account, demo_twins = _dashboard_db(monkeypatch, deps=[DEMO_DEP])
+    ctx = SimpleNamespace(cur=None, uid=7, query={})
+    now = kalshi_account.time.monotonic()
+    utc = lambda: datetime.now(timezone.utc).replace(tzinfo=None)  # noqa: E731
+    # Read 70s ago (past the minute): still pending, carrying that figure and when it was read, in cents.
+    kalshi_account._BALANCE_CACHE[7] = (now - 70, 1234.5649)
+    live = shell_reads.dashboard_without_kalshi(ctx)["live"]
+    assert live["pending"] is True and live["balance"] is None and live["last_balance"] == 1234.56
+    assert 68 <= (utc() - live["last_balance_at"]).total_seconds() <= 75
+    # Read 10s ago: kept, so it is the figure, dated, and nothing is pending; so is the demo check's cash.
+    kalshi_account._BALANCE_CACHE[7] = (now - 10, 1234.5)
+    demo_twins._BALANCE_CACHE[7] = (now - 10, 0.0)
+    out = shell_reads.dashboard_without_kalshi(ctx)
+    assert out["live"]["balance"] == 1234.5 and "pending" not in out["live"] and out["live"]["balance_at"]
+    assert out["demo"]["health"]["code"] == "demo_funds" and "health_pending" not in out["demo"]
+    assert shell_reads.then_reads("/api/dashboard", out) == []
+    # The demo-funds check alone: pending without the memo, never a Kalshi read; nothing to check, nothing pending.
+    demo_twins._BALANCE_CACHE.clear()
+    assert _demo_health(None, 7, [DEMO_DEP], ask_kalshi=False) == DEMO_HEALTH_PENDING
+    assert _demo_health(None, 7, [], ask_kalshi=False) is None
+
+
+def test_then_reads_names_the_dashboards_and_the_autopilots_pending_cash_once():
+    pending = {"connected": True, "pending": True, "balance": None}
+    dash = {"live": pending, "demo": {"health": None, "health_pending": True}}
+    assert shell_reads.then_reads("/api/dashboard?since=1761000000", dash) == ["/api/funds/cash?book=live", "/api/funds/cash?book=demo"]
+    assert shell_reads.then_reads("/api/dashboard", {"live": {"connected": True, "balance": 1.0}, "demo": {"health": None}}) == []
+    assert shell_reads.then_reads("/api/autopilot/status", {"idle_pending": True}) == ["/api/funds/cash?book=demo"]
+    assert shell_reads.then_reads("/api/autopilot/status", {"idle": None}) == []
+
+
+def test_the_shell_names_a_follow_up_once_across_its_reads(monkeypatch):
+    # Both of the dashboard's reads can wait on the demo cash: boot.js starts it once.
+    pending = {"connected": True, "pending": True, "balance": None}
+    monkeypatch.setattr(shell_reads, "dashboard", lambda ctx, **kw: {"live": pending, "demo": {"health_pending": True}})
+    monkeypatch.setattr(shell_reads, "autopilot_status", lambda ctx, **kw: {"idle_pending": True})
+    reads, _ = shell_reads.first_reads("/", "", {}, lambda params, q: SimpleNamespace(set_cookies=[]))
+    assert [x.get("then") for x in reads] == [["/api/funds/cash?book=live", "/api/funds/cash?book=demo"], None]
 
 
 def test_a_memo_counts_as_kept_only_with_time_to_spare(monkeypatch):

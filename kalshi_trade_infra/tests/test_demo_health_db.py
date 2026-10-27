@@ -121,7 +121,7 @@ def _seen(conn, uid, sid):
             "strategy": server.get_strategy(_ctx(conn, uid, (sid,)))["demo_health"]}
 
 
-def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_says_so(conn, offline):
+def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_says_so(conn, offline, monkeypatch):
     """Today's engine behaviour, observed and left alone: the refusal escapes, nothing is booked."""
     from app.trading import engine
     from app import repository as repo
@@ -167,6 +167,23 @@ def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_s
         assert health["code"] == "demo_funds" and health["line"] == line, where
         assert health["action"] == {"label": "Open Kalshi demo", "href": "https://demo.kalshi.co"}, where
     assert seen["strategy"]["need"] == "demo funds: your Kalshi demo account has $0.00"
+
+    # The dashboard shell's reads never wait on Kalshi: with the demo cash memo kept they say the same; without it
+    # the check is marked pending (never a "Demo isn't trading" from an unknown figure) and the page asks again.
+    from app.trading import demo_twins
+    from app.web import shell_reads
+
+    def no_read(*a, **k):
+        raise AssertionError("the shell's read asked Kalshi")
+    monkeypatch.setattr(demo_twins, "_read_balance", no_read)
+    c = _ctx(conn, uid)
+    assert shell_reads.dashboard_without_kalshi(c)["demo"]["health"] == seen["dashboard"]
+    assert shell_reads.autopilot_without_kalshi(c)["idle"] == seen["autopilot"]
+    demo_twins._BALANCE_CACHE.clear()
+    dash, ap = shell_reads.dashboard_without_kalshi(c), shell_reads.autopilot_without_kalshi(c)
+    assert dash["demo"]["health"] is None and dash["demo"]["health_pending"] is True
+    assert ap["idle_pending"] is True and (ap["idle"] or {}).get("code") != "demo_funds"
+    assert shell_reads.then_reads("/api/autopilot/status", ap) == ["/api/funds/cash?book=demo"]
 
 
 def test_each_demo_state_says_one_plain_thing(conn, offline):

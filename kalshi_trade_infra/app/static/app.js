@@ -1233,6 +1233,19 @@
   // it fell outside the list, and a screen reader read the figure without what kind of money it is.
   const fig = (label, value, opts = {}) =>
     `<div class="m ${opts.cls || ''}"><dt class="lab">${label}</dt><dd><span class="fig ${opts.v > 0 ? 'tint pos' : opts.v < 0 ? 'tint neg' : ''}">${value}</span></dd>${opts.small ? `<dd class="sub-fig">${opts.small}</dd>` : ''}</div>`;
+  // A Kalshi cash figure a shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes
+  // pending: it reads Checking\u2026, never $0, and a figure the server read earlier shows only with its age.
+  // `failed` is the follow-up read for it not coming back: plain words, never the error. Funds and the
+  // dashboard draw it so. cashFig: [figure, the line under it] for a connected key's pending or failed cash,
+  // else null. cashRead: that follow-up for one book (live | demo), asked on its own so neither waits on the
+  // other's Kalshi read; it resolves to `b` with its figure, or marked failed (its last figure kept).
+  const CASH_FAILED = 'Tau couldn\u2019t check your Kalshi cash just now. Reload in a minute to try again.';
+  const cashFig = (b) => b.pending ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}; checking Kalshi for the latest\u2026`] : ['Checking\u2026', 'Asking Kalshi for your real cash now.'])
+    : b.failed ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}. ${CASH_FAILED}`] : ['Unavailable', CASH_FAILED]) : null;
+  const cashRead = (b, book) => api('/api/funds/cash?book=' + book).then((c) => {
+    const { pending, last_balance, last_balance_at, ...kept } = b;
+    return { ...kept, connected: c.connected !== false, balance: c.balance == null ? null : c.balance, balance_at: c.balance_at };
+  }, () => ({ ...b, pending: false, failed: true }));
   const dirTag = () => '';
   // quiet: the words go out through announce(), so the notice leaves off its own live role (read once).
   const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${esc(msg)}</span></div>`;
@@ -2098,11 +2111,13 @@
     if (trFirst) trFirst.catch(() => {});  // a failure is drawn by dashTrackRecord, with its retry
     S.trReread = null;  // set by dashTrackRecord once this view's record is mounted
     let booksSeen = null;  // each book's closed and open trade counts at the last poll
+    const gen = S.gen;
     const visitAt = visitStart();
     let kept = null;  // the last full answer, whose version the poll sends back (pollAnswer)
-    const load = async (cfg) => {
+    // `filled`: the kept answer with its pending cash filled in (fillCash); else /api/dashboard is read.
+    const load = async (cfg, filled) => {
       const q = [visitAt ? 'since=' + visitAt : '', kept && kept.v ? 'v=' + encodeURIComponent(kept.v) : ''].filter(Boolean).join('&');
-      const got = await api('/api/dashboard' + (q ? '?' + q : ''), undefined, cfg);
+      const got = filled || await api('/api/dashboard' + (q ? '?' + q : ''), undefined, cfg);
       const d = followLive(pollAnswer(kept, got));
       if (!got.same) kept = got;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
@@ -2146,6 +2161,8 @@
         agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
+      // A live cash still being checked reads Checking\u2026 (or its last figure, with its age), never $0 (cashFig).
+      const liveCf = d.live.connected && cashFig(d.live);
       // While autopilot is off its card's "Turn on autopilot" is the one primary button on the page.
       const board = `
         <h1 class="vh">Dashboard</h1>
@@ -2153,7 +2170,7 @@
         ${sinceStrip(d, '#dash-deps')}
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>
         <dl class="figures measure">
-          ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (d.live.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : (d.live.balance_at ? `Read from Kalshi ${when(d.live.balance_at)} \u00b7\u00a0` : '') + mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
+          ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (liveCf ? liveCf[0] : d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (liveCf ? [liveCf[1], mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : d.live.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : (d.live.balance_at ? `Read from Kalshi ${when(d.live.balance_at)} \u00b7\u00a0` : '') + mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${PAPER_NET}${glo('paperfills')}${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
@@ -2190,8 +2207,32 @@
       const dd = root.querySelector('#dash-deps');
       if (dd) bindDeploymentActions(dd, load);  // pause/resume/stop from the dashboard, same as Deploy
     };
+    // The shell's read never waits on Kalshi (shell_reads.py): a live cash the server hadn't read in the last
+    // minute comes pending, drawn as Checking\u2026 (never $0; an older figure only with its age). Once drawn,
+    // the cash is asked on its own (boot.js has started that read beside the bundle) and filled in; one that
+    // fails says so in plain words. A demo-funds check that waited on the demo cash (the demo health here, the
+    // autopilot's idle line) is read again once that cash is back. A newer poll answer supersedes all of it.
+    const fillCash = (first) => {
+      if (!first || first.same) return;
+      const asks = [];
+      if (first.live && first.live.pending) {
+        asks.push(cashRead(first.live, 'live').then((live) => {
+          if (gen !== S.gen || kept !== first) return;
+          // The key went in the meantime: read it all afresh. Otherwise only the cash changed.
+          return (live.connected ? load(null, { ...first, live }) : load()).catch(() => {});
+        }));
+      }
+      if (!(first.demo && first.demo.health_pending) && !(S.ap && S.ap.idle_pending)) return;
+      asks.push(api('/api/funds/cash?book=demo').catch(() => {}));
+      Promise.all(asks).then(() => {
+        if (gen !== S.gen) return;
+        if (first.demo && first.demo.health_pending && kept && kept.v === first.v) load().catch(() => {});
+        if (S.ap && S.ap.idle_pending) refreshAutopilot(document.getElementById('autopilot-float'));
+      });
+    };
     await load();
     poll(load, 15000, 'dash-stale');
+    fillCash(kept);
     dashTrackRecord(trFirst);
   }
 
@@ -3710,7 +3751,7 @@
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
-    busy, cardFormFail, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
+    busy, cardFormFail, cashFig, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
     CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoHealthLine,
     demoSpan, DEP_DONE, depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,

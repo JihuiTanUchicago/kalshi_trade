@@ -14,12 +14,13 @@ from app.trading import engine
 from app.web.caches import _TRACK_RECORD, _shared
 from app.web.http import Ctx
 from app.web.routes.deployments import _paper_strategy_ids
+from app.web.routes.funds import kalshi_cash
 from app.web.routes.strategies import _later_verdicts, _with_marks, _with_why
 from app.web.views import (
+    DEMO_HEALTH_PENDING,
     _demo_health,
     _demo_key_back,
     _deployment_out,
-    _live_balance,
     _open_book,
     _paper_books,
     _paper_equity,
@@ -49,7 +50,11 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
     }
 
 
-def dashboard(ctx: Ctx):
+def dashboard(ctx: Ctx, ask_kalshi: bool = True):
+    """The home dashboard's read. With ask_kalshi False (the page shell's first read) it never waits on
+    Kalshi: the live cash comes from its memo or is marked pending, as Funds' is (funds.kalshi_cash), and
+    the page asks /api/funds/cash?book=live for it; a demo-funds check that would read the demo cash is
+    marked health_pending, and the page reads the dashboard again once that cash is read."""
     cur = ctx.cur
     day = _start_of_day_utc()
     open_pos = _with_marks(repo.user_positions(cur, ctx.uid, "open"))
@@ -91,11 +96,14 @@ def dashboard(ctx: Ctx):
     # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).
     demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day, realized["demo"], closed)
     de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
+    health = _demo_health(cur, ctx.uid, deps, ask_kalshi=ask_kalshi)  # capital and P&L look fine while Kalshi refuses every order
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
                 total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"],
-                health=_demo_health(cur, ctx.uid, deps))  # capital and P&L look fine while Kalshi refuses every order
+                health=None if health == DEMO_HEALTH_PENDING else health)
+    if health == DEMO_HEALTH_PENDING:
+        demo["health_pending"] = True
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
-    live.update(_live_balance(cur, ctx.uid))
+    live.update(kalshi_cash(cur, ctx.uid, ask_kalshi))
     paper_sids = _paper_strategy_ids(deps)
     key_back = _demo_key_back(cur, ctx.uid, deps)
     # The page polls every 15s with its last answer's version (?v=): an unchanged answer is sent as
