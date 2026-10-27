@@ -2431,7 +2431,7 @@
   // Spot and strikes to the cent: usd() rounds six figures to the dollar, which drew a $112,999.99 strike
   // as $113,000 beside a distance to it in cents.
   const btcUsd = (v) => '$' + fmt2.format(+v);
-  const SPOT_SECT = '<section class="sect" id="mk-spot"><div class="sect-head"><h2>Bitcoin vs the strike</h2><p>Latest stored price, refreshed every 15s</p></div><div id="mk-spot-body"><p class="hint">Reading Bitcoin’s latest stored price…</p></div></section>';
+  const SPOT_SECT = '<section class="sect" id="mk-spot"><div class="sect-head"><h2>Bitcoin vs the strike</h2><p>Latest stored price, refreshed every 15s</p></div><div id="mk-spot-body"><p class="hint">Reading Bitcoin’s latest stored price…</p></div><p class="stale-note" id="mk-spot-stale" role="status"></p></section>';
   const spotAge = (s) => (s < 60 ? s + 's ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 172800 ? Math.round(s / 3600) + ' hr ago' : Math.round(s / 86400) + ' days ago');
   const spotOld = (s) => (s < 5400 ? Math.max(2, Math.round(s / 60)) + ' min' : s < 172800 ? Math.round(s / 3600) + ' hr' : Math.round(s / 86400) + ' days');
   const leftText = (s) => (s < 60 ? 'Under a minute' : s < 3600 ? Math.floor(s / 60) + ' min' : s < 172800 ? `${Math.floor(s / 3600)} hr ${Math.floor((s % 3600) / 60)} min` : Math.floor(s / 86400) + ' days');
@@ -2468,7 +2468,9 @@
     };
     first.then(show);
     // One poll per page, though a retry of the market draws the page again; a failed poll keeps the last figures.
-    if (S.spotPoll !== S.gen) { S.spotPoll = S.gen; poll((cfg) => api(path, undefined, cfg).then(show), 15000); }
+    // Those figures carry the age Tau read them at ("Coinbase · 12s ago"), which stood still while the poll
+    // failed: once it has failed for about two polls, a line under them says how old they really are.
+    if (S.spotPoll !== S.gen) { S.spotPoll = S.gen; poll((cfg) => api(path, undefined, cfg).then(show), 15000, 'mk-spot-stale'); }
   }
   const spotRead = (ticker) => api('/api/explore/spot?ticker=' + encodeURIComponent(ticker)).catch((e) => ({ failed: errText(e) }));
   async function viewMarketDetail(ticker) {
