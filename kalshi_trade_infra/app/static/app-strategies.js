@@ -462,9 +462,10 @@ window.TauPage('strategies', (T) => {
       ? `${money(p.realized_pnl)} over ${num(p.closed_trades)} closed trade${+p.closed_trades === 1 ? '' : 's'}${pastInstant(p)}${BOOK_NET[p.mode] ? `, ${BOOK_NET[p.mode]}` : ''}`
       : `no closed trades${BOOK_MONEY[p.mode] ? `, ${BOOK_MONEY[p.mode]}` : ''}`);
     const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—');
+    // Its book and dates stay whole (.nobr): at 1280px "Paper Oct" ended a line and "27–Oct 27" began the next.
     // Deployed and removed the same day read "Oct 27–Oct 27" (walked 2026-10-27): one date says it.
     const daySpan = (from, to) => (day(from) === day(to) ? day(from) : `${day(from)}\u2013${day(to)}`);
-    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `${label[p.mode] || esc(p.mode)} ${daySpan(p.created_at, p.removed_at)}, ${pastFig(p)}`).join(SEP)}${past.length > 3 ? `${SEP}${num(past.length - 3)} earlier` : ''}</p>` : '';
+    const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `<span class="nobr">${label[p.mode] || esc(p.mode)} ${daySpan(p.created_at, p.removed_at)}</span>, ${pastFig(p)}`).join(SEP)}${past.length > 3 ? `${SEP}${num(past.length - 3)} earlier` : ''}</p>` : '';
     return lines || pastLine ? `<section class="real-record" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}${pastLine}</section>` : '';
   }
   // Road to live in words, from the checks the server sends (live-readiness): what is left, each with
@@ -802,7 +803,7 @@ window.TauPage('strategies', (T) => {
             // Beside a Live or Demo row a paper one says Paper too: untagged, it read as the real-money book.
             return `<section class="panel"><h3>Holding right now</h3>
             <ul class="holdlist">${s.holdings.map((p) => `<li><div class="pos-name">${contractLink(p.ticker, s.market)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : books.length > 1 ? '<span class="mk">Paper</span>' : ''}</div><div class="sub-fig">${kalshiRef(p.ticker)}</div>
-              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unreal. ${p.unrealized == null ? '—' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</li>`).join('')}</ul>
+              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unrealized ${p.unrealized == null ? 'not marked yet' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${esc(p.why)}</div>` : ''}</li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}

@@ -245,10 +245,10 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     const rec = f.root.querySelector('.real-record');
     assert.ok(rec, 'the record section shows with only past deployments');
     const html = rec.innerHTML;
-    assert.match(html, /<b>Past deployments:<\/b> <span class="mk ?">Paper<\/span>|<b>Past deployments:<\/b> Paper/);
-    assert.match(html, /Paper Oct 2–Oct 20, <span class="gain">\+\$5\.72<\/span> over 14 closed trades/);
-    assert.match(html, /Demo Sep 28–Oct 1, <span class="loss">−\$1\.50<\/span> over 1 closed trade(?!s)/);
-    assert.match(html, /Paper Sep 20–Sep 21, no closed trades, not real money\u00a0· 1 earlier/);
+    assert.match(html, /<b>Past deployments:<\/b> (?:<span class="nobr">)?(?:<span class="mk ?">Paper<\/span>|Paper)/);
+    assert.match(html, /Paper Oct 2–Oct 20(?:<\/span>)?, <span class="gain">\+\$5\.72<\/span> over 14 closed trades/);
+    assert.match(html, /Demo Sep 28–Oct 1(?:<\/span>)?, <span class="loss">−\$1\.50<\/span> over 1 closed trade(?!s)/);
+    assert.match(html, /Paper Sep 20–Sep 21(?:<\/span>)?, no closed trades, not real money\u00a0· 1 earlier/);
     assert.doesNotMatch(html, /Sep 10/);  // three shown, the rest counted
     // None removed: no line.
     const g = strategyFrontend(detailStrategy({status: 'passed', deployments: [], past_deployments: []}), () => response({}));

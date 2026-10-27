@@ -346,7 +346,9 @@ test('the sidebar lists each holding with every figure instead of a clipped five
   const output = f.root.querySelector('#main').innerHTML;
   const list = output.slice(output.indexOf('<ul class="holdlist">'), output.indexOf('</ul>', output.indexOf('<ul class="holdlist">')));
   assert.equal((list.match(/<li>/g) || []).length, 2);
-  assert.match(list, /NO ×4 @ 37¢/); assert.match(list, /Cost \+ fee \$1\.50/); assert.match(list, /Unreal\. —/); assert.match(list, /Settles /);
+  assert.match(list, /NO ×4 @ 37¢/); assert.match(list, /Cost \+ fee \$1\.50/); assert.match(list, /Settles /);
+  // Walk 2026-10-27: "Unreal. —" read as "unreal". The figure says Unrealized, and a holding not yet marked says so.
+  assert.match(list, /Unrealized not marked yet/); assert.match(list, /Unrealized <span[^>]*>(−|-)\$0\.30/); assert.doesNotMatch(list, /Unreal\./);
   assert.match(list, /−\$0\.30|-\$0\.30/); assert.match(list, /<span class="mk live">Live<\/span>/);
   assert.doesNotMatch(list, /<x>/); assert.doesNotMatch(output, /<th>Contract<\/th><th>Position<\/th>/);
   // Each holding says why it was bought and how it will exit; one without a reason says nothing.

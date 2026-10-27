@@ -498,6 +498,18 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(g.root.querySelector('.past-deps').innerHTML, / ·/);
   });
 
+  test(`${name}: a past deployment keeps its book and dates whole, and names one day once`, async () => {
+    // Walk 2026-10-27 at 1280px: "Paper Oct" ended a line and "27–Oct 27" began the next, and a deployment removed the
+    // day it was made read "Oct 27–Oct 27".
+    const f = await open({status: 'passed', deployments: [], past_deployments: [
+      {id: 7, mode: 'paper', created_at: '2026-10-27T08:00:00+00:00', removed_at: '2026-10-27T15:00:00+00:00', realized_pnl: 1, closed_trades: 2},
+      {id: 6, mode: 'demo', created_at: '2026-09-28T08:00:00+00:00', removed_at: '2026-10-01T08:00:00+00:00', realized_pnl: 1, closed_trades: 2}]});
+    const html = f.root.querySelector('.past-deps').innerHTML;
+    assert.match(html, /<span class="nobr">Paper Oct 27<\/span>, <span class="gain">\+\$1\.00<\/span> over 2 closed trades/);
+    assert.match(html, /<span class="nobr">Demo Sep 28–Oct 1<\/span>, <span class="gain">\+\$1\.00/);
+    assert.doesNotMatch(html, /Oct 27–Oct 27/);
+  });
+
   test(`${name}: a past deployment with no closed trades says so, with which money it was, not "$0.00 over 0 closed trades"`, async () => {
     // It read "Demo Sep 28–Oct 1, $0.00 over 0 closed trades" with no book, under lines that say both.
     const past_deployments = [
