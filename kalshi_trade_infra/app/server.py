@@ -712,7 +712,6 @@ class Handler(BaseHTTPRequestHandler):
                    else "/static/app.css?v=" + versions["app.css"])
             bundle = ("" if theme is None else '\n<script src="/static/%s?v=%s" defer></script>' % (
                 ("app.meridian.js", versions["app.meridian.js"]) if theme == "meridian" else ("app.js", versions["app.js"])))
-            page_css, page_js = page_modules.asset_tags(path, versions)
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{ui_css}}", css).replace("{{ui}}", theme or "").replace("{{ui_bundle}}", bundle)
                     .replace("{{boot_me}}", boot_me).replace("{{boot_first}}", boot_first)
@@ -720,7 +719,6 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{tau_pages}}", page_modules.versions_attr("tau", versions))
                     .replace("{{mer_pages}}", page_modules.versions_attr("meridian", versions))
                     .replace("{{page_assets}}", page_modules.assets_attr(versions))
-                    .replace("{{page_css}}", page_css).replace("{{page_js}}", page_js)
                     .replace("{{tau_build}}", page_modules.build_version("tau", versions))
                     .replace("{{mer_build}}", page_modules.build_version("meridian", versions))
                     .replace("{{css_v}}", versions["app.css"])

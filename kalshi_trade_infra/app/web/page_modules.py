@@ -38,10 +38,13 @@ NAMES = tuple(PAGES) + PANELS
 TAU_ONLY = ("legal",)
 # Page files whose pages draw signed out, so a signed-out shell preloads them too.
 PUBLIC = ("legal",)
-# A page's own static files beside its page file. The shell of the page's paths links them (stylesheets in
-# <head>, scripts deferred ahead of the bundle); from any other page the bundle loads them with the page
-# file (#tau-boot data-page-assets). Funds': the native perps account, and the broker connection and
-# Alpaca paper files kept with it (Funds doesn't offer those controls for now).
+# A page's own static files beside its page file. No shell links them, not even their page's: the page
+# file asks the bundle for them once its first figures have painted (pageAssets, #tau-boot
+# data-page-assets), so they never hold its first figure back. The Funds shell linked them, three
+# stylesheets render-blocking in <head> and three scripts deferred ahead of the bundle (defer runs in
+# order), so a cold Funds waited on them for its first figure. Funds': the native perps account (its box
+# mounts once its script is in), and the broker connection and Alpaca paper files kept with it (Funds
+# doesn't offer those controls for now).
 ASSETS: Dict[str, Tuple[str, ...]] = {
     "funds": ("broker-connections.css", "alpaca-paper.css", "kalshi-perps-live.css",
               "alpaca-paper.js", "kalshi-perps-live.js", "broker-connections.js"),
@@ -92,14 +95,6 @@ def preload(theme: Optional[str], path: str, versions: Dict[str, str], signed_in
 
 
 def assets_attr(versions: Dict[str, str]) -> str:
-    """#tau-boot's data-page-assets: "funds:alpaca-paper.css?v=<v> funds:..." (names and hex only)."""
-    return " ".join("%s:%s?v=%s" % (name, f, versions[f]) for name, files in ASSETS.items() for f in files)
-
-
-def asset_tags(path: str, versions: Dict[str, str]) -> Tuple[str, str]:
-    """The tags for the own files of the page at this path: (stylesheets for <head>, scripts ahead of
-    boot.js), each '' for a page without any. Signed in or not, as before: the files hold no account data."""
-    files = ASSETS.get(page_for(path) or "", ())
-    css = "".join('\n<link rel="stylesheet" href="/static/%s?v=%s">' % (f, versions[f]) for f in files if f.endswith(".css"))
-    js = "".join('<script src="/static/%s?v=%s" defer></script>\n' % (f, versions[f]) for f in files if f.endswith(".js"))
-    return css, js
+    """#tau-boot's data-page-assets: "funds:/static/alpaca-paper.css?v=<v> funds:..." (names, paths and hex
+    only), in ASSETS' order: the URLs the bundle loads them by."""
+    return " ".join("%s:/static/%s?v=%s" % (name, f, versions[f]) for name, files in ASSETS.items() for f in files)

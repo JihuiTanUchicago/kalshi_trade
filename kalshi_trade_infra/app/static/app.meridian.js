@@ -3625,20 +3625,24 @@
   // Without a version (an older shell) the file is still found, revalidated instead of cached for good.
   const pageSrc = (name, v = pageVersions()[name]) => '/static/app.meridian-' + name + '.js' + (v ? '?v=' + v : '');
   // A page's own scripts and stylesheets beside its file (#tau-boot data-page-assets, page_modules.ASSETS):
-  // Funds' native perps account, and the broker and Alpaca paper files kept with it. The shell of the
-  // page's own paths links them; arriving from another page, they load with the page file, each once, and
-  // the page draws once they are in. One that fails leaves its part out, as a failed one in the shell
-  // did, and never fails the page.
+  // Funds' native perps account, and the broker and Alpaca paper files kept with it. No shell links them
+  // and the page never waits on them: its file asks for them once it has drawn (pageAssets), they start
+  // loading once that frame has painted, each once, and the page mounts what needs them when they are in.
+  // On a phone's slow network the Funds shell's copies held its first figure back: three render-blocking
+  // stylesheets, and three deferred scripts the bundle ran behind. One that fails leaves its part out and
+  // never fails the page; the next ask fetches it afresh.
   const assetWaits = {};  // url -> its load, settled or in flight
   const pageAssetSrcs = (name) => {
     const boot = document.getElementById('tau-boot');
     return String((boot && boot.dataset && boot.dataset.pageAssets) || '').split(' ')
-      .map((p) => /^([a-z]+):([a-z.-]+\.(?:js|css)\?v=[0-9a-f]+)$/.exec(p)).filter((m) => m && m[1] === name).map((m) => '/static/' + m[2]);
+      .map((p) => /^([a-z]+):(?:\/static\/)?([a-z.-]+\.(?:js|css)\?v=[0-9a-f]+)$/.exec(p)).filter((m) => m && m[1] === name).map((m) => '/static/' + m[2]);
   };
   const assetHere = (src) => [...document.querySelectorAll(/\.css\?/.test(src) ? 'link[rel="stylesheet"]' : 'script[src]')]
     .some((el) => el.getAttribute(/\.css\?/.test(src) ? 'href' : 'src') === src);
+  // After the frame being drawn has painted: a frame's callbacks run ahead of its paint, a timeout set there after it.
+  const afterPaint = (fn) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (f) => setTimeout(f, 16))(() => setTimeout(fn, 0));
   function pageAssets(name) {
-    return Promise.all(pageAssetSrcs(name).map((src) => assetWaits[src] || (assetWaits[src] = assetHere(src) ? Promise.resolve() : new Promise((resolve) => {
+    return new Promise((resolve) => afterPaint(resolve)).then(() => Promise.all(pageAssetSrcs(name).map((src) => assetWaits[src] || (assetWaits[src] = assetHere(src) ? Promise.resolve() : new Promise((resolve) => {
       const css = /\.css\?/.test(src), el = document.createElement(css ? 'link' : 'script');
       let tid = null;
       const done = (ok) => {
@@ -3651,7 +3655,7 @@
       tid = setTimeout(() => done(false), PAGE_WAIT_MS);
       if (css) { el.rel = 'stylesheet'; el.href = src; } else el.src = src;
       document.head.appendChild(el);
-    }))));
+    })))));
   }
   // What this bundle's page files use from it, by name, made once (the first file to run). A file that
   // asks for a name this build doesn't share (a file from another build) throws as it runs, instead of
@@ -3668,7 +3672,7 @@
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,
     marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money, notice, num, overDays,
-    paced, paceDay, paceTooSoon, paceWords, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount,
+    paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
     researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S,
     serial, sessionNo, sessionTitle, settleAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,
@@ -3680,14 +3684,14 @@
   function pageLoad(name) {
     if (pageWaits[name]) return pageWaits[name];
     if (PAGES[name]) return Promise.resolve(PAGES[name]);
-    const src = pageSrc(name), assets = pageAssets(name);
+    const src = pageSrc(name);
     return (pageWaits[name] = new Promise((resolve, reject) => {
       const s = document.createElement('script');
       let tid = null;
       const settle = (ok) => {
         clearTimeout(tid); s.onload = s.onerror = null;
-        if (ok && PAGES[name]) return void assets.then(() => { delete pageWaits[name]; resolve(PAGES[name]); });
         delete pageWaits[name];
+        if (ok && PAGES[name]) return void resolve(PAGES[name]);
         if (s.parentNode) s.parentNode.removeChild(s);
         apiBroke(src, false, 'did not load');
         reject(new ApiError(0, PAGE_FAIL));

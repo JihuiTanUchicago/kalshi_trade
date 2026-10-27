@@ -6,9 +6,11 @@
 // - a file that arrives after the user moved on never draws over the next page;
 // - a file from another build that asks for a helper this build doesn't share fails as it runs;
 // - after the first page paints, the files not yet in are prefetched once, at the lowest priority;
-// - a page's own files (Funds' perps, broker and Alpaca paper scripts and stylesheets) load with its page
-//   file from another page, each once, and the page draws once they are in; one that fails leaves its
-//   part out and never fails the page; those the shell linked are neither fetched nor prefetched again;
+// - a page's own files (Funds' perps, broker and Alpaca paper scripts and stylesheets) never hold its
+//   first figure back: the page draws once its file is in, and they load when its file asks, once that
+//   frame has painted, each once; one that fails leaves its part out, never fails the page, and the next
+//   ask fetches it afresh; those already on the page are neither fetched nor prefetched again; Funds'
+//   perps box mounts once its script is in;
 // - the autopilot panel's file (app-autopilot.js) is fetched the first time the panel opens, once: the
 //   pill needs none, the panel shows its head over a skeleton meanwhile, and a file that doesn't
 //   arrive says so in the panel with Try again; a panel closed meanwhile stays closed.
@@ -33,7 +35,7 @@ export function pageFileCases({name, frontend, prefix, pagesKey, storageFor}) {
     f.document.head = {appendChild: (el) => head.push(el)};
     return {f, head, reports, boot};
   };
-  // A page's own files (#tau-boot data-page-assets), and the ones its shell already linked.
+  // A page's own files (#tau-boot data-page-assets), and the ones already on the page.
   const ownFiles = (boot, f, assets, linked = []) => {
     boot.dataset.pageAssets = assets;
     f.document.querySelectorAll = (sel) => linked.filter((src) => sel.startsWith(/\.css\?/.test(src) ? 'link' : 'script'))
@@ -126,32 +128,81 @@ export function pageFileCases({name, frontend, prefix, pagesKey, storageFor}) {
     assert.equal(head.length, 2, 'once a load');
   });
 
-  test(`${name}: a page's own files load with its page file from another page, once, and it draws once they are in`, async () => {
+  test(`${name}: a page draws without waiting on its own files, which load once it has painted, when its file asks`, async () => {
     const {f, head, reports, boot} = page('funds:abc123');
-    ownFiles(boot, f, 'funds:kalshi-perps-live.css?v=0c0c0c funds:kalshi-perps-live.js?v=0d0d0d funds:broker-connections.js?v=0e0e0e other:x.js?v=1',
-      ['/static/broker-connections.js?v=0e0e0e']);  // the shell linked this one
+    ownFiles(boot, f, 'funds:/static/kalshi-perps-live.css?v=0c0c0c funds:/static/kalshi-perps-live.js?v=0d0d0d funds:/static/broker-connections.js?v=0e0e0e other:/static/x.js?v=1',
+      ['/static/broker-connections.js?v=0e0e0e']);  // already on the page
     delete f.PAGES.funds;
     const drawn = [];
     f.location.pathname = '/funds';
     const done = f.render(); await flush();
-    assert.deepEqual(head.map((el) => [el.tag, el.rel || '', el.src || el.href]), [
-      ['link', 'stylesheet', '/static/kalshi-perps-live.css?v=0c0c0c'], ['script', '', '/static/kalshi-perps-live.js?v=0d0d0d'],
-      ['script', '', `/static/${prefix}funds.js?v=abc123`]]);
-    f.PAGES.funds = {viewFunds: () => drawn.push('funds')};
-    head[2].onload(); await settle();
-    assert.deepEqual(drawn, [], 'not before its own files are in');
-    head[0].onload(); head[1].onerror(); await done; await settle();
-    assert.deepEqual(drawn, ['funds'], 'a file that fails leaves its part out, never the page');
+    // Only the page file: its own files never go out ahead of it.
+    assert.deepEqual(head.map((el) => [el.tag, el.src || el.href]), [['script', `/static/${prefix}funds.js?v=abc123`]]);
+    // The file runs as it arrives, as a fetched one does, and asks for its own files once it has drawn.
+    f.window.TauPage('funds', (T) => ({viewFunds: () => { drawn.push('funds'); T.pageAssets('funds').then(() => drawn.push('own files')); }}));
+    head[0].onload(); await done; await settle();
+    assert.deepEqual(drawn, ['funds'], 'the page draws with its own files not even asked for yet');
+    assert.equal(f.root.getAttribute('aria-busy'), 'false');
+    assert.equal(head.length, 1, 'nothing before the drawn frame has painted');
+    f.elapse(16); f.elapse(0); await settle();  // the frame, then just after its paint
+    assert.deepEqual(head.slice(1).map((el) => [el.tag, el.rel || '', el.src || el.href]), [
+      ['link', 'stylesheet', '/static/kalshi-perps-live.css?v=0c0c0c'], ['script', '', '/static/kalshi-perps-live.js?v=0d0d0d']]);
+    head[1].onload(); head[2].onerror(); await settle();
+    assert.deepEqual(drawn, ['funds', 'own files'], 'a file that fails leaves its part out, never the page');
     assert.deepEqual(reports, [['api', 'GET /static/kalshi-perps-live.js did not load']]);
-    // In now: the next visit fetches nothing.
-    await f.render(); await settle();
-    assert.deepEqual(drawn, ['funds', 'funds']);
-    assert.equal(head.length, 3);
+    // The next visit draws at once; its ask fetches only the one that failed, afresh.
+    await f.render(); await settle(); f.elapse(16); f.elapse(0); await settle();
+    assert.deepEqual(drawn, ['funds', 'own files', 'funds']);
+    assert.deepEqual(head.slice(3).map((el) => el.src || el.href), ['/static/kalshi-perps-live.js?v=0d0d0d']);
   });
 
-  test(`${name}: the idle prefetch takes a page's own files too, except those the shell linked`, async () => {
+  test(`${name}: Funds draws its figures before its own files load, and mounts the perps box once its script is in`, async () => {
+    const funds = {kalshi: {connected: false}, kalshi_dev: {connected: false}, demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: []}};
+    const fetchImpl = (path) => {
+      if (path === '/api/funds') return response(funds);
+      throw new Error('Unexpected offline request: ' + path);
+    };
+    const f = frontend({fetchImpl});
+    const boot = f.document.createElement('div');
+    boot.id = 'tau-boot'; boot.dataset.pageAssets = 'funds:/static/kalshi-perps-live.css?v=0c0c0c funds:/static/kalshi-perps-live.js?v=0d0d0d';
+    f.document.body.appendChild(boot);
+    const head = [];
+    f.document.head = {appendChild: (el) => head.push(el)};
+    f.document.querySelectorAll = () => [];
+    f.S.me.perps_live_available = true;
+    f.location.pathname = '/funds';
+    await f.viewFunds(); await settle();
+    assert.match(f.root.querySelector('#ffigs').innerHTML, /Paper balance/);
+    const box = f.root.querySelector('#kalshi-perps-live');
+    assert.ok(box, 'the perps box is in place');
+    assert.equal(head.length, 0, 'its files wait for the figures to paint');
+    f.elapse(16); f.elapse(0); await settle();
+    assert.deepEqual(head.map((el) => el.src || el.href), ['/static/kalshi-perps-live.css?v=0c0c0c', '/static/kalshi-perps-live.js?v=0d0d0d']);
+    const mounts = [];
+    f.window.TAU_PERPS_LIVE = {mount: (host, opts) => { mounts.push([host, typeof opts.api]); return {destroy() {}}; }};
+    head[0].onload(); head[1].onload(); await settle();
+    assert.deepEqual(mounts, [[box, 'function']], 'mounted once, in its box, with the page’s api');
+    assert.ok(f.S.perps);
+    // Moved on before they arrive: nothing mounts over the next page.
+    const g = frontend({fetchImpl});
+    const gb = g.document.createElement('div');
+    gb.id = 'tau-boot'; gb.dataset.pageAssets = 'funds:/static/kalshi-perps-live.js?v=0d0d0d';
+    g.document.body.appendChild(gb);
+    const gh = [];
+    g.document.head = {appendChild: (el) => gh.push(el)};
+    g.document.querySelectorAll = () => [];
+    g.S.me.perps_live_available = true;
+    await g.viewFunds(); await settle(); g.elapse(16); g.elapse(0); await settle();
+    g.S.gen++;
+    const late = [];
+    g.window.TAU_PERPS_LIVE = {mount: () => { late.push(1); return {destroy() {}}; }};
+    gh[0].onload(); await settle();
+    assert.deepEqual(late, []);
+  });
+
+  test(`${name}: the idle prefetch takes a page's own files too, except those already on the page`, async () => {
     const {f, head, boot} = page('strategies:222bbb,funds:333ccc');
-    ownFiles(boot, f, 'funds:kalshi-perps-live.js?v=0d0d0d funds:broker-connections.js?v=0e0e0e', ['/static/broker-connections.js?v=0e0e0e']);
+    ownFiles(boot, f, 'funds:/static/kalshi-perps-live.js?v=0d0d0d funds:/static/broker-connections.js?v=0e0e0e', ['/static/broker-connections.js?v=0e0e0e']);
     delete f.PAGES.funds;
     f.PAGES.strategies = {viewStrategies: () => {}};
     f.location.pathname = '/strategies';
