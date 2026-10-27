@@ -42,7 +42,7 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
       spent_7d_under_cent: ['other']}));
     await f.viewBilling(); await flush();
     const split = f.root.querySelector('#bsplit').textContent;
-    assert.equal(split, 'Last 7 days: autopilot research $38.85 · autopilot check-ins $0.19 · chat $0.18 · other agent calls under $0.01.');
+    assert.equal(split, 'Last 7 days: autopilot research $38.85 · autopilot check-ins $0.19 · chat $0.18 · other agent calls under $0.01.');
     const shown = [...split.matchAll(/(?<!under )\$(\d+\.\d\d)/g)].reduce((a, m) => a + Math.round(+m[1] * 100), 0);
     assert.match(f.root.querySelector('#bfigs').textContent, /Spent, last 7 days\s*\$39\.22/);
     assert.equal(shown, 3922);  // the parts shown are the week shown

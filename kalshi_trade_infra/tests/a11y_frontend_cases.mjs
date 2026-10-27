@@ -147,7 +147,7 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     f.renderAutopilot(box, null); await flush(); await flush();
     const pulse = box.querySelector('#apf-pulse');
     assert.equal(pulse.getAttribute('aria-live'), 'polite');
-    assert.match(pulse.innerHTML, /Between reviews · 2 on paper/);
+    assert.match(pulse.innerHTML, /Between reviews · 2 on paper/);
     const writes = pulse.writes;
     for (let i = 0; i < 4; i++) { await f.apLoadChat(box, false); await flush(); }
     assert.equal(pulse.writes, writes, 'a poll with the same words left the live region alone');
@@ -182,17 +182,17 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     const shown = () => pulse.querySelector('[data-ap-shown]').textContent, said = () => pulse.querySelector('.vh').textContent;
     assert.equal(pulse.getAttribute('aria-live'), 'polite');
     assert.equal(pulse.querySelector('[data-ap-shown]').getAttribute('aria-hidden'), 'true');
-    assert.match(shown(), /^Between reviews ·\u00a02 on paper ·\u00a0last move 3m ago/);
-    assert.equal(said(), 'Between reviews ·\u00a02 on paper');
+    assert.match(shown(), /^Between reviews\u00a0· 2 on paper\u00a0· last move 3m ago/);
+    assert.equal(said(), 'Between reviews\u00a0· 2 on paper');
     const writes = pulse.writes;
     // A minute on, from the chat poll and then from the status read: the shown line counts, nothing is said.
     f.shiftClock(60000); await f.apLoadChat(box, false); await flush();
-    assert.match(shown(), /last move 4m ago/); assert.equal(said(), 'Between reviews ·\u00a02 on paper'); assert.equal(pulse.writes, writes);
+    assert.match(shown(), /last move 4m ago/); assert.equal(said(), 'Between reviews\u00a0· 2 on paper'); assert.equal(pulse.writes, writes);
     f.shiftClock(60000); f.apUpdate(box, {...f.S.ap});
-    assert.match(shown(), /last move 5m ago/); assert.equal(said(), 'Between reviews ·\u00a02 on paper'); assert.equal(pulse.writes, writes);
+    assert.match(shown(), /last move 5m ago/); assert.equal(said(), 'Between reviews\u00a0· 2 on paper'); assert.equal(pulse.writes, writes);
     // A real change of status is written, once.
     f.S.ap = {...f.S.ap, paper_running: 3}; await f.apLoadChat(box, false); await f.apLoadChat(box, false); await flush();
-    assert.equal(pulse.writes, writes + 1); assert.equal(said(), 'Between reviews ·\u00a03 on paper');
+    assert.equal(pulse.writes, writes + 1); assert.equal(said(), 'Between reviews\u00a0· 3 on paper');
     // A long wait counts its minutes on screen too, said once.
     chat = {messages: [], agent_busy: true, agent_wait: {state: 'running', seconds: 400}};
     await f.apLoadChat(box, false); await flush();
@@ -213,7 +213,7 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     stream.state('queued', {state: 'queued', seconds: 200, overdue: false});
     for (const tick of [...f.intervals.values()]) tick();
     const label = pulse.querySelector('[data-plabel]');
-    if (label) assert.match(label.textContent, /^Queued · 20\ds$/);  // Tau counts the wait in the foot
+    if (label) assert.match(label.textContent, /^Queued · 20\ds$/);  // Tau counts the wait in the foot
     assert.equal(said(), '', 'the first paint and the ticks say nothing');
     stream.state('running');
     if (label) {

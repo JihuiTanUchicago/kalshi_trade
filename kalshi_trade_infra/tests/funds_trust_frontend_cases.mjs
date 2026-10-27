@@ -98,7 +98,7 @@ export function fundsTrustCases({name, frontend, fundsData, dashboard, detailStr
     const dash = ['#boardbody', '#main'].map((sel) => (d.root.querySelector(sel) || {innerHTML: ''}).innerHTML).join('');
     if (name === 'Tau') {
       assert.match(dash, /<span>\$1\.94 at cost \+ fees<\/span>/, 'the unmarked position row');
-      assert.match(dash, /\$998\.06 cash · \$1\.94 at cost \+ fees, \$1\.90 of it in the balance · /, 'the paper figure');
+      assert.match(dash, /\$998\.06 cash · \$1\.94 at cost \+ fees, \$1\.90 of it in the balance · /, 'the paper figure');
     } else {
       assert.match(dash, /<th scope="col" class="num">Cost \+ fee<\/th>/);
       assert.match(dash, /<span class="position-cost">\$1\.94<\/span>/, 'the position row');

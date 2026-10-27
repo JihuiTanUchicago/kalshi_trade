@@ -136,16 +136,23 @@ def test_the_strategy_page_lists_its_removed_deployments(monkeypatch):
                 "removed_at": datetime(2026, 10, 1), "title": "Walk"}]
     reads = []
     monkeypatch.setattr(strategy_routes.repo, "removed_deployments", lambda cur, uid, sid: [dict(r) for r in removed])
+    # One read gives each removed deployment's closed trades, P&L and (sim) those through the simulated venue.
     monkeypatch.setattr(strategy_routes.repo, "deployment_closed_totals",
-                        lambda cur, ids: reads.append(ids) or {9: (14, Decimal("5.7249"))})
+                        lambda cur, ids, sim=False: reads.append((ids, sim)) or {9: (14, Decimal("5.7249"), 11)})
     rows = strategy_routes._removed_with_totals(None, 7, 4)
-    assert reads == [[9, 8]]
+    assert reads == [([9, 8], True)]
+    # Its paper one's closed trades less its simulated-venue ones were instant fills, which the track record leaves out.
     assert [views._past_deployment_out(r) for r in rows] == [
         {"id": 9, "mode": "paper", "created_at": datetime(2026, 10, 2), "removed_at": datetime(2026, 10, 20),
-         "realized_pnl": 5.72, "closed_trades": 14},
+         "realized_pnl": 5.72, "closed_trades": 14, "instant_fills": 3},
         {"id": 8, "mode": "demo", "created_at": datetime(2026, 9, 28), "removed_at": datetime(2026, 10, 1),
          "realized_pnl": 0.0, "closed_trades": 0}]
     # None removed: no position read at all.
     monkeypatch.setattr(strategy_routes.repo, "removed_deployments", lambda cur, uid, sid: [])
     reads.clear()
     assert strategy_routes._removed_with_totals(None, 7, 4) == [] and reads == []
+    # Every closed trade through the simulated venue, or a demo one: no instant_fills at all.
+    monkeypatch.setattr(strategy_routes.repo, "removed_deployments", lambda cur, uid, sid: [dict(r) for r in removed])
+    monkeypatch.setattr(strategy_routes.repo, "deployment_closed_totals",
+                        lambda cur, ids, sim=False: {9: (14, Decimal("5.7249"), 14), 8: (2, Decimal("1"), 0)})
+    assert [("instant_fills" in views._past_deployment_out(r)) for r in strategy_routes._removed_with_totals(None, 7, 4)] == [False, False]

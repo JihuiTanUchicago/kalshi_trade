@@ -135,8 +135,8 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
   test(`${name}: a demo book on the strategy ladder says its demo account is being checked, not "running", while its check is pending`, async () => {
     const paper = {id: 1, mode: 'paper', status: 'running', closed_trades: 4, realized_pnl: 1.9, open_positions: 0, stake: 5, created_at: '2026-10-20T08:00:00Z'};
     const demo = {id: 3, mode: 'demo', status: 'running', closed_trades: 0, realized_pnl: 0, open_positions: 0, stake: 5, created_at: '2026-10-21T08:00:00Z'};
-    for (const [after, said] of [[null, /<span class="mk dep">Demo<\/span> running ·/],
-      [demoFunds, /<span class="mk dep">Demo<\/span> \d+ closed trades .*demo-health">Demo isn&#39;t trading: your Kalshi demo account has \$0\.00/]]) {
+    for (const [after, said] of [[null, /<span class="mk dep">Demo<\/span> running\u00a0· /],
+      [demoFunds, /<span class="mk dep">Demo<\/span> \d+ closed trades\u00a0· .*demo-health">Demo isn&#39;t trading: your Kalshi demo account has \$0\.00/]]) {
       const [demoHeld, answerDemo] = held();
       let reads = 0;
       const f = frontend({fetchImpl: (path) => {
@@ -151,9 +151,9 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
       }});
       await f.viewStrategy(42); await settle();
       const ladder = () => f.root.querySelector('#ladder-body').innerHTML;
-      assert.match(ladder(), /<span class="mk dep">Demo<\/span> checking your Kalshi demo account… ·/);
+      assert.match(ladder(), /<span class="mk dep">Demo<\/span> checking your Kalshi demo account…\u00a0· /);
       assert.doesNotMatch(ladder(), /Demo<\/span> running/, 'not "running" before its demo check is in');
-      assert.match(ladder(), /<span class="mk ?">Paper<\/span> running ·/, 'the paper book is unaffected');
+      assert.match(ladder(), /<span class="mk ?">Paper<\/span> running\u00a0· /, 'the paper book is unaffected');
       answerDemo(); await settle();
       assert.equal(reads, 2);
       assert.match(ladder(), said);

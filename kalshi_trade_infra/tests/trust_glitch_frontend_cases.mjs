@@ -64,7 +64,7 @@ export function trustGlitchCases({name, frontend}) {
     box.innerHTML = '<dl id="apf-stats"></dl><div id="apf-week"></div>';
     const week = {research_credits: 0.11, tested: 3, passed: 1, not_cleared: 2, paper_started: 0, paper_pnl: 0, paper_trades: 0};
     f.apUpdate(box, {autopilot: true, mode: 'paper', research: {active: [], tested_7d: 3, passed_7d: 1, not_cleared_7d: 2, cost_7d: 0.105}, week, story: []});
-    assert.match(box.querySelector('#apf-week').innerHTML, /<dt>Ideas<\/dt><dd>3 tested · 1 passed, 2 not cleared<\/dd>/);
+    assert.match(box.querySelector('#apf-week').innerHTML, /<dt>Ideas<\/dt><dd>3 tested · 1 passed, 2 not cleared<\/dd>/);
     f.apUpdate(box, {autopilot: true, mode: 'paper', research: {active: [], tested_7d: 3, passed_7d: 1, cost_7d: 0.105}, week: {...week, not_cleared: 0}, story: []});
     assert.doesNotMatch(box.querySelector('#apf-week').innerHTML, /not cleared/);
     f.clearTimers();

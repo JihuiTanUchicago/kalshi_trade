@@ -676,11 +676,16 @@ def get_strategy(ctx: Ctx):
 
 def _removed_with_totals(cur, uid: int, strategy_id: int) -> List[Dict]:
     """repo.removed_deployments for one strategy, each with its closed trades and realized P&L (its own
-    closed positions, repo.deployment_closed_totals); no position is read when none was removed."""
+    closed positions, repo.deployment_closed_totals); no position is read when none was removed.
+    A paper one's closed trades less those through the simulated venue (the same read's sim count, as the
+    Strategies list's "Removed from paper" counts them) are its `instant_fills`, when any: the track record
+    leaves those out, while "Past deployments" said "3 closed trades" with no word why. Display only."""
     rows = repo.removed_deployments(cur, uid, strategy_id)
-    totals = repo.deployment_closed_totals(cur, [r["id"] for r in rows]) if rows else {}
+    totals = repo.deployment_closed_totals(cur, [r["id"] for r in rows], sim=True) if rows else {}
     for r in rows:
-        r["closed_trades"], r["realized_pnl"] = totals.get(int(r["id"]), (0, 0))
+        r["closed_trades"], r["realized_pnl"], sim = totals.get(int(r["id"]), (0, 0, 0))
+        if r["mode"] == "paper" and r["closed_trades"] > sim:
+            r["instant_fills"] = r["closed_trades"] - sim
     return rows
 
 

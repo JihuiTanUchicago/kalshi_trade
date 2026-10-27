@@ -139,5 +139,7 @@ def test_the_strategy_page_says_it_beside_its_paper_record(page):
     names = re.search(r"const \{(.*?)\} = T;", src, re.S).group(1)
     assert re.search(r"\bPAPER_NET\b", names) and re.search(r"\bglo\b", names)
     # Since deploying: each book's line says what its P&L is net of, paper's in PAPER_NET's words with its bubble.
-    assert "paper: PAPER_NET };" in src and ", ${BOOK_NET[mode]}${mode === 'paper' ? glo('paperfills') : ''}" in src
+    assert "paper: PAPER_NET };" in src and ", ${BOOK_NET[mode]}` : 'No closed trades yet'" in src
+    # Its bubble follows on paper, glued to the last word and the "·" after it (gloSep) when more of the line follows.
+    assert "n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : head + glo('paperfills'))" in src
     assert "name: 'Net, ' + PAPER_NET" in src  # Road to live

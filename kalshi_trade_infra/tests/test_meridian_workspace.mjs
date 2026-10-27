@@ -728,9 +728,9 @@ test('Overview offers each mode its own trades CSV only when that mode has close
 
 test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
-    [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital ·\u00a0No demo deployments ·\u00a0real fills on Kalshi’s sandbox, not real money/],
-    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital ·\u00a00 open ·\u00a0\+\$12\.00 realized since reload ·\u00a0real fills/],
-    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 realized all time ·\u00a0real fills/],
+    [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital\u00a0· No demo deployments\u00a0· real fills on Kalshi’s sandbox, not real money/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital\u00a0· 0 open\u00a0· \+\$12\.00 realized since reload\u00a0· real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 realized all time\u00a0· real fills/],
   ]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({demo})); }});
     await f.viewDashboard(); await flush();
@@ -749,7 +749,7 @@ test('Funds demo labels say "since reload" only after a reload, and that demo pr
     assert.doesNotMatch(main, /slippage are real/);
     assert.match(main, /Demo is the step between paper and live: it proves orders place, fill and book/);
     assert.match(main, /the track record still counts every closed demo trade/);
-    assert.match(f.root.querySelector('#ffigs').innerHTML, before_reload ? /capital at last reload ·\u00a0needs a demo key ·\u00a0real fills on Kalshi’s sandbox/ : /starting capital ·\u00a0needs a demo key ·\u00a0real fills on Kalshi’s sandbox/);
+    assert.match(f.root.querySelector('#ffigs').innerHTML, before_reload ? /capital at last reload\u00a0· needs a demo key\u00a0· real fills on Kalshi’s sandbox/ : /starting capital\u00a0· needs a demo key\u00a0· real fills on Kalshi’s sandbox/);
   }
 });
 
@@ -795,8 +795,8 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Real money at Kalshi, read 5m ago\. 1 open live position \(\$3\.11 at cost \+ fees\) not included/);
-  assert.match(figs, /starting capital ·\u00a02 open \(\$8\.25 at cost \+ fees, all of it in Tau’s demo book\) ·\u00a0needs a demo key ·\u00a0real fills/);
-  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash ·\u00a03 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
+  assert.match(figs, /starting capital\u00a0· 2 open \(\$8\.25 at cost \+ fees, all of it in Tau’s demo book\)\u00a0· needs a demo key\u00a0· real fills/);
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);  // books are never summed
   const h = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: null, open_positions: 0, open_at_cost: 0}; return response(d); }});
   await h.viewFunds(); await flush();
@@ -815,8 +815,8 @@ test('Funds paper history says prices in cents, a lost settlement as lost, and e
   const f = frontend({fetchImpl: () => { const d = funds(); d.paper.ledger = ledger; return response(d); }});
   await f.viewFunds(); await flush();
   const rows = [...f.root.querySelectorAll('.t-ledger tbody tr')].map((tr) => tr.innerHTML);
-  assert.match(rows[0], /KXBTC15M-L settled NO<span class="hint"> ·\u00a0lost, paid \$0<\/span>[\s\S]*\$0\.00/);
-  assert.match(rows[1], /settled YES<span class="hint"> ·\u00a0won, paid \$1 a contract<\/span>[\s\S]*\+\$25\.00/);
+  assert.match(rows[0], /KXBTC15M-L settled NO<span class="hint">\u00a0· lost, paid \$0<\/span>[\s\S]*\$0\.00/);
+  assert.match(rows[1], /settled YES<span class="hint">\u00a0· won, paid \$1 a contract<\/span>[\s\S]*\+\$25\.00/);
   assert.match(rows[2], /Sold 8\/25 YES KXBTC15M-P at 25¢ \(stop loss, partial\)/);
   assert.match(rows[3], /Paper replay: 10 YES KXBTC15M-R at 40¢ → 55¢ \(take profit\)/);
   assert.match(rows[4], /Bought 25 YES KXBTC15M-W at 40¢<\/td>[\s\S]*−\$10\.42/);
@@ -839,15 +839,15 @@ test('Funds says what each book has made, realized, never summed, and when a new
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Real money at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time, after Kalshi fees\. 1 open live position/);
-  assert.match(figs, /\$995\.19 cash ·\u00a01 open \(\$10\.00 at cost \+ fees\) ·\u00a0\+\$5\.61 realized all time, after Kalshi fees and the spread</);
-  assert.match(figs, /\+\$9\.77 realized since reload, after Kalshi fees ·\u00a0needs a demo key/);
+  assert.match(figs, /\$995\.19 cash\u00a0· 1 open \(\$10\.00 at cost \+ fees\)\u00a0· \+\$5\.61 realized all time, after Kalshi fees and the spread</);
+  assert.match(figs, /\+\$9\.77 realized since reload, after Kalshi fees\u00a0· needs a demo key/);
   assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
   const g = frontend({fetchImpl: () => { const d = funds();
     d.kalshi = {connected: false, realized_pnl: 0, closed_trades: 0};
     d.demo = {...d.demo, closed_trades: 0}; d.paper = {...d.paper, realized_pnl: 0, closed_trades: 0}; return response(d); }});
   await g.viewFunds(); await flush();
   const empty = g.root.querySelector('#ffigs').innerHTML;
-  assert.match(empty, /P&amp;L shows once a demo trade closes/); assert.match(empty, /cash ·\u00a0P&amp;L shows once a paper trade closes</);
+  assert.match(empty, /P&amp;L shows once a demo trade closes/); assert.match(empty, /cash\u00a0· P&amp;L shows once a paper trade closes</);
   assert.doesNotMatch(empty, /realized all time|Tau’s live/);
 });
 
@@ -856,8 +856,8 @@ test('Overview Kalshi cash says when it was read, and keeps Tau\'s realized line
     const f = apDashboard(dashboardData({deployments: [dashboardDeployment('live')], live: {connected: true, balance, balance_at: new Date().toISOString(), open_positions: 2}}), {...apStatus});
     await f.viewDashboard(); await flush();
     const text = f.root.querySelector('.live-summary').textContent;
-    if (balance) assert.match(text, /Read from Kalshi just now ·\u00a0\+\$17\.00 realized all time by Tau trades/);  // Tau's words (cashAt)
-    else assert.match(text, /Couldn’t read your Kalshi balance just now ·\u00a0\+\$17\.00 realized all time by Tau trades/);
+    if (balance) assert.match(text, /Read from Kalshi just now\u00a0· \+\$17\.00 realized all time by Tau trades/);  // Tau's words (cashAt)
+    else assert.match(text, /Couldn’t read your Kalshi balance just now\u00a0· \+\$17\.00 realized all time by Tau trades/);
     assert.doesNotMatch(text, /cash read from Kalshi/);
   }
 });
@@ -977,9 +977,9 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.ok(state.textContent.endsWith(d.status === 'running' ? 'Running' : d.status === 'paused' ? 'Paused' : 'Stopped'));
     assert.equal(state.querySelector('.mk').textContent, d.mode === 'live' ? 'LIVE' : d.mode === 'demo' ? 'Demo' : 'Paper');
     assert.equal(monitor.classList.contains('live-row'), d.mode === 'live');
-    assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min up\/down ·\u00a0\$12\.5 \/ trade/);
+    assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min up\/down\u00a0· \$12\.5 \/ trade/);
     assert.ok(monitor.querySelector('.monitor-limits').textContent.includes('Max 4 open'));
-    assert.ok(monitor.querySelector('.monitor-limits').textContent.startsWith(' ·\u00a0Max 4 open'), 'a space before the separator, so it never reads "trade· Max"');
+    assert.ok(monitor.querySelector('.monitor-limits').textContent.startsWith('\u00a0· Max 4 open'), 'a space before the separator, so it never reads "trade· Max"');
     assert.equal(monitor.querySelector('.monitor-limits').textContent.includes('Risk &lt;cap&gt; reached'), d.status !== 'running');
     assert.equal(field('Realized').textContent, d.status === 'running' ? '—' : d.status === 'paused' ? '$0.00' : '−$3.25');
     assert.equal(field('Unrealized').textContent.trim(), d.status === 'running' ? 'Unavailable' : d.status === 'paused' ? '$0.00' : '−$2.50');
@@ -1195,9 +1195,9 @@ test('Overview charts cumulative closed paper results separately from all-time P
         const date = new Date(daily[index].d + 'T12:00:00Z').toLocaleDateString(undefined, {month: 'short', day: 'numeric', timeZone: 'UTC'});
         assert.equal(sample.dataset.time, String(Date.parse(daily[index].d + 'T12:00:00Z') / 1000));
         assert.equal(sample.getAttribute('tabindex'), '0'); assert.equal(sample.getAttribute('role'), 'img');
-        assert.equal(sample.getAttribute('aria-label'), `${date} ·\u00a0${amounts[index]}`);
+        assert.equal(sample.getAttribute('aria-label'), `${date}\u00a0· ${amounts[index]}`);
         assert.equal(sample.querySelector('.chart-reading').getAttribute('aria-hidden'), 'true');
-        assert.equal(sample.querySelector('.chart-reading text').textContent, `${date} ·\u00a0${amounts[index]}`);
+        assert.equal(sample.querySelector('.chart-reading text').textContent, `${date}\u00a0· ${amounts[index]}`);
       });
       const points = chart.querySelector('polyline').getAttribute('points').split(' ').map(point => point.split(',').map(Number));
       assert.equal(points.length, daily.length); assert.ok(points.flat().every(Number.isFinite));
@@ -1252,7 +1252,7 @@ test('Overview paper performance preserves disclosure and focus on polls and red
   assert.equal(sample.isConnected, false); sample = f.document.activeElement;
   assert.equal(performance.open, true); assert.equal(performance.querySelectorAll('.chart-sample').length, 3);
   assert.equal(sample.dataset.time, focusedTime); assert.equal(sample.focusOptions.preventScroll, true);
-  assert.ok(sample.getAttribute('aria-label').endsWith(' ·\u00a0−$3.00'));
+  assert.ok(sample.getAttribute('aria-label').endsWith('\u00a0· −$3.00'));
   data = dashboardData({paper: {daily: [{d: '2026-10-16', pnl: -4}, {d: '2026-10-19', pnl: 2}]}});
   poll(); await flush(); performance = f.root.querySelector('#paper-performance');
   assert.equal(performance.open, true); assert.equal(performance.querySelectorAll('.chart-sample').length, 2);
@@ -1445,8 +1445,8 @@ test('Overview paper context follows the whole displayed book through mode chang
       assert.equal(mode.contains(state.querySelector('.deployment-state')), false, name + ' status stays independent from mode');
     });
     const performanceMode = dashboard.querySelector('.performance-mode');
-    assert.equal(performanceMode.textContent, 'Paper ·\u00a0cumulative, after Kalshi fees and the spread', name + ' source performance scope remains available');
-    assert.equal(performanceMode.querySelector('.performance-mode-prefix').textContent, 'Paper ·\u00a0', name);
+    assert.equal(performanceMode.textContent, 'Paper\u00a0· cumulative, after Kalshi fees and the spread', name + ' source performance scope remains available');
+    assert.equal(performanceMode.querySelector('.performance-mode-prefix').textContent, 'Paper\u00a0· ', name);
     assert.equal(performanceMode.getAttribute('aria-hidden'), null, name);
     assert.equal(JSON.stringify(data), before, name + ' source records are immutable');
     assert.equal(postRequests(f).length, 0, name);
@@ -1573,7 +1573,7 @@ test('Overview attribution groups require adjacent known deployments and keep ti
       assert.ok(detail.querySelector('summary').getAttribute('aria-label').includes(source.title === beta
         ? 'Beta &lt;script&gt;unsafe&lt;/script&gt;' : alpha));
       assert.ok(detail.querySelector('summary').getAttribute('aria-label')
-        .endsWith(source.mode === 'live' ? ' ·\u00a0LIVE' : ' ·\u00a0Paper'));
+        .endsWith(source.mode === 'live' ? '\u00a0· LIVE' : '\u00a0· Paper'));
     });
   });
   assert.doesNotMatch(table.innerHTML, /<script>/);
@@ -1622,7 +1622,7 @@ test('Overview separates open cost and unrealized marks from collapsed realized 
   assert.equal(closedRow.querySelector('.position-cost'), null);
   const closedDetail = closedRow.querySelector('.position-details');
   assert.equal(closedDetail.tag, 'details'); assert.equal(closedDetail.open, false); assert.equal(closedDetail.dataset.position, 'closed-4');
-  assert.ok(closedDetail.querySelector('.sub-fig').textContent.includes('Kalshi contract ' + settled.ticker + ' ·\u00a0' + settled.title));
+  assert.ok(closedDetail.querySelector('.sub-fig').textContent.includes('Kalshi contract ' + settled.ticker + '\u00a0· ' + settled.title));
   assert.match(closedDetail.querySelector('.position-opened').textContent, /^Closed /);
   assert.equal(closedDetail.querySelector('.position-absolute').textContent,
     'Expires ' + new Date(settled.market_close_time).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'long', hourCycle: 'h23'}));
@@ -1872,8 +1872,8 @@ test('Meridian: a run names its model and says it runs until stopped, or how man
     return deck;
   };
   // The default model's key is null: the server sends its customer name, never the internal id.
-  assert.match(await page({model: null, model_label: 'Claude Opus 4.6', run_forever: 1, max_hypotheses: 10}), /Claude Opus 4\.6 · Runs until you stop it/);
-  assert.match(await page({model: 'sonnet-4-6', model_label: 'Claude Sonnet 4.6', run_forever: 0, max_hypotheses: 25}), /Claude Sonnet 4\.6 · Up to 25 strategies/);
+  assert.match(await page({model: null, model_label: 'Claude Opus 4.6', run_forever: 1, max_hypotheses: 10}), /Claude Opus 4\.6 · Runs until you stop it/);
+  assert.match(await page({model: 'sonnet-4-6', model_label: 'Claude Sonnet 4.6', run_forever: 0, max_hypotheses: 25}), /Claude Sonnet 4\.6 · Up to 25 strategies/);
   assert.match(await page({status: 'cancelled', model_label: 'Claude Opus 4.6', run_forever: 1}), /Ran until stopped/);
   assert.doesNotMatch(await page({model: 'sonnet-4-6', model_label: '<b>x</b>', run_forever: 1}), /sonnet-4-6|<b>x/);
 });
@@ -1957,7 +1957,7 @@ test('Research results keep every returned status and source value with escaped 
   assert.equal(results.hidden, false); assert.equal(results.querySelector('.section-count').textContent, '5');
   const rows = results.querySelectorAll('tbody tr'); assert.equal(rows.length, 5);
   assert.deepEqual(rows.map(row => row.querySelector('.act .mk').textContent), ['Passed', 'Void', 'Rejected', 'Backtest only', 'Testing']);
-  assert.deepEqual(rows.map(row => row.querySelector('.num').textContent), ['+$12.00on unseen data', '−$4.25on unseen data ·\u00a0did not pass', '−$7.50on the history it searched ·\u00a0did not pass', '$0.00on the history it searched', '—']);
+  assert.deepEqual(rows.map(row => row.querySelector('.num').textContent), ['+$12.00on unseen data', '−$4.25on unseen data\u00a0· did not pass', '−$7.50on the history it searched\u00a0· did not pass', '$0.00on the history it searched', '—']);
   assert.deepEqual(rows.map(row => row.querySelector('.num').getAttribute('data-lab')), ['Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L']);
   assert.match(results.innerHTML, /Kept &lt;script&gt;unsafe&lt;\/script&gt;/); assert.match(results.innerHTML, /&lt;img src=x&gt;/);
   assert.doesNotMatch(results.innerHTML, /<script>|<img|data-dep|class="pick"/);
@@ -2104,7 +2104,7 @@ test('Research lists the seeded example as an example and does not count it as a
   const example = {...researchRun(1, 'succeeded'), direction: 'random_walk', example: true, spent_usd: 0};
   const mine = {...researchRun(6, 'succeeded'), example: false, spent_usd: 0.42};
   // The heading counts what it lists: "Recent sessions 1" sat over two rows, one of them the example.
-  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 · 1 example'], [[mine], '1']]) {
+  for (const [runs, count] of [[[example], '1 example'], [[mine, example], '1 · 1 example'], [[mine], '1']]) {
     const f = researchFrontend(runs);
     await f.viewResearch(); await flush();
     const list = f.root.querySelector('#runs').innerHTML;
@@ -2143,11 +2143,11 @@ test('Research index shows the research loop scoreboard, escaped, and keeps it o
   const html = details.innerHTML;
   assert.match(html, /Is research getting better\?/); assert.match(html, /Improving/);
   assert.match(html, /8% <span class="rsi-arrow">→<\/span> 33%/);
-  assert.match(html, /v2<\/b> on trial ·\u00a02 of 6 ideas reached the gate ·\u00a081% likely better/);
+  assert.match(html, /v2<\/b> on trial\u00a0· 2 of 6 ideas reached the gate\u00a0· 81% likely better/);
   assert.match(html, /feature missing/); assert.match(html, /calibration &lt;4h/);
   assert.match(html, /On paper at the market’s real prices: 2 passed strategies, 1 trading, 12 closed trades, net −\$1\.50, losing money where the backtest expected a profit/);
-  assert.match(html, /3 of 20 ideas reached the gate ·\u00a0on paper 12 closed trades, −\$1\.50/);
-  assert.match(html, /order-book feature ·\u00a0flow_imb_60s<\/b> ·\u00a0idea re-tested ·\u00a0<a href="\/research\/44">session<\/a>/);
+  assert.match(html, /3 of 20 ideas reached the gate\u00a0· on paper 12 closed trades, −\$1\.50/);
+  assert.match(html, /order-book feature\u00a0· flow_imb_60s<\/b>\u00a0· idea re-tested\u00a0· <a href="\/research\/44">session<\/a>/);
   assert.match(html, /For: Flow &lt;b&gt;leads&lt;\/b&gt;/);
   assert.ok(html.includes('&lt;script&gt;')); assert.doesNotMatch(html, /<script>/);
   details.open = true;
@@ -2511,13 +2511,13 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
   const hostile = contract('KX"QUOTE"<ticker>&', ' Price "<img src=x>" & forecast ', ' Above <script>unsafe</script> ', {s: 'KX"QUOTE"<series>&', bid: .61, ask: .63, v24: 12, oi: 5});
   const renamed = Object.freeze({...b, su: 'Below $100,000'});
   const expected = new Map([
-    [a.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price ·\u00a0Above $100,000', ['52¢', '1,200', '4'], '&gt; $100,000']],
-    [b.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price ·\u00a0Above $100,000', ['68¢', '8', '2'], '&gt; $100,000']],
-    [unique.t, ['Rain in Seattle?', 'At least 1 inch', 'Rain in Seattle? ·\u00a0At least 1 inch', ['25¢', '0', '0']]],
+    [a.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price\u00a0· Above $100,000', ['52¢', '1,200', '4'], '&gt; $100,000']],
+    [b.t, ['Bitcoin price', 'Above $100,000', 'Bitcoin price\u00a0· Above $100,000', ['68¢', '8', '2'], '&gt; $100,000']],
+    [unique.t, ['Rain in Seattle?', 'At least 1 inch', 'Rain in Seattle?\u00a0· At least 1 inch', ['25¢', '0', '0']]],
     [subtitle.t, ['Subtitle only', null, 'Subtitle only', ['—', '0', '8']]],
     [fallback.t, ['Kalshi contract', null, 'Kalshi contract', ['12¢', '2', '9']]],
     [hostile.t, ['Price &quot;&lt;img src=x&gt;&quot; &amp; forecast', 'Above &lt;script&gt;unsafe&lt;/script&gt;',
-      'Price &quot;&lt;img src=x&gt;&quot; &amp; forecast ·\u00a0Above &lt;script&gt;unsafe&lt;/script&gt;', ['62¢', '12', '5']]],
+      'Price &quot;&lt;img src=x&gt;&quot; &amp; forecast\u00a0· Above &lt;script&gt;unsafe&lt;/script&gt;', ['62¢', '12', '5']]],
   ]);
   let markets = Object.freeze([a, b, unique, subtitle, fallback, hostile]);
   const f = frontend({fetchImpl: path => {
@@ -2528,12 +2528,12 @@ test('Explore keeps duplicate contracts distinct through row rotation while uniq
     const rows = f.root.querySelectorAll('#xbody tbody tr'); assert.equal(rows.length, markets.length);
     rows.forEach((row, index) => {
       const m = markets[index], link = row.querySelector('a.market-name');
-      const [title, sub, label, amounts, display] = m === renamed ? ['Bitcoin price', 'Below $100,000', 'Bitcoin price ·\u00a0Below $100,000', ['68¢', '8', '2'], '&lt; $100,000'] : expected.get(m.t);
+      const [title, sub, label, amounts, display] = m === renamed ? ['Bitcoin price', 'Below $100,000', 'Bitcoin price\u00a0· Below $100,000', ['68¢', '8', '2'], '&lt; $100,000'] : expected.get(m.t);
       const raw = m === hostile ? 'KX&quot;QUOTE&quot;&lt;ticker&gt;&amp;' : m.t;
       assert.equal(link.getAttribute('href'), '/explore?m=' + encodeURIComponent(m.t));
       assert.equal(link.getAttribute('title'), null, 'no raw ticker tooltip');
       const closes = link.querySelector('.market-close');
-      assert.equal(link.getAttribute('aria-label'), closes ? `${label} ·\u00a0${closes.textContent}` : label);
+      assert.equal(link.getAttribute('aria-label'), closes ? `${label}\u00a0· ${closes.textContent}` : label);
       assert.equal(link.querySelector('strong').textContent, display || sub || title);
       if (sub) assert.equal(row.querySelector('.market-contract a'), link);
       else assert.equal(row.querySelector('.market-contract'), null);
@@ -2580,7 +2580,7 @@ test('Explore keeps every source event and contract independently legible when t
   assert.deepEqual(rows.map(row => row.querySelector('a.market-name').getAttribute('href')), markets.map(m => '/explore?m=' + encodeURIComponent(m.t)));
   assert.ok(rows.slice(0,5).every(row => !row.querySelector('.market-event').classList.contains('vh')));
   assert.equal(rows[1].querySelector('.market-event').textContent, 'Bitcoin 5pm');
-  assert.equal(rows[1].querySelector('a.market-name').getAttribute('aria-label'), 'Bitcoin 5pm ·\u00a0Above $91,000', 'the source wording, never the raw ticker');
+  assert.equal(rows[1].querySelector('a.market-name').getAttribute('aria-label'), 'Bitcoin 5pm\u00a0· Above $91,000', 'the source wording, never the raw ticker');
   assert.equal(rows[3].querySelector('.market-event').classList.contains('vh'), false);
   assert.equal(rows[4].querySelector('.market-event').classList.contains('vh'), false);
   assert.equal(rows[5].querySelector('a.market-name strong').textContent, 'Bitcoin 5pm');
@@ -2602,10 +2602,10 @@ test('Explore keeps every source event and contract independently legible when t
   assert.equal(rows[6].querySelector('td').getAttribute('colspan'), '2');
   const contextual = rows[7].querySelectorAll('td'), hostile = rows[8].querySelectorAll('td');
   assert.equal(contextual.length, 8); assert.equal(hostile.length, 8);
-  assert.equal(contextual[1].textContent, 'Oct 19, 5pm ET ·\u00a0Source context', 'retain every actual context segment without inferring expiry');
+  assert.equal(contextual[1].textContent, 'Oct 19, 5pm ET\u00a0· Source context', 'retain every actual context segment without inferring expiry');
   assert.equal(hostile[1].textContent, 'City &lt;script&gt;unsafe&lt;/script&gt; &amp; forecast');
   assert.equal(rows[7].querySelector('.market-event').getAttribute('title'), markets[7].ti);
-  assert.equal(rows[7].querySelector('a.market-name').getAttribute('aria-label'), markets[7].ti + ' ·\u00a0' + markets[7].su);
+  assert.equal(rows[7].querySelector('a.market-name').getAttribute('aria-label'), markets[7].ti + '\u00a0· ' + markets[7].su);
   assert.deepEqual(rows.slice(7).map(row => ['.yes-price', '.quote-bid', '.quote-ask', '.market-volume', '.market-interest'].map(selector => row.querySelector(selector).textContent)),
     [['41¢', '40¢', '42¢', '8', '2'], ['41¢', '40¢', '42¢', '8', '2']]);
   assert.doesNotMatch(f.root.querySelector('#xbody').innerHTML, /<script>|<unsafe>/);
@@ -2622,7 +2622,7 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   const links = f.root.querySelectorAll('a.market-name');
   assert.deepEqual(links.map(link => link.querySelector('strong').textContent), displays);
   links.forEach((link, index) => {
-    assert.equal(link.getAttribute('aria-label'), `Bitcoin ·\u00a0${conditions[index]}`);
+    assert.equal(link.getAttribute('aria-label'), `Bitcoin\u00a0· ${conditions[index]}`);
     assert.equal(link.getAttribute('title'), null);
     assert.equal(link.getAttribute('href'), `/explore?m=CONTRACT-${index}`);
   });
@@ -2632,8 +2632,8 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
   const quotes = f.root.querySelectorAll('.hot-row');
   assert.deepEqual(quotes.map(row => row.querySelector('.hot-title > span').textContent), displays);
   quotes.forEach((row, index) => {
-    assert.equal(row.querySelector('.hot-title').getAttribute('title'), `Bitcoin ·\u00a0${conditions[index]}`);
-    assert.ok(row.getAttribute('aria-label').startsWith(`Bitcoin ·\u00a0${conditions[index]} ·\u00a051¢`));
+    assert.equal(row.querySelector('.hot-title').getAttribute('title'), `Bitcoin\u00a0· ${conditions[index]}`);
+    assert.ok(row.getAttribute('aria-label').startsWith(`Bitcoin\u00a0· ${conditions[index]}\u00a0· 51¢`));
   });
   assert.equal(f.requests.length, requests, 'formatting source conditions performs no lookup');
   assert.equal(JSON.stringify(markets), before); assert.equal(postRequests(f).length, 0);
@@ -2821,7 +2821,7 @@ test('Hot Markets reports source snapshot age without changing quotes or perform
   const markets = Object.freeze([market]), cachedAt = f.S.hotAt, autopilot = f.S.ap;
   const cases = [
     [new Date(Date.now() - 30000).toISOString(), false, /^Updated just now$/],
-    [new Date(Date.now() - 240000).toISOString(), true, /^Behind ·\u00a0updated 4m ago$/],
+    [new Date(Date.now() - 240000).toISOString(), true, /^Behind\u00a0· updated 4m ago$/],
     [undefined, true, /^Update time unavailable$/],
     ['not-a-timestamp', true, /^Update time unavailable$/],
     [new Date(Date.now() - 30000).toISOString(), false, /^Updated just now$/],
@@ -2837,7 +2837,7 @@ test('Hot Markets reports source snapshot age without changing quotes or perform
     assert.equal(freshness.getAttribute('title').includes('More than 3 minutes old'), Boolean(at && at !== 'not-a-timestamp' && old));
     assert.equal(rail.querySelector('.hot-price b').textContent, '52¢');
     assert.equal(rail.querySelector('.hot-delta').textContent, '+4¢');
-    assert.equal(rail.querySelector('.hot-vol').textContent, '1.2k ·\u00a024h');
+    assert.equal(rail.querySelector('.hot-vol').textContent, '1.2k\u00a0· 24h');
     assert.equal(rail.querySelector('.hot-vol').getAttribute('title'), '24-hour volume');
     assert.equal(rail.querySelector('.hot-row').getAttribute('href'), 'https://kalshi.com/markets/kxbtc15m');
     assert.equal(f.S.hot, snapshot); assert.equal(JSON.stringify(snapshot), before);
@@ -3007,7 +3007,7 @@ test('System: the research box sets its count on two lines that fit the box, wit
   await f.viewSystem(); await flush();
   const g = f.root.querySelector('.sys-node[data-id="agents"]'), m = g.querySelector('[data-m="agents"]');
   const spans = m.querySelectorAll('tspan');
-  assert.deepEqual(spans.map(t => t.textContent), ['12 running · 30 queued', '1,204 done']);
+  assert.deepEqual(spans.map(t => t.textContent), ['12 running · 30 queued', '1,204 done']);
   const w = +g.querySelector('rect').getAttribute('width'), h = +g.querySelector('rect').getAttribute('height');
   // About 5 units a character at the map's 10.5px narrow face: each line keeps clear of the box's right edge.
   for (const t of spans) assert.ok(12 + t.textContent.length * 5 <= w - 8, `"${t.textContent}" in a ${w}-wide box`);
@@ -3020,7 +3020,7 @@ test('System: the research box sets its count on two lines that fit the box, wit
   assert.match(edge.getAttribute('d'), new RegExp(`^M878,${40 + h / 2} `));
   // The detail panel reads the count as one line.
   g.dispatchEvent({type: 'click'});
-  assert.match(f.root.querySelector('#sys-detail').innerHTML, /12 running · 30 queued · 1,204 done/);
+  assert.match(f.root.querySelector('#sys-detail').innerHTML, /12 running · 30 queued · 1,204 done/);
   f.clearTimers();
 });
 
@@ -3046,7 +3046,7 @@ test('deployment details hold realized P&L against the backtest pace for the sam
   await f.viewDashboard();
   const text = id => evidenceFor(f.root.querySelector('#dash-deps'), id).textContent;
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
-  assert.ok(text(1).includes('Backtest estimate +$10.00 for the same 5 trades ·\u00a0Unseen P&amp;L +$12.00'), text(1));
+  assert.ok(text(1).includes('Backtest estimate +$10.00 for the same 5 trades\u00a0· Unseen P&amp;L +$12.00'), text(1));
   assert.ok(!text(2).includes('Backtest estimate')); assert.ok(!text(3).includes('Backtest estimate'));
 });
 
@@ -3430,7 +3430,7 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
   assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money<\/small><\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>3 strategies <small>not counting yours<\/small><\/dd>/);
-  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread ·\u00a01 closed trade<\/small><\/dd>/);
+  assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 1 closed trade<\/small><\/dd>/);
   assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
   await f.root.querySelector('#dash-ap [data-apcard="open"]').onclick(); await flush();
   const box = f.root.parent.querySelector('#autopilot-float');
@@ -3744,7 +3744,7 @@ test('Meridian phone polish: a glossary marker keeps its last word, one rule whe
 
 test('Meridian: separators wrap with the item after them, the phone tabs show which edge has more, stacked cells are named', () => {
   const f = frontend();
-  // Every " · " in the bundle binds to the next item (" · "), so a wrapped line never ends on a dot.
+  // Every " · " in the bundle binds to the next item (" · "), so a wrapped line never ends on a dot.
   // Only comments and the line that splits Kalshi's own titles on the plain separator keep it.
   const loose = source.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l) && !l.includes('split(') && / · | \\u00b7 /.test(l.replace(/\s\/\/\s.*$/, '')));
   assert.deepEqual(loose, []);
@@ -3864,8 +3864,8 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   await f.viewStrategy(42); await flush();
   const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days/);
-  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
-  assert.match(html, /Demo · running<br>Paper · paused/);
+  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
+  assert.match(html, /Demo · running<br>Paper · paused/);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
   assert.match(html, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
@@ -3904,13 +3904,13 @@ test('Research folds model, depth and market behind Options on a phone, open on 
     assert.equal(opts.contains(form.querySelector('button[type=submit]')), false);
     const sum = () => form.querySelector('#ropts-sum').textContent;
     const model = form.querySelector('#rmodel'); model.value = 'opus'; form.dispatchEvent({type: 'change'});  // the fake select has no default value
-    assert.equal(sum(), 'Opus · runs until you stop it · agent’s choice of market');
+    assert.equal(sum(), 'Opus · runs until you stop it · agent’s choice of market');
     model.value = 'haiku';
     form.querySelector('#runforever').checked = false; form.querySelector('#maxhyp').value = '25';
     form.querySelectorAll('input[name=market]').forEach((r) => { r.checked = r.getAttribute('value') === 'btc15m'; });
     form.dispatchEvent({type: 'change'});
     const row = form.querySelector('.mktrow[data-key="btc15m"] .mktrow-name').textContent.trim();
-    assert.equal(sum(), 'Haiku · 25 strategies · ' + row); assert.doesNotMatch(row, /choice/);
+    assert.equal(sum(), 'Haiku · 25 strategies · ' + row); assert.doesNotMatch(row, /choice/);
   }
 });
 
@@ -3925,7 +3925,7 @@ test('a hypothesis in the log says its search-data result and verdict in plain w
   const log = f.root.querySelectorAll('li').map((li) => li.innerHTML + (li.querySelector('[data-review]') || {innerHTML: ''}).innerHTML).join('');
   assert.doesNotMatch(log, /Gatekeeper/);
   assert.match(log, /class="hx-tag pass">Verdict/);
-  assert.match(log, /On the history it searched: \+\$4\.50 · 8 trades<button type="button" class="info" data-glo="insample"/);
+  assert.match(log, /On the history it searched: \+\$4\.50 · 8 trades<button type="button" class="info" data-glo="insample"/);
 });
 
 test('a returning user reads what happened since the last visit at the top of the dashboard', async () => {
@@ -4380,14 +4380,14 @@ test('Billing statement: a heading per day, one line per session a day that link
   assert.match(main, /<p class="hint ledger-key">Last 30 days, newest first\./);
   const rows = f.root.querySelectorAll('.t-ledger tbody tr').map((r) => r.innerHTML);
   assert.equal(rows.length, 6);  // two day headings and four lines
-  assert.match(rows[0], /<td colspan="3" data-lab="Day"><b>[A-Z][a-z]{2}, Jan 15<\/b><span class="day-sum">\$12\.95 used ·\u00a0\+\$25\.00 credits<\/span><\/td>/);
+  assert.match(rows[0], /<td colspan="3" data-lab="Day"><b>[A-Z][a-z]{2}, Jan 15<\/b><span class="day-sum">\$12\.95 used\u00a0· \+\$25\.00 credits<\/span><\/td>/);
   assert.match(rows[1], /<time datetime="2026-01-15T08:50:00Z">\d\d:\d\d–\d\d:\d\d/);  // the span of the session's calls
-  assert.match(rows[1], /Research session<div class="sub-fig"><a href="\/research\/108">&lt;b&gt;Fade&lt;\/b&gt; the open<\/a> ·\u00a0Claude Opus 4\.6 ·\u00a057 model calls<\/div>[\s\S]*−\$12\.95/);
-  assert.match(rows[2], /Auto-reload<div class="sub-fig">Card charged \$26\.38: \$25\.00 credits plus the 5\.5% purchase fee ·\u00a0Stripe ref <span class="ref">pi_3Synthetic&lt;x&gt;<\/span><\/div>[\s\S]*\+\$25\.00/);
-  assert.match(rows[3], /<b>[A-Z][a-z]{2}, Jan 14<\/b><span class="day-sum">\$0\.01 used ·\u00a0\+\$10\.00 credits<\/span>/);
-  assert.match(rows[4], /Autopilot check-in<div class="sub-fig">Claude Haiku 4\.5 ·\u00a03 model calls<\/div>/);
+  assert.match(rows[1], /Research session<div class="sub-fig"><a href="\/research\/108">&lt;b&gt;Fade&lt;\/b&gt; the open<\/a>\u00a0· Claude Opus 4\.6\u00a0· 57 model calls<\/div>[\s\S]*−\$12\.95/);
+  assert.match(rows[2], /Auto-reload<div class="sub-fig">Card charged \$26\.38: \$25\.00 credits plus the 5\.5% purchase fee\u00a0· Stripe ref <span class="ref">pi_3Synthetic&lt;x&gt;<\/span><\/div>[\s\S]*\+\$25\.00/);
+  assert.match(rows[3], /<b>[A-Z][a-z]{2}, Jan 14<\/b><span class="day-sum">\$0\.01 used\u00a0· \+\$10\.00 credits<\/span>/);
+  assert.match(rows[4], /Autopilot check-in<div class="sub-fig">Claude Haiku 4\.5\u00a0· 3 model calls<\/div>/);
   assert.doesNotMatch(rows[4], /href=/);  // a check-in has no session page
-  assert.match(rows[5], /Added credits<div class="sub-fig">Card charged \$10\.55: \$10\.00 credits plus the 5\.5% purchase fee ·\u00a0Stripe ref <span class="ref">pi_3SyntheticTopup<\/span>/);
+  assert.match(rows[5], /Added credits<div class="sub-fig">Card charged \$10\.55: \$10\.00 credits plus the 5\.5% purchase fee\u00a0· Stripe ref <span class="ref">pi_3SyntheticTopup<\/span>/);
   assert.match(main, /Older days are in the receipt\./);  // the line cap left days out, and says where they are
   assert.doesNotMatch(main, /list price|markup|us\.anthropic/i);
 });
@@ -4653,7 +4653,7 @@ test('Meridian: a run says its ledger lines in plain words, with the zone of its
   assert.doesNotMatch(log, /classification=|gatekeeper-held|control arm|VOID/);
   assert.match(log, /Went straight to ideas, with no scan of the data first\./);
   assert.match(log, /Passed every check on data it never saw \(88 trades\)\./);
-  assert.match(log, /Locked holdout · held<\/span><span class="hx-vtext">Held up on the locked holdout/);
+  assert.match(log, /Locked holdout · held<\/span><span class="hx-vtext">Held up on the locked holdout/);
   assert.match(log, /DROPPED<\/b> <b>Thin<\/b> — every variant took 0 trades/);
   assert.match(log, /<time datetime="2026-10-17T10:01:00Z" title="[^"]+">/);
   f.clearTimers();
@@ -4796,10 +4796,10 @@ test('Meridian: the dashboard says where the sessions it counts are, and points 
   };
   const base = {at: '2026-10-25T08:00:00+00:00', first: false, books: {paper: {pnl: 0, trades: 0}}, autopilot: {}};
   assert.match(await at({...base, passed: {n: 0, items: []}, runs: {succeeded: 2}}),
-    /Nothing new passed <span class="since-sub">· 2 research sessions started, all finished, <a href="\/research">see what each idea missed<\/a><\/span>\./);
+    /Nothing new passed<span class="since-sub">\u00a0· 2 research sessions started, all finished, <a href="\/research">see what each idea missed<\/a><\/span>\./);
   // A session still queued or running hasn't judged any idea yet: the line says where it is instead.
   const queued = await at({...base, passed: {n: 0, items: []}, runs: {queued: 1}});
-  assert.match(queued, /· 1 research session started, still queued, <a href="\/research">follow it on Research<\/a><\/span>\./);
+  assert.match(queued, /<span class="since-sub">\u00a0· 1 research session started, still queued, <a href="\/research">follow it on Research<\/a><\/span>\./);
   assert.doesNotMatch(queued, /see what each idea missed/);
   assert.match(await at({...base, passed: {n: 0, items: []}, runs: {running: 2}}), /2 research sessions started, all running, <a href="\/research">follow them on Research<\/a>/);
   assert.match(await at({...base, passed: {n: 0, items: []}, runs: {running: 1, succeeded: 2, cancelled: 1}}),
@@ -4934,11 +4934,11 @@ test('autopilot walk (Meridian): the last move says what and when, the pill says
   const t = (text) => f.apMoveText({text, at: new Date().toISOString()});
   assert.equal(t('Autopilot deployed **Lean into it** on paper.'), 'Deployed Lean into it on paper');
   assert.equal(t('Autopilot is ON: the agent may research, deploy and tune paper strategies'), 'Autopilot switched on');
-  const paper = {label: 'Autopilot · paper'}, live = {label: 'Autopilot · LIVE'};
+  const paper = {label: 'Autopilot · paper'}, live = {label: 'Autopilot · LIVE'};
   const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
-  assert.equal(f.apPillLabel({...ap, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · researching');
-  assert.equal(f.apPillLabel({...ap, paper_running: 1}, paper), 'Autopilot · 1 on paper');
-  assert.equal(f.apPillLabel({...ap, mode: 'live', paper_running: 1}, live), 'Autopilot · LIVE');
+  assert.equal(f.apPillLabel({...ap, research: {active: ['Bitcoin 15-minute']}}, paper), 'Autopilot · researching');
+  assert.equal(f.apPillLabel({...ap, paper_running: 1}, paper), 'Autopilot · 1 on paper');
+  assert.equal(f.apPillLabel({...ap, mode: 'live', paper_running: 1}, live), 'Autopilot · LIVE');
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute']}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute');
   f.S.ap = {...ap, autopilot: false, mode: 'off'};
@@ -4955,9 +4955,9 @@ test('autopilot (Meridian): the market it researches reads by its label, never a
   // A listed market reads by its full label, as Billing's research lines and every position name it, by key,
   // series or label alike; a key only the app knows (eth15m, not in this catalog) by its short one.
   f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi', 'eth15m']}};
-  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it’s still picking"]}};
-  assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
   // The server sends a listed market's catalog label; it reads as it is.
   f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin above $X at 5pm ET');
@@ -4967,7 +4967,7 @@ test('autopilot (Meridian): the market it researches reads by its label, never a
   f.apUpdate(box, d);
   assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching Bitcoin up or down in 15 minutes and Bitcoin above \$X at 5pm ET\.<\/p>/);
   f.apUpdate(box, {...d, story: []});
-  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching Bitcoin up or down in 15 minutes · Bitcoin above \$X at 5pm ET/);
+  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching Bitcoin up or down in 15 minutes · Bitcoin above \$X at 5pm ET/);
   assert.doesNotMatch(box.querySelector('#apf-stats').innerHTML + box.querySelector('#apf-story').innerHTML, /BTC 15-min|BTC above/);
   assert.doesNotMatch(source, /esc\(\(d\.story && d\.story\[0\]\)|\(d\.story \|\| \[\]\)\.map|\[\.\.\.new Set\(d\.research\.active\)\]/);
 });
@@ -5068,7 +5068,7 @@ test('Meridian: a page change names the tab and puts keyboard focus on the new p
   }});
   f.location.pathname = '/deploy';
   await f.render(); await flush(); await flush();
-  assert.equal(f.document.title, 'Deploy · Tau');
+  assert.equal(f.document.title, 'Deploy · Tau');
   assert.equal(f.document.activeElement, f.document.body);  // the first page of a visit: the browser's own start
   await f.render(); await flush(); await flush();
   assert.equal(f.document.activeElement, f.document.body);  // the same page again
@@ -5115,8 +5115,8 @@ test('Billing shows the spend pace, what spent it, and what each line was for, n
     ledger: [{kind: 'usage', amount: -0.2104, memo: 'Autopilot research · Claude Opus 4.6', item: 'Autopilot research', model: 'Claude Opus 4.6', created_at: '2026-10-25T17:00:00Z'}]}));
   await f.viewBilling(); await flush();
   const figs = f.root.querySelector('#bfigs').innerHTML;
-  assert.match(figs, /Spent, last 7 days[\s\S]*\$9\.80[\s\S]*\$1\.40 in the last 24 hours ·\u00a0\$47\.58 all time/);
-  assert.equal(f.root.querySelector('#bsplit').innerHTML, 'Last 7 days: autopilot research $5.10 ·\u00a0your research sessions $4.20 ·\u00a0autopilot check-ins $0.50.');
+  assert.match(figs, /Spent, last 7 days[\s\S]*\$9\.80[\s\S]*\$1\.40 in the last 24 hours\u00a0· \$47\.58 all time/);
+  assert.equal(f.root.querySelector('#bsplit').innerHTML, 'Last 7 days: autopilot research $5.10\u00a0· your research sessions $4.20\u00a0· autopilot check-ins $0.50.');
   const row = f.root.querySelector('.t-ledger tbody tr').innerHTML;
   assert.match(row, /Autopilot research<div class="sub-fig">Claude Opus 4\.6<\/div>/);
   assert.match(row, /<time datetime="2026-10-25T17:00:00Z">[^<]*\d\d:\d\d [A-Z+\-0-9:]+<\/time>/);  // a time, with its zone
@@ -5166,7 +5166,7 @@ test('the autopilot card puts credits left and the only limit beside its spend, 
   await f.viewDashboard(); await flush();
   f.S.ap = {...apStatus, week}; f.paintDashAp();
   const card = f.root.querySelector('#dash-ap').innerHTML;
-  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money ·\u00a0plus \$0\.42 on its check-ins<\/small><\/dd>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money\u00a0· plus \$0\.42 on its check-ins<\/small><\/dd>/);
   assert.match(card, /Credits left: <b>\$23\.40<\/b>, about 6 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
   f.S.ap = {...apStatus, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
@@ -5229,7 +5229,7 @@ test('a bell that filled up while the user was away opens with what it holds, by
   await f.viewDashboard(); await flush(); await flush();
   const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig');
   const list = wrap.querySelector('#bell-list');
-  assert.match(list.innerHTML, /^<p class="bell-sum">8 new: 5 strategies put on paper ·\s1 paused ·\s1 passed its paper test ·\s1 other<\/p>/);
+  assert.match(list.innerHTML, /^<p class="bell-sum">8 new: 5 strategies put on paper\u00a0· 1 paused\u00a0· 1 passed its paper test\u00a0· 1 other<\/p>/);
   assert.equal(wrap.querySelectorAll('.notif').length, 7);  // every line still listed under it
   await trig.onclick({stopPropagation() {}});
   assert.ok(list.querySelector('.bell-sum'), 'the summary stays while the list is open');
@@ -5441,7 +5441,7 @@ test('track record (Meridian): stopped and removed strategies stay in the table 
   assert.match(html, /<a href="\/strategies\/4">Fade<\/a><\/td>/);  // a running one needs no label
   // A removed strategy has no page left: no dead link, and its market says which one it was.
   assert.doesNotMatch(html, /\/strategies\/7/);
-  assert.match(html, /Deleted strategy<div class="sub-fig">NYC high temp · removed from paper, then deleted<\/div>/);
+  assert.match(html, /Deleted strategy<div class="sub-fig">NYC high temp · removed from paper, then deleted<\/div>/);
   // Every trade's P&L is net of fees, so the ratio isn't "gross" beside the gross-before-fees line.
   assert.match(html, /winning trades ÷ losing trades, after fees/); assert.doesNotMatch(html, /gross wins/);
   assert.match(html, /−1\.25/); assert.match(html, /Sortino −2\.50/); assert.doesNotMatch(html, />-1\.25</);
@@ -5535,9 +5535,9 @@ test('a market page says what its price is, how it settles and when, and the rea
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
-  assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
+  assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
   assert.match(html, new RegExp('Closes</dt><dd><span class="fig ">[^<]*' + readerZone));
   assert.match(html, new RegExp('Result expected [^<]*' + readerZone)); assert.match(f.root.querySelector('#rawsect').innerHTML, new RegExp('Time \\(' + readerZone + '\\)'));
@@ -5548,7 +5548,7 @@ test('a market page says what its price is, how it settles and when, and the rea
   const paper = html.slice(html.indexOf('<span class="mk">Paper</span> paper money, not real'));
   assert.ok(live.length > 0 && paper.length > 0);
   assert.match(live, /1 open at cost \+ fees \$1\.06/); assert.match(live, /\+\$0\.04/); assert.doesNotMatch(live, /\$4\.50/);
-  assert.match(paper, /1 open at cost \+ fees \$4\.50/); assert.match(paper, /1 closed · realized <span class="gain">\+\$0\.24/);
+  assert.match(paper, /1 open at cost \+ fees \$4\.50/); assert.match(paper, /1 closed · realized <span class="gain">\+\$0\.24/);
   assert.match(paper, /Closed \(take-profit\) @ 75¢/); assert.match(paper, /Deleted strategy/);
   assert.doesNotMatch(html, /\$5\.56|\$0\.84/);  // live + paper cost, live + paper unrealized
   assert.match(live, /<a href="\/strategies\/4">Daily close drift<\/a>/);
@@ -5573,7 +5573,7 @@ test('a settled market shows its result in place of a live price', async () => {
   const f = OPEN_MARKET({...MARKET_PAGE, status: 'finalized', result: 'no'});
   await f.ready;
   assert.match(f.root.innerHTML, /Result<\/dt><dd><span class="fig ">No<\/span><\/dd><dd class="sub-fig">each No contract paid \$1/);
-  assert.match(f.root.innerHTML, /Settled ·\u00a0<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
+  assert.match(f.root.innerHTML, /Settled\u00a0· <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(f.root.innerHTML, /chance of Yes/);
 });
 
 // Broken pages on /admin: browser error reports grouped by message and page (server client_error_groups).
@@ -5592,11 +5592,11 @@ test('the admin page lists the last day of page errors, grouped, with every fiel
     if (expect) { assert.match(html, expect); f.clearTimers(); continue; }
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt; is not a function/);
     assert.doesNotMatch(html, /<img|<b>v/);
-    assert.match(html, /Uncaught error \u00b7\u00a0app\.js:12:5/);
-    assert.match(html, /data-lab="Page, theme, build">\/strategies\/:id<div class="sub-fig">meridian, tau \u00b7\u00a0build &lt;b&gt;v&lt;\/b&gt; \+1\u00a0older<\/div>/);
+    assert.match(html, /Uncaught error\u00a0\u00b7 app\.js:12:5/);
+    assert.match(html, /data-lab="Page, theme, build">\/strategies\/:id<div class="sub-fig">meridian, tau\u00a0\u00b7 build &lt;b&gt;v&lt;\/b&gt; \+1\u00a0older<\/div>/);
     assert.match(html, /data-lab="Count">3<div class="sub-fig">1 signed out<\/div>/);
     assert.match(html, /data-lab="Last seen">.+<div class="sub-fig">first .+<\/div><\/td><\/tr>/);
-    assert.equal(f.root.querySelector('#ce-count').textContent, 'last 24h \u00b7\u00a03 reports');
+    assert.equal(f.root.querySelector('#ce-count').textContent, 'last 24h\u00a0\u00b7 3 reports');
     f.clearTimers();
   }
 });
@@ -5635,15 +5635,15 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   };
   const text = await strip({});
   // What it cost: its own row, real money, never added to the paper book above it.
-  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
+  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
   // No card ever charged: the credits spent were free ones, and the row says the card is untouched.
   const free = await strip({since: {...since, spent: {...since.spent, card_charged: false}}});
-  assert.match(free, /of credits spent<span class="since-sub"> ·\sfree credits so far: your card hasn’t been charged ·\s\$7\.15 left ·\s/);
+  assert.match(free, /of credits spent<span class="since-sub">\u00a0· free credits so far: your card hasn’t been charged\u00a0· \$7\.15 left\u00a0· /);
   assert.doesNotMatch(free, /real money/);
-  assert.match(await strip({since: {...since, spent: {...since.spent, card_charged: true}}}), /of credits spent<span class="since-sub"> ·\sreal money ·\s/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, card_charged: true}}}), /of credits spent<span class="since-sub">\u00a0· real money\u00a0· /);
   // A card charged while they were away says so, with the credits it bought (never netted with the spend).
   const reload = (extra) => strip({since: {...since, spent: {...since.spent, card_charged: true, ...extra}}});
-  assert.match(await reload({bought: 20, charges: 1, reloads: 1}), /<b>\$27\.45<\/b> of credits spent; auto-reload charged your card once for <b>\$20\.00<\/b> of credits<span class="since-sub"> ·\sreal money/);
+  assert.match(await reload({bought: 20, charges: 1, reloads: 1}), /<b>\$27\.45<\/b> of credits spent; auto-reload charged your card once for <b>\$20\.00<\/b> of credits<span class="since-sub">\u00a0· real money/);
   assert.match(await reload({bought: 60, charges: 3, reloads: 3}), /auto-reload charged your card 3 times for <b>\$60\.00<\/b> of credits/);
   assert.match(await reload({bought: 40, charges: 2, reloads: 2}), /auto-reload charged your card twice for <b>\$40\.00<\/b> of credits/);  // "twice", not "2 times"
   assert.match(await reload({bought: 45, charges: 2, reloads: 1}), /spent; 2 card charges \(1 by auto-reload\) bought <b>\$45\.00<\/b> of credits/);
@@ -5658,7 +5658,7 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$12\.65<\/span>/);
   assert.doesNotMatch(text, /\$40\.10|−\$14\.80|\$14\.80/);  // paper and credits never summed or netted
   // The forward-test pass leads New results when nothing else passed, named from the page's deployments.
-  assert.match(text, /<dt>New results<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> passed its paper forward test: a candidate for live <span class="since-sub">/);
+  assert.match(text, /<dt>New results<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> passed its paper forward test: a candidate for live<span class="since-sub">\u00a0· /);
   assert.doesNotMatch(text, /Nothing new passed/);
   // Live-ready is the week's next step, first under Needs you; the runway warns before the pause.
   assert.match(text, /<dt>Needs you<\/dt><dd><a href="\/strategies\/232">ETH &lt;i&gt;drift&lt;\/i&gt;<\/a> is ready for live trading\. Going live is your call\./);
@@ -6120,9 +6120,10 @@ test('a Deploy row and a dashboard monitor with no stake say so instead of "$ / 
   assert.doesNotMatch(html, /\$ \/ trade|Max\s+open|null|NaN/);
   const f = frontend();
   const none = f.deploymentMonitor(nullStakeDep({status: 'paused', status_why: 'You paused it'}));
-  assert.match(none, /<p class="monitor-setup">[^<]*· Stake not set<\/p><div class="monitor-limits"><span> · You paused it<\/span>/);
+  // The card's setup and limits lines (inline) keep the stake and the cap whole, each "·" ending its line.
+  assert.match(none, /<p class="monitor-setup">[^<]*\u00a0· <span class="nobr">Stake not set<\/span><\/p><div class="monitor-limits"><span>\u00a0· You paused it<\/span>/);
   assert.doesNotMatch(none, /\$ \/ trade|Max\s+open|null|NaN/);
-  assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/p><div class="monitor-limits"><span> · Max 3 open<\/span>/);
+  assert.match(f.deploymentMonitor(nullStakeDep({stake: 5, max_positions: 3})), /\$5 \/ trade<\/span><\/p><div class="monitor-limits"><span>\u00a0· <span class="nobr">Max 3 open<\/span><\/span>/);
 });
 
 test('Meridian: a paper card on the dashboard says "after Kalshi fees and the spread" as the small explainer it is elsewhere', () => {
@@ -6262,5 +6263,5 @@ test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" wi
     realized_pnl: 3, unrealized_pnl: null, closed_trades: 2, open_positions: 0, curve: []}], open_positions: []})});
   await f.viewDeploy();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Unseen P&amp;L \+\$12\.00<\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
+  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Unseen P&amp;L \+\$12\.00<\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });

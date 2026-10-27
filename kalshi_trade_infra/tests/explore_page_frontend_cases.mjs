@@ -41,7 +41,7 @@ export function explorePageCases({name, frontend}) {
     }
     // The name line reads the market's name with this contract's strike, its status in words and the contract;
     // never the raw series alone.
-    assert.match(f.root.innerHTML, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/);
+    assert.match(f.root.innerHTML, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/);
   });
 
   test(`${name}: a market Tau doesn't research says so, with no raw series key in its name line`, async () => {
@@ -49,7 +49,7 @@ export function explorePageCases({name, frontend}) {
     const next = f.root.querySelector('.mk-next');
     assert.match(next.textContent, /Tau doesn’t research this market, so your strategies can’t trade it\./);
     assert.equal(next.querySelector('a.primary'), null, 'no research button for a market research can’t pick');
-    assert.match(f.root.innerHTML, />Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXFEDDECISION-26DEC-H0</);
+    assert.match(f.root.innerHTML, />Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXFEDDECISION-26DEC-H0</);
     assert.doesNotMatch(f.root.innerHTML, /KXFEDDECISION ·/);
   });
 
@@ -57,14 +57,14 @@ export function explorePageCases({name, frontend}) {
     const f = await open(page({ticker: 'KXFEDDECISION-26DEC-H0', series: 'KXFEDDECISION', title: '', sub: ''}));
     assert.equal(f.root.querySelector('h1').textContent, 'Kalshi contract', 'never the raw ticker as the heading');
     // The ticker is labelled the way a position's is (kalshiRef): it read "Open for trading · KXFEDDECISION-26DEC-H0".
-    assert.match(f.root.querySelector('.board-title .deck').textContent, /Open for trading ·\sKalshi contract KXFEDDECISION-26DEC-H0$/);
+    assert.match(f.root.querySelector('.board-title .deck').textContent, /Open for trading\u00a0· Kalshi contract KXFEDDECISION-26DEC-H0$/);
     assert.doesNotMatch(f.root.querySelector('.board-title .deck').textContent, /·\sKX/);
   });
 
   test(`${name}: an hourly contract of the 5pm Bitcoin ladder isn't named the 5pm market, and points at the close Tau researches`, async () => {
     const f = await open(page({ticker: 'KXBTCD-26OCT2700-T112999.99', title: 'Bitcoin price on Oct 27, 2026 at 12am EDT?', sub: '$113,000 or above'}));
     assert.doesNotMatch(f.root.innerHTML, /Bitcoin above \S+ at 5pm ET ·/, 'the midnight contract is not the 5pm market');
-    assert.match(f.root.innerHTML, /Bitcoin above \$112,999\.99 at midnight ET ·\sOpen for trading ·\s<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
+    assert.match(f.root.innerHTML, /Bitcoin above \$112,999\.99 at midnight ET\u00a0· Open for trading\u00a0· <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2700-T112999\.99/, 'named by its own close');
     const next = f.root.querySelector('.mk-next');
     assert.match(next.textContent, /Tau researches only the 5pm ET close of this ladder, so your strategies don’t trade this contract\./);
     assert.deepEqual(next.querySelectorAll('a').map((a) => a.getAttribute('href')), ['/research?new=1&amp;market=btc_daily']);
@@ -82,7 +82,7 @@ export function explorePageCases({name, frontend}) {
     const f = await open(page());
     const raw = f.root.querySelector('#rawsect');
     assert.equal(raw.querySelectorAll('tbody tr').length, 25);
-    assert.match(raw.textContent, /Page 1 of 6 · 130 points/);
+    assert.match(raw.textContent, /Page 1 of 6 · 130 points/);
   });
 
   // A Bitcoin contract's page: where stored spot is against the strike (/api/explore/spot), in its own section.
@@ -108,9 +108,9 @@ export function explorePageCases({name, frontend}) {
     assert.equal(body().closest('section').querySelector('h2').textContent, 'Bitcoin vs the strike');
     assert.deepEqual(asked.filter((p) => p.startsWith('/api/explore/spot?')), ['/api/explore/spot?ticker=KXBTCD-26OCT2617-T112999.99']);
     const html = body().innerHTML;
-    assert.match(html, /Bitcoin now<\/dt><dd><span class="fig ">\$113,420\.00<\/span><\/dd><dd class="sub-fig">Coinbase · 4s ago</);
+    assert.match(html, /Bitcoin now<\/dt><dd><span class="fig ">\$113,420\.00<\/span><\/dd><dd class="sub-fig">Coinbase · 4s ago</);
     assert.match(html, />Strike<\/dt>.*>\$112,999\.99<.*Yes if Bitcoin settles above it/);
-    assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the strike · on the Yes side</);
+    assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the strike · on the Yes side</);
     assert.match(html, />Time left<\/dt>.*>1 hr 12 min<.*closes /);
     assert.doesNotMatch(html, /fig-behind|KXBTCD ·|BTC-USD/);
     // A 15-minute window's start price pays Yes at or above it (greater_or_equal), and the page says so.
@@ -144,7 +144,7 @@ export function explorePageCases({name, frontend}) {
     ({body} = await openSpot(() => response({...SPOT, ticker: M15.ticker, strike: {...SPOT.strike, value: 113384.12, inclusive: true, from: 'record'}}), M15));
     html = body().innerHTML;
     assert.match(html, />Target price<\/dt><dd><span class="fig ">\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
-    assert.match(html, />Spot vs target price<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the target price ·\son the Yes side</);
+    assert.match(html, />Spot vs target price<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the target price\u00a0· on the Yes side</);
     assert.doesNotMatch(html, /contract’s title|>Strike<|the strike/);
     // A stored strike on any other market keeps "strike" (the first case above).
     // Neither stored nor in the title: the honest line stays.
@@ -160,7 +160,7 @@ export function explorePageCases({name, frontend}) {
     const html = body().innerHTML;
     assert.match(html, /class="m fig-behind"><dt class="lab">Bitcoin now<\/dt><dd><span class="fig ">\$113,420\.00<\/span><\/dd><dd class="sub-fig">Spot feed is 7 min old</);
     // The distance was measured from that old price, and its label says so too.
-    assert.match(html, />Spot vs strike, 7 min ago<\/dt><dd><span class="fig ">−\$499\.99<\/span><\/dd><dd class="sub-fig">0\.44% below the strike · on the No side</);
+    assert.match(html, />Spot vs strike, 7 min ago<\/dt><dd><span class="fig ">−\$499\.99<\/span><\/dd><dd class="sub-fig">0\.44% below the strike · on the No side</);
   });
 
   test(`${name}: with no stored spot the section says so and still gives the strike and the time left`, async () => {
@@ -177,10 +177,10 @@ export function explorePageCases({name, frontend}) {
       {ticker: 'KXBTC-26OCT2617-B113250', series: 'KXBTC'});
     let html = body().innerHTML;
     assert.match(html, />Bucket<\/dt><dd><span class="fig ">\$113,000\.00 to \$113,499\.99<\/span>/);  // to the cent, as Kalshi's own bounds
-    assert.match(html, />Spot vs bucket<\/dt><dd><span class="fig ">Inside<\/span><\/dd><dd class="sub-fig">\$420\.00 above its floor · \$79\.99 below its top · on the Yes side</);
+    assert.match(html, />Spot vs bucket<\/dt><dd><span class="fig ">Inside<\/span><\/dd><dd class="sub-fig">\$420\.00 above its floor · \$79\.99 below its top · on the Yes side</);
     ({body} = await openSpot(() => response({...SPOT, strike: bucket, vs: {side: 'above', diff: 100.02, pct: 0.088, yes: false}}), {ticker: 'KXBTC-26OCT2617-B113250', series: 'KXBTC'}));
     html = body().innerHTML;
-    assert.match(html, />\+\$100\.02<\/span><\/dd><dd class="sub-fig">0\.09% above its top · on the No side</);
+    assert.match(html, />\+\$100\.02<\/span><\/dd><dd class="sub-fig">0\.09% above its top · on the No side</);
     // From the ticker alone only the bucket's centre is known, and the page says so.
     ({body} = await openSpot(() => response({...SPOT, strike: {...bucket, lo: null, hi: null, value: 113250, from: 'ticker'}, vs: {side: 'below', diff: -250, pct: -0.221, yes: null}}),
       {ticker: 'KXBTC-26OCT2617-B113250', series: 'KXBTC'}));
@@ -215,7 +215,7 @@ export function explorePageCases({name, frontend}) {
     fail = true;
     f.shiftClock(31000); await tick();
     assert.match(note(), /^Last updated 3\ds ago, retrying$/);
-    assert.match(body().innerHTML, /Coinbase ·\s4s ago/, 'the last figures stay up');
+    assert.match(body().innerHTML, /Coinbase\u00a0· 4s ago/, 'the last figures stay up');
     fail = false;
     f.shiftClock(31000); await tick(); await tick();
     assert.equal(note(), '');

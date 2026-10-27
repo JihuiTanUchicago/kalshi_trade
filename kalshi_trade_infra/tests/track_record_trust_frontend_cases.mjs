@@ -70,9 +70,9 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     const book = (o) => paperBook({strategies: [stratRow({status: 'stopped'}), stratRow({strategy_id: 7, title: 'Deleted strategy',
       market: 'btc15m', status: 'stopped', removed: true}), stratRow({strategy_id: 9, title: 'Held', status: 'paused'})], ...o});
     const html = f.trackRecordPanel(book(), 'paper', TH);
-    assert.match(html, /<h2>By strategy<\/h2><p>Removed ones included ·/);
+    assert.match(html, /<h2>By strategy<\/h2><p>Removed ones included\u00a0· /);
     assert.match(html, /Fade the 15-minute Bitcoin overshoot<\/a><div class="sub-fig">Removed from paper<\/div>/);
-    assert.match(html, /Deleted strategy<div class="sub-fig">[^<]*· removed from paper, then deleted<\/div>/);
+    assert.match(html, /Deleted strategy<div class="sub-fig">[^<]*\u00a0· removed from paper, then deleted<\/div>/);
     assert.match(html, /Held<\/a><div class="sub-fig">Paused<\/div>/);
     assert.doesNotMatch(plain(html), /[Ss]topped/);
     // Each tab names its own book.

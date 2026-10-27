@@ -63,7 +63,7 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     at.f.clearTimers();
     // The hot rail reads it the same way.
     const {f: g, el} = await rail({markets: [{...m15, h: [.4, .5]}], spot: SPOT});
-    assert.match(el.querySelector('.hot-when').textContent, /Spot vs target price −\$92 ·\s0\.08%$/);
+    assert.match(el.querySelector('.hot-when').textContent, /Spot vs target price −\$92\u00a0· 0\.08%$/);
     const label = el.querySelector('.hot-row').getAttribute('aria-label');
     if (label) assert.match(label, /Spot vs target price −\$92/);
     g.clearTimers();
@@ -83,7 +83,7 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     assert.equal(at.rows[0].querySelector('.xspot').textContent, 'Spot vs target price at the target price');
     at.f.clearTimers();
     const {f: g, el} = await rail({markets: [{...m15, h: [.4, .5]}], spot: SPOT});
-    assert.match(el.querySelector('.hot-when').textContent, /Spot vs target price −\$92 ·\s0\.08%$/);
+    assert.match(el.querySelector('.hot-when').textContent, /Spot vs target price −\$92\u00a0· 0\.08%$/);
     const label = el.querySelector('.hot-row').getAttribute('aria-label');
     if (label) assert.match(label, /Spot vs target price −\$92/);
     assert.doesNotMatch(el.textContent + (label || ''), /strike/);
@@ -163,14 +163,14 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     const rows = el.querySelectorAll('.hot-row');
     assert.equal(rows.length, 6);
     const when = rows.map((r) => r.querySelector('.hot-when'));
-    assert.match(when[0].textContent, /^Closes .*\d.*Spot vs strike \+\$420 ·\s0\.4%$/);
+    assert.match(when[0].textContent, /^Closes .*\d.*Spot vs strike \+\$420\u00a0· 0\.4%$/);
     assert.match(when[2].textContent, /Spot vs bucket in range$/);
     assert.match(when[4].textContent, /^Closes .*\d/);  // every market with a close says it, not only Bitcoin's
     assert.doesNotMatch(when[4].textContent, /Spot/);
     assert.equal(when[5], null, 'a game with no hour in its ticker says no close');
     // Read out with the row, where the row is named for a screen reader as a whole.
     const label = rows[0].getAttribute('aria-label');
-    if (label) assert.match(label, /Closes .*Spot vs strike \+\$420 ·\s0\.4%/);
+    if (label) assert.match(label, /Closes .*Spot vs strike \+\$420\u00a0· 0\.4%/);
     assert.equal(el.querySelector('.hot-note'), null, 'a fresh spot needs no line');
     f.clearTimers();
   });

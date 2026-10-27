@@ -133,8 +133,8 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     assert.ok(html.includes(`<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${TICKER}</span></span>`));
     assert.ok(!named(html).includes(TICKER), 'the ticker is never the headline');
     // The deploy panel's list of its deployments says the same, never "Live (running)".
-    assert.match(html, /Live[^<]{0,4}(\(|·\u00a0)waiting: live trading isn’t open yet/);
-    assert.doesNotMatch(html, /Live[^<]{0,4}(\(|·\u00a0)running/);
+    assert.match(html, /Live[^<]{0,4}(\(|\u00a0· )waiting: live trading isn’t open yet/);
+    assert.doesNotMatch(html, /Live[^<]{0,4}(\(|\u00a0· )running/);
     const ladder = s.root.querySelector('#ladder-body').innerHTML;
     assert.match(ladder, /<span class="mk live">Live<\/span> waiting: live trading isn’t open yet, so it places no orders/);
     assert.doesNotMatch(ladder, /Live<\/span> running|it trades live money/);
@@ -195,7 +195,7 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     await f.apUpdate(box, status); await settle();
     const stats = box.querySelector('#apf-stats').innerHTML;
     // The panel's half-row figure says it short (its own case below); the dashboard card's line says it in full.
-    assert.ok(stats.includes('1 live (waiting)<span class="vh">: live trading isn’t open yet, so it places no orders</span></span> · 2 paper'), stats);
+    assert.ok(stats.includes('1 live (waiting)<span class="vh">: live trading isn’t open yet, so it places no orders</span></span> · 2 paper'), stats);
     assert.ok(!stats.includes(IDLE_COUNT), stats);
     assert.doesNotMatch(stats, /class="apf-live">1 live/);
     f.S.ap = status;
@@ -227,17 +227,17 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     };
     const one = await running(status);
     assert.equal(one, '<span class="apf-live-wait" title="Live trading isn’t open yet, so it places no orders.">1 live (waiting)'
-      + '<span class="vh">: live trading isn’t open yet, so it places no orders</span></span> · 2 paper');
+      + '<span class="vh">: live trading isn’t open yet, so it places no orders</span></span> · 2 paper');
     // What a sighted reader sees: short enough for a phone's half-row cell.
     const seen = one.replace(/<span class="vh">.*?<\/span>/g, '').replace(/<[^>]+>/g, '');
-    assert.equal(seen, '1 live (waiting) · 2 paper');
+    assert.equal(seen, '1 live (waiting) · 2 paper');
     assert.ok(seen.length <= 28, seen);
     assert.doesNotMatch(one, /placing no orders: live trading/);
     const two = await running({...status, live_running: 2});
     assert.match(two, /title="Live trading isn’t open yet, so they place no orders\.">2 live \(waiting\)/);
     // Open, it is the plain live count.
     f.S.me.live_trading_available = true;
-    assert.equal(await running(status), '<span class="apf-live">1 live</span> · 2 paper');
+    assert.equal(await running(status), '<span class="apf-live">1 live</span> · 2 paper');
     f.clearTimers();
   });
 

@@ -91,10 +91,10 @@ export function freshWalkCases({name, frontend, dashboard}) {
       const sub = (id) => f.root.querySelector(`[data-s="${id}"]`).textContent;
       // Tau sets the research box's count on two lines (tspans), read here as the one line they make.
       const metric = (id) => { const el = f.root.querySelector(`[data-m="${id}"]`), ts = el.querySelectorAll('tspan');
-        return ts.length ? ts.map((t) => t.textContent).filter(Boolean).join(' · ') : el.textContent; };
-      assert.deepEqual(BOXES.map(sub), admin ? ['app.worker · hypotheses', 'honest, out-of-sample', 'simulated fills', 'real Kalshi orders']
+        return ts.length ? ts.map((t) => t.textContent).filter(Boolean).join(' · ') : el.textContent; };
+      assert.deepEqual(BOXES.map(sub), admin ? ['app.worker · hypotheses', 'honest, out-of-sample', 'simulated fills', 'real Kalshi orders']
         : ['your research sessions', 'your strategies', 'your paper strategies', 'your live and demo']);
-      assert.equal(metric('agents'), '0 running · 0 queued · 1 done');
+      assert.equal(metric('agents'), '0 running · 0 queued · 1 done');
       assert.equal(metric('backtest'), '3 strategies tested');
       assert.equal(sub('db'), 'RDS MySQL', 'a box of the system itself is the system’s');
       f.root.querySelector('.sys-node[data-id="backtest"]').dispatchEvent({type: 'click'});

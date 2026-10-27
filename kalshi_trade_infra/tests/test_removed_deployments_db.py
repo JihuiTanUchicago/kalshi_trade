@@ -246,3 +246,29 @@ def test_the_strategy_page_lists_its_past_deployments(conn, quiet):
     # A strategy never deployed has none.
     fresh = _strategy(cur, uid, "Never deployed")
     assert server.get_strategy(_ctx(conn, uid, fresh))["past_deployments"] == []
+
+
+def test_a_past_paper_deployment_counts_its_instant_fills_from_the_same_read(conn, quiet):
+    """"Past deployments" said "2 closed trades" while the track record left one out as an instant fill (a closed
+    paper row with no 'sim:' order ref). The removed deployments' totals read counts the simulated-venue rows too,
+    so the page says how many were instant fills, in no more statements."""
+    from app import repository as repo
+    from app import server
+
+    uid, sids, dep = _book(conn)
+    cur = conn.cursor()
+    before = server.get_strategy(_ctx(conn, uid, sids["a"]))["past_deployments"]
+    assert not any("instant_fills" in p for p in before)  # every closed paper row went through the simulated venue
+    at = datetime(2026, 10, 21, 9, 0)
+    repo.insert_closed_position(cur, dep["paper_older"], uid, "paper", "KXBTC15M-26OCT2109-T98", "yes", 3, 0.4, 0.05,
+                                1.0, 0.05, 0.75, "settled", at, order_ref=None, opened_at=at - timedelta(minutes=20), closed_at=at)
+    past = {p["id"]: p for p in server.get_strategy(_ctx(conn, uid, sids["a"]))["past_deployments"]}
+    older = past[dep["paper_older"]]
+    assert (older["closed_trades"], older["instant_fills"]) == (2, 1)
+    assert older["realized_pnl"] == round(float(_closed_sum(cur, [dep["paper_older"]])[0]), 2)  # P&L unchanged in kind
+    assert "instant_fills" not in past[dep["paper_old"]] and "instant_fills" not in past[dep["demo_old"]]
+    # The totals read with its sim count is the plain one with a third figure, row for row.
+    ids = [dep["paper_older"], dep["paper_old"], dep["demo_old"]]
+    plain, with_sim = repo.deployment_closed_totals(cur, ids), repo.deployment_closed_totals(cur, ids, sim=True)
+    assert {k: v[:2] for k, v in with_sim.items()} == plain
+    assert with_sim[dep["paper_older"]][2] == 1 and with_sim[dep["demo_old"]][2] == 0
