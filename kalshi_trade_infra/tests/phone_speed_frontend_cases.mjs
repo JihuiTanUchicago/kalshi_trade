@@ -113,6 +113,30 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     f.clearTimers();
   });
 
+  test(`${name}: Billing draws its figures from the read the shell carries for its time zone, and asks when the zone moved`, async () => {
+    const bill = {configured: false, balance: 12.5, spent: 40, spent_7d: 3, spent_24h: 1, pace_days: 7, free_bonus: 20, topup_fee_pct: 5.5,
+      cards: [], default_pm: null, auto_reload: false, min_run_balance: 1, spent_7d_by: {}, ledger: [], ledger_cut: false,
+      math: {days: 30, start: 20, bought: 0, purchases: 0, other: 0, usage: 7.5, end: 12.5}};
+    const tz = new Date().getTimezoneOffset();
+    // The shell names the URL from the tau_tz cookie boot.js keeps (shell_reads.py): the page's own URL.
+    let f = frontend({fetchImpl: (path) => path.startsWith('/api/billing') ? response(bill) : response({})});
+    f.location.pathname = '/billing';
+    f.window.__TAU_FIRST__ = [{url: '/api/billing?tz=' + tz, body: {...bill, balance: 31.25}}];
+    await f.viewBilling(); await settle();
+    assert.equal(asked(f, '/api/billing'), 0, 'no round trip for what the shell carried');
+    assert.match(f.root.querySelector('#bfigs').innerHTML, /\$31\.25/);
+    assert.equal(f.window.__TAU_FIRST__.length, 0, 'taken once');
+    f.clearTimers();
+    // The offset changed since the cookie was written (a clock change): another URL, so the page asks.
+    f = frontend({fetchImpl: (path) => path.startsWith('/api/billing') ? response(bill) : response({})});
+    f.location.pathname = '/billing';
+    f.window.__TAU_FIRST__ = [{url: '/api/billing?tz=' + (tz + 60), body: {...bill, balance: 31.25}}];
+    await f.viewBilling(); await settle();
+    assert.deepEqual(f.requests.filter(({path}) => path.startsWith('/api/billing')).map(({path}) => path), ['/api/billing?tz=' + tz]);
+    assert.match(f.root.querySelector('#bfigs').innerHTML, /\$12\.50/);
+    f.clearTimers();
+  });
+
   test(`${name}: a carried read is used only for its own URL and only by the first page`, async () => {
     let f = frontend({fetchImpl: researchTransport()});
     f.location.pathname = '/research';

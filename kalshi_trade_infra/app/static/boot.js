@@ -5,7 +5,8 @@
    localStorage: the Tau stylesheet is linked by default, and for Meridian it swaps the href before
    loading Meridian's bundle. The app keeps localStorage in step with the account. It also hands the
    app the account the signed-in shell carries (window.__TAU_ME__), and the page's first reads when
-   the shell carries those too (window.__TAU_FIRST__). */
+   the shell carries those too (window.__TAU_FIRST__). It keeps the browser's UTC offset in the tau_tz
+   cookie, so a later shell can name Billing's first read too. */
 (function () {
   // A signed-in shell carries the account (/api/me's reply) in a JSON data block; the app takes it
   // from here once, at its first render, instead of starting with a round trip to read it.
@@ -18,6 +19,11 @@
     var first = document.getElementById('tau-first');
     if (first) { window.__TAU_FIRST__ = JSON.parse(first.textContent); first.remove(); }
   } catch (e) { /* unreadable: the page asks for it itself */ }
+  // Billing asks for /api/billing?tz=<getTimezoneOffset()> (its statement's days are yours). Only the
+  // browser knows that offset: kept in a cookie, a later page shell can carry Billing's read (shell_reads.py).
+  try {
+    document.cookie = 'tau_tz=' + new Date().getTimezoneOffset() + '; Path=/; Max-Age=34560000; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+  } catch (e) { /* cookies blocked: Billing asks as before */ }
   var b = document.getElementById('tau-boot');
   if (!b) return;
   // Only Tau has the Terms and Privacy pages; Meridian used to bounce them to the dashboard.

@@ -10,6 +10,11 @@ request (api() in both bundles), once, during its first render. Same handler, sa
 JSON as the page's own request, read a moment earlier. A page whose URL carries a query (filters, a
 fresh form) carries nothing and asks as before; so does any read that fails.
 
+Billing asks with the browser's UTC offset (?tz=: its statement's days are the viewer's), which only the
+browser knows. boot.js keeps it in the tau_tz cookie on every load and the shell names Billing's read
+from that. No cookie yet (a first load on this device), no read; an offset that changed since (a clock
+change, a trip) names a URL the page doesn't ask, and the page asks as before.
+
 The dashboard also carries the autopilot status: its autopilot card sits above the figures, and drawn
 a round trip after them it pushed them down the screen.
 """
@@ -21,6 +26,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.web.http import ApiError, Ctx
+from app.web.routes.billing import billing_state
 from app.web.routes.chat import autopilot_status
 from app.web.routes.dashboard import dashboard
 from app.web.routes.deployments import list_deployments
@@ -33,6 +39,7 @@ from app.web.routes.strategies import list_strategies
 VISIT_GAP = 1800
 _VISIT = re.compile(r"(\d+)\.(\d+)")
 _RUN_PAGE = re.compile(r"^/research/(\d+)$")
+_TZ = re.compile(r"^-?\d{1,4}$")  # tau_tz: getTimezoneOffset() in minutes, as boot.js writes it
 
 MakeCtx = Callable[[Tuple[str, ...], Dict[str, str]], Ctx]
 Request = Tuple[str, Callable, Tuple[str, ...], Dict[str, str]]  # URL the page asks, handler, path params, query
@@ -46,6 +53,11 @@ def dashboard_since(cookie: Optional[str], now: Optional[float] = None) -> Optio
     since, seen = int(m.group(1)), int(m.group(2))
     at = seen if int(time.time() if now is None else now) - seen > VISIT_GAP else since
     return at or None
+
+
+def billing_tz(cookie: Optional[str]) -> Optional[int]:
+    """Billing's ?tz= for this load, from the tau_tz cookie as boot.js writes it; None without one."""
+    return int(cookie) if cookie and _TZ.match(cookie) else None
 
 
 def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Request]:
@@ -62,6 +74,9 @@ def first_requests(path: str, query: str, cookies: Dict[str, str]) -> List[Reque
         return [("/api/strategies?page=0", list_strategies, (), {"page": "0"})]
     if path == "/deploy":
         return [("/api/deployments", list_deployments, (), {})]
+    if path in ("/billing", "/settings/billing"):
+        tz = billing_tz(cookies.get("tau_tz"))
+        return [] if tz is None else [("/api/billing?tz=%d" % tz, billing_state, (), {"tz": str(tz)})]
     m = _RUN_PAGE.match(path)
     if m:
         return [("/api/runs/%s?after=0" % m.group(1), get_run, (m.group(1),), {"after": "0"})]

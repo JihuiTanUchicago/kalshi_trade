@@ -19,7 +19,7 @@ from app.web.http import ApiError, _json_default
 
 USER = {"id": 7, "email": "trader@example.invalid", "name": "Sample", "picture_url": None, "autopilot": 0, "ui_theme": "tau"}
 ACCOUNT = {"user": {"id": 7, "ui_theme": "tau"}}
-ROUTES = ("dashboard", "autopilot_status", "list_runs", "get_run", "list_strategies", "list_deployments")
+ROUTES = ("dashboard", "autopilot_status", "list_runs", "get_run", "list_strategies", "list_deployments", "billing_state")
 
 
 @pytest.fixture
@@ -103,7 +103,10 @@ def test_an_app_page_shell_carries_its_first_read_under_the_url_the_page_asks(we
 
 
 @pytest.mark.parametrize("path,cookie", [
-    ("/billing", "rsid=abc"),             # its read names the browser's time zone: the page asks
+    ("/billing", "rsid=abc"),             # its read names the browser's time zone: no tau_tz yet, the page asks
+    ("/billing", "rsid=abc; tau_tz=abc"),
+    ("/billing", "rsid=abc; tau_tz=99999"),
+    ("/billing?setup_intent=seti_1", "rsid=abc; tau_tz=240"),  # back from the card form: the page reads fresh
     ("/funds", "rsid=abc"),
     ("/strategies?status=passed", "rsid=abc"),  # a filtered list: the page's URL says more
     ("/research?new=1", "rsid=abc"),
@@ -115,6 +118,30 @@ def test_shells_with_no_read_they_can_name_carry_none(web, monkeypatch, path, co
         _record(monkeypatch, name, AssertionError("not asked"))
     r, html = _shell(web, path, cookie)
     assert r.status == 200 and 'id="tau-first"' not in html
+
+
+@pytest.mark.parametrize("path,tz", [("/billing", "240"), ("/billing", "-330"), ("/billing", "0"), ("/settings/billing", "240")])
+def test_billing_shell_carries_its_read_under_the_url_the_page_asks_with_its_time_zone(web, monkeypatch, path, tz):
+    # The page asks '/api/billing?tz=' + getTimezoneOffset(); boot.js keeps that offset in tau_tz.
+    answer = {"balance": 12.5, "cards": [{"id": "pm_1", "brand": "visa", "last4": "4242"}], "ledger": [
+        {"memo": "</script><script>alert(1)</script>", "created_at": datetime(2026, 10, 26, 8, 0), "amount": Decimal("-0.25")}]}
+    calls = _record(monkeypatch, "billing_state", answer)
+    r, html = _shell(web, path, "rsid=abc; tau_tz=" + tz)
+    assert r.status == 200 and calls == [((), {"tz": tz}, 7)]
+    assert _first(html) == [{"url": "/api/billing?tz=" + tz, "body": _wire(answer)}]
+    block = html.split('id="tau-first">', 1)[1].split("</script>", 1)[0]
+    assert "<" not in block and ">" not in block
+    assert html.index('id="tau-first"') > html.index('src="/static/app.js')
+    # The read failing (Stripe away, say) leaves Billing to ask for itself, with the account still carried.
+    _record(monkeypatch, "billing_state", RuntimeError("stripe down"))
+    r, html = _shell(web, path, "rsid=abc; tau_tz=" + tz)
+    assert r.status == 200 and _first(html) == [] and 'id="tau-me"' in html
+
+
+@pytest.mark.parametrize("cookie,tz", [(None, None), ("", None), ("abc", None), ("240", 240), ("-330", -330), ("0", 0),
+                                       ("-0", 0), ("12345", None), ("2.5", None), ("240 ", None)])
+def test_billing_tz_reads_the_offset_as_the_page_writes_it(cookie, tz):
+    assert shell_reads.billing_tz(cookie) == tz
 
 
 def test_a_failed_first_read_leaves_the_page_to_ask_and_the_account_carried(web, monkeypatch):
@@ -159,5 +186,7 @@ def test_only_the_named_pages_have_first_requests():
     assert shell_reads.first_requests("/explore", "", {}) == []
     assert shell_reads.first_requests("/research/12/x", "", {}) == []
     assert shell_reads.first_requests("/deploy", "x=1", {}) == []
+    assert shell_reads.first_requests("/billing", "", {}) == []
+    assert [r[0] for r in shell_reads.first_requests("/billing", "", {"tau_tz": "-60"})] == ["/api/billing?tz=-60"]
     assert [r[0] for r in shell_reads.first_requests("/research/12", "", {})] == ["/api/runs/12?after=0"]
     assert [r[0] for r in shell_reads.first_requests("/", "", {})] == ["/api/dashboard", "/api/autopilot/status"]
