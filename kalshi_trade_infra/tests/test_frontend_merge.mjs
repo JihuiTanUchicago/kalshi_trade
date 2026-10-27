@@ -5099,10 +5099,10 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
 test('a Deploy row with no stake says so instead of "$ a trade, up to  open"', async () => {
   const html = await deployBoard([nullStakeDep({id: 1, title: 'Neither'}), nullStakeDep({id: 2, title: 'Cap only', max_positions: 3}),
     nullStakeDep({id: 3, title: 'Stake only', stake: 5}), nullStakeDep({id: 4, title: 'Both', stake: 5, max_positions: 3})]);
-  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not set · P&amp;L after Kalshi fees and the spread<\/div>/);
-  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not set, up to 3 open · P&amp;L after Kalshi fees and the spread<\/div>/);
-  assert.match(html, /Stake only<\/a>\s*<div class="sub-fig">\$5 a trade · P&amp;L after Kalshi fees and the spread<\/div>/);
-  assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open · P&amp;L after Kalshi fees and the spread<\/div>/);
+  assert.match(html, /Neither<\/a>\s*<div class="sub-fig">Stake not set<\/div>/);
+  assert.match(html, /Cap only<\/a>\s*<div class="sub-fig">Stake not set, up to 3 open<\/div>/);
+  assert.match(html, /Stake only<\/a>\s*<div class="sub-fig">\$5 a trade<\/div>/);
+  assert.match(html, /Both<\/a>\s*<div class="sub-fig">\$5 a trade, up to 3 open<\/div>/);
   assert.doesNotMatch(html, /\$ a trade|up to\s+open|null|NaN/);
 });
 

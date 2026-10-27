@@ -1,10 +1,11 @@
 // Shared cases, run against each bundle's offline harness (Tau and Meridian): the Deploy page when things
-// go wrong.
+// go wrong, and how it reads.
 // - A Pause, Resume or Remove Tau didn't confirm (the edge's 502/504 page, or no reply) says it may have
 //   gone through and where to check (the row), never "Reload the page"; the board reads again at once
 //   (a read), and the action itself is sent once, never again on its own. Tau's own words stay as said.
 // - A press while the phone says it is offline sends nothing and says so.
 // - The strategy page's Deploy on paper, its Stop deployment, and bulk deploy say the same about Deploy.
+// - The paper-net phrase is said once, where it explains a paper figure: the headline, not every row.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -12,6 +13,7 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const edge = (status) => ({ok: false, status, json: async () => { throw new SyntaxError('not JSON'); }});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
+const PAPER_NET = 'after Kalshi fees and the spread', PAPER_NET_SHORT = 'net of fees and spread';
 const ROW = 'This deployment’s row shows what Tau has and reads again within 10 seconds; check it before you press again.';
 const UNSURE = {
   pause: 'Tau didn’t confirm the pause, so it may or may not have gone through. ' + ROW,
@@ -23,6 +25,7 @@ const NOT_SENT = 'You’re offline, so this wasn’t sent. Try again once you’
 const dep = (overrides = {}) => ({id: 1, strategy_id: 1, title: 'Dep one', market: 'btc15m', mode: 'paper', status: 'running',
   status_reason: null, realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z',
   curve: [], stake: 5, max_positions: 1, backtest: {out_of_sample: null}, ...overrides});
+const count = (text, phrase) => text.split(phrase).length - 1;
 
 export function deployErrorCases({name, frontend, strategyFrontend, detailStrategy, postRequests}) {
   // A board with one deployment whose action answers with `answer` (a response, or a thrown error).
@@ -169,5 +172,42 @@ export function deployErrorCases({name, frontend, strategyFrontend, detailStrate
     assert.match(said, /Tau didn’t confirm the stop, so it may or may not have gone through\. Deploy shows whether it is still running; check there before you press again\./);
     assert.equal(postRequests(f).length, 1);
     f.clearTimers();
+  });
+
+  // The paper-net phrase: once on the board, beside the paper figure it explains. A row said it in its
+  // sizing line and again in its backtest line, under a headline that already said it.
+  const deploys = async (body) => {
+    const f = frontend({fetchImpl: (path) => (path === '/api/deployments' ? response({open_positions: [], ...body}) : response({}))});
+    f.location.pathname = '/deploy';
+    await f.viewDeploy(); await settle(); f.clearTimers();
+    const rows = f.root.querySelector('#deps').innerHTML;
+    return {figs: f.root.querySelector('#dfigs').innerHTML, rows,
+      row: (id) => rows.split('<tr').find((r) => r.includes(`data-dep="${id}"`))};
+  };
+  const btLine = `Ahead of its backtest on paper: 20 trades across all its paper runs: +$0.40/trade ${PAPER_NET_SHORT} vs backtest +$0.15/trade. Above the usual range for 20 trades (+$0.20 to +$0.30).`;
+
+  test(`${name}: Deploy says the paper P&L is net of fees and the spread once, in the headline, not on every row`, async () => {
+    const paper = await deploys({deployments: [dep({id: 1}), dep({id: 2, strategy_id: 2, title: 'Dep two', closed_trades: 20,
+      backtest_check: {mode: 'paper', verdict: 'ahead', line: btLine}}), dep({id: 3, strategy_id: 3, title: 'Dep three', mode: 'demo'})]});
+    assert.equal(count(paper.figs, PAPER_NET), 1, 'the headline paper figure says it once');
+    assert.equal(count(paper.rows, PAPER_NET), 0, 'no row repeats it');
+    assert.equal(count(paper.row(1), PAPER_NET_SHORT), 0);
+    // A row's backtest line says it beside its own per-trade paper figure, once.
+    assert.equal(count(paper.row(2), PAPER_NET_SHORT), 1);
+    assert.equal(count(paper.row(3), PAPER_NET_SHORT) + count(paper.row(3), PAPER_NET), 0, 'demo says nothing of the kind');
+    // A board led by live money says it beside the paper amount it names, once; live money never gets it.
+    const live = await deploys({deployments: [dep({id: 1, mode: 'live', realized_pnl: 2}), dep({id: 2, strategy_id: 2, title: 'Dep two', realized_pnl: 40})]});
+    assert.match(live.figs, /real money · \+\$40\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the spread/);
+    assert.equal(count(live.figs, PAPER_NET), 1);
+    assert.equal(count(live.rows, PAPER_NET), 0);
+  });
+
+  test(`${name}: Deploy's open positions figure keeps each dot with the book before it, so a wrapped line never starts with one`, async () => {
+    const pos = (mode) => ({title: 'Dep', ticker: 'KXBTC15M-26OCT271315-15', side: 'yes', qty: 1, entry_price: 0.4, entry_fee: 0.01, mode, unrealized: null,
+      market_close_time: '2026-10-28T07:45:00Z'});
+    const {figs} = await deploys({deployments: [dep(), dep({id: 2, strategy_id: 2, mode: 'demo'}), dep({id: 3, strategy_id: 3, mode: 'live'})],
+      open_positions: [pos('paper'), pos('paper'), pos('demo')]});
+    const shown = figs.match(/Open positions<\/dt><dd><span class="fig ">([^<]*)<\/span>/)[1];
+    assert.equal(shown, '2 paper · 1 demo · 0 live');
   });
 }
