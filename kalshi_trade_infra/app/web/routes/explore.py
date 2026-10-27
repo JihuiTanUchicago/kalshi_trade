@@ -324,13 +324,14 @@ def _spot_view(row: Optional[Dict], now: datetime) -> Optional[Dict]:
 
 def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[List[Dict], Dict]:
     """Explore's rows with how far stored spot is from each Bitcoin contract's strike (`vs`: side, diff in
-    $, pct), and the spot itself under "spot". Strikes come from the tickers alone, a bucket's edges from
-    its ladder's other tickers in the feed, and spot from the one shared read (_spot_row), so a page of
-    rows costs at most one DB read. A stale, missing or failed spot gives no `vs` and says why in "spot";
+    $, pct), and the spot itself under "spot". Strikes come from the tickers alone, a 15-minute window's from
+    the target price in its own name (btc_spot.title_strike, as its market page reads it; its `vs` then says
+    "from": "title"), a bucket's edges from its ladder's other tickers in the feed, and spot from the one
+    shared read (_spot_row), so a page of rows costs at most one DB read. A stale, missing or failed spot gives no `vs` and says why in "spot";
     a page with no Bitcoin strike on it reads nothing and gets no "spot" at all."""
     strikes = {}
     for m in rows:
-        k = btc_spot.contract_strike(m["t"]) if btc_spot.is_btc_contract(m.get("t")) else None
+        k = (btc_spot.contract_strike(m["t"]) or btc_spot.title_strike(m.get("su"), m.get("ti"))) if btc_spot.is_btc_contract(m.get("t")) else None
         if k:
             strikes[m["t"]] = k
     if not strikes:
@@ -356,7 +357,7 @@ def _strike_distances(ctx: Ctx, rows: List[Dict], feed: List[Dict]) -> Tuple[Lis
         k = k and btc_spot.with_bucket_edges(k, btc_spot.bucket_width(centres.get(m["t"].rpartition("-")[0], ())))
         if k and (k["kind"] != "range" or k["lo"] is not None):  # a lone bucket's edges aren't known
             v = btc_spot.against_strike(spot["price"], k)
-            m = {**m, "vs": {"side": v["side"], "diff": v["diff"], "pct": v["pct"]}}
+            m = {**m, "vs": {"side": v["side"], "diff": v["diff"], "pct": v["pct"], **({"from": "title"} if k["from"] == "title" else {})}}
         out.append(m)
     return out, {"spot": spot}
 

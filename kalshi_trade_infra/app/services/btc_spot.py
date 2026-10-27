@@ -7,7 +7,8 @@ the contract when the collector stored one (floor_strike / cap_strike / strike_t
 ticker: KXBTCD-26OCT2717-T113499.99 is above $113,499.99 and KXBTC-26OCT2717-B113250 is the bucket
 centred on $113,250 (one ticker gives no bucket width, though its ladder's tickers do, nor which way a
 KXBTC T contract points).
-A 15-minute ticker carries no strike at all.
+A 15-minute ticker carries no strike at all; its name does ("Target Price: $113,512.08", Kalshi's subtitle),
+and the market page and Explore's rows both read it from there when no record is stored (title_strike).
 
 Pure: no I/O, no app imports.
 """
@@ -23,6 +24,8 @@ SPOT_PRODUCT = "BTC-USD"
 STALE_AFTER_S = 120
 
 _STRIKE = re.compile(r"^(KXBTC15M|KXBTCD|KXBTC)-[A-Z0-9]+-([TB])(\d+(?:\.\d+)?)$")
+# The same pattern as the market page's TARGET_IN (app.js, app.meridian.js), so a row and its page agree.
+_TARGET_IN = re.compile(r"\btarget price:?\s*\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?", re.I)
 
 
 def is_btc_contract(ticker: str) -> bool:
@@ -58,6 +61,18 @@ def contract_strike(ticker: str, record: Optional[Dict] = None) -> Optional[Dict
         return {"kind": "range", "value": value, "lo": None, "hi": None, "inclusive": True, "from": "ticker"}
     return {"kind": "above" if series == "KXBTCD" else "line", "value": value, "lo": None, "hi": None,
             "inclusive": False, "from": "ticker"}
+
+
+def title_strike(*texts) -> Optional[Dict]:
+    """The target price a contract's own name gives ("Target Price: $113,512.08"), from the first of `texts`
+    (subtitle, then title, as the market page reads them) that names one: a "line" strike from "title", which
+    says how far spot is from it, never which side pays. None when none does."""
+    for text in texts:
+        m = _TARGET_IN.search(str(text or ""))
+        if m:
+            value = float(m.group(1).replace(",", "") + (m.group(2) or ""))
+            return {"kind": "line", "value": value, "lo": None, "hi": None, "inclusive": False, "from": "title"} if value > 0 else None
+    return None
 
 
 def bucket_width(centres: Iterable[float]) -> Optional[float]:

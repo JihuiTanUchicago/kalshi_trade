@@ -1,6 +1,8 @@
 """A Bitcoin contract's market page: /api/explore/spot says where stored Bitcoin spot is against the
 contract's strike (fresh, stale or missing), which side it is on, and the time left, from the DB only;
 Explore's list and hot rail say the same distance per row from one shared spot read."""
+import pathlib
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -301,3 +303,59 @@ def test_the_hot_rail_says_when_each_market_closes_and_how_far_spot_is_from_a_st
     assert d["markets"][0]["vs"]["diff"] == 420.01 and "vs" not in d["markets"][1] and d["spot"]["price"] == 113420.0
     assert d["markets"][0]["h"] == [0.4, 0.5] and "ct" not in feed["markets"][0], "the cached feed itself is never written to"
     assert [r[0] for r in reads] == ["spot"]
+
+
+# A 15-minute window's row: its market page reads "Target Price: $113,512.08" from the contract's own name when no
+# strike is stored, while Explore's distance stayed empty for the same row. The row now measures from that target
+# too, and says it came from the title, so the list and the page show the same figure from the same place.
+M15 = "KXBTC15M-26OCT262345-45"
+
+
+def _m15_feed(**over):
+    feed = _feed(M15, "KXBTCD-26OCT2717-T112999.99", "KXNBAGAME-26OCT26MINDEN-MIN")
+    feed["markets"][0].update({"ti": "BTC price up in next 15 mins?", "su": "Target Price: $113,512.08", **over})
+    return feed
+
+
+def test_a_fifteen_minute_row_measures_from_the_target_price_in_its_title(monkeypatch):
+    reads = []
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0}, reads=reads)
+    d = _list(monkeypatch, _m15_feed())
+    vs = {m["t"]: m.get("vs") for m in d["markets"]}
+    # Spot minus the target, as the market page's own figure (−$92.08, 0.08% below the strike).
+    assert vs[M15] == {"side": "below", "diff": -92.08, "pct": -0.081, "from": "title"}
+    assert vs["KXBTCD-26OCT2717-T112999.99"] == {"side": "above", "diff": 420.01, "pct": 0.372}, "a ticker strike names no source"
+    assert vs["KXNBAGAME-26OCT26MINDEN-MIN"] is None
+    assert [r[0] for r in reads] == ["spot"], "still one spot read, no strike read per row"
+    # A page of only that window reads spot for it, where before it read nothing.
+    reads.clear()
+    explore_routes._SPOT_CACHE.update(at=0.0)
+    only = _m15_feed()
+    only["markets"] = only["markets"][:1]
+    d = _list(monkeypatch, only)
+    assert d["markets"][0]["vs"]["from"] == "title" and d["spot"]["price"] == 113420.0 and [r[0] for r in reads] == ["spot"]
+    # The hot rail reads the same rows the same way.
+    feed = _m15_feed()
+    for m in feed["markets"]:
+        m["h"] = [0.4, 0.5]
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
+    hot = server.explore_hot(server.Ctx(FakeConn(), {"id": 1}, (), {}, {}, None))
+    assert hot["markets"][0]["vs"] == {"side": "below", "diff": -92.08, "pct": -0.081, "from": "title"}
+
+
+@pytest.mark.parametrize("over", [{"su": ""}, {"su": "Up or down"}, {"su": "Target Price: $0"}, {"su": "Target Price: TBD"}])
+def test_a_fifteen_minute_row_without_a_target_in_its_name_still_has_no_distance(monkeypatch, over):
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0})
+    assert _list(monkeypatch, _m15_feed(**over))["markets"][0].get("vs") is None
+
+
+def test_title_strike_reads_the_target_as_the_market_page_does():
+    assert btc_spot.title_strike("Target Price: $113,512.08", "BTC price up in next 15 mins?") == {
+        "kind": "line", "value": 113512.08, "lo": None, "hi": None, "inclusive": False, "from": "title"}
+    assert btc_spot.title_strike("", "BTC up? target price $98000")["value"] == 98000.0  # the title, when the subtitle has none
+    assert btc_spot.title_strike(None, "") is None and btc_spot.title_strike("Target Price: $0.00") is None
+    # The very pattern the market page reads with, in both themes, so a row and its page can't disagree.
+    for bundle in ("app.js", "app.meridian.js"):
+        src = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / bundle).read_text()
+        js = re.search(r"const TARGET_IN = /(.+)/i;", src).group(1)
+        assert js == btc_spot._TARGET_IN.pattern and btc_spot._TARGET_IN.flags & re.I, bundle

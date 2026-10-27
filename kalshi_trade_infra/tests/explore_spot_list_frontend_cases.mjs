@@ -45,6 +45,30 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     f.clearTimers();
   });
 
+  // A 15-minute window's market page reads "Target Price: $113,512.08" from the contract's name when no strike is
+  // stored, but its Explore row showed no distance. The server now measures the row from that target and says so
+  // (`vs.from`); the row names it "target price", with the market page's own words on hover, never "strike".
+  test(`${name}: a 15-minute row measures from the target price in its title, named as its market page names it`, async () => {
+    const m15 = row('KXBTC15M-26OCT271145-45', {ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,512.08', vs: {side: 'below', diff: -92.08, pct: -0.081, from: 'title'}});
+    const {f, rows} = await list({markets: [m15, ROWS[0]], spot: SPOT});
+    const spot = rows.map((r) => r.querySelector('.xspot'));
+    assert.equal(spot[0].textContent.replace(/\u00a0/g, ' '), 'Spot vs target price −$92 · 0.08%');
+    assert.equal(spot[0].getAttribute('title'), 'Target price from the contract’s title, as on its market page');
+    assert.match(rows[0].querySelector('td.name').textContent, /Target Price: \$113,512\.08/, 'the target it measures from shows in the row');
+    assert.equal(spot[1].textContent.replace(/\u00a0/g, ' '), 'Spot vs strike +$420 · 0.4%');
+    assert.equal(spot[1].getAttribute('title'), null);
+    f.clearTimers();
+    const at = await list({markets: [{...m15, vs: {side: 'at', diff: 0, pct: 0, from: 'title'}}], spot: SPOT});
+    assert.equal(at.rows[0].querySelector('.xspot').textContent, 'Spot vs target price at the target price');
+    at.f.clearTimers();
+    // The hot rail reads it the same way.
+    const {f: g, el} = await rail({markets: [{...m15, h: [.4, .5]}], spot: SPOT});
+    assert.match(el.querySelector('.hot-when').textContent, /Spot vs target price −\$92 ·\s0\.08%$/);
+    const label = el.querySelector('.hot-row').getAttribute('aria-label');
+    if (label) assert.match(label, /Spot vs target price −\$92/);
+    g.clearTimers();
+  });
+
   test(`${name}: an old, missing or failed spot leaves the figures out and says why in one line above the list`, async () => {
     const strip = (ms) => ms.map(({vs, ...m}) => m);  // the server sends no `vs` then
     for (const [spot, words] of [[{...SPOT, age_s: 840, stale: true}, 'Bitcoin’s spot feed is 14 min old, so distances to the strike are left out until it catches up.'],
