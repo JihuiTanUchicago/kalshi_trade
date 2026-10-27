@@ -9,9 +9,9 @@ from app.web.routes import research as research_routes
 
 
 def test_a_floor_session_is_titled_by_what_it_set_out_to_do():
-    assert views.session_title(worker.RESEARCH_FLOOR_IDEA, "btc15m") == "New idea picked by the autopilot for Bitcoin 15-minute"
+    assert views.session_title(worker.RESEARCH_FLOOR_IDEA, "btc15m") == "New idea picked by the autopilot for Bitcoin up or down in 15 minutes"
     assert views.session_title("  " + worker.RESEARCH_FLOOR_IDEA + "\n", "btc_daily") == \
-        "New idea picked by the autopilot for Bitcoin daily close, 5pm EDT"
+        "New idea picked by the autopilot for Bitcoin above $X at 5pm ET"
     # Before the agent picked a market, and on a market no longer listed.
     assert views.session_title(worker.RESEARCH_FLOOR_IDEA, None).endswith("for the market it picks")
     assert views.session_title(worker.RESEARCH_FLOOR_IDEA, "gone_market").endswith("for the market it picks")
@@ -37,7 +37,7 @@ def test_the_list_and_the_run_page_carry_the_title_and_leave_the_prompt(monkeypa
     monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: rows)
     monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid: {"tried": 0, "passed": 0})
     out = {r["id"]: r for r in server.list_runs(_ctx())["runs"]}
-    assert out[2]["title"] == "New idea picked by the autopilot for Bitcoin 15-minute"
+    assert out[2]["title"] == "New idea picked by the autopilot for Bitcoin up or down in 15 minutes"
     assert out[2]["prompt"] == worker.RESEARCH_FLOOR_IDEA
     assert out[1]["title"] is None
 
@@ -48,7 +48,7 @@ def test_the_list_and_the_run_page_carry_the_title_and_leave_the_prompt(monkeypa
     ctx = _ctx()
     ctx.query["id"] = "2"
     monkeypatch.setattr(research_routes, "_int_param", lambda c: 2)
-    assert server.get_run(ctx)["run"]["title"] == "New idea picked by the autopilot for Bitcoin 15-minute"
+    assert server.get_run(ctx)["run"]["title"] == "New idea picked by the autopilot for Bitcoin up or down in 15 minutes"
 
 
 def test_the_billing_line_names_a_floor_session_the_same_way(monkeypatch):
@@ -66,4 +66,4 @@ def test_the_billing_line_names_a_floor_session_the_same_way(monkeypatch):
     monkeypatch.setattr(server.repo, "credit_totals", lambda *a: {"usage": {"all": -1.92, "n": 1, "since": -1.92, "n_since": 1}})
     monkeypatch.setattr(server.repo, "credit_statement", lambda *a: [row])
     session = server.billing_state(_ctx())["ledger"][0]["session"]
-    assert session["title"] == "New idea picked by the autopilot for Bitcoin 15-minute"
+    assert session["title"] == "New idea picked by the autopilot for Bitcoin up or down in 15 minutes"
