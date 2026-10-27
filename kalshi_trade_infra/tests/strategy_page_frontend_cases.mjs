@@ -352,6 +352,28 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch((await page(0)).html, /instant fill/);
   });
 
+  test(`${name}: the backtest pace line counts realistic paper fills only, as the instant-fill note above it says`, async () => {
+    // Walk 2026-10-27: with no backtest_checks from the server, "At the backtest's unseen-data pace, 3 trades would have
+    // made …" counted the instant fill the note above it says the track record (and the count toward live) leaves out.
+    // Each paper deployment's `instant_fills` comes off its own closed trades; the backtest is +$12 over 6 trades at a
+    // $5 stake, $2 a trade, scaled to each deployment's stake.
+    const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 3.8, closed_trades: 2, open_positions: 0, instant_fills: 1, stake: 5,
+      created_at: '2026-10-27T08:00:00Z'}, {id: 5, mode: 'paper', status: 'paused', realized_pnl: 1, closed_trades: 1, open_positions: 0, stake: 10,
+      created_at: '2026-10-27T08:00:00Z'}];
+    const pace = async (deps, instant) => {
+      const f = await open({status: 'passed', stake: 5, deployments: deps,
+        book_totals: {paper: {pnl: 4.8, trades: deps.reduce((a, d) => a + d.closed_trades, 0), open: 0, ...(instant ? {instant_fills: instant} : {})}}});
+      const el = f.root.querySelector('.real-pace');
+      return el ? el.textContent : null;
+    };
+    // 1 realistic trade at $5 (+$2) and 1 at $10 (+$4): 2 trades, +$6.00; the instant fill is left out.
+    assert.equal(await pace(deployments, 1), "At the backtest's unseen-data pace, 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
+    // None instant: the line is as before, over all 3 trades.
+    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest's unseen-data pace, 3 trades would have made +$8.00 · too few trades to judge yet");
+    // Every one an instant fill: no realistic trade to hold against the backtest, so no line.
+    assert.equal(await pace([{...deployments[0], instant_fills: 2}], 2), null);
+  });
+
   test(`${name}: since deploying keeps "deployed" with its date on one line`, async () => {
     // Walk 2026-10-27: at 390px in Meridian a book's line ended "· deployed" and "Oct 18" began the next line.
     const deployments = [{id: 3, mode: 'paper', status: 'running', realized_pnl: 1.3, closed_trades: 2, open_positions: 0, created_at: '2026-10-18T08:00:00Z'}];
