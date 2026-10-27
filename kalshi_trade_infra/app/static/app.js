@@ -1251,15 +1251,27 @@
   // else null. cashRead: that follow-up for one book (live | demo), asked on its own so neither waits on the
   // other's Kalshi read; it resolves to `b` with its figure, or marked failed (its last figure kept).
   const CASH_FAILED = 'Tau couldn\u2019t check your Kalshi cash just now. Reload in a minute to try again.';
+  // cashNow: a pending cash whose last figure was read under CASH_RECENT_MS ago (the server's memo only just ran
+  // out, its follow-up already asked) is drawn as current, with its read time, not as "checking": once a minute
+  // an open page flicked to "Read 1m ago; checking\u2026" and back. Only an older figure shows its age that way.
+  // The answer itself keeps its pending mark, so the follow-up is still asked. Draw from cashNow(b), ask from b.
+  const CASH_RECENT_MS = 120000;
+  const cashNow = (b) => {
+    if (!b || !b.pending || b.last_balance == null) return b;
+    if (!(Date.now() - new Date(b.last_balance_at).getTime() < CASH_RECENT_MS)) return b;
+    const { pending, last_balance, last_balance_at, ...kept } = b;
+    return { ...kept, balance: last_balance, balance_at: last_balance_at };
+  };
   const cashFig = (b) => b.pending ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}; checking Kalshi for the latest\u2026`] : ['Checking\u2026', 'Asking Kalshi for your real cash now.'])
     : b.failed ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}. ${CASH_FAILED}`] : ['Unavailable', CASH_FAILED]) : null;
   const cashRead = (b, book) => api('/api/funds/cash?book=' + book).then((c) => {
     const { pending, last_balance, last_balance_at, ...kept } = b;
     return { ...kept, connected: c.connected !== false, balance: c.balance == null ? null : c.balance, balance_at: c.balance_at };
   }, () => ({ ...b, pending: false, failed: true }));
-  // The demo cash a pending demo-funds check waits on (the dashboard's demo health, the autopilot's idle line):
-  // one ask at a time, shared, so the two read it once (on a first load, the read boot.js started). Resolves
-  // once it is back, read or not; the check is then read again, from the server's memo.
+  // The demo cash a pending demo-funds check waits on (the dashboard's demo health, the autopilot's idle line,
+  // the Deploy board's and the strategy page's demo line): one ask at a time, shared, so they read it once (on a
+  // first load, the read boot.js started). Resolves once it is back, read or not; the check is then read again,
+  // from the server's memo.
   let demoAsk = null;
   const demoCashRead = () => demoAsk || (demoAsk = api('/api/funds/cash?book=demo', undefined, { keep: true })
     .catch(() => {}).then(() => { demoAsk = null; }));
@@ -2186,7 +2198,9 @@
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       // A live cash still being checked reads Checking\u2026 (or its last figure, with its age), never $0 (cashFig).
-      const liveCf = d.live.connected && cashFig(d.live);
+      // Drawn from cashNow: a pending cash read under two minutes ago shows as current while its follow-up is out.
+      const lv = cashNow(d.live);
+      const liveCf = lv.connected && cashFig(lv);
       // While autopilot is off its card's "Turn on autopilot" is the one primary button on the page.
       const board = `
         <h1 class="vh">Dashboard</h1>
@@ -2194,7 +2208,7 @@
         ${apFirst ? '' : sinceStrip(d, '#dash-deps')}
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-deps') : ''}
         <dl class="figures measure">
-          ${fig('<span class="mk live">Real</span> Kalshi cash', d.live.connected ? (liveCf ? liveCf[0] : d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (liveCf ? [liveCf[1], mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : d.live.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(d.live, '')].filter(Boolean).join(' \u00b7\u00a0') : (d.live.balance_at ? `Read from Kalshi ${when(d.live.balance_at)} \u00b7\u00a0` : '') + mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', d.live) })}
+          ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : (lv.balance_at ? `Read from Kalshi ${when(lv.balance_at)} \u00b7\u00a0` : '') + mSub(lv, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', lv) })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${PAPER_NET}${glo('paperfills')}${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
@@ -2287,7 +2301,10 @@
     // knows (or if the read fails) the board keeps that button.
     let passedN = null, askedPassed = false;
     let kept = null;  // the last full answer, whose version the 10s poll sends back (pollAnswer)
-    const loadBoard = async () => {
+    const gen = S.gen;
+    // `afterDemo`: this read follows the demo cash read a pending demo check asked for, so a check still
+    // pending then waits for the poll (one re-read, never a loop).
+    const loadBoard = async (cfg, afterDemo) => {
       const got = await api('/api/deployments' + (kept && kept.v ? '?v=' + encodeURIComponent(kept.v) : ''));
       const d = withUnrealized(followLive(pollAnswer(kept, got)));
       if (!got.same) kept = got;
@@ -2339,6 +2356,13 @@
       paint(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
         : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.' : 'Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>'}</div>`);
       paint(root.querySelector('#demo-health'), d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '');
+      // The board's read never waits on Kalshi: a demo check that needs the demo cash while the server's memo
+      // isn't kept comes demo_health_pending (a line from a figure read under two minutes ago stands meanwhile).
+      // The page asks the demo cash (shared with the dashboard's and the autopilot's asks; on a first load, the
+      // read boot.js started), then reads the board again, once.
+      if (!got.same && got.demo_health_pending && !afterDemo) {
+        demoCashRead().then(() => { if (gen === S.gen && kept === got) loadBoard(undefined, true).catch(() => {}); });
+      }
       bindDeploymentActions(root.querySelector('#deps'), loadBoard);
       const depMarket = (p) => (d.deployments.find((x) => x.id === p.deployment_id) || {}).market;
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unreal.</th><th class="num">Settles</th></tr></thead><tbody>
@@ -3790,8 +3814,8 @@
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
-    busy, cardFormFail, cashFig, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
-    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoHealthLine,
+    busy, cardFormFail, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
+    CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoCashRead, demoHealthLine,
     demoSpan, DEP_DONE, depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,

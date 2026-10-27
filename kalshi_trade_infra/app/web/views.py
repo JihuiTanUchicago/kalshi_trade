@@ -140,7 +140,18 @@ _DEMO_KEY_PAUSE = "demo (sandbox) key"
 DEMO_HEALTH_PENDING = "pending"
 
 
-def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None, ask_kalshi: bool = True):
+# A demo cash memo past its window but read less than this long ago (seconds) still answers a page's demo check,
+# marked pending so the page asks /api/funds/cash?book=demo for a fresh figure meanwhile: the poll that finds the
+# memo only just run out keeps the line it showed a moment ago, instead of dropping it until the follow-up is in.
+# The pages draw a pending Kalshi cash the same way while its last figure is under this age (cashFig, both bundles).
+RECENT_ENOUGH = 120.0
+
+
+class _NoCash(Exception):
+    """The demo cash a check needs isn't in the memo (or is too old to stand in), and Kalshi isn't asked."""
+
+
+def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None, ask_kalshi: bool = False):
     """Why the demo book can't trade, as one plain line and the one thing to do, or None when nothing
     known stops it. A demo deployment looks healthy (running, capital, a P&L) while every order it
     sends is refused, so the pages that show demo say this instead:
@@ -148,10 +159,50 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None,
       - demo_funds: the Kalshi demo account holds less than one stake, so Kalshi refuses its orders.
     `deps` are deployment rows (with spec). `stake` asks about a strategy that could go on demo but
     isn't there yet (the strategy page's next rung), so funds are checked even with nothing running.
-    The balance read is the cached demo GET (_demo_cash: demo_twins.balance_cached, one at a time per user);
-    unknown is never a problem. With ask_kalshi False (the dashboard's and the autopilot status' reads) it
-    never waits on Kalshi: when that read would ask, it answers DEMO_HEALTH_PENDING, and the page asks
-    /api/funds/cash?book=demo, then again once the demo cash is read."""
+    Unknown cash is never a problem. With ask_kalshi False (the default) it never waits on Kalshi: when the
+    demo cash memo isn't kept it answers DEMO_HEALTH_PENDING. ask_kalshi True reads the cached demo GET
+    (_demo_cash: demo_twins.balance_cached, one at a time per user); no page read asks so. The pages read
+    demo_health_memo, which also keeps a line from a figure read under RECENT_ENOUGH ago. Display only:
+    nothing that gates or sizes an order reads this."""
+    if ask_kalshi:
+        return _health_from(cur, uid, deps, stake, lambda: _demo_cash(cur, uid))
+    health, pending = demo_health_memo(cur, uid, deps, stake, recent=0.0)
+    return DEMO_HEALTH_PENDING if pending else health
+
+
+def demo_health_memo(cur, uid: int, deps: List[Dict], stake: Optional[float] = None,
+                     recent: float = RECENT_ENOUGH) -> Tuple[Optional[Dict], bool]:
+    """_demo_health from the demo cash memo alone, never Kalshi, as every page read takes it (the dashboard,
+    the autopilot status, the Deploy board and the strategy page, whoever asks: the shell, a visit, a poll):
+    (health, pending). `pending`: the check needs the demo cash and the memo isn't kept, so the page asks
+    /api/funds/cash?book=demo and reads again, once. Meanwhile a figure read under `recent` seconds ago
+    answers the check, so a line shown a moment ago stays up; with none, or an older one, health is None
+    (never a "Demo isn't trading" from an unknown figure) until the follow-up is in. Display only."""
+    from app.trading import demo_twins
+
+    pending = False
+
+    def cash() -> Optional[float]:
+        nonlocal pending
+        if demo_twins.balance_kept(uid):
+            hit = kalshi_account.memo_peek(demo_twins._BALANCE_CACHE, uid)
+            if hit is not None:
+                return hit[0]
+        pending = True
+        last = demo_twins._BALANCE_CACHE.get(uid)
+        if last and time.monotonic() - last[0] < recent:
+            return last[1]
+        raise _NoCash
+
+    try:
+        health = _health_from(cur, uid, deps, stake, cash)
+    except _NoCash:
+        return None, True
+    return health, pending
+
+
+def _health_from(cur, uid: int, deps: List[Dict], stake: Optional[float], cash_read) -> Optional[Dict]:
+    """_demo_health's line, with the demo cash from cash_read(), asked only when a stake needs it."""
     from app.trading import demo_twins
 
     demo = [d for d in deps if d["mode"] == "demo"]
@@ -171,13 +222,7 @@ def _demo_health(cur, uid: int, deps: List[Dict], stake: Optional[float] = None,
         stakes.append(float(stake))
     if not stakes:
         return None
-    if ask_kalshi:
-        cash = _demo_cash(cur, uid)
-    else:  # the memo alone, as Funds' shell read takes it
-        hit = kalshi_account.memo_peek(demo_twins._BALANCE_CACHE, uid) if demo_twins.balance_kept(uid) else None
-        if hit is None:
-            return DEMO_HEALTH_PENDING
-        cash = hit[0]
+    cash = cash_read()
     least = min(stakes)
     if cash is None or cash >= least:
         return None

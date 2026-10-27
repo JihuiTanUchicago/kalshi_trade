@@ -17,8 +17,8 @@ from app.web.routes.deployments import _paper_strategy_ids
 from app.web.routes.funds import kalshi_cash
 from app.web.routes.strategies import _later_verdicts, _with_marks, _with_why
 from app.web.views import (
-    DEMO_HEALTH_PENDING,
     _demo_health,
+    demo_health_memo,
     _demo_key_back,
     _deployment_out,
     _open_book,
@@ -98,11 +98,13 @@ def dashboard(ctx: Ctx, ask_kalshi: bool = False):
     # and the displayed realized P&L is net of the reload baseline (so a reload reads as $X flat).
     demo = _mode_bucket(cur, ctx.uid, "demo", open_pos, deps, day, realized["demo"], closed)
     de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
-    health = _demo_health(cur, ctx.uid, deps, ask_kalshi=ask_kalshi)  # capital and P&L look fine while Kalshi refuses every order
+    # Capital and P&L look fine while Kalshi refuses every order. From the demo cash memo alone: pending when
+    # it isn't kept (a line from a figure read under two minutes ago meanwhile, so it doesn't drop for a poll).
+    health, health_pending = ((_demo_health(cur, ctx.uid, deps, ask_kalshi=True), False) if ask_kalshi
+                              else demo_health_memo(cur, ctx.uid, deps))
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
-                total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"],
-                health=None if health == DEMO_HEALTH_PENDING else health)
-    if health == DEMO_HEALTH_PENDING:
+                total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"], health=health)
+    if health_pending:
         demo["health_pending"] = True
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
     live.update(kalshi_cash(cur, ctx.uid, ask_kalshi))

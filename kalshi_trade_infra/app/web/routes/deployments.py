@@ -17,7 +17,7 @@ from app.web.caches import _ROADS, _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.strategies import _backtest_checks, _with_marks, _with_why
 from app.web.settings import MAX_ACTIVE_DEPLOYMENTS
-from app.web.views import _demo_health, _demo_key_back, _deployment_out, _paper_books, _realized_by_book
+from app.web.views import _demo_key_back, _deployment_out, _paper_books, _realized_by_book, demo_health_memo
 
 
 def _paper_strategy_ids(deps: List[Dict]) -> set:
@@ -38,6 +38,10 @@ def list_deployments(ctx: Ctx):
     books = _paper_books(deps)
     # The removed deployments it doesn't list, so its Realized can say what it leaves out (display only).
     removed = book_memo.removed_deployments(memo)
+    # Why the demo book can't trade, from the demo cash memo alone: this read (the shell's, a visit's, the 10s
+    # poll's) never waits on Kalshi. A check that needs the demo cash while the memo isn't kept comes
+    # demo_health_pending, and the page asks /api/funds/cash?book=demo, then reads the board again once.
+    health, health_pending = demo_health_memo(ctx.cur, ctx.uid, deps)
     # The board polls every 10s with its last answer's version (?v=): services.page_poll.
     return page_poll.answer({
         # Each row carries its own book's backtest comparison (same strategy, same mode), and a paper
@@ -48,7 +52,8 @@ def list_deployments(ctx: Ctx):
                          "backtest_check": next((c for c in checks.get(d["strategy_id"], []) if c["mode"] == d["mode"]), None),
                          "road": roads.get(d["strategy_id"]) if d["mode"] == "paper" else None}
                         for d in deps],
-        "demo_health": _demo_health(ctx.cur, ctx.uid, deps),
+        "demo_health": health,
+        **({"demo_health_pending": True} if health_pending else {}),
         # Each book's realized P&L: the listed deployments', the removed ones', and (paper, live) both,
         # which is the dashboard's all-time figure. One book at a time, never summed together.
         "realized_by_book": _realized_by_book(deps, removed),

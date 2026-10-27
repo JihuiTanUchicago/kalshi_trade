@@ -250,10 +250,12 @@ def test_a_polled_money_page_is_same_only_while_every_figure_it_shows_is_unchang
         ("demo capital reloaded", ("dashboard",), lambda: repo.reload_demo(cur, uid, 400.0)),
         ("Kalshi cash read", ("dashboard",), lambda: LIVE_CASH.__setitem__(0, 312.5)),
         # The poll reads the memo alone: once it runs out the cash is pending (the page asks /api/funds/cash),
-        # and the follow-up's read, even of the same figure, is a new read time. Each moves the version.
-        ("Kalshi cash memo ran out", ("dashboard",), lambda: KEPT.__setitem__(0, False)),
-        ("Kalshi cash read again, same figure", ("dashboard",), lambda: (KEPT.__setitem__(0, True),
-                                                                          READ_AT.__setitem__(0, NOW + timedelta(seconds=61)))),
+        # and the follow-up's read, even of the same figure, is a new read time. Each moves the version. The
+        # Deploy board's demo check reads the demo cash memo alone too: pending once it runs out, and not
+        # once it is read again, so both move.
+        ("Kalshi cash memo ran out", both, lambda: KEPT.__setitem__(0, False)),
+        ("Kalshi cash read again, same figure", both, lambda: (KEPT.__setitem__(0, True),
+                                                               READ_AT.__setitem__(0, NOW + timedelta(seconds=61)))),
         ("demo cash below a stake", both, lambda: DEMO_CASH.__setitem__(0, 1.0)),
         ("paper account reset", both, lambda: (repo.close_position(cur, opens["paper"], 0.5, 0.02, 0.3, "take_profit"),
                                                          repo.reset_paper_account(cur, uid, 1000.0))),

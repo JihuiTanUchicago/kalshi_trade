@@ -117,7 +117,7 @@ def test_the_deploy_board_sends_each_books_removed_total_and_its_copy_rows(monke
     monkeypatch.setattr(dep_routes.book_memo, "removed_deployments", lambda memo: removed)
     monkeypatch.setattr(dep_routes, "_backtest_checks", lambda *a: {})
     monkeypatch.setattr(dep_routes, "_deploy_roads", lambda *a: {})
-    monkeypatch.setattr(dep_routes, "_demo_health", lambda *a: None)
+    monkeypatch.setattr(dep_routes, "demo_health_memo", lambda *a, **k: (None, False))
     monkeypatch.setattr(dep_routes.repo, "user_positions", lambda *a: [])
     monkeypatch.setattr(dep_routes.page_poll, "answer", lambda body, v: body)
     out = dep_routes.list_deployments(SimpleNamespace(cur=None, uid=7, query={}))

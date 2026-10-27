@@ -64,7 +64,7 @@ def _page(monkeypatch, row, exp, event=None, deps=(), candidate=True, chat=()):
     monkeypatch.setattr(server.repo, "forward_verdicts", lambda cur, run_id: reads.append(run_id) or ({event["title"]: event} if event else {}))
     monkeypatch.setattr(server.repo, "chat_lines_like", lambda cur, uid, role, like, limit=50: reads.append(("chat", role)) or list(chat))
     monkeypatch.setattr(strategy_routes.research_repo, "strategy_titles", lambda cur, uid, eids: {e: titles[e] for e in eids if e in titles})
-    monkeypatch.setattr(strategy_routes, "_demo_health", lambda *a, **k: None)
+    monkeypatch.setattr(strategy_routes, "demo_health_memo", lambda *a, **k: (None, False))
     for name in ("_demo_key_back", "_paper_books"):
         monkeypatch.setattr(strategy_routes, name, lambda *a, **k: None)
     monkeypatch.setattr(strategy_routes, "_deployment_out", lambda d, *a, **k: d)

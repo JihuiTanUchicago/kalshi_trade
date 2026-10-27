@@ -20,13 +20,13 @@ from app.web.caches import _forget_own_change
 from app.web.http import ApiError, Ctx, _int_param, _num
 from app.web.views import (
     _deployment_out,
-    _demo_health,
     _demo_key_back,
     _gate_lines,
     _gate_tints,
     _paper_books,
     _past_deployment_out,
     _spec_sizing,
+    demo_health_memo,
 )
 from trading_core.domain.money import cents
 
@@ -555,6 +555,14 @@ def get_strategy(ctx: Ctx):
     held_back = _gate_lines(_held_back_lines, ctx.cur, ctx.uid, [(s, exp)]) if verdict == HELD_BACK else {}
     if verdict:
         out["verdict"] = verdict
+    # The ladder's demo rung: why its demo book can't trade, or (not on demo yet) what demo needs. From the
+    # demo cash memo alone, never Kalshi: pending when it isn't kept, and the page asks
+    # /api/funds/cash?book=demo, then reads the strategy again once (a line from a figure read under two
+    # minutes ago stands meanwhile).
+    demo_health, demo_pending = (None, False) if specmod.has_perpetual_market(s["spec"], s.get("market")) else \
+        demo_health_memo(ctx.cur, ctx.uid, deps, stake=(s["spec"].get("sizing") or {}).get("stake"))
+    if demo_pending:
+        out["demo_health_pending"] = True
     out.update(
         spec=s["spec"], rules=specmod.describe(s["spec"]), gates=res.get("gates"), dataset=res.get("dataset"),
         recent_trades=res.get("recent_trades"),
@@ -578,9 +586,7 @@ def get_strategy(ctx: Ctx):
         } for p in held],
         # The Remove button's reason while any deployment of it still holds a position (delete_strategy's guard).
         delete_block=_delete_block(held),
-        # The ladder's demo rung: why its demo book can't trade, or (not on demo yet) what demo needs.
-        demo_health=None if specmod.has_perpetual_market(s["spec"], s.get("market")) else
-        _demo_health(ctx.cur, ctx.uid, deps, stake=(s["spec"].get("sizing") or {}).get("stake")),
+        demo_health=demo_health,
         # Each book's realized per-trade P&L against the backtest's, one line per book (display only).
         # The page shows them under its current deployments, so with none there is nothing to read.
         backtest_checks=_backtest_checks(ctx.cur, ctx.uid, {s["id"]: s}).get(s["id"], []) if deps else [],

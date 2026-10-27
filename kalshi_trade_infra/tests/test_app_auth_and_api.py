@@ -508,7 +508,7 @@ def test_strategy_detail_answers_on_a_stored_spec_with_no_model_or_sizing(monkey
            "status": "passed", "created_at": None, "result": {}, "direction": "momentum", "experiment_id": None,
            "spec": {"side": "yes", "entry": {"min_edge": 0.05}}}
     monkeypatch.setattr(strategy_routes, "_experiment_block", lambda *a: None)
-    monkeypatch.setattr(strategy_routes, "_demo_health", lambda *a, **k: None)
+    monkeypatch.setattr(strategy_routes, "demo_health_memo", lambda *a, **k: (None, False))
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
     monkeypatch.setattr(server.repo, "removed_deployments", lambda *a, **k: [])

@@ -467,7 +467,7 @@ def test_the_strategy_page_lists_what_it_missed_and_a_bad_record_never_fails_it(
     monkeypatch.setattr(server.repo, "positions_for_strategy", lambda *a: [])
     monkeypatch.setattr(server.repo, "removed_deployments", lambda *a, **k: [])
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: dict(row))
-    monkeypatch.setattr(strategy_routes, "_demo_health", lambda *a, **k: None)
+    monkeypatch.setattr(strategy_routes, "demo_health_memo", lambda *a, **k: (None, False))
     out = server.get_strategy(_ctx(("4",)))
     why = out["why_failed"]
     assert [ln["gate"] for ln in why] == ["sample_size"] and re.match(r"Needs about 19 more trades", why[0]["next"])
