@@ -1512,6 +1512,9 @@
   // A deployment as a customer knows it: by its book and state, never by its row id.
   const BOOK_NAME = { live: 'Live', demo: 'Demo', paper: 'Paper' };
   const bookName = (d) => BOOK_NAME[d.mode] || esc(d.mode);
+  // Under "Deploy on paper" while a paper deployment of it is still on (running or paused).
+  const paperAgain = (deps) => deps.some((d) => d.mode === 'paper' && d.status !== 'stopped')
+    ? '<p class="hint paper-again">It already runs on paper. Deploying it again starts a second copy of the same rules, which doubles its paper positions.</p>' : '';
   // The example session (and its strategies) every account is seeded with: the server flags it
   // `example`, leaves it out of every headline count, and the lists say the app ran it for free.
   const EXAMPLE_NOTE = 'An example Tau ran for you when you signed up. It cost you nothing.';
@@ -3516,7 +3519,7 @@
     halfUp, holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark,
     marketKalshiUrl, marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money,
     notice, num, overDays, paced, paceDay, paceTooSoon, paceWords, paint, paintDashAp, painted, paintRows,
-    PAPER_NET, paperCount, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
+    paperAgain, PAPER_NET, paperCount, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
     runTag, runWaitLine, runwayLabel, S, serial, sessionTitle, settleAt, shell, sinceMin, smooth,
     strategySlip, strategyTable, stripeFail, syncMeBilling, tone, topupCharge, tradePrice, trDay, tzName,

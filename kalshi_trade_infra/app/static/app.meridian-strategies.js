@@ -8,7 +8,7 @@ window.TauPage('strategies', (T) => {
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractMarket, demoHealthLine, DEP_DONE,
     depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
     gl, glo, go, ICON, isPerpetual, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
-    money, notice, num, overDays, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
+    money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, serial, settleAt, shell, smooth, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
@@ -669,7 +669,7 @@ window.TauPage('strategies', (T) => {
     const apLine = apPaper ? `<p class="hint ap-paper" data-ap-next${apOn ? '' : ' hidden'}>The autopilot is putting this on paper at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows it once it’s there.</p>` : '';
     const quickHtml = quickPaper ? `<div class="strat-quick" id="strat-quick">${apLine}<button class="btn primary" id="dep-paper-quick"${apOff}>Deploy on paper</button><p class="hint"${apOff}>Paper trades with pretend money against live prices, so nothing real is at risk. Demo and live are in Deploy, further down.</p><div id="depflash-quick"></div></div>` : '';
     const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy, apPaper });
-    // Already on paper (running or paused): where to find it, in place of a second copy.
+    // Already on paper (running or paused): where to find it, beside the button and its second-copy warning.
     const paperHere = onPaper ? `<p class="hint on-paper">${onPaper.status === 'paused' ? 'Its paper deployment is paused. <a href="/deploy">Resume it on Deploy</a>.' : 'It runs on paper. <a href="/deploy">See it on Deploy</a>.'}</p>` : '';
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
     root.querySelector('#main').innerHTML = `
@@ -718,7 +718,7 @@ window.TauPage('strategies', (T) => {
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${missed && s.status === 'passed' ? `<div class="notice bad">${ICON.warn}<span>${heldBack(missed) ? 'Held back' : 'Missed the final test'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict). It wasn’t cleared to trade, so it can’t go live, and putting it on paper is your call.</span></div>` : ''}
                 ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
-                ${paperHere || `${apLine}<button class="btn${activeDeps.length || !passedAll ? '' : ' primary'}" id="dep-paper"${apOff}>Deploy on paper</button>`}
+                ${apLine}<button class="btn${activeDeps.length || !passedAll ? '' : ' primary'}" id="dep-paper"${apOff}>Deploy on paper</button>${paperAgain(activeDeps)}${paperHere}
                 <details class="deployment-environments"><summary>Demo &amp; live</summary><div class="deployment-environments-body">
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>
                 ${demoWhy ? `<p class="hint">${demoWhy}</p>` : '<p class="hint">Trades Kalshi’s demo exchange with your own demo key — real order-book fills, no real money.</p>'}

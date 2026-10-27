@@ -69,6 +69,8 @@ def test_a_held_back_pass_names_the_strategy_it_repeats_from_its_runs_event(conn
     out = page(held)
     assert out["experiment"]["promoted"] is False
     assert [(ln["gate"], ln["label"]) for ln in out["why_failed"]] == [("diversification", "Too similar to “Late fade”")]
-    assert str(peer_eid) not in json.dumps(out["why_failed"])
+    # The peer goes by its title, never its experiment id (the reason's "deployed experiment N").
+    assert out["why_failed"][0]["measured"] == "a 0.93 correlation of daily results with “Late fade”"
+    assert "experiment" not in json.dumps(out["why_failed"])
     true_pass = page(peer)
     assert true_pass["experiment"]["promoted"] is True and true_pass["why_failed"] == []

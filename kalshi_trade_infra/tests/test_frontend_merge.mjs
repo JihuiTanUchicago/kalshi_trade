@@ -2611,14 +2611,15 @@ test('a passed strategy not yet on paper puts Deploy on paper up top as well, th
     await g.viewStrategy(42); await flush();
     assert.equal(g.root.querySelector('#dep-paper-quick'), null); assert.ok(g.root.querySelector('#dep-paper'));
   }
-  // Already on paper: no Deploy on paper at all (a second copy doubles its positions), a link to it instead.
+  // Already on paper: only the panel's own button, with its second-copy warning and a link to the copy it has.
   const on = strategyFrontend(detailStrategy({deployments: [{id: 3, mode: 'paper', status: 'running'}]}), () => response({deployments: [], open_positions: []}));
   await on.viewStrategy(42); await flush();
-  assert.equal(on.root.querySelector('#dep-paper-quick'), null); assert.equal(on.root.querySelector('#dep-paper'), null);
+  assert.equal(on.root.querySelector('#dep-paper-quick'), null); assert.ok(on.root.querySelector('#dep-paper'));
+  assert.match(on.root.querySelector('#main').innerHTML, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
   assert.match(on.root.querySelector('#main').innerHTML, /<p class="hint on-paper">It runs on paper\. <a href="\/deploy">See it on Deploy<\/a>\.<\/p>/);
 });
 
-test('strategy page: unseen figures say their span, deployments go by book not row id, and a paper copy links to itself', async () => {
+test('strategy page: unseen figures say their span, deployments go by book not row id, and a second paper copy is flagged', async () => {
   const detail = detailStrategy({out_of_sample: {...metrics(12), days: 15.2}, capital: 100,
     recent_trades: [{opened: '2026-10-24T10:15Z', ticker: 'KXBTC15M-26OCT25-T67000', side: 'yes', qty: 5, entry: .42, exit: 1, pnl: 2.8, reason: 'settled'}],
     deployments: [{id: 812, mode: 'demo', status: 'running'}, {id: 811, mode: 'paper', status: 'paused'}]});
@@ -2630,9 +2631,10 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   assert.match(html, /Already deployed: Demo \(running\), Paper \(paused\)\./);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
-  // Its paused paper deployment is found on Deploy, not deployed a second time.
+  assert.match(html, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
+  // Its paused paper deployment is also found on Deploy, beside the button.
   assert.match(html, /<p class="hint on-paper">Its paper deployment is paused\. <a href="\/deploy">Resume it on Deploy<\/a>\.<\/p>/);
-  assert.equal(f.root.querySelector('#dep-paper'), null);
+  assert.ok(f.root.querySelector('#dep-paper'));
   // The unseen trades scroll inside the paper's column and wrap, never running under the sidebar.
   assert.match(html, /<div class="sheet"><table class="table stack t-unseen">/);
   // An older result with no window length keeps its figure as it was; not on paper, no warning.
@@ -2640,7 +2642,7 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   await g.viewStrategy(42); await flush();
   assert.match(g.root.querySelector('#figs').innerHTML, /6 trades the agent never saw/);
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
-  assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /on-paper/);
+  assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again|on-paper/);
 });
 
 test('a strategy row renders its thesis markdown as the strategy page does, escaped', () => {
