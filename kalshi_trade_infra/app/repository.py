@@ -43,8 +43,8 @@ from app.adapters.db.agent_run_repository import (  # noqa: F401
     set_run_counts, set_run_market, update_run_progress, yield_run, count_own_research, RUNS_LISTED,
 )
 from app.adapters.db.strategy_repository import (  # noqa: F401
-    DEMO_DIRECTION, NOISE_STATUSES, count_strategies, delete_strategy, get_strategy,
-    insert_strategy, list_strategies, passed_since, set_strategy_outcome, share_strategy, strategies_passed_since,
+    DEMO_DIRECTION, NOISE_STATUSES, count_strategies, delete_strategy, get_strategy, insert_strategy,
+    list_strategies, passed_since, passed_strategies, set_strategy_outcome, share_strategy, strategies_passed_since,
     _strategy_filter_sql, strategy_records, _strategy_row,
 )
 from app.adapters.db.client_error_repository import (  # noqa: F401

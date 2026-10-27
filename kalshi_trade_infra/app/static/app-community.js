@@ -5,8 +5,8 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, boardTitle, busy, clock, esc, flash, ICON, loading,
-    mark, marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S,
-    shell, tone, trDay, usd, when
+    marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, shell,
+    statusMark, tone, trDay, usd, when
   } = T;
 
   // ---------- community ----------
@@ -21,7 +21,7 @@ window.TauPage('community', (T) => {
         <div class="snap-row"><span>Live (real money)</span><span>${snapPnl(snap.live_pnl, snap.live_trades)}</span></div></div>`;
     }
     if (snap.kind === 'strategy') {
-      const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${mark(snap.status)}${researchBadge(snap)}</div>
+      const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
         <div class="snap-meta">${esc(marketShort(snap.market))} ·\u00a0backtest on unseen data${overDays(snap.days)}: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? ' ·\u00a0' + realTrades(snap.trades) : ''}${snap.win_rate != null ? ' ·\u00a0' + pct(snap.win_rate, false) + ' win' : ''}</div>`;
       return owner ? `<div class="snap">${head}<div class="snap-note">Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
         : `<a class="snap" href="/strategies/${snap.id}">${head}</a>`;
@@ -141,7 +141,7 @@ window.TauPage('community', (T) => {
     api('/api/strategies').then((d) => {
       const sel = root.querySelector('#post-strat');
       d.strategies.filter((s) => s.status !== 'rejected' || s.title).slice(0, 50).forEach((s) => {
-        const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.title} (${STATUS_WORD[s.status] || s.status})`; sel.appendChild(o);
+        const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.title} (${STATUS_WORD[s.verdict] || STATUS_WORD[s.status] || s.status})`; sel.appendChild(o);
       });
     }).catch(() => {});
     const form = root.querySelector('#composer-post');
@@ -331,7 +331,9 @@ window.TauPage('community', (T) => {
       if ((art.querySelector('.comments') || {}).hidden) art.querySelector('[data-act="comments"]').click();
     }
   }
-  const STATUS_WORD = { passed: 'passed', failed: 'void', rejected: 'rejected' };
+  // The picker names a strategy as its row on Strategies stamps it: a pass a later check left uncleared
+  // (`verdict`) read "(passed)" here and Missed final test there.
+  const STATUS_WORD = { passed: 'passed', failed: 'void', rejected: 'rejected', missed_final: 'missed the final test', held_back: 'held back' };
 
   return {viewCommunity};
 });

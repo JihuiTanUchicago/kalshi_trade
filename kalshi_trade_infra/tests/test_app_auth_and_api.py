@@ -112,6 +112,9 @@ class FakeCur:
     def fetchone(self):
         return {"n": 0}
 
+    def fetchall(self):
+        return []
+
 
 class FakeConn:
     def cursor(self):
@@ -531,6 +534,61 @@ def test_strategies_figures_come_from_count_not_the_page(monkeypatch):
     assert out["matched"] == 600 and out["pages"] == 12
 
 
+def test_strategies_counts_a_pass_a_later_check_left_uncleared_apart(monkeypatch):
+    # A validation pass whose one-time holdout failed, or that the diversification check held back, keeps the
+    # status "passed": the chips read "Passed (3)" over rows stamped Missed final test and Held back. Every pass
+    # under the filters is judged (not just the page), and Passed / Not cleared list by that verdict.
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {
+        "passed": 3, "failed": 4, "total": 8, "deployed": 0, "examples": {"passed": 1}})
+    passes = [{"id": 1, "status": "passed"}, {"id": 2, "status": "passed"}, {"id": 3, "status": "passed"},
+              {"id": 9, "status": "passed", "direction": server.repo.DEMO_DIRECTION}]
+    seen, judged = [], []
+    monkeypatch.setattr(server.repo, "passed_strategies", lambda cur, uid, d, m, q, dep: [dict(p) for p in passes])
+    monkeypatch.setattr(strategy_routes, "_later_verdicts", lambda cur, uid, rows: judged.append(sorted(r["id"] for r in rows))
+                        or {i: v for i, v in ((2, ("missed_final", {})), (3, ("held_back", {})), (5, ("held_back", {})))
+                            if i in [r["id"] for r in rows]})
+
+    def fake_list(cur, uid, direction=None, status=None, *a, only_ids=None, skip_ids=None, **k):
+        seen.append((status, only_ids, skip_ids))
+        rows = [{"id": i, "status": "passed"} for i in (1, 2, 3, 9)] + [{"id": 5, "status": "failed"}]
+        return [r for r in rows if (status is None or r["status"] == status) and (only_ids is None or r["id"] in only_ids)
+                and r["id"] not in (skip_ids or [])]
+    monkeypatch.setattr(server.repo, "list_strategies", fake_list)
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: dict(s))
+    out = server.list_strategies(ctx(query={}))
+    assert {k: out["counts"][k] for k in ("passed", "not_cleared", "failed", "total")} == {
+        "passed": 1, "not_cleared": 2, "failed": 4, "total": 8}
+    assert out["counts"]["examples"] == {"passed": 1}  # the example's pass is cleared: it stays there
+    assert {c["id"]: c.get("verdict") for c in out["strategies"]} == {1: None, 2: "missed_final", 3: "held_back", 9: None, 5: "held_back"}
+    assert judged == [[1, 2, 3, 5, 9]]  # the page's void row rides in the passes' one read
+    seen.clear(), judged.clear()
+    out = server.list_strategies(ctx(query={"status": "passed"}))
+    assert seen == [("passed", None, [2, 3])] and [c["id"] for c in out["strategies"]] == [1, 9]
+    assert out["matched"] == 2 and judged == [[1, 2, 3, 9]]
+    seen.clear()
+    out = server.list_strategies(ctx(query={"status": "not_cleared"}))
+    assert seen == [("passed", [2, 3], None)] and [c["id"] for c in out["strategies"]] == [2, 3]
+    assert out["matched"] == 2 and [c["verdict"] for c in out["strategies"]] == ["missed_final", "held_back"]
+    # Nothing uncleared: the chip lists nothing, and Passed lists every pass.
+    passes[1:3] = []
+    seen.clear()
+    out = server.list_strategies(ctx(query={"status": "not_cleared"}))
+    assert seen == [("passed", [], None)] and out["matched"] == 0 and "not_cleared" not in out["counts"]
+
+
+def test_list_strategies_narrows_to_or_leaves_out_ids():
+    cur = StratCur()
+    server.repo.list_strategies(cur, 1, status="passed", skip_ids=[4, 5], limit=50)
+    assert "s.status=%s AND s.id NOT IN (%s,%s)" in cur.sql and cur.params[:4] == [1, "passed", 4, 5]
+    server.repo.list_strategies(cur, 1, status="passed", only_ids=[7], limit=50)
+    assert "AND s.id IN (%s)" in cur.sql and cur.params[:3] == [1, "passed", 7]
+    cur.sql = None
+    assert server.repo.list_strategies(cur, 1, only_ids=[]) == [] and cur.sql is None  # no read for nothing
+    server.repo.passed_strategies(cur, 1, None, "btc15m", "fade", True)
+    assert cur.sql.startswith("SELECT s.id, s.status, s.market, s.direction, s.spec_json, s.experiment_id FROM app_strategies s")
+    assert "s.status=%s AND s.market=%s" in cur.sql and cur.params[:3] == [1, "passed", "btc15m"] and "EXISTS" in cur.sql
+
+
 def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 3, "total": 3})
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [
@@ -616,7 +674,7 @@ def test_strategies_page_param_maps_to_offset(monkeypatch):
     monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 10, "total": 120})
 
     def fake_list(cur, uid, direction=None, status=None, market=None, run_id=None, limit=500, offset=0, q=None, deployed=False, hide_noise=False,
-                  sort=None):
+                  sort=None, only_ids=None, skip_ids=None):
         seen.update(limit=limit, offset=offset)
         return []
 
@@ -879,6 +937,8 @@ def test_shared_pnl_keeps_each_book_apart_with_its_trade_count(monkeypatch):
 
 def test_shared_strategy_and_deployment_say_over_what_span(monkeypatch):
     from datetime import datetime
+    from app.web.routes import community
+    monkeypatch.setattr(community, "_later_verdicts", lambda cur, uid, rows: {})
     monkeypatch.setattr(server.repo, "get_strategy", lambda cur, uid, sid: {
         "id": sid, "title": "Fade", "market": "btc15m", "status": "passed",
         "result": {"out_of_sample": {"pnl": 4.2, "trades": 23, "win_rate": .61, "days": 9.4}}})

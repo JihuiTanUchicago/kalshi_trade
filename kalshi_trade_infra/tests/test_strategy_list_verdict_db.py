@@ -90,12 +90,20 @@ def test_the_list_stamps_what_each_page_says_in_one_read(conn, monkeypatch):
     user = repo.get_user(cur, uid)
     counting = _Counting(cur)
     monkeypatch.setattr(conn, "cursor", lambda *a, **k: counting)
-    by_id = {}
-    for status in ("", "failed"):  # the default (Kept) view leaves Void out; its chip lists them
+    by_id, shown = {}, {}
+    # The default (Kept) view leaves Void out; its chip lists them. Passed and Not cleared list by verdict.
+    for status in ("", "failed", "passed", "not_cleared"):
         counting.later = 0
         listed = server.list_strategies(server.Ctx(conn, user, (), {"status": status, "page": "0"}, {}, None))
         by_id.update({c["id"]: c.get("verdict") for c in listed["strategies"]})
-        assert counting.later == 1  # every listed strategy's later rows in one read
+        shown[status] = ({c["id"] for c in listed["strategies"]}, listed["matched"])
+        assert counting.later == 1  # every pass's and every listed strategy's later rows in one read
+    # The chips count what the rows stamp, across every page: 5 stored passes, 2 cleared, 3 not.
+    assert {k: listed["counts"].get(k) for k in ("passed", "not_cleared", "failed", "total")} == {
+        "passed": 2, "not_cleared": 3, "failed": 3, "total": 8}
+    assert shown["passed"] == ({sid["true pass"], sid["awaiting holdout"]}, 2)
+    assert shown["not_cleared"] == ({sid["missed"], sid["held"], sid["legacy held"]}, 3)
+    assert shown[""][1] == 5 and shown["failed"][1] == 3
     assert {k: by_id[v] for k, v in sid.items()} == {
         "true pass": None, "missed": "missed_final", "held": "held_back", "legacy held": "held_back",
         "awaiting holdout": None, "paper held": "held_back", "paper missed": None, "void": None}

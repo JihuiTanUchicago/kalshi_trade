@@ -115,31 +115,62 @@ def list_strategies(ctx: Ctx):
     # DB (the ledger counts them for DSR/FDR). An explicit status chip overrides and shows it.
     hide_noise = status is None
     noise = sum(counts.get(s, 0) for s in repo.NOISE_STATUSES)
+    # Every pass under these filters is judged for a later check that left it uncleared, so the Passed
+    # and Not cleared chips count every page, not the 50 shown. Those two chips list by that verdict, so
+    # it comes first there; otherwise the page's void and rejected rows (a probation strategy held back
+    # after passing on paper) are judged in the same one read as the passes.
+    passes = repo.passed_strategies(ctx.cur, ctx.uid, direction, market, search, deployed)
+    by_verdict = status in ("passed", NOT_CLEARED)
+    got = _later_verdicts(ctx.cur, ctx.uid, passes) if by_verdict else None
+    uncleared = [p["id"] for p in passes if p["id"] in (got or {})]
+    # "best": best unseen-data backtest P&L first, across every page (the list is paged server-side).
+    sort = "best" if q.get("sort") == "best" else None
+    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, "passed" if by_verdict else status, market, limit=per,
+                                offset=page * per, q=search, deployed=deployed, hide_noise=hide_noise, sort=sort,
+                                only_ids=uncleared if status == NOT_CLEARED else None,
+                                skip_ids=uncleared if status == "passed" else None)
+    if got is None:
+        got = _later_verdicts(ctx.cur, ctx.uid, passes + [s for s in rows if s.get("status") in repo.NOISE_STATUSES])
+    _split_not_cleared(counts, passes, got)
     # The seeded example's strategies are out of the counts but still listed (marked "example").
     ex = counts.get("examples") or {}
     shown_ex = ex.get(status, 0) if status else sum(n for s, n in ex.items() if s not in repo.NOISE_STATUSES)
     matched = (counts.get(status, 0) if status else counts["total"] - noise) + shown_ex
-    # "best": best unseen-data backtest P&L first, across every page (the list is paged server-side).
-    sort = "best" if q.get("sort") == "best" else None
-    rows = repo.list_strategies(ctx.cur, ctx.uid, direction, status, market, limit=per, offset=page * per,
-                                q=search, deployed=deployed, hide_noise=hide_noise, sort=sort)
     cards = [_strategy_card(s) for s in rows]
-    _attach_verdicts(ctx.cur, ctx.uid, rows, cards)
+    _attach_verdicts(cards, got)
     _attach_real_records(ctx.cur, ctx.uid, cards)
     _attach_past_records(ctx.cur, ctx.uid, cards, [s["id"] for s in rows if s.get("removed_deps")])
     return {"strategies": cards, "counts": counts,
             "matched": matched, "page": page, "per": per, "pages": (matched + per - 1) // per}
 
 
-def _attach_verdicts(cur, uid: int, rows: List[Dict], cards: List[Dict]) -> Dict[int, Tuple[str, Dict]]:
+def _attach_verdicts(cards: List[Dict], got: Dict[int, Tuple[str, Dict]]) -> None:
     """Stamp each card whose stored status leaves out a later check with `verdict` (MISSED_FINAL or
-    HELD_BACK), the stamp its own page shows, from _later_verdicts' two reads for the whole list. A list
-    stamped "Passed" for a strategy whose page said "Missed final test" or "Held back". Returns them."""
-    got = _later_verdicts(cur, uid, rows)
+    HELD_BACK), the stamp its own page shows, from _later_verdicts' reads for the whole list. A list
+    stamped "Passed" for a strategy whose page said "Missed final test" or "Held back"."""
     for c in cards:
         if c["id"] in got:
             c["verdict"] = got[c["id"]][0]
-    return got
+
+
+# The Strategies list's chip for passes a later check left uncleared (Missed final test, Held back): a
+# status filter of its own, never a stored status.
+NOT_CLEARED = "not_cleared"
+
+
+def _split_not_cleared(counts: Dict, passes: List[Dict], got: Dict[int, Tuple[str, Dict]]) -> None:
+    """Move the passes `got` has a verdict for out of counts' "passed" and into NOT_CLEARED, the seeded
+    example's under "examples" as count_strategies keeps them, so "Passed (3)" over rows stamped Missed
+    final test and Held back reads "Passed (1)" and "Not cleared (2)". The total is unchanged."""
+    ex = counts.setdefault("examples", {})
+    for p in passes:
+        if p["id"] not in got:
+            continue
+        into = ex if p.get("direction") == repo.DEMO_DIRECTION else counts
+        into["passed"] = into.get("passed", 0) - 1
+        into[NOT_CLEARED] = into.get(NOT_CLEARED, 0) + 1
+    if not ex.get("passed"):
+        ex.pop("passed", None)
 
 
 def _attach_real_records(cur, uid: int, cards: List[Dict]) -> None:

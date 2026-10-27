@@ -97,4 +97,27 @@ export function communityCases({name, frontend}) {
     assert.ok(art.classList.contains('post-target'));
     assert.equal(art.querySelector('[data-act="comments"]').clicked, true);
   });
+
+  test(`${name}: a strategy a later check left uncleared reads as its row does, in the picker and on its card`, async () => {
+    const mine = [{id: 41, title: 'Cleared', status: 'passed'}, {id: 42, title: 'Missed', status: 'passed', verdict: 'missed_final'},
+      {id: 43, title: 'Held', status: 'passed', verdict: 'held_back'}, {id: 44, title: 'Paper held', status: 'failed', verdict: 'held_back'},
+      {id: 45, title: 'Noise', status: 'failed'}];
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/strategies') return response({strategies: mine});
+      if (path.startsWith('/api/community')) return response({posts: []});
+      return response({});
+    }});
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const options = f.root.querySelector('#post-strat').querySelectorAll('option').slice(1);
+    assert.deepEqual(options.map(o => o.textContent), ['Cleared (passed)', 'Missed (missed the final test)', 'Held (held back)',
+      'Paper held (held back)', 'Noise (void)']);
+    // The shared card stamps the verdict the server froze into it; an older card, or one without, keeps its status.
+    const card = {kind: 'strategy', id: 42, title: 'Missed', market: 'btc15m', status: 'passed', pnl: 3.1, trades: 40, win_rate: 0.6, days: 9};
+    const head = html => html.slice(0, html.indexOf('</b>') + 200);
+    assert.match(head(f.postSnapshot({...card, verdict: 'missed_final'}, '')), /<span class="mk">Missed final test<\/span>/);
+    assert.doesNotMatch(f.postSnapshot({...card, verdict: 'missed_final'}, ''), />Passed</);
+    assert.match(f.postSnapshot({...card, verdict: 'held_back'}, '@bob'), /<span class="mk quiet">Held back<\/span>/);
+    assert.match(f.postSnapshot(card, ''), /<span class="mk on">Passed<\/span>/);
+  });
 }

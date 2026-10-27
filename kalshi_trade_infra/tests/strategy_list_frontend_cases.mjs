@@ -122,6 +122,47 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     assert.equal(stamp(row(f, {status: 'passed', verdict: '<b>x</b>'})), 'Passed');
   });
 
+  test(`${name}: the chips and figures count a pass a later check left uncleared apart, and bulk deploy leaves it out`, async () => {
+    const oos = {pnl: 3.1, trades: 40, win_rate: 0.6};
+    const list = [detailStrategy({id: 61, title: 'Cleared', status: 'passed', out_of_sample: oos}),
+      detailStrategy({id: 62, title: 'Missed', status: 'passed', verdict: 'missed_final', out_of_sample: oos}),
+      detailStrategy({id: 63, title: 'Held', status: 'passed', verdict: 'held_back', out_of_sample: oos})];
+    const counts = {total: 9, passed: 1, not_cleared: 2, failed: 4, rejected: 2, deployed: 0};
+    const open = async (search, c = counts) => {
+      const f = frontend({fetchImpl: () => response({counts: c, matched: 3, pages: 1, strategies: list})});
+      f.location.pathname = '/strategies'; f.location.search = search;
+      await f.viewStrategies(); await flush();
+      return f;
+    };
+    let f = await open('?status=');
+    const chips = f.root.querySelectorAll('[data-f="status"]');
+    const chip = v => chips.find(b => b.dataset.v === v);
+    assert.equal(chip('passed').textContent, 'Passed (1)');
+    assert.equal(chip('not_cleared').textContent, 'Not cleared (2)'); assert.equal(chip('not_cleared').hidden, false);
+    assert.equal(chip('').textContent, 'Kept (3)');  // the uncleared passes are still kept, not void
+    const figs = f.root.querySelector('#sfigs').innerHTML;
+    assert.match(figs, /Passed[\s\S]*?<span class="fig ">1<\/span><\/dd><dd class="sub-fig">2 more passed but weren’t cleared to trade<\/dd>/);
+    assert.match(figs, /11\.1%/);  // the pass rate counts the one true pass of 9
+    // Bulk deploy ticks only the true pass; the others' rows say why on their own pages.
+    const picks = f.root.querySelectorAll('.pick');
+    assert.deepEqual(picks.map(p => p.dataset.id), ['61']);
+    const pickable = s => /class="pick"/.test(f.strategySlip(s, null, {pick: true}));
+    assert.deepEqual(list.map(pickable), [true, false, false]);
+    // A probation strategy held back on paper (stored Void) was never offered, and still isn't.
+    assert.equal(pickable({...list[2], status: 'failed'}), false);
+    // Its chip filters on the server, and rides in the URL like the others.
+    chip('not_cleared').onclick(); await flush();
+    assert.equal(f.navigations.at(-1), '/strategies?status=not_cleared');
+    f = await open('?status=not_cleared');
+    const asked = f.requests.filter(({path}) => path.startsWith('/api/strategies?')).map(({path}) => new URLSearchParams(path.split('?')[1]));
+    assert.equal(asked.at(-1).get('status'), 'not_cleared');
+    assert.equal(f.root.querySelectorAll('[data-f="status"]').find(b => b.dataset.v === 'not_cleared').getAttribute('aria-pressed'), 'true');
+    // None uncleared: no chip, and the Passed figure stands alone.
+    f = await open('?status=', {total: 5, passed: 2, failed: 3, deployed: 0});
+    assert.equal(f.root.querySelectorAll('[data-f="status"]').find(b => b.dataset.v === 'not_cleared').hidden, true);
+    assert.doesNotMatch(f.root.querySelector('#sfigs').innerHTML, /cleared to trade/);
+  });
+
   test(`${name}: a row says what its removed deployments made, each book on its own line`, () => {
     const f = frontend({fetchImpl: () => response({})});
     const html = row(f, {deployed: false, past: {paper: {pnl: -13.56, trades: 9, deployments: 1}, demo: {pnl: 0, trades: 0, deployments: 1}}});

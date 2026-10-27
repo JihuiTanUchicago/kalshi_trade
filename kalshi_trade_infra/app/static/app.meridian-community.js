@@ -5,8 +5,8 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, busy, clock, deploymentMode, esc, flash, ICON,
-    loading, mark, marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root,
-    S, shell, tone, trDay, usd, when
+    loading, marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S,
+    shell, statusMark, tone, trDay, usd, when
   } = T;
 
   // ---------- community ----------
@@ -21,7 +21,7 @@ window.TauPage('community', (T) => {
         <div><dt>Live (real money)</dt>${snapPnl(snap.live_pnl, snap.live_trades)}</div></dl></div>`;
     }
     if (snap.kind === 'strategy') {
-      const body = `<div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${mark(snap.status)}${researchBadge(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Strategy</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Out-of-sample P&amp;L</dt><dd class="${tone(snap.pnl)}">${snap.pnl == null ? '—' : usd(snap.pnl, true)}</dd></div>${snap.trades != null ? `<div class="snap-secondary"><dt>Trades</dt><dd>${esc(snap.trades)}</dd></div>` : ''}${snap.win_rate != null ? `<div class="snap-secondary"><dt>Win rate</dt><dd>${pct(snap.win_rate, false)}</dd></div>` : ''}</dl><p class="snap-note">Backtest on data the agent never saw${overDays(snap.days)}, not paper or live trading.${owner ? ` Only ${esc(owner)} can open this strategy; ask them to share a copy from its page.` : ''}</p>`;
+      const body = `<div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Strategy</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Out-of-sample P&amp;L</dt><dd class="${tone(snap.pnl)}">${snap.pnl == null ? '—' : usd(snap.pnl, true)}</dd></div>${snap.trades != null ? `<div class="snap-secondary"><dt>Trades</dt><dd>${esc(snap.trades)}</dd></div>` : ''}${snap.win_rate != null ? `<div class="snap-secondary"><dt>Win rate</dt><dd>${pct(snap.win_rate, false)}</dd></div>` : ''}</dl><p class="snap-note">Backtest on data the agent never saw${overDays(snap.days)}, not paper or live trading.${owner ? ` Only ${esc(owner)} can open this strategy; ask them to share a copy from its page.` : ''}</p>`;
       return owner ? `<div class="snap snap-strategy">${body}</div>` : `<a class="snap snap-strategy" href="/strategies/${snap.id}">${body}</a>`;
     }
     if (snap.kind === 'deployment') {
@@ -140,7 +140,7 @@ window.TauPage('community', (T) => {
     api('/api/strategies').then((d) => {
       const sel = root.querySelector('#post-strat');
       d.strategies.filter((s) => s.status !== 'rejected' || s.title).slice(0, 50).forEach((s) => {
-        const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.title} (${STATUS_WORD[s.status] || s.status})`; sel.appendChild(o);
+        const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.title} (${STATUS_WORD[s.verdict] || STATUS_WORD[s.status] || s.status})`; sel.appendChild(o);
       });
     }).catch(() => {});
     const form = root.querySelector('#composer-post');
@@ -330,7 +330,9 @@ window.TauPage('community', (T) => {
       if ((art.querySelector('.comments') || {}).hidden) art.querySelector('[data-act="comments"]').click();
     }
   }
-  const STATUS_WORD = { passed: 'passed', failed: 'void', rejected: 'rejected' };
+  // The picker names a strategy as its row on Strategies stamps it: a pass a later check left uncleared
+  // (`verdict`) read "(passed)" here and Missed final test there.
+  const STATUS_WORD = { passed: 'passed', failed: 'void', rejected: 'rejected', missed_final: 'missed the final test', held_back: 'held back' };
 
   return {viewCommunity};
 });

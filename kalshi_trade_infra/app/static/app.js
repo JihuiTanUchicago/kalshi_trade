@@ -1525,8 +1525,9 @@
   const STRAT_HEAD = (pick) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Unseen P&amp;L${glo('unseen')}</th><th class="num">Trades</th><th class="num">Win</th><th>Tried</th><th>Status</th></tr></thead>`;
   const strategyTable = (rows, pick) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick)}<tbody>${rows}</tbody></table></div>`;
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
-  // would start a second deployment of the same rules and double its positions.
-  const bulkDeployable = (s) => s.status === 'passed' && !researchOnly(s) && !s.deployed;
+  // would start a second deployment of the same rules and double its positions. A pass a later check
+  // left uncleared (`verdict`: Missed final test, Held back) is left out too; its own page says why.
+  const bulkDeployable = (s) => s.status === 'passed' && !s.verdict && !researchOnly(s) && !s.deployed;
   // What a deployed strategy has actually done, beside its backtest columns.
   // The server sends one book (live, else paper, else demo) and a paper strategy's demo book beside it
   // under r.demo, so sandbox dollars are never added to paper ones.

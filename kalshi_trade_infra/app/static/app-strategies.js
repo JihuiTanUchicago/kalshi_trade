@@ -271,7 +271,7 @@ window.TauPage('strategies', (T) => {
     shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed strategies on deployable markets can be deployed; void ones stay here so you can see what didn’t work.') +
       '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
       <div class="section-head filters stratfilters">
-        <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}" aria-pressed="${f.status === v}">${l}</button>`).join('')}
+        <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['not_cleared', 'Not cleared'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}"${v === 'not_cleared' && f.status !== v ? ' hidden' : ''} aria-pressed="${f.status === v}">${l}</button>`).join('')}
           <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
         ${(() => { const by = {}; S.me.markets.forEach((m) => (by[m.category] || (by[m.category] = [])).push(m)); const cs = Object.keys(by).sort(catOrder); return `<label class="vh" for="strat-market">Market</label><select class="input strat-mkt" id="strat-market" aria-label="Filter by market"><option value="">All markets</option>${cs.map((c) => `<optgroup label="${esc(c)}">${by[c].map((m) => `<option value="${esc(m.key)}"${f.market === m.key ? ' selected' : ''}>${esc(marketShort(m.key))}</option>`).join('')}</optgroup>`).join('')}</select>`; })()}
         <label class="vh" for="strat-sort">Sort</label><select class="input strat-mkt strat-sort" id="strat-sort" aria-label="Sort strategies">${[['', 'Newest first'], ['best', 'Best on unseen data']].map(([v, l]) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
@@ -297,7 +297,9 @@ window.TauPage('strategies', (T) => {
     if (sq) sq.onchange = () => { const v = sq.value.trim(); if (v !== f.q) { f.q = v; applyFilters(); } };
     // Paginate server-side at 50/page — a run_forever session can produce far more than the old
     // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
-    const CLABEL = { passed: 'Passed', 'backtest-only': 'Backtest only', failed: 'Void', rejected: 'Rejected' };
+    // Passed counts only true passes: one a later check left uncleared (Missed final test, Held back) keeps the
+    // stored status "passed", and the server counts and lists it under Not cleared, a chip shown once one exists.
+    const CLABEL = { passed: 'Passed', not_cleared: 'Not cleared', 'backtest-only': 'Backtest only', failed: 'Void', rejected: 'Rejected' };
     const slipsEl = root.querySelector('#slips');
     let sp = Math.max(0, (parseInt(q.get('page'), 10) || 1) - 1);
     const load = async () => {
@@ -317,10 +319,10 @@ window.TauPage('strategies', (T) => {
       // Under the Deployed toggle every counted strategy passed (only passed ones deploy), so its rate read
       // a meaningless 100%: it is left out there rather than shown.
       const rate = total && !f.deployed ? c('passed') / total : null;
-      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed')) + fig(gl('Void on unseen data', 'void'), c('failed')) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
+      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed'), { small: c('not_cleared') ? `${num(c('not_cleared'))} more passed but weren’t cleared to trade` : '' }) + fig(gl('Void on unseen data', 'void'), c('failed')) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
         fig('Pass rate', rate != null ? pct(rate, false) : '—', { small: f.deployed ? 'not with Deployed on: only passed strategies deploy' : '' });
       const kept = total - c('failed') - c('rejected');
-      root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; });
+      root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; if (v === 'not_cleared') b.hidden = !c(v) && f.status !== v; });
       const depChip = root.querySelector('[data-toggle="deployed"]');
       if (depChip && counts.deployed != null) depChip.textContent = `Deployed (${counts.deployed})`;
       if (!d.matched) {
