@@ -147,3 +147,54 @@ def test_each_page_file_returns_the_views_its_bundle_stands_in_for(theme):
         assert returned == stood_in and returned, (theme, name)
         for view in returned:  # the view is the file's own, not left behind in the bundle
             assert re.search(r"\n  async function %s\(" % view, src) and not re.search(r"\n  async function %s\(" % view, bundle)
+
+
+# What the autopilot panel's file holds, the open panel: its feed, its chat and its controls. None of it
+# is drawn until the panel opens, so a cold load of any page goes without it.
+PANEL_CODE = ("async function apLoadChat(", "function apFeedLi(", "const AP_ACT = {", "async function apEnableLive(",
+              "function apSheetTab(", "const CHAT_UNSURE = ")
+
+
+@pytest.mark.parametrize("theme", ["tau", "meridian"])
+def test_the_autopilot_panel_is_in_its_own_file_and_the_bundle_only_forwards_to_it(theme):
+    bundle = (STATIC / page_modules.BUNDLE[theme]).read_text()
+    src = (STATIC / page_modules.file_name(theme, "autopilot")).read_text()
+    assert page_modules.PANELS == ("autopilot",) and "autopilot:" in page_modules.versions_attr(theme, server._static_versions())
+    assert src.count("window.TauPage('autopilot', (T) => {") == 1
+    for code in PANEL_CODE:
+        assert code in src and code not in bundle, (theme, code)
+    # The bundle keeps one stand-in per function the pill calls, each forwarding once the file has run.
+    returned = set(re.search(r"\n  return \{([\w, ]+)\};\n\}\);\n$", src).group(1).split(", "))
+    forwarded = set(re.findall(r"PAGES\.autopilot\.(\w+)\(", bundle))
+    assert returned == forwarded == {"apBuildShell", "apStopChat", "apUpdate"}
+    for name in returned:
+        assert re.search(r"\n  function %s\(" % name, src) and re.search(r"\n  function %s\(" % name, bundle)
+    assert all(page_modules.page_for(path) != "autopilot" for path in PATHS)  # no page's shell preloads it
+
+
+# Funds' own files: the perps, broker and Alpaca paper scripts and stylesheets. They were linked by every
+# page's shell, the stylesheets render-blocking in <head>, though only Funds uses them.
+FUNDS_FILES = ("broker-connections.css", "alpaca-paper.css", "kalshi-perps-live.css",
+               "alpaca-paper.js", "kalshi-perps-live.js", "broker-connections.js")
+
+
+@pytest.mark.parametrize("theme", ["tau", "meridian"])
+@pytest.mark.parametrize("cookie", [None, "rsid=abc"])
+def test_only_the_funds_shell_links_funds_own_files_and_every_shell_names_them_for_the_bundle(web, theme, cookie):
+    port, account = web
+    account["ui_theme"] = theme
+    versions = server._static_versions()
+    assert page_modules.ASSETS == {"funds": FUNDS_FILES}
+    for path in PATHS:
+        _, body = _get(port, path, cookie=cookie)
+        html = body.decode()
+        head, page = html.split("</head>")
+        linked = re.findall(r'<link rel="stylesheet" href="/static/([a-z.-]+\.css)\?v=([0-9a-f]+)">', head)
+        scripts = re.findall(r'<script src="/static/([a-z.-]+\.js)\?v=([0-9a-f]+)" defer></script>', page)
+        own = page_modules.page_for(path) == "funds"
+        # In <head> as before, after the theme's stylesheet; the scripts deferred ahead of boot.js, in their order.
+        assert [f for f, _ in linked if f in FUNDS_FILES] == ([f for f in FUNDS_FILES if f.endswith(".css")] if own else []), path
+        names = [f for f, _ in scripts]
+        assert names[:names.index("boot.js") + 1] == ([f for f in FUNDS_FILES if f.endswith(".js")] if own else []) + ["boot.js"], path
+        assert all(v == versions[f] for f, v in linked + scripts)
+        assert 'data-page-assets="%s"' % " ".join("funds:%s?v=%s" % (f, versions[f]) for f in FUNDS_FILES) in html

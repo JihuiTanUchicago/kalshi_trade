@@ -236,7 +236,7 @@ stopReasonCases({name: 'Meridian', frontend});
 trustGlitchCases({name: 'Meridian', frontend});
 bellCases({name: 'Meridian', frontend});
 communityCases({name: 'Meridian', frontend});
-pageFileCases({name: 'Meridian', frontend, prefix: 'app.meridian-', pagesKey: 'merPages'});
+pageFileCases({name: 'Meridian', frontend, prefix: 'app.meridian-', pagesKey: 'merPages', storageFor: m => m});
 settingsCases({name: 'Meridian', frontend, current: 'meridian', storageFor: m => m, cardWallOpts: () => ({stripeLoader: async () => STRIPE_STUB})});
 researchPollCases({name: 'Meridian', frontend});
 runPageCases({name: 'Meridian', frontend});

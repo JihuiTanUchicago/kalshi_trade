@@ -10,12 +10,15 @@ The page shell carries each file's ?v= version for the bundle to fetch it by (#t
 data-mer-pages), and a signed-in shell preloads the file its page needs, so that file arrives beside the
 bundle instead of a round trip after it (signed out, the page goes to sign-in). Every path a file's
 views answer is listed here; tests/test_page_modules.py checks both routers against this table.
+
+A panel file holds what opens over any page rather than a page of its own (the autopilot panel, open):
+no path preloads it, and the bundle fetches it the first time it opens.
 """
 from __future__ import annotations
 
 import hashlib
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 # Page file -> the app paths whose view is in it (both themes split the same views out).
 PAGES: Dict[str, str] = {
@@ -26,9 +29,20 @@ PAGES: Dict[str, str] = {
     "billing": r"billing|settings/billing",
     "admin": r"admin|system|settings/system",
 }
+# Panel files: opened over any page, so no path's view is in them.
+PANELS = ("autopilot",)
+NAMES = tuple(PAGES) + PANELS
+# A page's own static files beside its page file. The shell of the page's paths links them (stylesheets in
+# <head>, scripts deferred ahead of the bundle); from any other page the bundle loads them with the page
+# file (#tau-boot data-page-assets). Funds': the native perps account, and the broker connection and
+# Alpaca paper files kept with it (Funds doesn't offer those controls for now).
+ASSETS: Dict[str, Tuple[str, ...]] = {
+    "funds": ("broker-connections.css", "alpaca-paper.css", "kalshi-perps-live.css",
+              "alpaca-paper.js", "kalshi-perps-live.js", "broker-connections.js"),
+}
 PREFIX = {"tau": "app-", "meridian": "app.meridian-"}
 BUNDLE = {"tau": "app.js", "meridian": "app.meridian.js"}
-FILES = tuple(PREFIX[theme] + name + ".js" for theme in PREFIX for name in PAGES)
+FILES = tuple(PREFIX[theme] + name + ".js" for theme in PREFIX for name in NAMES)
 _PATHS = {name: re.compile(r"^/(?:%s)$" % rx) for name, rx in PAGES.items()}
 
 
@@ -43,13 +57,13 @@ def page_for(path: str) -> Optional[str]:
 
 def versions_attr(theme: str, versions: Dict[str, str]) -> str:
     """#tau-boot's data-tau-pages / data-mer-pages: "research:<v>,strategies:<v>,..." (names and hex only)."""
-    return ",".join("%s:%s" % (name, versions[file_name(theme, name)]) for name in PAGES)
+    return ",".join("%s:%s" % (name, versions[file_name(theme, name)]) for name in NAMES)
 
 
 def build_version(theme: str, versions: Dict[str, str]) -> str:
     """The theme's build as the page knows it (window.__BUILD__, /api/version): its bundle's version and
     its page files' in one hash, so a deploy that changes only a page file still offers a reload."""
-    parts = [versions[BUNDLE[theme]]] + [versions[file_name(theme, name)] for name in PAGES]
+    parts = [versions[BUNDLE[theme]]] + [versions[file_name(theme, name)] for name in NAMES]
     return hashlib.sha256(",".join(parts).encode()).hexdigest()[:10]
 
 
@@ -61,3 +75,17 @@ def preload(theme: Optional[str], path: str, versions: Dict[str, str]) -> str:
         return ""
     f = file_name(theme, name)
     return '\n<link rel="preload" href="/static/%s?v=%s" as="script">' % (f, versions[f])
+
+
+def assets_attr(versions: Dict[str, str]) -> str:
+    """#tau-boot's data-page-assets: "funds:alpaca-paper.css?v=<v> funds:..." (names and hex only)."""
+    return " ".join("%s:%s?v=%s" % (name, f, versions[f]) for name, files in ASSETS.items() for f in files)
+
+
+def asset_tags(path: str, versions: Dict[str, str]) -> Tuple[str, str]:
+    """The tags for the own files of the page at this path: (stylesheets for <head>, scripts ahead of
+    boot.js), each '' for a page without any. Signed in or not, as before: the files hold no account data."""
+    files = ASSETS.get(page_for(path) or "", ())
+    css = "".join('\n<link rel="stylesheet" href="/static/%s?v=%s">' % (f, versions[f]) for f in files if f.endswith(".css"))
+    js = "".join('<script src="/static/%s?v=%s" defer></script>\n' % (f, versions[f]) for f in files if f.endswith(".js"))
+    return css, js
