@@ -32,7 +32,6 @@ from app.web.routes.brokers import _paper_call, _perps_live_call
 from app.web.routes.strategies import _research_pass_verdicts
 from app.web.settings import MAX_CHAT_PER_HOUR
 from app.web.views import (
-    _demo_health,
     demo_health_memo,
     credit_cents,
     credit_exact,
@@ -768,9 +767,9 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
     return _idle(code, "Nothing is on paper yet: no strategy has passed its research tests. %s" % doing)
 
 
-def autopilot_status(ctx: Ctx, ask_kalshi: bool = False):
-    """Lightweight status for the floating autopilot window, polled on every page. It never waits on Kalshi
-    (ask_kalshi False): a demo-funds idle line that would read the demo cash is left out and marked
+def autopilot_status(ctx: Ctx):
+    """Lightweight status for the floating autopilot window, polled on every page. It never waits on Kalshi:
+    a demo-funds idle line that would read the demo cash is left out and marked
     idle_pending, and the page asks /api/funds/cash?book=demo, then the status again once that cash is read."""
     cur, u = ctx.cur, ctx.user
     on = bool(u.get("autopilot"))
@@ -881,8 +880,7 @@ def autopilot_status(ctx: Ctx, ask_kalshi: bool = False):
         if idle is None or (not paper_run and idle["code"] not in ("engine", "billing")):
             # From the demo cash memo alone: pending when it isn't kept, the page then reading the status again
             # once the demo cash is in (a line from a figure read under two minutes ago stands meanwhile).
-            health, pending = ((_demo_health(cur, ctx.uid, deps, ask_kalshi=True), False) if ask_kalshi
-                               else demo_health_memo(cur, ctx.uid, deps))
+            health, pending = demo_health_memo(cur, ctx.uid, deps)
             if pending:
                 out["idle_pending"] = True
             out["idle"] = health or idle

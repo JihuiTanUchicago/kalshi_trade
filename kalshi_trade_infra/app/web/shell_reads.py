@@ -88,21 +88,21 @@ def billing_without_stripe(ctx: Ctx) -> Dict[str, Any]:
 
 
 def funds_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
-    """Funds' first read, as funds answers it, except that it never asks Kalshi: a key's cash whose memo
+    """Funds' first read, as funds answers it (every read of it, never asking Kalshi): a key's cash whose memo
     isn't kept is marked pending (with the last figure read and its age, if any) for the page to ask after."""
-    return funds(ctx, ask_kalshi=False)
+    return funds(ctx)
 
 
 def dashboard_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
-    """The dashboard's first read, as dashboard answers it, except that it never asks Kalshi: the live cash
+    """The dashboard's first read, as dashboard answers it (every read of it, never asking Kalshi): the live cash
     whose memo isn't kept is marked pending, and a demo-funds check that would read the demo cash too."""
-    return dashboard(ctx, ask_kalshi=False)
+    return dashboard(ctx)
 
 
 def autopilot_without_kalshi(ctx: Ctx) -> Dict[str, Any]:
-    """The autopilot status, as autopilot_status answers it, except that it never asks Kalshi: an idle line
+    """The autopilot status, as autopilot_status answers it (every read of it, never asking Kalshi): an idle line
     that would read the demo cash is marked idle_pending."""
-    return autopilot_status(ctx, ask_kalshi=False)
+    return autopilot_status(ctx)
 
 
 def _pending(body: Dict[str, Any], key: str, flag: str = "pending") -> bool:

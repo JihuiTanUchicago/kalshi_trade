@@ -37,16 +37,11 @@ def _memo_cash(memo, kept: bool) -> Dict[str, Any]:
 _UNREAD = object()
 
 
-def kalshi_cash(cur, uid: int, ask_kalshi: bool = False, key: Any = _UNREAD) -> Dict[str, Any]:
+def kalshi_cash(cur, uid: int, key: Any = _UNREAD) -> Dict[str, Any]:
     """The live key's cash at Kalshi as Funds and the dashboard show it: {"connected", "funding_url",
-    "balance" (cents) [, "balance_at"]}. With ask_kalshi False, as every page read takes it, it never waits
-    on Kalshi: the cash comes from its memo when kept, else is marked pending (_memo_cash), and the page asks
-    /api/funds/cash?book=live for it. `key` is the user's live key row (None: none) when the caller has
-    read it; else it is read here, once."""
-    if ask_kalshi:
-        out = _live_balance(cur, uid)
-        out["balance"] = _cash(out["balance"])
-        return out
+    "balance" (cents) [, "balance_at"]}. It never waits on Kalshi: the cash comes from its memo when kept,
+    else is marked pending (_memo_cash), and the page asks /api/funds/cash?book=live for it. `key` is the
+    user's live key row (None: none) when the caller has read it; else it is read here, once."""
     if key is _UNREAD:
         key = repo.get_kalshi_key(cur, uid)
     if key is None:
@@ -55,30 +50,25 @@ def kalshi_cash(cur, uid: int, ask_kalshi: bool = False, key: Any = _UNREAD) -> 
             **_memo_cash(kalshi_account.balance_memo(uid), kalshi_account.balance_kept(uid))}
 
 
-def funds(ctx: Ctx, ask_kalshi: bool = False):
-    """Funds' read: the shell's first read, an in-app visit and the 30s poll alike. It never waits on Kalshi
-    (ask_kalshi False): a key's cash comes from its memo or is marked pending (with the last figure read and
-    its age), and the page asks /api/funds/cash for it, the one page read that may wait on Kalshi."""
+def funds(ctx: Ctx):
+    """Funds' read: the shell's first read, an in-app visit and the 30s poll alike. It never waits on Kalshi:
+    a key's cash comes from its memo or is marked pending (with the last figure read and its age), and the
+    page asks /api/funds/cash for it, the one page read that may wait on Kalshi."""
     from app.trading import demo_twins
 
     cur = ctx.cur
     key = repo.get_kalshi_key(cur, ctx.uid)
-    kalshi = kalshi_cash(cur, ctx.uid, ask_kalshi, key)
+    kalshi = kalshi_cash(cur, ctx.uid, key)
     if key is not None:
         kalshi["key_id"] = key["key_id"][:4] + "…" + key["key_id"][-4:]
     dev = repo.get_kalshi_dev_key(cur, ctx.uid)
     kalshi_dev_key: Dict[str, Any] = {"connected": dev is not None}
     if dev is not None:
         kalshi_dev_key["key_id"] = dev["key_id"][:4] + "…" + dev["key_id"][-4:]
-        # The demo account's cash at Kalshi (the same cached read demo health makes), so Funds can
-        # say "Connected ✓ (balance $X)". None when it can't be read just now.
-        if ask_kalshi:
-            kalshi_dev_key["balance"] = _cash(_demo_cash(cur, ctx.uid))
-            if kalshi_dev_key["balance"] is not None:
-                kalshi_dev_key["balance_at"] = demo_twins.balance_read_at(ctx.uid)  # up to a minute old, like Kalshi cash
-        else:
-            kalshi_dev_key.update(_memo_cash(kalshi_account.memo_peek(demo_twins._BALANCE_CACHE, ctx.uid),
-                                             demo_twins.balance_kept(ctx.uid)))
+        # The demo account's cash at Kalshi from its memo (the one the demo check reads), so Funds can say
+        # "Connected ✓ (balance $X)"; pending when the memo isn't kept, and the page asks the follow-up.
+        kalshi_dev_key.update(_memo_cash(kalshi_account.memo_peek(demo_twins._BALANCE_CACHE, ctx.uid),
+                                         demo_twins.balance_kept(ctx.uid)))
         # The demo cash the autopilot's demo copies wait for, so Funds can say why a small balance starts none.
         kalshi_dev_key["copies_from"] = demo_twins.DEMO_TWIN_MIN_BALANCE if demo_twins.DEMO_TWINS else None
     # Each book's realized P&L and closed trades, from the dashboard's read (kept while the positions

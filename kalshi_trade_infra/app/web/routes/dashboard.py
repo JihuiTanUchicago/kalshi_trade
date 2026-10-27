@@ -17,7 +17,6 @@ from app.web.routes.deployments import _paper_strategy_ids
 from app.web.routes.funds import kalshi_cash
 from app.web.routes.strategies import _later_verdicts, _with_marks, _with_why
 from app.web.views import (
-    _demo_health,
     demo_health_memo,
     _demo_key_back,
     _deployment_out,
@@ -50,9 +49,9 @@ def _mode_bucket(cur, uid: int, mode: str, open_pos: List[Dict], deps: List[Dict
     }
 
 
-def dashboard(ctx: Ctx, ask_kalshi: bool = False):
+def dashboard(ctx: Ctx):
     """The home dashboard's read: the shell's first read, an in-app visit and the 15s poll alike. It never
-    waits on Kalshi (ask_kalshi False): the live cash comes from its memo or is marked pending (with the last
+    waits on Kalshi: the live cash comes from its memo or is marked pending (with the last
     figure read and its age), as Funds' is (funds.kalshi_cash), and the page asks /api/funds/cash?book=live
     for it; a demo-funds check that would read the demo cash is marked health_pending, and the page reads
     the dashboard again once that cash is read. The poll's version covers the cash, its read time and its
@@ -100,14 +99,13 @@ def dashboard(ctx: Ctx, ask_kalshi: bool = False):
     de = repo.demo_equity(cur, ctx.uid, realized=realized["demo"][0])
     # Capital and P&L look fine while Kalshi refuses every order. From the demo cash memo alone: pending when
     # it isn't kept (a line from a figure read under two minutes ago meanwhile, so it doesn't drop for a poll).
-    health, health_pending = ((_demo_health(cur, ctx.uid, deps, ask_kalshi=True), False) if ask_kalshi
-                              else demo_health_memo(cur, ctx.uid, deps))
+    health, health_pending = demo_health_memo(cur, ctx.uid, deps)
     demo.update(capital=de["capital"], equity=de["equity"], realized_pnl=de["realized"],
                 total_pnl=de["realized"], roi=de["roi"], before_reload=de["before_reload"], health=health)
     if health_pending:
         demo["health_pending"] = True
     live = _mode_bucket(cur, ctx.uid, "live", open_pos, deps, day, realized["live"], closed)
-    live.update(kalshi_cash(cur, ctx.uid, ask_kalshi))
+    live.update(kalshi_cash(cur, ctx.uid))
     paper_sids = _paper_strategy_ids(deps)
     key_back = _demo_key_back(cur, ctx.uid, deps)
     # The page polls every 15s with its last answer's version (?v=): an unchanged answer is sent as

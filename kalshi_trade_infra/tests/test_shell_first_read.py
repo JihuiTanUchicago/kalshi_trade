@@ -62,7 +62,7 @@ def _wire(value):
 
 
 class _Calls(list):
-    """(params, query, uid) per call; `kw` the keyword arguments of each call (ask_kalshi)."""
+    """(params, query, uid) per call; `kw` the keyword arguments of each call (none: the context alone)."""
 
     def __init__(self):
         super().__init__()
@@ -106,7 +106,7 @@ def test_an_app_page_shell_carries_its_first_read_under_the_url_the_page_asks(we
     assert _first(html) == reads and len(status) == (1 if route == "dashboard" else 0)
     if route == "dashboard":
         # Neither of the dashboard's two reads may wait on Kalshi (the live cash, a demo-funds check).
-        assert calls.kw == [{"ask_kalshi": False}] and status.kw == [{"ask_kalshi": False}]
+        assert calls.kw == [{}] and status.kw == [{}]
     block = html.split('id="tau-first">', 1)[1].split("</script>", 1)[0]
     assert "<" not in block and ">" not in block
     # After the scripts: the browser finds and starts the bundles before the data's bytes arrive.
@@ -377,8 +377,8 @@ def test_the_dashboard_without_kalshi_reads_the_cash_from_its_memo_alone(monkeyp
     assert shell_reads.then_reads("/api/dashboard", out) == []
     # The demo-funds check alone: pending without the memo, never a Kalshi read; nothing to check, nothing pending.
     demo_twins._BALANCE_CACHE.clear()
-    assert _demo_health(None, 7, [DEMO_DEP], ask_kalshi=False) == DEMO_HEALTH_PENDING
-    assert _demo_health(None, 7, [], ask_kalshi=False) is None
+    assert _demo_health(None, 7, [DEMO_DEP]) == DEMO_HEALTH_PENDING
+    assert _demo_health(None, 7, []) is None
 
 
 def test_a_demo_check_reads_the_memo_alone_and_keeps_a_line_from_a_figure_under_two_minutes_old(monkeypatch):
@@ -486,7 +486,7 @@ def test_the_dashboard_and_funds_never_ask_kalshi_whoever_asks_and_a_cash_read_m
     assert funds["kalshi_dev"]["pending"] is True and funds["kalshi_dev"]["last_balance"] == 0.0
     # The autopilot status the panel polls on every page reads the demo cash the same way (its idle line).
     assert _route("/api/autopilot/status") is chat_routes.autopilot_status
-    assert inspect.signature(chat_routes.autopilot_status).parameters["ask_kalshi"].default is False
+    assert list(inspect.signature(chat_routes.autopilot_status).parameters) == ["ctx"]
     # The poll's version: unchanged while the memo is, so the page's poll is told "same"...
     v = dash["v"]
     assert _route("/api/dashboard")(ctx({"v": v})).get("same") is True
@@ -732,3 +732,28 @@ def test_asks_stripe_only_for_a_stripe_customer_with_payments_on(monkeypatch):
     monkeypatch.setattr(billing_routes.billing, "configured", lambda: True)
     monkeypatch.setattr(billing_routes.repo, "get_stripe_customer", lambda cur, uid: None)
     assert billing_routes.asks_stripe(ctx) is False
+
+
+def test_no_page_read_has_a_path_that_waits_on_kalshi():
+    # The dashboard, Funds, the autopilot status and the demo check took ask_kalshi=True once, a branch that read
+    # Kalshi (up to its timeout) and that no page asked any more: gone, so no page read can take it by mistake.
+    # Only /api/funds/cash (the page's follow-up) and key verification on save may wait on Kalshi.
+    import inspect
+    import pathlib
+
+    from app.web import views
+    from app.web.routes import chat as chat_routes
+    from app.web.routes import dashboard as dashboard_routes
+    from app.web.routes import funds as funds_routes
+    for fn in (dashboard_routes.dashboard, funds_routes.funds, chat_routes.autopilot_status):
+        assert list(inspect.signature(fn).parameters) == ["ctx"], fn.__name__
+    assert "ask_kalshi" not in inspect.signature(views._demo_health).parameters
+    assert "ask_kalshi" not in inspect.signature(funds_routes.kalshi_cash).parameters
+    # None of them (nor the demo check the pages read) reaches a read that may wait on Kalshi.
+    waits = ("_live_balance", "_demo_cash", "balance_cached", "single_flight", "kalshi_dev_exec", "verify(")
+    for fn in (dashboard_routes.dashboard, funds_routes.funds, funds_routes.kalshi_cash, chat_routes.autopilot_status,
+               views._demo_health, views.demo_health_memo, views._health_from):
+        src = inspect.getsource(fn)
+        assert not [w for w in waits if w in src], fn.__name__
+    app = pathlib.Path(views.__file__).resolve().parents[1]
+    assert not [str(f) for f in app.rglob("*.py") if "ask_kalshi" in f.read_text(encoding="utf-8")]

@@ -1262,6 +1262,8 @@
     const { pending, last_balance, last_balance_at, ...kept } = b;
     return { ...kept, balance: last_balance, balance_at: last_balance_at };
   };
+  // cashAt: when a figure Kalshi answered was read ("Read from Kalshi 2m ago"), or '' with no read time.
+  const cashAt = (b) => b && b.balance_at ? `Read from Kalshi ${when(b.balance_at)}` : '';
   const cashFig = (b) => b.pending ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}; checking Kalshi for the latest\u2026`] : ['Checking\u2026', 'Asking Kalshi for your real cash now.'])
     : b.failed ? (b.last_balance != null ? [usd(b.last_balance), `Read ${when(b.last_balance_at)}. ${CASH_FAILED}`] : ['Unavailable', CASH_FAILED]) : null;
   const cashRead = (b, book) => api('/api/funds/cash?book=' + book).then((c) => {
@@ -2208,7 +2210,7 @@
         ${apFirst ? '' : sinceStrip(d, '#dash-deps')}
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-deps') : ''}
         <dl class="figures measure">
-          ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : (lv.balance_at ? `Read from Kalshi ${when(lv.balance_at)} \u00b7\u00a0` : '') + mSub(lv, 'Your Kalshi cash \u2014 real money untouched')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', lv) })}
+          ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(' \u00b7\u00a0') : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(' \u00b7\u00a0')) : 'Connect your Kalshi account on <a href="/funds">Funds</a> to trade real money') + tradesCsv('live', lv) })}
           ${fig('<span class="mk dep">Demo</span> Sandbox', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital \u00b7\u00a0no demo strategies yet`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` })}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash \u00b7\u00a0${usd(p.open_at_cost)} at cost \u00b7\u00a0<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${PAPER_NET}${glo('paperfills')}${tradesCsv('paper', p)}` : `${usd(p.cash)} of practice money \u00b7\u00a0no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
@@ -3814,7 +3816,7 @@
     apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
-    busy, cardFormFail, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
+    busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
     CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_WHAT, demoCashRead, demoHealthLine,
     demoSpan, DEP_DONE, depActed, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go,

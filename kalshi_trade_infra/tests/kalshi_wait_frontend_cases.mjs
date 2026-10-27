@@ -132,6 +132,36 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
     }
   });
 
+  test(`${name}: a demo book on the strategy ladder says its demo account is being checked, not "running", while its check is pending`, async () => {
+    const paper = {id: 1, mode: 'paper', status: 'running', closed_trades: 4, realized_pnl: 1.9, open_positions: 0, stake: 5, created_at: '2026-10-20T08:00:00Z'};
+    const demo = {id: 3, mode: 'demo', status: 'running', closed_trades: 0, realized_pnl: 0, open_positions: 0, stake: 5, created_at: '2026-10-21T08:00:00Z'};
+    for (const [after, said] of [[null, /<span class="mk dep">Demo<\/span> running ·/],
+      [demoFunds, /<span class="mk dep">Demo<\/span> \d+ closed trades .*demo-health">Demo isn&#39;t trading: your Kalshi demo account has \$0\.00/]]) {
+      const [demoHeld, answerDemo] = held();
+      let reads = 0;
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/strategies/42') {
+          reads++;
+          return response(detailStrategy(reads === 1 ? {deployments: [paper, demo], demo_health: null, demo_health_pending: true}
+            : {deployments: [paper, demo], demo_health: after}));
+        }
+        if (path === '/api/strategies/42/dev-curve') return response({dev_curve: []});
+        if (path === '/api/funds/cash?book=demo') return demoHeld.then(() => response({book: 'demo', connected: true, balance: 0}));
+        return response({error: 'down'}, 503);
+      }});
+      await f.viewStrategy(42); await settle();
+      const ladder = () => f.root.querySelector('#ladder-body').innerHTML;
+      assert.match(ladder(), /<span class="mk dep">Demo<\/span> checking your Kalshi demo account… ·/);
+      assert.doesNotMatch(ladder(), /Demo<\/span> running/, 'not "running" before its demo check is in');
+      assert.match(ladder(), /<span class="mk ?">Paper<\/span> running ·/, 'the paper book is unaffected');
+      answerDemo(); await settle();
+      assert.equal(reads, 2);
+      assert.match(ladder(), said);
+      assert.doesNotMatch(ladder(), /checking your Kalshi demo account/);
+      f.clearTimers && f.clearTimers();
+    }
+  });
+
   // ---------- no "checking" flicker under two minutes ----------
   const dashAnswer = (live, v) => ({
     paper: {equity: 1001.6, cash: 1000, open_at_cost: 1.6, total_pnl: 1.6, closed_trades: 8, open_positions: 0,
@@ -174,6 +204,26 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
     f.clearTimers();
   });
 
+  test(`${name}: the dashboard's Kalshi cash figure says when Kalshi's figure was read`, async () => {
+    for (const [live, said] of [
+      [{balance: 1234.56, balance_at: ago(5 * 60000)}, /Kalshi cash ?\$1,234\.56 ?Read from Kalshi 5m ago · Your Kalshi cash — real money untouched/],
+      [{balance: 1234.56, balance_at: ago(5 * 60000), closed_trades: 2, realized_pnl: 1.5, open_positions: 1},
+        /\$1,234\.56 ?Read from Kalshi 5m ago · Tau trades: 1 open/],
+      [{balance: 1234.56}, /Kalshi cash ?\$1,234\.56 ?Your Kalshi cash — real money untouched/],
+    ]) {
+      const answer = dashAnswer(live, 'r1');
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/dashboard') ? response(answer)
+        : path.startsWith('/api/track-record') ? response({modes: {}})
+          : path === '/api/autopilot/status' ? response({autopilot: false, mode: 'off'}) : response({})});
+      f.S.me.user.autopilot = false; f.S.ap = null; f.S.apAt = 0;
+      f.location.pathname = '/';
+      await f.viewDashboard(); await settle();
+      assert.match(dashCash(f), said);
+      assert.equal(asked(f, '/api/funds/cash'), 0, 'a kept figure asks no follow-up');
+      f.clearTimers();
+    }
+  });
+
   const fundsAnswer = (kalshi, dev) => ({
     kalshi: {connected: true, balance: null, key_id: 'LIVE…1234', funding_url: 'https://kalshi.com/account/funding',
       closed_trades: 1, realized_pnl: -1.25, open_positions: 0, open_at_cost: 0, ...kalshi},
@@ -207,6 +257,58 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
       }
       f.clearTimers();
     }
+  });
+
+  test(`${name}: a Funds poll that lands while a cash follow-up is out and doesn't repaint still gets that follow-up's figure`, async () => {
+    for (const typing of [false, true]) {
+      const [liveHeld, answerLive] = held();
+      const [demoHeld, answerDemo] = held();
+      let polls = 0;
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/funds') { polls++; return response(fundsAnswer({pending: true}, {pending: true})); }
+        if (path === '/api/funds/cash?book=live') return liveHeld.then(() => response({book: 'live', connected: true, balance: 1300, balance_at: ago(0)}));
+        if (path === '/api/funds/cash?book=demo') return demoHeld.then(() => response({book: 'demo', connected: true, balance: 250, balance_at: ago(0)}));
+        return response({});
+      }});
+      f.location.pathname = '/funds';
+      await f.viewFunds(); await settle();
+      assert.match(liveFig(f), /Kalshi cash ?Checking…/);
+      assert.equal(asked(f, '/api/funds/cash?book=live'), 1);
+      if (typing) f.root.querySelector('#paper input[name=amount]').value = '25';  // someone is using the panels
+      // The 30s poll: the same pending answer, so the panels aren't repainted and no follow-up of its own is asked.
+      await tick(f);
+      assert.equal(polls, 2, 'the poll read Funds');
+      assert.equal(asked(f, '/api/funds/cash?book=live'), 1, 'no second follow-up');
+      assert.equal(asked(f, '/api/funds/cash?book=demo'), 1);
+      answerLive(); answerDemo(); await settle();
+      assert.match(liveFig(f), /Kalshi cash ?\$1,300\.00/, 'the follow-up out at the poll lands');
+      assert.doesNotMatch(liveFig(f), /[Cc]hecking/);
+      assert.equal(spot(f, 'live-cell'), '$1,300.00');
+      assert.match(spot(f, 'demo-ok'), /balance \$250\.00/);
+      assert.equal(polls, 2, 'filled in place, not read again');
+      if (typing) assert.equal(f.root.querySelector('#paper input[name=amount]').value, '25', 'what was typed stays');
+      f.clearTimers();
+    }
+  });
+
+  test(`${name}: a follow-up out at a poll never fills a newer answer that has its own figure`, async () => {
+    const [liveHeld, answerLive] = held();
+    let polls = 0;
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/funds') {
+        polls++;
+        return response(polls === 1 ? fundsAnswer({pending: true}, {connected: false}) : fundsAnswer({balance: 1500, balance_at: ago(0)}, {connected: false}));
+      }
+      if (path === '/api/funds/cash?book=live') return liveHeld.then(() => response({book: 'live', connected: true, balance: 1300, balance_at: ago(0)}));
+      return response({});
+    }});
+    f.location.pathname = '/funds';
+    await f.viewFunds(); await settle();
+    await tick(f);
+    assert.match(liveFig(f), /Kalshi cash ?\$1,500\.00/);
+    answerLive(); await settle();
+    assert.match(liveFig(f), /Kalshi cash ?\$1,500\.00/, 'the newer figure stands');
+    f.clearTimers();
   });
 
   // ---------- the demo key's save ----------

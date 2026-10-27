@@ -484,7 +484,9 @@ window.TauPage('strategies', (T) => {
       // A demo book Kalshi refuses every order for is not "running": it says why, and what to do.
       if (m === 'demo' && s.demo_health) return `<p><span class="mk ${cls}">${label}</span> ${stats} ·\u00a0${demoHealthLine(s.demo_health)}</p>`;
       const runs = ds.some((d) => d.status === 'running');
-      const state = !runs ? 'paused' : m === 'live' && !liveOpen() ? 'waiting: live trading isn\u2019t open yet, so it places no orders' : 'running';
+      // Its demo check is still reading the demo cash (demo_health_pending): not "running" until that is in.
+      const state = !runs ? 'paused' : m === 'live' && !liveOpen() ? 'waiting: live trading isn\u2019t open yet, so it places no orders'
+        : m === 'demo' && s.demo_health_pending ? 'checking your Kalshi demo account\u2026' : 'running';
       return `<p><span class="mk ${cls}">${label}</span> ${state} ·\u00a0${stats}</p>`;
     });
     // Paper proves the edge, demo the order path: say so under the demo book, with its settled demo
