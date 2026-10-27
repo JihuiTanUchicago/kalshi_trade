@@ -4,8 +4,8 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, DEMO_WHAT, demoSpan, esc, fig, flash, holdFocus, ICON, loading, paint,
-    painted, poll, refreshed, root, S, shell, tone, usd, when
+    api, armed, BEHIND, boardTitle, busy, DEMO_WHAT, demoSpan, esc, fig, flash, holdFocus, ICON, loading, pageAssets,
+    paint, painted, poll, refreshed, root, S, shell, tone, usd, when
   } = T;
 
   // ---------- funds ----------
@@ -91,6 +91,13 @@ window.TauPage('funds', (T) => {
       return !!(a && a !== document.body && el.contains(a)) || [...el.querySelectorAll('input, textarea')].some((x) => x.value)
         || !!el.querySelector('.busy, .armed') || FLASHES.some((sel) => { const x = el.querySelector(sel); return !!(x && x.innerHTML); });
     };
+    // The perps box mounts once its script is in. Funds' own files (the perps account, and the broker and
+    // Alpaca paper files kept with it) start loading once the figures have painted, never ahead of them
+    // (pageAssets): on a phone's slow network the shell's copies held the first figure back.
+    const mountPerps = () => {
+      const perpsHost = root.querySelector('#kalshi-perps-live');
+      if (gen === S.gen && !S.perps && window.TAU_PERPS_LIVE && perpsHost) S.perps = window.TAU_PERPS_LIVE.mount(perpsHost, {api, proposalId: new URLSearchParams(location.search).get('perps_proposal')});
+    };
     const load = async (cfg) => {
       const d = await api('/api/funds', undefined, cfg);
       if (gen !== S.gen) return;
@@ -170,8 +177,7 @@ window.TauPage('funds', (T) => {
       if (cfg && (painted.get(host) === main || S.perps || inUse(host))) return;
       host.innerHTML = main; painted.set(host, main);
       if (S.perps) { S.perps.destroy(); S.perps = null; }
-      const perpsHost = root.querySelector('#kalshi-perps-live');
-      if (window.TAU_PERPS_LIVE && perpsHost) S.perps = window.TAU_PERPS_LIVE.mount(perpsHost, {api, proposalId: new URLSearchParams(location.search).get('perps_proposal')});
+      if (window.TAU_PERPS_LIVE) mountPerps(); else pageAssets('funds').then(mountPerps);
       const df = root.querySelector('#demo');
       if (df) df.onsubmit = async (e) => {
         e.preventDefault();

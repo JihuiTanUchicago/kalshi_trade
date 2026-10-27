@@ -36,11 +36,15 @@ class Host {
 }
 
 test('broker modules remain available but unavailable connections are absent from both Funds themes', () => {
-  // Funds' own files (page_modules.ASSETS): the Funds shell links them ahead of boot.js, and from any other
-  // page the bundle loads them with the Funds page file.
+  // Funds' own files (page_modules.ASSETS): no shell links them, so they never hold Funds' first figure
+  // back; every shell names them (data-page-assets) and the Funds page file has the bundle load them once
+  // its figures have painted.
   const html = readFileSync(new URL('../app/static/index.html', import.meta.url), 'utf8');
-  assert.ok(html.indexOf('{{page_js}}') < html.indexOf('boot.js?v='));
-  assert.match(html, /\{\{page_css\}\}/);
+  assert.match(html, /data-page-assets="\{\{page_assets\}\}"/);
+  assert.doesNotMatch(html, /\{\{page_(?:js|css)\}\}/);
+  for (const name of ['app-funds.js', 'app.meridian-funds.js']) {
+    assert.match(readFileSync(new URL('../app/static/' + name, import.meta.url), 'utf8'), /pageAssets\('funds'\)\.then\(mountPerps\)/);
+  }
   const modules = readFileSync(new URL('../app/web/page_modules.py', import.meta.url), 'utf8');
   assert.match(modules, /"funds": \("broker-connections\.css", "alpaca-paper\.css", "kalshi-perps-live\.css",\s+"alpaca-paper\.js", "kalshi-perps-live\.js", "broker-connections\.js"\)/);
   for (const name of ['app.js', 'app.meridian.js']) {
