@@ -59,3 +59,26 @@ def test_broker_assets_are_versioned_and_loaded_before_app_boot():
     assert html.index('/static/broker-connections.js') < html.index('/static/boot.js')
     asset_headers, js = static_response('/static/broker-connections.js')
     assert asset_headers[0] == 200 and b'TauBrokerConnections' in js
+
+
+@pytest.mark.parametrize('css', ['app.css', 'app.meridian.css'])
+def test_the_off_screen_skip_link_never_asks_for_a_web_font(css):
+    # Skip to content is in every first paint, off screen. Meridian's, set in DM Sans, fetched the 37 KB font on a
+    # phone for text no one sees, on the landing and sign-in too, which never use it. Its type (its own
+    # font-family, else body's) resolves to no @font-face family, in both themes.
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / css).read_text()
+    faces = set(re.findall(r'@font-face\s*\{[^}]*font-family:\s*"([^"]+)"', src))
+    assert faces
+    root_at = src.index(':root {')
+    root = dict(re.findall(r'(--[\w-]+):\s*([^;]+);', src[root_at:src.index('}', root_at)]))
+    rule = re.search(r'(?m)^\.skip \{([^}]*)\}', src).group(1)
+    font = re.search(r'font-family:\s*([^;]+)', rule)
+    if font:
+        family = font.group(1)
+    else:
+        body = re.search(r'(?m)^body \{([^}]*)\}', src).group(1)
+        family = re.search(r'font(?:-family)?:\s*([^;]+)', body).group(1)
+    family = re.sub(r'var\((--[\w-]+)\)', lambda m: root.get(m.group(1), m.group(0)), family)
+    assert 'var(' not in family and not any(f in family for f in faces), (css, family)
