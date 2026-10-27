@@ -4924,22 +4924,26 @@ test('autopilot walk (Meridian): the last move says what and when, the pill says
 
 test('autopilot (Meridian): the market it researches reads by its label, never a raw key or series', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}, {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}, {key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'},
+    {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
   const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
-  f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi']}};
-  assert.equal(f.apIdleLine(), 'Researching BTC 15-min up/down · BTC above $X at 5pm ET · Chicago high temp');
+  // A listed market reads by its full label, as Billing's research lines and every position name it, by key,
+  // series or label alike; a key only the app knows (eth15m, not in this catalog) by its short one.
+  f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi', 'eth15m']}};
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin up or down in 15 minutes · Bitcoin above $X at 5pm ET · Chicago high temp · ETH 15-min up/down');
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it's still picking"]}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
-  // The server sends a listed market's catalog label; it reads as the short one, as its key does.
+  // The server sends a listed market's catalog label; it reads as it is.
   f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
-  assert.equal(f.apIdleLine(), 'Researching BTC above $X at 5pm ET');
+  assert.equal(f.apIdleLine(), 'Researching Bitcoin above $X at 5pm ET');
   // The story quotes the same list; the panel says it the same way, and so does the research figure.
   const d = {...ap, research: {active: ['btc15m', 'KXBTCD'], tested_7d: 3, passed_7d: 0}, story: ["Right now it's researching btc15m and KXBTCD."]};
   const box = new Element('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
   f.apUpdate(box, d);
-  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching BTC 15-min up\/down and BTC above \$X at 5pm ET\.<\/p>/);
+  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching Bitcoin up or down in 15 minutes and Bitcoin above \$X at 5pm ET\.<\/p>/);
   f.apUpdate(box, {...d, story: []});
-  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching BTC 15-min up\/down · BTC above \$X at 5pm ET/);
+  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching Bitcoin up or down in 15 minutes · Bitcoin above \$X at 5pm ET/);
+  assert.doesNotMatch(box.querySelector('#apf-stats').innerHTML + box.querySelector('#apf-story').innerHTML, /BTC 15-min|BTC above/);
   assert.doesNotMatch(source, /esc\(\(d\.story && d\.story\[0\]\)|\(d\.story \|\| \[\]\)\.map|\[\.\.\.new Set\(d\.research\.active\)\]/);
 });
 

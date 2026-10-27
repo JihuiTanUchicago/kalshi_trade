@@ -371,6 +371,11 @@
   // Category sort shared by the research picker and the strategies market filter.
   const catOrder = (a, b) => { const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); };
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
+  // A market named on its own, in a sentence or as a row's market ("Bitcoin up or down in 15 minutes"), by its full
+  // label, as Billing's lines and every position name it; the short one stays for chips and meta lines joined by
+  // " · ". The autopilot said "Researching BTC 15-min up/down" and Deploy's rows "BTC 15-min up/down" above
+  // positions in "Bitcoin up or down in 15 minutes". A key the catalog doesn't list reads as marketShort does.
+  const marketFull = (k) => { const m = k && ((S.me && S.me.markets) || []).find((x) => x.key === k); return m && m.label ? m.label : marketShort(k); };
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
   // "Bitcoin above $68,499.99 at 5pm ET"), so an open position never shows only the raw ticker. Unknown: ''.
   // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
@@ -418,7 +423,7 @@
   // $68,499.99 at 5pm ET"), else the market it was traded on (`key`, its deployment's), else "Kalshi contract".
   // The ticker (KXBTC15M-26OCT262100-00) carries the raw series key, so it is never the headline: kalshiRef
   // sets it on a small line, there to find the contract on Kalshi.
-  const contractName = (ticker, key) => contractMarket(ticker) || (key ? strikeIn(marketShort(key), ticker) : 'Kalshi contract');
+  const contractName = (ticker, key) => contractMarket(ticker) || (key ? strikeIn(marketFull(key), ticker) : 'Kalshi contract');
   // A contract, by its plain name, that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker, key) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(contractName(ticker, key))}</a>`;
   const kalshiRef = (ticker) => `<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${esc(ticker)}</span></span>`;
@@ -1808,7 +1813,7 @@
     return `<tr class="${live ? 'live-row' : ''}">
       <td class="name" data-lab=""><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a>
         <div class="sub-fig">${depSizing(d)}${d.status !== 'running' && (d.status_why || d.status_reason) ? ' \u00b7\u00a0' + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</div>${idle ? `<div class="sub-fig dep-idle">${esc(idle.why)}</div>` : ''}${demoRowLine(d)}${btCheckLine(d.backtest_check)}${roadLine(d)}</td>
-      <td data-lab="Market"><span class="tick">${esc(marketShort(d.market))}</span></td>
+      <td data-lab="Market"><span class="tick">${esc(marketFull(d.market))}</span></td>
       <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${money(d.realized_pnl)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? '<span class="sub-fig">—</span>' : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
@@ -3360,14 +3365,15 @@
   // "reviewing", "2 on paper", or "paused" while billing stops it. '' when there's nothing to add.
   // A market the autopilot names (the status read's research list, and its story, which quotes that
   // list): the app's own label. The server sends a market's label, or the run's raw key when the
-  // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a key reads as the short label,
-  // a series as its market's, and a key nothing knows as "an unlisted market", never the raw key.
+  // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a listed market, key or series, reads
+  // as its full label (marketFull, as Billing's research lines say it), a key only the app knows as its
+  // short label, and a key nothing knows as "an unlisted market", never the raw key.
   const AP_PICKING = "a market it's still picking";
   function apMarketName(n) {
     const s = String(n || '');
-    if (MKT_SHORT[s]) return MKT_SHORT[s];
     const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || x.label === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
-    if (m) return marketShort(m.key);
+    if (m) return marketFull(m.key);
+    if (MKT_SHORT[s]) return MKT_SHORT[s];
     // A label has a space or mixed case ("Chicago high temp"); a key is one case, no spaces.
     if (!/^[\w.-]+$/.test(s) || (s !== s.toLowerCase() && s !== s.toUpperCase())) return s;
     return contractMarket(s) || 'an unlisted market';
