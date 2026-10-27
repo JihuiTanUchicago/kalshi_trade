@@ -741,7 +741,49 @@ def autopilot_scope_line() -> str:
     if not AUTOPILOT_CRYPTO_COINS:
         return ""
     return ("Crypto research scope (the user's decision): only %s markets; do NOT propose research on "
-            "other coins' markets." % ", ".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS))
+            "other coins' markets. An angle about another coin (whether a %s mechanism transfers to it, or "
+            "that coin's own traits) is refused: a %s market cannot test it." % (
+                ", ".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS),
+                "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS),
+                "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS)))
+
+
+def _coin_aliases() -> Dict[str, List[str]]:
+    """{coin tag: names an idea may call it by}: the ticker and the first word of its markets' labels,
+    matched case-sensitively so "NEAR" the coin is not "near-ATM"."""
+    out: Dict[str, List[str]] = defaultdict(list)
+    for k, m in MARKETS.items():
+        tag = _underlying_tag(k)
+        if not tag or not (m.label or "").strip():
+            continue
+        for name in (tag.upper(), m.label.split()[0]):
+            if name not in out[tag]:
+                out[tag].append(name)
+    return out
+
+
+_TARGET_AFTER = r"(?:'s\b|-specific|\s*15.?min|\s*15m\b|\s*dail|\s*(?:daily |strike )?ladder|\s*contract|\s*market|\s*microstructure)"
+_TARGET_BEFORE = r"\b(?:on|to|for|transfers? to|generali[sz]es? to|holds? on|carr(?:y|ies) over to)\s+(?:the\s+)?"
+_GENERIC_ALT = re.compile(r"meme.?coin|\balt.?coin|mid-cap alt|another coin|other coins?'", re.I)
+
+
+def autopilot_off_scope_coin(idea: str) -> Optional[str]:
+    """The out-of-scope coin an autopilot research angle is ABOUT ("...transfers to SOL dailies",
+    "DOGE's retail flow", "on ZEC 15-min"), or None. A coin used only as a signal for BTC ("ETH leads
+    BTC", "ETH-BTC decorrelation") is not a target. Prod 2026-10-27 13:24-15:46Z: 15 of 19 autopilot
+    runs were angles like "test whether BTC's proven mechanism transfers to SOL dailies"; the scope
+    sent each to a BTC market, where it can only re-test BTC's own mechanism (~$2.8 a run)."""
+    if not AUTOPILOT_CRYPTO_COINS or not idea:
+        return None
+    for tag, names in _coin_aliases().items():
+        if tag in AUTOPILOT_CRYPTO_COINS:
+            continue
+        alt = "|".join(re.escape(n) for n in names)
+        if re.search(r"\b(?:%s)(?i:%s)" % (alt, _TARGET_AFTER), idea) or \
+                re.search(r"(?i:%s)(?:%s)\b" % (_TARGET_BEFORE, alt), idea):
+            return tag.upper()
+    m = _GENERIC_ALT.search(idea)
+    return m.group(0) if m else None
 
 
 # -- the autopilot's own scorecard -------------------------------------------------------------
@@ -4244,6 +4286,12 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 off_scope, market = market, None
             if len(idea) < 8:
                 return "Tell me the idea to research in a sentence or two.", None
+            coin = autopilot_off_scope_coin(idea) if autopilot else None
+            if coin:
+                return ("I didn't start that: crypto research is %s only now, and this angle is about %s. "
+                        "I'll look for a %s angle instead." % (
+                            "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS), coin,
+                            "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS))), None
         refusal = focus_refusal(user, strat["market"] if sid else market)
         if refusal:
             return refusal, None

@@ -327,7 +327,7 @@ def test_autopilot_crypto_research_is_bitcoin_only_and_manual_research_is_not(mo
     rec = _capture(monkeypatch)
     monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [])
     text, _ = agent.act(None, USER, {"type": "research", "market": "zec15m",
-                        "idea": "Order-flow imbalance on ZEC 15m."}, True)
+                        "idea": "Order-flow imbalance right before expiry."}, True)
     assert rec["runs"][-1][0] is None and "BTC only" in text and "zec15m" in text
     agent.act(None, USER, {"type": "research", "market": "zec15m", "idea": "Order-flow imbalance on ZEC 15m."}, False)
     assert rec["runs"][-1][0] == "zec15m"  # a person asking by hand still gets the coin they named
@@ -336,6 +336,34 @@ def test_autopilot_crypto_research_is_bitcoin_only_and_manual_research_is_not(mo
     assert "only BTC markets" in agent._cooldown_line(None, 1)
     monkeypatch.setattr(agent, "AUTOPILOT_CRYPTO_COINS", [])
     assert agent.autopilot_scope_ok("eth_daily") and agent.autopilot_scope_line() == ""
+
+
+def test_an_autopilot_angle_about_another_coin_is_refused_not_rerun_on_bitcoin(monkeypatch):
+    # Prod 2026-10-27 13:24-15:46Z: 15 of 19 autopilot runs were "does BTC's proven mechanism transfer
+    # to SOL dailies?"; the scope sent each to a BTC market, which can only re-test BTC's own mechanism.
+    rec = _capture(monkeypatch)
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [])
+    for idea, coin in (("Late-phase structural edge on SOL dailies: test whether the BTC daily mechanism transfers", "SOL"),
+                       ("Solana-specific microstructure: retail participation and flow", "SOL"),
+                       ("Meme-coin sentiment: test whether DOGE's social-media jumps create edges", "DOGE"),
+                       ("Test whether BTC 15-min's z-score mechanism transfers to another coin's 15-min", "another coin"),
+                       ("Mean reversion after sharp moves on ETH 15-min", "ETH")):
+        text, _ = agent.act(None, USER, {"type": "research", "idea": idea}, True)
+        assert "didn't start" in text and coin in text and "BTC only" in text, (idea, text)
+    assert rec["runs"] == []
+    # A coin used as a signal FOR Bitcoin, or a plain English "near", is still a Bitcoin angle.
+    for idea in ("ETH momentum spillover: BTC catches up when ETH leads",
+                 "ETH-BTC decorrelation regime on btc15m",
+                 "Order-flow imbalance on near-ATM contracts near expiry"):
+        assert agent.autopilot_off_scope_coin(idea) is None, idea
+        agent.act(None, USER, {"type": "research", "idea": idea}, True)
+    assert len(rec["runs"]) == 3
+    # A person asking by hand still gets what they asked for, and an empty scope refuses nothing.
+    agent.act(None, USER, {"type": "research", "idea": "Mean reversion after sharp moves on ETH 15-min"}, False)
+    assert len(rec["runs"]) == 4
+    assert "refused" in agent.autopilot_scope_line()
+    monkeypatch.setattr(agent, "AUTOPILOT_CRYPTO_COINS", [])
+    assert agent.autopilot_off_scope_coin("Mean reversion on ETH 15-min") is None
 
 
 def test_with_every_allowed_market_on_cooldown_the_review_is_told_to_research_without_one(monkeypatch):
