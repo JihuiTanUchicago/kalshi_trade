@@ -4,8 +4,8 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, loading, openCost, pageAssets,
-    paint, painted, poll, refreshed, root, S, shell, tone, usd, when
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, loading, openCost, pageAssets,
+    paint, painted, poll, refreshed, root, S, settleAt, shell, tone, usd, when
   } = T;
 
   // ---------- funds ----------
@@ -98,8 +98,16 @@ window.TauPage('funds', (T) => {
     const memo = String(r.memo || r.kind || '').replace(/ (@|->) (\d*\.\d+)/g, (m, w, p) => ` ${w === '@' ? 'at' : '\u2192'} ${Math.round(+p * 100)}\u00a2`)
       .replace(/\(([a-z]+(?:_[a-z]+)+)/g, (m, c) => '(' + c.replace(/_/g, ' '));
     const settled = r.kind === 'settlement' ? (+r.amount > 0 ? ' \u00b7\u00a0won, paid $1 a contract' : ' \u00b7\u00a0lost, paid $0') : '';
-    return esc(memo) + (settled ? `<span class="hint">${settled}</span>` : '');
+    // The contract goes by its plain name, as an open position does (contractName: "Bitcoin up or down in 15
+    // minutes"); its ticker carries the raw series key, so it moves to the small line under it (kalshiRef).
+    const t = LEDGER_TICKER.exec(memo);
+    const said = t ? esc(memo.slice(0, t.index)) + esc(contractName(t[0])) + esc(memo.slice(t.index + t[0].length)) : esc(memo);
+    return said + (settled ? `<span class="hint">${settled}</span>` : '') + (t ? `<div class="sub-fig">${kalshiRef(t[0])}</div>` : '');
   };
+  // A Kalshi contract ticker in a memo: its series, then the event's date (KXBTCD-26OCT2617-T114999.99).
+  const LEDGER_TICKER = /\b[A-Z][A-Z0-9]*-\d{2}[A-Z]{3}\d{2}(?:[A-Z0-9.-]*[A-Z0-9])?/;
+  // When cash moved: the clock and its zone, with the date on any day but today (settleAt), never a bare "Oct 24".
+  const ledgerAt = (iso) => `<time datetime="${esc(iso || '')}">${esc(settleAt(iso))}</time>`;
   // Fees and settlement, once, in plain words, where the cash moves.
   const LEDGER_HOW = 'Cash in and out of your paper account, newest first. A buy takes the contracts\u2019 price plus Kalshi\u2019s fee, as a real order would. When a market settles, each winning contract pays $1 and each losing one pays $0; a sale before then pays the price it sold at, less the fee. A trade\u2019s P&amp;L is what it brought back less everything it cost, fees included.';
   async function viewFunds() {
@@ -268,7 +276,7 @@ window.TauPage('funds', (T) => {
           <h2>Paper history</h2>
           <p class="hint ledger-how">${LEDGER_HOW}${d.paper.ledger.length >= 50 ? ' The latest 50 entries.' : ''}</p>
           <table class="table stack t-ledger"><thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead><tbody>
-            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${when(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
+            ${d.paper.ledger.map((r) => `<tr><td class="hint lead-cell" data-lab="When">${ledgerAt(r.created_at)}</td><td class="name" data-lab="What">${ledgerWhat(r)}</td><td class="num ${tone(+r.amount)}" data-lab="Amount">${usd(r.amount, true)}</td></tr>`).join('')}
           </tbody></table>
         </section>
         </div></div>`;

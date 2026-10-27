@@ -26,6 +26,7 @@ import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
+import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -3679,7 +3680,7 @@ test('Meridian: separators wrap with the item after them, the phone tabs show wh
   // A strategy card's status cell is labelled; the Funds paper ledger names its cells like the credits ledger.
   assert.match(f.strategySlip({id: 1, title: 'T', thesis: '', market: 'btc15m', status: 'passed', out_of_sample: {pnl: 1, trades: 3, win_rate: .5}}, {}),
     /<td class="act st" data-lab="Status">/);
-  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{when\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
+  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{ledgerAt\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
 });
 
 test('Meridian: a finished session says what to do next: your own idea after the example, the passed strategy after yours', async () => {
@@ -6082,6 +6083,7 @@ test('Meridian: a strategy that did not pass shows its backtest P&L muted, at th
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus, fundsData: funds});
 fundsTrustCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
+fundsWalkCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});
 a11yCases({name: 'Meridian', frontend, storageFor: m => m, billingPage, cardedBilling, source, strategyFrontend, detailStrategy,
   dashboard: dashboardData, fundsData: funds});

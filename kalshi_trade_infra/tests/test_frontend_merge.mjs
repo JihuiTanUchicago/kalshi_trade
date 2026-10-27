@@ -25,6 +25,7 @@ import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
 import {firstHourCases} from './first_hour_frontend_cases.mjs';
 import {fundsTrustCases} from './funds_trust_frontend_cases.mjs';
+import {fundsWalkCases} from './funds_walk_frontend_cases.mjs';
 import {chatPanelCases} from './chat_panel_frontend_cases.mjs';
 import {creditsCases, declinedCardCases} from './credits_frontend_cases.mjs';
 import {writeWaitCases} from './write_wait_frontend_cases.mjs';
@@ -2374,7 +2375,7 @@ test('Tau: separators wrap with the item after them, the phone tabs show which e
   // A strategy card's status cell is labelled; the Funds paper ledger names its cells like the credits ledger.
   assert.match(f.strategySlip({id: 1, title: 'T', thesis: '', market: 'btc15m', status: 'passed', out_of_sample: {pnl: 1, trades: 3, win_rate: .5}}, {}),
     /<td class="act st" data-lab="Status">/);
-  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{when\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
+  assert.match(source, /<td class="hint lead-cell" data-lab="When">\$\{ledgerAt\(r\.created_at\)\}<\/td><td class="name" data-lab="What">[^\n]*data-lab="Amount">/);
 });
 
 test('the floating autopilot pill also steps aside from a figure under it', () => {
@@ -5218,6 +5219,7 @@ test('Tau: the run page\'s "Ideas tested" heading keeps a gap from the figures, 
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Tau', frontend, billingPage, cardedBilling, dashboard: emptyDashboard, apStatus: apOn, fundsData: funds});
 fundsTrustCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
+fundsWalkCases({name: 'Tau', frontend, fundsData: funds, dashboard: emptyDashboard, detailStrategy, strategyFrontend});
 chatPanelCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 a11yCases({name: 'Tau', frontend, storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))}), billingPage, cardedBilling,
   source, strategyFrontend, detailStrategy, dashboard: emptyDashboard, fundsData: funds});
