@@ -15,6 +15,9 @@
 //   unnamed complementary landmarks beside an unnamed hot-markets rail. Every <aside> is named.
 // - Heading levels that skipped: Funds' panels and Tau's research form were h3 under the page's h1, the
 //   track record's figure titles h5 under its h2, and Meridian's "Since deploying" h3 under the h1.
+// - The pulse's idle line ends "last move 3m ago", and the chat poll rewrote it each minute, so the live
+//   region said the whole line again once a minute. The minutes tick in a shown line hidden from the
+//   reader; the live words leave them out and change only with the status.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -135,6 +138,44 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     await f.apLoadChat(box, false); await flush();
     assert.equal(pulse.writes, writes + 2);
     assert.match(pulse.innerHTML, /Between reviews/);
+  });
+
+  test(`${name}: the pulse's minutes tick on screen without being said again; a status change is said once`, async () => {
+    let chat = {messages: [], agent_busy: false};
+    const store = new Map([['tau_ap_open', '1']]);
+    const f = frontend({storage: storageFor(store), fetchImpl: (path) => {
+      if (path.startsWith('/api/chat?')) return response(chat);
+      if (path === '/api/models') return response({models: [], default: ''});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    const at = new Date(Date.now() - 3 * 60000).toISOString();
+    f.S.me = {...f.S.me, user: {...(f.S.me && f.S.me.user), id: 7, autopilot: true}};
+    f.S.ap = {...f.S.ap, autopilot: true, mode: 'paper', paper_running: 2, last_action: {at, text: 'Autopilot is ON: …'}};
+    const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+    f.renderAutopilot(box, null); await flush(); await flush();
+    const pulse = box.querySelector('#apf-pulse');
+    const shown = () => pulse.querySelector('[data-ap-shown]').textContent, said = () => pulse.querySelector('.vh').textContent;
+    assert.equal(pulse.getAttribute('aria-live'), 'polite');
+    assert.equal(pulse.querySelector('[data-ap-shown]').getAttribute('aria-hidden'), 'true');
+    assert.match(shown(), /^Between reviews ·\u00a02 on paper ·\u00a0last move 3m ago/);
+    assert.equal(said(), 'Between reviews ·\u00a02 on paper');
+    const writes = pulse.writes;
+    // A minute on, from the chat poll and then from the status read: the shown line counts, nothing is said.
+    f.shiftClock(60000); await f.apLoadChat(box, false); await flush();
+    assert.match(shown(), /last move 4m ago/); assert.equal(said(), 'Between reviews ·\u00a02 on paper'); assert.equal(pulse.writes, writes);
+    f.shiftClock(60000); f.apUpdate(box, {...f.S.ap});
+    assert.match(shown(), /last move 5m ago/); assert.equal(said(), 'Between reviews ·\u00a02 on paper'); assert.equal(pulse.writes, writes);
+    // A real change of status is written, once.
+    f.S.ap = {...f.S.ap, paper_running: 3}; await f.apLoadChat(box, false); await f.apLoadChat(box, false); await flush();
+    assert.equal(pulse.writes, writes + 1); assert.equal(said(), 'Between reviews ·\u00a03 on paper');
+    // A long wait counts its minutes on screen too, said once.
+    chat = {messages: [], agent_busy: true, agent_wait: {state: 'running', seconds: 400}};
+    await f.apLoadChat(box, false); await flush();
+    assert.equal(pulse.writes, writes + 2); assert.equal(said(), 'No word from it for longer than usual');
+    const waited = shown();
+    chat = {...chat, agent_wait: {state: 'running', seconds: 700}};
+    await f.apLoadChat(box, false); await flush();
+    assert.notEqual(shown(), waited); assert.match(shown(), /^No word from it for .+, longer than usual$/); assert.equal(pulse.writes, writes + 2);
   });
 
   test(`${name}: a research session's seconds count is not read out each second; a change of state is said once`, async () => {

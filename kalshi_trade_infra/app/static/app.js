@@ -5758,16 +5758,22 @@
       const w = d.agent_wait;
       // The pulse is a polite live region and this runs on every chat poll (3s): rewriting the same words
       // made a screen reader say "Between reviews · 2 on paper" again each time. Only a change is written.
+      // What it says leaves out the minutes that tick ("last move 4m ago", "for 6m"): the shown line, hidden
+      // from the reader, keeps counting, and its words go out only when the status itself changes.
+      const waitWho = w && (w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it');
       const idle = !w && !d.agent_busy ? apIdleLine(box) : null;
-      const say = w ? `${w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it'} for ${waitSpan(w.seconds)}, longer than usual`
-        : d.agent_busy ? 'Working on its next move' : 'idle:' + idle;
+      const shown = w ? `${waitWho} for ${waitSpan(w.seconds)}, longer than usual` : idle;
+      const say = w ? `${waitWho} for longer than usual` : d.agent_busy ? 'Working on its next move' : apIdleLine(box, true);
       if (pulse.apSaid !== say) {
         pulse.apSaid = say;
         pulse.innerHTML = w
-          ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${say}</span>`
+          ? `<span class="apf-idle-dot" aria-hidden="true"></span><span data-ap-shown aria-hidden="true">${shown}</span><span class="vh">${say}</span>`
           : d.agent_busy
           ? '<span class="working" aria-hidden="true"></span><span>Working on its next move<span class="ell" aria-hidden="true"></span></span>'
-          : `<span class="apf-idle-dot" aria-hidden="true"></span><span data-ap-idle>${esc(idle)}</span>`;
+          : `<span class="apf-idle-dot" aria-hidden="true"></span><span data-ap-idle data-ap-shown aria-hidden="true">${esc(idle)}</span><span class="vh">${esc(say)}</span>`;
+      } else {
+        const tick = pulse.querySelector('[data-ap-shown]');
+        if (tick && shown != null && tick.textContent !== shown) tick.textContent = shown;
       }
     }
     if (stick) msgs.scrollTop = msgs.scrollHeight; else if (follow === 'keep') msgs.scrollTop = kept[0];
@@ -5776,9 +5782,10 @@
   }
   // Idle pulse copy: lead with the autopilot's most recent move (from the status poll, always
   // available even if chat is slow), else a plain "on a schedule" line.
-  function apIdleLine(box) {
+  // `spoken` leaves out how long ago the last move was, for the pulse's live region.
+  function apIdleLine(box, spoken) {
     const d = S.ap, la = d && d.last_action;
-    const last = la && la.at ? ' ·\u00a0last move ' + sinceMin(la.at) : '';
+    const last = la && la.at && !spoken ? ' ·\u00a0last move ' + sinceMin(la.at) : '';
     if (!(d ? d.autopilot : apSwitchOn())) return 'Off: it acts only when you message it' + last;
     const now = apNowWord(d);
     return now + last + (now === 'Idle' ? ' — reviews run on a schedule' : '');
@@ -6132,8 +6139,11 @@
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.
+    // The shown line takes the new minutes; the spoken one changes only with the status.
     const idleEl = box.querySelector('[data-ap-idle]'), idleLine = idleEl && apIdleLine(box);
-    if (idleEl && idleEl.textContent !== idleLine) { idleEl.textContent = idleLine; box.querySelector('#apf-pulse').apSaid = 'idle:' + idleLine; }
+    if (idleEl && idleEl.textContent !== idleLine) idleEl.textContent = idleLine;
+    const pulseEl = idleEl && box.querySelector('#apf-pulse'), idleSay = pulseEl && apIdleLine(box, true), sayEl = pulseEl && pulseEl.querySelector('.vh');
+    if (sayEl && pulseEl.apSaid !== idleSay) { pulseEl.apSaid = idleSay; sayEl.textContent = idleSay; }
     const lastEl = box.querySelector('#apf-last'); if (lastEl) lastEl.innerHTML = d.autopilot ? apLastHtml(d.last_action) : '';
     const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week, d) : '';
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
