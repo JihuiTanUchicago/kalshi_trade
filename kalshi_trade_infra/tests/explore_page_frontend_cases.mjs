@@ -111,6 +111,30 @@ export function explorePageCases({name, frontend}) {
     assert.match(m15().innerHTML, />\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
   });
 
+  // A 15-minute window's page said "This window's start price isn't stored yet" under a heading reading "Target Price:
+  // $113,512.08" (Kalshi's subtitle): with no stored strike the page takes it from the contract's own name and says so.
+  test(`${name}: a 15-minute window with no stored strike reads its target price from the contract's title, and says so`, async () => {
+    const M15 = {ticker: 'KXBTC15M-26OCT262345-45', series: 'KXBTC15M', title: 'BTC price up in next 15 mins?', sub: 'Target Price: $113,512.08'};
+    const none = {...SPOT, ticker: M15.ticker, strike: null, vs: null};
+    let {f, body} = await openSpot(() => response(none), M15);
+    assert.match(f.root.querySelector('h1').textContent, /Target Price: \$113,512\.08/);
+    let html = body().innerHTML;
+    assert.match(html, />Strike<\/dt><dd><span class="fig ">\$113,512\.08<\/span><\/dd><dd class="sub-fig">Target price from the contract’s title</);
+    // Spot is measured against it as the server measures a strike line: by how much, never which side pays.
+    assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">−\$92\.08<\/span><\/dd><dd class="sub-fig">0\.08% below the strike</);
+    assert.doesNotMatch(html, /isn’t stored yet|on the (Yes|No) side/);
+    // A stored strike still wins over the title, with the server's distance.
+    ({body} = await openSpot(() => response({...SPOT, ticker: M15.ticker, strike: {...SPOT.strike, value: 113384.12, inclusive: true, from: 'record'}}), M15));
+    html = body().innerHTML;
+    assert.match(html, />\$113,384\.12<\/span><\/dd><dd class="sub-fig">Yes if Bitcoin settles at or above it</);
+    assert.match(html, /\+\$420\.01/); assert.doesNotMatch(html, /contract’s title/);
+    // Neither stored nor in the title: the honest line stays.
+    ({body} = await openSpot(() => response(none), {...M15, sub: ''}));
+    html = body().innerHTML;
+    assert.match(html, />Strike<\/dt><dd><span class="fig ">—<\/span><\/dd><dd class="sub-fig">This window’s start price isn’t stored yet</);
+    assert.doesNotMatch(html, /Spot vs/);
+  });
+
   test(`${name}: a stored spot over two minutes old stays up and says plainly how old the feed is`, async () => {
     const {body} = await openSpot(() => response({...SPOT, spot: {...SPOT.spot, age_s: 420, stale: true}, vs: {side: 'below', diff: -499.99, pct: -0.442, yes: false}}));
     const html = body().innerHTML;
