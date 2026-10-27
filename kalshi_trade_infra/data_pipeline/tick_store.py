@@ -134,7 +134,8 @@ class TickStore:
         t = pa.concat_tables(parts)
         lo = int((start - timedelta(hours=pad_hours_before)).timestamp() * NS)
         mask = pc.and_(pc.greater_equal(t["rt"], lo), pc.less(t["rt"], int(end.timestamp() * NS)))
-        return t.filter(mask)
+        # A whole-hour read keeps every row; filtering would copy the table (~0.5 GB for kalshi_book).
+        return t if pc.all(mask).as_py() else t.filter(mask)
 
     def coverage(self, source: str, start: datetime, end: datetime) -> List[Dict]:
         """The archiver's manifest per hour in the window: messages, max_gap_s, seq_gaps,

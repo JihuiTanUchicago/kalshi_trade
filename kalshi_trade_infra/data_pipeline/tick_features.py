@@ -146,10 +146,14 @@ def composite_features(store, hour: datetime, product: str = "BTC-USD") -> Dict[
 
 
 def _group(t, key: str) -> Dict[str, np.ndarray]:
-    """{value: row indices in original order}."""
+    """{value: row indices in original order}. Groups on integer codes: an hour's kalshi_book is ~9M
+    rows, and its ticker column as Python strings alone was ~0.5 GB of the archiver's 2 GB cap."""
+    import pyarrow.compute as pc
     if t is None or t.num_rows == 0:
         return {}
-    vals = _np(t, key)
+    names = pc.unique(t[key])
+    vals = pc.index_in(t[key], value_set=names, skip_nulls=False).to_numpy(zero_copy_only=False)
+    names = names.to_pylist()
     order = np.argsort(vals, kind="stable")
     sv = vals[order]
     out = {}
@@ -157,7 +161,7 @@ def _group(t, key: str) -> Dict[str, np.ndarray]:
         return out
     cuts = np.nonzero(sv[1:] != sv[:-1])[0] + 1
     for a, b in zip(np.concatenate([[0], cuts]), np.concatenate([cuts, [len(sv)]])):
-        out[sv[a]] = order[a:b]
+        out[names[int(sv[a])]] = order[a:b]
     return out
 
 
@@ -373,12 +377,18 @@ def _latest_meta(t) -> Dict[str, Dict]:
     return meta
 
 
+BOOK_COLS = ("rt", "ticker", "kind", "side", "price", "qty", "upd_rt")  # what book_at_secs reads
+TICKER_BATCH = int(os.getenv("TAU_FEATURES_TICKER_BATCH", "200"))  # tickers whose book is in memory at once
+_SIDES = np.array(["yes", "no", None], dtype=object)  # kalshi_book side codes 0/1/2 (2 = snapshot reset)
+
+
 def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
     """Write features_1s for one hour as one Parquet file per series, <out_dir>/<series>.parquet,
     so a reader of KXBTC15M fetches a few MB, not every BTC contract. Returns {"rows",
     "tickers", "series": {series: rows}, "files": {series: path}}, or None when the hour has no
     market metadata (nothing was recorded)."""
     import pyarrow as pa
+    import pyarrow.compute as pc
     import pyarrow.parquet as pq
     hour = hour.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
     end = hour + timedelta(hours=1)
@@ -389,11 +399,19 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
     secs = np.arange(h0 + 1, h0 + 3601, dtype=np.int64)
     from data_pipeline.tick_recorder import spot_product
     spots: Dict[str, Dict[str, np.ndarray]] = {}
-    book = store.read("kalshi_book", hour, end)
-    trades = store.read("kalshi_trades", hour - timedelta(seconds=FLOW_LOOKBACK_S), end)
-    bgroups, tgroups = _group(book, "ticker"), _group(trades, "ticker")
-    bcols = {c: _np(book, c) for c in ("rt", "kind", "side", "price", "qty", "upd_rt")} if bgroups else {}
-    tcols = {c: _np(trades, c) for c in ("rt", "yes_price", "count", "taker_side")} if tgroups else {}
+    def load(tickers: List[str]):
+        """Book and trade columns for these tickers only: a whole hour of kalshi_book (~9M rows)
+        held at once took the build past the archiver unit's 2 GB MemoryMax (prod 10-25 23:00Z on)."""
+        book = store.read("kalshi_book", hour, end, tickers=tickers, columns=list(BOOK_COLS))
+        trades = store.read("kalshi_trades", hour - timedelta(seconds=FLOW_LOOKBACK_S), end, tickers=tickers)
+        bgroups, tgroups = _group(book, "ticker"), _group(trades, "ticker")
+        bcols = {c: _np(book, c) for c in ("rt", "kind", "price", "qty", "upd_rt")} if bgroups else {}
+        if bgroups:  # sides as int8 codes, decoded per ticker: millions of Python strings otherwise
+            bcols["side"] = pc.fill_null(pc.index_in(book["side"], value_set=pa.array(_SIDES[:2])), 2) \
+                .to_numpy(zero_copy_only=False).astype(np.int8)
+        tcols = {c: _np(trades, c) for c in ("rt", "yes_price", "count", "taker_side")} if tgroups else {}
+        return bgroups, bcols, tgroups, tcols
+
     sch = schema()
     writers: Dict[str, object] = {}
     pending: Dict[str, List] = {}
@@ -411,7 +429,11 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
     surfaces = False      # loaded on the first BTC contract
     pm = False
     try:
-        for ticker in sorted(meta):
+        ordered = sorted(meta)
+        for k, ticker in enumerate(ordered):
+            if k % TICKER_BATCH == 0:
+                bgroups = bcols = tgroups = tcols = None  # drop the last batch before loading the next
+                bgroups, bcols, tgroups, tcols = load(ordered[k:k + TICKER_BATCH])
             bi, ti = bgroups.get(ticker), tgroups.get(ticker)
             product = spot_product(meta[ticker].get("series") or ticker) or "BTC-USD"
             if product not in spots:
@@ -429,7 +451,8 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
                     print(f"[WARN] polymarket quotes for {hour:%Y-%m-%d %H}: {e}", flush=True)
                     pm = None
             rows = ticker_rows(ticker, meta[ticker], secs, spots[product],
-                               {c: v[bi] for c, v in bcols.items()} if bi is not None else None,
+                               {c: (_SIDES[v[bi]] if c == "side" else v[bi]) for c, v in bcols.items()}
+                               if bi is not None else None,
                                {c: v[ti] for c, v in tcols.items()} if ti is not None else None,
                                surfaces if product == "BTC-USD" else None,
                                pm if product == "BTC-USD" else None)
@@ -444,6 +467,8 @@ def build_hour(store, hour: datetime, out_dir: str) -> Optional[Dict]:
                     v = np.asarray(v, dtype=bool)
                 arrays.append(pa.array(v, type=f.type))
             series = str(rows["series"][0])
+            for other in [k for k, v in pending.items() if v and k != series]:
+                flush(other)  # tickers come sorted, so a series is done once another starts: free its buffer
             if series not in writers:
                 files[series] = os.path.join(out_dir, series + ".parquet")
                 writers[series] = pq.ParquetWriter(files[series], sch, compression="zstd")
