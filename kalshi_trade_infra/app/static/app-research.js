@@ -386,13 +386,15 @@ window.TauPage('research', (T) => {
       // A paused session holds one of the two session slots but isn't researching: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
       const said = running || paused
-        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(' ·\u00a0')} — <em>${tried}</em> hypothes${+tried === 1 ? 'is' : 'es'} tested, <em>${passed}</em> through every gate${fell ? `, <em>${num(fell)}</em> not cleared` : ''}.`
+        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(' ·\u00a0')} — all time, <em>${tried}</em> hypothes${+tried === 1 ? 'is' : 'es'} tested, <em>${passed}</em> through every gate${fell ? `, <em>${num(fell)}</em> not cleared` : ''}.`
         : tried
           ? `Your engine has tested <em>${tried}</em> hypothes${+tried === 1 ? 'is' : 'es'} and kept <em>${passed}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
           : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
       paint(root.querySelector('#rstatus .said'), said);
       paint(root.querySelector('#rfigs'), fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
-        fig('Hypotheses tested', tried) + fig(gl('Passed every gate', 'gate'), passed, { small: [tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(' · ') }));
+        // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
+        // each says its window.
+        fig('Hypotheses tested', tried, { small: ALL_TIME }) + fig(gl('Passed every gate', 'gate'), passed, { small: [ALL_TIME, tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(' · ') }));
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
       const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
@@ -442,6 +444,8 @@ window.TauPage('research', (T) => {
   // (`not_cleared` from the server: the one-time holdout then failed, or the diversification check held it
   // back, stamped Missed final test and Held back on its page). The row read "2 of 10 passed" over a
   // session whose page said "Passed 1" and "1 not cleared".
+  // The Research headline's window: its totals count every session ever (the server's totals).
+  const ALL_TIME = 'all time';
   const runPassed = (r) => {
     const all = +r.strategies_passed || 0, fell = Math.min(all, +r.not_cleared || 0);
     return { ok: all - fell, fell };

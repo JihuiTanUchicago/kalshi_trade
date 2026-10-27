@@ -623,7 +623,7 @@ test('Tau: a new user\'s first idea reads "1 hypothesis tested", not "1 hypothes
   let f = at({research_running: 1, research_queued: 0});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— <em>1<\/em> hypothesis tested, <em>0<\/em> through every gate\./);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— all time, <em>1<\/em> hypothesis tested, <em>0<\/em> through every gate\./);
   f.clearTimers();
   f = at({research_running: 0, research_queued: 0});
   f.S.me.user.autopilot = false;
