@@ -206,6 +206,9 @@ export const replies = () => ({
     close_time: '2026-10-25T18:15:00Z', period_min: 1, points: [{t: 1761415200, yes: 0.44, vol: 120}, {t: 1761415260, yes: 0.47, vol: 80}],
     rules: 'Resolves YES if BTC is above $98,000.', rules_more: 'Per CF Benchmarks.', settles_at: '2026-10-25T18:20:00Z', result: '', as_of: T2,
     mine: {open: [{...position({status: 'open'}), cost: 1.75}], closed: [{...position({id: 500, status: 'closed', closed_at: T2, pnl: 0.62, exit_price: 0.58, close_reason: 'take_profit'}), cost: 1.75}]}},
+  '/api/explore/spot': {ticker: 'KXBTC15M-26OCT251815-15', spot: {price: 98120.5, at: T2, age_s: 4, stale: false},
+    strike: {kind: 'above', value: 98000, lo: null, hi: null, inclusive: true, from: 'record'}, vs: {side: 'above', diff: 120.5, pct: 0.123, yes: true},
+    close_time: '2026-10-25T18:15:00Z', secs_left: 540, as_of: T2},
   '/api/community': {posts: [
     {id: 11, body: 'My first **passed** strategy @fixture', kind: 'strategy', snapshot: {kind: 'strategy', id: 42, title: 'Momentum breakout', market: 'btc15m',
       status: 'passed', pnl: 6.2, trades: 31, win_rate: 0.58, days: 6}, likes: 2, comments: 1, created_at: T1, author: 'Fixture User',

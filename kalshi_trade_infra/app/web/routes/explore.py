@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from app import repository as repo
+from app.services import btc_spot
 from app.trading.markets import MARKETS, NEW_YORK
 from app.web.http import ApiError, Ctx
 from app.web.routes.strategies import _mark_fields
@@ -252,3 +253,70 @@ def explore_market(ctx: Ctx):
         "status": m.get("status"), "close_time": m.get("close_time"), "period_min": period, "points": points,
         **_market_terms(m), "as_of": _iso_now(), "mine": _market_mine(ctx, ticker, open_ts),
     }
+
+
+# A Bitcoin contract's page shows where Bitcoin is against its strike, from what the collectors stored:
+# never an exchange or Kalshi call in the request. Its own read, so the page draws without waiting on it.
+# Every reader shares one spot read for SPOT_TTL_S; a contract's strike and close don't move, so each is
+# kept STRIKE_TTL_S. Both caches are only mutated in place.
+SPOT_TTL_S = 5.0
+STRIKE_TTL_S = 300.0
+_STRIKE_KEEP = 2000  # contracts' strikes held at once; a full cache starts over
+SPOT_LOOKBACK = timedelta(days=1)  # older than this is no stored price at all
+_SPOT_CACHE: Dict[str, Any] = {"at": 0.0, "row": None}
+_STRIKE_CACHE: Dict[str, Any] = {}
+
+
+def _spot_row(ctx: Ctx) -> Optional[Dict]:
+    now = time.time()
+    if now - _SPOT_CACHE["at"] >= SPOT_TTL_S:
+        since = datetime.now(timezone.utc).replace(tzinfo=None) - SPOT_LOOKBACK
+        _SPOT_CACHE.update(row=repo.latest_spot(ctx.cur, btc_spot.SPOT_PRODUCT, since), at=now)
+    return _SPOT_CACHE["row"]
+
+
+def _strike_record(ctx: Ctx, ticker: str) -> Optional[Dict]:
+    """The collector's record of the contract, or None (not collected, or the read failed: the ticker
+    still gives the strike of most contracts)."""
+    now = time.time()
+    hit = _STRIKE_CACHE.get(ticker)
+    if hit and now - hit[0] < STRIKE_TTL_S:
+        return hit[1]
+    try:
+        rec = repo.market_strike(ctx.cur, ticker)
+    except Exception as e:
+        print("[explore] strike %s read failed: %r" % (ticker, e), flush=True)
+        return None
+    if len(_STRIKE_CACHE) >= _STRIKE_KEEP:
+        _STRIKE_CACHE.clear()
+    _STRIKE_CACHE[ticker] = (now, rec)
+    return rec
+
+
+def explore_spot(ctx: Ctx):
+    """Bitcoin against one Bitcoin contract's strike: the newest stored spot and its age (stale past
+    btc_spot.STALE_AFTER_S, still shown), the strike, which side of it spot is on and by how much, and
+    the time left to the close. Ages and time left are worked out per request from the cached reads."""
+    ticker = (ctx.query.get("ticker") or "").strip()
+    if not btc_spot.is_btc_contract(ticker):
+        raise ApiError(400, "Not a Bitcoin contract.")
+    try:
+        row = _spot_row(ctx)
+    except Exception as e:
+        print("[explore] spot read failed: %r" % (e,), flush=True)
+        raise ApiError(503, "Bitcoin’s latest price didn’t load. Try again in a moment.")
+    rec = _strike_record(ctx, ticker)
+    strike = btc_spot.contract_strike(ticker, rec)
+    now = datetime.now(timezone.utc)
+    close_at = rec["close_time"].replace(tzinfo=timezone.utc) if rec and rec.get("close_time") else _ticker_close_at(ticker)
+    spot = None
+    if row:
+        at = row["at"].replace(tzinfo=timezone.utc)
+        age = max(0, int((now - at).total_seconds()))
+        spot = {"price": row["price"], "at": at.strftime("%Y-%m-%dT%H:%M:%SZ"), "age_s": age,
+                "stale": age > btc_spot.STALE_AFTER_S}
+    return {"ticker": ticker, "spot": spot, "strike": strike,
+            "vs": btc_spot.against_strike(spot["price"], strike) if spot and strike else None,
+            "close_time": close_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if close_at else None,
+            "secs_left": max(0, int((close_at - now).total_seconds())) if close_at else None,
+            "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ")}

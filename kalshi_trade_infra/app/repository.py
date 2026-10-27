@@ -98,6 +98,7 @@ from app.adapters.db.community_repository import (  # noqa: F401
     add_comment, create_post, delete_post, edit_post, get_image, list_comments, list_posts, post_author, post_exists,
     reactions_for, recent_posts_count, store_image, toggle_like, toggle_reaction,
 )
+from app.adapters.db.spot_repository import latest_spot, market_strike  # noqa: F401
 
 
 # -- users & sessions ----------------------------------------------------------
