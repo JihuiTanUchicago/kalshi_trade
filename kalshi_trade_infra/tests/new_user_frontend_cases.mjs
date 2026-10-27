@@ -18,6 +18,59 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
   const meridian = name === 'Meridian';
   const pageFile = (page) => readFileSync(new URL(`../app/static/${meridian ? 'app.meridian-' : 'app-'}${page}.js`, import.meta.url), 'utf8');
 
+  const session = (o) => ({id: 9, status: 'running', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Momentum after sharp Bitcoin moves',
+    hypotheses_tried: 0, strategies_passed: 0, spent_usd: 0, error: null, created_at: '2026-10-27T22:03:00Z', started_at: '2026-10-27T22:03:00Z',
+    stop_reason: null, by_autopilot: 1, brief: 1, run_forever: 1, ...o});
+  const example = session({id: 4, status: 'succeeded', example: true, by_autopilot: 0, hypotheses_tried: 2, spent_usd: null,
+    prompt: 'Example idea', created_at: '2026-10-27T21:57:00Z', stop_reason: 'limit'});
+  const researchPage = async (runs, autopilot) => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/runs')) return response({runs, counts: {research_running: runs.filter((r) => r.status === 'running').length, research_queued: 0, research_paused: 0},
+        policy: null, totals: {tried: 0, passed: 0}, v: 'v1'});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/autopilot/status') return response({autopilot, mode: autopilot ? 'paper' : 'off'});
+      return response({});
+    }});
+    f.S.me.user.autopilot = autopilot;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    return f;
+  };
+
+  // With autopilot on, Research said nothing about it: "Researching now 0" while it reviewed, and Strategies' "See its
+  // research" led here to the example alone. It says where its sessions show up; with autopilot off, the nudge stays.
+  test(`${name}: Research with autopilot on says where its sessions show up`, async () => {
+    const on = await researchPage([example], true);
+    assert.match(on.root.querySelector('#main').innerHTML, /Autopilot is on: the sessions it starts are listed below with an Autopilot tag\. You can still start a session of your own\./);
+    const off = await researchPage([example], false);
+    assert.doesNotMatch(off.root.querySelector('#main').innerHTML, /Autopilot is on:/);
+    assert.match(off.root.querySelector('#main').innerHTML, /Rather not write ideas yourself\?/);
+  });
+
+  // A first autopilot session before its first model call is billed: its row and its page read "Spent so far: $0.00".
+  test(`${name}: a running session that has spent nothing says so, not "Spent so far: $0.00"`, async () => {
+    const f = await researchPage([session(), example], true);
+    const main = ['#runs', '#active-research'].map((s) => f.root.querySelector(s)).filter(Boolean).map((el) => el.innerHTML + el.children.map((c) => c.innerHTML).join('')).join('');
+    assert.match(main, /Spent so far(?::|<\/dt><dd>) ?(?:nothing yet|None yet)/);
+    assert.doesNotMatch(main, /Spent so far(?::|<\/dt><dd>) ?\$0\.00/);
+    // Meridian's example row keeps its note under its title, not crammed into the narrow Market column.
+    if (meridian) {
+      const row = f.root.querySelector('#runs').children.find((el) => el.getAttribute('href') === '/research/4');
+      assert.match(row.querySelector('.run-note').textContent, /An example Tau ran for you when you signed up\. It cost you nothing\./);
+      assert.doesNotMatch(row.querySelector('.run-meta').textContent, /An example/);
+    }
+    const page = async (r) => {
+      const g = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9') ? response({run: r, events: [], strategies: []}) : response({})});
+      await g.viewRun(9); await flush(); g.clearTimers();
+      return g.root.querySelector('#runfigs').textContent;
+    };
+    assert.match(await page(session()), /Spent so far\s*None yet/);
+    assert.match(await page(session({spent_usd: 0.003})), /Spent so far\s*under \$0\.01/);
+    assert.match(await page(session({spent_usd: 0.4})), /Spent so far\s*\$0\.40/);
+    assert.match(await page(session({status: 'succeeded', spent_usd: 0.83, hypotheses_tried: 2, strategies_passed: 1, finished_at: '2026-10-27T22:05:00Z'})), /Cost\s*\$0\.83/);
+  });
+
   // A new account has spent nothing: Billing read "Spent, last 7 days $0.00 · $0.00 in the last 24 hours · $0.00 all
   // time" under its free credits. It says none yet and what will draw on them; once something is spent, the figures.
   test(`${name}: Billing says nothing is spent yet on a new account, not three $0.00 figures`, async () => {

@@ -2347,6 +2347,8 @@ body.landing-body .apf { display: none; }
 .research-history .run-title { display: block; grid-column: 1; grid-row: 1; min-width: 0; }
 .research-history .run-title > b { display: block; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
 .research-history .run-id { display: block; grid-column: 1; grid-row: 2; margin: 0; font: 400 12px/18px var(--f-terminal); color: var(--ink-3); overflow-wrap: anywhere; }
+/* The seeded example's note, under its title (the Market column holds only the market and the cost). */
+.research-history .run-note { display: block; margin-top: 3px; font-size: 12px; line-height: 18px; color: var(--ink-3); overflow-wrap: anywhere; }
 .research-history .run-error { display: block; margin-top: 3px; font-size: 13px; line-height: 18px; color: var(--ink-2); overflow-wrap: anywhere; }
 .research-history .run-meta, .research-history .run-when { align-self: center; font-size: 13px; line-height: 18px; color: var(--ink-2); letter-spacing: 0; white-space: normal; }
 .research-history .run-meta { grid-column: 2; grid-row: 1 / span 2; }

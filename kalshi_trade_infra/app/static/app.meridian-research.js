@@ -228,7 +228,7 @@ window.TauPage('research', (T) => {
     const modelOpts = (mdl.models || []).filter((m) => m.available !== false).concat((mdl.models || []).filter((m) => m.available === false))
       .map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (coming soon)' : ''}</option>`).join('');
     shell('/research', '', `
-      <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
+      <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : S.me.user ? `<p class="research-ap">Autopilot is on: the sessions it starts are listed below with an Autopilot tag. You can still start a session of your own.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
 
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won’t be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
@@ -390,7 +390,7 @@ window.TauPage('research', (T) => {
       paint(root.querySelector('#active-research'), active ? `<section class="active-research active-${esc(active.status)}">
         <div class="active-head"><h2 class="active-prompt" title="${esc(sessionTitle(active))}">${esc(sessionTitle(active))}</h2></div>
         <div class="active-meta"><div class="active-session"><span class="active-state">${runLate(active) ? lateLabel(runLate(active)) : active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span>${sessionNo(active) ? `<b>${sessionNo(active)}</b>` : ''}${runTag(active)}</div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
-        <aside class="active-aside" aria-label="Session progress"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${runPassed(active).ok}</dd></div>${runPassed(active).fell ? `<div><dt>Not cleared</dt><dd>${num(runPassed(active).fell)}</dd></div>` : ''}${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${usd(active.spent_usd)}</dd></div>` : ''}</dl></aside>
+        <aside class="active-aside" aria-label="Session progress"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${active.hypotheses_tried || 0}</dd></div><div><dt>Passed</dt><dd>${runPassed(active).ok}</dd></div>${runPassed(active).fell ? `<div><dt>Not cleared</dt><dd>${num(runPassed(active).fell)}</dd></div>` : ''}${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${spentSoFar(active.spent_usd)}</dd></div>` : ''}</dl></aside>
       </section>` : '');
       const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
       // The seeded example is listed but isn't the user's: it doesn't count as a session of theirs.
@@ -424,7 +424,10 @@ window.TauPage('research', (T) => {
   const runSetup = (r) => [r.model_label ? esc(r.model_label) : '',
     r.run_forever ? (runLive(r) ? 'Runs until you stop it' : 'Ran until stopped')
       : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(SEP);
-  const runSpent = (r) => r.spent_usd == null ? '' : `${runLive(r) ? 'Spent so far' : 'Cost'}: ${usd(r.spent_usd)}`;
+  // What a session still going has spent. Before its first model call is billed that is nothing, not a $0.00 figure
+  // (a first autopilot session read "Spent so far: $0.00" on its row and its page); a sliver says "under $0.01".
+  const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
+  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'nothing yet')}` : `Cost: ${usd(r.spent_usd)}`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
   // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
@@ -464,8 +467,9 @@ window.TauPage('research', (T) => {
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
     // status band: a thin color rule so passed/void/failed reads at a glance; only a real error is `fail`
     const band = r.status === 'succeeded' ? (ok ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
+    // The example's note sits under its title: in the narrow Market column it was cut to "An example Tau ran f…".
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${r.example ? SEP + EXAMPLE_NOTE : r.spent_usd != null ? SEP + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+      <span class="run-identity"><span class="run-title" title="${esc(sessionTitle(r))}"><b>${esc(sessionTitle(r))}</b>${runTag(r)}${r.example ? `<span class="run-note">${EXAMPLE_NOTE}</span>` : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${!r.example && r.spent_usd != null ? SEP + runSpent(r) : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
   }
 
@@ -1183,7 +1187,7 @@ window.TauPage('research', (T) => {
       paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', worked == null ? '—' : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
         runCountFigs(r, active, tried, d.strategies));
       const next = root.querySelector('#runnext');
       paint(next, active ? '' : runNext(r, d.strategies));
