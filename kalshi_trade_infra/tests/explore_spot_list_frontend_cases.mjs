@@ -1,0 +1,108 @@
+// Explore's list and the hot-markets rail, run against each bundle's offline DOM/transport harness: a
+// Bitcoin contract's row says how far stored spot is from its strike (the server's `vs`), a bucket spot
+// sits in says "in range", and without a fresh spot the figures are left out under one line that says why.
+// Hot markets also say when they close (`ct`), as Explore's rows do.
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+
+const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
+const flush = () => new Promise(resolve => setImmediate(resolve));
+const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
+
+const SPOT = {price: 113420, at: '2026-10-27T11:00:00Z', age_s: 4, stale: false};
+const row = (t, over = {}) => ({t, s: t.split('-')[0], ti: 'Bitcoin price on Oct 27, 2026 at 5pm EDT?', su: '', bid: .48, ask: .52, v24: 900, oi: 50,
+  ct: '2026-10-27T21:00:00Z', ...over});
+const ROWS = [row('KXBTCD-26OCT2717-T112999.99', {su: '$113,000 or above', vs: {side: 'above', diff: 420.01, pct: 0.372}}),
+  row('KXBTCD-26OCT2717-T114000', {su: '$114,000.01 or above', vs: {side: 'below', diff: -580, pct: -0.509}}),
+  row('KXBTC-26OCT2717-B113250', {su: '$113,000 to 113,499.99', vs: {side: 'inside', diff: 0, pct: 0}}),
+  row('KXBTC-26OCT2717-B113750', {su: '$113,500 to 113,999.99', vs: {side: 'below', diff: -80, pct: -0.07}}),
+  row('KXBTC15M-26OCT271145-45', {ti: 'BTC price up in next 15 mins?'}),
+  row('KXNBAGAME-26OCT26MINDEN-MIN', {s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota', ct: null})];
+
+export function exploreSpotListCases({name, frontend, storageFor, railOpenWide}) {
+  const list = async (answer) => {
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? response({at: new Date().toISOString(), total: 6, shown: 6, matched: 6, page: 0, per: 40, sort: 'v24', ...answer}) : response({}))});
+    f.location.pathname = '/explore'; f.location.search = '';
+    await f.viewExplore(); await settle();
+    const body = f.root.querySelector('#xbody');
+    return {f, body, rows: body.querySelectorAll('tbody tr'), note: body.querySelector('.xspot-note')};
+  };
+
+  test(`${name}: Explore's Bitcoin rows say how far fresh spot is from each strike, signed, and "in range" for the bucket spot sits in`, async () => {
+    const {f, rows, note} = await list({markets: ROWS, spot: SPOT});
+    const spot = rows.map((r) => r.querySelector('.xspot'));
+    // The figure keeps its "·" with the percent (a no-break space), so it never wraps between the two.
+    assert.deepEqual(spot.slice(0, 4).map((s) => s.textContent.replace(/ /g, ' ')), ['Spot vs strike +$420 · 0.4%', 'Spot vs strike −$580 · 0.5%', 'Spot vs bucket in range', 'Spot vs bucket −$80 · 0.07%']);
+    // Inside the name cell, under the name: the list keeps its columns, and a stacked phone row needs no extra label.
+    assert.ok(rows.slice(0, 4).every((r) => /class="xspot"/.test(r.querySelector('td.name').innerHTML)));
+    assert.equal(rows[0].querySelectorAll('td').length, rows[5].querySelectorAll('td').length, 'no column of its own');
+    assert.equal(spot[4], null, 'a 15-minute window has no strike in its ticker, so no figure');
+    assert.equal(spot[5], null, 'a market that isn’t Bitcoin is untouched');
+    assert.equal(note.textContent, 'Distances to the strike are from Bitcoin at $113,420.00 (Coinbase, 4s ago).');
+    assert.doesNotMatch(note.getAttribute('class'), /behind/);
+    assert.deepEqual(f.requests.map(({path}) => path).filter((p) => p.startsWith('/api/explore')), ['/api/explore?q=&sort=v24&page=0'], 'no read per row');
+    f.clearTimers();
+  });
+
+  test(`${name}: an old, missing or failed spot leaves the figures out and says why in one line above the list`, async () => {
+    const strip = (ms) => ms.map(({vs, ...m}) => m);  // the server sends no `vs` then
+    for (const [spot, words] of [[{...SPOT, age_s: 840, stale: true}, 'Bitcoin’s spot feed is 14 min old, so distances to the strike are left out until it catches up.'],
+      [null, 'No Bitcoin price stored in the last day, so distances to the strike are left out.'],
+      [{failed: true}, 'Bitcoin’s latest stored price didn’t load, so distances to the strike are left out.']]) {
+      const {f, body, note} = await list({markets: strip(ROWS), spot});
+      assert.equal(note.textContent, words);
+      assert.match(note.getAttribute('class'), /\bbehind\b/);
+      assert.equal(body.querySelectorAll('.xspot').length, 0);
+      assert.equal(body.querySelectorAll('.xspot-note').length, 1);
+      f.clearTimers();
+    }
+  });
+
+  test(`${name}: a list with no Bitcoin strike on it has no spot line and no figures`, async () => {
+    const {f, body, note} = await list({markets: [ROWS[5]]});
+    assert.equal(note, null);
+    assert.equal(body.querySelectorAll('.xspot').length, 0);
+    assert.doesNotMatch(body.innerHTML, /Spot vs|Bitcoin at/);
+    f.clearTimers();
+  });
+
+  const rail = async (hot) => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/explore/hot') return response({at: new Date().toISOString(), ...hot});
+      if (path.startsWith('/api/runs')) return response({runs: [], counts: {}, policy: null, totals: {tried: 0, passed: 0}, v: 'v1'});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      return response({});
+    }, storage: storageFor(new Map(railOpenWide)), matchMedia: () => ({matches: false})});
+    f.S.hot = null; f.S.hotAt = 0;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    return {f, el: f.document.getElementById('hotrail')};
+  };
+
+  test(`${name}: the hot-markets rail says when each market closes and how far spot is from a Bitcoin strike`, async () => {
+    const {f, el} = await rail({markets: ROWS.map((m) => ({...m, h: [.4, .5]})), spot: SPOT});
+    const rows = el.querySelectorAll('.hot-row');
+    assert.equal(rows.length, 6);
+    const when = rows.map((r) => r.querySelector('.hot-when'));
+    assert.match(when[0].textContent, /^Closes .*\d.*Spot vs strike \+\$420 ·\s0\.4%$/);
+    assert.match(when[2].textContent, /Spot vs bucket in range$/);
+    assert.match(when[4].textContent, /^Closes .*\d/);  // every market with a close says it, not only Bitcoin's
+    assert.doesNotMatch(when[4].textContent, /Spot/);
+    assert.equal(when[5], null, 'a game with no hour in its ticker says no close');
+    // Read out with the row, where the row is named for a screen reader as a whole.
+    const label = rows[0].getAttribute('aria-label');
+    if (label) assert.match(label, /Closes .*Spot vs strike \+\$420 ·\s0\.4%/);
+    assert.equal(el.querySelector('.hot-note'), null, 'a fresh spot needs no line');
+    f.clearTimers();
+  });
+
+  test(`${name}: with an old spot the rail leaves the figures out and says the feed's age once`, async () => {
+    const {f, el} = await rail({markets: ROWS.map(({vs, ...m}) => ({...m, h: [.4, .5]})), spot: {...SPOT, age_s: 840, stale: true}});
+    assert.equal(el.querySelectorAll('.hot-note').length, 1);
+    assert.match(el.querySelector('.hot-note').textContent, /^Bitcoin’s spot feed is 14 min old/);
+    assert.equal(el.querySelectorAll('.xspot').length, 0);
+    assert.match(el.querySelectorAll('.hot-when')[0].textContent, /^Closes /, 'the close times stay');
+    f.clearTimers();
+  });
+}

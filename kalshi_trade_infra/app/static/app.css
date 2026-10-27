@@ -1643,6 +1643,10 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .hot-ft a { color: var(--ink); text-decoration: none; }
 .hot-ft a:hover { text-decoration: underline; }
 .hot-empty { padding: 20px 15px; color: var(--ink-3); font-size: 13px; }
+/* A hot market's close and, for a Bitcoin contract, spot against its strike; the rail's line when spot is old. */
+.hot-when { display: flex; flex-wrap: wrap; gap: 0 10px; margin-top: 4px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); }
+.hot-when .xspot { color: var(--ink-2); }
+.hot-note { margin: 0; padding: 9px 15px; border-bottom: 1px solid var(--rule); font-size: 12px; line-height: 1.35; color: var(--loss-ink); }
 /* Explore table extras */
 .xsearch { flex: 1 1 260px; }
 .xsearch .input { width: 100%; }
@@ -1651,6 +1655,11 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .xlink svg { width: 16px; height: 16px; }
 /* Long market titles wrap, so the Kalshi link column stays on screen with the hot-markets rail open. */
 .t-explore td.name { white-space: normal; overflow-wrap: anywhere; }
+/* Spot against a Bitcoin row's strike, on its own line under the name (a full line in a stacked phone row). */
+.t-explore .xspot { display: block; flex: 1 0 100%; margin-top: 2px; font-size: 12.5px; color: var(--ink-2); }
+.xspot b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.xspot-note { margin: 0 0 10px; }
+.xspot-note.behind { color: var(--loss-ink); }
 .xpage { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; }
 .xpage { flex-wrap: wrap; gap: 10px; }
 .xpage .lab { margin: 0; }
