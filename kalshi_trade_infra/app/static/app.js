@@ -3270,6 +3270,11 @@
   function apWeek(w, d) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
+    // A first day's week is all zeros: a block of $0.00 and 0 under two paragraphs explaining them. Until
+    // something is in it, it is one line. A paused one keeps its credits line, which says why it paused.
+    const empty = !(+w.research_credits >= 0.005) && !(+w.checkin_credits >= 0.005) && !+w.tested && !+w.passed
+      && !+w.not_cleared && !+w.paper_started && !trades && !pnl;
+    if (empty) return `<section class="ap-week ap-week-empty" aria-label="Autopilot, last 7 days"><p class="ap-week-none"><b>Last 7 days:</b> nothing yet. Its research, paper strategies and credits spent show here once it starts.</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
       <div><dt>Credits spent on research</dt><dd>${usd(w.research_credits || 0)} <small>${creditsPaid(w.card_charged)}${+w.checkin_credits >= 0.01 ? ` · plus ${usd(w.checkin_credits)} on its check-ins` : ''}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested ·\u00a0${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>

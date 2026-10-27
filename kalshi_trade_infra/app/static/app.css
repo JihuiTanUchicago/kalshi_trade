@@ -2074,6 +2074,7 @@ body.landing-body .apf { display: none; }
 .apf-log .ap-day { display: block; grid-column: 1 / -1; border: 0; list-style: none; padding: 12px 0 2px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
 /* The autopilot's last 7 days: real credits and paper P&L side by side, never summed. */
 .ap-week { margin: 2px 0 0; padding-top: 10px; border-top: 1px solid var(--rule); }
+.ap-week-none { margin: 0; font-size: 13px; color: var(--ink-2); }
 .ap-week h3 { margin: 0 0 6px; font-family: var(--f-nar); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
 .ap-week dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 20px; margin: 0; }
 .ap-week dl > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

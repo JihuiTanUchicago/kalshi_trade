@@ -189,6 +189,36 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
       assert.doesNotMatch(await balanceFig(o), /free credits so far/, JSON.stringify(o));
   });
 
+  test(`${name}: the autopilot card's week is one line until something is in it`, async () => {
+    const zero = {research_credits: 0, tested: 0, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0,
+      checkin_credits: 0, credits_left: 20, runway_days: null, pace_days: 0.01, card_charged: false};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/dashboard') return response(dashboard());
+      if (path === '/api/autopilot/status') return response({...apStatus, week: zero});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path.startsWith('/api/chat')) return response({messages: []});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, billing_enabled: true, credit_balance: 20, min_run_balance: 1, auto_reload: null};
+    f.S.me.user.autopilot = true;
+    await f.viewDashboard(); await flush();
+    const week = () => f.root.querySelector('#dash-ap .ap-week');
+    f.S.ap = {...apStatus, week: zero}; f.paintDashAp();
+    assert.equal(week().textContent.trim(), 'Last 7 days: nothing yet. Its research, paper strategies and credits spent show here once it starts.');
+    assert.equal(week().querySelector('dl'), null);
+    assert.equal(week().querySelector('.ap-week-note'), null);
+    // Paused for want of a card: its reason stays in view under the one line.
+    f.S.ap = {...apStatus, week: zero, billing_blocked: true, billing_reason: 'card'}; f.paintDashAp();
+    assert.match(week().textContent, /nothing yet[\s\S]*Research is paused until you add a payment method/);
+    // A first session's cents, or a check-in, fill the block in as before.
+    for (const o of [{research_credits: 0.02}, {tested: 1}, {checkin_credits: 0.01}]) {
+      f.S.ap = {...apStatus, week: {...zero, ...o}}; f.paintDashAp();
+      assert.ok(week().querySelector('dl'), JSON.stringify(o));
+      assert.doesNotMatch(week().textContent, /nothing yet/, JSON.stringify(o));
+    }
+    f.clearTimers();
+  });
+
   test(`${name}: Funds for an account with no Kalshi key leads with Paper and folds the key forms under Connect Kalshi`, async () => {
     const page = async (o) => {
       const d = {...fundsData(), ...o};
