@@ -103,7 +103,7 @@ def test_a_failing_card_rings_the_bell_once_and_billing_says_why_until_it_is_fix
     assert bell["unread"] >= 1 and any(i["kind"] == "reload_failed" and i["link"] == "/billing" for i in bell["items"])
 
     state = server.billing_state(ctx())
-    assert state["reload_failed"]["text"] == "It couldn't add $25.00 in credits. That card has expired. Add a current card and try again."
+    assert state["reload_failed"]["text"] == "It couldn’t add $25.00 in credits. That card has expired. Add a current card and try again."
     # The balance is at the trigger because of it, so /api/me carries it too (the dashboard's Needs you and
     # the research form name the card), and the autopilot poll reads the same text.
     assert server.me(ctx())["reload_failed"] == state["reload_failed"]["text"]

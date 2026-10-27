@@ -337,7 +337,9 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
         "backtest": {"out_of_sample": res.get("out_of_sample"), "capital": res.get("capital")},
         # A backtest-only strategy's out_of_sample is its old backtest's later slice, which picked it: the row
         # says "later-period", never "unseen" (the strategy's status, from the row's own read; display only).
-        "backtest_only": d.get("strategy_status") == "backtest-only",
+        # So is a "passed" one with no gatekeeper record (the same read's no_gatekeeper_record), as its page
+        # says: the Overview's details called its figure "Unseen P&L" beside a page saying "Later-period P&L".
+        "backtest_only": d.get("strategy_status") == "backtest-only" or bool(d.get("no_gatekeeper_record")),
     }
 
 
@@ -474,7 +476,7 @@ def _require_billing_ready(ctx: Ctx, gerund: str) -> None:
                             "unlock the moment a card is on file — you won't be charged until they run out."
                             % (gerund, int(billing.FREE_BONUS)))
     if billing.configured() and repo.credit_balance(ctx.cur, ctx.uid) <= 0:
-        raise ApiError(402, "You're out of credits. Add credits on the Billing tab to keep %s." % gerund)
+        raise ApiError(402, "You’re out of credits. Add credits on the Billing tab to keep %s." % gerund)
 
 
 # A queued or silent run reads as overdue once it passes the reaper's limit (worker.ABANDONED_AFTER,

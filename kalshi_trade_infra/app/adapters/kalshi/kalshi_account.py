@@ -30,7 +30,7 @@ class KalshiKeyError(ValueError):
 
 # What the user sees for anything that isn't a readable private key (garbage, a public key, a key cut
 # off mid-copy, the key ID pasted in the wrong box).
-PRIVATE_KEY_FORMAT = ("That isn't a private key Kalshi can use. Paste the whole .key file Kalshi downloaded, "
+PRIVATE_KEY_FORMAT = ("That isn’t a private key Kalshi can use. Paste the whole .key file Kalshi downloaded, "
                       "from its -----BEGIN line to its -----END line, or choose the file.")
 
 
@@ -60,7 +60,7 @@ def parse_private_key(pem: str):
     except Exception:
         raise KalshiKeyError(PRIVATE_KEY_FORMAT)
     if not isinstance(key, RSAPrivateKey):
-        raise KalshiKeyError("That isn't an RSA key, and Kalshi API keys always are. Choose the .key file "
+        raise KalshiKeyError("That isn’t an RSA key, and Kalshi API keys always are. Choose the .key file "
                              "Kalshi downloaded when you created the key.")
     return key
 
@@ -207,7 +207,7 @@ def verify(key_id: str, pem: str) -> float:
                              "the key, like a952bcbe-ec3b-4b5b-….")
     cash = balance((key_id, parse_private_key(pem)))
     if cash is None:
-        raise KalshiKeyError("Kalshi didn't accept this key, or couldn't be reached just now. Check that the Key ID "
+        raise KalshiKeyError("Kalshi didn’t accept this key, or couldn’t be reached just now. Check that the Key ID "
                              "and the private key come from the same key, and that the key is still listed on "
                              "kalshi.com. A key made on demo.kalshi.co is a demo key: add it under Demo key instead.")
     return cash

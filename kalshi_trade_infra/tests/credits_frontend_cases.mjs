@@ -20,9 +20,9 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     const amt = f.root.querySelector('#topup-amt'), note = () => f.root.querySelector('#topup-note').textContent;
     // $19 plus 5.5% is $20.045: the card pays $20.05, where 19 * 1.055 as a float read $20.04.
     amt.value = '19'; amt.oninput();
-    assert.match(note(), /^You'll pay \$20\.05 \(\$19\.00 credits \+ 5\.5% fee\)\./);
+    assert.match(note(), /^You’ll pay \$20\.05 \(\$19\.00 credits \+ 5\.5% fee\)\./);
     amt.value = '37'; amt.oninput();
-    assert.match(note(), /^You'll pay \$39\.04 \(\$37\.00 credits/);  // 39.035 half up
+    assert.match(note(), /^You’ll pay \$39\.04 \(\$37\.00 credits/);  // 39.035 half up
     for (const v of ['3', '2000']) {
       amt.value = v; amt.oninput();
       assert.equal(note(), 'Add between $5.00 and $1,000.00 in credits.');
@@ -143,10 +143,10 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     // of research) for the same week. The server names a figure that spent something but rounds to $0.00.
     const spent = (w) => f.root.querySelector('#dash-ap .ap-week dl dd').textContent.replace(/\s+/g, ' ');
     let f = await apPage({...apStatus, week: {...week, research_credits: 20.01, checkin_credits: 0, checkin_under_cent: true}}, {});
-    assert.match(spent(), /^\$20\.01 real money · plus under \$0\.01 on its check-ins$/);
+    assert.match(spent(), /^\$20\.01 research spend · plus under \$0\.01 on its check-ins$/);
     f.clearTimers();
     f = await apPage({...apStatus, week: {...week, research_credits: 0, research_under_cent: true, checkin_credits: 0.09}}, {});
-    assert.match(spent(), /^under \$0\.01 real money · plus \$0\.09 on its check-ins$/);
+    assert.match(spent(), /^under \$0\.01 research spend · plus \$0\.09 on its check-ins$/);
     assert.doesNotMatch(spent(), /\$0\.00/);
     f.clearTimers();
     // Only a sliver spent, nothing else this week: not "nothing yet" beside Billing's "under $0.01".
@@ -154,11 +154,11 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
       checkin_credits: 0, checkin_under_cent: true, credits_left: 20, runway_days: null, pace_days: 7};
     f = await apPage({...apStatus, week: sliver}, {});
     assert.doesNotMatch(f.root.querySelector('#dash-ap .ap-week').textContent, /nothing yet/);
-    assert.match(spent(), /^\$0\.00 real money · plus under \$0\.01 on its check-ins$/);
+    assert.match(spent(), /^\$0\.00 research spend · plus under \$0\.01 on its check-ins$/);
     f.clearTimers();
     // No flag (nothing spent, or an older server): the figures as before, no check-ins named at $0.
     f = await apPage({...apStatus, week: {...week, checkin_credits: 0}}, {});
-    assert.match(spent(), /^\$100\.01 real money$/);
+    assert.match(spent(), /^\$100\.01 research spend$/);
     f.clearTimers();
   });
 
@@ -241,6 +241,37 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     const aged = billingPage(cardedBilling({math, ledger, ledger_cut: false}));
     await aged.viewBilling(); await flush();
     assert.match(aged.root.querySelector('.bill-math').textContent, /^Balance 30 days ago\s*\$0\.00/);
+  });
+
+  // Walk 2026-10-27, out of credits and running low: Billing's top-up line read "You'll pay $21.00 ... that's about
+  // 20 days of research" with straight apostrophes under a notice that wrote them curly. Every line a customer reads
+  // when credits run out or run low writes an apostrophe curly, and none prices credits against a list price or a markup.
+  test(`${name}: out of credits and running low, Billing and the autopilot card write apostrophes curly and never say "list price"`, async () => {
+    const straight = /[A-Za-z]'[A-Za-z]/, pricing = /list price|mark-?up|margin/i;
+    const read = (text, where) => {
+      assert.doesNotMatch(text, straight, `${where}: ${text.match(straight)}`);
+      assert.doesNotMatch(text, pricing, where);
+    };
+    for (const o of [{balance: 0, auto_reload: false}, {balance: 0.62, auto_reload: true},
+      {balance: 0.62, auto_reload: true, reload_failed: {at: '2026-10-26T21:49:00Z', text: FAILED}}]) {
+      const f = billingPage(cardedBilling({spent_7d: 7, pace_days: 7, runway_days: null, reload_days: null, min_run_balance: 1, ...o}));
+      await f.viewBilling(); await flush();
+      const amt = f.root.querySelector('#topup-amt'); amt.value = '20'; amt.oninput();
+      const main = f.root.querySelector('#main').textContent;
+      assert.match(main, o.balance <= 0 ? /You’re out of credits\./ : /You have \$0\.62 in credits\./);
+      assert.match(f.root.querySelector('#topup-note').textContent, /^You’ll pay \$21\.\d\d \(\$20\.00 credits \+ [\d.]+% fee\)\. At your pace \(\$7\.00 a week\) that’s about 20 days of research\.$/);
+      read(main, `Billing at ${o.balance}`);
+      read(f.root.querySelector('#bfigs').textContent, 'Billing figures');
+    }
+    for (const [status, me] of [
+      [{...apStatus, billing_blocked: true, billing_reason: 'credits', week: {...week, credits_left: 0, runway_days: null, reload_days: null}}, {credit_balance: 0}],
+      [{...apStatus, billing_blocked: true, billing_reason: 'credits', reload_failed: FAILED, week: {...week, credits_left: 0.62, runway_days: null, reload_days: null}},
+        {credit_balance: 0.62, auto_reload: {amount: 25, charge: 26.38, threshold: 5}}],
+      [{...apStatus, credits_low_days: 1.5, week: {...week, reload_days: null}}, {credit_balance: 3}]]) {
+      const f = await apPage(status, me);
+      read(f.root.querySelector('#dash-ap').textContent, `autopilot card ${status.billing_blocked ? 'paused' : 'low'}`);
+      f.clearTimers();
+    }
   });
 }
 

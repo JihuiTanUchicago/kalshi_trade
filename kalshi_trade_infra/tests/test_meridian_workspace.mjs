@@ -611,7 +611,7 @@ test('Overview paper P&L is realized all time, the Closed P&L chart and track re
     assert.match(paper, /Realized P&amp;L, all time \+\$98\.40/);
     assert.doesNotMatch(paper, /All-time|since reset/);
     // Today is closed trades only (realized_pnl); the live group says so too.
-    assert.match(paper, /Realized today \(UTC\)−\$7\.50/);
+    assert.match(paper, /Paper realized today \(UTC\)−\$7\.50/);
     const card = f.root.querySelector('#dash-ap').innerHTML;
     assert.match(card, /<dt>Paper P&amp;L, realized all time<\/dt><dd><span class="[^"]*">\+\$98\.40/);
   }
@@ -730,8 +730,8 @@ test('Overview offers each mode its own trades CSV only when that mode has close
 test('Overview demo account says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
     [{equity: 1000, capital: 1000, realized_pnl: 0}, /\$1,000\.00 capital\u00a0· No demo deployments\u00a0· real fills on Kalshi’s sandbox, not real money/],
-    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital\u00a0· 0 open\u00a0· \+\$12\.00 realized since reload\u00a0· real fills/],
-    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 realized all time\u00a0· real fills/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, before_reload: 40}, /\$500\.00 capital\u00a0· 0 open\u00a0· \+\$12\.00 realized since reload, after Kalshi fees\u00a0· real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, before_reload: 0}, /\+\$12\.00 realized all time, after Kalshi fees\u00a0· real fills/],
   ]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return response(dashboardData({demo})); }});
     await f.viewDashboard(); await flush();
@@ -774,7 +774,7 @@ test('Overview live summary says it is Kalshi cash, apart from what Tau trades r
   const live = f.root.querySelector('.live-summary');
   assert.equal(live.querySelector('dt.lab').textContent, 'Kalshi cash');
   assert.match(live.textContent, /\+\$17\.00 realized all time by Tau trades/);
-  assert.match(live.textContent, /Open at cost before fees, not in cash\$50\.00/); assert.match(live.textContent, /Realized today \(UTC\)−\$2\.00/);
+  assert.match(live.textContent, /Open at cost before fees, not in cash\$50\.00/); assert.match(live.textContent, /Live realized today \(UTC\)−\$2\.00/);
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00<\/span> <small>real money, after Kalshi fees<\/small>/);
 });
 
@@ -820,7 +820,10 @@ test('Funds paper history says prices in cents, a lost settlement as lost, and e
   assert.match(rows[1], /settled YES<span class="hint">\u00a0· won, paid \$1 a contract<\/span>[\s\S]*\+\$25\.00/);
   assert.match(rows[2], /Sold 8\/25 YES KXBTC15M-P at 25¢ \(stop loss, partial\)/);
   assert.match(rows[3], /Paper replay: 10 YES KXBTC15M-R at 40¢ → 55¢ \(take profit\)/);
-  assert.match(rows[4], /Bought 25 YES KXBTC15M-W at 40¢<\/td>[\s\S]*−\$10\.42/);
+  assert.match(rows[4], /Bought 25 YES KXBTC15M-W at 40¢<\/span><\/td>[\s\S]*−\$10\.42/);
+  // The words and the settled note are one inline run (.ledger-said): the stacked cell is a flex row, and at 390px
+  // the note was its own item, so "· won, paid $1 a contract" began a line (walk 2026-10-27).
+  assert.match(rows[1], /<span class="ledger-said">[^<]*settled YES<span class="hint">\u00a0· won, paid \$1 a contract<\/span><\/span>/);
   assert.match(rows[5], /&lt;b&gt;Starting&lt;\/b&gt; paper balance/);  // still escaped
   for (const r of rows) assert.doesNotMatch(r, /@ 0\.|stop_loss|take_profit/);
   const how = f.root.querySelector('.ledger-how').textContent;
@@ -3102,7 +3105,7 @@ test('Buying credits says how long the amount lasts at the user\'s own pace', as
   await f.viewBilling(); await flush();
   const note = () => f.root.querySelector('#topup-note').textContent;
   // $20 at $7 a week ($1 a day) -> about 20 days.
-  assert.match(note(), /You'll pay \$21\.00 \(\$20\.00 credits \+ 5% fee\)\. At your pace \(\$7\.00 a week\) that's about 20 days of research\./);
+  assert.match(note(), /You’ll pay \$21\.00 \(\$20\.00 credits \+ 5% fee\)\. At your pace \(\$7\.00 a week\) that’s about 20 days of research\./);
   const amt = f.root.querySelector('#topup-amt'); amt.value = '200'; amt.oninput();
   assert.match(note(), /over 3 months of research/);
   data = billingData({configured: true, spent_7d: 0});
@@ -3470,7 +3473,7 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   await f.viewDashboard(); await flush();
   f.S.ap = {...apStatus, week}; f.paintDashAp();
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
-  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money<\/small><\/dd>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>research spend<\/small><\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>3 strategies <small>not counting yours<\/small><\/dd>/);
   assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 1 closed trade<\/small><\/dd>/);
   assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
@@ -5208,7 +5211,7 @@ test('the autopilot card puts credits left and the only limit beside its spend, 
   await f.viewDashboard(); await flush();
   f.S.ap = {...apStatus, week}; f.paintDashAp();
   const card = f.root.querySelector('#dash-ap').innerHTML;
-  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>real money\u00a0· plus \$0\.42 on its check-ins<\/small><\/dd>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>research spend\u00a0· plus \$0\.42 on its check-ins<\/small><\/dd>/);
   assert.match(card, /Credits left: <b>\$23\.40<\/b>, about 6 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
   f.S.ap = {...apStatus, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);
@@ -5541,7 +5544,7 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   await f.viewDashboard(); await flush();
   const paper = f.root.querySelector('.paper-summary').textContent;
   assert.match(paper, /Practice money, not real\s·\s?no paper strategies yet/);
-  assert.match(paper, /Realized today \(UTC\)None yet/);
+  assert.match(paper, /Paper realized today \(UTC\)None yet/);
   assert.doesNotMatch(paper, /Realized P&amp;L, all time/);
   // "Open at cost + fees $0.00" read as a figure too, for a book nothing has ever been open in.
   assert.match(paper, /Open at cost \+ fees(?:<[^>]*>)*None yet/);
@@ -5551,13 +5554,13 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   const used = apDashboard(dashboardData({paper: fresh, deployments: [dashboardDeployment('paper')]}), apStatus);
   await used.viewDashboard(); await flush();
   const usedText = used.root.querySelector('.paper-summary').textContent;
-  assert.match(usedText, /P&amp;L shows once a paper trade closes[\s\S]*Realized today \(UTC\)None yet[\s\S]*Open at cost \+ feesNone open/);
+  assert.match(usedText, /P&amp;L shows once a paper trade closes[\s\S]*Paper realized today \(UTC\)None yet[\s\S]*Open at cost \+ feesNone open/);
   assert.doesNotMatch(usedText, /Realized P&amp;L, all time|\$0\.00/);
   // Once a trade has closed its figures are figures, a $0.00 day included.
   const traded = apDashboard(dashboardData({paper: {...fresh, closed_trades: 1, realized_pnl: 5.73, cash: 1005.73, equity: 1005.73},
     deployments: [dashboardDeployment('paper')]}), apStatus);
   await traded.viewDashboard(); await flush();
-  assert.match(traded.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \+\$5\.73[\s\S]*Realized today \(UTC\)\$0\.00[\s\S]*Open at cost \+ feesNone open/);
+  assert.match(traded.root.querySelector('.paper-summary').textContent, /Realized P&amp;L, all time \+\$5\.73[\s\S]*Paper realized today \(UTC\)\$0\.00[\s\S]*Open at cost \+ feesNone open/);
 });
 
 // Meridian opens a market page from Explore's ?m= link.
@@ -5686,8 +5689,9 @@ test('a returning user reads what the time away cost, the paper forward-test pas
     return f.root.querySelector('#dash-since').innerHTML;
   };
   const text = await strip({});
-  // What it cost: its own row, real money, never added to the paper book above it.
-  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
+  // What it cost: its own row, never added to the paper book above it. With no word on whether a card was ever
+  // charged (card_charged unknown), it never says "real money", nor who paid.
+  assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
   // No card ever charged: the credits spent were free ones, and the row says the card is untouched.
   const free = await strip({since: {...since, spent: {...since.spent, card_charged: false}}});
   assert.match(free, /of credits spent<span class="since-sub">\u00a0· free credits so far: your card hasn’t been charged\u00a0· \$7\.15 left\u00a0· /);
@@ -6286,6 +6290,35 @@ test('the hot rail wraps a market’s name instead of cutting its close hour, an
   assert.match(css, /\n\.t-dep td\.name \.sub-fig a, \.monitor-limits a \{ text-decoration: underline;/);
 });
 
+test('an Overview demo or live monitor names its book and fees under Realized P&L, as a paper one does', async () => {
+  // Walk 2026-10-27 (paper + a demo key): a demo monitor read "Realized P&L +$2.17" with nothing under it, while each
+  // paper one said "after Kalshi fees and the spread". It says its book and fees, as the strategy page's book lines do.
+  const deployments = [{...dashboardDeployment('demo'), id: 71, closed_trades: 1, realized_pnl: 2.17},
+    {...dashboardDeployment('live'), id: 72, closed_trades: 2, realized_pnl: -1.5},
+    {...dashboardDeployment('demo'), id: 73, closed_trades: 0, realized_pnl: 0}];
+  const f = frontend({fetchImpl: () => response(dashboardData({deployments}))});
+  await f.viewDashboard();
+  const notes = [...f.root.querySelectorAll('#dash-deps article.dep-monitor .monitor-realized')].map((m) => {
+    const n = m.querySelector('.book-net'); return n ? n.textContent : null;
+  });
+  assert.deepEqual(notes, ['after Kalshi fees, in Tau’s demo book: not real money', 'real money, after Kalshi fees', null]);
+});
+
+test('Overview’s day figures name their book, and a trades CSV link never breaks inside', async () => {
+  // Walk 2026-10-27 (a live key, live trading closed): the paper band's "Realized today (UTC) −$0.57" sat above the
+  // Kalshi cash band and didn't say it was paper's; at 1280 "Download" ended a line and "trades (CSV)" began the next.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\na\.csv-link \{ white-space: nowrap; \}/);
+  const tau = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  assert.match(tau, /\na\.csv-link \{ white-space: nowrap; \}/);
+  const f = frontend({fetchImpl: () => response(dashboardData({paper: {equity: 999.36, cash: 994.66, realized_pnl: -0.57, today_pnl: -0.57,
+    closed_trades: 4, open_positions: 0, total_pnl: -0.57}}))});
+  await f.viewDashboard();
+  const html = f.root.querySelector('#main').innerHTML;
+  assert.match(html, /<span class="lab">Paper realized today \(UTC\)<\/span>/);
+  assert.doesNotMatch(html, /<span class="lab">Realized today/);
+});
+
 test('an Overview paper monitor says how many of its closed trades were instant fills', async () => {
   // Walk 2026-10-27: a paper monitor read "Closed / open 2 / 0" with no word that the track record and the count of
   // realistic paper trades toward live leave its instant fills out. The server's `instant_fills` says how many.
@@ -6316,6 +6349,21 @@ test('a backtest-only strategy’s Deploy row says "Later-period P&L", never "Un
   const html = f.root.querySelector('#deps').innerHTML;
   assert.match(html, /<span class="dep-fact" title="After the split date, which picked it: not held out">Later-period P&amp;L \+\$12\.00<\/span>/);
   assert.equal((html.match(/Unseen P&amp;L/g) || []).length, 1, 'only the strategy with a gatekeeper record says unseen');
+});
+
+test('an Overview monitor’s details say "Later-period P&L" for a strategy whose page does, never "Unseen P&L"', async () => {
+  // Walk 2026-10-27: a passed strategy with no gatekeeper record, whose page reads "Later-period P&L … after the split
+  // date, which picked it: not held out", had "Unseen P&L +$0.90" in its Overview details. The server's backtest_only
+  // now covers it (and backtest-only ones); a strategy with a record keeps "Unseen P&L".
+  const bt = {backtest: {out_of_sample: {pnl: 0.9, trades: 60}}};
+  const deployments = [{...dashboardDeployment('paper'), id: 81, ...bt, backtest_only: true},
+    {...dashboardDeployment('paper'), id: 82, ...bt, backtest_only: false}];
+  const f = frontend({fetchImpl: () => response(dashboardData({deployments}))});
+  await f.viewDashboard();
+  const facts = [...f.root.querySelectorAll('#dash-deps article.dep-monitor .dep-evidence')].map((d) => d.textContent);
+  assert.equal(facts.length, 2);
+  assert.match(facts[0], /Later-period P&(amp;)?L \+\$0\.90/); assert.doesNotMatch(facts[0], /Unseen/);
+  assert.match(facts[1], /Unseen P&(amp;)?L \+\$0\.90/);
 });
 
 test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" with its figure', async () => {

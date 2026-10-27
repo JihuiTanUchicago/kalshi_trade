@@ -284,6 +284,10 @@
   // checks the market ("Live trading is not enabled on this server yet."), the server refuses Resume on a live
   // one, and Tau can't sell what a live deployment holds, which stays open until its market settles.
   const liveOpen = () => !!(S.me && S.me.live_trading_available);
+  // A connected key's cash with no live trading from Tau: it said "Your Kalshi cash \u2014 real money untouched",
+  // and didn't say why (live trading closed) or by what. Display only: the live switch is the server's.
+  const LIVE_IDLE = () => liveOpen() ? 'Your real money at Kalshi: Tau hasn\u2019t placed a live trade yet'
+    : 'Your real money at Kalshi: live trading isn\u2019t open yet, so Tau places no trades there';
   const LIVE_CLOSED = 'Live trading isn’t open yet.';
   // A deployment marked running that places no orders, in plain words ({tag, state, why}), or null: a live one
   // while live trading is closed, or a Bitcoin perpetual one (research-only: the engine trades none in any
@@ -2368,8 +2372,8 @@
         ${apFirst ? '' : sinceStrip(d, '#dash-deps')}
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-deps') : ''}
         <dl class="figures measure">
-          ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(SEP)) : 'Connect your Kalshi account on <a href="/funds#connect-kalshi">Funds</a> to trade real money') + tradesCsv('live', lv) })}
-          ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${d.demo.open_positions} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital${SEP}no demo strategies yet`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
+          ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, LIVE_IDLE())].filter(Boolean).join(SEP)) : 'Connect your Kalshi account on <a href="/funds#connect-kalshi">Funds</a> to trade real money') + tradesCsv('live', lv) })}
+          ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${d.demo.open_positions} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}, after Kalshi fees` : `${usd(d.demo.capital)} capital${SEP}no demo strategies yet`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash${hasOpen(p) ? `${SEP}${openCost(p)}${inBalance(p) ? ', ' + inBalance(p) : ''}` : ''}${SEP}${hasClosed(p) ? `<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${tradesCsv('paper', p, 'paperfills', PAPER_NET)}${slipEst(p.slippage_estimate)}` : PAPER_NO_CLOSE}` : `${usd(p.cash)} of practice money${SEP}no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
@@ -3325,7 +3329,7 @@
     const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
     const bought = !charges ? '' : `; ${reloads === charges ? `auto-reload charged your card ${charges === 1 ? 'once' : charges === 2 ? 'twice' : num(charges) + ' times'} for`
       : reloads ? `${plural(charges, 'card charge', 'card charges')} (${num(reloads)} by auto-reload) bought` : 'you bought'} <b>${usd(spent.bought)}</b> of credits`;
-    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub">${SEP}${paid}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
+    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub">${paid ? SEP + paid : ''}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
       <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>
@@ -3569,13 +3573,15 @@
     const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true;
     const sel = box.querySelector('#apf-focus'); if (sel && sel.focus) sel.focus();
   }
-  // The autopilot's last 7 days (d.week). Credits are real money and paper P&L is not, so they are two
+  // The autopilot's last 7 days (d.week). Credits are spend and paper P&L is not, so they are two
   // labelled figures, never added together. Research counts every session; paper counts only the
   // strategies the autopilot put on paper itself (the server attributes them by their deploy record).
-  // What spent credits were, beside a spend: real money once a card was ever charged for credits (the
-  // server's card_charged), and until then free ones. The autopilot's week said "real money" under a new
-  // user's first cents while the strip above it said the card hadn't been charged.
-  const creditsPaid = (charged) => charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
+  // What spent credits were, beside a spend: real money only once the payload says a card was ever charged
+  // for credits (the server's card_charged true), free ones while it says none was (false). The autopilot's
+  // week said "real money" under a new user's first cents while the strip above it said the card hadn't been
+  // charged; and with payments off Billing sends no card_charged at all, and the week still said "real money"
+  // under free-credit research spend. Unknown claims nothing ('' here): each caller says what it was spent on.
+  const creditsPaid = (charged) => charged === true ? 'real money' : charged === false ? 'free credits so far: your card hasn’t been charged' : '';
   function apWeek(w, d) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
@@ -3594,7 +3600,7 @@
       ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
       : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? `${SEP}plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
+      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${[creditsPaid(w.card_charged) || 'research spend', checkins ? `plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''].filter(Boolean).join(SEP)}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${trades} closed trade${trades === 1 ? '' : 's'}</small>${slipEst(w.paper_slippage_estimate)}`}</dd></div>

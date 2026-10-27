@@ -284,6 +284,10 @@
   // checks the market ("Live trading is not enabled on this server yet."), the server refuses Resume on a live
   // one, and Tau can't sell what a live deployment holds, which stays open until its market settles.
   const liveOpen = () => !!(S.me && S.me.live_trading_available);
+  // A connected key's cash with no live trading from Tau: it said "Your Kalshi cash \u2014 real money untouched",
+  // and didn't say why (live trading closed) or by what. Display only: the live switch is the server's.
+  const LIVE_IDLE = () => liveOpen() ? 'Your real money at Kalshi: Tau hasn\u2019t placed a live trade yet'
+    : 'Your real money at Kalshi: live trading isn\u2019t open yet, so Tau places no trades there';
   const LIVE_CLOSED = 'Live trading isn’t open yet.';
   // A deployment marked running that places no orders, in plain words ({tag, state, why}), or null: a live one
   // while live trading is closed, or a Bitcoin perpetual one (research-only: the engine trades none in any
@@ -1941,13 +1945,16 @@
   // A dashboard card's setup and limits lines, inline one after the other: the stake and the cap each stay whole
   // (.nobr) and each "·" ends its line. The limits line began " · Max 2 open" with a plain space, so at 390px
   // "· Max 2 open" could start a line.
+  // A demo or live monitor's Realized P&L says its book and fees, as the strategy page's book lines do: "+$2.17"
+  // under "Demo · Running" didn't say it was Tau's demo book, not real money, or after Kalshi's fees.
+  const monitorNet = (mode) => mode === 'live' ? 'real money, after Kalshi fees' : mode === 'demo' ? `after Kalshi fees, in ${DEMO_BOOK}: not real money` : '';
   function deploymentMonitor(d, anchor = false, regs = null) {
     const live = d.mode === 'live';
     return `<article ${anchor ? 'id="dash-paused" ' : ''}class="dep-monitor${live ? ' live-row' : ''}">
       <header><h3><a href="/strategies/${d.strategy_id}">${esc(d.title)}</a></h3><span class="monitor-state"><span class="monitor-mode">${deploymentMode(d)}</span><span aria-hidden="true">·</span>${depState(d, live)}</span></header>
       <div class="monitor-config"><div class="monitor-summary"><p class="monitor-setup">${esc(marketFull(d.market))}${SEP}<span class="nobr">${depStake(d)}</span></p><div class="monitor-limits"><span>${depCap(d) ? `${SEP}<span class="nobr">${depCap(d)}</span>` : ''}${d.status !== 'running' && (d.status_why || d.status_reason) ? SEP + fundsLinked(esc(d.status_why || d.status_reason)) : ''}</span></div></div>${depIdleLine(d)}${demoRowLine(d)}${depInstant(d)}</div>
       <dl class="monitor-metrics">
-        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${realizedCell(d, '<span class="unavailable">None yet</span>')}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${PAPER_NET}${glo('paperfills')}</dd>` : ''}</div>
+        <div class="monitor-realized"><dt>Realized P&amp;L</dt><dd>${realizedCell(d, '<span class="unavailable">None yet</span>')}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</dd>${d.mode === 'paper' ? `<dd class="sub-fig paper-net">${PAPER_NET}${glo('paperfills')}</dd>` : d.closed_trades ? `<dd class="sub-fig book-net">${monitorNet(d.mode)}</dd>` : ''}</div>
         <div class="monitor-unrealized"><dt>${d.unrealized_pnl != null && d.open_positions ? 'Unrealized (est.)' : 'Unrealized P&amp;L'}</dt><dd>${d.unrealized_pnl == null ? `<span class="unavailable">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}</dd></div>
       </dl>
       <div class="monitor-footer"><dl class="monitor-counts"><div><dt>Closed / open</dt><dd aria-label="${esc(d.closed_trades)} closed trades, ${esc(d.open_positions || 0)} open positions">${esc(d.closed_trades)} / ${esc(d.open_positions || 0)}</dd></div></dl><div class="monitor-controls">${deploymentActions(d, false)}${deploymentEvidence(d, true)}</div></div>
@@ -2450,16 +2457,18 @@
       // deployment, the usual case while live is closed), it sits under the paper figure as its own figure, never
       // added to it, and says when Kalshi was read, as Tau's dashboard does. Only a missing key stays in the menu.
       const cashInBand = !hasLive && lv.connected;
-      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, 'Your Kalshi cash \u2014 real money untouched')].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>') + tradesCsv('live', lv) });
-      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]}${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : [cashAt(lv), `${money(lv.realized_pnl)} realized all time by Tau trades`].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(lv)}, not in cash</span><strong>${openFig(lv)}</strong></div></div></dd></div>`;
-      const demoFigure = (demoKeyless(d.demo) ? fig(DEMO_BOOK, 'No demo key', { small: DEMO_NO_KEY }) : fig(DEMO_BOOK, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${d.demo.open_positions} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital${SEP}No demo deployments`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
+      const liveFigure = fig('Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { cls: cashInBand ? 'kalshi-cash' : '', small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, LIVE_IDLE())].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>') + tradesCsv('live', lv) });
+      const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!lv.connected || (liveCf ? lv.last_balance == null : lv.balance == null) ? ' balance-state' : ''}">${lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected'}</strong><span class="portfolio-return">${lv.connected ? (liveCf ? `${liveCf[1]}${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : lv.balance == null ? `Couldn\u2019t read your Kalshi balance just now${SEP}${money(lv.realized_pnl)} realized all time by Tau trades` : [cashAt(lv), `${money(lv.realized_pnl)} realized all time by Tau trades`].filter(Boolean).join(SEP)) : '<a href="/funds#connect-kalshi">Connect Kalshi</a>'}${tradesCsv('live', lv)}</span></div><div class="portfolio-detail"><span class="lab">Live realized today (UTC)</span><strong>${money(lv.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(lv.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(lv)}, not in cash</span><strong>${openFig(lv)}</strong></div></div></dd></div>`;
+      const demoFigure = (demoKeyless(d.demo) ? fig(DEMO_BOOK, 'No demo key', { small: DEMO_NO_KEY }) : fig(DEMO_BOOK, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${d.demo.open_positions} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}, after Kalshi fees` : `${usd(d.demo.capital)} capital${SEP}No demo deployments`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }));
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
       // newcomer could take it for real money.
       // A book that has never been used has no realized P&L yet (Tau's dashboard says "no paper strategies yet"):
       // "Realized P&L, all time $0.00" and "Realized today $0.00" read as results to a new account, and so did
       // "Open at cost + fees $0.00" beside them: nothing has ever been open. A book that has traded keeps its figure.
       const paperNew = !(p.open_positions || p.closed_trades || p.total_pnl || d.deployments.some((x) => x.mode === 'paper'));
-      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span>\u00a0· ${paperNew ? '<span class="nobr">no paper strategies yet</span>' : !hasClosed(p) ? '<span class="nobr">P&amp;L shows once a paper trade closes</span>' : `<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span>\u00a0· <span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}${slipEst(p.slippage_estimate)}`}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${!hasClosed(p) ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : hasOpen(p) ? openFig(p) : 'None open'}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
+      // The day's realized figure names its book ("Paper realized today", "Live realized today"): beside a Kalshi cash
+      // band, a bare "Realized today (UTC) −$0.57" didn't say it was paper's (walked 2026-10-27 with a live key).
+      const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span>\u00a0· ${paperNew ? '<span class="nobr">no paper strategies yet</span>' : !hasClosed(p) ? '<span class="nobr">P&amp;L shows once a paper trade closes</span>' : `<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span>\u00a0· <span class="nobr">${PAPER_NET}${glo('paperfills')}</span>${tradesCsv('paper', p)}${slipEst(p.slippage_estimate)}`}</span></div><div class="portfolio-detail"><span class="lab">Paper realized today (UTC)</span><strong>${!hasClosed(p) ? 'None yet' : money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at ${openBasis(p)}</span><strong>${paperNew ? 'None yet' : hasOpen(p) ? openFig(p) : 'None open'}</strong>${inBalance(p, 'the portfolio') ? `<span class="sub-fig">${inBalance(p, 'the portfolio')}</span>` : ''}</div></div></dd></div>`;
       const board = `
         ${said ? `<div class="statusline dashboard-status ${needs ? 'needs' : ''}"><p class="said">${said}</p></div>` : ''}
         ${d.demo.health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo.health)}</span></div>` : ''}
@@ -3487,7 +3496,7 @@
     const charges = spent ? +spent.charges || 0 : 0, reloads = spent ? +spent.reloads || 0 : 0;
     const bought = !charges ? '' : `; ${reloads === charges ? `auto-reload charged your card ${charges === 1 ? 'once' : charges === 2 ? 'twice' : num(charges) + ' times'} for`
       : reloads ? `${plural(charges, 'card charge', 'card charges')} (${num(reloads)} by auto-reload) bought` : 'you bought'} <b>${usd(spent.bought)}</b> of credits`;
-    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub">${SEP}${paid}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
+    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}${bought}<span class="since-sub">${paid ? SEP + paid : ''}${SEP}${usd(me.credit_balance || 0)} left${SEP}<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
       <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>
@@ -3730,13 +3739,15 @@
     const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true;
     const sel = box.querySelector('#apf-focus'); if (sel && sel.focus) sel.focus();
   }
-  // The autopilot's last 7 days (d.week). Credits are real money and paper P&L is not, so they are two
+  // The autopilot's last 7 days (d.week). Credits are spend and paper P&L is not, so they are two
   // labelled figures, never added together. Research counts every session; paper counts only the
   // strategies the autopilot put on paper itself (the server attributes them by their deploy record).
-  // What spent credits were, beside a spend: real money once a card was ever charged for credits (the
-  // server's card_charged), and until then free ones. The autopilot's week said "real money" under a new
-  // user's first cents while the strip above it said the card hadn't been charged.
-  const creditsPaid = (charged) => charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
+  // What spent credits were, beside a spend: real money only once the payload says a card was ever charged
+  // for credits (the server's card_charged true), free ones while it says none was (false). The autopilot's
+  // week said "real money" under a new user's first cents while the strip above it said the card hadn't been
+  // charged; and with payments off Billing sends no card_charged at all, and the week still said "real money"
+  // under free-credit research spend. Unknown claims nothing ('' here): each caller says what it was spent on.
+  const creditsPaid = (charged) => charged === true ? 'real money' : charged === false ? 'free credits so far: your card hasn’t been charged' : '';
   function apWeek(w, d) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
@@ -3755,7 +3766,7 @@
       ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
       : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${creditsPaid(w.card_charged)}${checkins ? `${SEP}plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''}</small></dd></div>
+      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${[creditsPaid(w.card_charged) || 'research spend', checkins ? `plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''].filter(Boolean).join(SEP)}</small></dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${trades} closed trade${trades === 1 ? '' : 's'}</small>${slipEst(w.paper_slippage_estimate)}`}</dd></div>

@@ -125,7 +125,7 @@ export function freshWalkCases({name, frontend, dashboard}) {
     const st = (f, id) => f.root.querySelector(`.sys-node[data-id="${id}"]`).getAttribute('data-st');
     const label = (f, id) => f.root.querySelector(`.sys-node[data-id="${id}"] .t`).textContent;
     assert.equal(text(small, 'db', 'm'), '3 MB', 'an estimate of 0 rows is left out');
-    assert.equal(text(small, 'forward', 'm'), '—');
+    assert.equal(text(small, 'forward', 'm'), 'not seen yet');
     assert.equal(text(small, 'cb_coll', 'm'), '7m ago', '120 is no count to show');
     assert.equal(text(small, 'features', 'm'), '20s ago');
     for (const id of ['kalshi', 'coinbase', 'bedrock', 'stripe']) assert.equal(text(small, id, 'm'), '', `${id} says nothing it can't show`);
@@ -206,5 +206,26 @@ export function freshWalkCases({name, frontend, dashboard}) {
     assert.equal(d.root.querySelectorAll('.sys-edge').length, 16);
     assert.equal(d.root.querySelectorAll('.sys-tier').length, 0);
     d.clearTimers();
+  });
+
+  // Walk 2026-10-27: a box whose process has written no heartbeat yet (the server's age is null) read
+  // "2 paper running · —" and "0 quote rows · —", a bare dash where the words go. It says "not seen yet", on the box
+  // and in its detail panel; a box with a heartbeat still says how long ago it was.
+  test(`${name}: a System box with no heartbeat yet says "not seen yet", not a bare dash`, async () => {
+    const SEP = ' · ';
+    const nodes = {sim_engine: {age: null, paper: 2, mine: true}, live_engine: {age: null, live: 0, demo: 1, mine: true},
+      forward: {age: null, rows: 0, unit: 'quote rows'}, cb_coll: {age: 42, rows: 1200, unit: 'candles'}, web: {up: true}, db: {rows: 10, size_mb: 5}};
+    const f = frontend({fetchImpl: (path) => (path === '/api/admin/system' ? response({nodes, events: [], now: '2026-10-27T16:00:00Z'}) : response({}))});
+    await f.viewSystem(); await settle();
+    const metric = (id) => f.root.querySelector(`[data-m="${id}"]`).textContent;
+    assert.equal(metric('sim_engine'), `2 paper running${SEP}not seen yet`);
+    assert.equal(metric('live_engine'), `0 live${SEP}1 demo${SEP}not seen yet`);
+    // Under 1,000 rows the count drops out (#599), so the heartbeat words stand alone.
+    assert.equal(metric('forward'), 'not seen yet');
+    assert.equal(metric('cb_coll'), `about 1k candles${SEP}42s ago`);
+    for (const id of ['sim_engine', 'live_engine', 'forward']) assert.doesNotMatch(metric(id), /—/);
+    f.root.querySelector('.sys-node[data-id="sim_engine"]').dispatchEvent({type: 'click'});
+    assert.match(f.root.querySelector('#sys-detail').innerHTML, /2 paper running · not seen yet<\/p>/);
+    f.clearTimers();
   });
 }

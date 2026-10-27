@@ -206,10 +206,10 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
 
   test(`${name}: the dashboard's Kalshi cash figure says when Kalshi's figure was read`, async () => {
     for (const [live, said] of [
-      [{balance: 1234.56, balance_at: ago(5 * 60000)}, /Kalshi cash ?\$1,234\.56 ?Read from Kalshi 5m ago · Your Kalshi cash — real money untouched/],
+      [{balance: 1234.56, balance_at: ago(5 * 60000)}, /Kalshi cash ?\$1,234\.56 ?Read from Kalshi 5m ago · Your real money at Kalshi: Tau hasn’t placed a live trade yet/],
       [{balance: 1234.56, balance_at: ago(5 * 60000), closed_trades: 2, realized_pnl: 1.5, open_positions: 1},
         /\$1,234\.56 ?Read from Kalshi 5m ago · Tau trades: 1 open/],
-      [{balance: 1234.56}, /Kalshi cash ?\$1,234\.56 ?Your Kalshi cash — real money untouched/],
+      [{balance: 1234.56}, /Kalshi cash ?\$1,234\.56 ?Your real money at Kalshi: Tau hasn’t placed a live trade yet/],
     ]) {
       const answer = dashAnswer(live, 'r1');
       const f = frontend({fetchImpl: (path) => path.startsWith('/api/dashboard') ? response(answer)
@@ -233,6 +233,33 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
       ledger: [{created_at: '2026-10-17T10:00:00Z', memo: 'Paper deposit', amount: 1000}]},
   });
   const liveFig = (f) => f.root.querySelector('#ffigs').querySelectorAll('div.m')[0].textContent.replace(/\s+/g, ' ');
+
+  test(`${name}: a connected live key says live trading isn’t open while it isn’t, on the dashboard and Funds`, async () => {
+    // Walk 2026-10-27 (a live key connected, live trading closed): Funds read "Tau’s live P&L shows once a live trade
+    // closes. No open live positions", as if a live trade could close, with no stop at the end; the dashboard read
+    // "Your Kalshi cash — real money untouched", untouched by what it didn’t say.
+    for (const open of [false, true]) {
+      const answer = dashAnswer({balance: 250, balance_at: ago(5000)}, 'r9');
+      const d = frontend({fetchImpl: (path) => path.startsWith('/api/dashboard') ? response(answer)
+        : path.startsWith('/api/track-record') ? response({modes: {}})
+          : path === '/api/autopilot/status' ? response({autopilot: false, mode: 'off'}) : response({})});
+      d.S.me.live_trading_available = open; d.S.me.user.autopilot = false; d.S.ap = null; d.S.apAt = 0;
+      d.location.pathname = '/';
+      await d.viewDashboard(); await settle();
+      assert.match(dashCash(d), open ? /Your real money at Kalshi: Tau hasn’t placed a live trade yet/
+        : /Your real money at Kalshi: live trading isn’t open yet, so Tau places no trades there/);
+      assert.doesNotMatch(dashCash(d), /untouched/);
+      d.clearTimers();
+      const f = frontend({fetchImpl: () => response({})});
+      f.S.me.live_trading_available = open;
+      f.location.pathname = '/funds';
+      f.window.__TAU_FIRST__ = [{url: '/api/funds', body: fundsAnswer({balance: 250, balance_at: ago(5000), closed_trades: 0, realized_pnl: 0})}];
+      await f.viewFunds(); await settle();
+      assert.match(liveFig(f), open ? /Tau’s live P&(amp;)?L shows once a live trade closes\. No open live positions\.\s*$/
+        : /Live trading isn’t open yet, so Tau places no live trades\. No open live positions\.\s*$/);
+      f.clearTimers();
+    }
+  });
   const spot = (f, name) => f.root.querySelector(`[data-cash="${name}"]`).innerHTML;
 
   test(`${name}: Funds draws a cash read under two minutes ago as current while its follow-up is out, an older one as checking`, async () => {

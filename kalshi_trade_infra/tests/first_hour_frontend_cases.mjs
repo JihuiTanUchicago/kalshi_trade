@@ -56,7 +56,7 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     figs = f.root.querySelector('#bfigs').textContent;
     assert.match(figs, /Research pauses in\s*About 3 days\s*at \$4\.00 a day so far/);
     const amt2 = f.root.querySelector('#topup-amt'); amt2.value = '20'; amt2.oninput();
-    assert.match(f.root.querySelector('#topup-note').textContent, /At your pace \(\$4\.00 a day so far\) that's about 5 days of research\./);
+    assert.match(f.root.querySelector('#topup-note').textContent, /At your pace \(\$4\.00 a day so far\) that’s about 5 days of research\./);
     // A week-old account (or an older server with no pace_days) keeps the week's words.
     for (const o of [{pace_days: 7}, {}]) {
       f = billingPage(cardedBilling(o));
@@ -106,10 +106,15 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     f.S.ap = {...apStatus, week: {...week, card_charged: false}}; f.paintDashAp();
     assert.match(spent(), /^\$0\.84 free credits so far: your card hasn’t been charged$/);
     assert.doesNotMatch(spent(), /real money/);
-    // Once a card was charged, or from a server that doesn't say: real money, as before.
-    for (const charged of [true, undefined]) {
+    // Once a card was charged: real money.
+    f.S.ap = {...apStatus, week: {...week, card_charged: true}}; f.paintDashAp();
+    assert.match(spent(), /^\$0\.84 real money$/);
+    // A server that doesn't say (payments off: Billing sends no card_charged) is never "real money", nor names
+    // who paid: it says what the spend was. The week called a new user's free-credit research "real money".
+    for (const charged of [undefined, null]) {
       f.S.ap = {...apStatus, week: {...week, card_charged: charged}}; f.paintDashAp();
-      assert.match(spent(), /^\$0\.84 real money$/);
+      assert.match(spent(), /^\$0\.84 research spend$/);
+      assert.doesNotMatch(spent(), /real money|free credits|card/);
     }
     f.clearTimers();
   });

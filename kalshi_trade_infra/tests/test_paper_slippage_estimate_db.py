@@ -35,6 +35,19 @@ def conn():
     c.close()
 
 
+def _experiment(cur, uid, strategy_id):
+    """A pre-registered experiment (a gatekeeper record) for the user, linked to `strategy_id` when given."""
+    from app.research import research_repository as rr
+    from app.trading import spec as specmod
+
+    return rr.preregister(cur, dict(
+        user_id=uid, run_id=None, strategy_id=strategy_id, market="btc15m", hypothesis_hash=uuid.uuid4().hex,
+        spec=specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}}), economic_rationale="m",
+        primary_metric="mean_net_return_per_trade", null_hypothesis="edge<=0", alt_hypothesis="edge>0",
+        planned_test="stationary_bootstrap", falsification_criteria="ci_lo<=0", min_sample=30, cost_assumptions={},
+        research_partition_id=0, planned_n_tests=1, correction_method="BH"))
+
+
 def _expected(rows, per=Decimal("0.005")):
     """Paper realized P&L of `rows` less `per` a contract fill, rounded once half up: from the rows alone."""
     from trading_core.domain.money import cents
@@ -181,6 +194,10 @@ def test_deploy_the_strategies_list_and_the_autopilot_carry_it_from_the_reads_th
     a = repo.insert_strategy(cur, uid, None, None, "btc15m", "volatility", "Paper and demo", "t", spec, "passed", dict(RESULT))
     c = repo.insert_strategy(cur, uid, None, None, "btc15m", "volatility", "Live and paper", "t", spec, "passed", dict(RESULT))
     b = repo.insert_strategy(cur, uid, None, None, "btc15m", "volatility", "Old loose gate", "t", spec, "backtest-only", dict(RESULT))
+    # A and C passed with a gatekeeper record (A's linked by its strategy id, as before experiment_id existed; C's
+    # stored), so their rows claim nothing; a pass with none says later-period (test_..._no_gatekeeper_record...).
+    _experiment(cur, uid, a)
+    repo.set_strategy_outcome(cur, c, "passed", dict(RESULT), experiment_id=_experiment(cur, uid, None))
     repo.create_proposal(cur, uid, "deploy", "Autopilot", None, a, "applied")  # the autopilot put A on paper
     dep = {"a_paper": repo.create_deployment(cur, uid, a, "btc15m", "paper"),
            "a_demo": repo.create_deployment(cur, uid, a, "btc15m", "demo"),
@@ -253,3 +270,42 @@ def test_deploy_the_strategies_list_and_the_autopilot_carry_it_from_the_reads_th
     # The gate's read carries none of the display columns.
     assert all("strategy_status" not in d and "contract_fills" not in d
                for d in repo.list_deployments(cur, uid, include_stopped=True))
+
+
+def test_a_passed_strategy_with_no_gatekeeper_record_says_later_period_on_every_deployment_row(conn):
+    """The strategy page calls a backtest's later slice "Later-period P&L" for a backtest-only strategy and for a
+    "passed" one with no gatekeeper record (no experiment, stored or linked by its strategy id); the Overview's
+    deployment details said "Unseen P&L" for the second. Every deployment row says so (backtest_only), from the
+    deployment read itself: the full read and the kept one (book_memo's) agree, on the dashboard, Deploy and the
+    strategy page, while a pass with a record, stored or legacy, claims nothing."""
+    from app import repository as repo
+    from app import server
+    from app.services import book_memo
+    from app.trading import spec as specmod
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "norecord@example.com", "N", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": 5.0, "max_positions": 2}})
+
+    def strat(title, status):
+        return repo.insert_strategy(cur, uid, None, None, "btc15m", "volatility", title, "t", spec, status, dict(RESULT))
+
+    sids = {"none": strat("Passed, no record", "passed"), "stored": strat("Passed, stored record", "passed"),
+            "legacy": strat("Passed, legacy record", "passed"), "old": strat("Old loose gate", "backtest-only"),
+            "void": strat("Void", "failed")}
+    repo.set_strategy_outcome(cur, sids["stored"], "passed", dict(RESULT), experiment_id=_experiment(cur, uid, None))
+    _experiment(cur, uid, sids["legacy"])
+    _experiment(cur, uid, None)  # another experiment of the same user, linked to nothing, changes nothing
+    deps = {k: repo.create_deployment(cur, uid, sid, "btc15m", "paper") for k, sid in sids.items()}
+    want = {deps["none"]: True, deps["stored"]: False, deps["legacy"]: False, deps["old"]: True, deps["void"]: False}
+
+    ctx = server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None)
+    book_memo.clear()
+    for read in range(2):  # the full read, then the kept one (the positions haven't changed)
+        dash = {r["id"]: r["backtest_only"] for r in server.dashboard(ctx)["deployments"]}
+        board = {r["id"]: r["backtest_only"] for r in server.list_deployments(ctx)["deployments"]}
+        assert dash == want and board == want, read
+    page = server.get_strategy(server.Ctx(conn, repo.get_user(cur, uid), (str(sids["none"]),), {}, {}, None))
+    assert [d["backtest_only"] for d in page["deployments"]] == [True]
+    # The read the engine and the gates use carries none of it.
+    assert all("no_gatekeeper_record" not in d for d in repo.list_deployments(cur, uid))

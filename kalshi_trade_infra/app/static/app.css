@@ -2294,3 +2294,6 @@ body.landing-body .apf { display: none; }
    which have no border to change; and on the chosen market row the ink ring sat on the ink fill. */
 .switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
+
+/* A trades CSV link stays whole: "Download" ended one line and "trades (CSV)" began the next (walked 2026-10-27). */
+a.csv-link { white-space: nowrap; }

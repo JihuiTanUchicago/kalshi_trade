@@ -111,11 +111,11 @@ window.TauPage('billing', (T) => {
       const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');
       // At the user's own pace, how long the amount being bought would last: picks the amount for them.
       const perDay = paceDay(d.spent_7d, d.pace_days);
-      const lasts = (v) => (perDay && v > 0) ? ` At your pace (${paceWords(d.spent_7d, d.pace_days)}) that's ${runwayLabel(v / perDay).toLowerCase()} of research.` : '';
+      const lasts = (v) => (perDay && v > 0) ? ` At your pace (${paceWords(d.spent_7d, d.pace_days)}) that’s ${runwayLabel(v / perDay).toLowerCase()} of research.` : '';
       // Out of range, it says the range before the press (the server refuses it in the same words).
       const upd = () => { const v = +amt.value || 0; note.textContent = v < d.min_topup || v > d.max_topup
         ? `Add between ${usd(d.min_topup)} and ${usd(d.max_topup)} in credits.`
-        : `You'll pay ${usd(topupCharge(v, d.topup_fee_pct))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).${lasts(v)}`; };
+        : `You’ll pay ${usd(topupCharge(v, d.topup_fee_pct))} (${usd(v)} credits + ${d.topup_fee_pct}% fee).${lasts(v)}`; };
       amt.oninput = upd; upd();
       root.querySelector('#topup-btn').onclick = (e) => {
         if (e.currentTarget.getAttribute('aria-disabled')) { flash('#topup-flash', 'Add a card first.', 'bad'); return; }

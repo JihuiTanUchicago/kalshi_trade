@@ -349,7 +349,7 @@ def test_key_errors_say_plainly_what_is_wrong_and_never_echo_the_key(monkeypatch
     with pytest.raises(kalshi_account.KalshiKeyError) as e:
         kalshi_account.verify("a952bcbe-ec3b-4b5b-b8f9-11dae589608c", pem)
     msg = str(e.value)
-    assert "couldn't be reached just now" in msg and "demo.kalshi.co is a demo key" in msg and pem not in msg
+    assert "couldn\u2019t be reached just now" in msg and "demo.kalshi.co is a demo key" in msg and pem not in msg
     # The demo box points a live key back to the live box.
     monkeypatch.setattr(server.kalshi_dev_exec, "demo_fills", lambda creds: (_ for _ in ()).throw(RuntimeError("401")))
     with pytest.raises(server.ApiError) as e:
@@ -1487,8 +1487,11 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     monkeypatch.setattr(server.repo, "passed_since", lambda cur, uid, since, **k: {"n": 0, "items": []})
     monkeypatch.setattr(server.billing, "configured", lambda: True)
     out = server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})
-    # Without the probe's answer the row keeps "real money" (card_charged True).
-    assert out["spent"] == {"since": 27.45, "week": 27.45, "card_charged": True}
+    # Without the probe's answer the row claims nothing (card_charged None): it said True, and the page called
+    # the spend "real money" with no read saying a card was ever charged.
+    assert out["spent"] == {"since": 27.45, "week": 27.45, "card_charged": None}
+    act["card_charged"] = True  # a card was charged for credits
+    assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]["card_charged"] is True
     act["card_charged"] = False  # free credits only: no card charged yet
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]["card_charged"] is False
     assert out["books"] == {"paper": {"pnl": 12.65, "trades": 36}}  # the books never carry the credits

@@ -107,7 +107,7 @@ def display_name(name: Optional[str], fallback: str) -> str:
 
 RUN_ERROR_FALLBACK = None  # the page says "This session stopped on an error." on its own
 EVENT_FALLBACK = "The agent hit an internal error on this step."
-NOTICE_FALLBACK = "There's an update on your account."
+NOTICE_FALLBACK = "There’s an update on your account."
 CHAT_FALLBACK = "The agent hit an internal error here."
 
 
@@ -146,10 +146,18 @@ def event_rows(events: List[Dict]) -> List[Dict]:
     return events
 
 
+# The bell lines whose words are billing's own and say an apostrophe straight as stored ("Auto-reload couldn't
+# add ... in credits."; billing.RELOAD_FAILED_KIND): the bell reads them curly, as Billing's banner does. Every
+# other kind keeps its stored words (the engine's kill switch, pause and fill lines are said as written).
+CURLY_KINDS = frozenset({"reload_failed"})
+
+
 def notification_rows(items: List[Dict]) -> List[Dict]:
     """The bell's lines: a name in one is another person's, a reason the engine's or the agent's."""
     for n in items:
         n["body"] = clean(n.get("body"), NOTICE_FALLBACK)
+        if n.get("kind") in CURLY_KINDS:
+            n["body"] = curly(n["body"])
     return items
 
 
