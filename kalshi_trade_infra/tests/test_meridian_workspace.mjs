@@ -5460,7 +5460,11 @@ test('Meridian: turning autopilot on updates the last-24-hours row at once, not 
 test('Meridian Overview says the paper portfolio is practice money', async () => {
   const f = apDashboard(dashboardData(), apStatus);
   await f.viewDashboard(); await flush();
-  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · Realized P&amp;L, all time \+\$98\.40/);
+  // Walk 2026-10-27 at 390px: "· Realized P&L, all time", "· after Kalshi fees" and "· Download trades (CSV)" each began
+  // a line. Each "·" has a no-break space before it and a plain one after, so it ends its line.
+  const sub = f.root.querySelector('.paper-summary .portfolio-return').innerHTML;
+  assert.ok(!/ ·/.test(sub) && sub.includes('</span> · <span class="nobr">Realized'), sub);
+  assert.match(f.root.querySelector('.paper-summary').textContent, /Practice money, not real · Realized P&amp;L, all time \+\$98\.40/);
 });
 
 // A new account's paper book read "Realized P&L, all time $0.00" and "Realized today (UTC) $0.00": results it never had.
@@ -5469,7 +5473,7 @@ test('Meridian Overview says a never-used paper book has no strategies yet, not 
   const f = apDashboard(dashboardData({paper: fresh}), apStatus);
   await f.viewDashboard(); await flush();
   const paper = f.root.querySelector('.paper-summary').textContent;
-  assert.match(paper, /Practice money, not real ·\s?no paper strategies yet/);
+  assert.match(paper, /Practice money, not real\s·\s?no paper strategies yet/);
   assert.match(paper, /Realized today \(UTC\)None yet/);
   assert.doesNotMatch(paper, /Realized P&amp;L, all time/);
   // "Open at cost + fees $0.00" read as a figure too, for a book nothing has ever been open in.
