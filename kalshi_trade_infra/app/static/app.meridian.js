@@ -5218,7 +5218,10 @@
     if (spent && !low && !me.needs_card && !me.auto_reload && runway != null && runway < CREDITS_WARN_DAYS)
       needs.push(`${pausesIn(runway)} <a href="/billing">Add credits or turn on auto-reload</a>`);
     // What the time away cost, in credits: real money, so its own row, never added to a book above.
-    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}<span class="since-sub"> \u00b7\u00a0real money \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
+    // Until a card was ever charged (the server's card_charged) every credit spent was a free one, and
+    // "real money" beside a new user's first cents read as a charge to their card.
+    const paid = spent && spent.card_charged === false ? 'free credits so far: your card hasn’t been charged' : 'real money';
+    const cost = spent ? `${+spent.since >= 0.01 ? `<b>${usd(spent.since)}</b> of credits spent` : 'No credits spent'}<span class="since-sub"> \u00b7\u00a0${paid} \u00b7\u00a0${usd(me.credit_balance || 0)} left \u00b7\u00a0<a href="/billing">Billing</a></span>` : '';
     const row = (k, v, cls) => `<div class="since-row${cls ? ' ' + cls : ''}"><dt>${k}</dt><dd>${v}</dd></div>`;
     return `<section class="since" id="dash-since" aria-label="${s.first ? 'Last 24 hours' : 'Since your last visit'}">
       <h2 class="since-h">${s.first ? 'Last 24 hours' : `Since your last visit <span class="since-at">${esc(when(s.at))}</span>`}</h2>

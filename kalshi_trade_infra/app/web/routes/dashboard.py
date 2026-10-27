@@ -149,7 +149,8 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
             "books": {m: {"pnl": cents(pnl), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": repo.passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
-            "spent": {k: credit_usd(v) for k, v in act["spent"].items()} if billing.configured() and act.get("spent") else None,
+            "spent": {**{k: credit_usd(v) for k, v in act["spent"].items()}, "card_charged": bool(act.get("card_charged", True))}
+            if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []},
             "by_deployment": _since_by_deployment(by_dep or {}, _removed_names(cur, uid, by_dep or {}, listed))}
 

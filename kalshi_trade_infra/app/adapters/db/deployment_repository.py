@@ -549,7 +549,9 @@ def activity_since(cur, user_id: int, since) -> Dict:
     whether the user has ever run a research session of their own (`own_sessions`; a brand-new
     account's dashboard points at the example session instead). The last is a LIMIT 1 probe.
     Also what credits the usage debits took since then and over the last 7 days (`spent`: real
-    money, the strip shows it apart from every book), and the strategies whose bell said they
+    money, the strip shows it apart from every book), whether a card was ever charged for credits
+    (`card_charged`, a LIMIT 1 probe on idx_credit_user_kind_time: until then every credit spent was a
+    free one, and the strip says so), and the strategies whose bell said they
     passed the paper forward gate or became ready for live (`milestones`: {kind: [strategy ids]}).
     Those passes happen days after the strategy was created, so passed_since never sees them."""
     week = now_utc() - timedelta(days=7)
@@ -567,15 +569,19 @@ def activity_since(cur, user_id: int, since) -> Dict:
         "UNION ALL SELECT 'spent' AS src, 'week' AS k, COALESCE(-SUM(amount_usd),0) AS n FROM app_credit_ledger "
         "WHERE user_id=%s AND kind='usage' AND created_at>=%s "
         "UNION ALL SELECT 'note' AS src, CONCAT(kind, ' ', COALESCE(link, '')) AS k, COUNT(*) AS n FROM app_notifications "
-        "WHERE user_id=%s AND kind IN ('passed','live_ready') AND created_at>=%s GROUP BY kind, link",
+        "WHERE user_id=%s AND kind IN ('passed','live_ready') AND created_at>=%s GROUP BY kind, link "
+        "UNION ALL SELECT 'paid' AS src, 'any' AS k, COUNT(*) AS n FROM (SELECT id FROM app_credit_ledger "
+        "WHERE user_id=%s AND kind IN ('topup','autoreload') LIMIT 1) p",
         (user_id, since, user_id, since, DEMO_DIRECTION, user_id, since, user_id, DEMO_DIRECTION,
-         user_id, since, user_id, week, user_id, since),
+         user_id, since, user_id, week, user_id, since, user_id),
     )
-    out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False,
+    out: Dict[str, Any] = {"autopilot": {}, "runs": {}, "own_sessions": False, "card_charged": False,
                            "spent": {"since": 0.0, "week": 0.0}, "milestones": {"passed": [], "live_ready": []}}
     for r in cur.fetchall():
         if r["src"] == "own":
             out["own_sessions"] = int(r["n"]) > 0
+        elif r["src"] == "paid":
+            out["card_charged"] = int(r["n"]) > 0
         elif r["src"] == "spent":
             out["spent"][r["k"]] = float(r["n"] or 0)  # exact: the page rounds credits half up (credit_cents)
         elif r["src"] == "note":

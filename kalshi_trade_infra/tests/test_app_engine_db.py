@@ -821,7 +821,7 @@ def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(c
     assert act["autopilot"] == {"deploy": 1, "pause": 2}
     assert sum(act["runs"].values()) == 1
     assert act["own_sessions"] is True  # it has a research session of its own
-    assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False,
+    assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False, "card_charged": False,
                                                    "spent": {"since": 0.0, "week": 0.0},
                                                    "milestones": {"passed": [], "live_ready": []}}
 
@@ -837,8 +837,11 @@ def test_since_your_last_visit_reads_what_it_cost_and_the_paper_milestones(conn,
     uid = user["id"]
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     since = now - timedelta(hours=24)
+    repo.add_credit(cur, uid, "bonus", 20, "Welcome credits")
     repo.add_credit(cur, uid, "usage", -1.25, "Agent usage · m")
     repo.add_credit(cur, uid, "usage", -0.75, "Agent usage · m")
+    # Free credits only so far: no card was charged (the strip says so instead of "real money").
+    assert repo.activity_since(cur, uid, since)["card_charged"] is False
     repo.add_credit(cur, uid, "topup", 20, "Added $20 credits", stripe_ref="t-" + uuid.uuid4().hex)
     repo.add_credit(cur, uid, "usage", -3.0, "Agent usage · m")
     cur.execute("UPDATE app_credit_ledger SET created_at=%s WHERE id=LAST_INSERT_ID()", (now - timedelta(days=3),))
@@ -853,6 +856,7 @@ def test_since_your_last_visit_reads_what_it_cost_and_the_paper_milestones(conn,
     cur.execute("UPDATE app_notifications SET created_at=%s WHERE id=LAST_INSERT_ID()", (now - timedelta(days=2),))
     act = repo.activity_since(cur, uid, since)
     assert act["spent"] == {"since": 2.0, "week": 5.0}
+    assert act["card_charged"] is True
     assert act["milestones"] == {"passed": [41], "live_ready": [57, 41]}
 
 

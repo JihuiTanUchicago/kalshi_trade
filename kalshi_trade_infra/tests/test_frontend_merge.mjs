@@ -4379,6 +4379,11 @@ test('a returning user reads what the time away cost, the paper forward-test pas
   const text = await strip({});
   // What it cost: its own row, real money, never added to the paper book above it.
   assert.match(text, /<dt>Cost<\/dt><dd><b>\$27\.45<\/b> of credits spent<span class="since-sub"> · real money · \$7\.15 left · <a href="\/billing">Billing<\/a><\/span><\/dd>/);
+  // No card ever charged: the credits spent were free ones, and the row says the card is untouched.
+  const free = await strip({since: {...since, spent: {...since.spent, card_charged: false}}});
+  assert.match(free, /of credits spent<span class="since-sub"> ·\sfree credits so far: your card hasn’t been charged ·\s\$7\.15 left ·\s/);
+  assert.doesNotMatch(free, /real money/);
+  assert.match(await strip({since: {...since, spent: {...since.spent, card_charged: true}}}), /of credits spent<span class="since-sub"> ·\sreal money ·\s/);
   assert.match(text, /<b>Paper<\/b> <span class="pos">\+\$12\.65<\/span>/);
   assert.doesNotMatch(text, /\$40\.10|−\$14\.80|\$14\.80/);  // paper and credits never summed or netted
   // The forward-test pass leads New results when nothing else passed, named from the page's deployments.
