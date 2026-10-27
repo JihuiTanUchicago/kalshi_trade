@@ -887,9 +887,12 @@
     advance();
     restart();
     const hint = dlg.querySelector('#pay-hint');
+    // Save tapped before the card form is up (Stripe's script is slow on a phone) submitted the bare form:
+    // the page reloaded to "/?" and the form started over, with no word why. Until it is up, Save says so.
+    dlg.querySelector('#payform').onsubmit = (e) => { e.preventDefault(); hint.innerHTML = '<p class="wl-note" role="status">The card form is still loading. Enter your card once it appears.</p>'; };
     try {
       const state = await api('/api/billing', undefined, { keep: true });
-      if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); return; }
+      if (!state.configured) { dlg.querySelector('#pay-el').innerHTML = ''; hint.innerHTML = '<p class="wl-err">Payments aren’t enabled on this server yet.</p>'; dlg.querySelector('#pay-submit').setAttribute('aria-disabled', 'true'); dlg.querySelector('#payform').onsubmit = (e) => e.preventDefault(); return; }
       // What the card will be charged, before it is saved: nothing now, and auto-reload is on by default.
       // The charge is split as Billing splits it: "$21.10 for $20.00 more" left the $1.10 unexplained.
       const terms = dlg.querySelector('#pay-terms');
@@ -905,6 +908,7 @@
       const pe = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' }, fields: { billingDetails: { address: { country: 'never' } } } });
       dlg.querySelector('#pay-el').innerHTML = '';
       pe.mount('#pay-el');
+      hint.innerHTML = '';  // the form is up: a "still loading" from an early tap no longer holds
       dlg.querySelector('#payform').onsubmit = (e) => {
         e.preventDefault();
         busy(dlg.querySelector('#pay-submit'), async () => {
