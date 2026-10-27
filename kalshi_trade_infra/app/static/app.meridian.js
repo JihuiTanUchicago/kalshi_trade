@@ -2570,7 +2570,8 @@
       const removedNote = (m) => {
         const b = books[m];
         if (!b || !b.removed_deployments) return '';
-        return `\u00a0· ${usd(b.removed, true)} from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, ${usd(b.all, true)} in all` : ''}`;
+        // A signed amount keeps its sign: at 390px "· −" ended one line and "$0.30 from 1 removed deployment" began the next.
+        return `\u00a0· <span class="nobr">${usd(b.removed, true)}</span> from ${num(b.removed_deployments)} removed deployment${b.removed_deployments === 1 ? '' : 's'}${b.all != null ? `, <span class="nobr">${usd(b.all, true)}</span> in all` : ''}`;
       };
       const listedLab = (lab, xs) => (xs.length ? `${lab}, deployments listed below` : lab);
       // A book with no closed trade yet, listed or removed, has no P&L: it says "None yet" and when one shows, as the
