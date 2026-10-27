@@ -231,10 +231,29 @@ def tournament_line(text: Optional[str]) -> Optional[str]:
                 "short." % (m.group(1), m.group(2), m.group(3), _signed_usd(m.group(4)), m.group(5)))
     if not text or not _TOURNAMENT.match(str(text)):
         return text
-    s = _TOURNAMENT.sub("", str(text), count=1)
+    return tournament_reason(_TOURNAMENT.sub("", str(text), count=1))
+
+
+def tournament_reason(text: Optional[str]) -> Optional[str]:
+    """The tournament's own terms in ``text`` (_TOURNAMENT_WORDS) in plain words: a chat line without its marker,
+    or a reason on its own, tournament.verdict's ("after 31 paper events it is 93% likely to be losing money per
+    event (posterior mean -4.2% of stake)") as the Research page's Paper tournament shows it, the same words its
+    removal line says in the autopilot feed. Text with none of them is as given."""
+    if not text:
+        return text
+    s = str(text)
     for rx, words in _TOURNAMENT_WORDS:
         s = rx.sub(words, s)
     return s
+
+
+def tournament_standings(st: Optional[Dict]) -> Optional[Dict]:
+    """tournament.standings as the Research page reads it: each strategy's reason for coming off paper
+    (``verdict``) in plain words (tournament_reason). In place; the standings' figures are as computed."""
+    for r in (st or {}).get("entrants") or []:
+        if r.get("verdict"):
+            r["verdict"] = tournament_reason(r["verdict"])
+    return st
 
 
 def auto_paused_ids(messages: List[Dict]) -> List[int]:

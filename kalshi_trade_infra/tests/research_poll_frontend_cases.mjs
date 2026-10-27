@@ -63,4 +63,41 @@ export function researchPollCases({name, frontend}) {
     assert.equal(list.writes, before.list + 1);
     f.clearTimers();
   });
+
+  // The Research page's Paper tournament (walked 2026-10-27) said "Retiring: ... (posterior mean -4.2% of
+  // stake)", "Every near miss", "a bandit", "All entrants together" and "until an entrant beats zero". The
+  // server sends each reason in the autopilot feed's words (customer_text.tournament_standings); the page's
+  // own words say the rest plainly.
+  test(`${name}: the Research page's paper tournament reads in plain words`, async () => {
+    const board = {total: {runs: 3, explored: 12, gated: 3, gate_reach_rate: 0.25, passed: 1, holdout_passed: 0, cost_usd: 2, pipeline_death_share: 0.2},
+      days: [], trend: null, playbooks: [], scout: [], fix_list: [], data_requests: [], paper: null,
+      tournament: {pooled: {trips: 31, target: 400, per_day: 2.5, days_to_target: 147.6, mean_return: -0.012},
+        book: {capital: 100, pnl: -1.25, trips: 40},
+        entrants: [{strategy_id: 42, market: 'btc15m', title: 'Fade: late YES', weight: 0.2, trips: 31, net_pnl: -2.4, p_positive: 0.07,
+          verdict: 'after 31 paper events it is 93% likely to be losing money per event'},
+        {strategy_id: 43, market: 'btc15m', title: 'Wick fade NO', weight: 0.3, trips: 0, net_pnl: 0, p_positive: 0.5,
+          verdict: 'no trade in 7 days, as its entry rule never fired on the market’s real prices'},
+        {strategy_id: 0, title: 'Cash', weight: 0.5}]}};
+    const f = frontend({fetchImpl: (path) => {
+      if (path.startsWith('/api/runs')) return response({runs: [run({id: 8})], counts, policy: null, totals: {tried: 9, passed: 1}, v: 'v1'});
+      if (path.startsWith('/api/research/scoreboard')) return response(board);
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/research/context') return response({markets: []});
+      if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
+      return response({});
+    }});
+    f.S.me.user.autopilot = false;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    const card = f.root.querySelector('#rsimo').innerHTML;
+    const at = card.indexOf('Paper tournament'), sect = card.slice(at, card.indexOf('</ul>', at));
+    assert.ok(at > 0, 'the section is on the page');
+    assert.match(sect, /Every strategy on paper takes part at once, and a \$100\.00 practice book shifts toward the ones that earn\. Together they have 31 of the 400 separate bets it takes to judge them/);
+    assert.match(sect, /Falling short: after 31 paper events it is 93% likely to be losing money per event</);
+    assert.match(sect, /Falling short: no trade in 7 days, as its entry rule never fired on the market’s real prices</);
+    assert.match(sect, /held back until a strategy shows it makes money/);
+    assert.match(sect, /Practice book so far: /);
+    assert.doesNotMatch(sect, /Retiring|entrant|bandit|near miss|forward sample|posterior|live book|beats zero/i);
+    f.clearTimers();
+  });
 }

@@ -550,7 +550,8 @@ def _research_scoreboard(cur, uid: int, days: int) -> Dict:
         board["paper"] = None
     from app.research import tournament
     try:
-        board["tournament"] = tournament.standings(cur, uid)
+        # Each reason for taking a strategy off paper in the words the autopilot feed says it (customer_text).
+        board["tournament"] = customer_text.tournament_standings(tournament.standings(cur, uid))
     except Exception:  # noqa: BLE001 - informational; the table may not exist before the first schema run
         board["tournament"] = None
     try:
