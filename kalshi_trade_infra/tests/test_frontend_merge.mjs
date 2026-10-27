@@ -4414,7 +4414,8 @@ test('a new account\'s paper card says nothing is on paper yet instead of "$0.00
     await f.viewDashboard(); await flush();
     const board = f.root.querySelector('#boardbody').innerHTML;
     if (empty) { assert.match(board, /\$1,000\.00 of practice money\u00a0· no paper strategies yet/); assert.doesNotMatch(board, /at cost/); }
-    else assert.match(board, /\$1,000\.00 cash\u00a0· \$0\.00 at cost \+ fees\u00a0· <span class="amt">\$0\.00<\/span> realized all time/);  // a strategy on paper: its book, zeros and all
+    // A strategy on paper with no trade closed yet: its cash, and no "$0.00 at cost + fees · $0.00 realized all time".
+    else { assert.match(board, /\$1,000\.00 cash\u00a0· P&amp;L shows once a paper trade closes/); assert.doesNotMatch(board, /at cost|realized all time/); }
   }
 });
 

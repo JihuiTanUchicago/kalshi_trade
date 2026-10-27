@@ -471,7 +471,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     }
     // Paper only: the next rung is demo, and it names the missing demo key.
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness, {kalshi_dev_connected: false}),
-      /Paper<\/span> running\u00a0· 0 closed trades[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
+      /Paper<\/span> running\u00a0· no closed trades yet<\/p>[\s\S]*Next rung, demo: needs your Kalshi demo \(sandbox\) key/);
     assert.match(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /Next rung, demo: nothing needed\. Deploy it on demo below\. Demo runs the same rules on Kalshi’s sandbox with play money, to prove its orders place, fill and book before live money\./);
     assert.doesNotMatch(await ladder({deployments: [d(1, 'paper', 0, 0)]}, readiness), /rung-demo/);  // nothing on demo yet
     // A paused book is still on its rung and says paused: deploying it there again would double its positions.
@@ -630,11 +630,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const both = [d(1, 'paper', 4, 1.9), d(2, 'demo', 0, 0)];
     const refused = await ladder({deployments: both, demo_health: demoFunds});
     // Demo keeps its own trades and P&L, then says why it isn't trading; paper still reads running.
-    assert.match(refused, /<span class="mk dep">Demo<\/span> 0 closed trades\u00a0· (?:<span[^>]*>)?\+?\$0\.00(?:<\/span>)? realized\u00a0· <span class="demo-health">/);
+    assert.match(refused, /<span class="mk dep">Demo<\/span> no closed trades yet\u00a0· <span class="demo-health">/);
     assert.match(refused, fundsLine);
     assert.doesNotMatch(refused, /Demo<\/span> running/); assert.match(refused, /Paper<\/span> running\u00a0· 4 closed trades/);
-    assert.match(await ladder({deployments: both, demo_health: demoKey}), /Demo<\/span> 0 closed trades[^<]*(?:<span[^>]*>[^<]*<\/span>)?[^<]*\u00a0· <span class="demo-health">Demo isn&#39;t trading: your Kalshi demo key isn&#39;t connected\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a><\/span>/);
-    assert.match(await ladder({deployments: both, demo_health: null}), /Demo<\/span> running\u00a0· 0 closed trades/);
+    assert.match(await ladder({deployments: both, demo_health: demoKey}), /Demo<\/span> no closed trades yet\u00a0· <span class="demo-health">Demo isn&#39;t trading: your Kalshi demo key isn&#39;t connected\. <a href="\/funds#connect-kalshi">Add it on the Funds page<\/a><\/span>/);
+    assert.match(await ladder({deployments: both, demo_health: null}), /Demo<\/span> running\u00a0· no closed trades yet<\/p>/);
     // Only on paper, key saved, demo account empty: the next rung names the funds and where to add them.
     const paperOnly = await ladder({deployments: [d(1, 'paper', 4, 1.9)], demo_health: demoFunds});
     assert.match(paperOnly, /Next rung, demo: needs demo funds: your Kalshi demo account has \$0\.00\. <a href="https:\/\/demo\.kalshi\.co" target="_blank" rel="noopener">Open Kalshi demo ↗<\/a>/);

@@ -9,8 +9,33 @@ import {test} from 'node:test';
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-export function newUserCases({name, frontend, detailStrategy, strategyFrontend}) {
+const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
+const firstDep = (o = {}) => ({id: 1, strategy_id: 11, title: 'Momentum after sharp moves', market: 'btc15m', mode: 'paper', status: 'running',
+  status_reason: null, realized_pnl: 0, closed_trades: 0, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-27T22:05:34Z',
+  curve: [], stake: 5, max_positions: 4, backtest: {out_of_sample: {trades: 60, pnl: 0.9}, capital: 10}, ...o});
+
+export function newUserCases({name, frontend, detailStrategy, strategyFrontend, dashboard}) {
   const meridian = name === 'Meridian';
+
+  // The first paper deployment, before its first trade closes. Deploy's summary said "Realized: None yet" above a row
+  // reading "$0.00", and the dashboard's card (Meridian's monitor) said "$0.00" too. Once a trade closes it is a figure.
+  test(`${name}: a deployment with no closed trade reads "None yet" for its realized P&L, on Deploy and the dashboard`, async () => {
+    for (const [d, said] of [[firstDep(), /None yet/], [firstDep({realized_pnl: 5.73, closed_trades: 1}), /\+\$5\.73/]]) {
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/deployments') return response({deployments: [d], open_positions: []});
+        if (path === '/api/dashboard') return response({...dashboard(), deployments: [d]});
+        return response({});
+      }});
+      f.location.pathname = '/deploy';
+      await f.viewDeploy(); await settle();
+      const cell = f.root.querySelector('#deps td[data-lab="Realized"]').innerHTML;
+      assert.match(cell, said); assert.doesNotMatch(cell, d.closed_trades ? /None yet/ : /\$0\.00/);
+      f.location.pathname = '/';
+      await f.viewDashboard(); await settle();
+      const dash = meridian ? f.root.querySelector('.monitor-realized dd').innerHTML : f.root.querySelector('#dash-deps td[data-lab="Realized"]').innerHTML;
+      assert.match(dash, said); assert.doesNotMatch(dash, d.closed_trades ? /None yet/ : /\$0\.00/);
+    }
+  });
 
   // A research session's strategy has no Return on capital, so its page shows three figures. Meridian's grid had four
   // columns and left an empty slot at the end; it now takes the count, on first paint and after a what-if redraw.

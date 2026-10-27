@@ -136,7 +136,7 @@ export function kalshiWaitCases({name, frontend, detailStrategy}) {
     const paper = {id: 1, mode: 'paper', status: 'running', closed_trades: 4, realized_pnl: 1.9, open_positions: 0, stake: 5, created_at: '2026-10-20T08:00:00Z'};
     const demo = {id: 3, mode: 'demo', status: 'running', closed_trades: 0, realized_pnl: 0, open_positions: 0, stake: 5, created_at: '2026-10-21T08:00:00Z'};
     for (const [after, said] of [[null, /<span class="mk dep">Demo<\/span> running\u00a0· /],
-      [demoFunds, /<span class="mk dep">Demo<\/span> \d+ closed trades\u00a0· .*demo-health">Demo isn&#39;t trading: your Kalshi demo account has \$0\.00/]]) {
+      [demoFunds, /<span class="mk dep">Demo<\/span> no closed trades yet\u00a0· .*demo-health">Demo isn&#39;t trading: your Kalshi demo account has \$0\.00/]]) {
       const [demoHeld, answerDemo] = held();
       let reads = 0;
       const f = frontend({fetchImpl: (path) => {
