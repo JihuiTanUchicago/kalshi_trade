@@ -823,6 +823,7 @@ def test_since_your_last_visit_reads_new_passes_and_the_autopilots_own_changes(c
     assert act["own_sessions"] is True  # it has a research session of its own
     assert repo.activity_since(cur, -1, since) == {"autopilot": {}, "runs": {}, "own_sessions": False, "card_charged": False,
                                                    "spent": {"since": 0.0, "week": 0.0},
+                                                   "bought": {"usd": 0.0, "charges": 0, "auto": 0},
                                                    "milestones": {"passed": [], "live_ready": []}}
 
 
@@ -858,6 +859,16 @@ def test_since_your_last_visit_reads_what_it_cost_and_the_paper_milestones(conn,
     assert act["spent"] == {"since": 2.0, "week": 5.0}
     assert act["card_charged"] is True
     assert act["milestones"] == {"passed": [41], "live_ready": [57, 41]}
+    # Card charges since the visit: the top-up above (now) and two auto-reloads while the user was away,
+    # one before the visit left out. The credits are summed exact, apart from what was spent.
+    assert act["bought"] == {"usd": 20.0, "charges": 1, "auto": 0}
+    for i, (amount, at) in enumerate([("20.005", now - timedelta(hours=3)), ("20.0025", now - timedelta(hours=20)),
+                                      ("20", now - timedelta(days=2))]):
+        repo.add_credit(cur, uid, "autoreload", amount, "Auto-reload", stripe_ref="r%d-%s" % (i, uuid.uuid4().hex))
+        cur.execute("UPDATE app_credit_ledger SET created_at=%s WHERE id=LAST_INSERT_ID()", (at,))
+    act = repo.activity_since(cur, uid, since)
+    assert act["bought"] == {"usd": 60.0075, "charges": 3, "auto": 2}
+    assert act["spent"] == {"since": 2.0, "week": 5.0}  # bought credits are never spend
 
 
 def test_the_deploy_board_and_strategy_page_reads_answer_as_the_ones_they_replace(conn, user):

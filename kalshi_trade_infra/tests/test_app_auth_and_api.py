@@ -1236,6 +1236,13 @@ def test_since_your_last_visit_says_what_it_cost_only_while_payments_are_on(monk
     act["card_charged"] = False  # free credits only: no card charged yet
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]["card_charged"] is False
     assert out["books"] == {"paper": {"pnl": 12.65, "trades": 36}}  # the books never carry the credits
+    # Auto-reload charged the card twice while they were away: the credits bought ride with the spend,
+    # rounded half up as credits are, and nothing is said when no card was charged.
+    act["bought"] = {"usd": 40.005, "charges": 2, "auto": 2}
+    got = server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]
+    assert got == {"since": 27.45, "week": 27.45, "card_charged": False, "bought": 40.01, "charges": 2, "reloads": 2}
+    act["bought"] = {"usd": 0.0, "charges": 0, "auto": 0}
+    assert "bought" not in server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"]
     assert out["milestones"] == {"passed": [232], "live_ready": [232]}
     monkeypatch.setattr(server.billing, "configured", lambda: False)
     assert server._since_visit(None, 1, now, False, {"paper": (12.65, 36)})["spent"] is None

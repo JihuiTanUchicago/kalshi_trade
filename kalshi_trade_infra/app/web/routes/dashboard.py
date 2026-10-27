@@ -143,7 +143,8 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
     since then (from the books' one pass; books are never added together), the strategies that
     passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
     (real money) ride apart from the books, and only while payments are on: with them off nothing
-    is billed. `milestones` are the paper forward-gate passes and live-ready strategies since then.
+    is billed; a card charged in the meantime (auto-reload, mostly) rides with them. `milestones` are
+    the paper forward-gate passes and live-ready strategies since then.
     `by_deployment` splits each book's figure by the deployment that traded it ({mode: [{deployment_id,
     pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it. A row
     whose deployment the page doesn't list (`listed`: it was removed) says whose it was itself."""
@@ -152,10 +153,20 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
             "books": {m: {"pnl": cents(pnl), "trades": n} for m, (pnl, n) in recent.items()},
             "passed": repo.passed_since(cur, uid, visit),
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
-            "spent": {**{k: credit_usd(v) for k, v in act["spent"].items()}, "card_charged": bool(act.get("card_charged", True))}
+            "spent": {**{k: credit_usd(v) for k, v in act["spent"].items()}, "card_charged": bool(act.get("card_charged", True)),
+                      **_bought(act.get("bought"))}
             if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []},
             "by_deployment": _since_by_deployment(by_dep or {}, _removed_names(cur, uid, by_dep or {}, listed))}
+
+
+def _bought(b: Optional[Dict]) -> Dict:
+    """The strip's card charges since the visit, from activity_since's `bought`: the credits they bought
+    (`bought`), how many charges (`charges`) and how many of those were auto-reloads (`reloads`). None
+    bought: nothing, so the row reads as before."""
+    if not b or not b.get("charges"):
+        return {}
+    return {"bought": credit_usd(b["usd"]), "charges": int(b["charges"]), "reloads": int(b.get("auto") or 0)}
 
 
 def _removed_names(cur, uid: int, by_dep: Dict[Tuple[str, int], Tuple[float, int]], listed: Optional[set]) -> Dict[int, Dict]:
