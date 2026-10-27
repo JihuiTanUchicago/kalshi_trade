@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Dict
 
 from app import repository as repo
+from app.services import customer_text
 from app.web import auth, client_errors
 from app.web.http import ApiError, Ctx, _num
+from app.web.routes.research import uncleared_passes_at
 from app.web.settings import ADMIN_EMAIL
 from app.web.views import _with_gate_lines
 
@@ -196,23 +199,52 @@ def admin_system(ctx: Ctx):
     # Recent activity feed: fleet-wide for the operator, but a normal user only ever
     # sees their OWN agent events — never another user's private strategy names.
     if is_admin:
-        cur.execute("""SELECT e.kind, e.message, e.data_json, e.created_at FROM app_agent_events e
+        cur.execute("""SELECT e.run_id, r.user_id, e.kind, e.message, e.data_json, e.created_at
+                       FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id
                        ORDER BY e.id DESC LIMIT 14""")
     else:
-        cur.execute("""SELECT e.kind, e.message, e.data_json, e.created_at
+        cur.execute("""SELECT e.run_id, r.user_id, e.kind, e.message, e.data_json, e.created_at
                        FROM app_agent_events e JOIN app_agent_runs r ON r.id=e.run_id
                        WHERE r.user_id=%s ORDER BY e.id DESC LIMIT 14""", (ctx.uid,))
-    events = [_system_event(r) for r in cur.fetchall()]
+    rows = list(cur.fetchall())
+    fell = _feed_uncleared(cur, rows)
+    events = [_system_event(r, fell.get(r.get("run_id"))) for r in rows]
     return {"now": now.isoformat() + "Z", "nodes": nodes, "events": events}
 
 
-def _system_event(r: Dict) -> Dict:
-    """One row of the system page's activity feed. A verdict gains `data` {note, title} when the
-    run page would show a plain note in place of its ledger message (_with_gate_lines, judged on
-    the whole message before it is cut to 120 characters); nothing else of the event's data is sent."""
+# A line whose count holds a pass: the agent's progress line ("N tested so far, M passed", M > 0) or its done line.
+_COUNTS_A_PASS = re.compile(r"tested so far, [1-9]\d* passed\.|^[1-9]\d* of \d+ hypotheses passed")
+
+
+def _feed_uncleared(cur, rows) -> Dict:
+    """{run id: when each of its passes a later check left uncleared was made}, read only for the sessions
+    whose progress or done line in the feed counts a pass: those lines count them apart, as the session
+    page's do (research.uncleared_passes_at)."""
+    out: Dict = {}
+    for r in rows:
+        rid = r.get("run_id")
+        if (rid is not None and rid not in out and r.get("user_id") is not None and r.get("kind") in ("step", "done")
+                and _COUNTS_A_PASS.search(r.get("message") or "")):
+            out[rid] = uncleared_passes_at(cur, r["user_id"], rid)
+    return out
+
+
+def _system_event(r: Dict, fell_at=None) -> Dict:
+    """One row of the system page's activity feed, in the session page's words. A verdict gains `data`
+    {note, title} when the run page would show a plain note in place of its ledger message
+    (_with_gate_lines, judged on the whole message before it is cut to 120 characters); nothing else of
+    the event's data is sent. A step or done line written in the ledger's terms reads as the session
+    page's note (gate_explain.step_note): the agent's "N tested so far, M passed" counts passes a later
+    check left uncleared (`fell_at`, when each was made), which the note counts apart. An error line
+    (a provider's raw failure) and any model id or email go through customer_text, as on the session page."""
     msg = r.get("message") or ""
-    ev = {"kind": r.get("kind"), "message": msg[:120], "created_at": r.get("created_at")}
-    if ev["kind"] != "verdict":
+    kind = r.get("kind")
+    ev = {"kind": kind, "message": msg, "created_at": r.get("created_at")}
+    if kind in ("step", "done"):
+        noted = _with_gate_lines([dict(ev, data={})], len(fell_at or []), fell_at)[0]
+        ev["message"] = (noted.get("data") or {}).get("note") or msg
+    ev["message"] = (customer_text.event_rows([ev])[0]["message"] or "")[:120]
+    if kind != "verdict":
         return ev
     raw = r.get("data_json")
     try:
