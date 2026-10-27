@@ -2043,7 +2043,7 @@ body.landing-body .apf { display: none; }
 .key-file input { font: inherit; font-size: 12.5px; max-width: 100%; color: var(--ink-2); }
 
 /* Research page: one-click autopilot nudge for people who'd rather not write ideas. */
-.research-ap { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.research-ap, .research-ap-on { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
 .research-ap button { background: none; border: 0; padding: 10px 4px; margin: -10px -4px; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .research-ap button.busy { opacity: .6; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
@@ -2067,15 +2067,15 @@ body.landing-body .apf { display: none; }
 /* The run page's RSI explainer folds behind its title (closed on a phone, open wider). */
 #rsibox > .rsidisc { margin: 0 0 16px; }
 #dep-ap .research-ap { margin: 4px 0 14px; }
-#main > .research-ap:first-child, #main > .dispatch:first-child { margin-top: 18px; }  /* off the page deck */
+#main > .research-ap:first-child, #main > .research-ap-on:first-child, #main > .dispatch:first-child { margin-top: 18px; }  /* off the page deck */
 /* Phones, once there are sessions: the engine summary and your sessions come before the long new-session
    form, which used to push them two screens down. */
 @media (max-width: 760px) {
   #main.runs-first { display: flex; flex-direction: column; }
   #main.runs-first > .rengine { order: -2; margin-top: 18px; }
   #main.runs-first > .sect { order: -1; }
-  #main.runs-first > .research-ap, #main.runs-first > .dispatch { margin-top: 28px; }
-  #main.runs-first > .research-ap + .dispatch { margin-top: 0; }
+  #main.runs-first > .research-ap, #main.runs-first > .research-ap-on, #main.runs-first > .dispatch { margin-top: 28px; }
+  #main.runs-first > .research-ap + .dispatch, #main.runs-first > .research-ap-on + .dispatch { margin-top: 0; }
 }
 
 /* Strategy sidebar holdings: one block per position, figures wrap instead of clipping. */

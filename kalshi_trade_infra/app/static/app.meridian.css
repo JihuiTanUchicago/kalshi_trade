@@ -2695,7 +2695,7 @@ body.landing-body .apf { display: none; }
 .key-file input { font: inherit; font-size: 12.5px; max-width: 100%; color: var(--ink-2); }
 
 /* Research page: one-click autopilot nudge for people who'd rather not write ideas. */
-.research-ap { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.research-ap, .research-ap-on { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
 .research-ap button { background: none; border: 0; padding: 10px 4px; margin: -10px -4px; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .research-ap button.busy { opacity: .6; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
@@ -2706,7 +2706,7 @@ body.landing-body .apf { display: none; }
 #runend > .run-end { margin: 0 0 28px; }
 .run-artifacts:not([hidden]) + #runend > .run-end { margin-top: -14px; }
 #dep-ap .research-ap { margin: 4px 0 14px; }
-.research-page > .research-ap { grid-column: 1 / -1; }
+.research-page > .research-ap, .research-page > .research-ap-on { grid-column: 1 / -1; }
 /* What Research is, under its name: the page otherwise opened on a button and a list. */
 .research-page > .research-lede { grid-column: 1 / -1; margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
 

@@ -41,11 +41,18 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
   // With autopilot on, Research said nothing about it: "Researching now 0" while it reviewed, and Strategies' "See its
   // research" led here to the example alone. It says where its sessions show up; with autopilot off, the nudge stays.
   test(`${name}: Research with autopilot on says where its sessions show up`, async () => {
+    const shown = (el) => !!el && el.getAttribute('hidden') === null && !el.hidden;
     const on = await researchPage([example], true);
-    assert.match(on.root.querySelector('#main').innerHTML, /Autopilot is on: the sessions it starts are listed below with an Autopilot tag\. You can still start a session of your own\./);
+    const line = on.root.querySelector('.research-ap-on');
+    assert.equal(line.textContent, 'Autopilot is on: the sessions it starts are listed below with an Autopilot tag. You can still start a session of your own.');
+    assert.ok(shown(line), 'shown while autopilot is on');
+    // Its own class: the switch's copy sync hides every .research-ap (the Turn on nudge) once autopilot is on.
+    assert.ok(!line.classes.has('research-ap'));
+    // Off: the nudge shows and the line is drawn hidden, for the switch's copy sync ([data-ap-next]) to show once it is on.
     const off = await researchPage([example], false);
-    assert.doesNotMatch(off.root.querySelector('#main').innerHTML, /Autopilot is on:/);
     assert.match(off.root.querySelector('#main').innerHTML, /Rather not write ideas yourself\?/);
+    const hiddenLine = off.root.querySelector('.research-ap-on');
+    assert.ok(!shown(hiddenLine)); assert.notEqual(hiddenLine.getAttribute('data-ap-next'), null);
   });
 
   // A first autopilot session before its first model call is billed: its row and its page read "Spent so far: $0.00".
