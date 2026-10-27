@@ -1,5 +1,5 @@
 """What customers read outside the Dev Logs carries none of the internal detail tests/test_devlog.py keeps off that page:
-the server's error and reason strings."""
+the server's error and reason strings, and the model names each Billing page derives on its own."""
 import ast
 import re
 from pathlib import Path
@@ -7,12 +7,14 @@ from pathlib import Path
 import pytest
 
 from app.adapters.kalshi import kalshi_dev
+from app.adapters.llm import models_catalog as catalog
 from app.research import agent
 from app.services import customer_text
 from app.web.routes import strategies
 from tests.test_devlog import INTERNAL
 
 ROOT = Path(__file__).resolve().parents[1]
+STATIC = ROOT / "app" / "static"
 
 
 def _internal(text):
@@ -73,3 +75,37 @@ def test_demo_replay_reason_never_names_the_setting(monkeypatch):
     assert no_prices == "No Kalshi demo prices are available for this strategy’s unseen window yet."
     assert _internal(unset["reason"] + " " + no_prices) == []
 
+
+# -- one model-label source -------------------------------------------------------------------------------------------
+# Billing's ledger names a model from a memo alone in each bundle (MODEL_FAMILY and MODEL_ID in app-billing.js and
+# app.meridian-billing.js), as the server's label_for_model_id and customer_text.MODEL_ID do. A family or a provider
+# added on one side and not the other would show a raw id, or "AI model", on one Billing page.
+BILLING = ["app-billing.js", "app.meridian-billing.js"]
+
+
+def _js_families(src):
+    body = re.search(r"const MODEL_FAMILY = \[(.*?)\];", src, re.S).group(1)
+    return tuple(re.findall(r"\['(\w+)', '([^']+)'\]", body))
+
+
+def _js_model_id(src):
+    m = re.search(r"const MODEL_ID = /(.+)/([a-z]*);\n", src)
+    return m.group(1), m.group(2)
+
+
+@pytest.mark.parametrize("name", BILLING)
+def test_billing_model_families_match_the_servers(name):
+    assert _js_families((STATIC / name).read_text()) == catalog._FAMILY_LABELS
+
+
+@pytest.mark.parametrize("name", BILLING)
+def test_billing_model_id_pattern_matches_the_servers(name):
+    source, flags = _js_model_id((STATIC / name).read_text())
+    assert source == customer_text.MODEL_ID.pattern
+    assert "i" in flags and customer_text.MODEL_ID.flags & re.I
+
+
+def test_the_drift_check_reads_what_it_compares():
+    src = (STATIC / BILLING[0]).read_text()
+    assert ("opus", "Claude Opus") in _js_families(src)
+    assert re.search(_js_model_id(src)[0], "us.anthropic.claude-opus-4-6-v1", re.I)
