@@ -240,7 +240,8 @@ def test_every_credit_figure_adds_up_to_the_cent(conn, monkeypatch):
     math = dict(state["math"])
     assert abs(math.pop("start")) <= 0.01
     assert math == {"days": 30, "bought": 35.0, "purchases": 2, "other": 20.0,
-                    "usage": float(_cents(spent_total)), "end": float(_cents(balance))}
+                    "usage": float(_cents(spent_total)), "end": float(_cents(balance)),
+                    "joined": True}  # a minutes-old account: the sum starts when it joined
     # A minutes-old account has no pace yet; a week-old one's runway is the balance above the research
     # floor over a week's spend (research pauses there, not at $0), and auto-reload, on with a card,
     # next charges it when the balance falls to its $8 trigger.

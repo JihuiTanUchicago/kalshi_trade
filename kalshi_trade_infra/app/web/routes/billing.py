@@ -297,7 +297,8 @@ def _statement(cur, uid: int, since, tz: int, totals: Dict, balance: float, crea
     end = _cents(balance)
     purchases = sum(int(v["n_since"]) for k, v in totals.items() if k in _CARD_KINDS)
     start = end - bought - other + usage
-    joined = isinstance(created_at, datetime) and created_at >= since and start == 0
+    # Nothing can come before an account's first day; the start may still carry a cent of the parts' rounding.
+    joined = isinstance(created_at, datetime) and created_at >= since and abs(start) <= billing.CENT
     return {"ledger": lines, "ledger_cut": cut, "math": {
         "days": STATEMENT_DAYS, "start": float(start), "bought": float(bought), "joined": joined,
         "purchases": purchases, "other": float(other), "usage": float(usage), "end": float(end)}}
