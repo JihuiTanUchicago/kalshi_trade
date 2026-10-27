@@ -22,9 +22,9 @@ from app.services import gate_explain as ge
 KEYS = {"gate", "check", "label", "measured", "needed", "next"}
 
 # A label names the miss. These are the openings a failed check's label may use; a goal-shaped label
-# ("Passed the skeptic's review", "Enough trades to judge") would read as praise under a failure.
-MISS = ("Too few ", "Too similar ", "Didn't ", "Doesn't ", "Not ", "No real edge", "Lost ", "Loses ", "Unlikely ",
-        "The edge could be luck", "The skeptic's review didn't", "Wins no ", "Wins don't ", "Made money on too few",
+# ("Passed the skeptic’s review", "Enough trades to judge") would read as praise under a failure.
+MISS = ("Too few ", "Too similar ", "Didn’t ", "Doesn’t ", "Not ", "No real edge", "Lost ", "Loses ", "Unlikely ",
+        "The edge could be luck", "The skeptic’s review didn’t", "Wins no ", "Wins don’t ", "Made money on too few",
         "Nearly all the gains", "Profit after fees is too uncertain", "Drawdown on unseen data was too deep")
 NB = " "
 
@@ -75,7 +75,7 @@ def test_each_failed_statistical_gate_gets_its_own_line_with_its_numbers():
     assert list(lines) == ["significance", "net_edge", "deflated_sharpe", "placebo", "cross_day"]
     assert lines["significance"]["label"] == "The edge could be luck" and lines["significance"]["check"] == "Edge is not luck"
     assert lines["net_edge"]["label"] == "Loses money after fees"
-    assert lines["deflated_sharpe"]["label"] == "Doesn't beat the luck of trying many ideas"
+    assert lines["deflated_sharpe"]["label"] == "Doesn’t beat the luck of trying many ideas"
     assert lines["placebo"]["label"] == "Wins no more often than its prices imply"
     assert lines["cross_day"]["label"] == "Made money on too few stretches of days (1 of 4)"
     assert lines["significance"]["measured"].startswith("p-value 0.18: a rule with no edge would do this well about 18% of the time")
@@ -109,7 +109,7 @@ def test_ideas_judged_together_cross_day_concentration_and_cost_stress():
     assert "10% false-discovery rate" in lines["multiple_testing"]["needed"]
     assert lines["cross_day"]["measured"] == "one day carrying 96% of the gains"
     assert "no single day over 90% of the gains" in lines["cross_day"]["needed"]
-    assert lines["multiple_testing"]["label"] == "Didn't stand out among the ideas tested with it"
+    assert lines["multiple_testing"]["label"] == "Didn’t stand out among the ideas tested with it"
     assert lines["cross_day"]["label"] == "Nearly all the gains came from one day"
     assert lines["cost_stress"]["label"] == "Loses its edge with 1¢ worse fills"
     assert lines["cost_stress"]["measured"] == "−0.20%%%sof the stake per trade with 1¢ worse fills" % NB
@@ -130,7 +130,7 @@ def test_a_check_the_ledger_does_not_keep_is_named_without_guessing():
           "mean_net_return": 0.01, "placebo_p": 0.01}
     both = _one(ge.stat_checks(ok, classification="inconclusive"))
     assert both["gate"] == "cross_day_or_cost" and both["measured"] == "not recorded, but every other check passed, so one of these two failed"
-    assert both["label"] == "Didn't hold up on several stretches of days, or with 1¢ worse fills"
+    assert both["label"] == "Didn’t hold up on several stretches of days, or with 1¢ worse fills"
     assert _one(ge.stat_checks(dict(ok, cross_day_ok=True), classification="inconclusive"))["gate"] == "cost_stress"
     assert _one(ge.stat_checks(dict(ok, cost_stress_ok=True), classification="inconclusive"))["gate"] == "cross_day"
     assert ge.stat_checks(ok, classification="statistically_supported") == []
@@ -196,7 +196,7 @@ def test_every_pre_screen_reason_reads_as_measured_and_needed():
              "Too few research trades to plan the test (8 of 10)"),
         "research-fold mean net return %.4f is not positive" % -0.0012:
             ("research_edge", "−0.12%" + NB + "of the stake per trade", "above 0%",
-             "Doesn't make money after fees and 1¢ worse fills on the research data"),
+             "Doesn’t make money after fees and 1¢ worse fills on the research data"),
         "validation window is expected to hold ~%.0f trades, below the pre-registered min_sample %d" % (14.2, 30):
             ("expected_trades", "about 14%strades expected" % NB, "at least 30%strades (fixed before the test)" % NB,
              "Too few trades expected in the unseen test window (about 14 of 30)"),
@@ -216,8 +216,8 @@ def test_every_pre_screen_reason_reads_as_measured_and_needed():
 
 def test_challenger_finalist_and_diversification():
     ln = _one(ge.challenger("No one is on the other side; this is a public feed."))
-    # Under a REJECTED stamp the line says the review turned it down, not "Passed the skeptic's review".
-    assert ln["label"] == "The skeptic's review didn't pass it" and ln["check"] == "Passed the skeptic's review"
+    # Under a REJECTED stamp the line says the review turned it down, not "Passed the skeptic’s review".
+    assert ln["label"] == "The skeptic’s review didn’t pass it" and ln["check"] == "Passed the skeptic’s review"
     assert ln["measured"] == "an objection before testing: No one is on the other side; this is a public feed"
     assert _one(ge.challenger(None))["measured"] == "an objection before testing: no credible reason the edge exists"
     few = _one(ge.not_finalist({"pnl": 1.5, "trades": 3}))
@@ -228,7 +228,7 @@ def test_challenger_finalist_and_diversification():
     assert lost["label"] == "Lost money on the research data"
     ranked = _one(ge.not_finalist({"pnl": 2.5, "trades": 30}))
     assert ranked["gate"] == "finalist" and ranked["measured"] == "$2.50 over 30%strades on the research data" % NB
-    assert ranked["label"] == "Not among the round's strongest ideas"
+    assert ranked["label"] == "Not among the round’s strongest ideas"
     div = _one(ge.diversification("max |corr| %.2f to deployed experiment %s exceeds %.2f" % (0.91, 12, gatekeeper.CORR_MAX)))
     assert div["measured"] == "a 0.91 correlation of daily results with a strategy you already run" and div["needed"] == "0.80 or less"
     assert div["label"] == "Too similar to a strategy you already run"
@@ -256,20 +256,20 @@ def test_every_backtest_gate_and_an_unknown_one():
         ("other", "0.4", "at least 0.5"),
     ]
     assert [ln["label"] for ln in lines] == [
-        "Didn't make money on the data it was built on",
-        "Didn't make money on unseen data",
+        "Didn’t make money on the data it was built on",
+        "Didn’t make money on unseen data",
         "Too few trades on unseen data (4 of 10)",
-        "Wins don't outweigh losses by enough on unseen data",
+        "Wins don’t outweigh losses by enough on unseen data",
         "Drawdown on unseen data was too deep",
         "No real edge: it looks like a coin flip",
-        "Didn't pass: Min sharpe ratio",  # never the raw code
+        "Didn’t pass: Min sharpe ratio",  # never the raw code
     ]
     assert lines[2]["next"].startswith("Needs about 6 more trades")
     assert lines[2]["check"] == "Enough unseen trades to judge" and lines[-1]["check"] == "Min sharpe ratio"
     assert _one(ge.backtest_gates([{"name": "Wins outweigh losses on unseen data", "value": None, "threshold": "≥ 1.1", "ok": False}]))["measured"] == "no winning trades"
     assert ge.humanise("max_book__fraction") == "Max book fraction" and ge.humanise(None) == "Unnamed check"
     odd = ge.unknown("some-new_gate", True)
-    assert odd["label"] == "Didn't pass: Some new gate" and odd["measured"] == "yes" and odd["needed"] == "the gate's threshold"
+    assert odd["label"] == "Didn’t pass: Some new gate" and odd["measured"] == "yes" and odd["needed"] == "the gate’s threshold"
 
 
 # -- a strategy page and a run's verdict events ------------------------------------------------------------
@@ -438,7 +438,7 @@ def test_the_run_page_done_line_counts_apart_the_passes_a_later_check_left_uncle
     out = server.get_run(_ctx(("9",)))["events"]
     assert out[0]["data"]["note"] == "Passed its first test on data it never saw."
     assert out[1]["data"]["note"] == ("1 of 18 ideas cleared every check (5 dropped before testing); 1 more passed its first "
-                                      "test, then wasn't cleared to trade.")
+                                      "test, then wasn’t cleared to trade.")
     assert "passed every check" not in out[1]["data"]["note"]
     later = {}
     out = server.get_run(_ctx(("9",)))["events"]
@@ -477,9 +477,9 @@ def test_the_run_page_progress_lines_count_apart_the_passes_a_later_check_left_u
     out = server.get_run(_ctx(("9",)))["events"]
     assert [e["data"]["note"] for e in out] == [
         "3 tested so far, 1 passed. Looking for more; you can stop it anytime.",
-        "6 tested so far, 1 cleared every check; 1 more passed its first test, then wasn't cleared to trade. "
+        "6 tested so far, 1 cleared every check; 1 more passed its first test, then wasn’t cleared to trade. "
         "Looking for more; you can stop it anytime.",
-        "9 tested so far, 1 cleared every check; 2 more passed their first test, then weren't cleared to trade. "
+        "9 tested so far, 1 cleared every check; 2 more passed their first test, then weren’t cleared to trade. "
         "Looking for more; you can stop it anytime."]
 
 
@@ -614,7 +614,7 @@ def test_the_system_feed_says_steps_errors_and_counts_as_the_session_page(monkey
     nothing = {"run_id": 8, "user_id": 7, "kind": "step", "created_at": at, "data_json": None,
                "message": "Still running - 3 tested so far, 0 passed. Exploring more (stop anytime)."}
     assert server._system_event(still, [at - timedelta(minutes=1)])["message"] == (
-        "4 tested so far, 1 cleared every check; 1 more passed its first test, then wasn't cleared to trade. "
+        "4 tested so far, 1 cleared every check; 1 more passed its first test, then wasn’t cleared to trade. "
         "Looking for more; you can stop it anytime.")[:120]
     assert server._system_event(done)["message"] == "1 of 3 ideas passed every check."
     assert server._system_event(err)["message"] == "The agent hit an internal error on this step."
@@ -644,3 +644,19 @@ def test_the_system_feed_says_steps_errors_and_counts_as_the_session_page(monkey
     assert feed[0].startswith("4 tested so far, 1 cleared every check; 1 more passed")
     assert feed[1:] == ["1 of 3 ideas passed every check.", "The agent hit an internal error on this step.",
                         "3 tested so far, 0 passed. Looking for more; you can stop it anytime."]
+
+
+def test_every_line_a_customer_reads_uses_curly_apostrophes():
+    """Walk 2026-10-27: the session page and the System feed read "The skeptic's review didn't pass it",
+    "Didn't make money on unseen data", "then wasn't cleared to trade", straight apostrophes beside the
+    pages' own curly ones. Every string this module writes (docstrings aside) uses ’."""
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(ge))
+    docs = {id(n.body[0].value) for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.FunctionDef, ast.ClassDef)) and n.body
+            and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    straight = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                and id(n) not in docs and re.search(r"[A-Za-z]'[A-Za-z]", n.value)]
+    assert straight == []
+    assert "then wasn’t cleared" in ge.step_note("done", "2 of 5 hypotheses passed every gate.", 1)

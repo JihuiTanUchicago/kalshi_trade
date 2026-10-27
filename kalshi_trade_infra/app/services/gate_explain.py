@@ -217,7 +217,7 @@ def _judge(v: Dict[str, Any], phase: str, min_sample: Any, classification: Optio
         k = _f(n_tested)
         out.append(_line(
             "multiple_testing", "Stands out among the ideas tested with it",
-            "Didn't stand out among the ideas tested with it",
+            "Didn’t stand out among the ideas tested with it",
             "p-value %s%s" % (_p(p), (", one of %s ideas judged together" % _int(k)) if k and k > 1 else ""),
             "low enough to survive the correction for testing several ideas at once (%d%% false-discovery rate)"
             % round(100 * gatekeeper.ALPHA),
@@ -243,7 +243,7 @@ def _judge(v: Dict[str, Any], phase: str, min_sample: Any, classification: Optio
             trials = _f(v.get("n_trials_audited"))
             out.append(_line(
                 "deflated_sharpe", "Beats the luck of trying many ideas",
-                "Doesn't beat the luck of trying many ideas",
+                "Doesn’t beat the luck of trying many ideas",
                 "deflated Sharpe %.2f%s" % (dsr, (" with %s ideas tried on this data" % _int(trials)) if trials and trials > 1 else ""),
                 "%.2f or higher" % gatekeeper.DSR_MIN,
                 "Many ideas have been tried on this data, so the bar is higher: make this idea more distinct, or get more trades so a real edge stands out."))
@@ -278,7 +278,7 @@ def _unstored(v: Dict[str, Any], holdout: bool, on: str) -> List[Line]:
     passed = "not recorded, but every other check passed, so this one failed"
     if cd_unknown and cs_unknown:
         return [_line("cross_day_or_cost", "Works on several stretches of days, and survives %s worse fills" % c,
-                      "Didn't hold up on several stretches of days, or with %s worse fills" % c,
+                      "Didn’t hold up on several stretches of days, or with %s worse fills" % c,
                       "not recorded, but every other check passed, so one of these two failed",
                       "profit on most stretches of days, and above 0%% with %s worse fills" % c,
                       "Test it on a longer history and require a bigger edge to enter, then run it again.")]
@@ -320,7 +320,7 @@ def _cross_day(v: Dict[str, Any], folds: Optional[Iterable[Dict]]) -> Optional[L
         one_day = share is not None and share > gatekeeper.CROSS_DAY_MAX_DAY_SHARE
         measured = ("one day carrying %d%% of the gains" % round(100 * share)) if one_day \
             else "profit that did not hold across time slices"
-        label = "Nearly all the gains came from one day" if one_day else "Didn't hold up across stretches of days"
+        label = "Nearly all the gains came from one day" if one_day else "Didn’t hold up across stretches of days"
         return _line("cross_day", check, label, measured, need, nxt)
     return None
 
@@ -365,7 +365,7 @@ def prescreen(reason: Optional[str]) -> List[Line]:
         if kind == "edge":
             c = _cents(gatekeeper.COST_STRESS_CENTS)
             return [_line("research_edge", "Makes money after fees and %s worse fills on the research data" % c,
-                          "Doesn't make money after fees and %s worse fills on the research data" % c,
+                          "Doesn’t make money after fees and %s worse fills on the research data" % c,
                           _per_trade(float(g[0])), "above 0%",
                           "Require a bigger mispricing before entering, so each trade clears the fee and a worse fill.")]
         if kind == "window":
@@ -385,7 +385,7 @@ def prescreen(reason: Optional[str]) -> List[Line]:
 
 def challenger(reason: Optional[str]) -> List[Line]:
     why = str(reason or "").strip() or "no credible reason the edge exists"
-    return [_line("challenger", "Passed the skeptic's review", "The skeptic's review didn't pass it",
+    return [_line("challenger", "Passed the skeptic’s review", "The skeptic’s review didn’t pass it",
                   "an objection before testing: " + why[:240].rstrip("."),
                   "a believable reason the edge exists and is not traded away",
                   "Say who is on the other side of the trade and why they keep paying, then run the idea again.")]
@@ -403,7 +403,7 @@ def not_finalist(in_sample: Optional[Dict[str, Any]]) -> List[Line]:
                       "%s over %s" % (_usd(pnl), _trades(n or 0)), "above $0",
                       "It lost money on the data it was built on: rethink the signal before testing more.")]
     made = ("%s over %s on the research data" % (_usd(pnl), _trades(n or 0))) if pnl is not None else "a lower rank than the finalists"
-    return [_line("finalist", "Among the round's strongest ideas", "Not among the round's strongest ideas", made,
+    return [_line("finalist", "Among the round’s strongest ideas", "Not among the round’s strongest ideas", made,
                   "a top spot: only the best few of each round are tested on unseen data",
                   "Run a session focused on this one idea, so it does not compete with stronger ones.")]
 
@@ -462,7 +462,7 @@ def _needed(threshold: Any) -> str:
             return t[len(sym):].strip() + " or less"
     if t.startswith("<"):
         return "below " + t[1:].strip()
-    return t or "the gate's threshold"
+    return t or "the gate’s threshold"
 
 
 def _money(v: Any) -> str:
@@ -480,10 +480,10 @@ def backtest_gates(gates: Optional[Iterable[Dict[str, Any]]]) -> List[Line]:
         need = _needed(thr)
         if name == "Makes money in-sample":
             out.append(_line("in_sample_pnl", "Makes money on the data it was built on",
-                             "Didn't make money on the data it was built on", _money(val), need,
+                             "Didn’t make money on the data it was built on", _money(val), need,
                              "It lost money even on the data it was tuned on: rethink the signal before testing more."))
         elif name == "Makes money on unseen data":
-            out.append(_line("unseen_pnl", name, "Didn't make money on unseen data", _money(val), need,
+            out.append(_line("unseen_pnl", name, "Didn’t make money on unseen data", _money(val), need,
                              "It made money only where it was tuned, a sign of overfitting: simplify the rule (fewer conditions) and test again."))
         elif name == "Enough unseen trades to judge":
             have = _f(val) or 0
@@ -494,7 +494,7 @@ def backtest_gates(gates: Optional[Iterable[Dict[str, Any]]]) -> List[Line]:
                              "%s: %s." % (_cap(_more(have, backtest.GATES["min_oos_trades"])), MORE_TRADES)))
         elif name == "Wins outweigh losses on unseen data":
             pf = _f(val)
-            out.append(_line("profit_factor", name, "Wins don't outweigh losses by enough on unseen data",
+            out.append(_line("profit_factor", name, "Wins don’t outweigh losses by enough on unseen data",
                              ("wins %.2f×%sthe losses" % (pf, NB)) if pf is not None else "no winning trades",
                              "at least %.1f×%sthe losses" % (backtest.GATES["min_profit_factor"], NB),
                              "Cut losing trades sooner (add a stop-loss) or skip the weakest entries."))
@@ -519,8 +519,8 @@ def unknown(key: Any, value: Any = None, threshold: Any = None) -> Line:
         measured = _money(value) if "$" in str(threshold or "") else "%g" % value
     else:
         measured = str(value)[:200]
-    return _line("other", humanise(key), "Didn't pass: " + humanise(key), measured,
-                 _needed(threshold) if threshold is not None else "the gate's threshold",
+    return _line("other", humanise(key), "Didn’t pass: " + humanise(key), measured,
+                 _needed(threshold) if threshold is not None else "the gate’s threshold",
                  "Change one thing about the rule and test again, so you can see what moves this check.")
 
 
@@ -691,19 +691,19 @@ _STILL = re.compile(r"^Still running - (\d+) tested so far, (\d+) passed\. Explo
 _STEP_NOTES: List[Tuple["re.Pattern[str]", Any]] = [
     (re.compile(r"^Plan: explore (?:up to (\d+) hypotheses|hypotheses until you stop it), refining each round on "
                 r"the in-sample results, then gate the best on data never seen\."),
-     lambda m: "Plan: try %s, sharpen each one on past data, then test the best on data it hasn't seen."
+     lambda m: "Plan: try %s, sharpen each one on past data, then test the best on data it hasn’t seen."
      % ("up to " + _ideas(int(m.group(1))) if m.group(1) else "ideas until you stop it")),
     (re.compile(r"^Proposing round (\d+) — generating up to (\d+) hypothes[ie]s…"),
      lambda m: "Round %s: coming up with up to %s…" % (m.group(1), _ideas(int(m.group(2))))),
     (re.compile(r"^Resuming round (\d+) with (\d+) proposed hypothes[ie]s not yet developed\."),
      lambda m: "Round %s, picking up where it left off: %s still to work out." % (m.group(1), _ideas(int(m.group(2))))),
     (re.compile(r"^Froze (\d+) finalists?; the challenger reviewed each before any validation budget was spent\."),
-     lambda m: ("Picked 1 idea to test on data it hasn't seen; a skeptical reviewer read it first."
-                if m.group(1) == "1" else "Picked the best %s to test on data it hasn't seen; a skeptical reviewer "
+     lambda m: ("Picked 1 idea to test on data it hasn’t seen; a skeptical reviewer read it first."
+                if m.group(1) == "1" else "Picked the best %s to test on data it hasn’t seen; a skeptical reviewer "
                 "read each one first." % _ideas(int(m.group(1))))),
     (re.compile(r"^Challenger unavailable; approving finalists as-is — the gatekeeper still gates\."),
-     lambda m: "The skeptical review couldn't run this time, so the picked ideas go straight to the test on "
-               "data it hasn't seen, which still decides."),
+     lambda m: "The skeptical review couldn’t run this time, so the picked ideas go straight to the test on "
+               "data it hasn’t seen, which still decides."),
     (_STILL,
      lambda m:"%s tested so far, %s passed. Looking for more; you can stop it anytime." % (m.group(1), m.group(2))),
     (re.compile(r"^Paused — out of credits\."),
@@ -745,7 +745,7 @@ def step_note(kind: Optional[str], message: Optional[str], not_cleared: int = 0)
         if fell and m.group(3):
             return "%d of %s cleared every check%s; %d more passed %s first test, then %s cleared to trade.%s" % (
                 int(m.group(1)) - fell, _ideas(int(m.group(2))), " (%d dropped before testing)" % dropped if dropped else "",
-                fell, "its" if fell == 1 else "their", "wasn't" if fell == 1 else "weren't", m.group(5))
+                fell, "its" if fell == 1 else "their", "wasn’t" if fell == 1 else "weren’t", m.group(5))
         return "%s of %s passed%s%s.%s" % (m.group(1), _ideas(int(m.group(2))), " every check" if m.group(3) else "",
                                            " (%d dropped before testing)" % dropped if dropped else "", m.group(5))
     if kind != "step":
@@ -760,7 +760,7 @@ def step_note(kind: Optional[str], message: Optional[str], not_cleared: int = 0)
         if fell:
             return ("%s tested so far, %d cleared every check; %d more passed %s first test, then %s cleared to trade. "
                     "Looking for more; you can stop it anytime." % (m.group(1), passed - fell, fell, "its" if fell == 1 else "their",
-                                                                   "wasn't" if fell == 1 else "weren't"))
+                                                                   "wasn’t" if fell == 1 else "weren’t"))
     for rx, say in _STEP_NOTES:
         m = rx.match(msg)
         if m:

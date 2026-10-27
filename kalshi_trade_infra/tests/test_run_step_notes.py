@@ -13,20 +13,20 @@ from app.web.views import _with_gate_lines
 # The agent's step lines as agent.py formats them today, and what the run page says in their place.
 STEP_LINES = [
     ("Plan: explore up to 6 hypotheses, refining each round on the in-sample results, then gate the best on data never seen.",
-     "Plan: try up to 6 ideas, sharpen each one on past data, then test the best on data it hasn't seen."),
+     "Plan: try up to 6 ideas, sharpen each one on past data, then test the best on data it hasn’t seen."),
     ("Plan: explore hypotheses until you stop it, refining each round on the in-sample results, then gate the best on "
      "data never seen. I'll keep going until you stop me.",
-     "Plan: try ideas until you stop it, sharpen each one on past data, then test the best on data it hasn't seen."),
+     "Plan: try ideas until you stop it, sharpen each one on past data, then test the best on data it hasn’t seen."),
     ("Proposing round 2 — generating up to 1 hypothesis…", "Round 2: coming up with up to 1 idea…"),
     ("Proposing round 1 — generating up to 3 hypotheses…", "Round 1: coming up with up to 3 ideas…"),
     ("Resuming round 3 with 2 proposed hypotheses not yet developed.",
      "Round 3, picking up where it left off: 2 ideas still to work out."),
     ("Froze 1 finalist; the challenger reviewed each before any validation budget was spent.",
-     "Picked 1 idea to test on data it hasn't seen; a skeptical reviewer read it first."),
+     "Picked 1 idea to test on data it hasn’t seen; a skeptical reviewer read it first."),
     ("Froze 3 finalists; the challenger reviewed each before any validation budget was spent.",
-     "Picked the best 3 ideas to test on data it hasn't seen; a skeptical reviewer read each one first."),
+     "Picked the best 3 ideas to test on data it hasn’t seen; a skeptical reviewer read each one first."),
     ("Challenger unavailable; approving finalists as-is — the gatekeeper still gates.",
-     "The skeptical review couldn't run this time, so the picked ideas go straight to the test on data it hasn't "
+     "The skeptical review couldn’t run this time, so the picked ideas go straight to the test on data it hasn’t "
      "seen, which still decides."),
     ("Still running - 8 tested so far, 1 passed. Exploring more (stop anytime).",
      "8 tested so far, 1 passed. Looking for more; you can stop it anytime."),
@@ -79,9 +79,9 @@ def test_the_done_line_and_lines_it_leaves_alone():
     assert ge.step_note("done", "1 of 1 hypotheses passed every gate.") == "1 of 1 idea passed every check."
     # Passes a later check left uncleared (Missed final test, Held back) are counted apart, never more than passed.
     assert ge.step_note("done", "1 of 2 hypotheses passed every gate.", 1) == \
-        "0 of 2 ideas cleared every check; 1 more passed its first test, then wasn't cleared to trade."
+        "0 of 2 ideas cleared every check; 1 more passed its first test, then wasn’t cleared to trade."
     assert ge.step_note("done", "3 of 9 hypotheses passed every gate (2 dropped on research data).", 2) == \
-        "1 of 9 ideas cleared every check (2 dropped before testing); 2 more passed their first test, then weren't cleared to trade."
+        "1 of 9 ideas cleared every check (2 dropped before testing); 2 more passed their first test, then weren’t cleared to trade."
     assert ge.step_note("done", "1 of 2 hypotheses passed every gate.", 4).startswith("0 of 2 ideas cleared every check; 1 more")
     assert ge.step_note("done", "0 of 2 hypotheses passed. Random really does wander nowhere.", 1) == \
         "0 of 2 ideas passed. Random really does wander nowhere."
@@ -104,10 +104,10 @@ def test_the_run_page_gets_the_note_beside_the_untouched_message():
                             {"kind": "done", "message": "1 of 2 hypotheses passed every gate.", "data": {"passed": 1}}])
     assert evs[0]["message"] == msg and evs[0]["data"]["note"].startswith("Out of credits")
     assert evs[1]["data"] == {"phase": "loading"}  # nothing to say: untouched
-    assert evs[2]["data"] == {"note": "Picked the best 2 ideas to test on data it hasn't seen; a skeptical reviewer read each one first."}
+    assert evs[2]["data"] == {"note": "Picked the best 2 ideas to test on data it hasn’t seen; a skeptical reviewer read each one first."}
     assert evs[3]["data"] == {"passed": 1, "note": "1 of 2 ideas passed every check."}
     done = _with_gate_lines([{"kind": "done", "message": "1 of 2 hypotheses passed every gate.", "data": {"passed": 1}}], 1)
-    assert done[0]["data"]["note"] == "0 of 2 ideas cleared every check; 1 more passed its first test, then wasn't cleared to trade."
+    assert done[0]["data"]["note"] == "0 of 2 ideas cleared every check; 1 more passed its first test, then wasn’t cleared to trade."
 
 
 def test_a_running_sessions_progress_line_counts_apart_the_passes_a_later_check_left_uncleared():
@@ -116,9 +116,9 @@ def test_a_running_sessions_progress_line_counts_apart_the_passes_a_later_check_
     counts them as the done line and the finished rows do: cleared passes, the uncleared said apart."""
     still = "Still running - 9 tested so far, 3 passed. Exploring more (stop anytime)."
     assert ge.step_note("step", still, 2) == ("9 tested so far, 1 cleared every check; 2 more passed their first test, "
-                                              "then weren't cleared to trade. Looking for more; you can stop it anytime.")
+                                              "then weren’t cleared to trade. Looking for more; you can stop it anytime.")
     assert ge.step_note("step", still, 1).startswith("9 tested so far, 2 cleared every check; 1 more passed its first test, "
-                                                     "then wasn't cleared to trade.")
+                                                     "then wasn’t cleared to trade.")
     assert ge.step_note("step", still, 5).startswith("9 tested so far, 0 cleared every check; 3 more")  # never more than passed
     assert ge.step_note("step", still, 0) == "9 tested so far, 3 passed. Looking for more; you can stop it anytime."
     # Each line counts only the uncleared passes made by the time it was written.
@@ -133,8 +133,8 @@ def test_a_running_sessions_progress_line_counts_apart_the_passes_a_later_check_
     evs = _with_gate_lines([line(3, 1, 10), line(6, 2, 20), line(9, 3, 30)], 2, [t(15), t(25)])
     assert [e["data"]["note"].split(". Looking")[0] for e in evs] == [
         "3 tested so far, 1 passed",
-        "6 tested so far, 1 cleared every check; 1 more passed its first test, then wasn't cleared to trade",
-        "9 tested so far, 1 cleared every check; 2 more passed their first test, then weren't cleared to trade"]
+        "6 tested so far, 1 cleared every check; 1 more passed its first test, then wasn’t cleared to trade",
+        "9 tested so far, 1 cleared every check; 2 more passed their first test, then weren’t cleared to trade"]
     # The stored line is unchanged; without a time, every uncleared pass is counted (never more than the line's).
     assert evs[0]["message"].startswith("Still running - 3 tested so far, 1 passed.")
     bare = _with_gate_lines([dict(line(3, 1, 10), created_at=None)], 2, [t(15), t(25)])

@@ -185,10 +185,10 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
   });
 
   test(`${name}: a rejected strategy says the check it missed, not "ranked below the finalists"`, async () => {
-    const skeptic = [{gate: 'challenger', label: "The skeptic's review didn't pass it", measured: 'an objection', needed: 'a reason', next: 'Say who pays.'}];
+    const skeptic = [{gate: 'challenger', label: "The skeptic’s review didn’t pass it", measured: 'an objection', needed: 'a reason', next: 'Say who pays.'}];
     const f = await open({status: 'rejected', out_of_sample: null, experiment: null, why_failed: skeptic});
-    assert.match(main(f), /Rejected — the skeptic&#39;s review didn&#39;t pass it\.|Rejected — the skeptic's review didn't pass it\./);
-    assert.match(main(f), /Not tested on unseen data — the skeptic(&#39;|')s review didn(&#39;|')t pass it\./);
+    assert.match(main(f), /Rejected — the skeptic’s review didn’t pass it\./);
+    assert.match(main(f), /Not tested on unseen data — the skeptic’s review didn’t pass it\./);
     assert.doesNotMatch(main(f), /ranked below the handful of finalists/);
     // A label is text: escaped where the page writes it as HTML.
     const evil = await open({status: 'rejected', out_of_sample: null, experiment: null, why_failed: [{...skeptic[0], label: '<img src=x>'}]});
