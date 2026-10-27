@@ -261,6 +261,7 @@ from app.web.routes.explore import (  # noqa: F401  (moved; server.py keeps the 
     explore_hot,
     explore_list,
     explore_market,
+    explore_spot,
 )
 from app.web.routes.research import (  # noqa: F401  (moved; server.py keeps the names for routing and tests)
     LAST_DREAM_TTL,
@@ -403,6 +404,7 @@ ROUTES: List[Route] = [
         ("GET", "/api/explore", explore_list, True),
         ("GET", "/api/explore/hot", explore_hot, True),
         ("GET", "/api/explore/market", explore_market, True),
+        ("GET", "/api/explore/spot", explore_spot, True),
         ("GET", "/api/research/context", research_context, True),
         ("GET", "/api/research/estimate", research_estimate, True),
         ("GET", "/api/research/scoreboard", research_scoreboard, True),
