@@ -22,7 +22,7 @@ const AT = '2026-10-26T21:00:00Z';
 const DRAFT = 'tau_ap_draft:7';
 
 export function chatPanelCases({name, frontend, storageFor}) {
-  const panel = async ({chat = () => [], turnCost, post, store = new Map(), me = {}, autopilot = false} = {}) => {
+  const panel = async ({chat = () => [], turnCost, post, status, decide, store = new Map(), me = {}, autopilot = false} = {}) => {
     store.set('tau_ap_open', '1');
     const f = frontend({storage: storageFor(store), fetchImpl: (path, options) => {
       if (path.startsWith('/api/chat?')) {
@@ -32,6 +32,9 @@ export function chatPanelCases({name, frontend, storageFor}) {
       }
       if (path === '/api/models') return response({models: [], default: ''});
       if (path === '/api/chat' && post) return post(options);
+      if (path === '/api/autopilot/status' && status) return response(status());
+      if (path.startsWith('/api/proposals/') && decide) return decide(path);
+      if (path === '/api/notifications' && status) return response({items: [], unread: 0});
       throw new Error('Unexpected offline request: ' + path);
     }});
     f.S.me = {...f.S.me, ...me, user: {...(f.S.me && f.S.me.user), id: 7, autopilot}};
@@ -178,7 +181,7 @@ export function chatPanelCases({name, frontend, storageFor}) {
       {id: 4, role: 'system', content: 'Market focus set to btc.', created_at: AT},
     ]});
     const kinds = p.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent);
-    assert.deepEqual(kinds, ['You', 'Agent', 'Autopilot’s rule: kept running', 'Reviewed']);
+    assert.deepEqual(kinds, ['You', 'Agent', 'Autopilot’s rule: kept running', 'Market focus']);
     const own = p.box.querySelectorAll('.apf-rule');
     assert.equal(own.length, 1);
     assert.equal(own[0].textContent, 'To stop it anyway, pause it yourself on Deploy.');
@@ -203,5 +206,60 @@ export function chatPanelCases({name, frontend, storageFor}) {
     const html = feed.querySelectorAll('.apf-md').map((el) => el.innerHTML).join('\n');
     assert.ok(html.includes(TAILS) && html.includes('more than its $10.00 loss guard'), html);
     assert.doesNotMatch(html, /deployment #|#\d/);
+  });
+
+  // Walked 2026-10-27: changing the market focus, deploying from the Deploy page, the kill switch, the engine's
+  // stop-loss sale and its daily loss stops each landed in the feed under "Reviewed", seconds after a click
+  // when no review had run.
+  test(`${name}: lines no review wrote are headed as what they are, not "Reviewed"`, async () => {
+    const lines = [
+      'Market focus set to Bitcoin.',
+      'Market focus cleared.',
+      'Market focus set to Bitcoin. Autopilot will research, deploy and trade only these from now on.',
+      `Deployed ${TAILS} on paper.`,
+      'Kill switch: live autopilot off, 1 live deployment(s) paused.',
+      `Sold a NO position of your paper strategy ${TAILS} automatically: it fell 42.0% below its cost, past your 40.0% stop. The rest of the strategy keeps trading.`,
+      'Live autopilot auto-disabled: today\'s live loss $51.00 hit your $50.00 daily limit. Pausing live deployments.',
+      'Live trading stopped: your Kalshi account is down $60.00 today (equity $940.00), past your $50.00 daily limit. Live autopilot is off and live deployments are paused.',
+      'Autopilot paused Rain: it hit its loss guard.',
+    ];
+    const p = await panel({autopilot: true, chat: () => lines.map((content, i) => ({id: i + 1, role: 'system', content, created_at: AT}))});
+    const kinds = p.box.querySelector('#apf-messages').querySelectorAll('.say-kind').map((el) => el.textContent);
+    assert.deepEqual(kinds, ['Market focus', 'Market focus', 'Market focus', 'You deployed', 'Kill switch', 'Sold automatically',
+      'Live stopped', 'Live stopped', 'Reviewed']);
+  });
+
+  // Walked 2026-10-27: asked in chat, the agent tightened the risk limits and the feed showed "Tuned risk · Applied",
+  // while the line under it still said "last move 6m ago" and the figures above it were the old ones until the
+  // next 20s status poll. An approved pause left "Running 1 paper" the same way.
+  test(`${name}: a move the feed just showed reads the status again at once, and so does a decision`, async () => {
+    const RISK = 'Autopilot updated your risk controls (within safe bounds): a strategy stops once it is down 15% of its capital.';
+    let lines = [], reads = 0;
+    const now = () => new Date().toISOString();
+    const p = await panel({autopilot: true, chat: () => lines,
+      post: () => { lines = [{id: 1, role: 'user', content: 'Tighten it.', created_at: AT}, {id: 2, role: 'agent', content: 'Done.', created_at: AT},
+        {id: 3, role: 'system', content: RISK, created_at: AT, proposal_id: 9, proposal_kind: 'set_risk', proposal_status: 'applied'}]; return response({id: 1}); },
+      status: () => { reads += 1; return {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0,
+        last_action: {text: RISK, at: now()}}; },
+      decide: () => response({ok: true})});
+    p.f.apUpdate(p.box, {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 1,
+      last_action: {text: 'Autopilot switched on', at: new Date(Date.now() - 6 * 60000).toISOString()}});
+    assert.match(p.box.querySelector('#apf-last').textContent, /Last move 6m ago/);
+    type(p.ta, 'Tighten it.');
+    await p.form.onsubmit({preventDefault() {}});
+    for (let i = 0; i < 8; i++) await flush();
+    assert.equal(reads, 1, 'the status is read once the move lands, not on the next poll');
+    assert.match(p.box.querySelector('#apf-last').textContent, /^Last move just now: Updated your risk controls/);
+    // A decision on a proposal reads it again too (the full repaint after it brings no new line of its own).
+    lines = [{id: 4, role: 'system', content: 'Asks to pause.', created_at: AT, proposal_id: 11, proposal_kind: 'pause', proposal_status: 'pending', deployment_mode: 'paper'}];
+    reads = 0;
+    const box2 = await panel({autopilot: true, chat: () => lines, status: () => { reads += 1; return {autopilot: true, mode: 'paper', research: {active: []}}; },
+      decide: () => response({ok: true})});
+    const approve = box2.box.querySelector('[data-decide="approve"]');
+    assert.ok(approve, box2.box.querySelector('#apf-messages').innerHTML);
+    lines = lines.map((m) => ({...m, proposal_status: 'applied'}));
+    await box2.box.querySelector('#apf-messages').listeners.get('click')({target: approve});
+    for (let i = 0; i < 8; i++) await flush();
+    assert.equal(reads, 1, 'an approved pause reads the status at once');
   });
 }

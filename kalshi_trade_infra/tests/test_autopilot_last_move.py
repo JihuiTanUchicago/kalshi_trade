@@ -120,3 +120,44 @@ def test_get_chat_reads_the_paused_names_once_and_sends_no_deployment_number(mon
     monkeypatch.setattr(chat_routes.repo, "chat_messages", lambda cur, uid, after: [{"id": 6, "role": "user", "content": "hi"}])
     chat_routes.get_chat(SimpleNamespace(cur=None, uid=7, query={"after": "5"}))
     assert len(reads) == 1
+
+
+# -- the engine's stop-loss sale, in words ---------------------------------------------------------------
+# Walked 2026-10-27: the feed showed the engine's "Deployment #12 sold NO KXBTC15M-26OCT271415-15: down 42.0% >= stop
+# 40.0% of cost. The rest of the deployment keeps trading." as stored, a row number and a raw ticker under "Reviewed".
+
+SOLD = ("Deployment #12 sold NO KXBTC15M-26OCT271415-15: down 42.0% >= stop 40.0% of cost. "
+        "The rest of the deployment keeps trading.")
+
+
+def test_the_chat_feed_says_a_stop_loss_sale_by_the_strategys_name_never_its_row_number_or_ticker():
+    rows = [{"role": "system", "content": SOLD},
+            {"role": "system", "content": SOLD.replace("#12", "#13").replace(" NO ", " YES ")},
+            {"role": "agent", "content": SOLD}]  # the agent's own words stay as said
+    assert customer_text.auto_paused_ids(rows) == [12, 13]
+    out = [m["content"] for m in customer_text.chat_rows(rows, {12: {"title": SPIKE, "mode": "paper"}})]
+    assert out[0] == ("Sold a NO position of your paper strategy %s automatically: it fell 42.0%% below its cost, "
+                      "past your 40.0%% stop. The rest of the strategy keeps trading." % SPIKE)
+    assert out[1].startswith("Sold a YES position of one of your strategies automatically: it fell 42.0% below")  # gone
+    assert out[2] == SOLD
+    for line in out[:2]:
+        assert "#" not in line and "KXBTC" not in line and ">=" not in line
+    assert customer_text.stop_sold_id("Deployment #12 no longer exists.") is None
+
+
+def test_get_chat_names_the_stop_loss_sale_from_the_same_one_read(monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    reads = []
+    monkeypatch.setattr(chat_routes.repo, "active_agent_run", lambda cur, uid: None)
+    monkeypatch.setattr(chat_routes.repo, "chat_messages", lambda cur, uid, after: [
+        {"id": 5, "role": "system", "content": PAUSE, "created_at": AT},
+        {"id": 6, "role": "system", "content": SOLD.replace("#12", "#14"), "created_at": AT}])
+    monkeypatch.setattr(chat_routes.repo, "deployment_names", lambda cur, uid, ids: reads.append(ids) or {
+        12: {"title": SPIKE, "mode": "paper"}, 14: {"title": "Rain", "mode": "demo"}})
+    monkeypatch.setattr(chat_routes.billing, "configured", lambda: False)
+    out = chat_routes.get_chat(SimpleNamespace(cur=None, uid=7, query={}))
+    assert reads == [[12, 14]]
+    assert out["messages"][1]["content"].startswith("Sold a NO position of your demo strategy Rain automatically")
+    assert "#14" not in json.dumps(out, default=str) and "KXBTC15M" not in json.dumps(out, default=str)

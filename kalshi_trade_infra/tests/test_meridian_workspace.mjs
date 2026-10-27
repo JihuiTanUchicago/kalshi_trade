@@ -751,7 +751,7 @@ test('Overview live summary says it is Kalshi cash, apart from what Tau trades r
   assert.equal(live.querySelector('dt.lab').textContent, 'Kalshi cash');
   assert.match(live.textContent, /\+\$17\.00 realized all time by Tau trades/);
   assert.match(live.textContent, /Open at cost before fees, not in cash\$50\.00/); assert.match(live.textContent, /Realized today \(UTC\)−\$2\.00/);
-  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00/);
+  assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Live realized today \(UTC\)<\/dt><dd><span class="[^"]*">−\$2\.00<\/span> <small>real money, after Kalshi fees<\/small>/);
 });
 
 test('Funds names the live figure Kalshi cash, open positions not included', async () => {

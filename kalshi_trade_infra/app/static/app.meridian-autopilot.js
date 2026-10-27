@@ -7,7 +7,7 @@ window.TauPage('autopilot', (T) => {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
     apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, go, ICON, mdLite,
-    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
+    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, refreshAutopilot, S, settleAt, sinceMin, usd, waitNote, waitSpan,
     wakers
   } = T;
 
@@ -84,6 +84,16 @@ window.TauPage('autopilot', (T) => {
     if (k === 'set_risk' || k === 'set_exec') return { text: 'Approve applies these limits to every strategy you run, live ones included.' };
     return null;
   }
+  // Lines no review wrote, headed as what they are. Each sat under "Reviewed": your own market focus and kill
+  // switch, a deploy from the Deploy page, and the engine's stop-loss sale and daily loss stops (the server says
+  // those in words, customer_text.chat_rows).
+  const AP_OTHER = [
+    [/^Market focus (?:set to|cleared)\b/, 'Market focus'],
+    [/^Deployed .+ on (?:paper|LIVE money|the demo \(sandbox\) exchange)\.$/, 'You deployed'],
+    [/^Kill switch:/, 'Kill switch'],
+    [/^Sold an? (?:YES|NO) position of .+ automatically:/, 'Sold automatically'],
+    [/^(?:Live autopilot auto-disabled|Live trading stopped):/, 'Live stopped'],
+  ];
   // One feed entry, rendered with the SAME research-session parts (.ln timeline rail, .say card,
   // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
   // a legible end-to-end session, not a cramped chat. m.content is Markdown; m.stage/m.strategy/
@@ -117,9 +127,10 @@ window.TauPage('autopilot', (T) => {
     // The engine's own loss guard or drawdown limit paused a strategy (the server says it by name,
     // customer_text.auto_pause_line): no review ran, so it isn't headed "Reviewed".
     const guard = !m.proposal_kind && /^Paused (?:your (?:paper|demo|live) strategy .+|one of your strategies) automatically\b/.test(m.content || '');
+    const other = !m.proposal_kind && (AP_OTHER.find(([rx]) => rx.test(m.content || '')) || [])[1];
     const kind = (st === 'pending' && AP_ASK[m.proposal_kind]) || AP_ACT[m.proposal_kind]
       || (flip ? (flip[1] ? 'Live autopilot ' : 'Autopilot ') + (/on/i.test(flip[2]) ? 'on' : 'off')
-        : said || (rule ? 'Autopilot’s rule: kept running' : guard ? 'Paused automatically' : 'Reviewed'));
+        : said || (rule ? 'Autopilot’s rule: kept running' : guard ? 'Paused automatically' : other || 'Reviewed'));
     const own = rule ? '<p class="apf-ask apf-rule">To stop it anyway, pause it yourself on <a href="/deploy">Deploy</a>.</p>' : '';
     const lane = !m.proposal_id ? 'state' : st === 'pending' ? 'review' : st === 'applied' ? 'action' : 'void';
     const stamp = st === 'applied' ? `<span class="hx-stamp pass">${m.proposal_kind === 'alpaca_paper' ? 'Approved' : 'Applied'}</span>`
@@ -158,9 +169,11 @@ window.TauPage('autopilot', (T) => {
     if (full) { msgs.innerHTML = ''; apChatLastId = 0; apFeedFirst = true; apFeedDay = ''; }
     const empty = msgs.querySelector('.ap-empty'); if (empty && d.messages.length) empty.remove();
     msgs.querySelectorAll('.apf-typing').forEach((n) => n.remove());
+    let moved = false;
     d.messages.forEach((m) => {
       if (m.id <= apChatLastId) return;  // a slow read that lands after a newer one already painted it
       apChatLastId = Math.max(apChatLastId, m.id);
+      if (!full && m.role === 'system') moved = true;
       const day = new Date(m.created_at).toDateString();
       if (day !== apFeedDay) { apFeedDay = day; msgs.appendChild(apDayLi(m.created_at)); }
       const li = apFeedLi(m);
@@ -168,6 +181,10 @@ window.TauPage('autopilot', (T) => {
       msgs.appendChild(li);
     });
     if (d.messages.length) apFeedFirst = false;
+    // A move that just landed in the feed (a change it made from your message, a pause, a sale) changes the
+    // figures above it: they are read again now, not on the next 20s status poll. "Last move 6m ago" and the
+    // old running count sat over a risk change the feed showed seconds before.
+    if (moved) refreshAutopilot(box);
     if ('turn_cost' in d) { apTurnCost = d.turn_cost; apCostPaint(box); }
     if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet.</li>';
     // The live pulse — the research session's "working" signal, scoped to the operation.
@@ -336,6 +353,8 @@ window.TauPage('autopilot', (T) => {
       try {
         const result = await api(`/api/proposals/${pid}/${b.dataset.decide}`, {});
         if (result.review_required && result.review_url === `/funds?perps_proposal=${pid}`) { go(result.review_url); return; }
+        // An approved pause, resume or deploy changes what is running: the figures and the card follow now.
+        refreshAutopilot(box);
       } catch (err) {
         apErr(box, err.message);
         btns.forEach((x) => { x.disabled = false; });
@@ -479,7 +498,8 @@ window.TauPage('autopilot', (T) => {
     const short = [
       `<dt>Running</dt><dd>${runTotal ? runParts.join(' ·\u00a0') : 'None'}</dd>`,
       // With nothing on paper and nothing realized today, there is no day's P&L to show: "$0.00" read as a result.
-      `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : usd(pnl, true)}</dd>`,
+      // The figure says which money it is and that fees are in, as the dashboard card and Deploy say it.
+      `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : `${usd(pnl, true)} <small class="apf-note">${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>`}</dd>`,
     ].concat(budgetShown ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
       // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.
