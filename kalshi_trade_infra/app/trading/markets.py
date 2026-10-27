@@ -106,8 +106,9 @@ CRYPTO_15M_HISTORY_DAYS = 90
 # endpoints serve these series back to 2021, and market_history pages them past the live cutoff.
 WEATHER_HISTORY_DAYS = int(os.getenv("WEATHER_HISTORY_DAYS", "365"))
 
-# A label is what customers read, so a Bitcoin one says what the contract pays on and when it closes
-# ("Bitcoin above $X at 5pm ET"); the app fills a contract's own strike in for "$X" from its ticker.
+# A label is what customers read, so a crypto one says what the contract pays on and when it closes
+# ("Bitcoin above $X at 5pm ET", "Solana up or down in 15 minutes"); the app fills a contract's own strike
+# in for "$X" from its ticker.
 CURATED: Dict[str, Market] = {
     # Logical research series; the native Bitcoin ticker is verified/discovered by the
     # dedicated public-data adapter. Never send BTC_PERP to the event-contract API.
@@ -128,13 +129,13 @@ CURATED: Dict[str, Market] = {
     # Deployable crypto: same strike-ladder + spot-price model as BTC. The live engine prices
     # each from its own Coinbase product (engine.fetch_spot_series) and places orders on its
     # Kalshi series exactly like BTC - a strategy still only trades once a user deploys it.
-    "eth15m": Market("eth15m", "KXETH15M", "Ethereum 15-minute", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
+    "eth15m": Market("eth15m", "KXETH15M", "Ethereum up or down in 15 minutes", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
                      underlying="ETH-USD", deployable=True, category="Crypto"),
-    "eth_daily": Market("eth_daily", "KXETHD", "Ethereum daily close, 5pm EDT", candle_minutes=60,
+    "eth_daily": Market("eth_daily", "KXETHD", "Ethereum above $X at 5pm ET", candle_minutes=60,
                         history_days=60, close_hour_et=17, underlying="ETH-USD", deployable=True, category="Crypto"),
-    "sol_daily": Market("sol_daily", "KXSOLD", "Solana daily close, 5pm EDT", candle_minutes=60,
+    "sol_daily": Market("sol_daily", "KXSOLD", "Solana above $X at 5pm ET", candle_minutes=60,
                         history_days=60, close_hour_et=17, underlying="SOL-USD", deployable=True, category="Crypto"),
-    "xrp_daily": Market("xrp_daily", "KXXRPD", "XRP daily close, 5pm EDT", candle_minutes=60,
+    "xrp_daily": Market("xrp_daily", "KXXRPD", "XRP above $X at 5pm ET", candle_minutes=60,
                         history_days=60, close_hour_et=17, underlying="XRP-USD", deployable=True, category="Crypto"),
     # Deployable SPORTS market. Kalshi's per-game NBA moneyline (series KXNBAGAME) is a binary
     # YES/NO that settles on the game result - structurally like the crypto binaries, but with NO
@@ -150,17 +151,17 @@ CURATED: Dict[str, Market] = {
     # AND a currently-active Kalshi 15M ladder (~96 settled markets/day, floor_strike populated, balanced
     # YES/NO) — so the collector fills hist_markets + candlesticks and the backtest/live paths just work.
     # (KXADA15M / KXBCH15M were EXCLUDED: their 15M ladders are dormant — zero settled markets to collect.)
-    "sol15m": Market("sol15m", "KXSOL15M", "Solana 15-minute", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
+    "sol15m": Market("sol15m", "KXSOL15M", "Solana up or down in 15 minutes", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
                      underlying="SOL-USD", deployable=True, category="Crypto"),
-    "xrp15m": Market("xrp15m", "KXXRP15M", "XRP 15-minute", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
+    "xrp15m": Market("xrp15m", "KXXRP15M", "XRP up or down in 15 minutes", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
                      underlying="XRP-USD", deployable=True, category="Crypto"),
-    "doge15m": Market("doge15m", "KXDOGE15M", "Dogecoin 15-minute", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
+    "doge15m": Market("doge15m", "KXDOGE15M", "Dogecoin up or down in 15 minutes", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
                       underlying="DOGE-USD", deployable=True, category="Crypto"),
-    "near15m": Market("near15m", "KXNEAR15M", "NEAR 15-minute", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
+    "near15m": Market("near15m", "KXNEAR15M", "NEAR up or down in 15 minutes", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
                       underlying="NEAR-USD", deployable=True, category="Crypto"),
-    "zec15m": Market("zec15m", "KXZEC15M", "Zcash 15-minute", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
+    "zec15m": Market("zec15m", "KXZEC15M", "Zcash up or down in 15 minutes", candle_minutes=1, history_days=CRYPTO_15M_HISTORY_DAYS,
                      underlying="ZEC-USD", deployable=True, category="Crypto"),
-    "hype15m": Market("hype15m", "KXHYPE15M", "Hyperliquid (HYPE) 15-minute", candle_minutes=1,
+    "hype15m": Market("hype15m", "KXHYPE15M", "Hyperliquid (HYPE) up or down in 15 minutes", candle_minutes=1,
                       history_days=CRYPTO_15M_HISTORY_DAYS, underlying="HYPE-USD", deployable=True, category="Crypto"),
     # Deployable SPORTS (outcome-settled, underlying=None): per-game moneyline series, structurally the
     # same binary YES/NO as KXNBAGAME — no strike, no spot, so the live tick and backtest price them on

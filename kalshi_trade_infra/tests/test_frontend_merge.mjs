@@ -1194,7 +1194,7 @@ test('while its paper strategy holds nothing, the autopilot card also says what 
   f.S.ap = {...apOn, idle: flat, research: {...apOn.research, active: ['btc15m', 'eth15m']}};
   await f.viewDashboard(); await flush();
   const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
-  assert.match(now(), /holds no position\. It checks again at its market(?:'|&#39;)s next decision time\. Meanwhile it's researching BTC 15-min up\/down and ETH 15-min\.$/);
+  assert.match(now(), /holds no position\. It checks again at its market(?:'|&#39;)s next decision time\. Meanwhile it's researching BTC 15-min up\/down and ETH 15-min up\/down\.$/);
   f.S.ap = {...f.S.ap, research: {...apOn.research, active: ["a market it's still picking"]}}; f.paintDashAp();
   assert.match(now(), /Meanwhile it's picking a market to research\.$/);
   f.S.ap = {...f.S.ap, research: {...apOn.research, active: []}, reviewing: true}; f.paintDashAp();
@@ -3522,10 +3522,10 @@ test('Tau: a research-paper figure is red exactly when its gate line says it mis
 
 test('Tau: a hot-markets row names its market the app’s way, never by the raw series', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}, {key: 'eth_daily', series: 'KXETHD', label: 'Ethereum daily close, 5pm EDT'}];
+  f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}, {key: 'eth_daily', series: 'KXETHD', label: 'Ethereum above $X at 5pm ET'}];
   const row = (s) => f.hotRowHtml({t: s + '-26OCT261530-30', s, ti: 'Some title', su: '', bid: .48, ask: .52, v24: 1200, h: [.4, .5]});
   assert.match(row('KXBTC15M'), /<span class="hot-foot"><span class="mk quiet">BTC 15-min up\/down<\/span>/);
-  assert.match(row('KXETHD'), /<span class="mk quiet">ETH 5pm<\/span>/);
+  assert.match(row('KXETHD'), /<span class="mk quiet">ETH above \$X at 5pm ET<\/span>/);
   // A series no market here covers loses the chip rather than showing the ticker.
   assert.doesNotMatch(row('KXWEIRD'), /mk quiet|>KXWEIRD</);
   for (const s of ['KXBTC15M', 'KXETHD']) assert.doesNotMatch(row(s), new RegExp('>' + s + '<'));
@@ -3681,6 +3681,24 @@ test('track record: the calendar-day count is named as such, so it never contrad
   const left = f.trackRecordPanel({trades: 0, label: 'Paper', excluded_instant_fills: 8}, 'paper', th);
   assert.match(left, /<h3>No paper trades in the record yet<\/h3>/); assert.match(left, /8 instant-fill paper trades left out/);
   assert.match(f.trackRecordPanel({trades: 0, label: 'Paper'}, 'paper', th), /<h3>No closed paper trades yet<\/h3>/);
+});
+
+test('an open ETH, SOL or XRP position names its contract as Bitcoin\'s does, with its own strike to the last decimal', async () => {
+  // "ETH 5pm" named the coin and an hour. A daily ladder contract fills its own strike in for "$X", as its rules
+  // read it (an XRP strike runs to four decimals); a 15-minute one says up or down.
+  const pos = (ticker) => ({title: 'Drift', ticker, side: 'yes', qty: 2, entry_price: .4, entry_fee: .02, cost: .82, unrealized: null,
+    mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z'});
+  const f = frontend({fetchImpl: path => path === '/api/deployments'
+    ? response({deployments: [], open_positions: ['KXETHD-26OCT2717-T3999.99', 'KXSOLD-26OCT2717-T189.99', 'KXXRPD-26OCT2717-T2.4599',
+      'KXETH15M-26OCT271715-15', 'KXSOL15M-26OCT271715-15', 'KXXRPD-26OCT2717'].map(pos)}) : response({})});
+  f.S.me.markets = [{key: 'eth_daily', series: 'KXETHD', label: 'Ethereum above $X at 5pm ET', close_hour_et: 17},
+    {key: 'sol_daily', series: 'KXSOLD', label: 'Solana above $X at 5pm ET', close_hour_et: 17},
+    {key: 'xrp_daily', series: 'KXXRPD', label: 'XRP above $X at 5pm ET', close_hour_et: 17},
+    {key: 'eth15m', series: 'KXETH15M', label: 'Ethereum up or down in 15 minutes'}, {key: 'sol15m', series: 'KXSOL15M', label: 'Solana up or down in 15 minutes'}];
+  await f.viewDeploy(); await flush(); await flush();
+  const names = [...f.root.querySelector('#openpos').innerHTML.matchAll(/<div class="sub-fig pos-mkt">([^<]*)<\/div>/g)].map(m => m[1]);
+  assert.deepEqual(names, ['Ethereum above $3,999.99 at 5pm ET', 'Solana above $189.99 at 5pm ET', 'XRP above $2.4599 at 5pm ET',
+    'Ethereum up or down in 15 minutes', 'Solana up or down in 15 minutes', 'XRP above $X at 5pm ET']);
 });
 
 test('autopilot walk: the last move says what and when, the pill says what it is doing, the pulse never reads Idle over research', () => {
