@@ -35,9 +35,21 @@ def conn():
 
     schema.main()
     c = get_db_conn()
+    # The engine's beat is one row for the whole database: put back what was there, so a later test (or
+    # the next run against the same database) doesn't find a beat this module left and see every page's
+    # data ages tick with the database clock between two reads it compares.
+    cur = c.cursor()
+    cur.execute("SELECT state_value, updated_at_utc FROM collector_state WHERE state_key='recursive_engine_last_tick'")
+    beat = cur.fetchone()
     yield c
-    c.cursor().execute("UPDATE app_deployments SET status='stopped' WHERE user_id IN "
-                       "(SELECT id FROM app_users WHERE google_sub LIKE 'test:%%')")
+    cur = c.cursor()
+    cur.execute("UPDATE app_deployments SET status='stopped' WHERE user_id IN "
+                "(SELECT id FROM app_users WHERE google_sub LIKE 'test:%%')")
+    if beat is None:
+        cur.execute("DELETE FROM collector_state WHERE state_key='recursive_engine_last_tick'")
+    else:
+        cur.execute("UPDATE collector_state SET state_value=%s, updated_at_utc=%s WHERE state_key='recursive_engine_last_tick'",
+                    (beat["state_value"], beat["updated_at_utc"]))
     c.close()
 
 

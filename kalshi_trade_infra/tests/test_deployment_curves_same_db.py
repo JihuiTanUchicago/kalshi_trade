@@ -142,15 +142,53 @@ def test_the_curves_and_the_pages_that_draw_them_say_what_they_said(conn, monkey
 
     # The two pages: byte for byte the same JSON with the old read in place of the new one.
     ctx = server.Ctx(conn, dict(user, autopilot=0), (), {}, {}, None)
-    # "Since your last visit" starts from now(); pin it so two reads a second apart compare equal.
-    visit = server._visit_since(None)
-    from app.web.routes import dashboard as dashboard_routes
-    monkeypatch.setattr(dashboard_routes, "_visit_since", lambda raw: visit)
-    server._BACKTEST_CHECKS.clear()
-    new_pages = [_payload(server.list_deployments(ctx)), _payload(server.dashboard(ctx))]
-    monkeypatch.setattr(server.repo, "deployment_curves",
-                        lambda c, u, max_points=None, deployment_ids=None: old_curves(c, u, max_points, deployment_ids))
-    server._BACKTEST_CHECKS.clear()
-    old_pages = [_payload(server.list_deployments(ctx)), _payload(server.dashboard(ctx))]
+    _one_clock(monkeypatch, cur)
+    from app.services import book_memo
+
+    def pages():
+        # The pages keep each user's curves until a position changes (services.book_memo): drop them
+        # before each page, or the old pair is drawn from the new pair's kept curves (the old read never
+        # ran, and the comparison held whatever it returned) and the dashboard from the board's.
+        out = []
+        for page in (server.list_deployments, server.dashboard):
+            book_memo.clear()
+            server._BACKTEST_CHECKS.clear()
+            out.append(_payload(page(ctx)))
+        return out
+
+    new_pages = pages()
+    old_reads = []
+
+    def old_read(c, u, max_points=None, deployment_ids=None):
+        old_reads.append(deployment_ids)
+        return old_curves(c, u, max_points, deployment_ids)
+
+    monkeypatch.setattr(server.repo, "deployment_curves", old_read)
+    old_pages = pages()
+    assert len(old_reads) == 2  # each page drew its curves from the old read
     assert new_pages == old_pages
     assert '"curve":[[' in new_pages[0] and '"curve":[[' in new_pages[1]
+
+
+def _one_clock(monkeypatch, cur):
+    """One clock for both pairs of page reads, so the comparison sees only what the curves change. The
+    figures that move every second without a write (services.page_poll.moving) moved between two reads
+    that straddled a second, with the data the same: the data ages (`freshness`: seconds since each
+    feed and the engine's last beat, which the database clock measures once any test has left an engine
+    beat behind, as test_autopilot_status_db does), the start of "since your last visit" (now less 24
+    hours), and the start of the UTC day and the daily P&L window."""
+    import sys
+
+    from app import server
+    from app.adapters.db import sql
+    from app.web.routes import dashboard as dashboard_routes
+
+    real = sql.now_utc
+    now = real()
+    for m in list(sys.modules.values()):
+        if m is not None and getattr(m, "now_utc", None) is real:
+            monkeypatch.setattr(m, "now_utc", lambda: now)
+    visit = server._visit_since(None)
+    monkeypatch.setattr(dashboard_routes, "_visit_since", lambda raw: visit)
+    fresh = dashboard_routes._freshness(cur)  # one real read of the ages, served to every page read
+    monkeypatch.setattr(dashboard_routes, "_freshness", lambda c: dict(fresh))
