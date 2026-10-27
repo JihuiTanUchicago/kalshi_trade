@@ -922,7 +922,12 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
            "checkin_credits": None, "credits_left": None, "runway_days": None, "reload_days": None, "pace_days": None,
            # Whether a card was ever charged for credits (the panel's credit read, with the balance): until
            # then every credit spent was a free one, and the page says so beside the spend, not "real money".
-           "card_charged": credits.get("card_charged") if credits is not None else None}
+           "card_charged": credits.get("card_charged") if credits is not None else None,
+           # A figure that spent something but shows $0.00 (Billing's spent_7d_under_cent): the page says
+           # "under $0.01", as Billing does, instead of $0.00 beside it. The figures themselves stay Billing's.
+           "research_under_cent": bool(credits is not None and credit_exact(credits.get("research") or 0) > 0
+                                       and not research.get("cost_7d")),
+           "checkin_under_cent": False}
     if billing.configured():
         # What else the week cost and how long the balance lasts at that pace, read-only: the
         # autopilot's check-ins bill too, and the runway is the Billing page's (every usage debit of
@@ -933,7 +938,9 @@ def _autopilot_week(cur, uid: int, research: Dict, reads: Optional[billing.Reads
         balance = reads.balance()
         days = pace_days(created_at)
         # Billing's two countdowns: until research pauses, and until auto-reload next charges the card.
-        out.update(checkin_credits=credit_split(used)["autopilot_review"], credits_left=credit_usd(balance),
+        checkins = credit_split(used)["autopilot_review"]
+        out.update(checkin_credits=checkins, checkin_under_cent=credit_exact(used["autopilot_review"]) > 0 and not checkins,
+                   credits_left=credit_usd(balance),
                    runway_days=runway_days(balance, spent_7d, days, stop_at=pause_at()),
                    reload_days=reload_days(reads.customer(), balance, spent_7d, days), pace_days=days)
     return out

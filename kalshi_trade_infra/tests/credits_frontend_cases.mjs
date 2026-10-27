@@ -138,6 +138,30 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     f.clearTimers();
   });
 
+  test(`${name}: the autopilot card says "under $0.01" for a sliver of spend, as Billing does, not $0.00`, async () => {
+    // Billing's split read "autopilot check-ins under $0.01" while the card dropped the check-ins (or said $0.00
+    // of research) for the same week. The server names a figure that spent something but rounds to $0.00.
+    const spent = (w) => f.root.querySelector('#dash-ap .ap-week dl dd').textContent.replace(/\s+/g, ' ');
+    let f = await apPage({...apStatus, week: {...week, research_credits: 20.01, checkin_credits: 0, checkin_under_cent: true}}, {});
+    assert.match(spent(), /^\$20\.01 real money · plus under \$0\.01 on its check-ins$/);
+    f.clearTimers();
+    f = await apPage({...apStatus, week: {...week, research_credits: 0, research_under_cent: true, checkin_credits: 0.09}}, {});
+    assert.match(spent(), /^under \$0\.01 real money · plus \$0\.09 on its check-ins$/);
+    assert.doesNotMatch(spent(), /\$0\.00/);
+    f.clearTimers();
+    // Only a sliver spent, nothing else this week: not "nothing yet" beside Billing's "under $0.01".
+    const sliver = {research_credits: 0, tested: 0, passed: 0, paper_started: 0, paper_pnl: 0, paper_trades: 0,
+      checkin_credits: 0, checkin_under_cent: true, credits_left: 20, runway_days: null, pace_days: 7};
+    f = await apPage({...apStatus, week: sliver}, {});
+    assert.doesNotMatch(f.root.querySelector('#dash-ap .ap-week').textContent, /nothing yet/);
+    assert.match(spent(), /^\$0\.00 real money · plus under \$0\.01 on its check-ins$/);
+    f.clearTimers();
+    // No flag (nothing spent, or an older server): the figures as before, no check-ins named at $0.
+    f = await apPage({...apStatus, week: {...week, checkin_credits: 0}}, {});
+    assert.match(spent(), /^\$100\.01 real money$/);
+    f.clearTimers();
+  });
+
   test(`${name}: on a first day with auto-reload on, the card says the card is charged again and again, not that research pauses`, async () => {
     const first = {...week, research_credits: 0.42, checkin_credits: 0.02, credits_left: 19.56, runway_days: null, reload_days: null, pace_days: 0.01};
     const f = await apPage({...apStatus, week: first}, {credit_balance: 19.56, auto_reload: {amount: 20, charge: 21.1, threshold: 5}});
