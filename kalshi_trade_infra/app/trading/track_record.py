@@ -48,7 +48,7 @@ METHOD = [
     "Every figure comes from closed trades in your own book. Nothing here is a backtest.",
     "A trade is one entry fill, round trip. Partial exits are summed into it, and a trade that is still partly open is left out until it closes.",
     "P&L is net of all Kalshi fees.",
-    "Stopped strategies, and strategies you removed, keep their trades in every figure: nothing is dropped for doing badly.",
+    "Stopped strategies, removed deployments and deleted strategies keep their trades in every figure: nothing is dropped for doing badly.",
     "Paper trades that filled instantly, without the simulated order book, are left out, because real execution would not get those fills.",
     "Capital is what the record needed: the most money ever at risk at once plus the worst drawdown, so the smallest bankroll that could have taken every trade. Return and drawdown percentages use it.",
     "Sharpe and Sortino use daily P&L from the first closed trade to today, with flat days counted, a 0% risk-free rate and a 365-day year. They are hidden under 14 days.",
@@ -450,7 +450,7 @@ def prepare(rows: List[Dict]) -> Dict:
             continue
         t = {
             # The strategy row is gone when the user removed it after stopping it; its trades stay.
-            "strategy_id": int(r.get("strategy_id") or 0), "title": r.get("title") or "Removed strategy",
+            "strategy_id": int(r.get("strategy_id") or 0), "title": r.get("title") or "Deleted strategy",
             "removed": r.get("title") is None, "dep_status": r.get("dep_status"),
             "market": r.get("market") or "", "pnl": float(r.get("pnl") or 0), "fees": float(r.get("fees") or 0),
             "cost": float(r.get("cost") or 0),

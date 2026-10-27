@@ -4200,9 +4200,9 @@
       <td class="num" data-lab="Win rate">${r.trades ? pct(r.win_rate, false) : '\u2014'}</td></tr>`).join('');
     const strats = m.strategies.map((r) => {
       const [tag, cls] = TR_EDGE[r.edge] || TR_EDGE.unclear;
-      // A stopped or removed strategy stays in the table (and every figure); it says so instead of
-      // reading like one still trading. A removed one has no page left to link to.
-      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}stopped, then removed` : TR_STATUS[r.status];
+      // A stopped or deleted strategy stays in the table (and every figure); it says so instead of
+      // reading like one still trading. A deleted one has no page left to link to.
+      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}stopped, then deleted` : TR_STATUS[r.status];
       return `<tr><td class="name" data-lab="Strategy">${r.removed ? esc(r.title) : `<a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a>`}${st ? `<div class="sub-fig">${st}</div>` : ''}</td>
         <td data-lab="Read"><span class="mk ${cls}">${tag}</span></td>
         <td class="num" data-lab="Trades">${num(r.trades)}${r.open_trades ? ` <span class="sub-fig">+${num(r.open_trades)} open</span>` : ''}</td>
@@ -5131,7 +5131,10 @@
       if (rows.length < 2) return '';
       const item = (r) => {
         const dep = (d.deployments || []).find((x) => +x.id === +r.deployment_id);
-        const name = dep ? `<a href="/strategies/${encodeURIComponent(dep.strategy_id)}">${esc(dep.title)}</a>` : 'a removed strategy';
+        // A removed deployment isn't listed: the server names its strategy (title null once that was deleted too).
+        const name = dep ? `<a href="/strategies/${encodeURIComponent(dep.strategy_id)}">${esc(dep.title)}</a>`
+          : r.removed && r.title ? `<a href="/strategies/${encodeURIComponent(r.strategy_id)}">${esc(r.title)}</a> <span class="since-sub">(removed deployment)</span>`
+          : r.removed ? 'a deleted strategy' : 'a removed strategy';
         const p = +r.pnl || 0;
         return `${name} <span class="nobr"><span class="${p < 0 ? 'neg' : p > 0 ? 'pos' : ''}">${usd(p, true)}</span> on ${num(r.trades)}</span>`;
       };

@@ -2677,6 +2677,13 @@ test('the strip splits a book\'s figure by the strategy that traded it, inside t
   deployments: deployments.slice(0, 2)});
   assert.match(solo, /<div class="since-split" data-book="paper"><a href="\/strategies\/103">ETH drift<\/a>/);
   assert.match(solo, /a removed strategy <span class="nobr"><span class="neg">−\$1\.00<\/span> on 1<\/span><span class="sep">·<\/span><span class="since-sub">1 more<\/span><\/div>/);
+  // A removed deployment the server names says whose it was: its strategy, or a deleted strategy once that is gone too.
+  const named = await strip({since: {...since, books: {paper: since.books.paper}, by_deployment: {paper: [
+    {deployment_id: 97, pnl: 2, trades: 1, removed: true, strategy_id: 7, title: 'Old fade'},
+    {deployment_id: 96, pnl: -1, trades: 2, removed: true, strategy_id: 6, title: null}]}}, deployments: deployments.slice(0, 2)});
+  assert.match(named, /<a href="\/strategies\/7">Old fade<\/a> <span class="since-sub">\(removed deployment\)<\/span> <span class="nobr"><span class="pos">\+\$2\.00<\/span> on 1<\/span>/);
+  assert.match(named, /a deleted strategy <span class="nobr"><span class="neg">−\$1\.00<\/span> on 2<\/span>/);
+  assert.doesNotMatch(named, /a removed strategy/);
   // An older server without the split: the book's line alone.
   assert.doesNotMatch(await strip({since: {...since, by_deployment: undefined}}), /since-split/);
 });
@@ -4238,15 +4245,15 @@ test('track record: stopped and removed strategies stay in the table and say so;
     sharpe: -1.25, sortino: -2.5, psr: 0.2, profit_factor: 0.6,
     sample: {level: 'early', edge: 'unclear', text: 'Early read.'},
     strategies: [row({}), row({strategy_id: 5, title: 'Reversal', status: 'stopped'}), row({strategy_id: 6, status: 'paused'}),
-      row({strategy_id: 7, title: 'Removed strategy', market: 'high_ny', status: 'stopped', removed: true})]};
+      row({strategy_id: 7, title: 'Deleted strategy', market: 'high_ny', status: 'stopped', removed: true})]};
   const html = f.trackRecordPanel(m, 'paper', th);
   assert.match(html, /<h2>By strategy<\/h2><p>Stopped ones included/);
   assert.match(html, /<a href="\/strategies\/5">Reversal<\/a><div class="sub-fig">Stopped<\/div>/);
   assert.match(html, /<a href="\/strategies\/6">Fade<\/a><div class="sub-fig">Paused<\/div>/);
   assert.match(html, /<a href="\/strategies\/4">Fade<\/a><\/td>/);  // a running one needs no label
-  // A removed strategy has no page left: no dead link, and its market says which one it was.
+  // A deleted strategy has no page left: no dead link, and its market says which one it was.
   assert.doesNotMatch(html, /\/strategies\/7/);
-  assert.match(html, /Removed strategy<div class="sub-fig">NYC high temp · stopped, then removed<\/div>/);
+  assert.match(html, /Deleted strategy<div class="sub-fig">NYC high temp · stopped, then deleted<\/div>/);
   // Every trade's P&L is net of fees, so the ratio isn't "gross" beside the gross-before-fees line.
   assert.match(html, /winning trades ÷ losing trades, after fees/); assert.doesNotMatch(html, /gross wins/);
   assert.match(html, /−1\.25/); assert.match(html, /Sortino −2\.50/); assert.doesNotMatch(html, />-1\.25</);

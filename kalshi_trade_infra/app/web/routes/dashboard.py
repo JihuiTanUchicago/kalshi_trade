@@ -112,7 +112,7 @@ def dashboard(ctx: Ctx):
                                         _paper_books(deps)) for d in deps],
         "agents": repo.active_run_counts(cur, ctx.uid, silent_before=_silent_before()),
         "freshness": _freshness(cur),
-        "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep),
+        "since": _since_visit(cur, ctx.uid, visit, first, recent, by_dep, {d["id"] for d in deps}),
     }, ctx.query.get("v"))
 
 
@@ -135,14 +135,15 @@ def _visit_since(raw) -> Tuple[datetime, bool]:
 
 
 def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
-                 by_dep: Optional[Dict[Tuple[str, int], Tuple[float, int]]] = None) -> Dict:
+                 by_dep: Optional[Dict[Tuple[str, int], Tuple[float, int]]] = None, listed: Optional[set] = None) -> Dict:
     """The dashboard's "since your last visit" strip: each book's realized P&L and closed trades
     since then (from the books' one pass; books are never added together), the strategies that
     passed, the autopilot's own changes and the research sessions started. Two reads. Credits spent
     (real money) ride apart from the books, and only while payments are on: with them off nothing
     is billed. `milestones` are the paper forward-gate passes and live-ready strategies since then.
     `by_deployment` splits each book's figure by the deployment that traded it ({mode: [{deployment_id,
-    pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it."""
+    pnl, trades}]}, best first), the same rows, so a net loss names the strategy that made it. A row
+    whose deployment the page doesn't list (`listed`: it was removed) says whose it was itself."""
     act = repo.activity_since(cur, uid, visit)
     return {"at": visit, "first": first,
             "books": {m: {"pnl": cents(pnl), "trades": n} for m, (pnl, n) in recent.items()},
@@ -150,14 +151,28 @@ def _since_visit(cur, uid: int, visit: datetime, first: bool, recent: Dict,
             "autopilot": act["autopilot"], "runs": act["runs"], "own_sessions": bool(act.get("own_sessions")),
             "spent": {k: credit_usd(v) for k, v in act["spent"].items()} if billing.configured() and act.get("spent") else None,
             "milestones": act.get("milestones") or {"passed": [], "live_ready": []},
-            "by_deployment": _since_by_deployment(by_dep or {})}
+            "by_deployment": _since_by_deployment(by_dep or {}, _removed_names(cur, uid, by_dep or {}, listed))}
 
 
-def _since_by_deployment(by_dep: Dict[Tuple[str, int], Tuple[float, int]]) -> Dict[str, List[Dict]]:
-    """{mode: [{deployment_id, pnl, trades}]} for each book, best first; a book is never mixed with another."""
+def _removed_names(cur, uid: int, by_dep: Dict[Tuple[str, int], Tuple[float, int]], listed: Optional[set]) -> Dict[int, Dict]:
+    """{deployment id: {strategy_id, title}} for the since-visit rows of removed deployments (not in
+    `listed`), read only when there is one; the title is None once the strategy itself was deleted.
+    The page named every such row "a removed strategy", one that still exists included."""
+    if listed is None or all(dep_id in listed for _, dep_id in by_dep):
+        return {}
+    return {int(r["id"]): {"strategy_id": r["strategy_id"], "title": r["title"]} for r in repo.removed_deployments(cur, uid)}
+
+
+def _since_by_deployment(by_dep: Dict[Tuple[str, int], Tuple[float, int]],
+                         removed: Optional[Dict[int, Dict]] = None) -> Dict[str, List[Dict]]:
+    """{mode: [{deployment_id, pnl, trades}]} for each book, best first; a book is never mixed with another.
+    A removed deployment's row also carries `removed` and its strategy (`strategy_id`, `title`)."""
     out: Dict[str, List[Dict]] = {}
     for (mode, dep_id), (pnl, n) in by_dep.items():
-        out.setdefault(mode, []).append({"deployment_id": dep_id, "pnl": cents(pnl), "trades": n})
+        row = {"deployment_id": dep_id, "pnl": cents(pnl), "trades": n}
+        if dep_id in (removed or {}):
+            row.update(removed=True, **removed[dep_id])
+        out.setdefault(mode, []).append(row)
     for rows in out.values():
         rows.sort(key=lambda r: (-r["pnl"], r["deployment_id"]))
     return out
