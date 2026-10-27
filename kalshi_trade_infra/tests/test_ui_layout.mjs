@@ -206,6 +206,21 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
 const PHONE_SHEET = '@media (max-width: 600px)';
 const tokens = (all, media = '') => Object.fromEntries(all.filter((r) => r.media === media && sels(r).includes(':root'))
   .flatMap((r) => [...r.body.matchAll(/(--apf-[\w-]+)\s*:\s*([^;]+)/g)].map((m) => [m[1], m[2].trim()])));
+// Walk 2026-10-27 at 390px: a stacked Deploy card set its seven figures three across, which left Since alone on a
+// fourth row under two empty columns. The backtest estimate (its two-line label over a two-line figure, the card's
+// tallest cell) spans two rows, so Since sits under Market beside it and the card is a row shorter. The rule is the
+// phone's only, inside the card's grid (three columns); Meridian's Deploy rows have no such grid and are unchanged.
+test('Tau: on a phone a Deploy card tucks Since under Market beside the two-row backtest estimate, not alone on a row', () => {
+  const all = rules(read('app.css'));
+  assert.equal(decl(all, '.t-dep.stack tbody td[data-lab="Backtest estimate"]', 'grid-row', PHONE), 'span 2');
+  assert.equal(decl(all, '.t-dep.stack tbody tr', 'grid-template-columns', PHONE), 'repeat(3, minmax(0, 1fr))');
+  // Money first: the backtest estimate keeps its place in the first column after the three money figures.
+  assert.equal(decl(all, '.t-dep.stack tbody td[data-lab="Since"]', 'order', PHONE), '1');
+  assert.equal(decl(all, '.t-dep.stack tbody td[data-lab="Backtest estimate"]', 'order', PHONE), undefined);
+  assert.equal(decl(all, '.t-dep.stack tbody td[data-lab="Backtest estimate"]', 'grid-row'), undefined, 'not on a desktop table');
+  assert.ok(!rules(read('app.meridian.css')).some((r) => /td\[data-lab="Backtest estimate"\]/.test(r.sel) && /grid-row/.test(r.body)));
+});
+
 test('Tau: every page leaves room under its last line for the floating autopilot pill, its offset and height, on a phone and a desktop', () => {
   const all = rules(read('app.css'));
   const desk = tokens(all), phone = {...desk, ...tokens(all, PHONE_SHEET)}, thumb = {...phone, ...tokens(all, COARSE)};

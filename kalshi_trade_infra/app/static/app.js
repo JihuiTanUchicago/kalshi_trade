@@ -3851,9 +3851,10 @@
   // bottom padding (app.css) leaves a clear strip under every page's last row, so scrolling to the
   // foot of any page brings it back. Only what shows through counts: a figure clipped out of view by
   // its panel, or under the masthead, is not covered. Focus on the pill (keyboard) keeps it shown.
-  // The open panel is left alone: the user opened it.
+  // The open panel is left alone: the user opened it. A status mark counts too: on a 390px phone the pill sat on
+  // the first Deploy card's Status marks ("Paused", "Paper"), which say which money a row is and whether it trades.
   const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
-    '.figures .m', '.fig', 'td.num', 'dd', '#dash-ap'];
+    '.figures .m', '.fig', 'td.num', 'dd', '.mk', '#dash-ap'];
   const AP_UNDER_SEL = AP_UNDER.join(', ');
   // apYield hit-tests the page (elementsFromPoint), which lays it out and pre-paints it then and there. Run
   // from the pill's render, inside a page's first render, it fixed Research half drawn on a phone: the list

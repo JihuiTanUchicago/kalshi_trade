@@ -2461,6 +2461,27 @@ test('the floating autopilot pill also steps aside from a figure under it', () =
   f.apYield(); assert.equal(box.classes.has('yield'), true);
 });
 
+// Walk 2026-10-27 at 390px: on Deploy's first screen the pill sat on the first card's Status marks ("Paused" over
+// "Paper") and stayed, as a mark was neither a control nor a figure to it. A mark says which money a row is and
+// whether it trades, so the pill steps aside from one as from a figure, and comes back once it scrolls away.
+test('the floating autopilot pill steps aside from a status mark under it', () => {
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><table class="t-dep stack"><tbody><tr><td data-lab="Status"><span class="mk armed">Paused</span><span class="mk">Paper</span></td><td data-lab="Market"><span class="tick">Bitcoin up or down in 15 minutes</span></td></tr></tbody></table></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);   // 390x844 phone
+  const marks = f.root.querySelectorAll('.mk'), tick = f.root.querySelector('.tick');
+  marks.forEach((m) => { m.getBoundingClientRect = rect(0, 0, 0, 0); });
+  tick.getBoundingClientRect = rect(139, 790, 250, 830);    // plain words under its left edge: not a reason to step aside
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  marks[0].getBoundingClientRect = rect(263, 786, 331, 806);   // the card's "Paused" mark
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  marks[0].getBoundingClientRect = rect(263, 300, 331, 320);   // scrolled up and away
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  f.clearTimers();
+});
+
 test('the floating autopilot pill steps aside from any control or value under it, only where it shows through, and never while focused', () => {
   const f = frontend(), body = f.root.parent;
   f.root.innerHTML = '<main id="main"><form><input class="input" name="amt"><textarea class="input"></textarea></form><details><summary>More</summary></details><dl><div><dt>Balance</dt><dd>$1,000.00</dd></div></dl><p>Plain text</p></main>';
