@@ -63,6 +63,27 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     assert.match(plain(html), /Paper net P&L −\$24\.72/);
   });
 
+  test(`${name}: a removed deployment is "removed" on the track record, as on Deploy and the Strategies list, never "Stopped"`, () => {
+    // Deploy's button says Remove and the Strategies list "Removed from paper"; the record's by-strategy table called the
+    // same thing "Stopped", so a customer could take them for two different states.
+    const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
+    const book = (o) => paperBook({strategies: [stratRow({status: 'stopped'}), stratRow({strategy_id: 7, title: 'Deleted strategy',
+      market: 'btc15m', status: 'stopped', removed: true}), stratRow({strategy_id: 9, title: 'Held', status: 'paused'})], ...o});
+    const html = f.trackRecordPanel(book(), 'paper', TH);
+    assert.match(html, /<h2>By strategy<\/h2><p>Removed ones included ·/);
+    assert.match(html, /Fade the 15-minute Bitcoin overshoot<\/a><div class="sub-fig">Removed from paper<\/div>/);
+    assert.match(html, /Deleted strategy<div class="sub-fig">[^<]*· removed from paper, then deleted<\/div>/);
+    assert.match(html, /Held<\/a><div class="sub-fig">Paused<\/div>/);
+    assert.doesNotMatch(plain(html), /[Ss]topped/);
+    // Each tab names its own book.
+    assert.match(f.trackRecordPanel(book({label: 'Kalshi demo'}), 'demo', TH), /<div class="sub-fig">Removed from demo<\/div>/);
+    // What the autopilot did since the last visit says it the same way.
+    f.S.me = {...(f.S.me || {}), user: {...((f.S.me || {}).user || {}), autopilot: true}};
+    const d = {deployments: [], since: {at: '2026-10-25T08:00:00+00:00', first: false, books: {}, passed: {n: 0, items: []},
+      autopilot: {deploy: 1, stop: 2}, runs: {}}};
+    assert.match(f.sinceStrip(d, '#dash-deps'), /It put 1 on paper, removed 2\./);
+  });
+
   test(`${name}: the track record says when its figures were worked out, in its head, and when its minute poll stops landing`, async () => {
     // The read time sat at the foot of the closed "How these numbers are computed" note, so a record its poll could no
     // longer refresh read as current.

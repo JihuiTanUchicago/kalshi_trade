@@ -51,7 +51,7 @@ METHOD = [
     "P&L is net of all Kalshi fees.",
     # What a paper fill assumes: app.services.customer_text.PAPER_FILLS, word for word (a test pins it).
     "Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second before a real order lands, so live fills can come in slightly worse.",
-    "Stopped strategies, removed deployments and deleted strategies keep their trades in every figure: nothing is dropped for doing badly.",
+    "Strategies removed from paper, demo or live, and strategies deleted after that, keep their trades in every figure: nothing is dropped for doing badly.",
     "Paper trades that filled instantly, without the simulated order book, are left out, because real execution would not get those fills.",
     "Capital is what the record needed: the most money ever at risk at once plus the worst drawdown, so the smallest bankroll that could have taken every trade. Return and drawdown percentages use it.",
     "Sharpe and Sortino use daily P&L from the first closed trade to today, with flat days counted, a 0% risk-free rate and a 365-day year. They are hidden under 14 days.",

@@ -149,7 +149,7 @@ export function deployActionCases({name, frontend, strategyFrontend, detailStrat
     f.elapse(500); stop.onclick(); await settle();  // a deliberate second press confirms
     assert.equal(stopped, 1);
     const main = f.root.querySelector('#main').innerHTML;
-    assert.match(main, /class="notice good"[\s\S]*Deployment stopped\. The page didn’t refresh, so reload to see it\./);
+    assert.match(main, /class="notice good"[\s\S]*Deployment removed\. The page didn’t refresh, so reload to see it\./);
     assert.doesNotMatch(main, /notice bad|busy/);
     assert.ok(f.root.querySelector('[data-retry]'));
   });

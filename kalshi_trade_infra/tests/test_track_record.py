@@ -430,4 +430,5 @@ def test_stopped_and_removed_strategies_stay_in_and_say_so():
     assert by[3]["removed"] is True and by[3]["title"] == "Deleted strategy" and by[3]["trades"] == 1
     assert by[4]["status"] == "paused" and by[4]["trades"] == 2
     assert tr.build([row("paper", 1)], NOW)["modes"]["paper"]["strategies"][0]["status"] is None  # unknown stays unknown
-    assert any("Stopped strategies" in line for line in tr.METHOD)
+    assert any("Strategies removed from paper, demo or live" in line for line in tr.METHOD)
+    assert not any("Stopped" in line or "stopped" in line for line in tr.METHOD), "Deploy and Strategies call it removed"

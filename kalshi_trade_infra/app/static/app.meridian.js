@@ -1944,7 +1944,7 @@
     });
     depNotePlace(scope);
   }
-  const DEP_DONE = { pause: 'Deployment paused.', resume: 'Deployment resumed.', stop: 'Deployment stopped.' };
+  const DEP_DONE = { pause: 'Deployment paused.', resume: 'Deployment resumed.', stop: 'Deployment removed.' };
   // After Pause, Resume or Remove the board is repainted without the pressed button: say what happened,
   // and put focus on that deployment's next control, or at the top of the page once its row is gone.
   // A board that didn't repaint (fresh false) shows it done, with a word to reload.
@@ -2574,7 +2574,9 @@
   const trDay = (ts) => (ts ? dateFmt(new Date(ts * 1000), YEAR_DAY) : '—');
   const trMonth = (k) => { const [y, m] = k.split('-'); return dateFmt(new Date(Date.UTC(+y, +m - 1, 15)), UTC_MONTH); };
   const trCi = (ci, f) => (ci ? `95%: ${f(ci[0])} to ${f(ci[1])}` : 'needs 2+ trades for a range');
-  const TR_STATUS = { paused: 'Paused', stopped: 'Stopped' };
+  // A deployment the user removed is "Removed from paper" here, as on Deploy (its Remove button) and on the
+  // Strategies list: the table called the same thing "Stopped".
+  const TR_STATUS = { paused: () => 'Paused', stopped: (key) => `Removed from ${key}` };
   const TR_EDGE = { positive: ['Edge', 'on'], negative: ['Losing', 'live'], unclear: ['Unproven', ''], thin: ['Too few', 'quiet'] };
   // A first batch of trades often settles in the same second (one 15-minute close), which drew the
   // whole record as a vertical line. When every close falls within a minute, space the points one
@@ -2663,9 +2665,9 @@
       <td class="num" data-lab="Win rate">${r.trades ? pct(r.win_rate, false) : '\u2014'}</td></tr>`).join('');
     const strats = m.strategies.map((r) => {
       const [tag, cls] = r.instant_only ? ['Left out', 'quiet'] : TR_EDGE[r.edge] || TR_EDGE.unclear;
-      // A stopped or deleted strategy stays in the table (and every figure); it says so instead of
+      // A removed or deleted strategy stays in the table (and every figure); it says so instead of
       // reading like one still trading. A deleted one has no page left to link to.
-      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}stopped, then deleted` : TR_STATUS[r.status];
+      const st = r.removed ? `${r.market ? `${esc(marketShort(r.market))} ·\u00a0` : ''}removed from ${esc(key)}, then deleted` : TR_STATUS[r.status] ? TR_STATUS[r.status](esc(key)) : '';
       return `<tr><td class="name" data-lab="Strategy">${r.removed ? esc(r.title) : `<a href="/strategies/${+r.strategy_id}">${esc(r.title)}</a>`}${st ? `<div class="sub-fig">${st}</div>` : ''}${trRowLeft(r)}</td>
         <td data-lab="Read"><span class="mk ${cls}">${tag}</span></td>
         <td class="num" data-lab="Trades">${num(r.trades)}${r.open_trades ? ` <span class="sub-fig">+${num(r.open_trades)} open</span>` : ''}</td>
@@ -2683,7 +2685,7 @@
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
-      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Stopped ones included ·\u00a0“Too few” means under ${th.min_trades} trades</p></div>
+      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Removed ones included ·\u00a0“Too few” means under ${th.min_trades} trades</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Read</th><th class="num">Trades</th><th class="num">Net P&amp;L</th><th class="num">Win rate</th><th class="num">Avg trade</th><th class="num">Max drawdown</th><th class="num">Last trade</th></tr></thead><tbody>${strats}</tbody></table></div></section>`;
   }
   // Lives on the dashboard (Todd, 2026-10-25): its own request below the live board, so the 15s
@@ -3179,7 +3181,7 @@
   // The strip itself, from /api/dashboard's `since` block and the page's own deployments: each book's
   // realized P&L (never added together), what passed, what the autopilot changed, and what needs the
   // user, linking to it. `pausedHref` is where this page lists its paused deployments.
-  const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'stopped %s'], ['adjust', 'adjusted %s'], ['research', 'started %s']];
+  const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'removed %s'], ['adjust', 'adjusted %s'], ['research', 'started %s']];
   const CREDITS_WARN_DAYS = 3;  // the strip warns when credits last fewer days than this (server: CREDIT_RUNWAY_WARN_DAYS)
   // A deployment's pause reason, short: no "Autopilot:" prefix, no closing period, cut at a word.
   const shortReason = (r) => {
