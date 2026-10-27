@@ -547,7 +547,9 @@ window.TauPage('research', (T) => {
       ${row('Sizing', sizing)}</dl>`;
   }
 
-  // The gatekeeper's numbers for the reader (their own result) — never fed back to the generator.
+  // The gatekeeper's numbers for the reader (their own result) — never fed back to the generator. Its range
+  // is the bootstrap's at gatekeeper.ALPHA (0.10), the 90% range the gate and the strategy page name: it read
+  // "95% CI". The average per trade after fees leads, as on the strategy page: the card showed no result.
   function statGrid(s) {
     if (!s) return '';
     const num = (v, dp) => (v == null || typeof v !== 'number') ? null : v.toFixed(dp == null ? 2 : dp);
@@ -555,10 +557,11 @@ window.TauPage('research', (T) => {
     const cells = [];
     const add = (k, v) => { if (v != null && v !== '') cells.push(`<div><dt>${k}</dt><dd>${v}</dd></div>`); };
     add('Trades', s.n_trades != null ? String(s.n_trades) : null);
+    add('Avg per trade after fees', typeof s.mean_net_return === 'number' ? pct(s.mean_net_return) : null);
     add('p-value', p(s.p_value));
     add('DSR', num(s.dsr));
     add('Sharpe', num(s.sharpe));
-    if (s.ci && (s.ci.lo != null || s.ci.hi != null)) add('95% CI', `${pct(s.ci.lo, false)}…${pct(s.ci.hi, false)}`);
+    if (s.ci && (s.ci.lo != null || s.ci.hi != null)) add('90% range', `${pct(s.ci.lo, false)}…${pct(s.ci.hi, false)}`);
     add('Placebo p', p(s.placebo_p));
     if (s.max_drawdown != null) add('Max drawdown', usd(-Math.abs(s.max_drawdown), true));
     return cells.length ? `<dl class="hx-stats">${cells.join('')}</dl>` : '';

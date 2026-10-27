@@ -116,6 +116,16 @@ export function runPageCases({name, frontend}) {
     assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, said);
   });
 
+  test(`${name}: a verdict's figures lead with the average per trade after fees, and name the gate's 90% range`, async () => {
+    const stats = {n_trades: 132, mean_net_return: 0.031, p_value: 0.012, ci: {lo: 0.006, hi: 0.058}};
+    const f = await open({status: 'succeeded', stop_reason: 'limit'}, [ev(1, 'hypothesis', 'Idea'),
+      ev(2, 'verdict', 'PASSED - Idea: validation verdict is gatekeeper-held', {title: 'Idea', status: 'passed', strategy_id: 42, stats})]);
+    const log = f.root.querySelector('#log').querySelector('[data-review]').innerHTML;
+    assert.match(log, /<dt>Trades<\/dt><dd>132<\/dd><\/div><div><dt>Avg per trade after fees<\/dt><dd>\+3\.1%<\/dd>/);
+    assert.match(log, /<dt>90% range<\/dt><dd>0\.6%…5\.8%<\/dd>/);
+    assert.doesNotMatch(log, /95% CI/);
+  });
+
   test(`${name}: the example's cost says it was free, not "from your credits"`, async () => {
     let f = await open({status: 'succeeded', example: true, spent_usd: 0});
     assert.match(figs(f), /\$0\.00\s*free: Tau ran it for you/); assert.doesNotMatch(figs(f), /from your credits/);
