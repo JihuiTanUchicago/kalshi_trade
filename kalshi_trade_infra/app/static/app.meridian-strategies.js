@@ -5,7 +5,7 @@ window.TauPage('strategies', (T) => {
   'use strict';
   const {
     actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
-    catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, demoHealthLine, DEP_DONE, depIdle,
+    catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold,
     gl, glo, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
     money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
@@ -504,7 +504,9 @@ window.TauPage('strategies', (T) => {
       need = 'Next rung, paper: ' + (apPaper ? `<span data-ap-next${on ? '' : ' hidden'}>the autopilot puts it there at its next check-in.</span><span data-ap-off${on ? ' hidden' : ''}>${hand}</span>` : hand);
     }
     else if (next[0] === 'demo') need = (demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds">Funds page</a>.'
-      : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}` : 'Next rung, demo: nothing needed. Deploy it on demo below.')
+      : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}`
+        // Its demo cash is being read (demo_health_pending): not yet "nothing needed".
+        : s.demo_health_pending ? 'Next rung, demo: checking your Kalshi demo account…' : 'Next rung, demo: nothing needed. Deploy it on demo below.')
       + ' Demo runs the same rules on Kalshi’s sandbox with play money, to prove its orders place, fill and book before live money.';
     else if (road) {
       const left = roadLeft(road, s);
@@ -805,9 +807,11 @@ window.TauPage('strategies', (T) => {
     // paper record, demo record), with progress, what is left and when the counts could be in. How it
     // then reaches real money (the user's own step) is said apart, never as a check that runs by itself.
     // Best-effort and fetched after the page, like the dev curve.
+    let roadNow;  // Road to live once read: the ladder is drawn with it
     const roadRead = async () => {
       try {
         const r = await api('/api/strategies/' + s.id + '/live-readiness');
+        roadNow = r;
         const lb = root.querySelector('#ladder-body');
         if (lb) lb.innerHTML = ladderLines(s, { canDeploy, demoWhy, road: r, apPaper });
         const p = r.paper, c = p.checks;
@@ -838,6 +842,21 @@ window.TauPage('strategies', (T) => {
       }
     };
     if (root.querySelector('#road-live-body')) roadRead();
+    // The ladder's demo check never waits on Kalshi: one that needs the demo cash while the server's memo isn't
+    // kept comes demo_health_pending. The page asks the demo cash (one ask, shared with the other pages'), then
+    // reads the strategy again, once, and redraws only the ladder. Still unknown after that (or that read failed),
+    // the rung reads as before: an unknown demo cash is never a problem.
+    if (s.demo_health_pending && !restricted) {
+      const gen = S.gen;
+      const redraw = (again) => {
+        if (gen !== S.gen) return;
+        if (again) s.demo_health = again.demo_health;
+        s.demo_health_pending = false;
+        const lb = root.querySelector('#ladder-body');
+        if (lb) lb.innerHTML = ladderLines(s, { canDeploy, demoWhy, road: roadNow, apPaper });
+      };
+      demoCashRead().then(() => (gen === S.gen ? api('/api/strategies/' + s.id) : null)).then(redraw, () => redraw(null));
+    }
     for (const [sel, fl] of [['#dep-paper', '#depflash'], ['#dep-paper-quick', '#depflash-quick']]) {
       const depPaper = root.querySelector(sel);
       if (depPaper) depPaper.onclick = () => busy(depPaper, async () => {

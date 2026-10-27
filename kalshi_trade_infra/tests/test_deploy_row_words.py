@@ -84,7 +84,7 @@ def test_the_deploy_board_passes_the_demo_key_back_to_its_rows(monkeypatch):
     monkeypatch.setattr(dep_routes.book_memo, "removed_deployments", lambda memo: [])
     monkeypatch.setattr(dep_routes, "_backtest_checks", lambda *a: {})
     monkeypatch.setattr(dep_routes, "_deploy_roads", lambda *a: {})
-    monkeypatch.setattr(dep_routes, "_demo_health", lambda *a: None)
+    monkeypatch.setattr(dep_routes, "demo_health_memo", lambda *a, **k: (None, False))
     monkeypatch.setattr(dep_routes.repo, "user_positions", lambda *a: [])
     monkeypatch.setattr(views.repo, "get_kalshi_dev_key", lambda cur, uid: {"key_id": "k"})
     monkeypatch.setattr(dep_routes.page_poll, "answer", lambda body, v: body)

@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashRead, DEMO_WHAT, demoSpan, esc, fig, flash, holdFocus, ICON, loading, pageAssets,
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, DEMO_WHAT, demoSpan, esc, fig, flash, holdFocus, ICON, loading, pageAssets,
     paint, painted, poll, refreshed, root, S, shell, tone, usd, when
   } = T;
 
@@ -52,6 +52,12 @@ window.TauPage('funds', (T) => {
   const demoEmpty = (bal, from) => bal == null ? '' : bal < 0.005 ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has $0.00, so Kalshi refuses demo orders. Add demo funds in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (play money, not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>`
     : from && bal < from ? `<div class="notice" role="status">${ICON.warn}<span>Your Kalshi demo account has ${usd(bal)}. Demo copies of your paper strategies start once it holds ${usd(from)}: add play money in your account on ${extLink(KALSHI_KEYS.demo.join, 'demo.kalshi.co')} (not real). Tau’s demo balance above is Tau’s own figure and doesn’t fund it.</span></div>` : '';
 
+  // What the demo key's save says: Kalshi took the key, and its balance once the follow-up has it (never an error's text).
+  const DEV_OK = 'Kalshi\u2019s demo exchange confirmed the key.';
+  const DEV_CHECKING = `Connected \u2713. ${DEV_OK} Checking its balance\u2026`;
+  const devSaid = (b) => b && b.balance != null ? `Connected \u2713 (balance ${usd(b.balance)}). ${DEV_OK}`
+    : b && b.failed ? `Connected \u2713. ${DEV_OK} Tau couldn\u2019t read its balance just now. Reload in a minute to try again.`
+    : `Connected \u2713. ${DEV_OK}`;
   // Each Funds figure says what it leaves out: a book's open positions, by count and cost (contracts x entry,
   // the dashboard's "at cost"). An API without the counts says nothing rather than "0 open".
   const openAt = (b) => b.open_positions ? `${b.open_positions} open (${usd(b.open_at_cost)} at cost) ·\u00a0` : '';
@@ -116,7 +122,10 @@ window.TauPage('funds', (T) => {
     // on its own (neither waits on the other's Kalshi read) and drawn into the figures and its spots in the
     // panels. One that fails says so. A later full read (a write, the poll) supersedes it.
     let shown = null;
-    const fillCash = (d) => [['live', 'kalshi'], ['demo', 'kalshi_dev']].forEach(([book, key]) => {
+    // cashAsk: each book's follow-up for the answer last read in full, resolving to its cash once back (the demo
+    // key's save says its balance from it).
+    let cashAsk = {};
+    const fillCash = (d) => { cashAsk = {}; [['live', 'kalshi'], ['demo', 'kalshi_dev']].forEach(([book, key]) => {
       const b = d[key];
       if (!b || !b.pending) return;
       const fill = (next) => {
@@ -125,15 +134,29 @@ window.TauPage('funds', (T) => {
         // The key went in the meantime: read it all afresh. Otherwise only the cash changed.
         (next.connected ? load(null, d) : load()).catch(() => {});
       };
-      cashRead(b, book).then(fill);
-    });
+      cashAsk[book] = cashRead(b, book).then((next) => { fill(next); return next; });
+    }); };
+    // After a demo key's save: its cash is read after the save (the old key's was forgotten), so the flash says the
+    // balance is being checked and then names it once that follow-up is back, unless something else has been said
+    // there since. `now` is the page's read after the save (pending: its follow-up is in cashAsk.demo).
+    const devFlash = (now, fresh) => {
+      const kd = now && now.kalshi_dev, behind = fresh ? '' : BEHIND;
+      const ask = kd && kd.pending ? cashAsk.demo : null;
+      if (!ask) { flash('#kdflash', devSaid(kd) + behind, 'good'); return; }
+      flash('#kdflash', DEV_CHECKING + behind, 'good');
+      ask.then((b) => {
+        const el = root.querySelector('#kdflash .notice span');
+        if (gen === S.gen && el && el.textContent === DEV_CHECKING + behind) flash('#kdflash', devSaid(b) + behind, 'good');
+      });
+    };
     // `got`: the page's own answer with a key's cash filled in (fillCash); else /api/funds is read.
     const load = async (cfg, got) => {
       const d = got || await api('/api/funds', undefined, cfg);
       if (gen !== S.gen) return;
       shown = d;
-      const k = d.kalshi;
-      const kd = d.kalshi_dev || { connected: false };
+      // Drawn from cashNow: a pending cash read under two minutes ago shows as current while its follow-up is out.
+      const k = cashNow(d.kalshi);
+      const kd = cashNow(d.kalshi_dev || { connected: false });
       const dm = d.demo || { capital: 0, equity: 0, realized: 0 };
       const cf = k.connected && cashFig(k);
       paint(root.querySelector('#ffigs'), fig('Kalshi cash', k.connected ? (cf ? cf[0] : k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : cf ? `${cf[1]}${livePnl(k)} ${openLeft(k, 'live')}` : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
@@ -274,7 +297,7 @@ window.TauPage('funds', (T) => {
         const bad = keyProblem(kdf.key_id.value, kdf.private_key.value, 'demo');
         if (bad) { flash('#kdflash', bad, 'bad'); return; }
         await holdFocus('#dev-disconnect', () => busy(kdf.querySelector('button'), async () => {
-          try { await api('/api/kalshi-dev-key', { key_id: kdf.key_id.value, private_key: kdf.private_key.value }); S.me.kalshi_dev_connected = true; let now = null; const fresh = await refreshed(load().then((d) => { now = d; })); const bal = now && now.kalshi_dev && now.kalshi_dev.balance; flash('#kdflash', (bal != null ? `Connected ✓ (balance ${usd(bal)}). Kalshi’s demo exchange confirmed the key.` : 'Connected ✓. Kalshi’s demo exchange confirmed the key.') + (fresh ? '' : BEHIND), 'good'); } catch (err) { flash('#kdflash', err.message, 'bad'); }
+          try { await api('/api/kalshi-dev-key', { key_id: kdf.key_id.value, private_key: kdf.private_key.value }); S.me.kalshi_dev_connected = true; let now = null; const fresh = await refreshed(load().then((d) => { now = d; })); devFlash(now, fresh); } catch (err) { flash('#kdflash', err.message, 'bad'); }
         }));
       };
       const dvc = root.querySelector('#dev-disconnect');

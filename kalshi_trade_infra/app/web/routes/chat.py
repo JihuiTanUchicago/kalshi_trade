@@ -32,8 +32,8 @@ from app.web.routes.brokers import _paper_call, _perps_live_call
 from app.web.routes.strategies import _research_pass_verdicts
 from app.web.settings import MAX_CHAT_PER_HOUR
 from app.web.views import (
-    DEMO_HEALTH_PENDING,
     _demo_health,
+    demo_health_memo,
     credit_cents,
     credit_exact,
     credit_usd,
@@ -879,11 +879,13 @@ def autopilot_status(ctx: Ctx, ask_kalshi: bool = False):
         # the truer line when nothing is on paper (only the engine or billing outrank it there).
         idle = out["idle"]
         if idle is None or (not paper_run and idle["code"] not in ("engine", "billing")):
-            health = _demo_health(cur, ctx.uid, deps, ask_kalshi=ask_kalshi)
-            if health == DEMO_HEALTH_PENDING:
+            # From the demo cash memo alone: pending when it isn't kept, the page then reading the status again
+            # once the demo cash is in (a line from a figure read under two minutes ago stands meanwhile).
+            health, pending = ((_demo_health(cur, ctx.uid, deps, ask_kalshi=True), False) if ask_kalshi
+                               else demo_health_memo(cur, ctx.uid, deps))
+            if pending:
                 out["idle_pending"] = True
-            else:
-                out["idle"] = health or idle
+            out["idle"] = health or idle
     else:
         out["idle"] = None
     out["story"] = _autopilot_story(out)

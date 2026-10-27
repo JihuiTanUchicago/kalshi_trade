@@ -111,23 +111,26 @@ def _ctx(conn, uid, params=()):
 
 
 def _seen(conn, uid, sid):
-    """What each page says about demo: dashboard bucket, Deploy board, autopilot idle, strategy page. The
-    dashboard's and the autopilot's reads never ask Kalshi: a check that needs the demo cash is marked
-    pending, and, as the page does, the demo cash follow-up (/api/funds/cash?book=demo) is read before
-    they are read again, from its memo."""
+    """What each page says about demo: dashboard bucket, Deploy board, autopilot idle, strategy page. None
+    of their reads asks Kalshi: a check that needs the demo cash is marked pending, and, as the page does,
+    the demo cash follow-up (/api/funds/cash?book=demo) is read before they are read again, from its memo."""
     from app import repository as repo
     from app import server
 
     c = _ctx(conn, uid)
-    dash, ap = server.dashboard(c), server.autopilot_status(c)
-    if dash["demo"].get("health_pending") or ap.get("idle_pending"):
+
+    def reads():
+        return (server.dashboard(c), server.autopilot_status(c), server.list_deployments(c),
+                server.get_strategy(_ctx(conn, uid, (sid,))))
+    dash, ap, board, page = reads()
+    if dash["demo"].get("health_pending") or ap.get("idle_pending") or board.get("demo_health_pending") \
+            or page.get("demo_health_pending"):
         server.funds_cash(server.Ctx(conn, repo.get_user(conn.cursor(), uid), (), {"book": "demo"}, {}, None))
-        dash, ap = server.dashboard(c), server.autopilot_status(c)
+        dash, ap, board, page = reads()
     assert not dash["demo"].get("health_pending") and not ap.get("idle_pending")
-    return {"dashboard": dash["demo"]["health"],
-            "deploy": server.list_deployments(c)["demo_health"],
-            "autopilot": ap["idle"],
-            "strategy": server.get_strategy(_ctx(conn, uid, (sid,)))["demo_health"]}
+    assert not board.get("demo_health_pending") and not page.get("demo_health_pending")
+    return {"dashboard": dash["demo"]["health"], "deploy": board["demo_health"], "autopilot": ap["idle"],
+            "strategy": page["demo_health"]}
 
 
 def test_an_empty_demo_account_refuses_every_order_silently_and_every_page_now_says_so(conn, offline, monkeypatch):
@@ -264,3 +267,66 @@ def test_a_paper_strategy_learns_what_its_demo_rung_needs(conn, offline):
     from app import repository as repo
     repo.delete_kalshi_dev_key(conn.cursor(), uid)
     assert server.get_strategy(_ctx(conn, uid, (sid,)))["demo_health"] is None
+
+
+def _board_ctx(conn, uid, v):
+    """The Deploy board poll's context: its last answer's version (?v=)."""
+    from app import repository as repo
+    from app import server
+
+    return server.Ctx(conn, repo.get_user(conn.cursor(), uid), (), {"v": v}, {}, None)
+
+
+def test_the_deploy_board_poll_and_the_strategy_page_never_ask_kalshi(conn, offline, monkeypatch):
+    """The Deploy board's 10s poll (and its shell read) and the strategy page read the demo cash from Kalshi, up
+    to its 3s demo timeout, each time the memo ran out. They read the memo alone now, whoever asks: the check is
+    pending, the page asks /api/funds/cash?book=demo, then reads again once. Kalshi's demo read raises here."""
+    import time
+
+    from app import repository as repo
+    from app import server
+    from app.trading import demo_twins
+    from app.web import shell_reads
+
+    uid = _user(conn)
+    sid, _ids = _strategy(conn, uid, stake=10.0)  # a demo copy running, $10 a stake
+    offline(uid, 0.0)  # the demo account is empty; the memo holds nothing yet
+    read = demo_twins._read_balance
+
+    def no_kalshi(*a, **k):
+        raise AssertionError("a page read asked Kalshi for the demo cash")
+    monkeypatch.setattr(demo_twins, "_read_balance", no_kalshi)
+    board_route = next(fn for m, p, fn, _ in server.ROUTES if m == "GET" and p.match("/api/deployments"))
+    page_route = next(fn for m, p, fn, _ in server.ROUTES if m == "GET" and p.match("/api/strategies/%d" % sid))
+    board = board_route(_ctx(conn, uid))
+    page = page_route(_ctx(conn, uid, (sid,)))
+    assert board["demo_health"] is None and board["demo_health_pending"] is True
+    assert page["demo_health"] is None and page["demo_health_pending"] is True
+    assert shell_reads.then_reads("/api/deployments", board) == ["/api/funds/cash?book=demo"]
+    # The shell's first read of /deploy is this same route: it carries the board and names the follow-up.
+    assert shell_reads.first_requests("/deploy", "", {})[0][1] is server.list_deployments
+    # The poll while it is still pending: "same", and no Kalshi read.
+    assert board_route(_board_ctx(conn, uid, board["v"])).get("same") is True
+
+    # The follow-up (the one page read that may wait on Kalshi); then each page reads the memo: the line.
+    monkeypatch.setattr(demo_twins, "_read_balance", read)
+    server.funds_cash(server.Ctx(conn, repo.get_user(conn.cursor(), uid), (), {"book": "demo"}, {}, None))
+    monkeypatch.setattr(demo_twins, "_read_balance", no_kalshi)
+    after = board_route(_board_ctx(conn, uid, board["v"]))
+    assert not after.get("same") and after["v"] != board["v"], "the board's version moves once the demo cash is in"
+    assert after["demo_health"]["code"] == "demo_funds" and "demo_health_pending" not in after
+    page = page_route(_ctx(conn, uid, (sid,)))
+    assert page["demo_health"]["code"] == "demo_funds" and "demo_health_pending" not in page
+
+    # The memo just ran out (70s old): pending again, the line from that figure standing meanwhile; no Kalshi read.
+    cash = demo_twins._BALANCE_CACHE[uid][1]
+    demo_twins._BALANCE_CACHE[uid] = (time.monotonic() - 70, cash)
+    board = board_route(_ctx(conn, uid))
+    page = page_route(_ctx(conn, uid, (sid,)))
+    assert board["demo_health_pending"] is True and board["demo_health"]["code"] == "demo_funds"
+    assert page["demo_health_pending"] is True and page["demo_health"]["code"] == "demo_funds"
+    # Over two minutes old: pending with no line until the follow-up is in.
+    demo_twins._BALANCE_CACHE[uid] = (time.monotonic() - 130, cash)
+    board = board_route(_ctx(conn, uid))
+    assert board["demo_health_pending"] is True and board["demo_health"] is None
+    assert page_route(_ctx(conn, uid, (sid,)))["demo_health"] is None

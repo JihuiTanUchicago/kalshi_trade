@@ -381,6 +381,33 @@ def test_the_dashboard_without_kalshi_reads_the_cash_from_its_memo_alone(monkeyp
     assert _demo_health(None, 7, [], ask_kalshi=False) is None
 
 
+def test_a_demo_check_reads_the_memo_alone_and_keeps_a_line_from_a_figure_under_two_minutes_old(monkeypatch):
+    # The pages' demo check (dashboard, autopilot, Deploy board, strategy page) never asks Kalshi (its client raises
+    # here). The memo kept: the line, nothing pending. Just past it (the minute boundary): pending, so the page asks
+    # the follow-up, with the line from that figure meanwhile, so it doesn't drop out for a poll. Older, or none:
+    # pending with no line (never "Demo isn't trading" from an unknown figure).
+    from app.web.views import RECENT_ENOUGH, demo_health_memo
+    kalshi_account, demo_twins = _dashboard_db(monkeypatch, deps=[DEMO_DEP])
+    now = kalshi_account.time.monotonic()
+    code = lambda h: h and h["code"]  # noqa: E731
+    for age, figure, want in ((10, 0.0, ("demo_funds", False)), (70, 0.0, ("demo_funds", True)),
+                              (RECENT_ENOUGH - 5, 0.0, ("demo_funds", True)), (RECENT_ENOUGH + 5, 0.0, (None, True)),
+                              (70, 250.0, (None, True)), (70, None, (None, True)), (10, None, (None, False))):
+        demo_twins._BALANCE_CACHE[7] = (now - age, figure)
+        health, pending = demo_health_memo(None, 7, [DEMO_DEP])
+        assert (code(health), pending) == want, (age, figure)
+    demo_twins._BALANCE_CACHE.clear()
+    assert demo_health_memo(None, 7, [DEMO_DEP]) == (None, True)
+    assert demo_health_memo(None, 7, []) == (None, False)  # nothing on demo: no cash needed, nothing pending
+    # The strategy page's next rung asks with a stake even with nothing on demo.
+    assert demo_health_memo(None, 7, [], stake=5.0) == (None, True)
+
+
+def test_then_reads_names_the_deploy_boards_pending_demo_cash():
+    assert shell_reads.then_reads("/api/deployments", {"demo_health": None, "demo_health_pending": True}) == ["/api/funds/cash?book=demo"]
+    assert shell_reads.then_reads("/api/deployments", {"demo_health": None}) == []
+
+
 def test_then_reads_names_the_dashboards_and_the_autopilots_pending_cash_once():
     pending = {"connected": True, "pending": True, "balance": None}
     dash = {"live": pending, "demo": {"health": None, "health_pending": True}}
@@ -452,7 +479,8 @@ def test_the_dashboard_and_funds_never_ask_kalshi_whoever_asks_and_a_cash_read_m
     demo_twins._BALANCE_CACHE[7] = (now - 70, 0.0)
     dash = _route("/api/dashboard")(ctx())
     assert dash["live"]["pending"] is True and dash["live"]["last_balance"] == 1234.56 and dash["live"]["balance"] is None
-    assert dash["demo"]["health_pending"] is True and dash["demo"]["health"] is None
+    # The demo check is pending too; its line from the figure read 70s ago stands meanwhile (under two minutes).
+    assert dash["demo"]["health_pending"] is True and dash["demo"]["health"]["code"] == "demo_funds"
     funds = _route("/api/funds")(ctx())
     assert funds["kalshi"]["pending"] is True and funds["kalshi"]["last_balance"] == 1234.56
     assert funds["kalshi_dev"]["pending"] is True and funds["kalshi_dev"]["last_balance"] == 0.0

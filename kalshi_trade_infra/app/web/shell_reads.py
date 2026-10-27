@@ -29,8 +29,9 @@ The dashboard is carried the same way, always: its live book shows the Kalshi ca
 same memo as Funds' (funds.kalshi_cash), so the shell carries a version that never asks Kalshi, the cash
 pending (with the last figure read and its age, if any) and the page asking /api/funds/cash?book=live,
 named in "then" like Funds'. A demo-funds check that would read the demo cash (the dashboard's demo
-health, the autopilot's idle line) is marked pending too, its read named in "then", and the page reads
-it again once the demo cash is back.
+health, the autopilot's idle line, the Deploy board's demo line) is marked pending too, its read named in
+"then", and the page reads it again once the demo cash is back. The Deploy board is carried as before; its
+read never asks Kalshi either.
 
 The dashboard also carries the autopilot status: its autopilot card sits above the figures, and drawn
 a round trip after them it pushed them down the screen. Research carries its loop card's board for the
@@ -112,7 +113,7 @@ def then_reads(url: str, body: Dict[str, Any]) -> List[str]:
     """The reads a page asks right after its carried one, which boot.js starts beside the bundle: the Kalshi
     cash a carried read marked pending, one ask per book (the page asks them so too). Funds' live and demo
     cash; the dashboard's live cash and the demo cash its demo-funds check waits on; the autopilot's demo
-    cash for its idle line. [] for every other read."""
+    cash for its idle line; the Deploy board's demo cash for its demo-funds check. [] for every other read."""
     if not isinstance(body, dict):
         return []
     path = url.split("?", 1)[0]
@@ -122,6 +123,8 @@ def then_reads(url: str, body: Dict[str, Any]) -> List[str]:
         books = [("live", _pending(body, "live")), ("demo", _pending(body, "demo", "health_pending"))]
     elif path == "/api/autopilot/status":
         books = [("demo", bool(body.get("idle_pending")))]
+    elif path == "/api/deployments":
+        books = [("demo", bool(body.get("demo_health_pending")))]
     else:
         return []
     return ["/api/funds/cash?book=%s" % book for book, pending in books if pending]
