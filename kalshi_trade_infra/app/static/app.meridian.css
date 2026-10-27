@@ -2305,7 +2305,7 @@ body.landing-body .apf { display: none; }
 #rfigs .fig, #research-status .fig { font: 500 14px/20px var(--f-ui); color: var(--ink); font-variant-numeric: tabular-nums lining-nums; letter-spacing: 0; }
 #research-status.measure { padding-left: 16px; border-left: 1px solid var(--rule); }
 .research-history .runs { display: block; }
-.research-history .run-card, .run-columns { display: grid; grid-template-columns: minmax(0, 1fr) 120px 88px 112px; gap: 4px 20px; }
+.research-history .run-card, .run-columns { display: grid; grid-template-columns: minmax(0, 1fr) 120px 88px 140px; gap: 4px 20px; }
 .run-columns { align-items: end; padding: 6px 0; border-bottom: 1px solid var(--rule-2); font-size: 12px; line-height: 18px; font-weight: 600; color: var(--ink); }
 .run-columns > span:last-child { text-align: right; }
 .research-history .run-card { grid-template-rows: auto auto; align-items: center; min-height: 56px; padding: 8px 0; }
@@ -2328,7 +2328,8 @@ body.landing-body .apf { display: none; }
    it once the row stacks on a phone). The state is a flex row, so the line takes its own row. */
 .research-history .run-state { flex-wrap: wrap; justify-content: flex-end; row-gap: 0; }
 .run-why { display: block; flex-basis: 100%; font: 400 12px/18px var(--f-ui); color: var(--ink-2); }
-/* Passes a later check left uncleared: their own line under the ratio, never broken mid-phrase beside it. */
+/* Passes a later check left uncleared: their own line under the ratio, never broken mid-phrase beside it.
+   "+12 passed, not cleared" is ~130px, so the Outcome column above is 140px (at 112px the line took two). */
 .run-fell { display: block; flex-basis: 100%; }
 /* The newest session that ran out of credits: its Add credits link sits under the row, not inside it. */
 .run-cell { border-bottom: 1px solid var(--rule); }

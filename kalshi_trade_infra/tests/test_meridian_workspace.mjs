@@ -6074,6 +6074,17 @@ moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy,
   return f.root.querySelector('#hotrail').innerHTML;
 }});
 
+test('a research row’s Outcome column holds "+12 passed, not cleared" on one line', () => {
+  // At 112px the uncleared line took two at 1280px. Measured in DM Sans 12px: "+12 passed, not cleared" is ~130px.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const grid = css.match(/\n\.research-history \.run-card, \.run-columns \{[^}]*grid-template-columns: minmax\(0, 1fr\) 120px 88px (\d+)px;/);
+  assert.ok(grid && +grid[1] >= 136, grid && grid[1]);
+  const f = frontend();
+  const row = f.runRow({id: 1, status: 'succeeded', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Idea',
+    hypotheses_tried: 40, strategies_passed: 13, not_cleared: 12, spent_usd: 1, error: null, created_at: '2026-10-25T08:00:00Z', stop_reason: 'limit'});
+  assert.match(row, /<span class="run-denominator run-fell">\+12 passed, not cleared<\/span>/);
+});
+
 test('the hot rail wraps a market’s name instead of cutting its close hour, and a Deploy row’s link reads as a link', () => {
   // The rail's name column is ~80px: "BTC above $X at 5pm ET" read "BTC above…", the hour lost.
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
