@@ -730,7 +730,7 @@ test('the dashboard offers one-click autopilot, and once on shows what it is doi
   assert.equal(f.S.me.user.autopilot, true);
   const html = card().innerHTML;
   assert.match(html, /Autopilot ·\u00a0paper/); assert.match(html, /&lt;b&gt;BTC&lt;\/b&gt;/);
-  assert.match(html, /\+\$12\.50/); assert.match(html, /1,234 tested ·\u00a00 passed/); assert.match(html, /<a href="\/strategies\/3"[^>]*>4 of 30 paper trades<\/a>/);
+  assert.match(html, /\+\$12\.50/); assert.match(html, /1,234 tested ·\u00a00 passed/); assert.match(html, /<a href="\/strategies\/3"[^>]*>4 of 30 realistic paper trades<\/a>/);
   // The most trades on paper, which may be losing: 'Closest to live' overstated it.
   assert.match(html, /Furthest on paper/); assert.doesNotMatch(html, /Closest to live/);
   assert.doesNotMatch(html, /undefined|NaN|<b>BTC/);
@@ -880,8 +880,8 @@ test('paper P&L on the card and the autopilot card is realized all time, the fig
 test('the dashboard demo card says what demo is and that its P&L restarts at a reload', async () => {
   for (const [demo, re] of [
     [{equity: 1000, capital: 1000}, /\$1,000\.00 capital ·\u00a0no demo strategies yet ·\u00a0real fills on Kalshi’s sandbox, not real money/],
-    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 40}, /\$500\.00 capital ·\u00a00 open ·\u00a0\+\$12\.00 P&amp;L since reload ·\u00a0real fills/],
-    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 0}, /\+\$12\.00 P&amp;L all time ·\u00a0real fills/],
+    [{equity: 512, capital: 500, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 40}, /\$500\.00 capital ·\u00a00 open ·\u00a0\+\$12\.00 realized since reload ·\u00a0real fills/],
+    [{equity: 1012, capital: 1000, realized_pnl: 12, running: 1, open_positions: 0, before_reload: 0}, /\+\$12\.00 realized all time ·\u00a0real fills/],
   ]) {
     const f = frontend({fetchImpl: path => {
       if (path === '/api/dashboard') return response({...emptyDashboard(), demo});
@@ -919,7 +919,7 @@ test('Funds demo labels say "since reload" only after a reload, and that demo fi
     await f.viewFunds();
     const main = f.root.querySelector('main').innerHTML;
     assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
-    assert.match(main, before_reload ? /<dt>P&amp;L since reload<\/dt>/ : /<dt>P&amp;L all time<\/dt>/);
+    assert.match(main, before_reload ? /<dt>Realized since reload<\/dt>/ : /<dt>Realized all time<\/dt>/);
     assert.match(main, /the track record still counts every closed demo trade/);
     assert.match(f.root.querySelector('#ffigs').innerHTML, /real fills on Kalshi’s sandbox, not real money/);
   }
@@ -3133,7 +3133,7 @@ test('the since strip says what demo needs in a sentence, and a book with nothin
 });
 
 test('past its paper-trade target the autopilot card says how many and how many were needed, never "67 of 30"', async () => {
-  for (const [trades, said] of [[4, '4 of 30 paper trades'], [67, '67 paper trades (30 needed)'], [30, '30 paper trades (30 needed)']]) {
+  for (const [trades, said] of [[4, '4 of 30 realistic paper trades'], [67, '67 realistic paper trades (30 needed)'], [30, '30 realistic paper trades (30 needed)']]) {
     const f = frontend({fetchImpl: path => {
       if (path.startsWith('/api/dashboard')) return response(emptyDashboard());
       if (path === '/api/autopilot/status') return response({autopilot: true, mode: 'paper', story: ['Researching.'],

@@ -28,6 +28,10 @@ Z = 2.0  # about 95% of n-trade averages land within two standard errors
 SAME_SIZE = (0.75, 1.25)
 BOOKS = ("live", "demo", "paper")
 LABEL = {"live": "live", "demo": "demo", "paper": "paper"}
+# What a book's count covers, said in its line: every run of the strategy in that book, removed ones
+# included, so a deployment row's own "N closed trades" beside it never reads as the same figure.
+RUNS = {"live": "across all its live runs", "demo": "across all its demo runs",
+        "paper": "across all its paper runs, realistic fills only"}
 # Demo fills come from Kalshi's sandbox book, which is thin: a demo book ahead of or behind its
 # backtest says how its orders filled there, not whether the edge is real (paper keeps that job).
 DEMO_NOTE = " Demo's book is thin, so this is no evidence of the edge either way."
@@ -85,8 +89,8 @@ def _book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optiona
     book = "On %s" % LABEL[mode]
     if n < MIN_TRADES:
         out["verdict"] = "early"
-        out["line"] = ("%s: %d completed trade%s so far, too early to tell against the backtest (it takes about %d)."
-                       % (book, n, "" if n == 1 else "s", MIN_TRADES))
+        out["line"] = ("%s: %d completed trade%s so far %s; too early to tell against the backtest (it takes about %d)."
+                       % (book, n, "" if n == 1 else "s", RUNS[mode], MIN_TRADES))
         return out
     var = max(0.0, (sq - pnl * pnl / n) / (n - 1))
     se = math.sqrt(var / n)
@@ -94,7 +98,7 @@ def _book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optiona
     out.update(low=round(low, 4), high=round(high, 4))
     vs = "backtest" if bt["source"] == "out_of_sample" else "in-sample backtest"
     size = " at this book's trade size" if scale != 1.0 else ""
-    figures = "%d trades, %s/trade vs %s %s/trade%s" % (n, _usd(per), vs, _usd(expect), size)
+    figures = "%d trades %s: %s/trade vs %s %s/trade%s" % (n, RUNS[mode], _usd(per), vs, _usd(expect), size)
     if bt.get("win_rate") is not None:
         figures += "; won %s vs %s" % (_pct(win), _pct(bt["win_rate"]))
     band = "(%s to %s)" % (_usd(low), _usd(high))

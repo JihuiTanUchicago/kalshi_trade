@@ -523,10 +523,10 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const lines = f.root.querySelectorAll('.road-line').map((el) => el.innerHTML.replace(/ /g, ' '));
     f.clearTimers && f.clearTimers();
     assert.equal(lines.length, 4, 'paper rows only');
-    assert.ok(lines.includes('Toward live: 12/30 trades · 10/20 events · enough in about 2 days at its pace'), lines.join('\n'));
-    assert.ok(lines.includes('Toward live: 12/30 trades · 10/20 events · paused, so not growing'));
-    assert.ok(lines.includes('Toward live: trades, events and hours are in; 2 checks left: edge, demo record'));
-    assert.ok(lines.includes('Toward live: its record clears every check. Live money only if you deploy it there'));
+    assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · enough in about 2 days at its pace'), lines.join('\n'));
+    assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · paused, so not growing'));
+    assert.ok(lines.includes('Its paper record toward live: trades, events and hours are in; 2 checks left: edge, demo record'));
+    assert.ok(lines.includes('Its paper record toward live: every check cleared. Live money only if you deploy it there'));
   });
 
   test(`${name}: a demo row on Deploy says it is the sandbox, what it copies, and why its fills differ from paper's`, async () => {

@@ -266,6 +266,10 @@ def test_every_page_shows_one_number_per_figure(conn, quiet):
     prog = ap["paper_progress"]
     assert prog["strategy_id"] == sid["alpha"]
     assert (prog["trades"], prog["net_pnl"]) == (paper_rows[sid["alpha"]]["trades"], paper_rows[sid["alpha"]]["net_pnl"])
+    # A paper row's backtest line counts that record too, not the row's own trades, and says so beside them.
+    a2 = board_rows[dep["A2"]]
+    assert a2["backtest_check"]["trades"] == prog["trades"] != a2["closed_trades"]
+    assert "so far across all its paper runs, realistic fills only;" in a2["backtest_check"]["line"]
 
     # -- the agent's context: each book's figure as the dashboard shows it, never one across books ---------------
     money = lambda v: ("-$%.2f" % -v) if v < 0 else "$%.2f" % v  # noqa: E731

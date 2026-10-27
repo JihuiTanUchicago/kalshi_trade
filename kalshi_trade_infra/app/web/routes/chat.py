@@ -280,7 +280,10 @@ def _autopilot_story(d: Dict) -> List[str]:
     elif not paper:
         lines.append("Nothing is trading on paper yet. A strategy has to pass the research tests first.")
     elif prog and int(prog.get("trades") or 0) > 0:
-        lines.append("%s on paper (pretend money). The furthest along has %d of %d trades and is %s." % (
+        # Its count and net are the realistic paper record across all its paper runs (the road to live's),
+        # not one deployment's realized P&L: said so, since the Deploy row beside it shows that one.
+        lines.append("%s on paper (pretend money). The furthest along has %d of the %d realistic paper trades live "
+                     "needs and is %s on them, across all its paper runs." % (
             _plural(paper, "strategy is", "strategies are"), int(prog["trades"]), int(prog["trades_needed"]),
             ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"])))
     elif int(d.get("paper_open") or 0):

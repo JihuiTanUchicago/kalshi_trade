@@ -1729,12 +1729,12 @@
     let text;
     if (parts.length) text = parts.join(' ·\u00a0') + (!r.running ? ' ·\u00a0paused, so not growing' : r.eta_days != null ? ` ·\u00a0enough in ${roadDays(r.eta_days)} at its pace` : '');
     else if (!r.failing) text = 'trades, events and hours are in';
-    else if (!r.failing.length) text = 'its record clears every check. Live money only if you deploy it there';
+    else if (!r.failing.length) text = 'every check cleared. Live money only if you deploy it there';
     else {
       const names = [...new Set(r.failing.map((k) => ROAD_FAILING[k] || esc(k.replace(/_/g, ' '))))];
       text = `trades, events and hours are in; ${names.length} check${names.length === 1 ? '' : 's'} left: ${names.join(', ')}`;
     }
-    return `<div class="sub-fig road-line">Toward live: ${text}</div>`;
+    return `<div class="sub-fig road-line">Its paper record toward live: ${text}</div>`;
   };
   // A demo row says what it is: Kalshi's sandbox with play money, a copy of its paper run when it has
   // one, there to prove the order path before live. Its fills differ from paper's because the demo
@@ -2182,7 +2182,7 @@
       ].filter(Boolean).join('<span class="sep">/</span>');
       const liveFigure = fig('Kalshi cash', d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected', { small: (d.live.connected ? (d.live.balance == null ? 'Couldn\u2019t read your Kalshi balance just now' : mSub(d.live, 'Your Kalshi cash \u2014 real money untouched')) : '<a href="/funds">Connect Kalshi</a>') + tradesCsv('live', d.live) });
       const liveSummary = `<div class="m live-summary"><dt class="lab vh">Kalshi cash</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Kalshi cash</span><strong class="fig${!d.live.connected || d.live.balance == null ? ' balance-state' : ''}">${d.live.connected ? (d.live.balance == null ? 'Unavailable' : usd(d.live.balance)) : 'Not connected'}</strong><span class="portfolio-return">${d.live.connected ? (d.live.balance == null ? `Couldn\u2019t read your Kalshi balance just now \u00b7\u00a0${money(d.live.realized_pnl)} realized all time by Tau trades` : `${money(d.live.realized_pnl)} realized all time by Tau trades${d.live.balance_at ? ` \u00b7\u00a0cash read from Kalshi ${when(d.live.balance_at)}` : ''}`) : '<a href="/funds">Connect Kalshi</a>'}${tradesCsv('live', d.live)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(d.live.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Open positions</span><strong>${esc(d.live.open_positions)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost, not in cash</span><strong>${usd(d.live.open_at_cost)}</strong></div></div></dd></div>`;
-      const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} P&amp;L ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` });
+      const demoFigure = fig('Demo balance', usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital \u00b7\u00a0${d.demo.open_positions} open \u00b7\u00a0${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}` : `${usd(d.demo.capital)} capital ·\u00a0No demo deployments`} \u00b7\u00a0${DEMO_WHAT}${tradesCsv('demo', d.demo)}` });
       // Tau's own dashboard says "practice money" beside the paper figure; here the $1,000 "Available cash" said nothing, so a
       // newcomer could take it for real money.
       const paperFigure = `<div class="m paper-summary"><dt class="lab vh">Paper portfolio</dt><dd class="portfolio-numbers"><div class="portfolio-group"><div><span class="lab" aria-hidden="true">Paper portfolio</span><strong class="fig">${usd(p.equity)}</strong><span class="portfolio-return"><span class="nobr">Practice money, not real</span> \u00b7\u00a0<span class="nobr">Realized P&amp;L, all time ${money(p.realized_pnl)}</span>${tradesCsv('paper', p)}</span></div><div class="portfolio-detail"><span class="lab">Realized today (UTC)</span><strong>${money(p.today_pnl)}</strong></div></div><div class="portfolio-group"><div class="portfolio-detail"><span class="lab">Available cash</span><strong>${usd(p.cash)}</strong></div><div class="portfolio-detail"><span class="lab">Open at cost</span><strong>${usd(p.open_at_cost)}</strong></div></div></dd></div>`;
@@ -3959,7 +3959,7 @@
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = roadSummary(r, s, liveWhy, rows.length) + gatesHtml(rows)
           + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? 'Paper is <b>losing money</b> per trade, while the backtest made money on unseen data.' : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest's unseen-data P&amp;L per trade.`}</p>` : '')
-          + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading on this server: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
+          + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book, from every paper run of this strategy, removed ones included, so these figures are not its realized P&amp;L above. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading on this server: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
       } catch (e) {
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = '<p class="hint">Live readiness is unavailable right now.</p>';
@@ -4151,7 +4151,7 @@
       // A part-sold trade's sold slice is realized (the dashboard counts it) but waits here for the rest.
       + (m.open_realized_pnl ? ` Part of ${m.open_trades === 1 ? 'it' : 'them'} is already sold: ${usd(m.open_realized_pnl, true)} realized, not yet in these figures.` : ''));
     if (key === 'live' && m.trades) caveats.push('Live results count only the trades Tau placed, net of Kalshi fees. Your Kalshi cash also moves with deposits, withdrawals and anything you trade yourself.');
-    if (key === 'demo' && m.trades) caveats.push('Demo trades are real fills on Kalshi’s sandbox exchange with simulated money. Reloading the demo account doesn’t reset this record, so it can differ from P&L since reload.');
+    if (key === 'demo' && m.trades) caveats.push('Demo trades are real fills on Kalshi’s sandbox exchange with simulated money. Reloading the demo account doesn’t reset this record, so it can differ from the realized P&L since reload on Funds.');
     const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map(esc).join(' ')}</p>` : '';
     if (!m.trades) {
       // Paper only: the live and demo tabs keep their own copy.
@@ -4378,8 +4378,8 @@
         </section>
         <section class="panel">
           <h3>Kalshi demo (sandbox) account</h3>
-          <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>P&amp;L ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
-          <p class="lede" style="margin-bottom:14px">Real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is simulated. Reloading changes Tau’s balance only and starts P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
+          <dl class="kv"><dt>Demo balance</dt><dd>${usd(dm.equity)}</dd><dt>${dm.before_reload ? 'Capital at last reload' : 'Starting capital'}</dt><dd>${usd(dm.capital)}</dd><dt>Realized ${demoSpan(dm)}</dt><dd class="${tone(dm.realized)}">${usd(dm.realized, true)}</dd></dl>
+          <p class="lede" style="margin-bottom:14px">Real orders on Kalshi’s sandbox exchange, to prove the order path before live money. The sandbox book is thin, so its fills and P&amp;L are no evidence of the edge; paper keeps that job. The money is simulated. Reloading changes Tau’s balance only and starts realized P&amp;L since reload at $0.00; the track record still counts every closed demo trade.</p>
           <form id="demo" class="amount">
             <label class="field"><span>Reload to</span><input class="input" name="amount" type="number" min="1" max="100000" step="0.01" inputmode="decimal" required placeholder="1000"></label>
             <button class="btn" type="submit">Reload demo</button>
@@ -5506,7 +5506,7 @@
     return d;
   }
   // Paper trades toward the target: "12 of 30 paper trades", and once past it "67 paper trades (30 needed)".
-  const paperCount = (p) => +p.trades >= +p.trades_needed ? `${num(+p.trades)} paper trades (${num(+p.trades_needed)} needed)` : `${num(+p.trades)} of ${num(+p.trades_needed)} paper trades`;
+  const paperCount = (p) => +p.trades >= +p.trades_needed ? `${num(+p.trades)} realistic paper trades (${num(+p.trades_needed)} needed)` : `${num(+p.trades)} of ${num(+p.trades_needed)} realistic paper trades`;
   // A backtest trade's exit, in words (backtest.py / spec.exit_signal reasons); an unknown one loses its underscores.
   const EXIT_WORD = { settled: 'settled', take_profit: 'take-profit', stop_loss: 'stop-loss', stop: 'stop', edge_gone: 'edge gone', signal: 'signal', exit: 'signal', mark: 'marked at end' };
   const exitWord = (r) => r == null ? '' : EXIT_WORD[r] || String(r).replace(/_/g, ' ');
@@ -6034,7 +6034,7 @@
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${liveInPlay ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(' ·\u00a0')) : 'Not researching right now'} ·\u00a0${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${d.research.cost_7d ? ', ' + usd(d.research.cost_7d) + ' spent' : ''}</dd></div>` : ''}
-      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)}</dd></div>` : ''}`;
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a> ·\u00a0${paperCount(d.paper_progress)} ·\u00a0${usd(d.paper_progress.net_pnl, true)} net on them</dd></div>` : ''}`;
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.
