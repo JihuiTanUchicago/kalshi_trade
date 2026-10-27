@@ -25,7 +25,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const figs = async (extra) => {
       const f = strategyFrontend(detailStrategy({market: 'btc15m', kind: undefined, research_only: false, ...extra}));
       await f.viewStrategy(42); await flush();
-      const el = f.root.querySelector('#figs') || f.root.querySelector('main');
+      const el = f.root.querySelector('#figs') || f.root.querySelector('#main');
       return el.innerHTML;
     };
     assert.doesNotMatch(await figs({}), /\$0 at risk/);
@@ -35,7 +35,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
   test(`${name}: passed perpetual detail is research only with USD prices and fixed scenario costs`, async () => {
     const input = detail(), before = JSON.stringify(input);
     const f = strategyFrontend(input); await f.viewStrategy(42); await flush();
-    const output = f.root.querySelector('main').innerHTML;
+    const output = f.root.querySelector('#main').innerHTML;
     for (const label of ['Research only', 'Perpetual research scenario', 'Entry (USD)', 'Exit (USD)',
       '$7.123456', '$7.56789', 'fixed 12 bps', '5 bps adverse slippage per fill', 'settled funding',
       'uncalibrated cost assumptions', 'Short losses can exceed capital']) assert.ok(output.includes(label), label);
@@ -54,8 +54,8 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
         deployments: [{id: 1, mode: 'live', status: 'running'}],
         holdings: [{ticker: 'SYNTHBTC', side: 'long', qty: 1, entry_price: 7, mode: 'live'}]}));
       await f.viewStrategy(42); await flush();
-      assert.match(f.root.querySelector('main').innerHTML, /Research only/);
-      assert.doesNotMatch(f.root.querySelector('main').innerHTML, /Holding right now|Already deployed:|View deployments|Deploying it is your decision/);
+      assert.match(f.root.querySelector('#main').innerHTML, /Research only/);
+      assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /Holding right now|Already deployed:|View deployments|Deploying it is your decision/);
       noExecution(f);
     }
   });
@@ -64,7 +64,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = strategyFrontend(detailStrategy({research_only: true}));
     await f.viewStrategy(42);
     for (const id of ['dep-paper', 'dep-demo', 'dep-live', 'live-confirm']) assert.equal(f.root.querySelector('#' + id), null);
-    assert.match(f.root.querySelector('main').innerHTML, /Research only/);
+    assert.match(f.root.querySelector('#main').innerHTML, /Research only/);
   });
 
   test(`${name}: mixed bulk selection deploys only the eligible binary strategy`, async () => {
@@ -93,7 +93,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     ];
     const f = strategyFrontend(detailStrategy({deployments}));
     await f.viewStrategy(42); await flush();
-    const html = f.root.querySelector('main').innerHTML;
+    const html = f.root.querySelector('#main').innerHTML;
     assert.match(html, /Since deploying/);
     assert.match(html, /Paper<\/span> <span class="[^"]*">\+\$1\.25<\/span> realized over 7 closed trades ·\u00a02 open/);
     assert.match(html, /Demo<\/span> No closed trades yet/);
@@ -104,23 +104,23 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     // Scaled to each deployment's own stake: 10 trades at $10 a trade -> 10 x $2 x 2 = +$40, enough to judge.
     const big = strategyFrontend(detailStrategy({deployments: [{id: 4, mode: 'live', status: 'running', realized_pnl: 30, closed_trades: 10, open_positions: 0, stake: 10}]}));
     await big.viewStrategy(42); await flush();
-    const bigHtml = big.root.querySelector('main').innerHTML;
+    const bigHtml = big.root.querySelector('#main').innerHTML;
     assert.match(bigHtml, /10 trades would have made \+\$40\.00<\/p>/);
     assert.doesNotMatch(html, /real-paused/);
     const paused = strategyFrontend(detailStrategy({deployments: [{id: 5, mode: 'paper', status: 'paused', status_reason: 'Lost $12.00, more than the <guard>.', realized_pnl: -12, closed_trades: 9, open_positions: 0}]}));
     await paused.viewStrategy(42); await flush();
-    assert.match(paused.root.querySelector('main').innerHTML, /<b>Paused<\/b>: Lost \$12\.00, more than the &lt;guard&gt;\. <a href="\/deploy">Resume or remove it on Deploy<\/a>/);
+    assert.match(paused.root.querySelector('#main').innerHTML, /<b>Paused<\/b>: Lost \$12\.00, more than the &lt;guard&gt;\. <a href="\/deploy">Resume or remove it on Deploy<\/a>/);
     // The server's plain words (status_why) lead: "By you" read "Paused By you".
     const byYou = strategyFrontend(detailStrategy({deployments: [{id: 6, mode: 'paper', status: 'paused', status_reason: 'By you', status_why: 'You paused it', realized_pnl: 0, closed_trades: 0, open_positions: 0}]}));
     await byYou.viewStrategy(42); await flush();
-    assert.match(byYou.root.querySelector('main').innerHTML, /<b>Paused<\/b>: You paused it\. <a href="\/deploy">/);
-    assert.doesNotMatch(byYou.root.querySelector('main').innerHTML, /By you/);
+    assert.match(byYou.root.querySelector('#main').innerHTML, /<b>Paused<\/b>: You paused it\. <a href="\/deploy">/);
+    assert.doesNotMatch(byYou.root.querySelector('#main').innerHTML, /By you/);
     const untested = strategyFrontend(detailStrategy({out_of_sample: null, deployments}));
     await untested.viewStrategy(42); await flush();
-    assert.doesNotMatch(untested.root.querySelector('main').innerHTML, /real-pace/);
+    assert.doesNotMatch(untested.root.querySelector('#main').innerHTML, /real-pace/);
     const none = strategyFrontend(detailStrategy({deployments: []}));
     await none.viewStrategy(42); await flush();
-    assert.doesNotMatch(none.root.querySelector('main').innerHTML, /Since deploying/);
+    assert.doesNotMatch(none.root.querySelector('#main').innerHTML, /Since deploying/);
   });
 
   // The server's per-book comparison with the backtest (services/backtest_check.py).
@@ -267,7 +267,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const f = strategyFrontend(detailStrategy({holdings, deployed: true, deployments: [{id: 1, mode: 'paper', status: 'running'},
       {id: 2, mode: 'demo', status: 'running'}, {id: 3, mode: 'live', status: 'running'}]}));
     await f.viewStrategy(42); await flush();
-    const main = f.root.querySelector('main').innerHTML;
+    const main = f.root.querySelector('#main').innerHTML;
     const hint = main.slice(main.indexOf('<p class="hint" style="margin-top:8px">'), main.indexOf('</p>', main.indexOf('<p class="hint" style="margin-top:8px">')));
     assert.match(hint, /Live: 1 open position at cost \+ fees \$0\.80 ·\u00a0unrealized (?:<span[^>]*>)?\+\$0\.20/);
     assert.match(hint, /Demo: 1 open position at cost \+ fees \$8\.00 ·\u00a0unrealized (?:<span[^>]*>)?−\$3\.00/);
@@ -277,7 +277,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     // One book alone reads as before, with no label.
     const g = strategyFrontend(detailStrategy({holdings: [h('paper', 4, 1)], deployed: true, deployments: [{id: 1, mode: 'paper', status: 'running'}]}));
     await g.viewStrategy(42); await flush();
-    assert.match(g.root.querySelector('main').innerHTML, />1 open position at cost \+ fees \$4\.00 ·\u00a0unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
+    assert.match(g.root.querySelector('#main').innerHTML, />1 open position at cost \+ fees \$4\.00 ·\u00a0unrealized (?:<span[^>]*>)?\+\$1\.00(?:<\/span>)? \(est\./);
     g.clearTimers && g.clearTimers();
   });
 
@@ -672,7 +672,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
       const f = strategyFrontend(input); await f.viewStrategy(42);
       const cells = f.root.querySelector('table.table.stack tbody tr').querySelectorAll('td.num');
       assert.equal(cells[0].textContent, '—'); assert.match(cells[1].textContent, /^—/);
-      assert.doesNotMatch(f.root.querySelector('main').innerHTML, /NaN|undefined/);
+      assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /NaN|undefined/);
     }
   });
 
@@ -700,7 +700,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.match(f.root.querySelector('#shareflash').innerHTML, /&lt;unsafe&gt; synthetic share refusal/);
     assert.doesNotMatch(f.root.querySelector('#shareflash').innerHTML, /<unsafe>/);
     assert.equal(f.root.querySelector('#dep-paper'), null);
-    assert.match(f.root.querySelector('main').innerHTML, /research-only copy/);
+    assert.match(f.root.querySelector('#main').innerHTML, /research-only copy/);
   });
 
   test(`${name}: research picker and shared snapshots carry the perpetual restriction`, () => {

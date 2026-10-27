@@ -74,7 +74,7 @@ a { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: 2p
 a:hover { text-decoration-color: var(--ink); }
 input, textarea { caret-color: var(--signal); }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-/* Focus a script hands to a page or section (<main> after a page change, a Skip to content target) draws no ring round all of it. */
+/* Focus a script hands to a page or section (a page's heading after a page change or Skip to content) draws no ring round all of it. */
 [tabindex="-1"]:focus { outline: none; }
 img, svg { display: block; }
 h1, h2, h3 { margin: 0; text-wrap: balance; }

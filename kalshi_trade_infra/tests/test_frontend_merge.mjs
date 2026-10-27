@@ -138,7 +138,7 @@ class Element {
 
 function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia = () => ({matches: false}), notifications, win = {}, globals = {}} = {}) {
   const root = new Element('div', {id: 'app'}), body = new Element('body'); body.appendChild(root);
-  const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [], reloads = [];
+  const intervals = new Map(), timeouts = new Map(), requests = [], navigations = [], reloads = [], documentListeners = [];
   const delays = new Map();
   // Runs the pending timers set for at most `ms` (an armed confirm's hold, say) and leaves the longer ones.
   const elapse = ms => { for (const [id, run] of [...timeouts]) if ((delays.get(id) || 0) <= ms) { timeouts.delete(id); run(); } };
@@ -147,7 +147,7 @@ function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia 
   const navigate = (_state, _title, path) => { navigations.push(path); const [p, q] = String(path).split('?'); location.pathname = p; location.search = q ? '?' + q : ''; };
   const context = vm.createContext({
     Intl, URL, URLSearchParams, AbortController,
-    document: {body, getElementById: id => body.querySelector('#' + id), addEventListener() {}, removeEventListener() {}, createElement: tag => new Element(tag)},
+    document: {body, getElementById: id => body.querySelector('#' + id), addEventListener: (name, callback) => documentListeners.push([name, callback]), removeEventListener() {}, createElement: tag => new Element(tag)},
     window: {addEventListener() {}, scrollTo() {}, matchMedia,
       ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {}), ...(stripe ? {Stripe: stripe} : {}), ...win},
     addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
@@ -176,7 +176,7 @@ function frontend({fetchImpl, brokerMount, storage, session, stripe, matchMedia 
   api.S.ap = {mode: 'off'}; api.S.apAt = Date.now();
   // Moves the page's clock (Date.now) forward, for checks on how old a figure is.
   const shiftClock = ms => vm.runInContext(`{ const now = Date.now; Date.now = () => now() + ${Number(ms)}; }`, context);
-  return {...api, win: context.window, root, location, document: context.document, window: context.window, intervals, timeouts, elapse, requests, navigations, reloads, shiftClock};
+  return {...api, win: context.window, root, location, document: context.document, window: context.window, intervals, timeouts, elapse, requests, navigations, reloads, shiftClock, documentListeners};
 }
 
 const strategy = {id: 42, status: 'passed', side: 'yes', stake: 5, deployments: []};
@@ -300,7 +300,7 @@ test('a strategy from the seeded example session carries the Example tag and not
 
 test('the current strategy page renders an escaped research paper and a separate real demo curve', async () => {
   const f = strategyFrontend(); await f.viewStrategy(42); await flush();
-  const output = f.root.querySelector('main').innerHTML;
+  const output = f.root.querySelector('#main').innerHTML;
   for (const label of ['Abstract', 'Mechanism &amp; hypothesis', 'Methodology', 'Results', 'Verdict']) assert.ok(output.includes(label));
   assert.match(output, /class="sheet-doc paper"/);
   assert.match(output, /&lt;b&gt;Counterparty&lt;\/b&gt;/);
@@ -316,7 +316,7 @@ test('the sidebar lists each holding with every figure instead of a clipped five
     {ticker: 'KXBTC15M-B', side: 'yes', qty: 2, entry_price: 0.6, cost: 1.2, unrealized: -0.3, mode: 'live', market_close_time: '2026-10-25T07:45:00Z',
       why: 'Entered at 60¢: edge ≥ 2¢ after fees · Holds to settlement'}];
   const f = strategyFrontend(detailStrategy({holdings})); await f.viewStrategy(42); await flush();
-  const output = f.root.querySelector('main').innerHTML;
+  const output = f.root.querySelector('#main').innerHTML;
   const list = output.slice(output.indexOf('<ul class="holdlist">'), output.indexOf('</ul>', output.indexOf('<ul class="holdlist">')));
   assert.equal((list.match(/<li>/g) || []).length, 2);
   assert.match(list, /NO ×4 @ 37¢/); assert.match(list, /Cost \+ fee \$1\.50/); assert.match(list, /Unreal\. —/); assert.match(list, /Settles /);
@@ -384,7 +384,7 @@ test('deployment readiness retains separate demo, live and NO-side gates', async
   await f.viewStrategy(42);
   assert.equal(f.root.querySelector('#dep-demo').getAttribute('aria-disabled'), 'true');
   assert.equal(f.root.querySelector('#dep-live').getAttribute('aria-disabled'), 'true');
-  assert.match(f.root.querySelector('main').innerHTML, /failed the unseen-data gate/);
+  assert.match(f.root.querySelector('#main').innerHTML, /failed the unseen-data gate/);
   await f.root.querySelector('#dep-demo').onclick();
   f.root.querySelector('#dep-live').onclick();
   assert.equal(f.root.querySelector('#live-confirm').hidden, true); assert.equal(postRequests(f).length, 0);
@@ -463,7 +463,7 @@ test('Funds preserves account controls and history without mounting unavailable 
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return response(funds()); },
     brokerMount: (host, options) => { mounts.push({host, options}); }});
   await f.viewFunds();
-  const output = f.root.querySelector('main').innerHTML;
+  const output = f.root.querySelector('#main').innerHTML;
   assert.match(output, /funds-col funds-manage/); assert.match(output, /funds-col funds-history/);
   assert.match(output, /Paper history/); assert.match(output, /&lt;script&gt;ledger&lt;\/script&gt;/);
   assert.match(output, /class="table stack t-ledger"/);  // statement rows on a phone, like the credit ledger
@@ -500,8 +500,8 @@ test('a late Funds read cannot replace the next page or mount stale broker contr
   const pending = deferred(); let mounts = 0;
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return pending.promise; }, brokerMount: () => mounts++});
   const loading = f.viewFunds();
-  f.S.gen++; f.root.innerHTML = '<main>Next page</main>';
-  const writes = f.root.writes, main = f.root.querySelector('main');
+  f.S.gen++; f.root.innerHTML = '<div id="main">Next page</div>';
+  const writes = f.root.writes, main = f.root.querySelector('#main');
   // A read for a page the user has left never settles (api drops it), so wait for the event loop, not the view.
   pending.resolve(response(funds())); await flush(); await flush();
   assert.equal(f.root.writes, writes); assert.equal(main.writes, 0);
@@ -514,8 +514,8 @@ test('a late Dashboard read cannot paint over the page the user moved to or keep
   const pending = deferred();
   const f = frontend({fetchImpl: path => { assert.equal(path, '/api/dashboard'); return pending.promise; }});
   const loading = f.viewDashboard();
-  f.S.gen++; f.clearTimers(); f.root.innerHTML = '<div id="boardbody">Deploy board</div><main>Deploy page</main>';
-  const writes = f.root.writes, board = f.root.querySelector('#boardbody'), main = f.root.querySelector('main');
+  f.S.gen++; f.clearTimers(); f.root.innerHTML = '<div id="boardbody">Deploy board</div><div id="main">Deploy page</div>';
+  const writes = f.root.writes, board = f.root.querySelector('#boardbody'), main = f.root.querySelector('#main');
   pending.resolve(response({paper: {}, deployments: [], open_positions: [], recent_closed: []}));
   await flush(); await flush();
   assert.equal(f.root.writes, writes); assert.equal(board.writes, 0); assert.equal(main.writes, 0);
@@ -546,7 +546,7 @@ test('the dashboard lists five deployments and positions, paused first, and link
   assert.deepEqual(shown, ['7', '1', '2', '3', '4']);  // the paused one needs the user, so it leads
   assert.match(deps, /See all 7 deployments on Deploy/);
   assert.match(f.root.querySelector('.statusline').innerHTML, /<a class="needs-link" href="#dash-deps"><em>1 paused, needs you<\/em><\/a>/);
-  const html = f.root.querySelector('main').innerHTML;
+  const html = f.root.querySelector('#main').innerHTML;
   assert.equal((html.match(/class="stub"/g) || []).length, 5); assert.match(html, /See all 6 open positions on Deploy/);
 });
 
@@ -710,7 +710,7 @@ test('every trade on the dashboard and Deploy says why it was entered and why it
     throw new Error('Unexpected offline request: ' + path);
   }});
   await f.viewDashboard(); await flush();
-  const html = f.root.querySelector('main').innerHTML;
+  const html = f.root.querySelector('#main').innerHTML;
   const lines = [...html.matchAll(/<small class="stub-why">([^<]*)<\/small>/g)].map((m) => m[1]);
   assert.deepEqual(lines, ['Entered at 41¢: edge ≥ 3¢ after fees · Exits: +20¢ take-profit, else settlement',
     why.replace('<', '&lt;'), 'Held to settlement: &lt;img src=x&gt;']);  // the row with no reason shows none
@@ -819,7 +819,7 @@ test('the empty paper track record follows the autopilot switch when a status re
   }});
   f.S.me.user.autopilot = false;
   await f.viewDashboard(); await flush(); await flush();
-  // The dashboard mounts the record after <main>; mount it the same way on a host of its own here.
+  // The dashboard mounts the record after #main; mount it the same way on a host of its own here.
   const host = new Element('section'); f.root.appendChild(host);
   await f.mountTrackRecord(host, {at: null});
   const panel = () => host.querySelector('.trpanel').innerHTML;
@@ -938,7 +938,7 @@ test('Funds demo labels say "since reload" only after a reload, and that demo fi
   for (const before_reload of [0, 40]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); const d = funds(); d.demo.before_reload = before_reload; return response(d); }});
     await f.viewFunds();
-    const main = f.root.querySelector('main').innerHTML;
+    const main = f.root.querySelector('#main').innerHTML;
     assert.match(main, before_reload ? /<dt>Capital at last reload<\/dt>/ : /<dt>Starting capital<\/dt>/);
     assert.match(main, before_reload ? /<dt>Realized since reload<\/dt>/ : /<dt>Realized all time<\/dt>/);
     assert.match(main, /the track record still counts every closed demo trade/);
@@ -1061,7 +1061,7 @@ test('dashboard: Kalshi cash says when it was read, keeps Tau\'s own trades when
     const board = f.root.querySelector('#boardbody').innerHTML;
     if (balance) assert.match(board, /Read from Kalshi just now ·\u00a0Tau trades: 2 open \(not in cash\)/);
     else assert.match(board, /Couldn’t read your Kalshi balance just now ·\u00a0Tau trades: 2 open \(not in cash\) ·\u00a0\+\$17\.00 realized all time/);
-    assert.match(f.root.querySelector('main').innerHTML, /<span>worth \$5\.64 \(<span class="gain">\+\$0\.48<\/span>\)<\/span>/);
+    assert.match(f.root.querySelector('#main').innerHTML, /<span>worth \$5\.64 \(<span class="gain">\+\$0\.48<\/span>\)<\/span>/);
   }
 });
 
@@ -1325,10 +1325,10 @@ test('a market Kalshi did not answer for offers Try again and loads on retry', a
       : response({ticker: 'KXNBAGAME-X', title: 'Minnesota wins', points: [], yes_bid: .5, yes_ask: .51, last: .5});
   }});
   await f.viewMarketDetail('KXNBAGAME-X'); await flush();
-  assert.match(f.root.querySelector('main').innerHTML, /Try again in a minute/);
+  assert.match(f.root.querySelector('#main').innerHTML, /Try again in a minute/);
   f.root.querySelector('#mk-retry').onclick(); await flush(); await flush();
   assert.equal(calls, 2);
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /mk-retry/);
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /mk-retry/);
 });
 
 test('a market whose history did not load still shows its figures, with Try again on the chart', async () => {
@@ -1340,11 +1340,11 @@ test('a market whose history did not load still shows its figures, with Try agai
       : response({ticker: 'KXNBAGAME-X', series: 'KXNBAGAME', title: 'Minnesota wins', points: [{t: 1792900000, yes: .5, vol: 3}, {t: 1792900060, yes: .51, vol: 2}], period_min: 1, yes_bid: '0.50', yes_ask: '0.51'});
   }});
   await f.viewMarketDetail('KXNBAGAME-X'); await flush();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /Price history didn’t load/); assert.match(f.root.querySelector('#rawsect').innerHTML, /Waiting on Kalshi for the candles/);
   assert.match(f.root.innerHTML, /201,649/);  // the snapshot's open interest still shows
   f.root.querySelector('#mk-retry').onclick(); await flush(); await flush();
-  assert.equal(calls, 2); assert.doesNotMatch(f.root.querySelector('main').innerHTML, /Price history didn’t load/);
+  assert.equal(calls, 2); assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /Price history didn’t load/);
 });
 
 const OPEN_MARKET = (payload, markets) => {
@@ -2303,7 +2303,7 @@ test('the floating autopilot pill steps aside from any control or value under it
   const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
   box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
   const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
-  const pill = box.querySelector('.apf-pill'), main = f.root.querySelector('main');
+  const pill = box.querySelector('.apf-pill'), main = f.root.querySelector('#main');
   pill.getBoundingClientRect = rect(245, 794, 380, 834);   // 390x844 phone
   const els = ['input', 'textarea', 'summary', 'dd'].map((s) => f.root.querySelector(s));
   els.forEach((el) => { el.getBoundingClientRect = rect(0, 0, 0, 0); });
@@ -2453,7 +2453,7 @@ test('Tau: a finished session ends under its last log line with the way on: your
   };
   let f = await at({status: 'succeeded', example: true}, []);
   // Under the log, inside the Agent log section: a plain button, so the line above keeps the one primary.
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.ok(main.indexOf('id="runfeed"') < main.indexOf('id="runend"'));
   assert.equal(f.root.querySelector('#runend').innerHTML, '<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>');
   // Nothing passed: another idea, or let autopilot pick them (the same one-click switch as elsewhere).
@@ -2506,7 +2506,7 @@ test('a passed strategy not yet on paper puts Deploy on paper up top as well, th
     return options.method === 'POST' ? pending.promise : response({deployments: [], open_positions: []});
   });
   await f.viewStrategy(42); await flush();
-  const quick = f.root.querySelector('#dep-paper-quick'), html = f.root.querySelector('main').innerHTML;
+  const quick = f.root.querySelector('#dep-paper-quick'), html = f.root.querySelector('#main').innerHTML;
   assert.ok(quick); assert.ok(f.root.querySelector('#dep-paper'));
   assert.equal(quick.textContent, 'Deploy on paper'); assert.ok(quick.classList.contains('primary'));
   assert.ok(html.indexOf('id="dep-paper-quick"') < html.indexOf('id="figs"') || html.indexOf('id="dep-paper-quick"') < html.indexOf('class="paper-abstract"'));
@@ -2535,7 +2535,7 @@ test('strategy page: unseen figures say their span, deployments go by book not r
     deployments: [{id: 812, mode: 'demo', status: 'running'}, {id: 811, mode: 'paper', status: 'paused'}]});
   const f = strategyFrontend(detail, () => response({deployments: [], open_positions: []}));
   await f.viewStrategy(42); await flush();
-  const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('main').innerHTML;
+  const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days the agent never saw/);
   assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
   assert.match(html, /Already deployed: Demo \(running\), Paper \(paused\)\./);
@@ -2549,7 +2549,7 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   await g.viewStrategy(42); await flush();
   assert.match(g.root.querySelector('#figs').innerHTML, /6 trades the agent never saw/);
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
-  assert.doesNotMatch(g.root.querySelector('main').innerHTML, /paper-again/);
+  assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again/);
 });
 
 test('a strategy row renders its thesis markdown as the strategy page does, escaped', () => {
@@ -2759,7 +2759,7 @@ test('a brand-new user sees "See an example session first" on the dashboard and 
     assert.equal(/No sessions of your own yet\. <a href="\/example" data-example>See an example session first<\/a>/.test(f.root.querySelector('#dash-since').innerHTML), shown);
     // The empty Deployed box no longer repeats it as a second primary button beside the autopilot card's.
     assert.doesNotMatch(f.root.querySelector('#deps-empty').innerHTML, shown ? /class="btn/ : /href="\/example"/, String(own));
-    const page = ['#boardbody', 'main', '#dash-ap'].map((sel) => f.root.querySelector(sel).innerHTML).join('');
+    const page = ['#boardbody', '#main', '#dash-ap'].map((sel) => f.root.querySelector(sel).innerHTML).join('');
     assert.equal((page.match(/href="\/example"/g) || []).length, shown ? 1 : 0, String(own));
     assert.deepEqual(page.match(/class="btn primary[^>]*>[^<]*/g), ['class="btn primary" data-apcard="on">Turn on autopilot'], String(own));
   }
@@ -2772,7 +2772,7 @@ test('a brand-new user sees "See an example session first" on the dashboard and 
   assert.match(top, /It cost you nothing/);
   const html = f.root.innerHTML;
   assert.ok(html.indexOf('id="rexample"') < html.indexOf('id="dispatch"'));
-  assert.equal((f.root.querySelector('main').innerHTML.match(/class="btn primary/g) || []).length, 1);
+  assert.equal((f.root.querySelector('#main').innerHTML.match(/class="btn primary/g) || []).length, 1);
   // The form's own demo link would open the same session twice over: it waits until the line goes.
   assert.equal(f.root.querySelector('[data-ex-open]').hidden, true);
   // A session of their own: no nudge.
@@ -2867,7 +2867,7 @@ const submitKey = async (f, id, kid, pem) => {
 test('Funds says where each Kalshi key comes from, what to paste, and which key goes where', async () => {
   const f = keyFunds({reads: 0, live: {connected: false}, dev: {connected: false}});
   await f.viewFunds();
-  const live = f.root.querySelector('#kalshi').closest('section').innerHTML, main = f.root.querySelector('main').innerHTML;
+  const live = f.root.querySelector('#kalshi').closest('section').innerHTML, main = f.root.querySelector('#main').innerHTML;
   assert.match(live, /<a href="https:\/\/kalshi\.com\/account\/profile" target="_blank" rel="noopener">your profile<\/a>, find API Keys and click Create New API Key/);
   assert.match(live, /<b>Key ID<\/b> \(like <span class="nobr">a952bcbe-ec3b-…<\/span>\) and downloads a <b>private key<\/b> file \(\.key\), once/);
   assert.match(live, /A key made on demo\.kalshi\.co won’t work here: add it under Demo key\./);
@@ -2906,17 +2906,17 @@ test('connecting a Kalshi key confirms it with the balance: "Connected ✓ (bala
   await f.viewFunds();
   await submitKey(f, 'kalshi', KID, PEM);
   assert.match(f.root.querySelector('#kflash').innerHTML, /Connected ✓ \(balance \$1,234\.50\)\. Kalshi confirmed the key\./);
-  assert.match(f.root.querySelector('main').innerHTML, /<p class="key-ok"><b>Connected ✓<\/b> \(balance \$1,234\.50\)<\/p>/);
+  assert.match(f.root.querySelector('#main').innerHTML, /<p class="key-ok"><b>Connected ✓<\/b> \(balance \$1,234\.50\)<\/p>/);
   await submitKey(f, 'kalshi-dev', KID, PEM);
   assert.match(f.root.querySelector('#kdflash').innerHTML, /Connected ✓ \(balance \$25,000\.00\)\. Kalshi’s demo exchange confirmed the key\./);
-  assert.match(f.root.querySelector('main').innerHTML, /<b>Connected ✓<\/b> \(balance \$25,000\.00\) <span class="hint">in your Kalshi demo account<\/span>/);
+  assert.match(f.root.querySelector('#main').innerHTML, /<b>Connected ✓<\/b> \(balance \$25,000\.00\) <span class="hint">in your Kalshi demo account<\/span>/);
   const sent = postRequests(f).map(({path}) => path);
   assert.deepEqual(sent, ['/api/kalshi-key', '/api/kalshi-dev-key']);
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /MIIE|BEGIN RSA PRIVATE KEY-----\n/);  // the key is never shown back
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /MIIE|BEGIN RSA PRIVATE KEY-----\n/);  // the key is never shown back
   // No balance from Kalshi (down, or the key deleted there) is "saved", never a green check, and says what to do.
   const g = keyFunds({reads: 0, live: {connected: true, balance: null, key_id: 'a952…608c'}, dev: {connected: true, key_id: 'a952…608c', balance: null}});
   await g.viewFunds();
-  const gm = g.root.querySelector('main').innerHTML;
+  const gm = g.root.querySelector('#main').innerHTML;
   assert.doesNotMatch(gm, /Connected ✓/);
   assert.equal((gm.match(/<p class="key-ok key-unread"><b>Key saved<\/b> \(Kalshi didn’t send a balance for it just now\)<\/p>/g) || []).length, 2);
   assert.match(gm, /the key may have been deleted on kalshi\.com: disconnect it and connect a new one\./);
@@ -2928,7 +2928,7 @@ test('a $0 Kalshi demo account is explained, and keys are changed or removed wit
   const state = {reads: 0, live: {connected: true, balance: 1234.5, key_id: 'a952…608c', funding_url: 'https://kalshi.com/account/funding'}, dev: {connected: true, key_id: 'a952…608c', balance: 0}};
   const f = keyFunds(state);
   await f.viewFunds();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /Your Kalshi demo account has \$0\.00, so Kalshi refuses demo orders\. Add demo funds in your account on <a href="https:\/\/demo\.kalshi\.co\/" target="_blank" rel="noopener">demo\.kalshi\.co<\/a>/);
   assert.match(main, /To use a different key, disconnect this one and connect the new one\./);
   assert.match(main, /To use a different demo key, remove this one and connect the new one\./);
@@ -2942,7 +2942,7 @@ test('a $0 Kalshi demo account is explained, and keys are changed or removed wit
   dvc.onclick(); f.elapse(500); await dvc.onclick(); await flush();
   assert.match(f.root.querySelector('#kdflash').innerHTML, /Demo key removed\. Tau deleted its copy; delete the key on demo\.kalshi\.co too/);
   // Both key forms are back, with no autofill and no phone auto-capitalising of the Key ID or the key.
-  const fresh = f.root.querySelector('main').innerHTML;
+  const fresh = f.root.querySelector('#main').innerHTML;
   assert.equal((fresh.match(/name="key_id" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/g) || []).length, 2);
   assert.equal((fresh.match(/name="private_key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/g) || []).length, 2);
 });
@@ -2982,7 +2982,7 @@ test('Billing says what auto-reload does and when it fires, in the server\'s own
 test('Billing ledger says why each line was charged and where the receipt is; amounts stay the server\'s', async () => {
   const f = billingPage(cardedBilling());
   await f.viewBilling(); await flush();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /<a class="btn sm" href="\/api\/billing\/receipt" download>Download receipt \(CSV\)<\/a>/);
   assert.match(main, /<p class="hint ledger-key">Newest first\. The receipt has every line, with exact amounts\.<\/p>/);
   const rows = f.root.querySelectorAll('.t-ledger tbody tr').map((r) => r.innerHTML);
@@ -3016,7 +3016,7 @@ test('Billing statement: a heading per day, one line per session a day that link
   await f.viewBilling(); await flush();
   // The days are the viewer's: the read says the browser's offset from UTC.
   assert.ok(f.requests.some(({path}) => /^\/api\/billing\?tz=-?\d+$/.test(path)));
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   // The balance 30 days ago, plus credits bought, minus agent usage, is the balance now: the server's cents.
   assert.match(main, /<dl class="bill-math">[\s\S]*Balance 30 days ago<\/dt><dd>\$12\.50<\/dd>[\s\S]*Credits bought \(2 card charges\)<\/dt><dd>\+\$35\.00<\/dd>[\s\S]*Agent usage<\/dt><dd>−\$40\.08<\/dd>[\s\S]*class="total"><dt>Balance now<\/dt><dd>\$7\.42<\/dd>/);
   assert.doesNotMatch(main, /Welcome and other credits/);  // nothing else came in this month
@@ -3176,7 +3176,7 @@ test('a backtest trade\'s exit reads in words, and a sub-cent charge shows its a
     ({ticker: 'KXBTC15M-T' + i, side: 'yes', qty: 2, entry: 0.4, exit: 0.6, pnl: 0.4, reason, opened}));
   const f = strategyFrontend(detailStrategy({recent_trades: recent}), () => response({deployments: [], open_positions: []}));
   await f.viewStrategy(42); await flush();
-  const html = f.root.querySelector('main').innerHTML;
+  const html = f.root.querySelector('#main').innerHTML;
   for (const word of ['take-profit', 'stop-loss', 'edge gone', 'settled', 'brand new reason']) assert.ok(html.includes(`<small class="hint">${word}</small>`), word);
   assert.doesNotMatch(html, /take_profit|stop_loss|edge_gone|brand_new_reason/);
   const b = billingPage(cardedBilling({ledger: [{kind: 'usage', amount: -0.0042, memo: 'Agent usage · sonnet', created_at: '2026-10-25T17:00:00Z'},
@@ -3353,21 +3353,21 @@ test('Tau: a run lists each idea it tested with its outcome and first missed che
 
 test('Tau: the strategy page lists what it missed under Verdict and names the first in the Deploy notice', async () => {
   const f = strategyFrontend(detailStrategy({status: 'failed', why_failed: MISSED})); await f.viewStrategy(42); await flush();
-  const html = f.root.querySelector('main').innerHTML;
+  const html = f.root.querySelector('#main').innerHTML;
   const at = html.indexOf('What it missed, and what to try next');
   assert.ok(at > html.indexOf('Verdict'), 'listed in the Verdict section');
   assert.deepEqual(missedRows(html.slice(at)).slice(0, 2), MISSED_ROWS);
   assert.match(html, /Void: too few trades to judge \(18 of 30\), and 1 more check missed \(see Verdict\)\. It wasn’t validated/);
   assert.doesNotMatch(html, /failed the unseen-data gate|<b>sharpe/);
   const r = strategyFrontend(detailStrategy({status: 'rejected', why_failed: [MISSED[0]]})); await r.viewStrategy(42); await flush();
-  assert.match(r.root.querySelector('main').innerHTML, /Rejected: too few trades to judge \(18 of 30\) \(see Verdict\)\./);
+  assert.match(r.root.querySelector('#main').innerHTML, /Rejected: too few trades to judge \(18 of 30\) \(see Verdict\)\./);
   // Passed, or an older server without the field: nothing extra, and the old notice stands.
   for (const extra of [{why_failed: []}, {}]) {
     const p = strategyFrontend(detailStrategy(extra)); await p.viewStrategy(42); await flush();
-    assert.doesNotMatch(p.root.querySelector('main').innerHTML, /What it missed|class="why-failed"/);
+    assert.doesNotMatch(p.root.querySelector('#main').innerHTML, /What it missed|class="why-failed"/);
   }
   const old = strategyFrontend(detailStrategy({status: 'failed'})); await old.viewStrategy(42); await flush();
-  assert.match(old.root.querySelector('main').innerHTML, /Void: it failed the unseen-data gate\./);
+  assert.match(old.root.querySelector('#main').innerHTML, /Void: it failed the unseen-data gate\./);
 });
 
 // The research paper's figures are red exactly when the gate that judges them missed. The server
@@ -3394,7 +3394,7 @@ test('Tau: a research-paper figure is red exactly when its gate line says it mis
     holdout: null,
     gate_tints: {validation: {n_trades: 'fail', p_value: 'fail', mean_net_return: 'fail', dsr: 'pass', placebo_p: 'pass'}}};
   const f = strategyFrontend(detailStrategy({status: 'failed', experiment: failing, why_failed: VAL_LINES})); await f.viewStrategy(42); await flush();
-  const red = tintedFigures(paperSections(f.root.querySelector('main').innerHTML).validation);
+  const red = tintedFigures(paperSections(f.root.querySelector('#main').innerHTML).validation);
   assert.deepEqual(red.sort(), missedFigures(VAL_LINES).sort());
   assert.deepEqual(red.sort(), ['Bootstrap p-value', 'Net return per trade', 'Trades']);
   // Passed validation, failed holdout: the validation figures all pass (DSR 0.60 and placebo 0.02
@@ -3407,14 +3407,14 @@ test('Tau: a research-paper figure is red exactly when its gate line says it mis
     gate_tints: {validation: {n_trades: 'pass', p_value: 'pass', mean_net_return: 'pass', dsr: 'pass', placebo_p: 'pass'},
       holdout: {p_value: 'fail', mean_net_return: 'fail'}}};
   const h = strategyFrontend(detailStrategy({status: 'passed', experiment: held, why_failed: HOLD_LINES})); await h.viewStrategy(42); await flush();
-  const hs = paperSections(h.root.querySelector('main').innerHTML);
+  const hs = paperSections(h.root.querySelector('#main').innerHTML);
   assert.deepEqual(tintedFigures(hs.validation), []);
   assert.deepEqual(tintedFigures(hs.holdout).sort(), missedFigures(HOLD_LINES).sort());
   assert.match(hs.holdout, /<div class="k">Holdout<\/div><div class="val">Consumed<\/div>/);
   // An older server without gate_tints judges nothing, so nothing is red, whatever the numbers.
   const old = strategyFrontend(detailStrategy({status: 'failed', experiment: {...failing, holdout: held.holdout, gate_tints: undefined}}));
   await old.viewStrategy(42); await flush();
-  assert.doesNotMatch(old.root.querySelector('main').innerHTML, /class="val sig"/);
+  assert.doesNotMatch(old.root.querySelector('#main').innerHTML, /class="val sig"/);
 });
 
 test('Tau: a hot-markets row names its market the app’s way, never by the raw series', () => {
@@ -3545,7 +3545,7 @@ test('money pages: an open position names its market and settles with a date and
   assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
   // The strategy page's holding says its cost includes the fee, and settles the same way.
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
-  const side = s.root.querySelector('main').innerHTML;
+  const side = s.root.querySelector('#main').innerHTML;
   assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
   assert.match(side, /1 open position at cost \+ fees \$9\.41/); assert.match(side, /<div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
   // Dashboard: an unmarked position's figure is its cost, never a bare dollar amount beside the marked rows' P&L.
@@ -3555,7 +3555,7 @@ test('money pages: an open position names its market and settles with a date and
     throw new Error('Unexpected offline request: ' + path);
   }});
   await g.viewDashboard(); await flush();
-  const main = g.root.querySelector('main').innerHTML;
+  const main = g.root.querySelector('#main').innerHTML;
   assert.match(main, /<span>\$9\.00 at cost<\/span>/); assert.match(main, /<span><span class="gain">\+\$0\.32<\/span><\/span>/);
 });
 
@@ -3656,7 +3656,7 @@ test('the dashboard asks for the track record beside the board, once, and draws 
     if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
     throw new Error('Unexpected offline request: ' + path);
   }});
-  // The real page has <main> inside a wrapper the record is appended to; the harness's elements
+  // The real page has #main inside the <main> the record is appended to; the harness's elements
   // only know their parent, so give them the DOM's name for it while this test runs.
   Object.defineProperty(Element.prototype, 'parentNode', {get() { return this.parent; }, configurable: true});
   try {
@@ -3736,7 +3736,7 @@ test('a page that throws on a reply it did not expect shows plain words, not the
   }});
   f.location.pathname = '/deploy';
   await f.render(); await flush(); await flush();
-  const html = f.root.querySelector('main').innerHTML;
+  const html = f.root.querySelector('#main').innerHTML;
   assert.match(html, /Something went wrong on this page\. Try again\./);
   assert.doesNotMatch(html, /TypeError|is not a function|undefined/);
 });
@@ -3873,8 +3873,8 @@ test('Billing shows the spend pace, what spent it, and what each line was for, n
   const row = f.root.querySelector('.t-ledger tbody tr').innerHTML;
   assert.match(row, /Autopilot research<div class="sub-fig">Claude Opus 4\.6<\/div>/);
   assert.match(row, /<time datetime="2026-10-25T17:00:00Z">[^<]*\d\d:\d\d [A-Z+\-0-9:]+<\/time>/);  // a time, with its zone
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /anthropic|list price/i);
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /role="status"/);  // enough credits: no out-of-credits notice
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /anthropic|list price/i);
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /role="status"/);  // enough credits: no out-of-credits notice
   const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
   assert.match(css, /\.bill-detail \.t-dep \{ min-width: 0; \}/);  // Amount stays in view beside Add credits
 });
@@ -3883,13 +3883,13 @@ test('Billing under the research floor says research stopped and the next step',
   const f = billingPage(cardedBilling({balance: 0.4, min_run_balance: 1, auto_reload: false}));
   f.S.me.user.autopilot = true;
   await f.viewBilling(); await flush();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /You have \$0\.40 in credits\. New research needs at least \$1\.00 to start, so none is starting and autopilot is paused\. Add credits here, or turn on auto-reload so it doesn’t stop again\. Autopilot picks up again on its own\./);
   assert.match(f.root.querySelector('#bfigs').innerHTML, /neg/);  // the balance reads as a problem, not a gain
   assert.match(f.root.querySelector('#autorel-when').innerHTML, /^<b>Off\.<\/b> Below \$1\.00 no new research starts and autopilot pauses; a session already running stops at \$0\./);
   const on = billingPage(cardedBilling({balance: -0.3, min_run_balance: 1}));
   await on.viewBilling(); await flush();
-  assert.match(on.root.querySelector('main').innerHTML, /You’re out of credits\.[\s\S]*Auto-reload is on but hasn’t topped you up: add credits here, or check your card\./);
+  assert.match(on.root.querySelector('#main').innerHTML, /You’re out of credits\.[\s\S]*Auto-reload is on but hasn’t topped you up: add credits here, or check your card\./);
 });
 
 test('run-until-stopped says what an hour costs at recent rates, how long the balance covers, and when it stops', async () => {
@@ -4111,7 +4111,7 @@ test('Funds says what demo proves, where it sits on the ladder, and why a small 
   const view = async (dev) => {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds'); return response({...funds(), kalshi_dev: dev}); }});
     await f.viewFunds();
-    return {main: f.root.querySelector('main').innerHTML, figs: f.root.querySelector('#ffigs').innerHTML};
+    return {main: f.root.querySelector('#main').innerHTML, figs: f.root.querySelector('#ffigs').innerHTML};
   };
   const none = await view({connected: false});
   // Demo is the order path's test, not realistic slippage: its book is thin, so it is no evidence of the edge.
@@ -4135,7 +4135,7 @@ test('Funds says when the demo key\'s balance was read, as it does for Kalshi ca
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/funds');
       return response({...funds(), kalshi_dev: {connected: true, key_id: 'DEVK…1234', balance: 25, balance_at: at}}); }});
     await f.viewFunds();
-    assert.match(f.root.querySelector('main').innerHTML, said);
+    assert.match(f.root.querySelector('#main').innerHTML, said);
   }
 });
 
@@ -4883,7 +4883,7 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
     return response({});
   });
   await f.viewStrategy(42); await flush();
-  const main = f.root.querySelector('main').innerHTML;
+  const main = f.root.querySelector('#main').innerHTML;
   assert.match(main, /Since deploying/);
   assert.doesNotMatch(main, /NaN|null|undefined|\$ a trade|unseen-data pace/);
   const whatif = f.root.querySelector('#whatif');
@@ -4897,7 +4897,7 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
   // With a stake, a deployment that has none is scaled at the strategy's own: 4 trades at +$2 each.
   const g = strategyFrontend(detailStrategy({deployments: deps.map((d) => ({...d, stake: null}))}), () => response({}));
   await g.viewStrategy(42); await flush();
-  const real = g.root.querySelector('main').innerHTML;
+  const real = g.root.querySelector('#main').innerHTML;
   assert.match(real, /unseen-data pace, 4 trades would have made \+\$8\.00/);
   assert.doesNotMatch(real, /NaN/);
   assert.ok(g.root.querySelector('#whatif #wk'), 'a strategy with a stake keeps its dial');

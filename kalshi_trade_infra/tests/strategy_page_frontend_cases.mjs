@@ -11,7 +11,7 @@ export function strategyPageCases({name, detailStrategy, strategyFrontend, postR
     await f.viewStrategy(42); await flush();
     return f;
   };
-  const main = f => f.root.querySelector('main').innerHTML;
+  const main = f => f.root.querySelector('#main').innerHTML;
 
   test(`${name}: a code strategy offers no deploy button the server would refuse, and says what to do`, async () => {
     for (const status of ['passed', 'failed', 'backtest-only']) {

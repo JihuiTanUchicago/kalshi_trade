@@ -44,7 +44,7 @@ export function moneyPollCases({name, frontend}) {
     await f.viewDashboard(); await settle();
     const asked = () => f.requests.filter(({path}) => path.startsWith('/api/dashboard')).at(-1).path;
     assert.doesNotMatch(asked(), /[?&]v=/);
-    const board = f.root.querySelector('#boardbody'), main = f.root.querySelector('main');
+    const board = f.root.querySelector('#boardbody'), main = f.root.querySelector('#main');
     const shown = () => board.innerHTML + main.innerHTML;  // the money figures, wherever the theme puts them
     assert.match(main.innerHTML, /\+\$0\.13/);  // the position and its deployment, marked at 45¢
     const boardWrites = board.writes;

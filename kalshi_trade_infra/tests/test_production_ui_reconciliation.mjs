@@ -73,7 +73,7 @@ function frontend(transport = () => { throw new Error('Unexpected synthetic requ
     localStorage: {getItem: key => key === 'tau_ap_open' ? '1' : null, setItem() {}},
     setInterval: callback => { intervals.set(++next, callback); return next; }, clearInterval: id => intervals.delete(id), setTimeout() {}, clearTimeout() {},
     fetch: async (path, options) => { requests.push({path, options}); if (path.startsWith('/api/chat?')) return response(chatReply); return transport(path, options); },
-    testAlert: value => alerts.push(value), testShell: (_active, board, main) => { root.innerHTML = board + '<main>' + main + '</main>'; },
+    testAlert: value => alerts.push(value), testShell: (_active, board, main) => { root.innerHTML = board + '<div id="main">' + main + '</div>'; },
   });
   const boot = '  setupGlossary();\n  render();';
   assert.equal(source.split(boot).length, 2);
@@ -306,7 +306,7 @@ test('billing continues to render the server-provided welcome credit instead of 
     await f.viewBilling();
     const figures = f.root.querySelector('#bfigs').innerHTML;
     assert.match(figures, /Welcome credit/); assert.ok(figures.includes('$' + free_bonus.toFixed(2)));
-    assert.match(f.root.querySelector('main').innerHTML, /Payments aren’t enabled/);
+    assert.match(f.root.querySelector('#main').innerHTML, /Payments aren’t enabled/);
     assert.equal(posts(f).length, 0);
   }
 });
@@ -323,7 +323,7 @@ test('billing shows a failed auto-reload by the switch, with its reason and Upda
   assert.match(note.innerHTML, /<b>Auto-reload failed<\/b>/);
   assert.match(note.innerHTML, /That card has expired\. Add a current card and try again\./);
   assert.equal(f.root.querySelector('#autorel-fix').textContent, 'Update card');
-  assert.doesNotMatch(f.root.querySelector('main').innerHTML, /list price|pi_|cus_|Stripe error/);
+  assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /list price|pi_|cus_|Stripe error/);
   assert.equal(posts(f).length, 0);
 });
 

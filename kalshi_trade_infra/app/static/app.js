@@ -557,8 +557,9 @@
   document.addEventListener('click', (e) => {
     // In-page "#id" links scroll to their target: letting the hash navigate fires popstate, whose
     // re-render dropped the reader back at the top of the page.
+    // Skip to content goes to where the page's content starts, its heading (pageStart).
     const h = e.target.closest('a[href^="#"]');
-    const to = h && h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1));
+    const to = h && (h.classList.contains('skip') ? pageStart() : h.getAttribute('href').length > 1 && document.getElementById(h.getAttribute('href').slice(1)));
     if (to) {
       e.preventDefault(); to.scrollIntoView({ behavior: smooth(), block: 'start' });
       // Focus follows the scroll (Skip to content), so the next Tab starts from the target, not from the link.
@@ -632,7 +633,7 @@
     } catch (e) { /* best-effort */ }
   }
 
-  // A new page in the app names itself in the tab title and puts keyboard focus at its top (<main>), as a
+  // A new page in the app names itself in the tab title and puts keyboard focus on its heading, as a
   // full page load would: a screen reader says where it landed, and Tab starts from the page instead of
   // from the link the repaint removed. The first page of a visit and a repaint of the same page leave
   // focus alone, and so does a page that already put focus somewhere (a field it opened).
@@ -644,8 +645,16 @@
     document.title = name ? `${name.length > 60 ? name.slice(0, 59) + '\u2026' : name} \u00b7\u00a0Tau` : 'Tau';
     const moved = shownPath !== null && shownPath !== path;
     shownPath = path;
-    const a = document.activeElement, main = document.getElementById('main');
-    if (moved && main && main.focus && (!a || a === document.body)) main.focus({ preventScroll: true });
+    const a = document.activeElement, top = pageStart();
+    if (moved && top && top.focus && (!a || a === document.body)) top.focus({ preventScroll: true });
+  }
+  // Where a page's content starts: the h1 that opens <main>, above the page's money figures, made
+  // focusable for a script. A page with no h1 in <main> (the landing) starts at #main.
+  function pageStart() {
+    const h = root.querySelector('main h1');
+    if (!h) return document.getElementById('main');
+    if (h.getAttribute('tabindex') == null) h.setAttribute('tabindex', '-1');
+    return h;
   }
   async function render() {
     clearTimers();
@@ -904,16 +913,17 @@
     const adminToggle = isAdmin()
       ? `<button class="admin-toggle" data-action="admintoggle" role="switch" aria-checked="${adminViewOn()}" title="${adminViewOn() ? 'Admin mode on \u2014 click to view as a user' : 'Admin mode off \u2014 click to show admin'}"><span class="admin-track"><span class="admin-knob"></span></span>Admin</button><span class="sep">\u00b7</span>`
       : '';
+    // <main> starts at the board, the page's h1 and its money figures, and #main is the page below them.
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
         <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
-      <div class="wrap">
+      <main class="wrap">
         <div id="boardbody">${board}</div>
-        <main id="main" tabindex="-1">${main}</main>
-      </div>`;
+        <div id="main" tabindex="-1">${main}</div>
+      </main>`;
     root.querySelectorAll('[data-action="signout"]').forEach((b) => (b.onclick = async () => {
       if (await signOut(signOutNote())) return go('/signin');
       // The menu closes so the note under it shows, and keyboard focus goes back to the menu's button.
@@ -954,7 +964,7 @@
   async function viewDevLog() {
     shell('/devlog', boardTitle('Dev Logs', 'What we’ve shipped, and what’s next. Updated as we build.'), loading(260));
     let d;
-    try { d = await api('/api/devlog'); } catch (e) { root.querySelector('main').innerHTML = notice(e.message, 'bad'); return; }
+    try { d = await api('/api/devlog'); } catch (e) { root.querySelector('#main').innerHTML = notice(e.message, 'bad'); return; }
     const planned = (d.planned || []).map((p) => `<li class="dl-item planned">
         <span class="dl-dot" aria-hidden="true"></span>
         <div class="dl-body"><h3 class="dl-what">${esc(p.title)}</h3>${p.detail ? `<p class="dl-detail">${mdLite(p.detail)}</p>` : ''}</div>
@@ -966,7 +976,7 @@
     const shippedCount = (d.shipped || []).length;
     let tab; try { tab = localStorage.getItem('tau_devlog_tab'); } catch (e) { /* private mode */ }
     if (tab !== 'shipped') tab = 'planned';  // default to what's next
-    root.querySelector('main').innerHTML = `
+    root.querySelector('#main').innerHTML = `
       <div class="chips dl-tabs" role="group" aria-label="Dev Logs view">
         <button class="chip" type="button" data-dltab="planned" aria-pressed="${tab === 'planned'}">Up next</button>
         <button class="chip" type="button" data-dltab="shipped" aria-pressed="${tab === 'shipped'}">Shipped ·\u00a0${shippedCount}</button>
@@ -1161,7 +1171,10 @@
   function paint(el, html) {
     if (!el || painted.get(el) === html) return;
     painted.set(el, html);
+    // A poll that redraws the page's heading while it holds focus (pageStart) leaves focus on the new one.
+    const a = document.activeElement, top = !!(a && a.tagName === 'H1' && el.contains && el.contains(a));
     el.innerHTML = html;
+    if (top && !a.isConnected) { const h = pageStart(); if (h && h.focus) h.focus({ preventScroll: true }); }
   }
   // A list repaints row by row: while its rows are the same ones in the same order, only a row whose
   // markup changed is rewritten (a running session's spend moved, and the other 49 sessions stay as they
@@ -1283,7 +1296,7 @@
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
   // Draw at the column's real width on a narrow screen: a 760-wide chart shrunk to a phone has 4px labels.
-  const chartWidth = () => { const m = root.querySelector('main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
+  const chartWidth = () => { const m = root.querySelector('#main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
   function equityChart(curve, cutoffIso, devCurve, options = {}) {
     const W = options.width || 760, H = 236, L = 52, R = 10, T = 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
@@ -1800,7 +1813,7 @@
   // An action's error notice replaces the last one: a run page's Pause failing on each press stacked
   // a new notice per press. #flash holds one notice; on a page without it, the last one is removed.
   function alert0(msg, kind = 'bad') {
-    const host = root.querySelector('#flash') || root.querySelector('main');
+    const host = root.querySelector('#flash') || root.querySelector('#main');
     if (!host) return;
     if (host.id === 'flash') host.innerHTML = notice(msg, kind, true);
     else {
@@ -2111,7 +2124,7 @@
     // The track record is its own read: asked for now, beside the board, instead of after the board
     // has painted (it waited the whole dashboard read before it started). Drawn below the board, so
     // asked only where dashTrackRecord can put it.
-    const trWrap = root.querySelector('main') && root.querySelector('main').parentNode;
+    const trWrap = root.querySelector('#main') && root.querySelector('#main').parentNode;
     const trFirst = trWrap && trWrap.appendChild ? api('/api/track-record', undefined, { keep: true }) : null;
     if (trFirst) trFirst.catch(() => {});  // a failure is drawn by dashTrackRecord, with its retry
     S.trReread = null;  // set by dashTrackRecord once this view's record is mounted
@@ -2196,7 +2209,7 @@
           </aside>
         </div></div>`;
       paint(root.querySelector('#boardbody'), board);  // the 15s poll repaints only what changed
-      paint(root.querySelector('main'), main);
+      paint(root.querySelector('#main'), main);
       S.dashPaper = p;
       paintDashAp();
       const dd = root.querySelector('#dash-deps');
@@ -3833,7 +3846,7 @@
     const quickPaper = canDeploy && s.status === 'passed' && hasExp && !activeDeps.some((d) => d.mode === 'paper');
     const quickHtml = quickPaper ? `<div class="strat-quick" id="strat-quick"><button class="btn primary" id="dep-paper-quick">Deploy on paper</button><p class="hint">Paper trades with pretend money against live prices, so nothing real is at risk. Demo and live are in Deploy, further down.</p><div id="depflash-quick"></div></div>` : '';
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
-    root.querySelector('main').innerHTML = `
+    root.querySelector('#main').innerHTML = `
       <div id="flash"></div>
       <div class="detail">
         <div>
@@ -4259,11 +4272,11 @@
     setTab(tab);
   }
   async function dashTrackRecord(pending) {
-    const gen = S.gen, mainEl = root.querySelector('main'), wrap = mainEl && mainEl.parentNode;
+    const gen = S.gen, mainEl = root.querySelector('#main'), wrap = mainEl && mainEl.parentNode;
     if (!wrap || !wrap.appendChild) return;
     const host = document.createElement('section');
     host.className = 'sect dash-track'; host.id = 'track-record'; host.innerHTML = loading(260);
-    wrap.appendChild(host);  // after <main>, its last child, so the board's repaint never touches it
+    wrap.appendChild(host);  // after #main, the page's last child, so the board's repaint never touches it
     const last = { at: null };
     // A failed first read offers a retry; before, the record stayed an error until a reload.
     const first = async () => {
@@ -4363,7 +4376,7 @@
       root.querySelector('#ffigs').innerHTML = fig('Kalshi cash', k.connected ? (k.balance == null ? 'Unavailable' : usd(k.balance)) : 'Not connected', { cls: 'lead', small: !k.connected ? 'Connect a key to trade real money' + (livePnl(k) ? '.' + livePnl(k) : '') : k.balance == null ? KALSHI_UNREAD + livePnl(k) : `Your real cash at Kalshi${k.balance_at ? ', read ' + when(k.balance_at) : ''}.${livePnl(k)} ${openLeft(k, 'live')}` }) +
         fig('Demo balance', usd(dm.equity), { small: `${usd(dm.capital)} capital ·\u00a0${openAt(dm)}${bookPnl(dm, 'demo', dm.realized, demoSpan(dm))}${kd.connected ? '' : 'needs a demo key ·\u00a0'}${DEMO_WHAT}` }) +
         fig('Paper balance', usd(d.paper.equity == null ? d.paper.cash : d.paper.equity), { small: `${usd(d.paper.cash)} cash ·\u00a0${openAt(d.paper)}${bookPnl(d.paper, 'paper')}practice money` });
-      root.querySelector('main').innerHTML = `<div id="flash"></div><div class="funds">
+      root.querySelector('#main').innerHTML = `<div id="flash"></div><div class="funds">
         <div class="funds-col funds-manage">
         <section class="panel">
           <h3>Kalshi account (live money)</h3>
@@ -4907,7 +4920,7 @@
     let d;
     try { d = await api('/api/explore/market?ticker=' + encodeURIComponent(ticker)); }
     catch (e) {
-      root.querySelector('main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><button class="btn sm" type="button" id="mk-retry">Try again</button> <a class="btn sm" href="/explore">← Back to Explore</a></p>`;
+      root.querySelector('#main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><button class="btn sm" type="button" id="mk-retry">Try again</button> <a class="btn sm" href="/explore">← Back to Explore</a></p>`;
       root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
       return;
     }
@@ -6400,7 +6413,7 @@
               </section>
             </aside>
           </div>`;
-      root.querySelector('main').innerHTML = `<div id="flash"></div>${main}`;
+      root.querySelector('#main').innerHTML = `<div id="flash"></div>${main}`;
       if (!d.configured) return;
       // top-up fee preview
       const amt = root.querySelector('#topup-amt'), note = root.querySelector('#topup-note');

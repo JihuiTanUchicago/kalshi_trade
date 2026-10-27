@@ -84,7 +84,7 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
       f.location.pathname = '/billing';
       await f.viewBilling(); await settle();
       f.clearTimers();
-      return {built: calls, html: f.root.querySelector('main').innerHTML};
+      return {built: calls, html: f.root.querySelector('#main').innerHTML};
     };
     const short = await made(6), long = await made(300);
     assert.equal(long.built, short.built, 'a longer statement formats no more dates through toLocale*String');
@@ -187,7 +187,7 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     assert.equal(asked(f, '/api/dashboard'), 0, 'the page asked for the URL the shell carried');
     assert.equal(asked(f, '/api/autopilot/status'), 0);
     assert.equal(f.S.ap, status);
-    assert.match(f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('main').innerHTML, /\$1,001\.60/);
+    assert.match(f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#main').innerHTML, /\$1,001\.60/);
     f.clearTimers();
   });
 }

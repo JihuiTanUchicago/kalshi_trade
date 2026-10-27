@@ -8,6 +8,9 @@
 //   that a screen reader skipped, so the kind of money is read with the figure.
 // - The research and autopilot logs are lists that announce additions (aria-live), not role="log" on
 //   the <ol>, which took away the list and its items.
+// - Every signed-in page's h1 and money figures sat in #boardbody, outside <main>, so Skip to content and
+//   the focus a page change hands over both landed past the heading. <main> holds the board and the page
+//   (#main), and both land on the h1.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
@@ -15,6 +18,34 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 export function a11yCases({name, frontend, storageFor, billingPage, cardedBilling}) {
+  test(`${name}: <main> starts at the page's heading and figures, and a page change and Skip to content land there`, async () => {
+    const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({})});
+    f.location.pathname = '/deploy';
+    await f.render(); await flush(); await flush();
+    const mains = f.root.querySelectorAll('main');
+    assert.equal(mains.length, 1, 'one main landmark, with none inside it');
+    assert.ok(mains[0].querySelector('#boardbody h1'), 'the page heading is in <main>');
+    assert.ok(mains[0].querySelector('#boardbody') && mains[0].querySelector('#main'), 'so are the board and the page under it');
+    assert.equal(mains[0].querySelector('h1').focusOptions, undefined, 'the first page of a visit leaves focus to the browser');
+    f.location.pathname = '/settings';
+    await f.render(); await flush(); await flush();
+    const heading = f.root.querySelector('main h1'), page = f.root.querySelector('#main');
+    assert.equal(heading.textContent, 'Settings');
+    assert.equal(heading.getAttribute('tabindex'), '-1');
+    assert.equal(heading.focusOptions.preventScroll, true, 'a page change focuses the heading');
+    assert.equal(page.focusOptions, undefined, 'not the page under the figures');
+    // Skip to content (the shell's first link) goes to the same heading.
+    heading.focusOptions = undefined; heading.scrollIntoView = () => { heading.scrolled = true; };
+    heading.hasAttribute = (key) => heading.getAttribute(key) != null;
+    const skip = f.document.createElement('a'); skip.className = 'skip'; skip.setAttribute('href', '#main'); f.document.body.appendChild(skip);
+    let prevented = false;
+    for (const [type, listener] of f.documentListeners) if (type === 'click') listener({target: skip, preventDefault: () => { prevented = true; }});
+    assert.equal(prevented, true);
+    assert.equal(heading.scrolled, true); assert.equal(heading.focusOptions.preventScroll, true);
+    assert.equal(page.focusOptions, undefined);
+    f.clearTimers();
+  });
+
   test(`${name}: the autopilot pulse is written only when its words change, not on every chat poll`, async () => {
     let chat = {messages: [], agent_busy: false};
     const store = new Map([['tau_ap_open', '1']]);
