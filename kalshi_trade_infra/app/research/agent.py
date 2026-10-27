@@ -4203,8 +4203,10 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if market is not None:
             why = _market_research_recent(cur, user_id, market)
             if why and (not autopilot or why.startswith("a research line is already running")):
+                # `why` names the market by its key for the review's context; the customer reads its label.
+                said = why.replace(market, MARKETS[market].label, 1) if market in MARKETS else why
                 return ("I didn't start that — %s. I'll hunt a different market instead of "
-                        "re-running the same line." % why), None
+                        "re-running the same line." % said), None
             if why:
                 # Prod 2026-10-24: reviews kept proposing the same three cooldown markets every few
                 # minutes, so for an hour no research started at all. On autopilot keep the angle and

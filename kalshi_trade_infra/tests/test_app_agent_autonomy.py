@@ -180,7 +180,8 @@ def test_research_action_launches_when_global_queue_has_room(monkeypatch):
     assert pid is None and rec["runs"] == [("btc15m", None, "Fade the overreaction after a large 1-minute BTC move.")]
     # A new user's first line in the autopilot feed: the market as the app names it, in plain words,
     # and still the start the panel's "Last move" looks for.
-    assert text == ("Started a fresh research session on Bitcoin 15-minute. Anything it finds has to pass the "
+    assert text == ("Started a fresh research session on Bitcoin up or down in 15 minutes. Anything it finds has "
+                    "to pass the "
                     "same tests as any session before it trades, even on paper. Follow it on the Research page.")
     assert "btc15m" not in text and "pre-registration" not in text and "holdout" not in text
 
@@ -196,6 +197,8 @@ def test_research_action_skips_a_market_already_running(monkeypatch):
                           "idea": "Fade the overreaction after a large 1-minute BTC move."}, True)
     assert pid is None and rec["runs"] == []            # no duplicate line launched
     assert "already running" in text.lower()
+    # The chat line names the market as the app does; the market key stays in the review's context only.
+    assert "already running on Bitcoin up or down in 15 minutes (run #5)" in text and "btc15m" not in text
 
 
 def test_research_action_skips_a_market_on_cooldown(monkeypatch):
@@ -213,7 +216,7 @@ def test_research_action_skips_a_market_on_cooldown(monkeypatch):
     # research start does (chat_repository.last_autopilot_action looks for that), names the market as
     # the app does, and carries no market key or run id.
     assert text.startswith("Started a fresh research session on a market the research specialist picks. ")
-    assert "Bitcoin 15-minute was researched in the last few hours" in text
+    assert "Bitcoin up or down in 15 minutes was researched in the last few hours" in text
     assert "btc15m" not in text and "run #" not in text and "(" not in text
 
 

@@ -5,7 +5,7 @@ window.TauPage('research', (T) => {
   'use strict';
   const {
     alert0, announce, api, apNudge, armed, boardTitle, busy, clearTimers, esc, EXAMPLE_NOTE, exampleLine,
-    feedMd, fig, fillLiveRow, flash, gl, glo, go, ICON, loading, logTime, marketPicker, marketShort,
+    feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, sessionNo, sessionTitle, shell, strategySlip, strategyTable, tzName, usd, waitSpan, when,
     whyFailedHtml, wireMarketPicker
@@ -546,20 +546,23 @@ window.TauPage('research', (T) => {
   // The gatekeeper's numbers for the reader (their own result) — never fed back to the generator. Its range
   // is the bootstrap's at gatekeeper.ALPHA (0.10), the 90% range the gate and the strategy page name: it read
   // "95% CI". The average per trade after fees leads, as on the strategy page: the card showed no result.
+  // Each figure is named in plain words with its term of art after it, and says what it measures: in the
+  // card's info bubble, and on a phone in a line under the figure (.hx-why), since a bubble there
+  // covers the number it explains.
   function statGrid(s) {
     if (!s) return '';
     const num = (v, dp) => (v == null || typeof v !== 'number') ? null : v.toFixed(dp == null ? 2 : dp);
     const p = (v) => v == null ? null : (v < 0.001 ? '<0.001' : num(v, 3));
     const cells = [];
-    const add = (k, v) => { if (v != null && v !== '') cells.push(`<div><dt>${k}</dt><dd>${v}</dd></div>`); };
+    const add = (k, v) => { if (v != null && v !== '') cells.push(`<div><dt>${GLOSSARY[k] ? gl(GLOSSARY[k][0], k) : k}</dt><dd>${v}</dd>${GLOSSARY[k] ? `<dd class="hx-why">${GLOSSARY[k][1]}</dd>` : ''}</div>`); };
     add('Trades', s.n_trades != null ? String(s.n_trades) : null);
     add('Avg per trade after fees', typeof s.mean_net_return === 'number' ? pct(s.mean_net_return) : null);
-    add('p-value', p(s.p_value));
-    add('DSR', num(s.dsr));
-    add('Sharpe', num(s.sharpe));
-    if (s.ci && (s.ci.lo != null || s.ci.hi != null)) add('90% range', `${pct(s.ci.lo, false)}…${pct(s.ci.hi, false)}`);
-    add('Placebo p', p(s.placebo_p));
-    if (s.max_drawdown != null) add('Max drawdown', usd(-Math.abs(s.max_drawdown), true));
+    add('pvalue', p(s.p_value));
+    add('dsr', num(s.dsr));
+    add('sharpe', num(s.sharpe));
+    if (s.ci && (s.ci.lo != null || s.ci.hi != null)) add('range90', `${pct(s.ci.lo, false)}…${pct(s.ci.hi, false)}`);
+    add('placebo', p(s.placebo_p));
+    if (s.max_drawdown != null) add('drawdown', usd(-Math.abs(s.max_drawdown), true));
     return cells.length ? `<dl class="hx-stats">${cells.join('')}</dl>` : '';
   }
 

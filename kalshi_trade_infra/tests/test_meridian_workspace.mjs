@@ -910,7 +910,7 @@ test('Meridian: while its paper strategy holds nothing, the autopilot card also 
   f.S.apAt = Date.now();
   await f.viewDashboard(); await flush();
   const now = () => f.root.querySelector('#dash-ap .apcard-now').innerHTML;
-  assert.match(now(), /Its last check: no edge\. Meanwhile it's researching BTC 15-min\.$/);
+  assert.match(now(), /Its last check: no edge\. Meanwhile it's researching BTC 15-min up\/down\.$/);
   f.S.ap = {...f.S.ap, research: {tested_7d: 3, passed_7d: 0, active: []}};
   await f.viewDashboard(); await flush();
   assert.doesNotMatch(now(), /Meanwhile/);
@@ -935,7 +935,7 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.ok(state.textContent.endsWith(d.status === 'running' ? 'Running' : d.status === 'paused' ? 'Paused' : 'Stopped'));
     assert.equal(state.querySelector('.mk').textContent, d.mode === 'live' ? 'LIVE' : d.mode === 'demo' ? 'Demo' : 'Paper');
     assert.equal(monitor.classList.contains('live-row'), d.mode === 'live');
-    assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min ·\u00a0\$12\.5 \/ trade/);
+    assert.match(monitor.querySelector('.monitor-setup').textContent, /BTC 15-min up\/down ·\u00a0\$12\.5 \/ trade/);
     assert.ok(monitor.querySelector('.monitor-limits').textContent.includes('Max 4 open'));
     assert.ok(monitor.querySelector('.monitor-limits').textContent.startsWith(' ·\u00a0Max 4 open'), 'a space before the separator, so it never reads "trade· Max"');
     assert.equal(monitor.querySelector('.monitor-limits').textContent.includes('Risk &lt;cap&gt; reached'), d.status !== 'running');
@@ -2562,12 +2562,12 @@ test('Explore says when a timed contract closes, and nothing for an event with n
 
 test('Hot Markets names a 5pm Bitcoin contract by its market, an hourly one by its own title', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT', close_hour_et: 17}];
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   const row = (t, ti) => ({t, s: 'KXBTCD', ti, su: '$113,000 or above', bid: .5, ask: .52, v24: 10, oi: 0});
   f.root.innerHTML = '<aside id="hotrail"></aside>';
   f.S.hot = {at: new Date().toISOString(), markets: [row('KXBTCD-26OCT2717-T112999.99', 'Bitcoin price at 5pm EDT?'), row('KXBTCD-26OCT2700-T112999.99', 'Bitcoin price at 12am EDT?')]};
   f.renderHotRail();
-  assert.deepEqual(f.root.querySelectorAll('.hot-row').map(r => r.querySelector('.hot-title strong').textContent), ['BTC 5pm', 'Bitcoin price at 12am EDT?']);
+  assert.deepEqual(f.root.querySelectorAll('.hot-row').map(r => r.querySelector('.hot-title strong').textContent), ['BTC above $X at 5pm ET', 'Bitcoin price at 12am EDT?']);
 });
 
 test('Explore bid and ask preserve decimal strings, zero and independently missing or malformed quote sides', async () => {
@@ -2775,8 +2775,8 @@ test('Hot Markets preserves dated contract identity and escapes full accessible 
   const rows = f.root.querySelectorAll('.hot-row'), labels = rows.map(row => row.getAttribute('aria-label'));
   assert.equal(rows.length, 3); assert.notEqual(labels[0], labels[1]);
   for (let index = 0; index < 2; index++) {
-    assert.equal(rows[index].querySelector('.hot-title strong').textContent, 'BTC 15-min');
-    assert.ok(rows[index].innerHTML.includes('>BTC 15-min<') && !rows[index].innerHTML.includes('>KXBTC15M<'), 'no raw series chip, not even for screen readers');
+    assert.equal(rows[index].querySelector('.hot-title strong').textContent, 'BTC 15-min up/down');
+    assert.ok(rows[index].innerHTML.includes('>BTC 15-min up/down<') && !rows[index].innerHTML.includes('>KXBTC15M<'), 'no raw series chip, not even for screen readers');
     assert.ok(labels[index].includes(markets[index].ti)); assert.ok(labels[index].includes(markets[index].t));
     assert.match(labels[index], /At least \$105,000.*52¢.*\+4¢ across available history.*1\.2k volume over 24 hours.*Opens Kalshi in a new tab/);
     assert.equal(rows[index].getAttribute('target'), '_blank'); assert.equal(rows[index].getAttribute('rel'), 'noopener');
@@ -4697,13 +4697,13 @@ test('Meridian first-run funnel: deploying from a strategy page lands on Deploy 
 test('Meridian money pages: open positions name their market, settle with date and zone, and a live row says LIVE', async () => {
   const pos = (extra) => ({title: 'Drift', ticker: 'KXBTCD-26OCT2617-T68499.99', side: 'no', qty: 25, entry_price: .36, entry_fee: .41, cost: 9.41,
     unrealized: null, mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z', ...extra});
-  const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}];
+  const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}];
   const f = frontend({fetchImpl: path => path === '/api/deployments'
     ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date().toISOString()})]}) : response({})});
   f.S.me.markets = markets;
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
-  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<\/a><div class="sub-fig pos-mkt">Bitcoin daily close, 5pm EDT<\/div>/);
+  assert.match(html, /KXBTCD-26OCT2617-T68499\.99<\/a><div class="sub-fig pos-mkt">Bitcoin above \$68,499\.99 at 5pm ET<\/div>/);
   assert.match(html, /KXOTHER-1<\/a><\/td>/);
   assert.match(html, /data-lab="Settles">Jan 1[56], \d\d:\d\d [^<\s]+<\/td>/);
   assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
@@ -4747,19 +4747,22 @@ test('autopilot walk (Meridian): the last move says what and when, the pill says
 
 test('autopilot (Meridian): the market it researches reads by its label, never a raw key or series', () => {
   const f = frontend();
-  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}, {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}, {key: 'kxhighchi', series: 'KXHIGHCHI', label: 'Chicago high temp'}];
   const ap = {autopilot: true, mode: 'paper', research: {active: []}, paper_running: 0};
   f.S.ap = {...ap, research: {active: ['btc15m', 'KXBTCD', 'kxhighchi']}};
-  assert.equal(f.apIdleLine(), 'Researching BTC 15-min · BTC 5pm · Chicago high temp');
+  assert.equal(f.apIdleLine(), 'Researching BTC 15-min up/down · BTC above $X at 5pm ET · Chicago high temp');
   f.S.ap = {...ap, research: {active: ['Bitcoin 15-minute', 'kxgone', "a market it's still picking"]}};
   assert.equal(f.apIdleLine(), 'Researching Bitcoin 15-minute · an unlisted market');
+  // The server sends a listed market's catalog label; it reads as the short one, as its key does.
+  f.S.ap = {...ap, research: {active: ['Bitcoin above $X at 5pm ET']}};
+  assert.equal(f.apIdleLine(), 'Researching BTC above $X at 5pm ET');
   // The story quotes the same list; the panel says it the same way, and so does the research figure.
   const d = {...ap, research: {active: ['btc15m', 'KXBTCD'], tested_7d: 3, passed_7d: 0}, story: ["Right now it's researching btc15m and KXBTCD."]};
   const box = new Element('div'); box.innerHTML = '<div id="apf-story"></div><dl id="apf-stats"></dl>';
   f.apUpdate(box, d);
-  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching BTC 15-min and BTC 5pm\.<\/p>/);
+  assert.match(box.querySelector('#apf-story').innerHTML, /<p>Right now it\S{1,6}s researching BTC 15-min up\/down and BTC above \$X at 5pm ET\.<\/p>/);
   f.apUpdate(box, {...d, story: []});
-  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching BTC 15-min · BTC 5pm/);
+  assert.match(box.querySelector('#apf-stats').innerHTML, /Researching BTC 15-min up\/down · BTC above \$X at 5pm ET/);
   assert.doesNotMatch(source, /esc\(\(d\.story && d\.story\[0\]\)|\(d\.story \|\| \[\]\)\.map|\[\.\.\.new Set\(d\.research\.active\)\]/);
 });
 
@@ -5300,11 +5303,11 @@ const MARKET_PAGE = {ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD', ti
 const readerZone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value;
 
 test('a market page says what its price is, how it settles and when, and the reader’s positions by money book', async () => {
-  const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin daily close, 5pm EDT'}]);
+  const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}]);
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin daily close, 5pm EDT · Open for trading · KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
   assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
@@ -5906,7 +5909,7 @@ test('Meridian: a research session the autopilot started says so on the active c
   for (const id of [9, 1]) assert.doesNotMatch(history.querySelector(`a[href="/research/${id}"] .run-title`).innerHTML, /Autopilot<\/span>/);
   assert.match(history.querySelector('a[href="/research/1"] .run-title').innerHTML, /Example<\/span>/);
   f.clearTimers();
-  for (const [run, said, not] of [[ap, /BTC 15-min · Started by autopilot/, /· Session/],
+  for (const [run, said, not] of [[ap, /BTC 15-min up\/down · Started by autopilot/, /· Session/],
     [{...ap, direction: 'momentum'}, /· Momentum · Started by autopilot/, /· Session/],
     [mine, /· Momentum/, /Started by autopilot/], [{...ap, by_autopilot: 0}, /· Session/, /Started by autopilot/]]) {
     const g = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/' + run.id)); return response({run, events: []}); }});

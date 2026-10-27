@@ -122,8 +122,8 @@ export function researchFormCases({name, frontend}) {
     assert.equal(picked(f).value, '');
     assert.equal(f.root.querySelector('#ropts').open, true);
     assert.equal(f.root.querySelector('.mkt-missing').textContent,
-      'BTC perp isn’t open for research right now, so the agent picks the market unless you choose one here.');
-    assert.match(sum(f), /agent’s choice of market \(BTC perp isn’t open for research right now\)$/);
+      'BTC perpetual, no expiry isn’t open for research right now, so the agent picks the market unless you choose one here.');
+    assert.match(sum(f), /agent’s choice of market \(BTC perpetual, no expiry isn’t open for research right now\)$/);
     f.clearTimers();
     // A key it doesn't know is never shown as typed.
     f = await form({me: {markets}, search: '?new=1&market=KXFOO%3Cb%3E'});

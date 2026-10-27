@@ -60,6 +60,13 @@
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
     pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade on unseen data. Compare it with Realized: well below it means trading is falling short of the test.'],
+    // A research verdict's figures, each named in plain words with its term of art after it (statGrid).
+    pvalue: ['Chance it’s luck (p-value)', 'How likely a strategy with no edge after fees would have done this well on this data by chance. Lower is better.'],
+    dsr: ['Edge after correcting for many tries (DSR)', 'The deflated Sharpe ratio: how likely the edge is real once every idea tried is counted, since trying many ideas makes one look good by luck. Closer to 1 is better.'],
+    sharpe: ['Steadiness per trade (Sharpe)', 'The average return per trade after fees divided by how much trade returns swing. Higher means steadier gains.'],
+    range90: ['Likely average per trade (90% range)', 'Where the true average return per trade after fees most likely sits, 9 times in 10. A range wholly above 0% is what a real edge shows.'],
+    placebo: ['Same test on shuffled outcomes (placebo)', 'The same test run on outcomes redrawn at random, so they hold no signal: how often they did at least as well. Lower means the signal, not luck, did the work.'],
+    drawdown: ['Worst drop (max drawdown)', 'The biggest fall in P&amp;L from a high point to a later low during the test.'],
     paperfills: ['Paper fills', 'Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second before a real order lands, so live fills can come in slightly worse.'],
   };
   // What every paper P&L figure includes, said beside it (services/customer_text.PAPER_NET; the bubble
@@ -310,7 +317,10 @@
   // Short, consistent chip labels for every market; unknown keys fall back to the
   // server's full label, never the raw key (keeps the market chips uniform).
   const MKT_SHORT = {
-    btc15m: 'BTC 15-min', btc15m_tick: 'BTC 15-min ·\u00a0per second', btc_perp: 'BTC perp', btc_daily: 'BTC 5pm', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
+    // Bitcoin says the contract and its close, not just the coin and an hour ("BTC 5pm" was every kind),
+    // with no " · " inside: lists and chips join labels with it, and "BTC above $X · 5pm ET" read as two.
+    btc15m: 'BTC 15-min up/down', btc15m_tick: 'BTC 15-min up/down, per second', btc_perp: 'BTC perpetual, no expiry',
+    btc_daily: 'BTC above $X at 5pm ET', eth15m: 'ETH 15-min', eth_daily: 'ETH 5pm',
     sol15m: 'SOL 15-min', sol_daily: 'SOL 5pm', xrp15m: 'XRP 15-min', xrp_daily: 'XRP 5pm',
     doge15m: 'DOGE 15-min', near15m: 'NEAR 15-min', zec15m: 'ZEC 15-min', hype15m: 'HYPE 15-min',
     nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
@@ -325,15 +335,18 @@
   const catOrder = (a, b) => { const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); };
   const marketShort = (k) => (!k ? 'Agent’s choice' : MKT_SHORT[k] || marketLabel(k));
   // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
-  // "Bitcoin daily close, 5pm EDT"), so an open position never shows only the raw ticker. Unknown: ''.
+  // "Bitcoin above $68,499.99 at 5pm ET"), so an open position never shows only the raw ticker. Unknown: ''.
   // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
   // contracts whose event closes then: KXBTCD-26OCT2700 is the midnight contract, which no strategy trades.
   const contractHour = (ticker) => { const m = /^[^-]+-\d{2}[A-Z]{3}\d{2}(\d{2})(?:-|$)/.exec(String(ticker || '')); return m ? +m[1] : null; };
   const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
+  // A ladder market's label says "$X" for the strike; one contract says its own (-T68499.99), as its rules do.
   const contractMarket = (ticker) => {
     const m = contractMkt(ticker);
-    return m ? (m.label || marketShort(m.key)) : '';
+    if (!m) return '';
+    const label = m.label || marketShort(m.key), k = /-T(\d+(?:\.\d+)?)$/.exec(String(ticker));
+    return k ? label.replace('$X', '$' + num(k[1])) : label;
   };
   // A contract ticker that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(ticker)}</a>`;
@@ -3016,9 +3029,9 @@
   function apMarketName(n) {
     const s = String(n || '');
     if (MKT_SHORT[s]) return MKT_SHORT[s];
-    const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
+    const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || x.label === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
     if (m) return marketShort(m.key);
-    // A label has a space or mixed case ("Bitcoin daily close, 5pm EDT"); a key is one case, no spaces.
+    // A label has a space or mixed case ("Chicago high temp"); a key is one case, no spaces.
     if (!/^[\w.-]+$/.test(s) || (s !== s.toLowerCase() && s !== s.toUpperCase())) return s;
     return contractMarket(s) || 'an unlisted market';
   }
@@ -3564,7 +3577,7 @@
     busy, cardFormFail, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
     CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, dateFmt, DEMO_WHAT, demoHealthLine, demoSpan,
     DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,
-    exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, go, halfUp,
+    exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,
     marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money, notice, num, overDays,
     paced, paceDay, paceTooSoon, paceWords, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount,

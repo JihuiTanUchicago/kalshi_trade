@@ -780,9 +780,16 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .hx-viewstrat { display: inline-block; margin-top: 2px; font-family: var(--f-nar); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #0E5C33; text-decoration: none; }
 .hx-viewstrat:hover { text-decoration: underline; }
 .hx-stats { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 8px 0 0; }
-.hx-stats > div { min-width: 78px; }
+.hx-stats > div { min-width: 78px; max-width: 200px; }
 .hx-stats dt { font-size: 12px; color: var(--ink-3); }
 .hx-stats dd { margin: 2px 0 0; font-size: 14px; font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* What a verdict figure measures: the info bubble says it, except on a phone, where it sits under the figure. */
+.hx-stats .hx-why { display: none; }
+@media (max-width: 600px) {
+  .hx-stats { flex-direction: column; gap: 12px; }
+  .hx-stats dt .info { display: none; }
+  .hx-stats .hx-why { display: block; margin: 2px 0 0; font-size: 12px; font-weight: 400; line-height: 1.4; color: var(--ink-3); }
+}
 
 /* --- RSI loop observatory: the self-improving cycle + live phase + discovery tree --- */
 .rsiobs { border-top: 1px solid var(--rule); background: none; padding: 16px 0; margin-bottom: 16px; }
