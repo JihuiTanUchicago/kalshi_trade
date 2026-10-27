@@ -72,6 +72,46 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(main(evil), /<img src=x>/);
   });
 
+  test(`${name}: a research strategy's unseen-data figure and abstract read its held-out record`, async () => {
+    // A research session stores no backtest out_of_sample: its unseen-data result is the gatekeeper's
+    // validation record, and the page read "Rejected before the unseen test" beside Passed.
+    const exp = {classification: 'deployment_candidate', validation: {n_trades: 132, net_pnl: 20.46, mean_net_return: 0.031},
+      holdout: {n_trades: 64, mean_net_return: 0.024, consumed: true}};
+    const f = await open({status: 'passed', out_of_sample: null, experiment: exp});
+    const figs = f.root.querySelector('#figs').innerHTML;
+    assert.match(figs, /\+\$20\.46/); assert.match(figs, /after fees, over 132 trades the agent never saw/);
+    assert.doesNotMatch(figs + main(f), /Rejected before the unseen test|Not tested out-of-sample|not advanced to the unseen-data test/);
+    assert.match(main(f), /On 132 trades of data the agent never saw while iterating, it made \$20\.46 after fees \(\+3\.10% of the stake per trade\), one of 5 ideas tested this run\./);
+    // Too few trades to judge: the loss and the count it had, still not "rejected before the test".
+    const few = await open({status: 'failed', out_of_sample: null, experiment: {classification: 'inconclusive', validation: {n_trades: 38, net_pnl: -1.2}}});
+    assert.match(main(few), /On 38 trades of data the agent never saw while iterating, it lost \$1\.20 after fees, one of 5 ideas/);
+    assert.doesNotMatch(main(few), /rejected before reaching the unseen-data test/);
+    // An older strategy with a backtest keeps its out_of_sample figure; one never tested still says so.
+    const legacy = await open({status: 'passed', experiment: exp});
+    assert.doesNotMatch(legacy.root.querySelector('#figs').innerHTML, /132 trades/);
+    const never = await open({status: 'rejected', out_of_sample: null, experiment: {classification: 'rejected'}});
+    assert.match(main(never), /rejected before reaching the unseen-data test/);
+  });
+
+  test(`${name}: a rejected strategy says the check it missed, not "ranked below the finalists"`, async () => {
+    const skeptic = [{gate: 'challenger', label: "The skeptic's review didn't pass it", measured: 'an objection', needed: 'a reason', next: 'Say who pays.'}];
+    const f = await open({status: 'rejected', out_of_sample: null, experiment: null, why_failed: skeptic});
+    assert.match(main(f), /Rejected — the skeptic&#39;s review didn&#39;t pass it\.|Rejected — the skeptic's review didn't pass it\./);
+    assert.match(main(f), /Not tested on unseen data — the skeptic(&#39;|')s review didn(&#39;|')t pass it\./);
+    assert.doesNotMatch(main(f), /ranked below the handful of finalists/);
+    // A label is text: escaped where the page writes it as HTML.
+    const evil = await open({status: 'rejected', out_of_sample: null, experiment: null, why_failed: [{...skeptic[0], label: '<img src=x>'}]});
+    assert.doesNotMatch(main(evil), /<img src=x>/);
+    // With no missed check from the server it keeps its own reason.
+    const old = await open({status: 'rejected', out_of_sample: null, experiment: null, why_failed: [], in_sample: {trades: 40, pnl: -2}});
+    assert.match(main(old), /it lost money in testing/);
+    // A research strategy's never-seen column points at its validation record, which it was tested on.
+    const held = await open({status: 'failed', out_of_sample: null, why_failed: [],
+      experiment: {classification: 'inconclusive', validation: {n_trades: 38, net_pnl: 1.1}}});
+    assert.match(main(held), /Its test on unseen data is the validation-window evidence above\./);
+    assert.doesNotMatch(main(held), /Not tested on unseen data/);
+  });
+
   test(`${name}: a backtest-only strategy says it can't be deployed, as the server refuses it`, async () => {
     const f = await open({status: 'backtest-only', experiment: null});
     assert.doesNotMatch(main(f), /Deploying it is your decision/);

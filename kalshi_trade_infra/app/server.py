@@ -716,7 +716,7 @@ class Handler(BaseHTTPRequestHandler):
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{ui_css}}", css).replace("{{ui}}", theme or "").replace("{{ui_bundle}}", bundle)
                     .replace("{{boot_me}}", boot_me).replace("{{boot_first}}", boot_first)
-                    .replace("{{page_preload}}", "" if account is None else page_modules.preload(theme, path, versions))
+                    .replace("{{page_preload}}", page_modules.preload(theme, path, versions, account is not None))
                     .replace("{{tau_pages}}", page_modules.versions_attr("tau", versions))
                     .replace("{{mer_pages}}", page_modules.versions_attr("meridian", versions))
                     .replace("{{page_assets}}", page_modules.assets_attr(versions))

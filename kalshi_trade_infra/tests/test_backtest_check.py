@@ -22,8 +22,8 @@ def _alternating(n, mean, swing):
 def test_within_the_usual_range_reads_plainly():
     c = bc.book_check("paper", _stats(_alternating(34, 0.12, 0.5)), bc.backtest_figures(OOS, 5.0))
     assert c["verdict"] == "within" and c["trades"] == 34
-    assert c["line"] == ("On paper: 34 trades across all its paper runs, realistic fills only: +$0.12/trade vs backtest "
-                         "+$0.15/trade; won 50% vs 61%. "
+    assert c["line"] == ("On paper: 34 trades across all its paper runs, realistic fills only: +$0.12/trade net of fees "
+                         "and spread vs backtest +$0.15/trade; won 50% vs 61%. "
                          "Within the backtest's usual range.")
 
 

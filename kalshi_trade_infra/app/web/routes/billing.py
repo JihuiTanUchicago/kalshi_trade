@@ -12,7 +12,7 @@ from app.adapters.llm import models_catalog as catalog
 from app.adapters.stripe import billing
 from app.services import customer_text
 from app.web.http import ApiError, Ctx, _num
-from app.web.views import credit_cents, credit_exact, credit_usd
+from app.web.views import credit_cents, credit_exact, credit_usd, session_title
 
 
 def _stripe_failed(ctx: Ctx, e: "billing.StripeError", status: int, doing: str, fallback: str) -> ApiError:
@@ -275,6 +275,7 @@ def _statement(cur, uid: int, since, tz: int, totals: Dict, balance: float) -> D
             line["calls"] = int(r["n"])
             if r.get("run_kind") == "research" and r.get("run_id"):
                 line["session"] = {"id": int(r["run_id"]), "prompt": (r.get("run_prompt") or "")[:120] or None,
+                                   "title": session_title(r.get("run_prompt"), r.get("run_market")),
                                    "market": r.get("run_market"), "direction": r.get("run_direction")}
         elif r["kind"] in _CARD_KINDS:
             line["card_charge"] = billing.topup_charge_cents(Decimal(str(r["amount"]))) / 100

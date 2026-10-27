@@ -267,6 +267,8 @@ def auto_pause_line(text: Optional[str], deployment: Optional[Dict]) -> Optional
 # estimate. What it leaves out is the ask moving in the second before a real order lands. A change to
 # the fill model changes these words with it.
 PAPER_NET = "after Kalshi fees and the spread"
+# The same, where a sentence already runs long (the backtest comparison, the autopilot's chat lines).
+PAPER_NET_SHORT = "net of fees and spread"
 PAPER_FILLS = ("Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays "
                "Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A "
                "contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second "

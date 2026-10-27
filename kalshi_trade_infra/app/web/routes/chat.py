@@ -283,9 +283,10 @@ def _autopilot_story(d: Dict) -> List[str]:
         # Its count and net are the realistic paper record across all its paper runs (the road to live's),
         # not one deployment's realized P&L: said so, since the Deploy row beside it shows that one.
         lines.append("%s on paper (pretend money). The furthest along has %d of the %d realistic paper trades live "
-                     "needs and is %s on them, across all its paper runs." % (
+                     "needs and is %s on them %s, across all its paper runs." % (
             _plural(paper, "strategy is", "strategies are"), int(prog["trades"]), int(prog["trades_needed"]),
-            ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"])))
+            ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"]),
+            customer_text.PAPER_NET_SHORT))
     elif int(d.get("paper_open") or 0):
         # Bought but not yet settled: "none has traded yet" told Todd nothing happened while his
         # first four rain contracts sat open (2026-10-25).
@@ -462,7 +463,8 @@ def _paused_recent(deps: List[Dict], hours: int = 24, cur=None, memo: Optional[b
 
 
 def _paused_lines(paused: List[Dict]) -> List[str]:
-    return ["%s was paused after %s (%s): %s." % (p["title"], _plural(p["trades"], "paper trade"), _money(p["pnl"]), p["why"])
+    return ["%s was paused after %s (%s %s): %s." % (p["title"], _plural(p["trades"], "paper trade"), _money(p["pnl"]),
+                                                     customer_text.PAPER_NET_SHORT, p["why"])
             for p in paused]
 
 

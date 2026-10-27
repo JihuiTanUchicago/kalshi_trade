@@ -3470,7 +3470,7 @@ def early_exits_line(exits: Dict[str, Dict]) -> str:
 def paper_evidence_line(ev: Dict) -> str:
     """One-line summary of `paper_evidence` for the autopilot's review context."""
     parts = ["%d/%d realistic paper trades" % (ev["trades"], ev["trades_needed"]),
-             "net $%.2f" % ev["net_pnl"], "%.0fh of record" % ev["span_hours"]]
+             "$%.2f %s" % (ev["net_pnl"], customer_text.PAPER_NET_SHORT), "%.0fh of record" % ev["span_hours"]]
     if ev.get("p_value") is not None:
         parts.append("edge p=%.2f" % ev["p_value"])
     if ev.get("realization") is not None:
@@ -3859,9 +3859,10 @@ def _tournament_hold(cur, user_id: int, dep: Dict) -> str:
     trips, net = len(events), sum(events)
     if trips >= tournament.TOURNAMENT_MIN_TRIPS:
         return ""
-    return ("I left %s running: it is a paper tournament entrant with %d of %d independent events (net $%.2f), and "
+    return ("I left %s running: it is a paper tournament entrant with %d of %d independent events ($%.2f %s), and "
             "the tournament retires it on its own once the data can judge it. Paper costs nothing; a pause now "
-            "only shrinks the forward sample." % (dep["title"], trips, tournament.TOURNAMENT_MIN_TRIPS, net))
+            "only shrinks the forward sample." % (dep["title"], trips, tournament.TOURNAMENT_MIN_TRIPS, net,
+                                                  customer_text.PAPER_NET_SHORT))
 
 
 # Kalshi accepts orders in these categories only while the account's location verification is

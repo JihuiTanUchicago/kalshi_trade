@@ -530,7 +530,14 @@ window.TauPage('strategies', (T) => {
     const perpetual = isPerpetual(s), restricted = researchOnly(s);
     const filed = (() => { try { return new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } })();
     const ins = s.in_sample || {}, oos = s.out_of_sample;
-    const figsFor = (r) => fig('Out-of-sample P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)}` : 'Not tested out-of-sample' }) +
+    // A research session's strategy is judged by the gatekeeper on its validation window (the experiment's
+    // record): that is its unseen-data result. Only an older backtest carries out_of_sample, so the figure
+    // read "Rejected before the unseen test" beside Passed and the held-out evidence further down.
+    const held = !oos && s.experiment && s.experiment.validation && s.experiment.validation.n_trades != null ? s.experiment.validation : null;
+    const heldFig = (h, label) => fig(label, h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return), { v: h.net_pnl != null ? h.net_pnl : h.mean_net_return,
+      small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
+    const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
+    const figsFor = (r) => (held && !r.out_of_sample ? heldFig(held, 'Out-of-sample P&L') : fig('Out-of-sample P&L', r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)}` : 'Not tested out-of-sample' })) +
       fig('In-sample P&L', r.in_sample ? usd(r.in_sample.pnl, true) : '—', { v: r.in_sample && r.in_sample.pnl, small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
       fig('Return on capital', r.out_of_sample ? pct(r.out_of_sample.roi) : '—', { small: [r.out_of_sample && overDays(r.out_of_sample.days) ? 'Out-of-sample' + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(' ·\u00a0') }) +
       fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : 'in the session that found it' });
@@ -541,6 +548,10 @@ window.TauPage('strategies', (T) => {
     // profitable idea with too few trades is rejected on sample size, not for "losing money".
     const rejectReason = (st) => {
       const i = st.in_sample || {};
+      // The server's first missed check says why when it knows (the skeptic's review, the pre-test screen):
+      // "ranked below the handful of finalists" read beside "The skeptic's review didn't pass it". Plain text.
+      const w = Array.isArray(st.why_failed) && st.why_failed[0];
+      if (w && w.label) return String(w.label).charAt(0).toLowerCase() + String(w.label).slice(1) + '.';
       if (i.trades != null && i.trades < 5) return `it made ${usd(i.pnl, true)} in testing, but over just ${i.trades} trade${i.trades === 1 ? '' : 's'} — a finalist needs at least 5, too few to trust.`;
       if (i.pnl != null && +i.pnl <= 0) return `it lost money in testing (${usd(i.pnl, true)}).`;
       return 'it ranked below the handful of finalists we tested on unseen data.';
@@ -570,7 +581,7 @@ window.TauPage('strategies', (T) => {
         <dt>Fees paid</dt><dd>${usd(m.fees)}</dd>
         <dt>Profit factor</dt><dd>${m.profit_factor == null ? '—' : m.profit_factor}</dd>
         <dt>Worst drawdown</dt><dd>${usd(m.max_drawdown)}</dd>
-        <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>${luckFlag(m)}` : `<p class="hint">Not tested on unseen data — ${rejectReason(s)}</p>`;
+        <dt>Sharpe (daily)</dt><dd>${m.sharpe == null ? '—' : m.sharpe}</dd></dl>${luckFlag(m)}` : held ? '<p class="hint">Its test on unseen data is the validation-window evidence above.</p>' : `<p class="hint">Not tested on unseen data — ${esc(rejectReason(s))}</p>`;
     const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(g.name)}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Contract</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="tick" data-lab="Contract">${esc(t.ticker)}</td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
@@ -587,6 +598,7 @@ window.TauPage('strategies', (T) => {
     const hasExp = !!s.experiment;
     const abResult = oos
       ? `On out-of-sample data, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? (s.status === 'passed' ? `. Selected from ${num(s.hypotheses_tried)} hypotheses tested this run` : `. One of ${num(s.hypotheses_tried)} hypotheses tested this run`) : ''}.`
+      : held ? heldWords(held)
       : `It was ${s.status === 'rejected' ? 'rejected before reaching' : 'not advanced to'} the unseen-data test${s.hypotheses_tried ? ` — one of ${num(s.hypotheses_tried)} ideas tried this run` : ''}.`;
     const dataBlock = s.dataset ? `<div class="paper-sub"><h4 class="paper-h">Data &amp; partitioning</h4>
           <dl class="rp-grid">
@@ -678,7 +690,7 @@ window.TauPage('strategies', (T) => {
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
             ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `${bookName(d)} ·\u00a0${esc(d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
             ${canDeploy ? `<div style="display:grid;gap:10px">
-                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${rejectReason(s)}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
+                ${s.status !== 'passed' ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 <button class="btn${activeDeps.length ? '' : ' primary'}" id="dep-paper">Deploy on paper</button>${paperAgain(activeDeps)}
                 <details class="deployment-environments"><summary>Demo &amp; live</summary><div class="deployment-environments-body">
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>

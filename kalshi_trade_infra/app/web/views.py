@@ -13,6 +13,7 @@ from app import worker
 from app.adapters.kalshi import kalshi_account
 from app.adapters.stripe import billing
 from app.services import customer_text, gate_explain
+from app.trading.markets import MARKETS
 from app.web.http import ApiError, Ctx
 from trading_core.domain.money import cents, exact
 
@@ -391,3 +392,15 @@ def _run_wait(run: Optional[Dict]) -> Optional[Dict]:
     if state == "silent" and not overdue:
         return None
     return {"state": state, "seconds": secs, "overdue": overdue}
+
+
+def session_title(prompt: Optional[str], market: Optional[str]) -> Optional[str]:
+    """What a research session's list row, page and billing line name it when its prompt is not words
+    for the customer: the autopilot's research floor (worker.RESEARCH_FLOOR_IDEA) starts its sessions
+    with an instruction to the agent, so a phone's first screen read "Research floor: no research
+    started for a while, so pick the most promising angle ..." over every such session. None for any
+    other prompt (the page shows the idea as typed). The prompt itself is unchanged: the agent reads it."""
+    if (prompt or "").strip() != worker.RESEARCH_FLOOR_IDEA:
+        return None
+    m = MARKETS.get(market or "")
+    return "New idea picked by the autopilot for %s" % (m.label if m else "the market it picks")

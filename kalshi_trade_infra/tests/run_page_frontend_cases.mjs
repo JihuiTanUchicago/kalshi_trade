@@ -59,6 +59,73 @@ export function runPageCases({name, frontend}) {
     assert.doesNotMatch(list(f), /dropped before testing|still being tested/);
   });
 
+  test(`${name}: a session the server titles is named by that title, not its prompt to the agent`, async () => {
+    const floor = 'Research floor: no research started for a while, so pick the most promising angle.';
+    let f = await open({status: 'succeeded', brief: 1, by_autopilot: 1, prompt: floor, title: 'New idea picked by the autopilot for Bitcoin 15-minute'});
+    const head = f.root.querySelector('#runboard').innerHTML;
+    assert.match(head, /New idea picked by the autopilot for Bitcoin 15-minute/); assert.doesNotMatch(head, /Research floor/);
+    f = await open({status: 'succeeded', prompt: 'Fade late YES takers', title: null});
+    assert.match(f.root.querySelector('#runboard').innerHTML, /Fade late YES takers/);
+  });
+
+  test(`${name}: an idea that passed validation and then missed the final holdout says so, not "deploy it"`, async () => {
+    const later = [{gate: 'significance', label: 'The edge could be luck on the locked holdout', measured: 'p 0.48', needed: '0.10', next: 'Try a simpler version.'}];
+    const fell = {id: 42, title: 'Cheap NO after a spike', status: 'passed', market: 'btc15m', direction: 'custom', later_missed: later};
+    let f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [fell]);
+    const next = f.root.querySelector('#runnext').innerHTML;
+    assert.match(next, /Cheap NO after a spike<\/a> passed its first test on unseen data, then missed the one-time final test \(the edge could be luck on the locked holdout\)\./);
+    assert.match(next, /Nothing cleared every check this time\./);
+    assert.doesNotMatch(next, /deploy it on paper|Passed:/);
+    assert.match(list(f), /the edge could be luck on the locked holdout/i);
+    assert.doesNotMatch(list(f), /Open it to deploy on paper/);
+    // Beside a strategy that cleared everything, the passed one leads and the other is said after it.
+    const ok = {id: 43, title: 'Far-strike fade', status: 'passed', market: 'btc_daily', direction: 'custom'};
+    f = await open({status: 'succeeded', hypotheses_tried: 2, strategies_passed: 2}, [], [fell, ok]);
+    assert.match(f.root.querySelector('#runnext').innerHTML, /^<p class="run-next">Passed: <a href="\/strategies\/43">Far-strike fade<\/a>\. Open it to deploy it on paper\. <a href="\/strategies\/42">/);
+  });
+
+  test(`${name}: a finished autopilot session says what the autopilot does next, while the switch is on`, async () => {
+    const at = async (apOn, run, strategies = [], events = []) => {
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+        ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, ...run}, events, strategies})
+        : response({})});
+      f.S.me.user.autopilot = apOn;
+      await f.viewRun(9); f.clearTimers();
+      return f;
+    };
+    const said = /The autopilot takes these results into its next ideas and starts its next session on its own\./;
+    const missed = [{id: 42, title: 'Late fade', status: 'failed', market: 'btc15m', direction: 'custom'}];
+    for (const run of [{status: 'succeeded', stop_reason: 'limit'}, {status: 'failed', stop_reason: 'error', error: 'The research model couldn’t be reached just now, so the session stopped.'}]) {
+      const f = await at(true, {...run, by_autopilot: 1}, missed);
+      const next = f.root.querySelector('#runnext').innerHTML;
+      assert.match(next, said, run.status); assert.match(next, /<span data-ap-next>/, run.status);
+      // The switch flips off while the page is open: the line hides, as the research nudge does.
+      f.S.ap = {autopilot: false, mode: 'off'}; f.paintDashAp();
+      const span = f.root.querySelector('[data-ap-next]');
+      assert.ok(span, 'the line is found'); assert.equal(span.hidden, true);
+    }
+    // Off when the page opened: drawn hidden. A session the user started never says it.
+    let f = await at(false, {status: 'succeeded', stop_reason: 'limit', by_autopilot: 1}, missed);
+    assert.match(f.root.querySelector('#runnext').innerHTML, /<span data-ap-next hidden>/);
+    f = await at(true, {status: 'succeeded', stop_reason: 'limit', by_autopilot: 0}, missed);
+    assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, said);
+    // Out of credits: the autopilot can't start another, so the line stays off.
+    f = await at(true, {status: 'succeeded', run_forever: 1, stop_reason: 'complete', by_autopilot: 1}, missed,
+      [ev(1, 'step', 'Paused — out of credits. Add more (or turn on auto-reload) and start a new session to keep researching.')]);
+    assert.match(f.root.querySelector('#runnext').innerHTML, /It stopped when your credits ran out/);
+    assert.doesNotMatch(f.root.querySelector('#runnext').innerHTML, said);
+  });
+
+  test(`${name}: a verdict's figures lead with the average per trade after fees, and name the gate's 90% range`, async () => {
+    const stats = {n_trades: 132, mean_net_return: 0.031, p_value: 0.012, ci: {lo: 0.006, hi: 0.058}};
+    const f = await open({status: 'succeeded', stop_reason: 'limit'}, [ev(1, 'hypothesis', 'Idea'),
+      ev(2, 'verdict', 'PASSED - Idea: validation verdict is gatekeeper-held', {title: 'Idea', status: 'passed', strategy_id: 42, stats})]);
+    const log = f.root.querySelector('#log').querySelector('[data-review]').innerHTML;
+    assert.match(log, /<dt>Trades<\/dt><dd>132<\/dd><\/div><div><dt>Avg per trade after fees<\/dt><dd>\+3\.1%<\/dd>/);
+    assert.match(log, /<dt>90% range<\/dt><dd>0\.6%…5\.8%<\/dd>/);
+    assert.doesNotMatch(log, /95% CI/);
+  });
+
   test(`${name}: the example's cost says it was free, not "from your credits"`, async () => {
     let f = await open({status: 'succeeded', example: true, spent_usd: 0});
     assert.match(figs(f), /\$0\.00\s*free: Tau ran it for you/); assert.doesNotMatch(figs(f), /from your credits/);

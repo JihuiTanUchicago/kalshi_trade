@@ -1474,6 +1474,38 @@ test('the legal pages offer a signed-in reader the dashboard, not Sign in', asyn
   }
 });
 
+// Terms and Privacy are in app-legal.js, fetched on first use. They draw signed out too, so they wait as
+// boot does (the splash after a moment, never the app's shell) and a file that fails offers Try again there.
+test('the legal pages load their file once, signed out, without the app shell', async () => {
+  const f = frontend({fetchImpl: path => (path === '/api/me' ? response({error: 'Please sign in.'}, 401) : response({}))});
+  f.S.me = null;
+  const boot = f.document.createElement('div');
+  boot.id = 'tau-boot'; boot.dataset.tauPages = 'research:1a2b3c,legal:0f0e0d';
+  f.document.body.appendChild(boot);
+  const head = [];
+  f.document.head = {appendChild: (el) => head.push(el)};
+  const legal = f.PAGES.legal;
+  delete f.PAGES.legal;  // not fetched yet
+  f.location.pathname = '/terms';
+  const first = f.render(); await flush();
+  assert.deepEqual(head.map((el) => [el.tag, el.src]), [['script', '/static/app-legal.js?v=0f0e0d']]);
+  assert.equal(f.root.querySelector('.masthead'), null, 'no app shell, signed out');
+  f.elapse(250);
+  assert.match(f.root.innerHTML, /class="boot"/);
+  head[0].onerror(); await first; await flush();
+  assert.match(f.root.innerHTML, /This page didn’t load\. Check your connection and try again\./);
+  assert.deepEqual(f.navigations, [], 'never sent to sign-in');
+  // Try again fetches it afresh; once it has run, the page draws, and Privacy fetches nothing more.
+  const again = f.root.querySelector('#bootretry'); again.onclick(); await flush();
+  assert.equal(head.length, 2); assert.equal(head[1].src, head[0].src);
+  f.PAGES.legal = legal; head[1].onload(); await flush(); await flush();
+  assert.match(f.root.querySelector('h1').textContent, /Terms of Service/);
+  f.location.pathname = '/privacy';
+  await f.render(); await flush();
+  assert.match(f.root.querySelector('h1').textContent, /Privacy Policy/);
+  assert.equal(head.length, 2);
+});
+
 test('a strategy that does not exist links to the list instead of offering Try again', async () => {
   const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies/42') ? response({error: 'No such strategy.'}, 404) : response({}))});
   await f.render(); await flush();
@@ -2698,7 +2730,8 @@ test('a returning user reads what happened since the last visit at the top of th
   // Each book on its own, never added together; a book with no trades and nothing deployed stays out.
   // A book's name and its signed amount are one unit that a phone never splits.
   assert.match(text, /<span class="nobr"><b>Demo<\/b> <span class="neg">−\$1\.10<\/span><\/span> on 1 trade<\/span>/);
-  assert.match(text, /<span class="nobr"><b>Paper<\/b> <span class="pos">\+\$2\.42<\/span><\/span> on 3 trades<\/span>/);
+  // Paper says what its figure is net of, as every paper P&L does; demo and live don't.
+  assert.match(text, /<span class="nobr"><b>Paper<\/b> <span class="pos">\+\$2\.42<\/span><\/span> on 3 trades, after Kalshi fees and the spread<\/span>/);
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
   assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
   assert.match(text, /3 research sessions started/);

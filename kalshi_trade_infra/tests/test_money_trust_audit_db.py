@@ -240,7 +240,7 @@ def test_every_page_shows_one_number_per_figure(conn, quiet):
         assert dash_rows[did]["closed_trades"] == board_rows[did]["closed_trades"] == page["closed_trades"], name
     [paused] = [p for p in ap["paused_recent"] if p["deployment_id"] == dep["B1"]]
     assert paused["pnl"] == dash_rows[dep["B1"]]["realized_pnl"] == -0.8
-    assert any("was paused after 2 paper trades (down $0.80)" in line for line in ap["story"])
+    assert any("was paused after 2 paper trades (down $0.80 net of fees and spread)" in line for line in ap["story"])
     [pause_line] = [m["content"] for m in chat if m["content"].startswith("Paused your paper strategy Audit beta")]
     assert "it lost $0.80" in pause_line
 

@@ -79,7 +79,8 @@ def test_a_page_file_is_served_like_a_bundle_immutable_at_its_version_and_compre
     ("tau", "/strategies", "app-strategies.js"), ("tau", "/billing", "app-billing.js"),
     ("meridian", "/research", "app.meridian-research.js"), ("meridian", "/strategies/3", "app.meridian-strategies.js"),
     ("meridian", "/settings/billing", "app.meridian-billing.js"), ("meridian", "/settings/account", "app.meridian-funds.js"),
-    ("tau", "/", None), ("meridian", "/deploy", None), ("tau", "/terms", None),
+    ("tau", "/terms", "app-legal.js"), ("meridian", "/privacy", "app-legal.js"),  # the legal pages are always Tau's
+    ("tau", "/", None), ("meridian", "/deploy", None), ("tau", "/signin", None),
 ])
 def test_a_signed_in_shell_preloads_the_page_file_its_page_needs(web, theme, path, want):
     port, account = web
@@ -103,6 +104,25 @@ def test_a_signed_out_shell_preloads_nothing(web):
         assert _preloads(body.decode()) == [] and "{{" not in body.decode()
 
 
+def test_the_legal_pages_preload_their_file_signed_out_too(web):
+    # Terms and Privacy draw signed out (every other page goes to sign-in), in Tau on any device.
+    port, _ = web
+    v = server._static_versions()["app-legal.js"]
+    for cookie in (None, "tau_ui=meridian", "rsid=abc"):
+        for path in ("/terms", "/privacy"):
+            _, body = _get(port, path, cookie=cookie)
+            assert _preloads(body.decode()) == [("app-legal.js", v)], (cookie, path)
+
+
+def test_only_tau_has_the_legal_file():
+    assert page_modules.TAU_ONLY == ("legal",) and page_modules.PUBLIC == ("legal",)
+    assert "app-legal.js" in page_modules.FILES and "app.meridian-legal.js" not in page_modules.FILES
+    versions = server._static_versions()
+    assert "legal:" in page_modules.versions_attr("tau", versions)
+    assert "legal:" not in page_modules.versions_attr("meridian", versions)
+    assert page_modules.preload("meridian", "/terms", versions) == ""
+
+
 def test_a_deploy_that_changes_only_a_page_file_changes_the_build_the_page_checks():
     versions = dict(server._static_versions())
     before = page_modules.build_version("tau", versions)
@@ -124,10 +144,12 @@ def _router(bundle):
     return out, stubs
 
 
-@pytest.mark.parametrize("bundle", ["app.js", "app.meridian.js"])
-def test_both_routers_send_each_path_to_the_page_file_the_shell_preloads(bundle):
+@pytest.mark.parametrize("theme", ["tau", "meridian"])
+def test_both_routers_send_each_path_to_the_page_file_the_shell_preloads(theme):
+    bundle = page_modules.BUNDLE[theme]
     routes, stubs = _router(bundle)
-    assert set(stubs.values()) == set(page_modules.PAGES)  # each page file stands behind some view
+    # Each page file of this theme stands behind some view.
+    assert set(stubs.values()) == set(page_modules.PAGES) & set(page_modules.names(theme))
     for path in PATHS:
         # viewExample (in the bundle) goes straight on to its session's page, which the preload is for.
         hit = next((page for rx, page in routes if rx.match("/research/1" if path == "/example" else path)), "unrouted")
@@ -139,7 +161,7 @@ def test_both_routers_send_each_path_to_the_page_file_the_shell_preloads(bundle)
 @pytest.mark.parametrize("theme", ["tau", "meridian"])
 def test_each_page_file_returns_the_views_its_bundle_stands_in_for(theme):
     bundle = (STATIC / page_modules.BUNDLE[theme]).read_text()
-    for name in page_modules.PAGES:
+    for name in set(page_modules.PAGES) & set(page_modules.names(theme)):
         src = (STATIC / page_modules.file_name(theme, name)).read_text()
         assert src.count("window.TauPage('%s', (T) => {" % name) == 1
         returned = set(re.search(r"\n  return \{([\w, ]+)\};\n\}\);\n$", src).group(1).split(", "))

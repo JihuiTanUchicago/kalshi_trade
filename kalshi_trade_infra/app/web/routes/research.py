@@ -11,16 +11,17 @@ from app import repository as repo
 from app.adapters.llm import models_catalog as catalog
 from app.adapters.stripe import billing
 from app.research import agent, dreaming
-from app.services import customer_text, research_list, run_stop
+from app.services import customer_text, gate_explain, research_list, run_stop
 from app.services import markets as market_service
 from app.trading import spec as specmod
 from app.trading.markets import MARKETS
 from app.web.caches import _shared, _shared_kept
 from app.web.http import ApiError, Ctx, _int_param
 from app.web.routes.explore import _efloat, _explore_feed, _feed_mid, _ticker_close_at
-from app.web.routes.strategies import _owned_strategy, _strategy_card, warm_dev_curves
+from app.web.routes.strategies import _experiment_block, _owned_strategy, _strategy_card, warm_dev_curves
 from app.web.settings import MAX_ACTIVE_RESEARCH, MAX_RESEARCH_PER_DAY
-from app.web.views import _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd
+from app.web.views import (_gate_lines, _require_billing_ready, _run_wait, _silent_before, _with_gate_lines, credit_usd,
+                           session_title)
 
 
 def _researchable_markets(cur) -> List[Dict]:
@@ -61,6 +62,7 @@ def list_runs(ctx: Ctx):
         # A running session silent past the reaper's limit is left out of counts["research_running"]
         # (_silent_before): its row says "Silent", as the run page does, not "Researching" beside "Running 0".
         r["wait"] = _run_wait(r)
+        r["title"] = session_title(r.get("prompt"), r.get("market"))
     customer_text.run_rows(runs)
     return {"runs": runs, "counts": counts, "policy": policy, "totals": totals, "v": v}
 
@@ -161,16 +163,35 @@ def get_run(ctx: Ctx):
     run["stop_reason"] = run_stop.stop_reason(run)  # why it stopped, for a session that ended with nothing to list
     # The run stores the model's key, NULL for the default: the page names the model a customer picked.
     run["model_label"] = catalog.label_for_key(run.get("model"))
+    run["title"] = session_title(run.get("prompt"), run.get("market"))
     customer_text.run_rows([run])
     mine = [s for s in strategies if s["run_id"] == run["id"]]
     warm_dev_curves(mine)
     auto = _autopilot_puts_on_paper(ctx.cur, ctx.user, mine)
+    later = _later_missed(ctx.cur, mine)
     return {
         "run": run,
         "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after))),
-        "strategies": [{**_strategy_card(s), **({"autopilot_next": True} if s["id"] in auto else {})} for s in mine],
+        "strategies": [{**_strategy_card(s), **({"autopilot_next": True} if s["id"] in auto else {}),
+                        **({"later_missed": later[s["id"]]} if s["id"] in later else {})} for s in mine],
         "rsi": _rsi_block(pol, dream),
     }
+
+
+def _later_missed(cur, strategies: List[Dict]) -> Dict[int, List[Dict]]:
+    """{strategy id: the checks it missed after passing validation}, for the session's passed strategies
+    whose one-time locked holdout then failed: the same lines (gate_explain.for_strategy, from the
+    gatekeeper's record) its strategy page shows. The status stays "passed" (validation), so the session
+    page said "Passed: ... Open it to deploy it on paper" for an idea whose final test failed. Display only."""
+    out: Dict[int, List[Dict]] = {}
+    for s in strategies:
+        if s["status"] != "passed" or s.get("direction") == repo.DEMO_DIRECTION:
+            continue
+        lines = _gate_lines(gate_explain.for_strategy, "passed", s.get("result"),
+                            _experiment_block(cur, s["id"], s.get("experiment_id")))
+        if lines:
+            out[s["id"]] = lines
+    return out
 
 
 def _autopilot_puts_on_paper(cur, user: Optional[Dict], strategies: List[Dict]) -> set:
