@@ -1866,8 +1866,8 @@ test('phone labels on strategy rows say the P&L is a backtest', () => {
   const f = frontend({fetchImpl: path => { throw new Error('Unexpected offline request: ' + path); }});
   const m = (pnl) => ({pnl, trades: 40, win_rate: 0.54});
   const lab = (s) => f.strategySlip(s, {}).match(/<td class="num" data-lab="([^"]*)"/)[1];
-  assert.equal(lab({id: 1, status: 'passed', title: 'Kept', market: 'btc15m', out_of_sample: m(12), in_sample: m(3)}), 'Backtest P&amp;L (unseen)');
-  assert.equal(lab({id: 2, status: 'rejected', title: 'Dropped', market: 'btc15m', out_of_sample: null, in_sample: m(-7.5)}), 'Backtest P&amp;L (tested)');
+  assert.equal(lab({id: 1, status: 'passed', title: 'Kept', market: 'btc15m', out_of_sample: m(12), in_sample: m(3)}), 'Backtest P&amp;L');
+  assert.equal(lab({id: 2, status: 'rejected', title: 'Dropped', market: 'btc15m', out_of_sample: null, in_sample: m(-7.5)}), 'Backtest P&amp;L');
 });
 
 test('before its first policy check the run page says what the check needs', async () => {

@@ -291,13 +291,33 @@ export function runPageCases({name, frontend}) {
       const tested = cell({status, out_of_sample: null, in_sample: m(2.1)});
       assert.match(tested, /<span class="pnl-nopass">\+\$2\.10<\/span>/, status);
       assert.doesNotMatch(tested, /class="gain"/, status);
-      assert.match(tested, /tested only · did not pass/, status);
+      assert.match(tested, /on the history it searched · did not pass/, status);
       const unseen = cell({status, out_of_sample: m(3), in_sample: m(2.1)});
-      assert.match(unseen, /<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig">did not pass<\/div>/, status);
+      assert.match(unseen, /<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig">on unseen data · did not pass<\/div>/, status);
     }
     // Passed and backtest-only keep the money tone and say nothing of the kind.
-    assert.match(cell({status: 'passed', out_of_sample: m(3)}), /^<span class="gain">\+\$3\.00<\/span>$/);
+    assert.match(cell({status: 'passed', out_of_sample: m(3)}), /^<span class="gain">\+\$3\.00<\/span><div class="sub-fig">on unseen data<\/div>$/);
     const kept = cell({status: 'backtest-only', out_of_sample: null, in_sample: m(2.1)});
     assert.match(kept, /class="gain"/); assert.doesNotMatch(kept, /did not pass/);
+  });
+
+  test(`${name}: the strategy list's P&L column says which history each figure covers`, async () => {
+    // Walk 2026-10-27: the column read "Unseen P&L" (its glossary: "the P&L that counts") over every strategy
+    // researched since the locked holdout, whose figure is from the history the agent searched, marked only
+    // "tested only". The column is the backtest's, and each row says which data its figure covers.
+    const m = (pnl) => ({pnl, trades: 40, win_rate: 0.54});
+    const rows = [{id: 1, title: 'New pass', thesis: '', market: 'btc15m', direction: 'custom', status: 'passed', out_of_sample: null, in_sample: m(8.4), hypotheses_tried: 3},
+      {id: 2, title: 'Old pass', thesis: '', market: 'btc15m', direction: 'custom', status: 'passed', out_of_sample: m(5), in_sample: m(2), hypotheses_tried: 6}];
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/strategies?')
+      ? response({counts: {total: 2, passed: 2}, matched: 2, pages: 1, strategies: rows}) : response({})});
+    await f.viewStrategies(); await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0));
+    const html = f.root.querySelector('#slips').innerHTML;
+    assert.match(html, /<th class="num">Backtest P&amp;L<\/th>/);
+    assert.doesNotMatch(html, /Unseen P&amp;L|tested only|\(tested\)/);
+    assert.match(html, /\+\$8\.40<\/span><div class="sub-fig">on the history it searched<\/div>/);
+    assert.match(html, /\+\$5\.00<\/span><div class="sub-fig">on unseen data<\/div>/);
+    // No figure, no data line.
+    assert.doesNotMatch(f.strategySlip({id: 3, title: 'T', thesis: '', market: 'btc15m', status: 'queued', in_sample: {}}, {}), /sub-fig">on /);
+    f.clearTimers();
   });
 }
