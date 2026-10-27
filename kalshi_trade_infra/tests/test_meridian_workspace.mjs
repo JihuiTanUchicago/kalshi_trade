@@ -2356,11 +2356,11 @@ test('Explore: an empty feed says the list has not arrived (not that a blank sea
   const f = frontend({fetchImpl: () => reply()});
   await f.viewExplore();
   const body = f.root.querySelector('#xbody');
-  assert.equal(body.querySelector('.empty h3').textContent, 'No markets to show yet');
+  assert.equal(body.querySelector('.empty h2').textContent, 'No markets to show yet');
   assert.doesNotMatch(body.innerHTML, /No markets match/);
   reply = () => response({error: 'Tau is taking too long to respond.'}, 503);
   await body.querySelector('[data-xretry]').onclick(); await flush();
-  assert.equal(body.querySelector('.empty h3').textContent, 'Markets didn’t load');
+  assert.equal(body.querySelector('.empty h2').textContent, 'Markets didn’t load');
   assert.match(body.querySelector('.empty p').textContent, /taking too long/);
   const searched = frontend({search: '?q=zzz', fetchImpl: () => response({total: 3, shown: 3, matched: 0, per: 40, page: 0, markets: []})});
   await searched.viewExplore();

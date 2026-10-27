@@ -79,6 +79,31 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     assert.deepEqual(source.match(/createElement\('aside'\)(?![^;]*;[^;]*;[^;]*; a\.setAttribute\('aria-label')/g), null);
   });
 
+  test(`${name}: Explore's empty states and the System page skip no heading level, and System's scrolling feed takes focus by name`, async () => {
+    // Explore's empty and failed states were h3 under the page's h1.
+    for (const [answer, words] of [[response({markets: [], total: 0, shown: 0, matched: 0, at: new Date().toISOString()}), 'No markets to show yet'],
+      [response({error: 'Explore is busy.'}, 500), 'Markets didn’t load']]) {
+      const explore = frontend({fetchImpl: (path) => path.startsWith('/api/explore?') ? answer : response({})});
+      explore.location.pathname = '/explore'; explore.location.search = '';
+      await explore.viewExplore(); for (let i = 0; i < 6; i++) await flush();
+      assert.equal(explore.root.querySelector('#xbody h2').textContent, words);
+      assert.deepEqual(headingSkips(explore.root), []);
+      explore.clearTimers();
+    }
+    // System's detail panel ("Pick a box" / "Select a component", then the box opened) was h3 under the h1.
+    const sys = frontend({fetchImpl: (path) => path === '/api/admin/system' ? response({nodes: {}, events: [], now: '2026-10-20T16:00:00Z'}) : response({})});
+    await sys.viewSystem(); await flush();
+    assert.ok(sys.root.querySelector('#sys-detail h2'));
+    assert.deepEqual(headingSkips(sys.root), []);
+    assert.match(source, /detail\.innerHTML = `<h2>\$\{esc\(n\.label\)\}<\/h2>/);
+    assert.doesNotMatch(source, /detail\.innerHTML = `<h3>/);
+    // The live feed scrolls on its own (axe scrollable-region-focusable): Tab reaches it, and it has a name.
+    const feed = sys.root.querySelector('#sys-feed');
+    assert.equal(feed.getAttribute('tabindex'), '0');
+    assert.equal(feed.getAttribute('aria-label'), 'Live activity');
+    sys.clearTimers();
+  });
+
   test(`${name}: Funds, the research form, the track record and a deployed strategy's page skip no heading level`, async () => {
     const funds = frontend({fetchImpl: (path) => path === '/api/funds' ? response(fundsData()) : response({})});
     await funds.viewFunds(); await flush();

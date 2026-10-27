@@ -2477,7 +2477,7 @@
 
   // Explore's empty and failed states: what happened, and a way to ask again.
   const EXPLORE_WAIT = 'The market list refreshes about once a minute and hasn’t come in yet. Try again shortly.';
-  const exploreEmpty = (title, text) => `<div class="empty"><h3>${esc(title)}</h3><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
+  const exploreEmpty = (title, text) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
     if (q.get('m')) return viewMarketDetail(q.get('m'));

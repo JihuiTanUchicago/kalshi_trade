@@ -1559,10 +1559,10 @@ test('Explore with no search and no markets says the list has not arrived, and a
   const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? reply() : response({}))});
   await f.viewExplore(); await flush();
   const body = f.root.querySelector('#xbody');
-  assert.equal(body.querySelector('.empty h3').textContent, 'No markets to show yet'); assert.doesNotMatch(body.innerHTML, /No markets match/);
+  assert.equal(body.querySelector('.empty h2').textContent, 'No markets to show yet'); assert.doesNotMatch(body.innerHTML, /No markets match/);
   reply = () => response({error: 'Server error.'}, 500);
   await body.querySelector('[data-xretry]').onclick(); await flush();
-  assert.equal(body.querySelector('.empty h3').textContent, 'Markets didn’t load');
+  assert.equal(body.querySelector('.empty h2').textContent, 'Markets didn’t load');
   assert.ok(body.querySelector('[data-xretry]'));
 });
 
