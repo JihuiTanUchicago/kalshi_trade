@@ -711,6 +711,29 @@ test('a backtest-only strategy’s Deploy row says its backtest estimate is late
     'What these same closed trades would have made at the backtest’s average per trade on unseen data']);
 });
 
+test('an Explore row’s chip breaks only at its "·", never inside the market’s name or its close', async () => {
+  // Walk 2026-10-27 at 390px: "BTC above $X at 5pm ET · closes Oct 28, 02:45" filled a line and "UTC" sat alone on the next.
+  const m = {t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price on Oct 27, 2026 at 5pm EDT?', su: '$113,000 or above', bid: .48, ask: .52,
+    v24: 900, oi: 50, ct: '2026-10-27T21:00:00Z'};
+  const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore?') ? response({at: new Date().toISOString(), total: 1, shown: 1, matched: 1, page: 0, per: 40, markets: [m]}) : response({}))});
+  f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
+  f.location.pathname = '/explore'; f.location.search = '';
+  await f.viewExplore(); for (let i = 0; i < 6; i++) await flush();
+  const chip = f.root.querySelector('#xrows td.name .mk.quiet');
+  assert.match(chip.innerHTML, /^<span class="nobr">BTC above \$X at 5pm ET<\/span> · <span class="nobr">closes [^<]+<\/span>$/);
+  assert.match(chip.textContent, /^BTC above \$X at 5pm ET · closes /);
+  f.clearTimers();
+});
+
+test('a contract’s ticker moves to the next line whole, in both themes', () => {
+  // Walk 2026-10-27: a 390px market page split "KXBTCD-26OCT2717-" from "T112999.99". It breaks inside only when it is
+  // wider than a whole line.
+  for (const file of ['app.css', 'app.meridian.css']) {
+    const css = readFileSync(new URL(`../app/static/${file}`, import.meta.url), 'utf8');
+    assert.match(css, /\n\.kalshi-ref \.tick \{ display: inline-block; max-width: 100%; overflow-wrap: anywhere; \}/, file);
+  }
+});
+
 test('the Backtest estimate glossary entry is true of both kinds of Deploy row, in both themes', () => {
   // Its marker sits on the Deploy header over strategies with a gatekeeper record (held out) and without one
   // (later-period, the slice that picked it): it said "on unseen data" for every row.
@@ -1466,12 +1489,15 @@ test('a market page says what its price is, how it settles and when, and the rea
   // The market's readable name and status in words, not "KXBTCD · active".
   assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
-  assert.match(html, new RegExp('≈ 56% chance of Yes · bid 55¢ / ask 57¢ · as of [^<]*' + readerZone));
+  // Each piece holds together ("bid 58¢" ended a 390px line and "/ ask 61¢" began the next), breaking only at "·".
+  assert.match(html, new RegExp('≈\u00a056% chance of Yes\u00a0· bid\u00a055¢\u00a0/ ask\u00a057¢\u00a0· as\u00a0of\u00a0[^<]*\u00a0' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
-  assert.match(html, new RegExp('Closes</dt><dd><span class="fig ">[^<]*' + readerZone));
+  // The zone stays on the time's line ("Closes Oct 28, 02:45" left "UTC" alone on the next at 390px).
+  assert.match(html, new RegExp('Closes</dt><dd><span class="fig ">[^<]*\u00a0' + readerZone + '<'));
   assert.match(html, new RegExp('Result expected [^<]*' + readerZone)); assert.match(f.root.querySelector('#rawsect').innerHTML, new RegExp('Time \\(' + readerZone + '\\)'));
   assert.match(html, new RegExp('class="pc-xlab" text-anchor="end">[^<]*' + readerZone));
-  assert.match(html, /If the BRTI average before 5 PM EDT is above 113499\.99/);
+  // Kalshi's words as written, with "5 PM EDT" kept on one line.
+  assert.match(html, /If the BRTI average before 5 PM EDT is above 113499\.99/);
   // Live and paper each get their own block and totals; nothing adds them together.
   const live = html.slice(html.indexOf('<span class="mk live">Live</span> real money'), html.indexOf('<span class="mk">Paper</span>'));
   const paper = html.slice(html.indexOf('<span class="mk">Paper</span> paper money, not real'));
