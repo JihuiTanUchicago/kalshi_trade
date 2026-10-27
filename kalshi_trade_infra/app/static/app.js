@@ -2439,9 +2439,11 @@
     // side of the contract that is when the strike says.
     const where = !v ? '' : edges ? (v.side === 'below' ? 'below its floor' : 'above its top') : bucket ? v.side + ' its centre' : v.side + ' the strike';
     const yes = v && v.yes === true ? 'on the Yes side' : v && v.yes === false ? 'on the No side' : '';
-    const vs = !v ? '' : v.side === 'inside' ? fig('Spot vs bucket', 'Inside', { small: `${usd(v.to_lo)} above its floor · ${usd(v.to_hi)} below its top · on the Yes side` })
-      : v.side === 'at' ? fig('Spot vs strike', 'At the strike', { small: yes })
-      : fig(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs strike', `${usd(Math.abs(v.diff))} ${v.side}`, { small: [`${Math.abs(+v.pct || 0).toFixed(2)}% ${where}`, yes].filter(Boolean).join(' · ') });
+    // Measured from an old price, the label says so beside the figure, not only under Bitcoin's.
+    const lab = (l) => (sp && sp.stale ? `${l}, ${spotAge(+sp.age_s || 0)}` : l);
+    const vs = !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor · ${usd(v.to_hi)} below its top · on the Yes side` })
+      : v.side === 'at' ? fig(lab('Spot vs strike'), 'At the strike', { small: yes })
+      : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs strike'), usd(v.diff, true), { small: [`${Math.abs(+v.pct || 0).toFixed(2)}% ${where}`, yes].filter(Boolean).join(' · ') });
     const left = s.secs_left == null ? fig('Time left', '—') : fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed', { small: s.close_time ? 'closes ' + settleAt(s.close_time) : '' });
     return `<dl class="figures measure">${now}${strike}${vs}${left}</dl><p class="hint mk-spot-note">Kalshi settles on the CF Benchmarks Bitcoin index averaged over the last minute before the close; Coinbase’s price usually sits within a few dollars of it.</p>`;
   }

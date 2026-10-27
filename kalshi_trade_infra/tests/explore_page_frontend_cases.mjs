@@ -92,7 +92,7 @@ export function explorePageCases({name, frontend}) {
     const html = body().innerHTML;
     assert.match(html, /Bitcoin now<\/dt><dd><span class="fig ">\$113,420\.00<\/span><\/dd><dd class="sub-fig">Coinbase · 4s ago</);
     assert.match(html, />Strike<\/dt>.*>\$112,999\.99<.*Yes if Bitcoin settles above it/);
-    assert.match(html, />Spot vs strike<\/dt>.*>\$420\.01 above<.*0\.37% above the strike · on the Yes side/);
+    assert.match(html, />Spot vs strike<\/dt><dd><span class="fig ">\+\$420\.01<\/span><\/dd><dd class="sub-fig">0\.37% above the strike · on the Yes side</);
     assert.match(html, />Time left<\/dt>.*>1 hr 12 min<.*closes /);
     assert.doesNotMatch(html, /fig-behind|KXBTCD ·|BTC-USD/);
   });
@@ -101,7 +101,8 @@ export function explorePageCases({name, frontend}) {
     const {body} = await openSpot(() => response({...SPOT, spot: {...SPOT.spot, age_s: 420, stale: true}, vs: {side: 'below', diff: -499.99, pct: -0.442, yes: false}}));
     const html = body().innerHTML;
     assert.match(html, /class="m fig-behind"><dt class="lab">Bitcoin now<\/dt><dd><span class="fig ">\$113,420\.00<\/span><\/dd><dd class="sub-fig">Spot feed is 7 min old</);
-    assert.match(html, />\$499\.99 below<.*0\.44% below the strike · on the No side/);
+    // The distance was measured from that old price, and its label says so too.
+    assert.match(html, />Spot vs strike, 7 min ago<\/dt><dd><span class="fig ">−\$499\.99<\/span><\/dd><dd class="sub-fig">0\.44% below the strike · on the No side</);
   });
 
   test(`${name}: with no stored spot the section says so and still gives the strike and the time left`, async () => {
@@ -121,13 +122,13 @@ export function explorePageCases({name, frontend}) {
     assert.match(html, />Spot vs bucket<\/dt><dd><span class="fig ">Inside<\/span><\/dd><dd class="sub-fig">\$420\.00 above its floor · \$79\.99 below its top · on the Yes side</);
     ({body} = await openSpot(() => response({...SPOT, strike: bucket, vs: {side: 'above', diff: 100.02, pct: 0.088, yes: false}}), {ticker: 'KXBTC-26OCT2617-B113250', series: 'KXBTC'}));
     html = body().innerHTML;
-    assert.match(html, />\$100\.02 above<\/span><\/dd><dd class="sub-fig">0\.09% above its top · on the No side</);
+    assert.match(html, />\+\$100\.02<\/span><\/dd><dd class="sub-fig">0\.09% above its top · on the No side</);
     // From the ticker alone only the bucket's centre is known, and the page says so.
     ({body} = await openSpot(() => response({...SPOT, strike: {...bucket, lo: null, hi: null, value: 113250, from: 'ticker'}, vs: {side: 'below', diff: -250, pct: -0.221, yes: null}}),
       {ticker: 'KXBTC-26OCT2617-B113250', series: 'KXBTC'}));
     html = body().innerHTML;
     assert.match(html, />Bucket centre<\/dt>.*its edges aren’t stored/);
-    assert.match(html, />Spot vs centre<\/dt><dd><span class="fig ">\$250\.00 below<\/span><\/dd><dd class="sub-fig">0\.22% below its centre</);
+    assert.match(html, />Spot vs centre<\/dt><dd><span class="fig ">−\$250\.00<\/span><\/dd><dd class="sub-fig">0\.22% below its centre</);
     assert.doesNotMatch(html, /on the (Yes|No) side/);
   });
 
@@ -142,7 +143,7 @@ export function explorePageCases({name, frontend}) {
     const {body} = await openSpot(() => (++calls === 1 ? response({error: 'Bitcoin’s latest price didn’t load. Try again in a moment.'}, 503) : response(SPOT)));
     assert.match(body().innerHTML, /Bitcoin’s latest price didn’t load\. Try again in a moment\./);
     await body().querySelector('[data-spot-retry]').onclick(); await settle();
-    assert.match(body().innerHTML, /\$420\.01 above/);
+    assert.match(body().innerHTML, /\+\$420\.01/);
   });
 
   test(`${name}: a market that isn't a Bitcoin contract, or a settled one, has no spot section and asks for none`, async () => {
