@@ -167,6 +167,24 @@ def deployment_closed_totals(cur, deployment_ids: List[int]) -> Dict[int, Tuple[
     return {int(r["deployment_id"]): (int(r["n"]), r["pnl"]) for r in cur.fetchall()}
 
 
+def realistic_paper_closed(cur, deployment_ids: List[int]) -> Dict[int, int]:
+    """{deployment_id: its closed paper positions filled through the simulated venue (order_ref 'sim:')}
+    for the given deployments, in one read over idx_pos_dep (deployment_id, status). A deployment with
+    none is absent. The rest of a paper deployment's closed rows are instant fills, which the track
+    record leaves out (track_record.prepare), so the Strategies list can say a row's trades were all
+    instant fills. Display only."""
+    ids = sorted({int(i) for i in deployment_ids})
+    if not ids:
+        return {}
+    cur.execute(
+        "SELECT deployment_id, COUNT(*) AS n FROM app_positions "
+        "WHERE deployment_id IN (" + ",".join(["%s"] * len(ids)) + ") AND status='closed' AND mode='paper' "
+        "AND order_ref LIKE %s GROUP BY deployment_id",
+        (*ids, "sim:%"),
+    )
+    return {int(r["deployment_id"]): int(r["n"]) for r in cur.fetchall()}
+
+
 def get_deployment(cur, user_id: int, deployment_id: int) -> Optional[Dict]:
     cur.execute(_DEPLOYMENT_SELECT + " WHERE d.id=%s AND d.user_id=%s GROUP BY d.id", (deployment_id, user_id))
     row = cur.fetchone()

@@ -110,3 +110,39 @@ def test_the_list_finds_the_best_strategy_flags_the_autopilot_and_keeps_removed_
     # Active + removed paper is the strategy's whole paper book, which the dashboard counts.
     assert round(mid["real"]["pnl"] + mid["past"]["paper"]["pnl"], 2) == round(repo.realized_pnl(cur, uid, "paper"), 2)
     assert all("past" not in c for t, c in cards.items() if t != "mid")
+
+
+def test_the_list_flags_a_paper_book_of_instant_fills_as_the_track_record_leaves_it_out(conn):
+    """A strategy whose only paper trades were instant fills (no 'sim:' order_ref) read "+$3.80 on paper since
+    deploying · 2 trades" on the list, while the track record gave it a row saying all its trades were instant
+    fills, left out of the record. The list's flag is the track record's split, read from the same rows."""
+    from app import repository as repo
+    from app import server
+    from app.services import book_memo
+    from app.trading import spec as specmod
+
+    book_memo.clear()
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "instant@example.invalid", "I", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}})
+    close = repo.now_utc() - timedelta(hours=2)
+    sid = {}
+    for title, refs in (("instant", [None, None]), ("venue", ["sim:1", "sim:2"]), ("mixed", ["sim:3", None])):
+        sid[title] = repo.insert_strategy(cur, uid, None, None, "btc15m", "momentum", title, "t", spec, "passed", _result(1.0))
+        dep = repo.create_deployment(cur, uid, sid[title], "btc15m", "paper")
+        for i, ref in enumerate(refs):
+            repo.insert_closed_position(cur, dep, uid, "paper", "KXBTC15M-26OCT2517-T98", "yes", 1, 0.40, 0.02, 1.0, 0.0,
+                                        1.9, "settled", close, order_ref=ref, opened_at=close - timedelta(minutes=9 - i),
+                                        closed_at=close + timedelta(minutes=i))
+    conn.commit()
+    user = repo.get_user(cur, uid)
+    out = server.list_strategies(server.Ctx(conn, user, (), {"status": ""}, {}, None))
+    cards = {c["title"]: c for c in out["strategies"] if not c.get("example")}
+    assert cards["instant"]["real"]["instant_only"] is True
+    assert (cards["instant"]["real"]["trades"], cards["instant"]["real"]["pnl"]) == (2, 3.8)  # the figure is unchanged
+    assert "instant_only" not in cards["venue"]["real"] and "instant_only" not in cards["mixed"]["real"]
+    # The track record says the same of each: only "instant" is a row of instant fills left out.
+    rows = {r["title"]: r for r in book_memo.track_record(cur, uid)["modes"]["paper"]["strategies"]}
+    assert {t for t, r in rows.items() if r["instant_only"]} == {t for t, c in cards.items() if c["real"].get("instant_only")}
+    # Kept while the positions are unchanged: a second page read asks again for nothing.
+    assert server.list_strategies(server.Ctx(conn, user, (), {"status": ""}, {}, None))["strategies"] == out["strategies"]

@@ -627,10 +627,11 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
     monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [
         {"id": 1, "deployed": True}, {"id": 2, "deployed": False}, {"id": 3, "deployed": True}])
     monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: dict(s))
-    deps = [{"strategy_id": 1, "mode": "paper", "realized_pnl": 1.004, "closed_trades": 3, "open_positions": 1},
-            {"strategy_id": 1, "mode": "demo", "realized_pnl": "-0.5", "closed_trades": 2, "open_positions": 0},
-            {"strategy_id": 2, "mode": "paper", "realized_pnl": 9, "closed_trades": 9, "open_positions": 0}]
+    deps = [{"id": 11, "strategy_id": 1, "mode": "paper", "realized_pnl": 1.004, "closed_trades": 3, "open_positions": 1},
+            {"id": 12, "strategy_id": 1, "mode": "demo", "realized_pnl": "-0.5", "closed_trades": 2, "open_positions": 0},
+            {"id": 13, "strategy_id": 2, "mode": "paper", "realized_pnl": 9, "closed_trades": 9, "open_positions": 0}]
     monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda cur, uid, **k: deps)
+    monkeypatch.setattr(server.repo, "realistic_paper_closed", lambda cur, ids: {11: 3})  # filled through the simulated venue
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
     # Paper is the book shown; the demo (sandbox) book rides beside it, never added in (1.004 - 0.5).
     assert cards[1]["real"] == {"pnl": 1.0, "trades": 3, "open": 1, "live": False, "paused": False, "mode": "paper",
@@ -651,6 +652,48 @@ def test_strategies_list_attaches_real_record_to_deployed_cards(monkeypatch):
     cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
     assert cards[1]["real"] == {"pnl": 2.0, "trades": 1, "open": 0, "live": False, "paused": False, "mode": "demo"}
     assert cards[1]["books"] == ["demo"]
+
+
+def test_strategies_list_flags_a_paper_book_whose_trades_were_all_instant_fills(monkeypatch):
+    # The list read "+$3.80 on paper since deploying · 2 trades" for a strategy whose only paper trades were instant
+    # fills, while the track record left them out and said so. The card is flagged from the same split the track
+    # record makes (order_ref 'sim:' or not), one read for the page's paper books with trades.
+    monkeypatch.setattr(server.repo, "count_strategies", lambda *a, **k: {"passed": 4, "total": 4})
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": i, "deployed": True} for i in (1, 2, 3, 4)])
+    monkeypatch.setattr(strategy_routes, "_strategy_card", lambda s: dict(s))
+    monkeypatch.setattr(server.repo, "list_deployments_for_display", lambda cur, uid, **k: [
+        {"id": 11, "strategy_id": 1, "mode": "paper", "realized_pnl": 3.8, "closed_trades": 2, "open_positions": 0},
+        {"id": 21, "strategy_id": 2, "mode": "paper", "realized_pnl": 1.3, "closed_trades": 2, "open_positions": 0},
+        {"id": 22, "strategy_id": 2, "mode": "paper", "realized_pnl": 0.5, "closed_trades": 1, "open_positions": 0},
+        {"id": 31, "strategy_id": 3, "mode": "paper", "realized_pnl": 0, "closed_trades": 0, "open_positions": 1},
+        {"id": 41, "strategy_id": 4, "mode": "live", "realized_pnl": 2, "closed_trades": 1, "open_positions": 0},
+        {"id": 42, "strategy_id": 4, "mode": "paper", "realized_pnl": 2, "closed_trades": 1, "open_positions": 0}])
+    asked = []
+
+    def sim_rows(cur, ids):
+        asked.append(sorted(ids))
+        return {22: 1}
+
+    monkeypatch.setattr(server.repo, "realistic_paper_closed", sim_rows)
+    cards = {c["id"]: c for c in server.list_strategies(ctx(query={}))["strategies"]}
+    assert asked == [[11, 21, 22]]  # paper books with closed trades only; the live-shown strategy is not asked
+    assert cards[1]["real"]["instant_only"] is True and cards[1]["real"]["pnl"] == 3.8  # its figure is unchanged
+    assert "instant_only" not in cards[2]["real"]  # one of its deployments filled through the simulated venue
+    assert "instant_only" not in cards[3]["real"]  # nothing closed yet
+    assert cards[4]["real"]["mode"] == "live" and "instant_only" not in cards[4]["real"]
+    # No paper book with a closed trade on the page: no extra read.
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [{"id": 3, "deployed": True}])
+    asked.clear()
+    server.list_strategies(ctx(query={}))
+    assert asked == []
+
+
+def test_realistic_paper_closed_counts_closed_simulated_venue_fills_per_deployment():
+    cur = StratCur([{"deployment_id": 5, "n": 2}])
+    assert server.repo.realistic_paper_closed(cur, []) == {} and cur.sql is None  # nothing asked, no read
+    assert server.repo.realistic_paper_closed(cur, [6, 5, 6]) == {5: 2}
+    assert "status='closed'" in cur.sql and "mode='paper'" in cur.sql and "order_ref LIKE %s" in cur.sql
+    assert cur.params == [5, 6, "sim:%"]
 
 
 def test_strategies_list_says_what_removed_deployments_made_per_book(monkeypatch):
