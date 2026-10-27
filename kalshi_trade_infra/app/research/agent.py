@@ -4603,9 +4603,16 @@ def _copilot_context(cur, user: Dict) -> str:
             lines.append('- "%s" (%s) — %s' % (s["title"], s["market"], s["status"]))
     try:
         paper = repo.paper_balance(cur, user["id"])
-        demo = repo.demo_equity(cur, user["id"]).get("equity")
         credits = repo.credit_balance(cur, user["id"])
-        lines += ["", "Account & budget: paper cash $%.2f, demo equity $%s, research credits $%.2f left. Real, "
+        # Tau's demo book is its own bookkeeping (the demo capital it sets plus closed demo trades), not cash at
+        # Kalshi, and nothing trades on it without a demo key: the line told a review of an account with no key
+        # "demo equity $1000", and replies offered demo as if it were ready. Without a key it says so instead.
+        if repo.get_kalshi_dev_key(cur, user["id"]) is None:
+            demo = "no Kalshi demo key connected, so demo can't trade until the user adds one on Funds"
+        else:
+            demo = "Tau's demo book $%.2f (Tau's own figure, not the Kalshi demo account's cash)" % float(
+                repo.demo_equity(cur, user["id"]).get("equity") or 0)
+        lines += ["", "Account & budget: paper cash $%.2f, %s, research credits $%.2f left. Real, "
                       "fee-surviving money is the goal — a validated edge only counts once it holds up on a live book."
                   % (paper, demo, credits)]
     except Exception:
