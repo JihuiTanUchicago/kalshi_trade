@@ -294,12 +294,20 @@ window.TauPage('autopilot', (T) => {
       // autopilot was off. A failure puts it back to the saved state and says why in the panel, next to
       // it (the page under a phone's full-screen panel can't be seen).
       sw.disabled = true; apNote(box, '');
+      // Until Tau answers, the 20s status read leaves the switch where it was flipped (apUpdate): it put
+      // the switch back to the old state with no word while the write was still out. After 20s the
+      // switch says Tau hasn't confirmed yet.
+      const waited = waitNote(sw.closest('.switch') || sw);
+      S.apSwitching = { on, waited };
       let saved = false;
       // Locking the switch blurs it, so focus goes back to it once it unlocks (the panel is the only
       // thing on screen on a phone, and the page behind it is where focus used to land).
-      try { await api('/api/settings', { autopilot: on }); S.me.user.autopilot = on; saved = true; }
+      try { await api('/api/settings', { autopilot: on }).finally(waited); S.me.user.autopilot = on; saved = true; }
       catch (e) { sw.checked = !!(S.me && S.me.user && S.me.user.autopilot); apNote(box, e.message); }
       finally {
+        S.apSwitching = null;
+        const now = box.querySelector('#apf-apswitch');
+        if (now && now !== sw) { now.checked = sw.checked; now.disabled = false; }
         sw.disabled = false;
         const a = document.activeElement;
         if ((!a || a === document.body) && sw.isConnected && sw.focus) sw.focus({ preventScroll: true });
@@ -412,7 +420,11 @@ window.TauPage('autopilot', (T) => {
     const label = box.querySelector('#apf-label'); if (label) label.textContent = m.label;
     const on = d ? d.autopilot : (S.me.user && S.me.user.autopilot);
     const ap = box.querySelector('#apf-ap'); if (ap) ap.classList.toggle('on', !!on);
-    const sw = box.querySelector('#apf-apswitch'); if (sw && document.activeElement !== sw) sw.checked = !!on;
+    // A flip still waiting for Tau keeps the switch where it was flipped, locked, with its note: the
+    // status read may have left before the write landed (and the panel may have been built again).
+    const sw = box.querySelector('#apf-apswitch'), flip = S.apSwitching;
+    if (sw && flip) { sw.checked = flip.on; sw.disabled = true; flip.waited.place(sw.closest('.switch') || sw); }
+    else if (sw && document.activeElement !== sw) sw.checked = !!on;
     apCostPaint(box);
     const copy = box.querySelector('#apf-ap-copy');
     if (copy) copy.innerHTML = on

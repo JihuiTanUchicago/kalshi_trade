@@ -128,4 +128,63 @@ export function writeWaitCases({name, frontend, billingPage, cardedBilling, stor
     assert.equal(sw.disabled, false);
     f.clearTimers();
   });
+
+  // The autopilot switch's writes, while the card and the panel repaint around them (the 15s board poll,
+  // the 20s status read): a hung Turn on came back pressable with its note gone, and a hung flip of the
+  // panel switch was put back to the old state by the next status read, with no word.
+  const apDash = () => ({paper: {equity: 1000, cash: 1000, open_at_cost: 0, total_pnl: 0, realized_pnl: 0}, live: {connected: false},
+    demo: {equity: 1000, capital: 1000}, deployments: [], open_positions: [], recent_closed: [], freshness: {btc: null},
+    agents: {research_running: 0, research_queued: 0}});
+  const apFetch = (write, status) => (path) => {
+    if (path === '/api/dashboard') return response(apDash());
+    if (path === '/api/settings') return write.p;
+    if (path === '/api/autopilot/status') return response(status());
+    if (path === '/api/models') return response({models: [], default: ''});
+    if (path.startsWith('/api/chat')) return response({messages: []});
+    return response({});
+  };
+
+  test(`${name}: a Turn on autopilot that hangs stays pressed, with its note, on the card a poll repainted`, async () => {
+    const write = hung();
+    const f = frontend({fetchImpl: apFetch(write, () => ({autopilot: false, mode: 'off'}))});
+    f.S.me = {...f.S.me, user: {...f.S.me.user, autopilot: false}};
+    f.S.ap = {autopilot: false, mode: 'off'};
+    f.location.pathname = '/';
+    await f.viewDashboard(); await settle();
+    const first = f.root.querySelector('#dash-ap [data-apcard="on"]');
+    const turning = first.onclick(); await settle();
+    f.elapse(20000);
+    f.paintDashAp();  // what the board poll and the status read do
+    const now = f.root.querySelector('#dash-ap [data-apcard="on"]');
+    assert.notEqual(now, first, 'the card repainted');
+    assert.ok(now.classList.contains('busy')); assert.equal(now.disabled, true);
+    assert.deepEqual(notes(f.root).map((n) => n.textContent), [NOTE]);
+    assert.equal(notes(f.root)[0].parentElement, now.parentElement, 'beside the repainted button');
+    assert.equal(postRequests(f).filter((r) => r.path === '/api/settings').length, 1, 'never sent again');
+    write.land(response({error: 'Not allowed'}, 400)); await turning; await settle();
+    const after = f.root.querySelector('#dash-ap [data-apcard="on"]');
+    assert.equal(after.disabled, false); assert.equal(after.classList.contains('busy'), false);
+    assert.equal(notes(f.root).length, 0);
+    f.clearTimers();
+  });
+
+  test(`${name}: the panel's autopilot switch stays where it was flipped while Tau hasn't answered, and says so after 20s`, async () => {
+    const write = hung(), store = new Map([['tau_ap_open', '1']]);
+    let landed = false;
+    write.p.then(() => { landed = true; });
+    const f = frontend({storage: storageFor(store), fetchImpl: apFetch(write, () => (landed ? {autopilot: false, mode: 'off'} : {autopilot: true, mode: 'paper'}))});
+    f.S.me = {...f.S.me, user: {...f.S.me.user, id: 7, autopilot: true}};
+    f.S.ap = {autopilot: true, mode: 'paper'};
+    const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+    f.renderAutopilot(box, f.S.ap); await settle();
+    const sw = box.querySelector('#apf-apswitch');
+    sw.checked = false;
+    const flipping = sw.onchange(); await settle();
+    f.renderAutopilot(box, {autopilot: true, mode: 'paper'});  // a status read that left before the write landed
+    assert.equal(sw.checked, false, 'not put back by the status read'); assert.equal(sw.disabled, true);
+    await waitsThenGoes(f, () => sw.closest('.switch'), write, '/api/settings', box);
+    await flipping;
+    assert.equal(sw.disabled, false); assert.equal(f.S.me.user.autopilot, false);
+    f.clearTimers();
+  });
 }

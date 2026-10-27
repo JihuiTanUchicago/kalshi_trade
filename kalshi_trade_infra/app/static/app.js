@@ -2818,6 +2818,18 @@
   // Dashboard autopilot card: the one-click way in while autopilot is off, and once it's on a
   // plain "what is it doing, is it making money" strip. Painted from the float's status poll
   // (S.ap) plus the dashboard's paper book (S.dashPaper), so it never needs its own request.
+  // A Turn on still waiting for Tau: the 15s board poll and the 20s status read repaint the card, and
+  // the button came back pressable with its note gone, so a hung switch looked like a press that did
+  // nothing. The repainted button stays busy, with the note, until the write answers (apTurning).
+  let apTurning = null;
+  function apCardOn(b) {
+    const waited = apTurning = waitNote(b);
+    return busy(b, apTurnOn, waited).finally(() => {
+      apTurning = null;
+      const card = document.getElementById('dash-ap'), now = card && card.querySelector('[data-apcard="on"]');
+      if (now && now !== b) { now.classList.remove('busy'); now.disabled = false; }
+    });
+  }
   function paintDashAp() {
     const host = document.getElementById('dash-ap');
     if (!S.me || !S.me.user) return;
@@ -2832,7 +2844,8 @@
         <div class="apcard-act"><button type="button" class="btn primary" data-apcard="on">Turn on autopilot</button><a class="apcard-alt" href="/research">or research by hand</a></div>
         <p class="apcard-err error-text" role="alert"></p>`;
       const b = host.querySelector('[data-apcard="on"]');
-      b.onclick = () => busy(b, apTurnOn);
+      if (apTurning) { b.classList.add('busy'); b.disabled = true; apTurning.place(b); }
+      b.onclick = () => apCardOn(b);
       apBindFocus(host);
       return;
     }
