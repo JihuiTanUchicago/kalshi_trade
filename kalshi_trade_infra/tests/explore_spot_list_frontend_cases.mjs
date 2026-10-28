@@ -208,6 +208,18 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     f.clearTimers();
   });
 
+  // Walked 2026-10-28 in both themes: Tau's search box asked for "series, tickers" (words a new customer doesn't
+  // have) and its column read "Open int." where Meridian's and the market page's read "Open interest".
+  test(`${name}: Explore's search box and open-interest column read in the same plain words in both themes`, async () => {
+    const {f, rows} = await list({markets: ROWS});
+    assert.equal(f.root.querySelector('#xq').getAttribute('placeholder'), 'Search markets');
+    const labs = rows[0].querySelectorAll('td').map((td) => td.getAttribute('data-lab'));
+    assert.ok(labs.includes('Open interest'), labs.join(', '));
+    assert.ok(!labs.includes('Open int.'));
+    assert.doesNotMatch(f.root.querySelector('#xbody thead').textContent, /Open int\./);
+    f.clearTimers();
+  });
+
   test(`${name}: the hot rail names an untitled contract plainly and never reads out its ticker`, async () => {
     const {f, el} = await rail({markets: NAME_ROWS.map((m) => ({...m, h: [.4, .5]}))});
     const rows = el.querySelectorAll('.hot-row');
