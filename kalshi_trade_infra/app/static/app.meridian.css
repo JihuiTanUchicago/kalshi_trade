@@ -263,6 +263,10 @@ th .info { vertical-align: 0; }
 .bell-menu:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
 .bell-sum { margin: 0; padding: 8px 9px; font-size: 12.5px; line-height: 1.4; color: var(--ink-2); border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; white-space: normal; }
 .bell-empty { padding: 14px 9px; font-size: 12.5px; color: var(--ink-3); text-transform: none; letter-spacing: normal; white-space: normal; }
+/* A refresh that failed with a list up: one quiet line above the list, never an alert. */
+.bell-stale { margin: 0; padding: 6px 9px; font-size: 12px; line-height: 1.4; color: var(--ink-3); border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; white-space: normal; }
+.bell-again { font: inherit; color: var(--ink-2); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.bell-again:hover { color: var(--ink); }
 .mk.shared { display: inline-flex; align-items: center; gap: 4px; border-color: var(--rule-2); color: var(--ink-2); text-transform: none; letter-spacing: normal; }
 .mk.shared svg { width: 12px; height: 12px; }
 .shared-flag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-family: var(--f-nar); font-size: 11px; color: var(--ink-3); vertical-align: middle; }
