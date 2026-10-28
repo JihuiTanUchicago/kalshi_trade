@@ -1982,7 +1982,8 @@ body.landing-body .apf { display: none; }
   :root { --apf-h: 44px; }
   .apf-pill { min-height: var(--apf-h); }
   .t-explore .xlink a { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -14px -14px -14px 0; }
-  .info { width: 40px; height: 40px; margin: -13px -13px -13px -8px; }
+  /* A glossary marker's 14px icon sits where it did (5px after its word), in a 44px target the margins give back. */
+  .info { width: 44px; height: 44px; margin: -15px -15px -15px -10px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
   .pick, #pick-all { width: 22px; height: 22px; }
 }

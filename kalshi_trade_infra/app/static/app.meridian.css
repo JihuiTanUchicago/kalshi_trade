@@ -2654,7 +2654,8 @@ body.landing-body .apf { display: none; }
   .bell-stale { padding-block: 14px; }
   .bell-again { padding: 13.5px 6px; margin: -13.5px -6px; }
   .market-control .hot-tab { width: 44px; }
-  .info { width: 40px; height: 40px; margin: -13px -13px -13px -8px; }
+  /* A glossary marker's 14px icon sits where it did (5px after its word), in a 44px target the margins give back. */
+  .info { width: 44px; height: 44px; margin: -15px -15px -15px -10px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
   .pick, #pick-all { width: 22px; height: 22px; }
 }

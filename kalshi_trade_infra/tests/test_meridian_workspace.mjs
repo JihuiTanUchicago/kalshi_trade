@@ -3818,7 +3818,7 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.masthead \.bell-trig \{ min-width: 44px;/);
   assert.match(block, /\.market-control \.hot-tab \{ width: 44px; \}/);
-  assert.match(block, /\.info \{ width: 40px; height: 40px;/);
+  assert.match(block, /\.info \{ width: 44px; height: 44px; margin: -15px -15px -15px -10px; \}/);
   assert.match(css, /\.research-ap button \{[^}]*padding: 10px 4px; margin: -10px -4px;/);
   assert.match(css, /\.ap-focus button \{[^}]*padding: 10px 4px; margin: -10px -4px -10px 0;/);
   assert.match(css, /\.rsidisc \.pipechev \{ position: absolute; right: 14px;/);
