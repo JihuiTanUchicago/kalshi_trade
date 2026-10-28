@@ -65,8 +65,10 @@ def test_the_author_deletes_a_post_with_everything_hanging_off_it(conn):
 def test_a_card_stored_before_the_flag_says_later_period_from_the_feeds_own_read(conn):
     """A strategy card shared before its snapshot carried no_gatekeeper_record (#598) said "on unseen data" for a
     pass from the old loose backtest gate. The feed's own read (list_posts) says which cards' strategies have no
-    gatekeeper record, and such a "passed" card gets the flag; a recorded pass, the seeded example, a failed
-    strategy's card and a deleted strategy's card are as stored. No statement of its own."""
+    gatekeeper record, and such a "passed" card gets the flag; so does a "failed" (Void) card with none, one the
+    first version's simple backtest stored as failed, never judged on held-out data (its Strategies row and page say
+    "not held out"); a recorded pass or void, the seeded example and a deleted strategy's card are as stored. No
+    statement of its own."""
     from app import repository as repo
     from app.web.routes import community
 
@@ -87,7 +89,7 @@ def test_a_card_stored_before_the_flag_says_later_period_from_the_feeds_own_read
 
     posts = {"loose": share(strategy()), "kept": share(strategy(recorded=True)),
              "example": share(strategy(direction=repo.DEMO_DIRECTION)), "failed": share(strategy(status="failed"), "failed"),
-             "gone": share(10 ** 12)}
+             "failed_kept": share(strategy(status="failed", recorded=True), "failed"), "gone": share(10 ** 12)}
     note = repo.create_post(cur, author, "just a note", "note", None)
     statements = []
     real = cur.execute
@@ -103,7 +105,9 @@ def test_a_card_stored_before_the_flag_says_later_period_from_the_feeds_own_read
     assert len(statements) == 2  # the posts, then their reactions, as before
     cards = {k: community._post_out(rows[pid])["snapshot"] for k, pid in posts.items()}
     assert cards["loose"]["no_gatekeeper_record"] is True
-    for k in ("kept", "example", "failed", "gone"):
+    # The void with no record too: this case said its card claimed nothing, so it read "unseen data" (VOID_NO_RECORD_SQL).
+    assert cards["failed"]["no_gatekeeper_record"] is True and cards["failed"]["status"] == "failed"
+    for k in ("kept", "example", "failed_kept", "gone"):
         assert "no_gatekeeper_record" not in cards[k], k
     assert community._post_out(rows[note])["snapshot"] is None
     assert "id" not in cards["loose"]  # the reader isn't its author

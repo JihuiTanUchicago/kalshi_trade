@@ -322,6 +322,7 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
                     demo_key_back: bool = False, paper_books: Optional[Dict[int, str]] = None) -> Dict:
     res = d.get("result") or {}
     copy_pause = _demo_copy_pause(d, paper_books)
+    void_unrecorded = d.get("strategy_status") == "failed" and bool(d.get("void_no_record"))
     return {
         # A demo deployment of a strategy that is also on paper is its demo copy (app.trading.demo_twins makes
         # them): the row says what it copies and why its fills differ from paper's.
@@ -339,7 +340,11 @@ def _deployment_out(d: Dict, curve: List, unrealized: Optional[float] = None, pa
         # says "later-period", never "unseen" (the strategy's status, from the row's own read; display only).
         # So is a "passed" one with no gatekeeper record (the same read's no_gatekeeper_record), as its page
         # says: the Overview's details called its figure "Unseen P&L" beside a page saying "Later-period P&L".
-        "backtest_only": d.get("strategy_status") == "backtest-only" or bool(d.get("no_gatekeeper_record")),
+        # So is a void one with none (the same read's void_no_record): the first version's simple backtest stored it
+        # as failed, never judged on held-out data. Its row says "not held out" too, and `void_no_record` lets its
+        # hover leave out "which picked it", since nothing picked it, as its page and its Strategies row do.
+        "backtest_only": d.get("strategy_status") == "backtest-only" or bool(d.get("no_gatekeeper_record")) or void_unrecorded,
+        **({"void_no_record": True} if void_unrecorded else {}),
     }
 
 

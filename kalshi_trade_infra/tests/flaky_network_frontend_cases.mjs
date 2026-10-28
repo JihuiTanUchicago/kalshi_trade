@@ -125,4 +125,42 @@ export function flakyNetworkCases({name, frontend}) {
       f.clearTimers();
     }
   });
+
+  // A refresh that failed with a board up kept the board and said nothing, so it read as current. One quiet line
+  // above it says so, as the bell's does ("Couldn’t refresh. Showing … from N min ago." with Try again), and the
+  // next read that comes back takes it away.
+  test(`${name}: research results kept after a failed refresh say how old they are, with Try again`, async () => {
+    const BOARD = {total: {runs: 2, explored: 10, gated: 3, passed: 1, cost_usd: 2, gate_reach_rate: 0.3, pipeline_death_share: 0.2}};
+    let down = false, asked = 0;
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/models') return response({models: [{key: 'opus', label: 'Opus'}], default: 'opus'});
+      if (path.startsWith('/api/research/scoreboard')) { asked++; return down ? response({error: 'Something went wrong on our side. It’s been logged.'}, 500) : response(BOARD); }
+      if (path.startsWith('/api/runs')) return response({runs: [], counts: {research_running: 0, research_queued: 0}, totals: {tried: 4, passed: 1}});
+      return response({});
+    }});
+    f.S.me.user.autopilot = false;
+    f.location.pathname = '/research';
+    await f.viewResearch(); await settle();
+    const host = f.root.querySelector('#rsimo');
+    assert.match(host.textContent, /Is research getting better\?/);
+    assert.equal(host.querySelector('.loop-stale'), null, 'nothing while the board is current');
+    // Three minutes on, the next refresh fails: the board stays, and says how old it is.
+    down = true;
+    f.shiftClock(3 * 60000); [...f.intervals.values()].forEach((tick) => tick()); await settle();
+    assert.equal(asked, 2, 'it read the board again');
+    const line = host.querySelector('.loop-stale');
+    assert.ok(line, 'a line says the board is kept');
+    assert.equal(line.textContent, 'Couldn’t refresh. Showing your research results from 3 min ago. Try again');
+    assert.equal(line.getAttribute('role'), 'status');
+    assert.match(host.textContent, /Is research getting better\?/);
+    assert.doesNotMatch(host.textContent, /\(500\)|undefined|null|NaN|didn’t load/);
+    // Try again reads it once more; back, the line goes.
+    down = false;
+    const before = asked;
+    await host.querySelector('[data-loop-retry]').onclick(); await settle();
+    assert.equal(asked, before + 1, 'Try again reads it once more');
+    assert.equal(host.querySelector('.loop-stale'), null);
+    assert.match(host.textContent, /Is research getting better\?/);
+    f.clearTimers();
+  });
 }

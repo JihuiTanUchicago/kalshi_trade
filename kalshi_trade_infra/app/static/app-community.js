@@ -32,7 +32,9 @@ window.TauPage('community', (T) => {
       // "not / held out" at 360-390px (walked 2026-10-28).
       // A card with no later-period figure ("—") has no note on it, as a Strategies row with no figure has no line
       // under it: "(later period · unseen data)" beside a dash described a figure that wasn't there (walked 2026-10-28).
-      const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date, which picked it (later\u00a0period${SEP}not\u00a0held\u00a0out).`
+      // A Void card the server flags (no_gatekeeper_record on a failed one: the first version's simple backtest stored it
+      // as failed, never judged on held-out data) says "not held out" too, without "which picked it": nothing picked it.
+      const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date${snap.status === 'failed' ? '' : ', which picked it'} (later\u00a0period${SEP}not\u00a0held\u00a0out).`
         : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data).`;
       const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
         <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}later-period P&amp;L: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;

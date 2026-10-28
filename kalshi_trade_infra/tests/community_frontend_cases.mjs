@@ -155,6 +155,22 @@ export function communityCases({name, frontend}) {
     assert.doesNotMatch(kept, /not[ \u00a0]held[ \u00a0]out|which picked it/);
   });
 
+  // The first version's simple backtest stored strategies as Void with no gatekeeper record. Their cards said "(later
+  // period · unseen data)"; the feed now flags them (no_gatekeeper_record on a failed card), and they say "not held
+  // out" as their Strategies row and page do, without "which picked it": nothing picked a void one.
+  test(`${name}: a shared Void strategy with no gatekeeper record says not held out, never unseen data`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const card = {kind: 'strategy', id: 42, title: 'Old void', market: 'btc15m', status: 'failed', pnl: -1.5, trades: 40, win_rate: 0.41, days: 9};
+    for (const owner of ['', '@maya']) {
+      const html = f.postSnapshot({...card, no_gatekeeper_record: true}, owner);
+      assert.match(html, /Backtest over 9 days after the split date \(later\u00a0period\u00a0· not\u00a0held\u00a0out\)[.,]/, owner);
+      assert.doesNotMatch(html, /unseen|picked it|never saw/i, owner);
+      assert.match(html, /Void/);
+    }
+    // A Void card with its record (the gatekeeper's inconclusive verdict), or from a feed that sends no flag, keeps its words.
+    assert.match(f.postSnapshot(card, ''), /after the split date \(later\u00a0period\u00a0· unseen\u00a0data\)/);
+  });
+
   test(`${name}: a shared strategy card names its backtest figure as the Strategies list does, held out or not`, () => {
     // Walk 2026-10-28: the list and its sort say "Later-period P&L"; a held-out card said "backtest on unseen data" in
     // Tau and "Unseen-data P&L" in Meridian. One family now: later period, plus unseen data or not held out, with

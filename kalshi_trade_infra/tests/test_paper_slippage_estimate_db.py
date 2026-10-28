@@ -292,12 +292,17 @@ def test_a_passed_strategy_with_no_gatekeeper_record_says_later_period_on_every_
 
     sids = {"none": strat("Passed, no record", "passed"), "stored": strat("Passed, stored record", "passed"),
             "legacy": strat("Passed, legacy record", "passed"), "old": strat("Old loose gate", "backtest-only"),
-            "void": strat("Void", "failed")}
+            "void": strat("Void", "failed"), "void_kept": strat("Void, stored record", "failed")}
     repo.set_strategy_outcome(cur, sids["stored"], "passed", dict(RESULT), experiment_id=_experiment(cur, uid, None))
+    repo.set_strategy_outcome(cur, sids["void_kept"], "failed", dict(RESULT), experiment_id=_experiment(cur, uid, None))
     _experiment(cur, uid, sids["legacy"])
     _experiment(cur, uid, None)  # another experiment of the same user, linked to nothing, changes nothing
     deps = {k: repo.create_deployment(cur, uid, sid, "btc15m", "paper") for k, sid in sids.items()}
-    want = {deps["none"]: True, deps["stored"]: False, deps["legacy"]: False, deps["old"]: True, deps["void"]: False}
+    # The void has no record either: the first version's simple backtest stored it as failed, never judged on held-out
+    # data, so its rows say "not held out" too (void_no_record, VOID_NO_RECORD_SQL), as its Strategies row and page do.
+    # This case said False for it, which left its rows saying "unseen data".
+    want = {deps["none"]: True, deps["stored"]: False, deps["legacy"]: False, deps["old"]: True, deps["void"]: True,
+            deps["void_kept"]: False}
 
     ctx = server.Ctx(conn, repo.get_user(cur, uid), (), {}, {}, None)
     book_memo.clear()
@@ -305,7 +310,10 @@ def test_a_passed_strategy_with_no_gatekeeper_record_says_later_period_on_every_
         dash = {r["id"]: r["backtest_only"] for r in server.dashboard(ctx)["deployments"]}
         board = {r["id"]: r["backtest_only"] for r in server.list_deployments(ctx)["deployments"]}
         assert dash == want and board == want, read
+        # Only the void with no record says so (its hover leaves out "which picked it"), on both.
+        for rows in (server.dashboard(ctx)["deployments"], server.list_deployments(ctx)["deployments"]):
+            assert {r["id"] for r in rows if r.get("void_no_record")} == {deps["void"]}, read
     page = server.get_strategy(server.Ctx(conn, repo.get_user(cur, uid), (str(sids["none"]),), {}, {}, None))
     assert [d["backtest_only"] for d in page["deployments"]] == [True]
     # The read the engine and the gates use carries none of it.
-    assert all("no_gatekeeper_record" not in d for d in repo.list_deployments(cur, uid))
+    assert all("no_gatekeeper_record" not in d and "void_no_record" not in d for d in repo.list_deployments(cur, uid))

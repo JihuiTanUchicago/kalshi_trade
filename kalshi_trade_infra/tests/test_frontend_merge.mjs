@@ -721,6 +721,26 @@ test('a backtest-only strategy’s Deploy row says its backtest estimate is late
     'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· unseen data)']);
 });
 
+test('a Void strategy with no gatekeeper record says not held out on its Deploy and Overview rows, without “which picked it”', async () => {
+  // The first version's simple backtest stored it as Void with no record: its row's hover said "(later period · unseen
+  // data)". The server sends backtest_only and void_no_record; nothing picked a void one, as its Strategies row says.
+  const dep = (id, o) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+    backtest: {out_of_sample: {pnl: 12, trades: 6}}, ...o});
+  const rows = [dep(1, {backtest_only: true, void_no_record: true}), dep(2, {backtest_only: false})];
+  const tips = (html) => [...html.matchAll(/<td class="num" data-lab="Backtest estimate" title="([^"]*)">/g)].map((m) => m[1]);
+  const board = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: rows, open_positions: []}) : response({})});
+  await board.viewDeploy(); await flush(); await flush();
+  const dash = frontend({fetchImpl: (path) => path === '/api/dashboard' ? response({...emptyDashboard(), deployments: rows})
+    : path === '/api/autopilot/status' ? response({autopilot: false, mode: 'off'}) : response({})});
+  await dash.viewDashboard(); await flush(); await flush();
+  for (const cells of [tips(board.root.querySelector('#deps').innerHTML), tips(dash.root.querySelector('#dash-deps').innerHTML)]) {
+    assert.deepEqual(cells, [
+      'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· not held out)',
+      'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· unseen data)']);
+  }
+});
+
 test('an Overview row’s backtest estimate says later-period for a strategy whose page does', async () => {
   // Walk 2026-10-27: the Overview's rows read their backtest pace "on unseen data" for a passed strategy with no
   // gatekeeper record, whose page says later-period. The server's backtest_only covers it; the Overview uses it as Deploy does.

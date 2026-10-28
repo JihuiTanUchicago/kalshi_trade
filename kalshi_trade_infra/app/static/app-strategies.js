@@ -650,7 +650,9 @@ window.TauPage('strategies', (T) => {
     // heading broke "(not / held out)" and "(unseen / data)" (walked 2026-10-28).
     const laterQual = splitOnly ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data';
     // The qualifier keeps together with its marker: a phone broke it "(unseen / data)".
-    const topLabel = splitOnly ? gl('Later-period P&L (not\u00a0held\u00a0out)', 'laterperiod') : gl('Later-period P&L (unseen\u00a0data)', 'unseen');
+    // A void one's bubble (latervoid) says it failed there, never laterperiod's "what picked it": nothing picked it.
+    const topLabel = !splitOnly ? gl('Later-period P&L (unseen\u00a0data)', 'unseen') : s.status === 'failed'
+      ? gl('Later-period P&L (not\u00a0held\u00a0out)', 'latervoid') : gl('Later-period P&L (not\u00a0held\u00a0out)', 'laterperiod');
     // A Void, Rejected or missed-final strategy's P&L is muted, as its Strategies row (pnl-nopass) and Community card
     // mute it: a green "+$42.17" up top read as a result beside its Void stamp. Display only.
     const noPass = s.status === 'failed' || s.status === 'rejected' || s.verdict === 'missed_final';
