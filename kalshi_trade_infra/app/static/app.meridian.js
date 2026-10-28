@@ -1108,7 +1108,10 @@
       if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
       try { data = await bellReq; paint(data); return true; } catch (e) { if (!data) unloaded(); return false; }  // bell is best-effort
     };
-    await load();
+    // The bell opens while its list is still reading (walk 2026-10-28: on a slow reply a tap did nothing until
+    // the read came back, up to READ_MS), so it says it is loading, and the list fills in where it stands.
+    if (!data && !list.children.length) list.innerHTML = '<p class="bell-empty">Loading notifications\u2026</p>';
+    load().then((ok) => { if (ok) seen(); });
     // Autopilot pauses or readies a strategy while the page sits open: the dot shows it within a minute,
     // without a reload (bellTick). An open list is left as the reader sees it, unless it never loaded.
     bellFresh = (d) => { if (menu.hidden || !data) { data = d; paint(d); seen(); } };
