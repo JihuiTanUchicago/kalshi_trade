@@ -1199,6 +1199,10 @@
     mountAutopilot();
   }
   const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
+  // What a page is for, in one line under its name, in Tau's words and Research's lede style. Deploy and Settings
+  // opened on their figures or a form with no word on what the page holds.
+  const pageLede = (text) => `<p class="lede page-lede">${text}</p>`;
+  const ledeTitle = (title, text) => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${pageLede(text)}</div>`;
   async function viewDevLog() {
     shell('/devlog', boardTitle('Dev Logs'), loading(260));
     let d;
@@ -1273,7 +1277,7 @@
   }
   async function viewSettings() {
     const current = window.__TAU_UI__ === 'meridian' ? 'meridian' : 'tau';
-    shell('/settings', boardTitle('Settings'), `
+    shell('/settings', ledeTitle('Settings', 'How Tau looks and works for you.'), `
       <section class="sect theme-settings"><div class="section-head"><h2>Theme</h2></div>
         <div class="theme-pick" role="radiogroup" aria-label="Theme">
           ${THEMES.map((t) => `<button type="button" class="theme-opt${t.key === current ? ' on' : ''}" role="radio" aria-checked="${t.key === current}" tabindex="${t.key === current ? 0 : -1}" data-theme="${t.key}">
@@ -2646,7 +2650,7 @@
   async function viewDeploy() {
     // Autopilot + the agent chat now live in the floating window (reachable from every view),
     // so Deploy is just the board: what's trading and the open positions.
-    shell('/deploy', boardTitle('Deploy') +
+    shell('/deploy', ledeTitle('Deploy', 'Your strategies trading now.') +
       '<dl class="figures measure" id="dfigs" style="margin-top:14px"></dl><p class="stale-note" id="dep-stale" role="status"></p>', `
       <div class="deploy-board"><div id="flash"></div><div id="demo-health"></div><div id="dep-ap"></div><div id="deps">${loading(260)}</div>
         <section class="section"><div class="section-head"><h2>Open positions</h2></div><div id="openpos"></div></section>
@@ -3229,7 +3233,7 @@
     const q = new URLSearchParams(location.search);
     if (q.get('m')) return viewMarketDetail(q.get('m'));
     const f = { q: q.get('q') || '', sort: ['v24', 'oi', 'last'].includes(q.get('sort')) ? q.get('sort') : 'v24', page: Math.max(0, +(q.get('page') || 0)) };
-    shell('/explore', `<div class="board-title explore-heading"><h1 class="page">Explore</h1>
+    shell('/explore', `<div class="board-title explore-heading"><h1 class="page">Explore</h1>${pageLede('Every market Tau is tracking right now, across crypto, politics, sports, weather and more, hottest first. Prices refresh each minute.')}
       <div class="section-head filters explore-filters">
         <label class="field xsearch" style="margin:0"><span class="vh">Search markets</span>
           <input class="input" id="xq" type="search" placeholder="Search markets" value="${esc(f.q)}" autocomplete="off"></label>
@@ -4313,7 +4317,7 @@
     actionLink, adminViewOn, alert0, announce, SEP, sepLine, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
-    apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
+    apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, pageLede,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
     clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig, demoSpan,
     DEP_DONE, depActed, deploymentMode, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG,

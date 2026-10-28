@@ -5,7 +5,7 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, busy, clock, deploymentMode, esc, flash, ICON,
-    liveWaitMark, loading, marketShort, mdLite, notice, num, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP,
+    liveWaitMark, loading, marketShort, mdLite, notice, num, overDays, pageLede, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP,
     shell, statusMark, tone, trDay, usd, when
   } = T;
 
@@ -116,6 +116,7 @@ window.TauPage('community', (T) => {
     shell('/community', '', `
       <div class="feedwrap"><div class="community-heading"><h1 class="page">Community</h1>
         <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
+        ${pageLede('Share a strategy, an idea, or how your money is doing. Like and reply to other traders.')}
       </div>
         <details class="community-compose"><summary>New post ${ICON.chev}</summary>
         <form class="panel composer-post" id="composer-post" aria-label="New post">

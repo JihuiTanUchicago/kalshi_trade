@@ -2411,7 +2411,7 @@ body.landing-body .apf { display: none; }
 #xfigs .explore-counts > .m { display: flex; align-items: baseline; gap: 6px; margin: 0; padding: 0; border: 0; }
 #xfigs .lab { margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); }
 #xfigs .fig { margin: 0; font: 500 14px/20px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; letter-spacing: 0; }
-.explore-freshness { display: flex; grid-column: 1 / -1; grid-row: 2; align-items: baseline; margin: 0; min-height: 24px; padding-top: 2px; }
+.explore-freshness { display: flex; grid-column: 1 / -1; grid-row: 3; align-items: baseline; margin: 0; min-height: 24px; padding-top: 2px; }
 #xfigs .snapshot-time { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; }
 #xfigs .snapshot-time .lab { font-weight: 600; }
 #xfigs .snapshot-time > dd, #xfigs .snapshot-time .fig { display: contents; }
@@ -2516,6 +2516,7 @@ body.landing-body .apf { display: none; }
   .community-heading { display: grid; grid-template-columns: minmax(0, 1fr) 116px; gap: 8px 12px; padding-right: 0; }
   .community-heading h1 { grid-column: 1; grid-row: 1; }
   .feed-filter { grid-column: 1 / -1; grid-row: 2; }
+  .community-heading > .page-lede { grid-column: 1 / -1; grid-row: 3; }
   .community-compose > summary { padding-inline: 10px; }
   .feedwrap .snap-evidence-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
   .feedwrap .snap-evidence-metrics .snap-result { grid-column: 1 / -1; }
@@ -2553,8 +2554,8 @@ body.landing-body .apf { display: none; }
 @container work (max-width: 599px) {
   .explore-heading { grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; }
   .explore-counts { justify-content: flex-end; }
-  .explore-filters .xsearch { grid-column: 1 / -1; grid-row: 2; }
-  .explore-freshness { grid-column: 1 / -1; grid-row: 3; }
+  .explore-filters .xsearch { grid-column: 1 / -1; grid-row: 3; }
+  .explore-freshness { grid-column: 1 / -1; grid-row: 4; }
 }
 @container explore-register (max-width: 759px) {
   .t-explore, .t-explore tbody { display: block; }
@@ -2743,6 +2744,11 @@ body.landing-body .apf { display: none; }
 .research-page > .research-ap, .research-page > .research-ap-on { grid-column: 1 / -1; }
 /* What Research is, under its name: the page otherwise opened on a button and a list. */
 .research-page > .research-lede { grid-column: 1 / -1; margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
+/* The same line under Deploy, Explore, Settings and Community, in Research's lede type. */
+.page-lede { margin: 4px 0 0; font-size: 14px; line-height: 1.5; overflow-wrap: break-word; }
+.explore-heading > .page-lede { grid-column: 1 / -1; grid-row: 2; margin: 0; }
+/* Community's takes its own row under the name and filters: at 70ch it fit beside them and read as a third filter. */
+.community-heading > .page-lede { flex-basis: 100%; max-width: none; margin: 0; }
 
 /* Strategy sidebar holdings: one block per position, figures wrap instead of clipping. */
 .holdlist { list-style: none; margin: 0; padding: 0; }
