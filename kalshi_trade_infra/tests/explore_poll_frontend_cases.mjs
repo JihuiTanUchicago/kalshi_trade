@@ -136,6 +136,7 @@ export function explorePollCases({name, frontend, storageFor, railOpenWide}) {
     const rail = () => f.document.getElementById('hotrail'), note = () => (rail().querySelector('#hot-stale') || {textContent: ''}).textContent;
     const reads = () => f.requests.filter(({path}) => path === '/api/explore/hot').length;
     assert.equal(rail().querySelectorAll('.hot-row').length, 2);
+    f.shiftClock(30e3);  // the rail's next tick (one right after its mount read asks nothing new)
     const tick = await pollOf(f, '/api/explore/hot');
     failing = true;
     await tick(); await settle();

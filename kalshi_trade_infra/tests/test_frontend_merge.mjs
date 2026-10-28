@@ -22,6 +22,7 @@ import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
+import {loadPollCases} from './load_poll_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
@@ -242,6 +243,8 @@ phoneSpeedCases({name: 'Tau', frontend, source, railOpenWide: [['tau_hotrail', '
 exploreSpotListCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 explorePollCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
+  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+loadPollCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 pageFileCases({name: 'Tau', frontend, prefix: 'app-', pagesKey: 'tauPages',
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
@@ -997,6 +1000,7 @@ test('the empty paper track record follows the autopilot switch when a status re
   // Switched on elsewhere (another tab, the chat): the next status poll carries it. The record's own
   // poll skips an unchanged payload, so before this the panel kept "Go to Deploy".
   status = {autopilot: true, mode: 'paper', story: [], research: {}, live_running: 0, demo_running: 0, paper_running: 0};
+  f.shiftClock(20000);  // the next status poll, 20s on (a tick under 10s after a read asks nothing new)
   for (const tick of [...f.intervals.values()]) tick();
   await flush(); await flush();
   assert.equal(f.S.me.user.autopilot, true);
@@ -2489,7 +2493,7 @@ test('the autopilot card keeps its figures when the status poll fails, notes the
   }});
   f.S.me.user.autopilot = true; f.S.ap = status; f.S.apAt = Date.now();
   await f.viewDashboard(); await flush(); await flush();
-  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden) tick()"));
+  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden && !apFresh()) tick()"));
   const note = () => f.root.querySelector('#dash-ap-stale').textContent;
   const card = () => f.root.querySelector('#dash-ap').innerHTML;
   const reads = () => f.requests.filter(r => r.path === '/api/autopilot/status').length;
