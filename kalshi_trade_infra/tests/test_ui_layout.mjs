@@ -340,6 +340,23 @@ test('Meridian: an opened deployment Details takes its row and wraps between fac
     'no rule, at any width, stops the details line wrapping');
 });
 
+// Walk 2026-10-28, Meridian's Overview at 390px: opening a card's Details pushed Realized and Unrealized P&L below it.
+// The wide card's opened footer takes "grid-row: 3" through :has, which outranked the one-column card's "grid-row: auto",
+// so in one column the footer sat in row 3 and the figures fell to row 4. One column, it follows the figures in order.
+test('Meridian: opening an Overview card’s Details keeps its Realized and Unrealized P&L above it at any width', () => {
+  const all = rules(read('app.meridian.css'));
+  const ONE = '@container deployment-ledger (max-width: 399px)', TWO = '@container deployment-ledger (max-width: 639px)';
+  const opened = '.dep-monitor .monitor-footer:has(.dep-evidence[open])';
+  assert.equal(decl(all, opened, 'grid-row', ONE), 'auto', 'one column: after the figures, as the page orders it');
+  assert.equal(decl(all, opened, 'grid-column', ONE), '1');
+  assert.equal(decl(all, '.monitor-metrics', 'grid-row', ONE), 'auto');
+  // Wider, the figures keep rows 1–2 beside the name and setup, and the opened Details takes row 3 under all of them.
+  assert.equal(decl(all, '.monitor-metrics', 'grid-row'), '1 / span 2');
+  assert.equal(decl(all, '.monitor-footer:has(.dep-evidence[open])', 'grid-row'), '3');
+  assert.equal(decl(all, '.monitor-footer', 'grid-row', TWO), '3');
+  assert.equal(decl(all, '.monitor-metrics', 'grid-row', TWO), undefined, 'two columns: the figures keep their rows');
+});
+
 // The same walk: a demo card's “after Kalshi fees, in Tau’s demo book: not real money” (.book-net) ran four lines at the
 // Realized figure's 20px under “−$2.10”. It is the small print the paper card's “after Kalshi fees and the spread” is.
 test('Meridian: a demo or live Overview card’s book line under Realized P&L is small print, not a figure', () => {
