@@ -1835,8 +1835,21 @@
     // A backtest-only strategy (the old loose gate) has no gatekeeper record: its out_of_sample is the backtest's
     // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590). So is
     // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's or the session page's own reads).
-    const pnlSub = [m.pnl == null ? '' : oos && (s.status === 'backtest-only' || s.no_gatekeeper_record) ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
-      : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
+    // A held-out row's figure is the backtest after its split date too, so it says "later-period", as the sort
+    // ("Later-period P&L") that orders it does: it read "on unseen data" under a sort named otherwise. "On unseen
+    // data" says it was held out, as "which picked it: not held out" says the other kind was not.
+    // A phone's stacked card puts the line in a third of the row under "BACKTEST P&L": the sentence ran about five
+    // lines there, and said "P&L" again under the label. It reads the short form ("later period · 9 days · not held
+    // out"); the full sentence is its hover and what a screen reader says (bt-long, hidden on a phone only visually).
+    const later = oos && (s.status === 'backtest-only' || s.no_gatekeeper_record);
+    const verdictWord = missedFinal ? 'missed the final test' : noPass ? 'did not pass' : '';
+    // The count and its unit hold together ("30 / days" broke across a phone's lines).
+    const spanDays = (d) => !(+d > 0) ? '' : +d < 1 ? 'under a day' : `${num(Math.round(+d))}\u00a0day${Math.round(+d) === 1 ? '' : 's'}`;
+    const longSub = [m.pnl == null ? '' : later ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
+      : oos ? `later-period P&amp;L${overDays(m.days)} after the split date, on unseen data` : 'on the history it searched' + overDays(m.days), verdictWord].filter(Boolean).join(SEP);
+    const shortSub = [...(m.pnl == null ? [] : [oos ? 'later period' : 'history it searched', spanDays(m.days), later ? 'not held out' : oos ? 'unseen data' : '']), verdictWord].filter(Boolean).join(SEP);
+    const pnlSub = !longSub ? '' : shortSub === longSub ? `<div class="sub-fig">${longSub}</div>`
+      : `<div class="sub-fig bt-sub" title="${longSub}"><span class="bt-long">${longSub}</span><span class="bt-short" aria-hidden="true">${shortSub}</span></div>`;
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const missed = Array.isArray(opts.missed) && opts.missed.length ? `<div class="slip-missed">${whyFailedHtml(opts.missed.slice(0, 1))}${opts.missed.length > 1 ? `<a class="sub-fig" href="/strategies/${s.id}">${opts.missed.length - 1} more check${opts.missed.length > 2 ? 's' : ''} on its page</a>` : ''}</div>` : '';
@@ -1846,7 +1859,7 @@
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
       <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}${missed}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))}\u00a0· ${esc(dirLabel(s.direction))}</span></td>
-      <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub ? `<div class="sub-fig">${pnlSub}</div>` : ''}</td>
+      <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       ${opts.inRun ? '' : `<td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>`}

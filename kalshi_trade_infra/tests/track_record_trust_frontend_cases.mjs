@@ -8,6 +8,8 @@ const response = (data, status = 200) => ({ok: status < 400, status, json: async
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 
+// The bundles' separator (SEP in app.js and app.meridian.js; test_separator_line_start.mjs).
+const SEP = '\u00a0\u00b7 ';
 const TH = {min_sharpe_days: 14, min_trades: 30};
 const plain = (html) => html.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 const stratRow = (o) => ({strategy_id: 3, title: 'Fade the 15-minute Bitcoin overshoot', market: 'btc15m', trades: 26, open_trades: 1,
@@ -140,9 +142,12 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     // A strategy's backtest P&L on the list said "on unseen data" beside a win rate, over no stated span.
     const s = {id: 3, title: 'Fade the 15-minute Bitcoin overshoot', thesis: 'A rule.', market: 'btc15m', direction: 'both', status: 'passed',
       out_of_sample: {pnl: 6.2, trades: 48, win_rate: 0.58, days: 30.2}, in_sample: {pnl: 21, trades: 120, win_rate: 0.61, days: 90}};
-    assert.match(f.strategySlip(s, {}), /<div class="sub-fig">on unseen data over 30 days<\/div>/);
-    assert.match(f.strategySlip({...s, out_of_sample: null}), /<div class="sub-fig">on the history it searched over 90 days<\/div>/);
-    assert.match(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: null}}), /<div class="sub-fig">on unseen data<\/div>/);
+    // Its full line, then a phone's short form of it (the full line is that form's hover).
+    const line = (html) => (html.match(/<span class="bt-long">([^<]*)<\/span><span class="bt-short" aria-hidden="true">([^<]*)<\/span>/) || []).slice(1);
+    assert.deepEqual(line(f.strategySlip(s, {})), ['later-period P&amp;L over 30 days after the split date, on unseen data', `later period${SEP}30\u00a0days${SEP}unseen data`]);
+    assert.deepEqual(line(f.strategySlip({...s, out_of_sample: null})), ['on the history it searched over 90 days', `history it searched${SEP}90\u00a0days`]);
+    assert.deepEqual(line(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: null}})), ['later-period P&amp;L after the split date, on unseen data', `later period${SEP}unseen data`]);
+    assert.deepEqual(line(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: 0.4}})), ['later-period P&amp;L in under a day after the split date, on unseen data', `later period${SEP}under a day${SEP}unseen data`]);
   });
 
   test(`${name}: the equity curve labels its break-even line when the record has been both above and below it`, () => {

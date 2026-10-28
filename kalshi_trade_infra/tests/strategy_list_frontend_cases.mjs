@@ -1,6 +1,12 @@
 // Strategies list (/strategies) cases, run against each bundle's offline DOM/transport harness.
 import assert from './assert_text.mjs';
 import {test} from 'node:test';
+import {bundleSource} from './bundle_source.mjs';
+
+// The bundles' separator (SEP in app.js and app.meridian.js; test_separator_line_start.mjs).
+const SEP = ' · ';
+// Text as a reader sees it: no tags, entities read, the money word joiner gone.
+const plain = (html) => html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/⁠/g, '');
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
@@ -280,7 +286,7 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const bt = row(f, {status: 'backtest-only', out_of_sample: oos});
     assert.match(bt, /later-period P&amp;L over 30 days after the split date, which picked it: not held out/);
     assert.doesNotMatch(bt, /unseen/);
-    assert.match(row(f, {status: 'passed', out_of_sample: oos}), /on unseen data over 30 days/);
+    assert.match(row(f, {status: 'passed', out_of_sample: oos}), /later-period P&amp;L over 30 days after the split date, on unseen data/);
     // With only in-sample figures, it says so, as before.
     assert.match(row(f, {status: 'backtest-only', out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}), /on the history it searched over 60 days/);
   });
@@ -293,8 +299,57 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const none = row(f, {status: 'passed', no_gatekeeper_record: true, out_of_sample: oos});
     assert.match(none, /later-period P&amp;L over 30 days after the split date, which picked it: not held out/);
     assert.doesNotMatch(none, /unseen/);
-    assert.match(row(f, {status: 'passed', no_gatekeeper_record: false, out_of_sample: oos}), /on unseen data over 30 days/);
+    assert.match(row(f, {status: 'passed', no_gatekeeper_record: false, out_of_sample: oos}), /later-period P&amp;L over 30 days after the split date, on unseen data/);
     assert.match(row(f, {status: 'passed', no_gatekeeper_record: true, out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}),
       /on the history it searched over 60 days/);
+  });
+
+  // A row's Backtest P&L line: its full sentence (the hover, and what a screen reader says) and a phone's short form.
+  const btLine = (html) => {
+    const m = html.match(/<div class="sub-fig bt-sub" title="([^"]*)"><span class="bt-long">([^<]*)<\/span><span class="bt-short" aria-hidden="true">([^<]*)<\/span><\/div>/);
+    return m ? {title: m[1], long: m[2], short: m[3]} : null;
+  };
+
+  // Walk 2026-10-28 at 390px, both themes: "later-period P&L over 9 days after the split date, which picked it: not held
+  // out" ran about five lines in its third of the card, right under "BACKTEST P&L". And a held-out row said "on unseen
+  // data" under a sort named "Later-period P&L", though its figure is the later period too (held out).
+  test(`${name}: a phone's Backtest P&L line is short, says the same as the sort, and keeps the full sentence as its hover`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const oos = {pnl: 6.2, trades: 40, win_rate: 0.61, days: 9};
+    const later = btLine(row(f, {status: 'backtest-only', out_of_sample: oos}));
+    const held = btLine(row(f, {status: 'passed', no_gatekeeper_record: false, out_of_sample: oos}));
+    const searched = btLine(row(f, {status: 'passed', out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}));
+    // Desktop's sentences: the later-period one as before, and a held-out one that names the period as the sort does.
+    assert.equal(later.long, 'later-period P&amp;L over 9 days after the split date, which picked it: not held out');
+    assert.equal(held.long, 'later-period P&amp;L over 9 days after the split date, on unseen data');
+    assert.equal(searched.long, 'on the history it searched over 60 days');
+    // The phone's three read as one family: which data, over how long, and (for the later period) whether held out.
+    assert.equal(later.short, `later period${SEP}9\u00a0days${SEP}not held out`);
+    assert.equal(held.short, `later period${SEP}9\u00a0days${SEP}unseen data`);
+    assert.equal(searched.short, `history it searched${SEP}60\u00a0days`);
+    for (const l of [later, held, searched]) {
+      assert.equal(l.title, l.long);  // the hover is the full sentence
+      assert.doesNotMatch(l.short, /P&amp;L|P&L/);  // not "P&L" again right under "BACKTEST P&L"
+      assert.ok(plain(l.short).length <= 40, l.short);
+    }
+    // A verdict word rides on both forms; a day or less, and no stated span, read in words.
+    const voidRow = btLine(row(f, {status: 'failed', out_of_sample: {...oos, days: 0.5}}));
+    assert.equal(voidRow.short, `later period${SEP}under a day${SEP}unseen data${SEP}did not pass`);
+    assert.equal(voidRow.long, `later-period P&amp;L in under a day after the split date, on unseen data${SEP}did not pass`);
+    assert.equal(btLine(row(f, {status: 'passed', out_of_sample: {...oos, days: null}})).short, `later period${SEP}unseen data`);
+    // No figure: the verdict alone, one line with nothing to shorten.
+    assert.match(row(f, {status: 'rejected', out_of_sample: null, in_sample: {}}), /<div class="sub-fig">did not pass<\/div>/);
+  });
+
+  test(`${name}: the sort and the glossary name the held-out slice the later period, as a row does`, async () => {
+    const f = frontend({fetchImpl: () => response(listOf(2))});
+    f.location.pathname = '/strategies'; f.location.search = '?status=&sort=best';
+    await f.viewStrategies(); await flush();
+    assert.match(f.root.innerHTML, /<option value="best" selected>Later-period P&amp;L<\/option>/);
+    const src = bundleSource(name === 'Meridian' ? 'app.meridian.js' : 'app.js');
+    const unseen = src.match(/\n {4}unseen: \['Unseen data', '([^']*)'\]/)[1];
+    assert.match(unseen, /^The later period, after the split date, held out/);
+    assert.match(unseen, /later-period P&L on it/); assert.match(unseen, /so not held out\.$/);
+    assert.doesNotMatch(unseen, /the P&L that counts/);  // a later-period row's figure counts as much on the sort
   });
 }

@@ -11,6 +11,13 @@ import {test} from 'node:test';
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const AT = '2026-10-25T10:00:00Z';
 const ev = (id, kind, message, data = {}) => ({id, kind, message, data, created_at: AT});
+// The bundles' separator (SEP in app.js and app.meridian.js; test_separator_line_start.mjs).
+const SEP = ' · ';
+// A strategy row's Backtest P&L line: the full sentence (its hover, and what a screen reader says) and a phone's short form.
+const btLine = (html) => {
+  const m = html.match(/<div class="sub-fig bt-sub" title="([^"]*)"><span class="bt-long">([^<]*)<\/span><span class="bt-short" aria-hidden="true">([^<]*)<\/span><\/div>/);
+  return m ? {title: m[1], long: m[2], short: m[3]} : null;
+};
 
 export function runPageCases({name, frontend}) {
   const open = async (run, events = [], strategies = []) => {
@@ -293,10 +300,14 @@ export function runPageCases({name, frontend}) {
       assert.doesNotMatch(tested, /class="gain"/, status);
       assert.match(tested, /on the history it searched · did not pass/, status);
       const unseen = cell({status, out_of_sample: m(3), in_sample: m(2.1)});
-      assert.match(unseen, /<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig">on unseen data · did not pass<\/div>/, status);
+      assert.match(unseen, /^<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig bt-sub"/, status);
+      assert.deepEqual(btLine(unseen), {title: `later-period P&amp;L after the split date, on unseen data${SEP}did not pass`,
+        long: `later-period P&amp;L after the split date, on unseen data${SEP}did not pass`, short: `later period${SEP}unseen data${SEP}did not pass`}, status);
     }
     // Passed and backtest-only keep the money tone and say nothing of the kind.
-    assert.match(cell({status: 'passed', out_of_sample: m(3)}), /^<span class="gain">\+\$3\.00<\/span><div class="sub-fig">on unseen data<\/div>$/);
+    const passed = cell({status: 'passed', out_of_sample: m(3)});
+    assert.match(passed, /^<span class="gain">\+\$3\.00<\/span><div class="sub-fig bt-sub"[^>]*>(?:<span[^>]*>[^<]*<\/span>){2}<\/div>$/);
+    assert.equal(btLine(passed).short, 'later period' + SEP + 'unseen data');
     const kept = cell({status: 'backtest-only', out_of_sample: null, in_sample: m(2.1)});
     assert.match(kept, /class="gain"/); assert.doesNotMatch(kept, /did not pass/);
   });
@@ -314,10 +325,11 @@ export function runPageCases({name, frontend}) {
     const html = f.root.querySelector('#slips').innerHTML;
     assert.match(html, /<th class="num">Backtest P&amp;L<\/th>/);
     assert.doesNotMatch(html, /Unseen P&amp;L|tested only|\(tested\)/);
-    assert.match(html, /\+\$8\.40<\/span><div class="sub-fig">on the history it searched<\/div>/);
-    assert.match(html, /\+\$5\.00<\/span><div class="sub-fig">on unseen data<\/div>/);
+    assert.match(html, /\+\$8\.40<\/span><div class="sub-fig bt-sub" title="on the history it searched"><span class="bt-long">on the history it searched<\/span><span class="bt-short" aria-hidden="true">history it searched<\/span><\/div>/);
+    // A held-out figure is the later period too, as the sort that orders it ("Later-period P&L") says.
+    assert.match(html, /\+\$5\.00<\/span><div class="sub-fig bt-sub" title="later-period P&amp;L after the split date, on unseen data"><span class="bt-long">later-period P&amp;L after the split date, on unseen data<\/span><span class="bt-short" aria-hidden="true">later period\u00a0· unseen data<\/span><\/div>/);
     // No figure, no data line.
-    assert.doesNotMatch(f.strategySlip({id: 3, title: 'T', thesis: '', market: 'btc15m', status: 'queued', in_sample: {}}, {}), /sub-fig">on /);
+    assert.doesNotMatch(f.strategySlip({id: 3, title: 'T', thesis: '', market: 'btc15m', status: 'queued', in_sample: {}}, {}), /sub-fig[^"]*"[^>]*>(?:<span[^>]*>)?(?:on|later|history) /);
     f.clearTimers();
   });
   test(`${name}: a session's pass with no gatekeeper record says its figure is later-period, as on the Strategies list`, async () => {
@@ -331,7 +343,7 @@ export function runPageCases({name, frontend}) {
     assert.match(html, /Loose pass/); assert.doesNotMatch(html, /unseen data/);
     if (/Backtest P&amp;L/.test(html)) assert.match(html, /later-period P&amp;L over 30 days after the split date, which picked it: not held out/);
     f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [row({})]);
-    if (/Backtest P&amp;L/.test(list(f))) assert.match(list(f), /on unseen data over 30 days/);
+    if (/Backtest P&amp;L/.test(list(f))) assert.match(list(f), /later-period P&amp;L over 30 days after the split date, on unseen data/);
   });
   test(`${name}: the ideas list says what its count counts`, async () => {
     // Walk 2026-10-27 (Tau, 390px): its head read "1 · 1 more still being tested", a bare figure beside a counted one.
