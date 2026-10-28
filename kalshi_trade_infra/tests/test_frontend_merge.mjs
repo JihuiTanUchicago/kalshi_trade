@@ -1854,7 +1854,7 @@ test('streaming thoughts and challenger/verdict update one hypothesis and naviga
   assert.equal(log.children.length, 2); assert.equal(log.children[0].classes.has('sealed'), true);
   const hypothesis = log.children[1];
   assert.match(hypothesis.innerHTML, /research sandbox only/);
-  assert.match(hypothesis.querySelector('[data-review]').innerHTML, /sound mechanism/);
+  assert.match(hypothesis.querySelector('[data-review]').innerHTML, /Sound mechanism/);
   assert.match(hypothesis.querySelector('[data-stamp]').innerHTML, /\/strategies\/42/);
   stream.state('paused'); assert.match(section.querySelector('.runpulse').innerHTML, /resume/);
   f.clearTimers(); assert.equal(f.intervals.size, 0); assert.equal(f.S.timers.length, 0);
@@ -2213,7 +2213,23 @@ test('the research list says Paused for a paused session, not a red Failed', () 
     hypotheses_tried: 3, strategies_passed: 0, spent_usd: 1.2});
   assert.match(row, /<span class="run-state">Paused<\/span>/);
   assert.doesNotMatch(row, /Failed|class="loss"/);
-  assert.match(row, /Spent so far: \$1\.20/);
+  assert.match(row, /Spent so far: \$1\.20 in credits/);
+});
+
+// Walked 2026-10-28: a row's "Cost: $3.12" didn't say it came from credits, as its session page does ("from your
+// credits"), and the idea box's example sat in straight quotes.
+test('a research session row names the credits its cost came from, and the idea box quotes its example in curly quotes', async () => {
+  const f = frontend();
+  const base = {id: 4, prompt: 'Fade the favourite', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 3, strategies_passed: 0};
+  assert.match(f.runRow({...base, status: 'succeeded', spent_usd: 3.12}), /Cost: \$3\.12 in credits/);
+  assert.match(f.runRow({...base, status: 'running', spent_usd: 0.004}), /Spent so far: under \$0\.01 in credits/);
+  // Nothing spent yet says so, with no unit after it.
+  const none = f.runRow({...base, status: 'running', spent_usd: 0});
+  assert.match(none, /Spent so far: nothing yet/); assert.doesNotMatch(none, /nothing yet in credits/);
+  const src = readFileSync(new URL('../app/static/app-research.js', import.meta.url), 'utf8')
+    + readFileSync(new URL('../app/static/app.meridian-research.js', import.meta.url), 'utf8');
+  assert.equal((src.match(/placeholder="Write your own — e\.g\. “Sell overpriced tails in the last hour before the 5pm close\.”"/g) || []).length, 2);
+  assert.doesNotMatch(src, /e\.g\. &quot;Sell overpriced/);
 });
 
 test('autopilot says why it is not trading: the card and the panel lead with one line and its action', async () => {
@@ -3606,7 +3622,7 @@ test('Tau: a run says per missed gate what was measured, what was needed and wha
   // with the lines it missed there, not on a loose row stamped VOID.
   const [passPart, holdout] = reviews[1].split('Locked holdout');
   assert.deepEqual(missedRows(passPart), []);
-  assert.match(passPart, /cleared every gate/);
+  assert.match(passPart, /Cleared every gate/);
   assert.deepEqual(missedRows(holdout), [MISSED_ROWS[0]]);
   assert.match(holdout, /missed/);
   assert.doesNotMatch(reviews[1], /classification=/);

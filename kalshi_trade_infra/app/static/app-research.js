@@ -231,7 +231,7 @@ window.TauPage('research', (T) => {
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won’t be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
         <label class="field"><span>Describe your idea</span>
-          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. &quot;Sell overpriced tails in the last hour before the 5pm close.&quot;"></textarea></label>
+          <textarea class="input" name="prompt" maxlength="1000" rows="3" required placeholder="Write your own — e.g. “Sell overpriced tails in the last hour before the 5pm close.”"></textarea></label>
         <details class="dispatch-opts" id="ropts"${phone() ? '' : ' open'}><summary><span class="dispatch-opts-t">Options</span><span class="dispatch-opts-sum" id="ropts-sum"></span></summary><div class="dispatch-opts-body">
         <div class="dispatch-tune">
           ${modelOpts ? `<label class="field"><span>Model</span>
@@ -428,7 +428,9 @@ window.TauPage('research', (T) => {
   // What a session still going has spent. Before its first model call is billed that is nothing, not a $0.00 figure
   // (a first autopilot session read "Spent so far: $0.00" on its row and its page); a sliver says "under $0.01".
   const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
-  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'nothing yet')}` : `Cost: ${usd(r.spent_usd)}`;
+  // It names the credits it came from, as the session page does ("from your credits"): a bare "Cost: $3.12" sat
+  // in a list a reader could take for a loss.
+  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'nothing yet')}${+r.spent_usd > 0 ? ' in credits' : ''}` : `Cost: ${usd(r.spent_usd)} in credits`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
   // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
@@ -628,13 +630,16 @@ window.TauPage('research', (T) => {
     const stampEl = li.querySelector('[data-stamp]');
     const reviewEl = li.querySelector('[data-review]');
     const strip = (s, re) => (s || '').replace(re, '');
+    // What follows a verdict's or the skeptic's tag is a sentence of its own: with the stamp and title cut off, the
+    // example session's verdict read "no edge, so nothing to deploy." and a review "the overshoot has…" (walked 2026-10-28).
+    const upper1 = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
     return {
       li, title,
       challenger(e2) {
         const dec = (e2.data || {}).decision || 'review';
         const reason = strip(strip(e2.message, /^Challenger\s+\w+\s+[-–]\s*/i), new RegExp('^' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*'));
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Skeptic’s review${SEP}${esc(REVIEW_SAID[dec] || dec)}</span>${esc(reason)}</p>`);
+        reviewEl.insertAdjacentHTML('beforeend', `<p class="hx-crit"><span class="hx-tag">Skeptic’s review${SEP}${esc(REVIEW_SAID[dec] || dec)}</span>${esc(upper1(reason))}</p>`);
       },
       verdict(e2) {
         const dd = e2.data || {};
@@ -655,7 +660,7 @@ window.TauPage('research', (T) => {
         const why = whyFailedHtml(dd.why_failed);  // the gates it missed replace the gatekeeper's raw note
         // The server's plain sentence stands in for a message written for the ledger ("validation
         // verdict is gatekeeper-held (classification=...)"); a dropped idea says why it was dropped.
-        const said = dd.note || (dd.status === 'abandoned' && dd.why) || tail;
+        const said = upper1(dd.note || (dd.status === 'abandoned' && dd.why) || tail);
         if (dd.strategy_id != null) li.dataset.sid = dd.strategy_id;  // "Ideas tested" jumps here
         reviewEl.hidden = false;
         reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict${SEP}${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? `<a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`);

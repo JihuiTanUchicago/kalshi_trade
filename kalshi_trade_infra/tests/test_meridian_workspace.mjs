@@ -1860,7 +1860,7 @@ test('streaming thoughts and challenger/verdict update one hypothesis and naviga
   assert.equal(log.children.length, 2); assert.equal(log.children[0].classes.has('sealed'), true);
   const hypothesis = log.children[1];
   assert.match(hypothesis.innerHTML, /research sandbox only/);
-  assert.match(hypothesis.querySelector('[data-review]').innerHTML, /sound mechanism/);
+  assert.match(hypothesis.querySelector('[data-review]').innerHTML, /Sound mechanism/);
   assert.equal(hypothesis.querySelector('[data-stamp]').textContent, 'Passed');
   assert.equal(hypothesis.querySelectorAll('a[href="/strategies/42"]').length, 1);
   assert.equal(hypothesis.querySelector('.say-title a').getAttribute('href'), '/strategies/42');
@@ -2130,13 +2130,15 @@ test('a session row’s cost keeps its own line in the Market column, and the ex
   const f = researchFrontend([mine, example]);
   await f.viewResearch(); await flush();
   const [own, ex] = f.root.querySelectorAll('#runs a.run-card').map((a) => a.innerHTML);
-  assert.match(own, /<span class="run-cost"><span class="run-sep"> · <\/span>Cost: \$0\.06<\/span>/);
+  // It names the credits it came from (walked 2026-10-28), on a line of its own when the column is narrow.
+  assert.match(own, /<span class="run-cost"><span class="run-sep"> · <\/span>Cost: \$0\.06<span class="run-cred"> in\u00a0credits<\/span><\/span>/);
   assert.match(ex, /<span class="run-note">An example Tau ran for you when you signed up\. It cost you nothing\.<\/span>/);
   assert.doesNotMatch(ex.match(/<span class="run-meta">.*?<\/span><span class="run-when">/s)[0], /example Tau ran|Cost/);
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
   const rule = (sel) => [...css.matchAll(new RegExp('\\n' + sel.replace(/[.()]/g, '\\$&') + ' \\{([^}]*)\\}', 'g'))].map((m) => m[1]).join(';');
   assert.match(rule('.research-history .run-cost'), /display: block; white-space: nowrap;/);
   assert.match(rule('.research-history .run-cost .run-sep'), /display: none;/);
+  assert.match(rule('.research-history .run-cost .run-cred'), /white-space: normal;/);
   assert.match(rule('.research-history .run-meta'), /-webkit-line-clamp: none;/);
   assert.match(rule('.research-history .run-note'), /grid-column: 1; grid-row: 2;/);
   f.clearTimers();
@@ -4681,7 +4683,7 @@ test('Meridian: a run says per missed gate what was measured, what was needed an
   // with the lines it missed there, not on a loose row stamped VOID.
   const [passPart, holdout] = reviews[1].split('Locked holdout');
   assert.deepEqual(missedRows(passPart), []);
-  assert.match(passPart, /cleared every gate/);
+  assert.match(passPart, /Cleared every gate/);
   assert.deepEqual(missedRows(holdout), [MISSED_ROWS[0]]);
   assert.match(holdout, /missed/);
   assert.doesNotMatch(reviews[1], /classification=/);
