@@ -1854,7 +1854,7 @@ test('streaming thoughts and challenger/verdict update one hypothesis and naviga
   assert.equal(log.children.length, 2); assert.equal(log.children[0].classes.has('sealed'), true);
   const hypothesis = log.children[1];
   assert.match(hypothesis.innerHTML, /research sandbox only/);
-  assert.match(hypothesis.querySelector('[data-review]').innerHTML, /sound mechanism/);
+  assert.match(hypothesis.querySelector('[data-review]').innerHTML, /Sound mechanism/);
   assert.match(hypothesis.querySelector('[data-stamp]').innerHTML, /\/strategies\/42/);
   stream.state('paused'); assert.match(section.querySelector('.runpulse').innerHTML, /resume/);
   f.clearTimers(); assert.equal(f.intervals.size, 0); assert.equal(f.S.timers.length, 0);
@@ -2213,7 +2213,23 @@ test('the research list says Paused for a paused session, not a red Failed', () 
     hypotheses_tried: 3, strategies_passed: 0, spent_usd: 1.2});
   assert.match(row, /<span class="run-state">Paused<\/span>/);
   assert.doesNotMatch(row, /Failed|class="loss"/);
-  assert.match(row, /Spent so far: \$1\.20/);
+  assert.match(row, /Spent so far: \$1\.20 in credits/);
+});
+
+// Walked 2026-10-28: a row's "Cost: $3.12" didn't say it came from credits, as its session page does ("from your
+// credits"), and the idea box's example sat in straight quotes.
+test('a research session row names the credits its cost came from, and the idea box quotes its example in curly quotes', async () => {
+  const f = frontend();
+  const base = {id: 4, prompt: 'Fade the favourite', market: 'btc15m', created_at: '2026-10-17T10:00:00Z', hypotheses_tried: 3, strategies_passed: 0};
+  assert.match(f.runRow({...base, status: 'succeeded', spent_usd: 3.12}), /Cost: \$3\.12 in credits/);
+  assert.match(f.runRow({...base, status: 'running', spent_usd: 0.004}), /Spent so far: under \$0\.01 in credits/);
+  // Nothing spent yet says so, with no unit after it.
+  const none = f.runRow({...base, status: 'running', spent_usd: 0});
+  assert.match(none, /Spent so far: nothing yet/); assert.doesNotMatch(none, /nothing yet in credits/);
+  const src = readFileSync(new URL('../app/static/app-research.js', import.meta.url), 'utf8')
+    + readFileSync(new URL('../app/static/app.meridian-research.js', import.meta.url), 'utf8');
+  assert.equal((src.match(/placeholder="Write your own — e\.g\. “Sell overpriced tails in the last hour before the 5pm close\.”"/g) || []).length, 2);
+  assert.doesNotMatch(src, /e\.g\. &quot;Sell overpriced/);
 });
 
 test('autopilot says why it is not trading: the card and the panel lead with one line and its action', async () => {
@@ -2623,7 +2639,7 @@ test('Tau: a finished session says what to do next: your own idea after the exam
   assert.match(await at({status: 'failed', error: 'The model <i>timed out</i>.'}, []),
     /This session stopped on an error\. The model &lt;i&gt;timed out&lt;\/i&gt;\. <a href="\/research\?new=1">Start a new session<\/a>/);
   assert.match(await at({status: 'cancelled'}, [{id: 43, title: 'Fade', status: 'rejected'}]),
-    /This session was cancelled before it finished\. The ideas it tested are listed below\. <a href="\/research\?new=1">Try another idea<\/a>/);
+    /You stopped this session before it finished\. The ideas it tested are listed below\. <a href="\/research\?new=1">Try another idea<\/a>/);
 });
 
 const OUT_OF_CREDITS_STEP = {id: 7, kind: 'step', message: 'Paused — out of credits. Add more (or turn on auto-reload) and start a new session to keep researching.', created_at: '2026-10-25T11:00:00Z'};
@@ -2798,7 +2814,7 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   await f.viewStrategy(42); await flush();
   const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days the agent never saw/);
-  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
+  assert.match(figs, /Later period over 15 days\u00a0· unseen\u00a0data\u00a0· \$100 at risk at most/);
   assert.match(html, /Already deployed: Demo \(running\), Paper \(paused\)\./);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
@@ -2812,7 +2828,8 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
   await g.viewStrategy(42); await flush();
   assert.match(g.root.querySelector('#figs').innerHTML, /6 trades the agent never saw/);
-  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
+  // With no span it still names the slice its return is on.
+  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">Later period\u00a0· unseen\u00a0data\u00a0· \$100 at risk at most<\/dd>/);
   assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again|on-paper/);
 });
 
@@ -3524,6 +3541,28 @@ test('the equity chart\'s unseen-data label fits its window instead of running o
   }
 });
 
+// The later period's shading was var(--stock-raised), the strategy sheet's own colour, so it never showed (walked
+// 2026-10-28). It has its own token: a shade darker than the sheet, lighter than a sunk well, so it reads but stays quiet.
+test('the strategy chart shades its later period in a colour that shows on the sheet', () => {
+  const curve = [[0, 0], [50, 1], [100, 2]];
+  const chart = frontend().equityChart(curve, new Date(30000).toISOString(), null, {width: 760});
+  assert.match(chart, /<rect class="chart-later" x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" fill="var\(--chart-later\)"\/>/);
+  // No cut, no shading.
+  assert.doesNotMatch(frontend().equityChart(curve, null, null, {width: 760}), /chart-later/);
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const root = css.match(/:root \{([^}]*)\}/)[1];
+  const tok = (name) => (root.match(new RegExp(`--${name}: (#[0-9A-Fa-f]{6});`)) || [])[1];
+  const lum = (hex) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4));
+    return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + .05) / (Math.min(lum(a), lum(b)) + .05);
+  assert.ok(tok('chart-later'), 'the token is on :root');
+  assert.match(css, /\.sheet-doc \{[^}]*background: var\(--stock-raised\);/);
+  // Visible against the sheet it sits on, and quieter than the page's sunk wells; the curve still reads over it.
+  assert.ok(ratio(tok('chart-later'), tok('stock-raised')) >= 1.08, 'shows against the sheet');
+  assert.ok(ratio(tok('chart-later'), tok('stock-raised')) < ratio(tok('stock-sunk'), tok('stock-raised')), 'quieter than a sunk well');
+  assert.ok(ratio(tok('ink'), tok('chart-later')) >= 4.5, 'the curve still reads over it');
+});
+
 test('the open-positions why line and a long strategy name wrap, so Deploy never scrolls sideways', () => {
   const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
   assert.match(css, /\.pos-why \{[^}]*white-space: normal;/);
@@ -3583,7 +3622,7 @@ test('Tau: a run says per missed gate what was measured, what was needed and wha
   // with the lines it missed there, not on a loose row stamped VOID.
   const [passPart, holdout] = reviews[1].split('Locked holdout');
   assert.deepEqual(missedRows(passPart), []);
-  assert.match(passPart, /cleared every gate/);
+  assert.match(passPart, /Cleared every gate/);
   assert.deepEqual(missedRows(holdout), [MISSED_ROWS[0]]);
   assert.match(holdout, /missed/);
   assert.doesNotMatch(reviews[1], /classification=/);

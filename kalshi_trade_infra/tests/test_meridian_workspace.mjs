@@ -414,6 +414,18 @@ test('the shipped equity chart anchors the real demo replay without mutating eit
   assert.deepEqual(demo, [[200, 2], [300, 4]]); assert.deepEqual(curve, [[100, 50], [200, 60], [300, 70]]);
 });
 
+// Tau's later-period shading was the sheet's own colour and never showed (walked 2026-10-28). Meridian's strategy
+// sheet has no fill of its own, so the band (--stock-raised) sits on the page's cream (--stock) and shows, quietly.
+test('the strategy chart’s later-period shading shows against the Meridian page', () => {
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const chart = frontend().equityChart([[0, 0], [50, 1], [100, 2]], new Date(30000).toISOString(), null, {width: 760});
+  const fill = chart.match(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" fill="var\(--([a-z-]+)\)"\/>/)[1];
+  assert.match(css, /\n\.sheet-doc\.paper \{ border: 0; background: none; padding: 0; \}/);
+  const tok = (name) => css.match(new RegExp(`--${name}: (#[0-9A-Fa-f]{6});`))[1].toUpperCase();
+  assert.equal(fill, 'stock-raised');
+  assert.notEqual(tok(fill), tok('stock'));
+});
+
 test('paper chart rounds display bounds with headroom without changing signed observations or backtest scales', () => {
   const f = frontend();
   for (const values of [[3.2, .8, 24.8], [-3.2, -.8, -24.8], [-3.2, 0, 24.8], [0, 0, 0], [.01, .02, .03]]) {
@@ -1848,7 +1860,7 @@ test('streaming thoughts and challenger/verdict update one hypothesis and naviga
   assert.equal(log.children.length, 2); assert.equal(log.children[0].classes.has('sealed'), true);
   const hypothesis = log.children[1];
   assert.match(hypothesis.innerHTML, /research sandbox only/);
-  assert.match(hypothesis.querySelector('[data-review]').innerHTML, /sound mechanism/);
+  assert.match(hypothesis.querySelector('[data-review]').innerHTML, /Sound mechanism/);
   assert.equal(hypothesis.querySelector('[data-stamp]').textContent, 'Passed');
   assert.equal(hypothesis.querySelectorAll('a[href="/strategies/42"]').length, 1);
   assert.equal(hypothesis.querySelector('.say-title a').getAttribute('href'), '/strategies/42');
@@ -2118,13 +2130,15 @@ test('a session row’s cost keeps its own line in the Market column, and the ex
   const f = researchFrontend([mine, example]);
   await f.viewResearch(); await flush();
   const [own, ex] = f.root.querySelectorAll('#runs a.run-card').map((a) => a.innerHTML);
-  assert.match(own, /<span class="run-cost"><span class="run-sep"> · <\/span>Cost: \$0\.06<\/span>/);
+  // It names the credits it came from (walked 2026-10-28), on a line of its own when the column is narrow.
+  assert.match(own, /<span class="run-cost"><span class="run-sep"> · <\/span>Cost: \$0\.06<span class="run-cred"> in\u00a0credits<\/span><\/span>/);
   assert.match(ex, /<span class="run-note">An example Tau ran for you when you signed up\. It cost you nothing\.<\/span>/);
   assert.doesNotMatch(ex.match(/<span class="run-meta">.*?<\/span><span class="run-when">/s)[0], /example Tau ran|Cost/);
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
   const rule = (sel) => [...css.matchAll(new RegExp('\\n' + sel.replace(/[.()]/g, '\\$&') + ' \\{([^}]*)\\}', 'g'))].map((m) => m[1]).join(';');
   assert.match(rule('.research-history .run-cost'), /display: block; white-space: nowrap;/);
   assert.match(rule('.research-history .run-cost .run-sep'), /display: none;/);
+  assert.match(rule('.research-history .run-cost .run-cred'), /white-space: normal;/);
   assert.match(rule('.research-history .run-meta'), /-webkit-line-clamp: none;/);
   assert.match(rule('.research-history .run-note'), /grid-column: 1; grid-row: 2;/);
   f.clearTimers();
@@ -3918,7 +3932,7 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   await f.viewStrategy(42); await flush();
   const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days/);
-  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
+  assert.match(figs, /Later period over 15 days\u00a0· unseen\u00a0data\u00a0· \$100 at risk at most/);
   assert.match(html, /Demo · running<br>Paper · paused/);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
@@ -3930,7 +3944,8 @@ test('strategy page: out-of-sample figures say their span, deployments go by boo
   const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
   await g.viewStrategy(42); await flush();
   assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">6 trades the agent never saw<\/dd>/);
-  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
+  // With no span it still names the slice its return is on.
+  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">Later period\u00a0· unseen\u00a0data\u00a0· \$100 at risk at most<\/dd>/);
   assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again|on-paper/);
 });
 
@@ -4668,7 +4683,7 @@ test('Meridian: a run says per missed gate what was measured, what was needed an
   // with the lines it missed there, not on a loose row stamped VOID.
   const [passPart, holdout] = reviews[1].split('Locked holdout');
   assert.deepEqual(missedRows(passPart), []);
-  assert.match(passPart, /cleared every gate/);
+  assert.match(passPart, /Cleared every gate/);
   assert.deepEqual(missedRows(holdout), [MISSED_ROWS[0]]);
   assert.match(holdout, /missed/);
   assert.doesNotMatch(reviews[1], /classification=/);

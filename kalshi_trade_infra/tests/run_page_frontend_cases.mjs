@@ -216,9 +216,33 @@ export function runPageCases({name, frontend}) {
     assert.match(log, /Plan: try up to 6 ideas/); assert.doesNotMatch(log, /in-sample|gate the best/);
     assert.match(log, /<b>Bitcoin<\/b>/);  // a step without a note keeps its own (markdown) words
     assert.match(log, /1 of 2 ideas passed every check\./); assert.doesNotMatch(log, /passed every gate/);
-    assert.match(f.root.querySelector('#log').querySelector('[data-review]').innerHTML, /Skeptic’s review · approved<\/span>plausible/);
+    assert.match(f.root.querySelector('#log').querySelector('[data-review]').innerHTML, /Skeptic’s review · approved<\/span>Plausible/);
     assert.match(log, /Skeptic’s review<\/span>revised - Other: tighten it/);
     assert.doesNotMatch(log, />Challenger/);
+  });
+
+  // Walked 2026-10-28: with its stamp and title cut off, the example session's verdict read "no edge, so nothing to
+  // deploy." under "Verdict · rejected", and a skeptic's review began "the overshoot has…". Each is its own sentence.
+  // Walked 2026-10-28: a cancelled session's status read "Stopped by you" and the line under it "This session was
+  // cancelled before it finished."
+  test(`${name}: a session you stopped says so in the status's words, not "cancelled"`, async () => {
+    const f = await open({status: 'cancelled', stop_reason: 'user'}, [], [{id: 43, title: 'Fade', status: 'rejected', market: 'btc15m', direction: 'momentum'}]);
+    assert.match(figs(f), /Stopped by you/);
+    const next = f.root.querySelector('.run-next').innerHTML;
+    assert.match(next, /^You stopped this session before it finished\. The ideas it tested are listed below\./);
+    assert.doesNotMatch(next, /cancel/i);
+  });
+
+  test(`${name}: a verdict's and a skeptic's words on an idea's card start as a sentence`, async () => {
+    const f = await open({status: 'succeeded'}, [
+      ev(1, 'hypothesis', 'Todd’s walk', {thesis: 't'}),
+      ev(2, 'challenger', 'Challenger approved - Todd’s walk: the overshoot has a plausible mechanism', {title: 'Todd’s walk', decision: 'approve'}),
+      ev(3, 'verdict', 'VOID — Todd’s walk: no edge, so nothing to deploy.', {title: 'Todd’s walk', status: 'rejected'}),
+    ]);
+    const review = f.root.querySelector('#log').querySelector('[data-review]').innerHTML;
+    assert.match(review, /<\/span>The overshoot has a plausible mechanism<\/p>/);
+    assert.match(review, /No edge, so nothing to deploy\./);
+    assert.doesNotMatch(review, />no edge|>the overshoot/);
   });
 
   test(`${name}: Time leaves out the pauses the log records, and stops while the session is paused`, async () => {

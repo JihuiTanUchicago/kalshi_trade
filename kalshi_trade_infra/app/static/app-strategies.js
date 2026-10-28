@@ -657,7 +657,10 @@ window.TauPage('strategies', (T) => {
       fig(gl('In-sample P&L', 'insample'), r.in_sample ? mute(usd(r.in_sample.pnl, true)) : '—', { v: toneV(r.in_sample && r.in_sample.pnl), small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
       // Return on capital is the backtest's later slice over its capital. A research session's strategy has none (its
       // unseen result is the gatekeeper's, above): "Return on capital —" stood on every one of their pages, so it is left out.
-      (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [overDays(r.out_of_sample.days) ? (splitOnly ? 'After the split date' : 'Unseen data') + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +
+      // Its note names the slice as the headings above it do ("Later period (unseen data)" / "(not held out)") and the
+      // Strategies list's short form does ("later period · 9 days · unseen data"): it read "Unseen data over 9 days", or
+      // "After the split date over 9 days", in neither's words. The qualifier keeps together, as the label's does.
+      (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [`Later period${overDays(r.out_of_sample.days)}`, laterQual.replace(/ /g, '\u00a0'), r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +
       // "Ideas tested", the session's count, as Meridian and the strategy lists say it: "Hypotheses tested 1 of 18"
       // said neither word the other pages use nor what the 1 was.
       fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });

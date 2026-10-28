@@ -2376,6 +2376,8 @@ body.landing-body .apf { display: none; }
 .research-history .run-meta { display: block; -webkit-line-clamp: none; }
 .research-history .run-cost { display: block; white-space: nowrap; }
 .research-history .run-cost .run-sep { display: none; }
+/* "in credits" may take its own line; the label and its figure keep together. */
+.research-history .run-cost .run-cred { white-space: normal; }
 .research-history .run-note { display: block; grid-column: 1; grid-row: 2; margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); }
 .research-history .run-state { grid-column: 4; grid-row: 1 / span 2; align-self: center; justify-self: end; text-align: right; font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; }
 .research-history .run-ratio { font: 500 16px/22px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; }

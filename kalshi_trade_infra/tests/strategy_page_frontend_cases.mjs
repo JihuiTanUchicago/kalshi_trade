@@ -95,7 +95,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const labels = f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent);
     assert.deepEqual(labels, ['Later-period P&L (unseen\u00a0data)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
     assert.match(figs, /<dd class="sub-fig">6 trades over 15 days the agent never saw<\/dd>/);
-    assert.match(figs, /<dd class="sub-fig">Unseen data over 15 days · \$100 at risk at most<\/dd>/);
+    // Return on capital's note names the slice in the headings' words: it read "Unseen data over 15 days" (walked 2026-10-28).
+    assert.match(figs, /<dd class="sub-fig">Later period over 15 days\u00a0· unseen\u00a0data\u00a0· \$100 at risk at most<\/dd>/);
+    assert.doesNotMatch(figs, />Unseen data over/);
     assert.match(figs, /<dd class="sub-fig">in the session that found it; this is the one that passed\. More ideas tried, more chance one passes by luck \(multiple testing\)\.<\/dd>/);
     assert.match(html, /On unseen data the agent never touched while iterating, it returned \$12\.00 over 6 trades, and cleared the gate as one of 5 ideas tested this run\./);
     assert.match(html, /<h4>Tested on \(in-sample\)<\/h4>/); assert.match(html, /<h4>Later period \(unseen data\)<\/h4>/);
@@ -151,7 +153,8 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.doesNotMatch(gateText, /unseen/i);
       assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (not\u00a0held\u00a0out)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
       assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it: not held out/);
-      assert.match(figs.innerHTML, /After the split date over 15 days\u00a0· \$100 at risk at most/);
+      assert.match(figs.innerHTML, /Later period over 15 days\u00a0· not\u00a0held\u00a0out\u00a0· \$100 at risk at most/);
+      assert.doesNotMatch(figs.innerHTML, /After the split date over/);
       assert.match(html, /After the backtest’s split date it returned \$12\.00 over 6 trades\. That later slice is what picked it, so it isn’t held-out evidence\./);
       assert.match(html, /<h4>Later period \(not held out\)<\/h4>/);
       assert.match(html, /<dt>Split date<\/dt>/); assert.match(html, /The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out\./);

@@ -17,6 +17,7 @@
   --stock-live: #EFE4E7;
   --stock-sunk: #DFE2DA;
   --stock-raised: #F1F3ED;
+  --chart-later: #E3E6DC;  /* the strategy chart's later-period shading: it was --stock-raised, the sheet's own colour, so it never showed */
   --ink: #191B16;
   --ink-2: #444841;
   --ink-3: #5F645D;
