@@ -3109,19 +3109,25 @@
     if (S.spotPoll !== S.gen) { S.spotPoll = S.gen; poll((cfg) => api(path, undefined, cfg).then(show), 15000, 'mk-spot-stale'); }
   }
   const spotRead = (ticker) => api('/api/explore/spot?ticker=' + encodeURIComponent(ticker)).catch((e) => ({ failed: errText(e) }));
+  const MKT_GONE = 'Kalshi has no market at this link. It may have been taken down, or the link is incomplete. Find it again on Explore.';
   async function viewMarketDetail(ticker) {
     shell('/explore', boardTitle('Market'), loading(300));
     const spotReq = BTC_CONTRACT.test(ticker || '') ? spotRead(ticker) : null;
     let d;
     try { d = await api('/api/explore/market?ticker=' + encodeURIComponent(ticker)); }
     catch (e) {
-      root.querySelector('#main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><button class="btn sm" type="button" id="mk-retry">Try again</button> <a class="btn sm" href="/explore">← Back to Explore</a></p>`;
-      root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
+      // A market Kalshi doesn't have (404) won't come back on a retry: it says so in words, without the raw code
+      // from the link ("Kalshi has no market KXNOPE-…"), and offers only the way back to Explore.
+      const gone = e.status === 404;
+      root.querySelector('#main').innerHTML = notice(gone ? MKT_GONE : e.message, 'bad') + `<p style="margin-top:12px">${gone ? '' : '<button class="btn sm" type="button" id="mk-retry">Try again</button> '}<a class="btn sm" href="/explore">← Back to Explore</a></p>`;
+      if (!gone) root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
       return;
     }
     const mid = midOf({ bid: d.yes_bid, ask: d.yes_ask, last: d.last });
     const label = mktLabel({ ti: d.title, su: d.sub, t: d.ticker });
     const gran = d.period_min >= 1440 ? 'daily' : d.period_min >= 60 ? 'hourly' : 'per-minute';
+    // Kalshi's "candles" are a trader's word: the chart says how often it has a price ("A price each minute").
+    const GRAN_EACH = { daily: 'A price each day', hourly: 'A price each hour', 'per-minute': 'A price each minute' };
     const fmtT = (t) => new Date(t * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
     // The price says what it is (a Yes pays $1, so 42¢ is about a 42% chance), the book it comes from,
     // and when it was read; the Explore feed's snapshot (Kalshi unreachable) says how old it is.
@@ -3140,7 +3146,7 @@
       <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(rulesText(d.rules))}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(rulesText(d.rules_more))}</p>` : ''}`
           : `<p class="hint mk-rules">Kalshi’s settlement rules didn’t come with this snapshot. <a href="${kalshiLink}" target="_blank" rel="noopener">Read them on Kalshi ↗</a></p>`}</section>
-      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : `${SEP}Kalshi ${gran} candles`}</p></div>
+      <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : `${SEP}${GRAN_EACH[gran]}, from Kalshi`}</p></div>
         <div class="pchart-wrap">${d.history_unavailable
           ? '<div class="empty"><h3>Price history didn’t load</h3><p>Kalshi didn’t send it just now. The figures above are from the latest market snapshot.</p><button class="btn sm" type="button" id="mk-retry">Try again</button></div>'
           : priceChart(d.points)}</div></section>
@@ -3156,7 +3162,7 @@
     const PER = 25; let pg = 0;
     const rawEl = root.querySelector('#rawsect');
     const renderRaw = () => {
-      if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'None to show: Kalshi didn’t send this market’s candles just now. Try again under Price history.' : 'No candles recorded for this market yet.'}</p></div>`; return; }
+      if (!pts.length) { rawEl.innerHTML = `<div class="empty"><p>${d.history_unavailable ? 'None to show: Kalshi didn’t send this market’s price history just now. Try again under Price history.' : 'Kalshi has no price history for this market yet.'}</p></div>`; return; }
       const pages = Math.max(1, Math.ceil(pts.length / PER));
       const rows = pts.slice(pg * PER, (pg + 1) * PER).map((p) => `<tr><td class="tick">${fmtT(p.t)}</td><td class="num">${cents(p.yes)}</td><td class="num">${num(Math.round(p.vol || 0))}</td></tr>`).join('');
       rawEl.innerHTML = `<div class="sheet"><table><thead><tr><th>Time (${esc(tzName() || 'local')})</th><th class="num">Yes price</th><th class="num">Volume</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -4136,7 +4142,7 @@
     const stale = hotStaleText();
     const freshness = stale ? `<span class="hot-freshness is-old" id="hot-stale" role="status">${esc(stale)}</span>` : d ? `<span class="hot-freshness${snapshotAge == null || snapshotAge > 180 ? ' is-old' : ''}" title="Market snapshot time${snapshotAge > 180 ? `${SEP}More than 3 minutes old` : ''}">${snapshotAge == null ? 'Update time unavailable' : `${snapshotAge > 180 ? `Behind${SEP}updated` : 'Updated'} ${esc(sinceMin(d.at))}`}</span>` : '';
     const rows = d && d.markets && d.markets.length ? hotSpotNote(d) + d.markets.map(hotRowHtml).join('')
-      : `<div class="hot-empty">${d ? 'Warming up — the live book fills in a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying shortly.' : loading(120)}</div>`;
+      : `<div class="hot-empty">${d ? 'Warming up: the hottest markets show here within a minute.' : S.hotFail ? 'Hot markets didn\u2019t load. Retrying shortly.' : loading(120)}</div>`;
     const control = root.querySelector('.market-control');
     const toggle = `<button class="hot-tab" data-hot="toggle" aria-expanded="${open}" aria-controls="hotrail" aria-label="${open ? 'Collapse hot markets' : 'Expand hot markets'}" title="Hot markets"><span class="hot-tab-label">Hot markets</span><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M7.5 4v12"/></svg></button>`;
     if (control) {

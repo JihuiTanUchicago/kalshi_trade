@@ -195,6 +195,29 @@ export function chatPanelCases({name, frontend, storageFor}) {
     assert.match(dd.innerHTML, /<span class="nobr">get\)\.<button type="button" class="info" data-glo="instantfill"/);
   });
 
+  // Walked 2026-10-28: the agent's replies read "Bitcoin's", "I'd", "can't" with straight apostrophes beside Tau's
+  // own curly lines. They are typeset on display; code and the reader's own words are left as typed.
+  test(`${name}: the agent's replies are typeset with curly apostrophes, code and the reader's own line as typed`, async () => {
+    const p = await panel({chat: () => [
+      {id: 1, role: 'user', content: "What's moving?", created_at: AT},
+      {id: 2, role: 'agent', content: "Bitcoin's ladder is busiest. I can't trade it until you've approved one; the key is `it's_raw`.\n```\nwon't change\n```", created_at: AT},
+    ]});
+    const msgs = p.box.querySelector('#apf-messages');
+    const agent = msgs.querySelector('.apf-think .apf-md').innerHTML, you = msgs.querySelector('.apf-you').innerHTML;
+    assert.match(agent, /Bitcoin’s ladder is busiest\. I can’t trade it until you’ve approved one/);
+    assert.doesNotMatch(agent, /it’s_raw|won’t change/, 'code stays as the agent wrote it');
+    assert.match(agent, /<code>it(?:'|&#39;|&#x27;)s_raw<\/code>/);
+    assert.doesNotMatch(you, /’/, 'the reader’s own line is as they typed it');
+  });
+
+  // Walked 2026-10-28: Meridian's empty feed said only "No autopilot activity yet." where Tau's says what fills it.
+  test(`${name}: an empty feed says what will land there and that a message steers it, in both themes`, async () => {
+    const p = await panel({chat: () => []});
+    const empty = p.box.querySelector('#apf-messages .ap-empty');
+    assert.match(empty.textContent, /^No autopilot activity yet\. While it’s on, it checks in on its own schedule/);
+    assert.match(empty.textContent, /Each move lands here as it happens\. Message it below to steer\.$/);
+  });
+
   test(`${name}: autopilot keeping a young paper strategy reads as its own rule after the agent's suggestion`, async () => {
     const p = await panel({autopilot: true, chat: () => [
       {id: 1, role: 'user', content: `Pause ${TAILS}.`, created_at: AT},

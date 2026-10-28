@@ -208,6 +208,35 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     f.clearTimers();
   });
 
+  // Walked 2026-10-28 in both themes: Tau's search box asked for "series, tickers" (words a new customer doesn't
+  // have) and its column read "Open int." where Meridian's and the market page's read "Open interest".
+  test(`${name}: Explore's search box and open-interest column read in the same plain words in both themes`, async () => {
+    const {f, rows} = await list({markets: ROWS});
+    assert.equal(f.root.querySelector('#xq').getAttribute('placeholder'), 'Search markets');
+    const labs = rows[0].querySelectorAll('td').map((td) => td.getAttribute('data-lab'));
+    assert.ok(labs.includes('Open interest'), labs.join(', '));
+    assert.ok(!labs.includes('Open int.'));
+    assert.doesNotMatch(f.root.querySelector('#xbody thead').textContent, /Open int\./);
+    f.clearTimers();
+  });
+
+  // Walked 2026-10-28: before the feed came in, the rail said "Warming up — the live book fills in a minute":
+  // "live book" is a trader's phrase, and reads like the live-money book.
+  test(`${name}: the hot rail before the feed comes in says what will show there, in plain words`, async () => {
+    const {f, el} = await rail({at: null, markets: []});
+    assert.equal(el.querySelector('.hot-empty').textContent, 'Warming up: the hottest markets show here within a minute.');
+    assert.doesNotMatch(el.textContent, /live book/);
+    // With no feed time there is nothing before the link: Tau's footer read "· See all markets →".
+    assert.match(el.querySelector('.hot-ft').textContent.trim(), /^See all markets →$/);
+    f.clearTimers();
+    const {f: h, el: full} = await rail({markets: ROWS.map((m) => ({...m, h: [.4, .5]}))});
+    assert.doesNotMatch(full.querySelector('.hot-ft').textContent.trim(), /^·/);
+    h.clearTimers();
+    const {f: g} = await list({markets: ROWS});
+    assert.doesNotMatch(g.root.textContent, /live book/, 'nor does Explore’s own heading');
+    g.clearTimers();
+  });
+
   test(`${name}: the hot rail names an untitled contract plainly and never reads out its ticker`, async () => {
     const {f, el} = await rail({markets: NAME_ROWS.map((m) => ({...m, h: [.4, .5]}))});
     const rows = el.querySelectorAll('.hot-row');

@@ -1507,7 +1507,7 @@ test('a market Kalshi did not answer for offers Try again and loads on retry', a
   let calls = 0;
   const f = frontend({fetchImpl: path => {
     if (!path.startsWith('/api/explore/market?')) return response({});
-    return ++calls === 1 ? response({error: "Kalshi didn't send this market's history just now. Try again in a minute."}, 502)
+    return ++calls === 1 ? response({error: 'Kalshi didn’t send this market just now. Try again in a minute.'}, 502)
       : response({ticker: 'KXNBAGAME-X', title: 'Minnesota wins', points: [], yes_bid: .5, yes_ask: .51, last: .5});
   }});
   await f.viewMarketDetail('KXNBAGAME-X'); await flush();
@@ -1527,7 +1527,7 @@ test('a market whose history did not load still shows its figures, with Try agai
   }});
   await f.viewMarketDetail('KXNBAGAME-X'); await flush();
   const main = f.root.querySelector('#main').innerHTML;
-  assert.match(main, /Price history didn’t load/); assert.match(f.root.querySelector('#rawsect').innerHTML, /Kalshi didn’t send this market’s candles just now/);
+  assert.match(main, /Price history didn’t load/); assert.match(f.root.querySelector('#rawsect').innerHTML, /Kalshi didn’t send this market’s price history just now/);
   assert.match(f.root.innerHTML, /201,649/);  // the snapshot's open interest still shows
   f.root.querySelector('#mk-retry').onclick(); await flush(); await flush();
   assert.equal(calls, 2); assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /Price history didn’t load/);

@@ -82,6 +82,15 @@ export function explorePageCases({name, frontend}) {
     const f = await open(page());
     const raw = f.root.querySelector('#rawsect');
     assert.equal(raw.querySelectorAll('tbody tr').length, 25);
+    // Walked 2026-10-28: the chart said "Kalshi per-minute candles", a trader's word; it says how often it has a price.
+    for (const [period_min, words] of [[1, 'A price each minute'], [60, 'A price each hour'], [1440, 'A price each day']]) {
+      const g = await open(page({period_min}));
+      const head = g.root.querySelectorAll('.sect-head').find((h) => /Price history/.test(h.textContent));
+      assert.match(head.textContent, new RegExp(`Yes price\\s?· ${words}, from Kalshi`));
+      assert.doesNotMatch(g.root.querySelector('#main').textContent, /candle/i);
+    }
+    const empty = await open(page({points: []}));
+    assert.match(empty.root.querySelector('#rawsect').textContent, /Kalshi has no price history for this market yet\./);
     assert.match(raw.textContent, /Page 1 of 6 · 130 points/);
   });
 
@@ -237,10 +246,26 @@ export function explorePageCases({name, frontend}) {
     const f = await open(page({points: [], period_min: null, history_unavailable: true, snapshot: true, rules: undefined}));
     assert.match(f.root.innerHTML, /Price history didn’t load/);
     const raw = f.root.querySelector('#rawsect').innerHTML;
-    assert.match(raw, /None to show: Kalshi didn’t send this market’s candles just now\. Try again under Price history\./);
+    assert.match(raw, /None to show: Kalshi didn’t send this market’s price history just now\. Try again under Price history\./);
     assert.doesNotMatch(raw, /Waiting/);
     const closes = /<dt class="lab">Closes<\/dt><dd><span class="fig[^"]*">(.*?)<\/span>/.exec(f.root.innerHTML);
     assert.ok(closes && /21:00/.test(closes[1]) && !/—/.test(closes[1]), closes && closes[1]);
+  });
+
+  // Walked 2026-10-28: a link to a market Kalshi doesn't have read "Kalshi has no market KXNOPE-26OCT28-X." over a
+  // Try again that could only fail the same way.
+  test(`${name}: a market Kalshi has no record of says so in words, with only the way back to Explore`, async () => {
+    let calls = 0;
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore/market?')
+      ? (calls++, response({error: 'Kalshi has no market KXNOPE-26OCT28-X.'}, 404)) : response({}))});
+    f.location.pathname = '/explore'; f.location.search = '?m=KXNOPE-26OCT28-X';
+    await f.viewExplore(); await settle();
+    const main = f.root.querySelector('#main');
+    assert.match(main.textContent, /Kalshi has no market at this link\. It may have been taken down, or the link is incomplete\./);
+    assert.doesNotMatch(main.innerHTML, /KXNOPE/, 'no raw code from the link');
+    assert.equal(main.querySelector('#mk-retry'), null, 'no Try again that can only fail again');
+    assert.equal(main.querySelector('a.btn').getAttribute('href'), '/explore');
+    assert.equal(calls, 1);
   });
 
   test(`${name}: Research opened from a market page has that market picked and the options open`, async () => {

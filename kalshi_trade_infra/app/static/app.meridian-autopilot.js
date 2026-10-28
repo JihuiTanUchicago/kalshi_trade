@@ -98,6 +98,10 @@ window.TauPage('autopilot', (T) => {
   // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
   // a legible end-to-end session, not a cramped chat. m.content is Markdown; m.stage/m.strategy/
   // m.detail are OPTIONAL structured fields the backend can add later (see the note in PLAN.md).
+  // The agent's reply is shown as it said it, typeset: an apostrophe inside a word is curly ("Bitcoin’s", "can’t"), as
+  // every line Tau writes is. Code (fenced or `inline`) and the reader's own lines are left exactly as typed.
+  const apTypeset = (s) => String(s == null ? '' : s).split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((part, i) => (i % 2 ? part : part.replace(/([A-Za-z])'(?=[A-Za-z])/g, '$1\u2019'))).join('');
   function apFeedLi(m) {
     const li = document.createElement('li');
     const t = `<time datetime="${esc(m.created_at)}" title="${esc(settleAt(m.created_at))}">${clock(m.created_at)}</time><span class="node" aria-hidden="true"></span>`;
@@ -108,7 +112,7 @@ window.TauPage('autopilot', (T) => {
     }
     if (m.role !== 'system') {   // the agent's think-aloud reasoning
       li.className = 'ln lane-think apf-think';
-      li.innerHTML = `${t}<div class="say"><span class="say-kind">Agent</span><div class="apf-md">${feedMd(m.content)}</div></div>`;
+      li.innerHTML = `${t}<div class="say"><span class="say-kind">Agent</span><div class="apf-md">${feedMd(apTypeset(m.content))}</div></div>`;
       return li;
     }
     // A system line = an autopilot action (or a blocked/holding note).
@@ -187,7 +191,8 @@ window.TauPage('autopilot', (T) => {
     // old running count sat over a risk change the feed showed seconds before.
     if (moved) refreshAutopilot(box);
     if ('turn_cost' in d) { apTurnCost = d.turn_cost; apCostPaint(box); }
-    if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet.</li>';
+    // The empty feed says what will fill it, as Tau's does: "No autopilot activity yet." alone left a new reader guessing.
+    if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet. While it\u2019s on, it checks in on its own schedule: it reviews what\u2019s running, starts research, and puts the strategies that pass every research test on paper (pretend money). It trades real money only if you also turn on live autopilot. Each move lands here as it happens. Message it below to steer.</li>';
     // The live pulse — the research session's "working" signal, scoped to the operation.
     const pulse = box.querySelector('#apf-pulse');
     if (pulse) {
