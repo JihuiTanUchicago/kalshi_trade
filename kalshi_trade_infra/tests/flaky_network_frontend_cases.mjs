@@ -54,7 +54,7 @@ export function flakyNetworkCases({name, frontend}) {
         assert.doesNotMatch(page, /Something went wrong/);
       } else {
         assert.match(page, /Something went wrong/);
-        assert.match(page, /Can&#39;t reach Tau\. Check your connection\./);
+        assert.match(page, /Can’t reach Tau\. Check your connection\./);
       }
       assert.ok(f.root.querySelector('[data-retry]'), 'Try again stays');
       f.clearTimers();

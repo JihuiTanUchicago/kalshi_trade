@@ -124,6 +124,8 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     let figs = f.root.querySelector('#bfigs').textContent;
     assert.match(figs, /Spent so far\s*None yet\s*research sessions and chat draw on your credits as they run/);
     assert.doesNotMatch(figs, /\$0\.00|Spent, last 7 days/);
+    // Walk 2026-10-28: the welcome credit says what it is in both themes (Meridian's had no line under it).
+    assert.match(figs, /Welcome credit\s*\$\d+\.00\s*one-time, free/);
     f = billingPage(cardedBilling({spent: 0.83, spent_7d: 0.83, spent_24h: 0.83}));
     await f.viewBilling(); await flush();
     figs = f.root.querySelector('#bfigs').textContent;
@@ -175,5 +177,38 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     // The stylesheet lays three out in three columns on a wide screen; a phone keeps its two.
     const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
     assert.match(css, /@media \(min-width: 721px\) \{ \.detail #figs\.measure\[data-cols="3"\] \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \} \}/);
+  });
+
+  // Walk 2026-10-28: a first session, just started, waits for the worker. Its Time figure was a bare "—" beside
+  // "Status: Waiting", and Tau's empty log ended "the phase it's in" with a straight apostrophe.
+  test(`${name}: a session that hasn't started yet says so in its Time figure, not a bare dash`, async () => {
+    const page = async (r) => {
+      const g = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9') ? response({run: r, events: [], strategies: []}) : response({})});
+      await g.viewRun(9); await flush(); g.clearTimers();
+      return g;
+    };
+    let g = await page(session({status: 'queued', started_at: null}));
+    assert.match(g.root.querySelector('#runfigs').textContent, /Time\s*Not started yet/);
+    assert.doesNotMatch(g.root.querySelector('#runfigs').textContent, /Time\s*—/);
+    assert.doesNotMatch(g.root.querySelector('#log').textContent, /[a-z]'[a-z]/);
+    g = await page(session({status: 'cancelled', started_at: null, finished_at: '2026-10-27T22:04:00Z', stop_reason: 'user'}));
+    assert.match(g.root.querySelector('#runfigs').textContent, /Time\s*Never started/);
+    // The research loop's explainer ("so it can’t overfit"), open on Research and a session page, writes curly ones too.
+    assert.doesNotMatch(pageFile('research'), /phase it's in|can't overfit/);
+    assert.match(pageFile('research'), /so it can’t overfit/);
+  });
+
+  // Walk 2026-10-28: a new account's Strategies page read "Pass rate —" under three zeros.
+  test(`${name}: Strategies with nothing tested yet says the pass rate shows later, not a bare dash`, async () => {
+    const list = async (counts) => {
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/strategies?') ? response({strategies: [], matched: 0, counts}) : response({})});
+      f.location.pathname = '/strategies';
+      await f.viewStrategies(); await settle();
+      return f.root.querySelector('#sfigs').textContent;
+    };
+    const empty = await list({total: 0});
+    assert.match(empty, /Pass rate\s*None yet\s*shows once a strategy here is tested/);
+    assert.doesNotMatch(empty, /Pass rate\s*—/);
+    assert.match(await list({total: 4, passed: 1, failed: 2, rejected: 1}), /Pass rate\s*25\.0%\s*of the 4 strategies here/);
   });
 }

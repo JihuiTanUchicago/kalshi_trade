@@ -44,7 +44,7 @@ window.TauPage('billing', (T) => {
           : d.runway_days != null
           ? fig(d.configured ? 'Research pauses in' : 'Credits last', runwayLabel(d.runway_days), { v: d.runway_days < 3 ? -1 : 0, small: `at ${paceWords(d.spent_7d, d.pace_days)}${d.configured && d.min_run_balance != null ? `, when credits fall under ${usd(d.min_run_balance)}` : ''}` })
           : paceTooSoon(d.pace_days, d.spent_7d) && d.balance > 0 ? fig('Credits last', 'Too soon to tell', { small: 'your first day of research sets the pace' })
-          : fig('Welcome credit', usd(d.free_bonus))));
+          : fig('Welcome credit', usd(d.free_bonus), { small: 'one-time, free' })));
       const split = spendSplit(d.spent_7d_by, d.spent_7d_under_cent);
       paint(root.querySelector('#bsplit'), split ? `Last 7 days: ${split}.` : '');
       const note = root.querySelector('#blow'); if (note) paint(note, lowNote(d));

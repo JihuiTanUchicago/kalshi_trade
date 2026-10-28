@@ -80,10 +80,16 @@ for (const file of ['app.js', 'app.meridian.js']) {
   test(file + ': a 200 whose body is not JSON is a plain failure, not an empty answer', async () => {
     const t = loadApi(file);
     t.replies.push({ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); }});
-    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 200 && e.message === "Tau's reply didn't come through whole. Try again.");
+    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 200 && e.message === 'Tau’s reply didn’t come through whole. Try again.');
     t.replies.push(reply(200, null));
     await assert.rejects(t.api('/api/dashboard'), (e) => !/JSON|null|undefined/.test(e.message));
     assert.equal(t.calls.length, 2);
+  });
+
+  test(file + ': a read that can’t reach Tau says so with a curly apostrophe', () => {
+    // Walk 2026-10-28: the read-side failures wrote "Can't" and "didn't" with straight apostrophes.
+    const t = loadApi(file);
+    assert.equal(vm.runInContext('failText(0, false)', t.ctx), 'Can’t reach Tau. Check your connection.');
   });
 
   test(file + ': an HTML error page or a 429 reads as plain words', async () => {

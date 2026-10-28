@@ -23,8 +23,8 @@ window.TauPage('research', (T) => {
     const body = pol.evolved
       ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
          ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
-         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? `${SEP}adopted ` + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
-      : `<p>After each cycle the engine <b>tries new ways of choosing which ideas to test</b> and keeps one only if it would have found more real winners in your own history — scored over shuffled orderings, so it can't overfit. It gets better the more you run it.</p>`;
+         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? `${SEP}adopted ` + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can’t overfit)</span></p>`
+      : `<p>After each cycle the engine <b>tries new ways of choosing which ideas to test</b> and keeps one only if it would have found more real winners in your own history — scored over shuffled orderings, so it can’t overfit. It gets better the more you run it.</p>`;
     // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
     paint(host, `<details class="rsidisc">
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research engine</span>${tag}${pol.evolved && delta ? `<span class="rsidisc-delta">${delta}</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
@@ -1241,7 +1241,7 @@ window.TauPage('research', (T) => {
       <div id="rsiobs" class="rsiobs"></div>
       <section><div class="section-head"><h2>Agent log</h2></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
-        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it's in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
+        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it’s in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
     let after = 0, tried = 0, outOfCredits = false;
     const pauses = { ms: 0, since: null, last: null };
     const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
@@ -1280,7 +1280,7 @@ window.TauPage('research', (T) => {
         : runDoneText(r);
       paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
-        fig('Time', worked == null ? '—' : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
+        fig('Time', worked == null ? (active ? 'Not started yet' : 'Never started') : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
         (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
         runCountFigs(r, active, tried, d.strategies));
       const next = root.querySelector('#runnext');
@@ -1306,8 +1306,8 @@ window.TauPage('research', (T) => {
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
-               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? `${SEP}adopted ` + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
-            : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can't overfit).</p>
+               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? `${SEP}adopted ` + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can’t overfit)</span></p>`
+            : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can’t overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? SEP + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
           </div></details>`;
         if (rsibox.dataset.h !== rsiHtml) { rsibox.dataset.h = rsiHtml; rsibox.innerHTML = rsiHtml; }

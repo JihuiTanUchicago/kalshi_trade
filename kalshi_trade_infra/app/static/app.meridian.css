@@ -2327,6 +2327,8 @@ body.landing-body .apf { display: none; }
 .research-create { min-width: 0; }
 .research-create:not([open]) { height: 0; }
 .research-page .research-create > summary { position: absolute; top: 16px; right: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 32px; background: transparent; border-color: var(--ink-2); color: var(--ink); }
+/* Hovered (and left hovered by a tap on a phone), .btn.primary:hover turned it black under its dark ink text. */
+.research-page .research-create > summary:hover { background: var(--ink); color: #F1F3ED; }
 .research-create > summary::before, .research-create[open] > summary::before { content: none; }
 .research-create[open] { padding: 16px 0 20px; margin-bottom: 20px; border: 0; border-block: 1px solid var(--rule); }
 .research-compose { display: block; min-width: 0; }
