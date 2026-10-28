@@ -1088,20 +1088,33 @@ window.TauPage('research', (T) => {
   function runControls(host, id, status, reload) {
     if (host.dataset.st === status) return;
     host.dataset.st = status;
+    // A press here repaints the buttons (Pause becomes Resume; a cancelled session has none), and focus fell to the
+    // top of the page with the pressed one (walk 2026-10-28). It goes to the control that took its place, else the
+    // session's heading. A press that failed keeps its button, so it marks nothing.
+    const acted = host.dataset.acted === '1';
+    delete host.dataset.acted;
+    const act = (path) => async () => {
+      host.dataset.acted = '1';
+      await api(`/api/runs/${id}/${path}`, {}).catch((er) => { delete host.dataset.acted; alert0(er.message); });
+      await reload();
+    };
     if (status === 'paused') {
       host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button>' + CANCEL_BTN + '</span>';
-      host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/resume`, {}).catch((er) => alert0(er.message)); await reload(); });
+      host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, act('resume'));
     } else if (status === 'running') {
       host.innerHTML = '<span class="runact"><button class="btn small" id="pause" title="Holds the session where it is until you resume it.">Pause</button>' + CANCEL_BTN + '</span>';
-      host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/pause`, {}).catch((er) => alert0(er.message)); await reload(); });
+      host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, act('pause'));
     } else if (status === 'queued') {
       host.innerHTML = '<span class="runact">' + CANCEL_BTN + '</span>';
     } else {
       host.innerHTML = status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '';
-      return;
     }
     const cancel = host.querySelector('#cancel');
-    cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
+    if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, act('cancel')));
+    if (!acted) return;
+    const h = root.querySelector('main h1'), to = host.querySelector('#resume, #pause, #cancel, a') || h;
+    if (to === h && h && h.getAttribute('tabindex') == null) h.setAttribute('tabindex', '-1');
+    if (to && to.focus) to.focus({ preventScroll: true });
   }
 
   // A session's time at work. The agent logs "paused" when it stops at a checkpoint and "resumed" when it

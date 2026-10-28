@@ -1039,20 +1039,33 @@ window.TauPage('research', (T) => {
   function runControls(host, id, status, reload) {
     if (host.dataset.st === status) return;
     host.dataset.st = status;
+    // A press here repaints the buttons (Pause becomes Resume; a cancelled session has none), and focus fell to the
+    // top of the page with the pressed one (walk 2026-10-28). It goes to the control that took its place, else the
+    // session's heading. A press that failed keeps its button, so it marks nothing.
+    const acted = host.dataset.acted === '1';
+    delete host.dataset.acted;
+    const act = (path) => async () => {
+      host.dataset.acted = '1';
+      await api(`/api/runs/${id}/${path}`, {}).catch((er) => { delete host.dataset.acted; alert0(er.message); });
+      await reload();
+    };
     if (status === 'paused') {
       host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button>' + CANCEL_BTN + '</span>';
-      host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/resume`, {}).catch((er) => alert0(er.message)); await reload(); });
+      host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, act('resume'));
     } else if (status === 'running') {
       host.innerHTML = '<span class="runact"><button class="btn small" id="pause" title="Holds the session where it is until you resume it.">Pause</button>' + CANCEL_BTN + '</span>';
-      host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/pause`, {}).catch((er) => alert0(er.message)); await reload(); });
+      host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, act('pause'));
     } else if (status === 'queued') {
       host.innerHTML = '<span class="runact">' + CANCEL_BTN + '</span>';
     } else {
       host.innerHTML = status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '';
-      return;
     }
     const cancel = host.querySelector('#cancel');
-    cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
+    if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, act('cancel')));
+    if (!acted) return;
+    const h = root.querySelector('main h1'), to = host.querySelector('#resume, #pause, #cancel, a') || h;
+    if (to === h && h && h.getAttribute('tabindex') == null) h.setAttribute('tabindex', '-1');
+    if (to && to.focus) to.focus({ preventScroll: true });
   }
 
   // A session's time at work. The agent logs "paused" when it stops at a checkpoint and "resumed" when it
@@ -1233,10 +1246,14 @@ window.TauPage('research', (T) => {
       // "Tested 5" sat over "Strategies 4" with nothing to say why.
       const gapN = Math.max(+r.hypotheses_tried || 0, tried) - (d.strategies || []).length;
       const gap = gapN > 0 ? `${num(gapN)} more idea${gapN === 1 ? '' : 's'} ${active ? 'still being tested' : 'dropped before testing'}.` : '';
+      // A passed one says what happens next, as Tau's Ideas tested rows do: a running session's passed card said
+      // only “Passed”, with no word on whether to deploy it or wait for the autopilot (walk 2026-10-28).
+      const passedNext = (s) => s.status !== 'passed' ? '' : s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
+        : s.autopilot_next ? 'The autopilot puts it on paper at its next check-in' : 'Open it to deploy on paper';  // its title above is the link
       const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;
-      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${num(strategies.length)}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: laterMissed(s) || heldBack(s) ? laterLines(s) : s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${num(strategies.length)}</button>` : ''}` : '';
+      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${num(strategies.length)}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: laterMissed(s) || heldBack(s) ? laterLines(s) : s.status === 'passed' ? null : whyBySid.get(s.id), next: laterMissed(s) || heldBack(s) ? '' : passedNext(s) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${num(strategies.length)}</button>` : ''}` : '';
       // Compared with what was last written, not with innerHTML: the browser's serialization never matched
       // the template (&nbsp;, quoting), so the table was rebuilt every 2s.
       paint(artifacts, artifactHtml);

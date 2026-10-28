@@ -40,6 +40,7 @@ import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 import {newUserCases} from './new_user_frontend_cases.mjs';
+import {firstSessionCases} from './first_session_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -3968,7 +3969,7 @@ test('first-run funnel: an empty paper track record never sends a user with noth
   assert.doesNotMatch(paper(), /Turn on autopilot/);
   // Sessions but nothing deployed: the strategies that passed.
   f.S.dashNoSessions = false;
-  assert.match(paper(), /<a class="btn" href="\/strategies">See passed strategies<\/a>/);
+  assert.match(paper(), /<a class="btn" href="\/strategies\?status=passed">See passed strategies<\/a>/);
   // Something deployed, or no dashboard read yet: Deploy as before. Live and demo keep their own button.
   f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/); assert.match(paper(), /Turn on autopilot/);
   f.S.dashDeps = undefined; assert.match(paper(), /Go to Deploy/);
@@ -3976,7 +3977,7 @@ test('first-run funnel: an empty paper track record never sends a user with noth
 });
 
 test('first-run funnel: an empty Deploy board with nothing passed starts a session instead of opening an empty list', async () => {
-  for (const [passed, cta, href] of [[0, 'Start a research session', '/research?new=1'], [2, 'See passed strategies', '/strategies'], [null, 'See passed strategies', '/strategies']]) {
+  for (const [passed, cta, href] of [[0, 'Start a research session', '/research?new=1'], [2, 'See passed strategies', '/strategies?status=passed'], [null, 'See passed strategies', '/strategies?status=passed']]) {
     const seen = [];
     const f = frontend({fetchImpl: path => {
       seen.push(path);
@@ -5582,6 +5583,8 @@ test('Tau phone: a folded paper section does not count, so the numbered sections
   assert.match(body, /<details class="fold"[^>]*><summary class="fold-h">Methodology<\/summary><section class="paper-sec">/);
 });
 newUserCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, billingPage, cardedBilling, apStatus: apOn});
+firstSessionCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn,
+  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 
 test('Tau: the composer’s hint fits its one line at 390px, with a curly apostrophe, and the picker takes its own row', async () => {
   // Walk 2026-10-27 at 390px: "Share an idea, a strategy, or how it's going…" wrapped in the one-line box (cut
