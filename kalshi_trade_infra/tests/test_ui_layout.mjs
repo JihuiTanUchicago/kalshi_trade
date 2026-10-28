@@ -323,3 +323,29 @@ for (const [bundle, file, sel] of [['Tau', 'app.css', '.fig .pnl-nopass'], ['Mer
     assert.equal(decl(all, '.t-strat .pnl-nopass', 'color'), 'var(--ink-3)');
   });
 }
+
+// Walk 2026-10-28, Meridian's Overview at 390px: inside a closed Details (.dep-evidence), each .dep-fact measured past
+// the right edge (to 440px). That box is the closed details' hidden content, sized to the 84px "Details" summary, with
+// each fact unbreakable inside: nothing shows there and the page never scrolls sideways. Opened, the details takes the
+// card's whole row (358px of 390, 288 of 320) and every fact fits, wrapping only between facts. These rules keep it so.
+test('Meridian: an opened deployment Details takes its row and wraps between facts, never inside one', () => {
+  const all = rules(read('app.meridian.css'));
+  assert.equal(decl(all, '.dep-evidence[open]', 'display'), 'block', 'opened, it is no longer the inline summary’s width');
+  assert.equal(decl(all, '.dep-evidence > div', 'white-space'), 'normal', 'the line wraps between facts');
+  assert.equal(decl(all, '.dep-evidence .dep-fact', 'white-space'), 'nowrap', '“Deployed” stays with its date');
+  assert.equal(decl(all, '.dep-monitor .dep-evidence[open]', 'flex-basis'), '100%');
+  assert.equal(decl(all, '.monitor-footer:has(.dep-evidence[open])', 'grid-column'), '1 / -1', 'an Overview card gives it the full width');
+  assert.equal(decl(all, '.dep-monitor .dep-evidence > div', 'overflow-wrap'), 'anywhere', 'an overlong token still breaks at the edge');
+  assert.ok(!all.some((r) => sels(r).some((s) => /\.dep-evidence > div$/.test(s)) && /white-space\s*:\s*nowrap/.test(r.body)),
+    'no rule, at any width, stops the details line wrapping');
+});
+
+// The same walk: a demo card's “after Kalshi fees, in Tau’s demo book: not real money” (.book-net) ran four lines at the
+// Realized figure's 20px under “−$2.10”. It is the small print the paper card's “after Kalshi fees and the spread” is.
+test('Meridian: a demo or live Overview card’s book line under Realized P&L is small print, not a figure', () => {
+  const all = rules(read('app.meridian.css'));
+  for (const sel of ['.monitor-metrics dd.paper-net', '.monitor-metrics dd.book-net']) {
+    assert.match(decl(all, sel, 'font') || '', /^400 12px\/16px /, sel);
+    assert.equal(decl(all, sel, 'color'), 'var(--ink-3)', sel);
+  }
+});

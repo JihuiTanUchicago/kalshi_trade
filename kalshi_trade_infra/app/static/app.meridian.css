@@ -2202,8 +2202,9 @@ body.landing-body .apf { display: none; }
 .monitor-metrics dd { margin: 2px 0 0; font: 500 20px/24px var(--f-ui); font-variant-numeric: tabular-nums lining-nums; }
 .monitor-unrealized dd { font-size: 16px; }
 /* A paper card's "after Kalshi fees and the spread" (PAPER_NET, with its PAPER_FILLS bubble) is the small explainer it is
-   everywhere else, not a 20px figure under the P&L. */
-.monitor-metrics dd.paper-net { margin-top: 2px; font: 400 12px/16px var(--f-ui); color: var(--ink-3); }
+   everywhere else, not a 20px figure under the P&L. So is a demo or live card's "after Kalshi fees, in Tau's demo book:
+   not real money" (.book-net): at 390px it ran four lines at the figure's 20px under a −$2.10 (walk 2026-10-28). */
+.monitor-metrics dd.paper-net, .monitor-metrics dd.book-net {margin-top: 2px; font: 400 12px/16px var(--f-ui); color: var(--ink-3); }
 .monitor-metrics .unavailable { font: 400 14px/20px var(--f-ui); }
 .monitor-footer { display: grid; grid-column: 3; grid-row: 1 / span 2; justify-items: end; gap: 4px; min-width: 0; }
 .monitor-footer:has(.dep-evidence[open]) { grid-column: 1 / -1; grid-row: 3; justify-items: stretch; }
