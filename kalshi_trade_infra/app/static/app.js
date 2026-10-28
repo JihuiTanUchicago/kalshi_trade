@@ -2787,7 +2787,10 @@
   // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
   // above $200000 by Jan 1…? · Above $200000" repeated the title. A contract the feed sends untitled is named
   // as a position is (contractName: its market's words, else "Kalshi contract"), never by its raw ticker.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
+  // A multi-game combo's title is Kalshi's legs run together ("yes Denver,yes Boston,no Over 220.5 points scored"): each
+  // leg gets its space after the comma and the line starts with a capital, as every other title does. Any other title as sent.
+  const comboTitle = (t) => /^(?:yes|no) [^,]+(?:,\s*(?:yes|no) [^,]+)+$/i.test(t) ? t.split(/,\s*/).join(', ').replace(/^./, (c) => c.toUpperCase()) : t;
+  const mktLabel = (m) => { const t = comboTitle((m.ti || '').trim()), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
   const sinceMin = (iso) => { if (!iso) return '—'; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + 'm ago' : s < 172800 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };

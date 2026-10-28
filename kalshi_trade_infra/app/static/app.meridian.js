@@ -2942,7 +2942,10 @@
   // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
   // above $200000 by Jan 1…? · Above $200000" repeated the title. A contract the feed sends untitled is named
   // as a position is (contractName: its market's words, else "Kalshi contract"), never by its raw ticker.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
+  // A multi-game combo's title is Kalshi's legs run together ("yes Denver,yes Boston,no Over 220.5 points scored"): each
+  // leg gets its space after the comma and the line starts with a capital, as every other title does. Any other title as sent.
+  const comboTitle = (t) => /^(?:yes|no) [^,]+(?:,\s*(?:yes|no) [^,]+)+$/i.test(t) ? t.split(/,\s*/).join(', ').replace(/^./, (c) => c.toUpperCase()) : t;
+  const mktLabel = (m) => { const t = comboTitle((m.ti || '').trim()), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
   const compactCondition = label => label.replace(/^(\$[\d,]+(?:\.\d+)?) or above$/i, '≥ $1').replace(/^(\$[\d,]+(?:\.\d+)?) or below$/i, '≤ $1').replace(/^Above (\$[\d,]+(?:\.\d+)?)$/i, '> $1').replace(/^Below (\$[\d,]+(?:\.\d+)?)$/i, '< $1');
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
@@ -3257,7 +3260,7 @@
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
         const label = mktLabel(m);
-        const title = (m.ti || '').trim(), condition = (m.su || '').trim();
+        const title = comboTitle((m.ti || '').trim()), condition = (m.su || '').trim();
         const separateCondition = condition && title && condition !== title ? condition : '';
         const conditionDisplay = compactCondition(separateCondition);
         const titleParts = title.split(' · ');
@@ -4089,7 +4092,7 @@
   const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? `<span>Closes ${esc(settleAt(m.ct))}</span>` : ''}${vsHtml(m)}</span>` : '');
   const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
   function hotRowHtml(m) {
-    const compactName = contractShort(m.t) || (m.ti || '').trim() || contractName(m.t);
+    const compactName = contractShort(m.t) || comboTitle((m.ti || '').trim()) || contractName(m.t);
     const when = (m.ct ? `${SEP}Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? `${SEP}${vsLab(m)} ${vsText(m.vs, m)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
