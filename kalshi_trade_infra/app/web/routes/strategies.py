@@ -51,6 +51,10 @@ def _strategy_card(s: Dict) -> Dict:
         "example": s.get("direction") == repo.DEMO_DIRECTION,  # from the seeded example session
         # Found in a session the autopilot started (its run's brief flag, as the research list reads it).
         **({"by_autopilot": True} if s.get("by_autopilot") else {}),
+        # A void strategy with no gatekeeper record (the list read's void_no_record, VOID_NO_RECORD_SQL): the first
+        # version's simple backtest stored it as failed, never judged on held-out data, so its row says "not held
+        # out" as a flagged pass's does (_attach_no_record). Its page says the same from its own read. Display only.
+        **({"no_gatekeeper_record": True} if s.get("status") == "failed" and s.get("void_no_record") else {}),
     }
 
 
@@ -637,6 +641,10 @@ def get_strategy(ctx: Ctx):
     held_back = _gate_lines(_held_back_lines, ctx.cur, ctx.uid, [(s, exp)]) if verdict == HELD_BACK else {}
     if verdict:
         out["verdict"] = verdict
+    # A void strategy with no gatekeeper record (no experiment either way, the read above) was never judged on
+    # held-out data: the page says "not held out" for it as for a pass with none, as its Strategies row does.
+    if exp is None and s.get("status") == "failed":
+        out["no_gatekeeper_record"] = True
     # The ladder's demo rung: why its demo book can't trade, or (not on demo yet) what demo needs. From the
     # demo cash memo alone, never Kalshi: pending when it isn't kept, and the page asks
     # /api/funds/cash?book=demo, then reads the strategy again once (a line from a figure read under two

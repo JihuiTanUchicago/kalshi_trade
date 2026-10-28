@@ -17,6 +17,13 @@ DEMO_DIRECTION = "random_walk"
 NO_EXPERIMENT_SQL = ("s.experiment_id IS NULL AND NOT EXISTS (SELECT 1 FROM app_experiments e "
                      "WHERE e.user_id=s.user_id AND e.strategy_id=s.id)")
 
+# A void strategy `s` with no gatekeeper record (NO_EXPERIMENT_SQL, the rule its passes are flagged by): one the
+# first version's simple backtest path stored as 'failed', never judged on held-out data. A void strategy today is
+# the gatekeeper's inconclusive verdict, so it always has a record. Its rows say "not held out", as a flagged pass's
+# do, and the Strategies summary leaves it out of "Void on unseen data". A column of the list's and the counts' own
+# reads; the probe runs only for a void row without experiment_id. Display only.
+VOID_NO_RECORD_SQL = "(s.status='failed' AND " + NO_EXPERIMENT_SQL + ")"
+
 
 def strategies_passed_since(cur, user_id: int, since) -> int:
     """Strategies that cleared every gate (status 'passed') from research runs started since
@@ -149,7 +156,7 @@ def list_strategies(
             fparams.extend(int(i) for i in ids)
     sql = ("""SELECT s.id, s.run_id, s.parent_id, s.market, s.direction, s.title, s.thesis, s.spec_json, s.status,
                     s.result_json, s.experiment_id, s.created_at, r.hypotheses_tried, s.shared_from_user_id, su.name AS shared_from_name,
-                    r.brief AS by_autopilot,
+                    r.brief AS by_autopilot, """ + VOID_NO_RECORD_SQL + """ AS void_no_record,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped') AS active_deps,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status<>'stopped' AND d.mode='live') AS live_deps,
                     (SELECT COUNT(*) FROM app_deployments d WHERE d.strategy_id=s.id AND d.status='stopped') AS removed_deps
@@ -180,12 +187,16 @@ def count_strategies(
     direction/market/search/deployed, matching list_strategies (status is left open so every
     status bucket is counted). The seeded example session's strategies are left out of every
     count: a new account read "Rejected (2)" for research it never ran. They still list, so
-    "examples" holds them per status for the page's matched/pages math."""
+    "examples" holds them per status for the page's matched/pages math.
+    "failed_no_record" is how many of the counted void ones have no gatekeeper record (VOID_NO_RECORD_SQL), from
+    the same statement: still in "failed" (the Void chip lists them), but never held out, so the summary's
+    "Void on unseen data" leaves them out. Display only."""
     where, fparams = _strategy_filter_sql(direction, None, market, None, q, deployed)
     sql = ("SELECT s.status, COUNT(*) AS n, SUM(EXISTS (SELECT 1 FROM app_deployments d WHERE d.strategy_id=s.id"
-           " AND d.status<>'stopped')) AS dep, SUM(CASE WHEN s.direction=%s THEN 1 ELSE 0 END) AS ex"
+           " AND d.status<>'stopped')) AS dep, SUM(CASE WHEN s.direction=%s THEN 1 ELSE 0 END) AS ex,"
+           " SUM(CASE WHEN s.direction=%s THEN 0 WHEN " + VOID_NO_RECORD_SQL + " THEN 1 ELSE 0 END) AS norec"
            " FROM app_strategies s" + where + " GROUP BY s.status")
-    params: List[Any] = [DEMO_DIRECTION, user_id] + fparams
+    params: List[Any] = [DEMO_DIRECTION, DEMO_DIRECTION, user_id] + fparams
     cur.execute(sql, params)
     rows = cur.fetchall()
     examples = {r["status"]: int(r.get("ex") or 0) for r in rows if int(r.get("ex") or 0)}
@@ -194,6 +205,9 @@ def count_strategies(
     # Strategies with an active deployment, for the Deployed chip (not a status, so not in total).
     counts["deployed"] = sum(int(r.get("dep") or 0) for r in rows)
     counts["examples"] = examples
+    norec = sum(int(r.get("norec") or 0) for r in rows)
+    if norec:  # only when there is one, as an old account's
+        counts["failed_no_record"] = norec
     return counts
 
 
