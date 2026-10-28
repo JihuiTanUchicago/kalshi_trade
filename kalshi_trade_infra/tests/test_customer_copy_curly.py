@@ -96,3 +96,35 @@ def test_the_admin_waitlist_refusal_is_curly(monkeypatch):
     with pytest.raises(ApiError) as e:
         server.admin_waitlist(_ctx({"email": "x@y.com", "action": "remove"}))
     assert e.value.status == 404 and e.value.message == "That email isn’t on the waitlist."
+
+
+def test_the_server_failure_reply_is_curly():
+    # Every unexpected error's reply, which both themes print on the page that failed.
+    src = inspect.getsource(server.Handler)
+    assert '{"error": "Something went wrong on our side. It’s been logged."}' in src
+    assert "It's been logged" not in src
+
+
+def test_a_key_tau_cannot_store_yet_says_so_without_the_servers_setup(monkeypatch):
+    # Walk 2026-10-28: "This server can’t store keys yet (encryption key not configured)." named how the server is set up.
+    from app.web.routes import funds
+    monkeypatch.setattr(funds.kalshi_account, "verify", lambda key_id, pem: 10.0)
+    monkeypatch.setattr(funds.kalshi_account, "parse_private_key", lambda pem: object())
+    monkeypatch.setattr(funds.kalshi_dev_exec, "demo_fills", lambda creds: [])
+
+    def no_key(uid, pem):
+        raise RuntimeError("the encryption key is not set")
+
+    monkeypatch.setattr(funds.kalshi_account, "encrypt_private_key", no_key)
+    for save in (funds.save_kalshi_key, funds.save_kalshi_dev_key):
+        with pytest.raises(ApiError) as e:
+            save(_ctx({"key_id": "a952bcbe", "private_key": "pem"}))
+        assert e.value.status == 503 and e.value.message == "Tau can’t store API keys yet. Please try again later."
+
+    def no_host(creds):
+        raise funds.kalshi_dev_exec.DemoHostError("no demo host")
+
+    monkeypatch.setattr(funds.kalshi_dev_exec, "demo_fills", no_host)
+    with pytest.raises(ApiError) as e:
+        funds.save_kalshi_dev_key(_ctx({"key_id": "a952bcbe", "private_key": "pem"}))
+    assert e.value.message == "Kalshi’s demo exchange isn’t available on Tau yet. Please try again later."

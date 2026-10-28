@@ -92,7 +92,7 @@ export function settingsCases({name, frontend, current, storageFor, cardWallOpts
 
   for (const [what, reply, out] of [
     ['got no reply', () => { throw new Error('Synthetic offline'); }, false],
-    ['Tau failed (5xx)', () => response({error: "Something went wrong on our side. It's been logged."}, 500), false],
+    ['Tau failed (5xx)', () => response({error: "Something went wrong on our side. It’s been logged."}, 500), false],
     ['Tau confirmed', () => response({ok: true}), true],
     ['the session had already ended (401)', () => response({error: 'Please sign in.'}, 401), true],
   ]) {

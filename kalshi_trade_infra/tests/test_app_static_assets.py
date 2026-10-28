@@ -48,6 +48,17 @@ def test_font_support_keeps_missing_files_and_non_assets_inaccessible(path):
     assert body == b'Not found'
 
 
+@pytest.mark.parametrize('path', ['/nope', '/setting', '/strategies/abc'])
+def test_an_address_with_no_page_says_so_on_a_page_with_a_way_home(path):
+    # It read a bare "Not found" in plain text, unstyled, with no link back.
+    headers, body = static_response(path)
+    html = body.decode()
+    assert headers[:2] == (404, 'text/html; charset=utf-8')
+    assert '<h1>Page not found</h1>' in html and '<a class="btn" href="/">Go to Tau</a>' in html
+    assert 'There’s no page at this address.' in html and "'" not in html
+    assert '/static/app.css?v=' + server._static_versions()['app.css'] in html and '<script' not in html
+
+
 def test_broker_assets_are_versioned_and_loaded_before_app_boot():
     headers, body = static_response('/settings/account')
     html = body.decode()

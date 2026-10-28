@@ -106,7 +106,7 @@ for (const file of ['app.js', 'app.meridian.js']) {
     t.replies.push({ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); }});
     await assert.rejects(t.api('/api/chat', {content: 'hi'}), unsure);
     // Tau's own JSON error is an answer: it says what happened, not "check".
-    t.replies.push(reply(500, {error: "Something went wrong on our side. It's been logged."}));
+    t.replies.push(reply(500, {error: "Something went wrong on our side. It’s been logged."}));
     await assert.rejects(t.api('/api/chat', {content: 'hi'}), (e) => !unsure(e));
     assert.deepEqual(t.calls, ['POST', 'POST', 'POST', 'POST']);
   });

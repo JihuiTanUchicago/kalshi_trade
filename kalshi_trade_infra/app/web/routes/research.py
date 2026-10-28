@@ -188,7 +188,7 @@ def _last_dream(cur, uid: int) -> Optional[Dict]:
 def get_run(ctx: Ctx):
     run = repo.get_run(ctx.cur, ctx.uid, _int_param(ctx))
     if run is None or run["kind"] != "research":
-        raise ApiError(404, "No such research run.")
+        raise ApiError(404, "No such research session.")
     after = int(ctx.query.get("after") or 0)
     # This run's gated strategies, live — so the Hypotheses table fills as each chunk clears
     # the gate (a run_forever run never reaches "succeeded", so we can't wait for it).

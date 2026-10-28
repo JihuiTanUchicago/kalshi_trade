@@ -698,8 +698,9 @@ def normalize_focus(values) -> List[str]:
             continue
         (out if t in known else bad).append(t)
     if bad:
-        raise ValueError("I don't recognise %s as a market, coin or category. Try e.g. crypto, btc, "
-                         "sports, weather-high." % ", ".join(repr(b) for b in bad))
+        # The tokens as typed (lowercased), quoted curly; the examples are words the aliases take, never a raw key.
+        raise ValueError("I don’t recognise %s as a market, coin or category. Try crypto, Bitcoin, sports or "
+                         "weather." % ", ".join("“%s”" % b for b in bad))
     return list(dict.fromkeys(out))
 
 
