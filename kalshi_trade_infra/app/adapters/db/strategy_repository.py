@@ -94,7 +94,8 @@ def _strategy_row(r: Dict) -> Dict:
 
 NOISE_STATUSES = ("rejected", "failed")  # the un-kept outcomes the default list view hides
 
-# A strategy's unseen-data backtest P&L, read from its stored result for the list's "best first" order.
+# A strategy's later-period backtest P&L (after the split date, held out or not), read from its stored result
+# for the list's "Later-period P&L" order.
 _UNSEEN_PNL_JSON = "JSON_EXTRACT(s.result_json, '$.out_of_sample.pnl')"
 _UNSEEN_PNL = "CAST(JSON_UNQUOTE(%s) AS DECIMAL(16,4))" % _UNSEEN_PNL_JSON
 
@@ -156,8 +157,9 @@ def list_strategies(
                   LEFT JOIN app_users su ON su.id=s.shared_from_user_id""" + where)
     params: List[Any] = [user_id] + fparams
     if sort == "best":
-        # The sort "P&L on data it never saw", highest first: the out-of-sample backtest P&L the list's Unseen P&L column shows.
-        # One with no unseen test (rejected, tested only) goes last; ties and the rest newest first.
+        # The sort "Later-period P&L", highest first: the backtest P&L after the split date (out_of_sample) that the
+        # list's Backtest P&L column shows, held out or not. One with no later-period result (rejected, tested only)
+        # goes last; ties and the rest newest first.
         sql += " ORDER BY (%s IS NULL), %s DESC, s.id DESC LIMIT %%s OFFSET %%s" % (_UNSEEN_PNL_JSON, _UNSEEN_PNL)
     else:
         # Non-rejected (passed/void) first, then newest: in a big run the passed finalists are
