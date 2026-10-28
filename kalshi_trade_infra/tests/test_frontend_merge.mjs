@@ -1114,7 +1114,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   assert.match(figs, /\$1,000\.00 capital\u00a0· 1 open \(\$3\.11 at cost \+ fees, all of it in Tau’s demo book\)\u00a0· needs a demo key\u00a0· real fills/);
   // Paper is the dashboard's figure (cash + open at their price), never cash alone under another name; its open
   // positions are named at cost + fees, with the part the balance holds.
-  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)\u00a0· practice money</); assert.doesNotMatch(figs, /Paper cash/);
   // Each book stays its own figure: no sum of live, demo and paper anywhere.
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);
   // Nothing open says so; Kalshi not answering says what to do instead of a bare "Unavailable".
