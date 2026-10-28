@@ -17,6 +17,7 @@ import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
+import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
@@ -228,6 +229,7 @@ runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend, stripe: () => ({stripe: STRIPE_STUB})});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Tau', frontend, detailStrategy});
+countFormatCases({name: 'Tau', frontend, detailStrategy, strategyFrontend});
 explorePageCases({name: 'Tau', frontend});
 trackRecordTrustCases({name: 'Tau', frontend, Element, dashboard: () => emptyDashboard()});
 researchFormCases({name: 'Tau', frontend});
@@ -622,7 +624,7 @@ test('the research headline uses all-time totals, not the 50 newest runs', async
   }});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> ideas and kept <em>4<\/em>/);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1,240<\/em> ideas and kept <em>4<\/em>/);  // counted as the abstract counts, "1,240"
 });
 
 test('Tau: a new user\'s first idea reads "1 idea tested", not "1 ideas"', async () => {

@@ -1090,7 +1090,7 @@
     // A notice the server grouped (the same kind about the same page, in a row) says how many more it
     // stands for. One without a page to open is plain text, not a link to nowhere.
     const item = (n) => {
-      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.more ? `<span class="notif-more">and ${n.more} more like this</span>` : ''}${bellTime(n.created_at)}`;
+      const inner = `${n.read ? '' : '<span class="vh notif-new">New: </span>'}${esc(n.body)}${n.more ? `<span class="notif-more">and ${num(n.more)} more like this</span>` : ''}${bellTime(n.created_at)}`;
       return /^\/(?!\/)/.test(n.link || '') ? `<a class="notif ${n.read ? '' : 'unread'}" href="${esc(n.link)}">${inner}</a>` : `<p class="notif ${n.read ? '' : 'unread'}">${inner}</p>`;
     };
     const paint = (d) => {
@@ -1627,7 +1627,7 @@
     const y = (v) => H - 2 - ((v - reg.lo) / (reg.hi - reg.lo)) * (H - 4);
     const pts = curve.map((p, i) => `${x(p, i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
     const last = curve[curve.length - 1][1], n = trades == null ? curve.length : +trades;
-    const label = `Cumulative P&L, ${usd(last, true)} over ${n} trade${n === 1 ? '' : 's'}`;
+    const label = `Cumulative P&L, ${usd(last, true)} over ${num(n)} trade${n === 1 ? '' : 's'}`;
     return `<svg class="spark ${last > 0 ? 'up' : last < 0 ? 'down' : 'flat'}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" role="img" aria-label="${esc(plain(label))}"><line class="spark-zero" x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" vector-effect="non-scaling-stroke"/><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg>`;
   }
   // devCurve (optional): a second, realized series replayed read-only against
@@ -1744,7 +1744,7 @@
   // What a deployed strategy has actually done, beside its backtest columns.
   // The server sends one book (live, else paper, else demo) and a paper strategy's demo book beside it
   // under r.demo, so sandbox dollars are never added to paper ones.
-  const realTrades = (n) => `${n} trade${n === 1 ? '' : 's'}`;
+  const realTrades = (n) => `${num(n)} trade${n === 1 ? '' : 's'}`;
   // How long a backtest window ran (its metrics' `days`), so a P&L or return says over what span.
   const overDays = (d) => !(+d > 0) ? '' : +d < 1 ? ' in under a day' : ` over ${num(Math.round(+d))} day${Math.round(+d) === 1 ? '' : 's'}`;
   // A deployment as a customer knows it: by its book and state, never by its row id.
@@ -1849,7 +1849,7 @@
       <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}<div class="sub-fig cellwrap">${mdInline(esc(s.thesis))}</div></td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))}\u00a0· ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub}</td>
-      <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
+      <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : num(m.trades)}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       <td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested" title="${TRIED_TIP}">${esc(tried)}</td>
       <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${bookLive(s) ? liveWaitLine() : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
@@ -1942,8 +1942,8 @@
       <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
-      <td class="num" data-lab="Trades">${d.closed_trades}${d.open_positions ? `<div class="sub-fig">+${d.open_positions} open</div>` : ''}</td>
-      <td class="num" data-lab="Backtest estimate" title="${d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${d.closed_trades} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig">${live ? 'no live trades closed yet' : d.mode === 'demo' ? 'no demo trades closed yet' : 'no paper trades closed yet'}</span>`}</td>
+      <td class="num" data-lab="Trades">${num(d.closed_trades)}${d.open_positions ? `<div class="sub-fig">+${num(d.open_positions)} open</div>` : ''}</td>
+      <td class="num" data-lab="Backtest estimate" title="${d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${num(d.closed_trades)} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig">${live ? 'no live trades closed yet' : d.mode === 'demo' ? 'no demo trades closed yet' : 'no paper trades closed yet'}</span>`}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
       ${actions}
     </tr>`;
@@ -2363,7 +2363,7 @@
       // Realized P&L (all-time + today) and open count for one money bucket; a tasteful
       // zero line when the bucket has no activity so an empty card never looks broken.
       // The figure above it is Kalshi's cash for the whole account; this line is Tau's own trades.
-      const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${b.open_positions} open${b.open_positions ? ' (not in cash)' : ''}${SEP}${usd(b.realized_pnl, true)} realized all time${SEP}${usd(b.today_pnl, true)} realized today (UTC)` : zero;
+      const mSub = (b, zero) => (b.open_positions || b.running || b.realized_pnl) ? `Tau trades: ${num(b.open_positions)} open${b.open_positions ? ' (not in cash)' : ''}${SEP}${usd(b.realized_pnl, true)} realized all time${SEP}${usd(b.today_pnl, true)} realized today (UTC)` : zero;
       const hasLive = d.deployments.some((x) => x.mode === 'live' && x.status !== 'stopped');
       // Demo is Kalshi's sandbox, not paper: with a demo deployment on, "Paper money only" mislabelled it.
       const hasDemo = d.deployments.some((x) => x.mode === 'demo' && x.status !== 'stopped');
@@ -2408,7 +2408,7 @@
       // real money, demo, paper) and a link to Deploy for the rest. Six phone cards ran ~1,400px.
       const depRank = (x) => x.status === 'paused' ? 0 : x.mode === 'live' ? 1 : x.mode === 'demo' ? 2 : 3;
       const dashDeps = [...d.deployments].sort((a, b) => depRank(a) - depRank(b)).slice(0, DASH_ROWS);
-      const more = (n, what) => n > DASH_ROWS ? `<a class="stub-all" href="/deploy">See all ${n} ${what} on Deploy \u2192</a>` : '';
+      const more = (n, what) => n > DASH_ROWS ? `<a class="stub-all" href="/deploy">See all ${num(n)} ${what} on Deploy \u2192</a>` : '';
       const deps = d.deployments.length
         ? deploymentTable(dashDeps.map((x) => deploymentSlip(x, regs, true)).join(''), true) + more(d.deployments.length, 'deployments')  // same controls as Deploy
         : `<div id="deps-empty" data-on="${S.me.user && S.me.user.autopilot ? 1 : 0}">${depsEmpty(S.me.user && S.me.user.autopilot)}</div>`;
@@ -2548,7 +2548,7 @@
       const liveOn = !!(S.me && S.me.live_trading_available) || liveDeps.length > 0;
       const openSplit = ['paper', 'demo', 'live'].map((m) => [m, d.open_positions.filter((p) => (p.mode || 'paper') === m).length])
         .filter(([m, n]) => n || (m === 'live' && liveOn)).map(([m, n]) => `${num(n)}\u00a0${m}`).join('\u00a0· ') || 'None';
-      paint(root.querySelector('#dfigs'), fig('Running', active.length, { small: `${d.deployments.length - running.length} paused${idle ? `${SEP}${idle} placing no orders` : ''}` }) +
+      paint(root.querySelector('#dfigs'), fig('Running', num(active.length), { small: `${num(d.deployments.length - running.length)} paused${idle ? `${SEP}${idle} placing no orders` : ''}` }) +
         (liveDeps.length
           ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}${noneLine('live', liveDeps)}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
           : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}${noneLine('paper', paperDeps)}\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}` }) : '') +
@@ -2711,7 +2711,7 @@
       </div>
       <section class="section"><div class="section-head"><h2>By month</h2><p>UTC calendar months</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Month</th><th class="num">Net P&amp;L</th><th class="num">Trades</th><th class="num">Win rate</th></tr></thead><tbody>${months}</tbody></table></div></section>
-      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Removed ones included${SEP}“Too few” means under ${th.min_trades} trades</p></div>
+      <section class="section"><div class="section-head"><h2>By strategy</h2><p>Removed ones included${SEP}“Too few” means under ${num(th.min_trades)} trades</p></div>
         <div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Read</th><th class="num">Trades</th><th class="num">Net P&amp;L</th><th class="num">Win rate</th><th class="num">Avg trade</th><th class="num">Max drawdown</th><th class="num">Last trade</th></tr></thead><tbody>${strats}</tbody></table></div></section>`;
   }
   // Lives on the dashboard (Todd, 2026-10-25): its own request below the live board, so the 15s
@@ -2850,7 +2850,7 @@
       const op = xs.filter((p) => p.status === 'open'), cl = xs.filter((p) => p.status !== 'open');
       const marked = op.filter((p) => p.unrealized != null);
       const lastMark = marked.map((p) => p.mark_ts).filter(Boolean).sort().pop();
-      const sum = [op.length ? `${op.length} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}awaiting first mark`}` : '',
+      const sum = [op.length ? `${num(op.length)} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}awaiting first mark`}` : '',
         cl.length ? `${cl.length} closed${SEP}realized ${money(cl.reduce((a, p) => a + (+p.pnl || 0), 0))}` : ''].filter(Boolean).join(SEP);
       const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? NO_MARK : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? `Open, settles ${settleAt(p.market_close_time)}` : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
@@ -3464,7 +3464,7 @@
     const liveIdle = liveOpen() ? 0 : +d.live_running || 0;
     // Each book by name, as the panel's Running figure says it: "Strategies running 2" didn't say which money they trade.
     const running = [[(+d.live_running || 0) - liveIdle, 'live'], [+d.demo_running || 0, 'demo'], [+d.paper_running || 0, 'paper']]
-      .filter(([n]) => n > 0).map(([n, book]) => `${n}\u00a0${book}`).join(SEP);
+      .filter(([n]) => n > 0).map(([n, book]) => `${num(n)}\u00a0${book}`).join(SEP);
     // Realized, as the paper card, the track record, Deploy and the strategy page count it. The equity
     // change (total_pnl) is a fourth number: it takes off open positions' entry fees and drops every
     // trade before a reset, so "Paper P&L" read $5.19 here beside a $5.61 track record.
@@ -3659,7 +3659,7 @@
       <div><dt>Credits spent on research</dt><dd>${apWeekSpent(w, spend, checkins)}</dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
-      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${trades} closed trade${trades === 1 ? '' : 's'}</small>${slipEst(w.paper_slippage_estimate)}`}</dd></div>
+      <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${num(trades)} closed trade${trades === 1 ? '' : 's'}</small>${slipEst(w.paper_slippage_estimate)}`}</dd></div>
     </dl>${apCreditsLeft(w, d)}<p class="ap-week-note">Research counts every session, yours and the autopilot’s. The two paper rows count only what the autopilot put on paper itself; strategies you deploy yourself count in the running total and on the Deploy page, not here.</p></section>`;
   }
   // Why a credits pause happened, in the server's figure: research needs this much to start.
@@ -3674,7 +3674,7 @@
   // already deployed (credits never gate a trade). "Paused" alone read as if every strategy had stopped.
   const apStillTrading = (d) => {
     const n = (liveOpen() ? +d.live_running || 0 : 0) + (+d.demo_running || 0) + (+d.paper_running || 0);  // live places no orders while closed
-    return n ? ` ${n === 1 ? 'The strategy already running keeps' : `The ${n} strategies already running keep`} trading.` : '';
+    return n ? ` ${n === 1 ? 'The strategy already running keeps' : `The ${num(n)} strategies already running keep`} trading.` : '';
   };
   // Beside the week's spend: what is left, how long it lasts at that pace (the Billing page's runway),
   // and the only limit there is. Autopilot has no spending budget of its own: it researches until the

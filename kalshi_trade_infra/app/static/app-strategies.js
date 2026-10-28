@@ -445,8 +445,8 @@ window.TauPage('strategies', (T) => {
       const since = ds.map((d) => d.created_at).filter(Boolean).sort()[0];
       // What follows the figure: its open positions and when it was deployed. After the paper fills button the first "·"
       // stays with the button (gloSep): "· 1 open" began a line.
-      const head = n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}` : 'No closed trades yet';
-      const tail = [open ? `${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : '', since ? `<span class="nobr">deployed ${when(since)}</span>` : ''].filter(Boolean).join(SEP);
+      const head = n ? `${money(pnl)} realized over ${num(n)} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}` : 'No closed trades yet';
+      const tail = [open ? `${num(open)} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : '', since ? `<span class="nobr">deployed ${when(since)}</span>` : ''].filter(Boolean).join(SEP);
       return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : gl(head, 'paperfills')) : head + (tail ? SEP : '')}${tail}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
@@ -705,7 +705,7 @@ window.TauPage('strategies', (T) => {
     };
     const metricRows = (m) => m ? `<dl>
         <dt>P&amp;L after fees</dt><dd class="${tone(m.pnl)}">${usd(m.pnl, true)}</dd>
-        <dt>Trades</dt><dd>${m.trades}${m.trades_per_day != null ? ` <small class="hint">(${m.trades_per_day}/day)</small>` : ''}</dd>
+        <dt>Trades</dt><dd>${num(m.trades)}${m.trades_per_day != null ? ` <small class="hint">(${m.trades_per_day}/day)</small>` : ''}</dd>
         <dt>Win rate</dt><dd>${pct(m.win_rate, false)}</dd>
         <dt>Fees paid</dt><dd>${usd(m.fees)}</dd>
         <dt>Profit factor</dt><dd>${m.profit_factor == null ? '—' : m.profit_factor}</dd>

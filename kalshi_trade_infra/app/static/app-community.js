@@ -5,7 +5,7 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, boardTitle, busy, clock, esc, flash, ICON, liveWaitMark, loading,
-    marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP, shell,
+    marketShort, mdLite, notice, num, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP, shell,
     statusMark, tone, trDay, usd, when
   } = T;
 
@@ -57,11 +57,11 @@ window.TauPage('community', (T) => {
     if (!names.length) return '';
     const extra = (rx.count || 0) - names.length;
     const list = names.map(esc).join(', ');
-    return extra > 0 ? `${list} and ${extra} other${extra > 1 ? 's' : ''}` : list;
+    return extra > 0 ? `${list} and ${num(extra)} other${extra > 1 ? 's' : ''}` : list;
   }
   function rxChip(rx) {
     const who = rxWho(rx);
-    return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-label="${esc(rx.emoji)}, ${rx.count}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
+    return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-label="${esc(rx.emoji)}, ${num(rx.count)}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${num(rx.count)}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
   }
   // Pills for the reactions a post has, plus an always-present inline "+" to add one.
   function reactionChips(list) {

@@ -60,36 +60,36 @@ window.TauPage('research', (T) => {
     const delta = tr ? `<span class="rsi-score">${loopRate(tr.before.gate_reach_rate)} <span class="rsi-arrow">→</span> ${loopRate(tr.after.gate_reach_rate)}</span>` : '';
     const tag = tr ? (tr.better ? '<span class="rsi-tag">Improving</span>' : '<span class="rsi-tag quiet">Not improving yet</span>') : '<span class="rsi-tag quiet">Learning</span>';
     const perIdea = t.explored ? usd(t.cost_usd / t.explored) : '—';
-    const figs = `<dl class="figures measure loop-figs">${fig('Ideas tried', t.explored, { small: `${t.runs} session${t.runs === 1 ? '' : 's'}${SEP}14 days` })}${fig('Reached the gate', t.gated, { small: `${loopRate(t.gate_reach_rate)} of ideas` })}${fig('Passed', t.passed, { small: t.holdout_passed ? `${t.holdout_passed} held out` : 'every gate' })}${fig('Spend', usd(t.cost_usd), { small: `${perIdea} per idea` })}${fig('Killed by our pipeline', loopRate(t.pipeline_death_share), { small: 'of dropped ideas' })}</dl>`;
+    const figs = `<dl class="figures measure loop-figs">${fig('Ideas tried', num(t.explored), { small: `${num(t.runs)} session${t.runs === 1 ? '' : 's'}${SEP}14 days` })}${fig('Reached the gate', num(t.gated), { small: `${loopRate(t.gate_reach_rate)} of ideas` })}${fig('Passed', num(t.passed), { small: t.holdout_passed ? `${num(t.holdout_passed)} held out` : 'every gate' })}${fig('Spend', usd(t.cost_usd), { small: `${perIdea} per idea` })}${fig('Killed by our pipeline', loopRate(t.pipeline_death_share), { small: 'of dropped ideas' })}</dl>`;
     const trendP = tr
-      ? `<p class="loop-trend">${tr.better ? 'Getting better.' : 'Not better yet.'} The newer ${tr.after.runs} session${tr.after.runs === 1 ? '' : 's'} took ${loopRate(tr.after.gate_reach_rate)} of ${tr.after.explored} ideas to the statistical gate, against ${loopRate(tr.before.gate_reach_rate)} of ${tr.before.explored} before.</p>`
+      ? `<p class="loop-trend">${tr.better ? 'Getting better.' : 'Not better yet.'} The newer ${num(tr.after.runs)} session${tr.after.runs === 1 ? '' : 's'} took ${loopRate(tr.after.gate_reach_rate)} of ${num(tr.after.explored)} ideas to the statistical gate, against ${loopRate(tr.before.gate_reach_rate)} of ${num(tr.before.explored)} before.</p>`
       : `<p class="loop-trend">Each session’s ideas are counted from first draft to final verdict. A before/after trend appears once there are 16 ideas to compare.</p>`;
     const maxIdeas = Math.max(1, ...(b.days || []).map((d) => d.explored));
     const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${d.explored} ideas, ${d.gated} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
     const pt = b.paper && b.paper.total, byPb = (b.paper && b.paper.by_playbook) || {};
-    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper at the market’s real prices: ${pt.strategies} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${pt.trading} trading, ${pt.round_trips} closed trade${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? `${SEP}${pt.live_ready} ready for live` : ''}.</p>` : '';
+    const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper at the market’s real prices: ${num(pt.strategies)} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${num(pt.trading)} trading, ${num(pt.round_trips)} closed trade${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? `${SEP}${num(pt.live_ready)} ready for live` : ''}.</p>` : '';
     const fams = {};
     (b.playbooks || []).forEach((p) => { (fams[p.family] = fams[p.family] || {})[p.status] = p; });
     const pbRows = Object.keys(fams).sort().map((f) => {
       const a = fams[f].active, c = fams[f].candidate;
-      const paper = (p) => { const q = byPb[p.id] || byPb[String(p.id)]; return q && q.round_trips ? `${SEP}on paper ${q.round_trips} closed trade${q.round_trips === 1 ? '' : 's'}, ${usd(q.net_pnl, true)}` : ''; };
-      const rec = (p) => (p.ideas ? `${p.reached} of ${p.ideas} ideas reached the gate` : 'no ideas yet') + paper(p);
+      const paper = (p) => { const q = byPb[p.id] || byPb[String(p.id)]; return q && q.round_trips ? `${SEP}on paper ${num(q.round_trips)} closed trade${q.round_trips === 1 ? '' : 's'}, ${usd(q.net_pnl, true)}` : ''; };
+      const rec = (p) => (p.ideas ? `${num(p.reached)} of ${num(p.ideas)} ideas reached the gate` : 'no ideas yet') + paper(p);
       const act = a ? `<b>v${a.version}</b> in use${a.version ? '' : ' (no lessons yet)'}${SEP}${rec(a)}` : '';
       const cand = c ? `<br><b>v${c.version}</b> on trial${SEP}${rec(c)}${c.p_better != null ? `${SEP}${Math.round(c.p_better * 100)}% likely better` : ''}${c.changes ? `<span class="loop-why">What changed: ${esc(c.changes)}</span>` : ''}` : '';
       const text = (c && c.text) || (a && a.text) || '';
       return `<li><span class="loop-k">${esc(loopFamily(f))}</span><span class="loop-v">${act}${cand}${text ? `<details class="loop-pb"><summary>Read the playbook</summary><pre>${esc(text)}</pre></details>` : ''}</span></li>`;
     }).join('');
     const scout = (b.scout || []).slice(0, 5).map((s) => `<li><span class="loop-k">${esc(marketShort(s.market))}</span><span class="loop-v">${esc(s.best_what || '')}${SEP}${s.best_net_c != null ? (s.best_net_c > 0 ? '+' : '') + s.best_net_c.toFixed(1) + '¢' : ''} net per contract${SEP}${s.best_z != null ? s.best_z.toFixed(1) : '—'} SE</span></li>`).join('');
-    const fixes = (b.fix_list || []).slice(0, 5).map((x) => `<li><span class="loop-k">${esc(marketShort(x.market))}</span><span class="loop-v"><b>${esc(LOOP_TAG[x.tag] || LOOP_TAG.other)}</b> × ${x.count}${x.example ? `<span class="loop-why">${esc(String(x.example).slice(0, 180))}</span>` : ''}</span></li>`).join('');
+    const fixes = (b.fix_list || []).slice(0, 5).map((x) => `<li><span class="loop-k">${esc(marketShort(x.market))}</span><span class="loop-v"><b>${esc(LOOP_TAG[x.tag] || LOOP_TAG.other)}</b> × ${num(x.count)}${x.example ? `<span class="loop-why">${esc(String(x.example).slice(0, 180))}</span>` : ''}</span></li>`).join('');
     const REQ_KIND = { history: 'more settled history', micro: 'order-book feature', ticks: 'per-second data' };
     const REQ_STATE = { open: 'collecting', ready: 'data arrived', requeued: 'idea re-tested', expired: 'gave up' };
     const reqs = (b.data_requests || []).slice(0, 6).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${esc(REQ_KIND[r.kind] || 'more data')}${r.need ? SEP + esc(r.need) : ''}</b>${SEP}${esc(REQ_STATE[r.status] || 'requested')}${r.requeued_run_id ? `${SEP}<a href="/research/${r.requeued_run_id}">session</a>` : ''}${r.idea_title ? `<span class="loop-why">For: ${esc(r.idea_title)}</span>` : ''}${r.status !== 'requeued' && r.note ? `<span class="loop-why">${esc(r.note)}</span>` : ''}</span></li>`).join('');
     const sect = (h, sub, items) => items ? `<div class="loop-sect"><h4>${h}</h4><p class="loop-sub">${sub}</p><ul class="loop-list">${items}</ul></div>` : '';
     const tn = b.tournament, tnEnt = tn ? (tn.entrants || []).filter((r) => r.strategy_id).sort((x, y) => y.weight - x.weight) : [];
     const tnCash = tn ? (tn.entrants || []).find((r) => !r.strategy_id) : null;
-    const tnRows = tnEnt.slice(0, 8).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${Math.round(r.weight * 100)}% of the book</b>${SEP}${esc(r.title || '')}${SEP}${r.trips} bet${r.trips === 1 ? '' : 's'}, ${usd(r.net_pnl, true)}${SEP}${Math.round((r.p_positive || 0) * 100)}% likely to make money${r.verdict ? `<span class="loop-why">Falling short: ${esc(r.verdict)}</span>` : ''}</span></li>`).join('')
+    const tnRows = tnEnt.slice(0, 8).map((r) => `<li><span class="loop-k">${esc(marketShort(r.market))}</span><span class="loop-v"><b>${Math.round(r.weight * 100)}% of the book</b>${SEP}${esc(r.title || '')}${SEP}${num(r.trips)} bet${r.trips === 1 ? '' : 's'}, ${usd(r.net_pnl, true)}${SEP}${Math.round((r.p_positive || 0) * 100)}% likely to make money${r.verdict ? `<span class="loop-why">Falling short: ${esc(r.verdict)}</span>` : ''}</span></li>`).join('')
       + (tnEnt.length && tnCash ? `<li><span class="loop-k">Cash</span><span class="loop-v"><b>${Math.round(tnCash.weight * 100)}% of the book</b>${SEP}held back until a strategy shows it makes money</span></li>` : '');
-    const tnSub = tn && tn.pooled ? `Every strategy on paper takes part at once, and a ${usd(tn.book.capital).replace(/\.00$/, '')} practice book shifts toward the ones that earn. Together they have ${tn.pooled.trips} of the ${tn.pooled.target} separate bets it takes to judge them${tn.pooled.days_to_target != null ? `, about ${Math.round(tn.pooled.days_to_target)} days to go at ${tn.pooled.per_day} a day` : ''}${tn.pooled.mean_return != null ? `, averaging ${pct(tn.pooled.mean_return)} of the stake a bet` : ''}. ${tn.book.trips ? `Practice book so far: ${usd(tn.book.pnl, true)} over ${tn.book.trips} trade${tn.book.trips === 1 ? '' : 's'}.` : 'The practice book has no trades yet.'}` : '';
+    const tnSub = tn && tn.pooled ? `Every strategy on paper takes part at once, and a ${usd(tn.book.capital).replace(/\.00$/, '')} practice book shifts toward the ones that earn. Together they have ${num(tn.pooled.trips)} of the ${num(tn.pooled.target)} separate bets it takes to judge them${tn.pooled.days_to_target != null ? `, about ${Math.round(tn.pooled.days_to_target)} days to go at ${tn.pooled.per_day} a day` : ''}${tn.pooled.mean_return != null ? `, averaging ${pct(tn.pooled.mean_return)} of the stake a bet` : ''}. ${tn.book.trips ? `Practice book so far: ${usd(tn.book.pnl, true)} over ${num(tn.book.trips)} trade${tn.book.trips === 1 ? '' : 's'}.` : 'The practice book has no trades yet.'}` : '';
     const body = figs + trendP + days + paperP
       + sect('Paper tournament', tnSub, tnRows)
       + sect('What it has learned', 'After every session the loop rewrites a playbook for that kind of market from its verdicts. A rewrite is tried on new sessions and kept only if more of its ideas reach the gate.', pbRows)
@@ -388,15 +388,15 @@ window.TauPage('research', (T) => {
       // The live count and the all-time totals are two sentences: "1 agent researching now — all time, 13 ideas
       // tested" set "now" against "all time" in one breath.
       const said = running || paused
-        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(SEP)}. All time: <em>${tried}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${passed}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
+        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
         : tried
-          ? `Your engine has tested <em>${tried}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${passed}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
+          ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${num(passed)}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
           : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
       paint(root.querySelector('#rstatus .said'), said);
       paint(root.querySelector('#rfigs'), fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
         // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
         // each says its window.
-        fig('Ideas tested', tried, { small: ALL_TIME }) + fig(gl('Passed every gate', 'gate'), passed, { small: [ALL_TIME, tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }));
+        fig('Ideas tested', num(tried), { small: ALL_TIME }) + fig(gl('Passed every gate', 'gate'), num(passed), { small: [ALL_TIME, tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }));
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The seeded example is listed but isn't the user's: it doesn't count as a run of theirs.
       const own = d.runs.filter((r) => !r.example).length, examples = d.runs.length - own;
@@ -469,11 +469,11 @@ window.TauPage('research', (T) => {
     // words short enough for one line of a card beside the hot rail ("1 more passed but not cleared" took two).
     // The "·" before it ends the item ahead (kept whole with it): when the item wrapped, its line began "· +1 passed".
     const unclear = (ahead) => fell ? `<span class="nobr">${ahead}\u00a0\u00b7</span><span class="run-fell">+${num(fell)} passed, not cleared</span>` : ahead;
-    const explored = `Explored ${r.hypotheses_tried} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}`;
+    const explored = `Explored ${num(r.hypotheses_tried)} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}`;
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
       : r.status === 'queued' ? 'Waiting<span class="working" aria-label="in process"></span>'
-      : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${ok} of ${r.hypotheses_tried} passed</span>`)}`
-      : r.status === 'stopped' ? (ok ? `${explored}${SEP}${unclear(`<span class="gain">${ok} passed</span>`)}` : unclear(explored))
+      : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${num(ok)} of ${num(r.hypotheses_tried)} passed</span>`)}`
+      : r.status === 'stopped' ? (ok ? `${explored}${SEP}${unclear(`<span class="gain">${num(ok)} passed</span>`)}` : unclear(explored))
       : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
     // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
@@ -620,7 +620,7 @@ window.TauPage('research', (T) => {
     const li = document.createElement('li');
     li.className = 'ln lane-action hx';
     const stat = (ins && ins.trades != null)
-      ? `<span class="say-stat">On the history it searched: ${usd(ins.pnl, true)}${SEP}${ins.trades} trade${ins.trades === 1 ? '' : 's'}${glo('insample')}</span>` : '';
+      ? `<span class="say-stat">On the history it searched: ${usd(ins.pnl, true)}${SEP}${num(ins.trades)} trade${ins.trades === 1 ? '' : 's'}${glo('insample')}</span>` : '';
     const home = [mechHtml(d.mechanism), specHtml(d.spec),
       d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
       d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
@@ -1121,7 +1121,7 @@ window.TauPage('research', (T) => {
     const fell = (strategies || []).filter((s) => s.status === 'passed' && s.verdict).length;
     const all = active ? (strategies || []).filter((s) => s.status === 'passed').length : r.strategies_passed;
     const passed = all == null ? null : Math.max(0, all - fell);
-    return fig('Tested', n, { small: cap }) + fig('Passed', passed == null ? '—' : passed, { small: fell ? `${num(fell)} not cleared` : '' });
+    return fig('Tested', num(n), { small: cap }) + fig('Passed', passed == null ? '—' : num(passed), { small: fell ? `${num(fell)} not cleared` : '' });
   }
   // A finished session's status, in the research list's words (RUN_STOP, from the server's stop_reason):
   // the list said "Finished" or "Stopped by you" and this page "Done" or "Cancelled" for the same session,
@@ -1231,7 +1231,7 @@ window.TauPage('research', (T) => {
     const SHOW = 6;
     return `<section class="run-ideas"><div class="section-head"><h2>Ideas tested</h2><p>${num(list.length)} listed${gap}${SEP}tap one for its story</p></div>
       <ol class="ri-list">${list.slice(0, SHOW).map(row).join('')}</ol>${list.length > SHOW
-        ? `<details class="ri-rest"${open ? ' open' : ''}><summary>Show all ${list.length}</summary><ol class="ri-list">${list.slice(SHOW).map(row).join('')}</ol></details>` : ''}</section>`;
+        ? `<details class="ri-rest"${open ? ' open' : ''}><summary>Show all ${num(list.length)}</summary><ol class="ri-list">${list.slice(SHOW).map(row).join('')}</ol></details>` : ''}</section>`;
   }
   async function viewRun(id) {
     // Pause and Cancel (and their error notice) sit beside the title, as on Meridian: at the Agent log
