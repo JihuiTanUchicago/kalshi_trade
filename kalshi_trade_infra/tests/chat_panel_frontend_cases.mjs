@@ -210,6 +210,14 @@ export function chatPanelCases({name, frontend, storageFor}) {
     assert.doesNotMatch(you, /’/, 'the reader’s own line is as they typed it');
   });
 
+  // Walked 2026-10-28: Meridian's empty feed said only "No autopilot activity yet." where Tau's says what fills it.
+  test(`${name}: an empty feed says what will land there and that a message steers it, in both themes`, async () => {
+    const p = await panel({chat: () => []});
+    const empty = p.box.querySelector('#apf-messages .ap-empty');
+    assert.match(empty.textContent, /^No autopilot activity yet\. While it’s on, it checks in on its own schedule/);
+    assert.match(empty.textContent, /Each move lands here as it happens\. Message it below to steer\.$/);
+  });
+
   test(`${name}: autopilot keeping a young paper strategy reads as its own rule after the agent's suggestion`, async () => {
     const p = await panel({autopilot: true, chat: () => [
       {id: 1, role: 'user', content: `Pause ${TAILS}.`, created_at: AT},

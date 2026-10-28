@@ -191,7 +191,8 @@ window.TauPage('autopilot', (T) => {
     // old running count sat over a risk change the feed showed seconds before.
     if (moved) refreshAutopilot(box);
     if ('turn_cost' in d) { apTurnCost = d.turn_cost; apCostPaint(box); }
-    if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet.</li>';
+    // The empty feed says what will fill it, as Tau's does: "No autopilot activity yet." alone left a new reader guessing.
+    if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty">No autopilot activity yet. While it\u2019s on, it checks in on its own schedule: it reviews what\u2019s running, starts research, and puts the strategies that pass every research test on paper (pretend money). It trades real money only if you also turn on live autopilot. Each move lands here as it happens. Message it below to steer.</li>';
     // The live pulse — the research session's "working" signal, scoped to the operation.
     const pulse = box.querySelector('#apf-pulse');
     if (pulse) {
