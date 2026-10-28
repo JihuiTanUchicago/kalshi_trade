@@ -4206,7 +4206,7 @@ test('on a phone the strategy page folds its secondary sections, never money fig
     }});
     await f.viewStrategy(42); await flush();
     const folds = f.root.querySelectorAll('details.fold');
-    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Most recent unseen trades', 'Methodology', 'Sensitivity']);
+    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Most recent later-period trades (unseen data)', 'Methodology', 'Sensitivity']);
     for (const d of folds) assert.equal('open' in d.attributes, open);
     assert.ok(f.root.querySelector('#whatif').closest('details.fold'));
     for (const sel of ['#figs', '#dep-paper', '#gates']) assert.equal(f.root.querySelector(sel).closest('details.fold'), null, sel);

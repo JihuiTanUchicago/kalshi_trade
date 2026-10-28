@@ -634,18 +634,23 @@ window.TauPage('strategies', (T) => {
     // With none, its only figures are in-sample and the unseen-data figure is left out. Display only.
     const hasExp = !!s.experiment;
     const splitOnly = !hasExp && ['passed', 'backtest-only'].includes(s.status);
-    const cutWords = splitOnly ? { cutLabel: ['After the split date →', 'Later →'] } : {};
+    // The chart's cut label says it in the heading's words too (equityChart's own default says unseen data).
+    const cutWords = splitOnly ? { cutLabel: [`Later period${SEP}not held out →`, 'Later →'] } : {};
     // The later slice's heading, in the Strategies list's and Community card's words: "later period" plus whether it was
     // held out. "Never seen (out-of-sample)" stood beside a list that called the same figure "later period · unseen data".
     const oosHead = splitOnly ? 'Later period (not held out)' : 'Later period (unseen data)';
-    const splitFig = (r) => r.out_of_sample ? fig(gl('Later-period P&L', 'laterperiod'), usd(r.out_of_sample.pnl, true), { v: r.out_of_sample.pnl,
+    // The figure up top says the same: it read "Unseen-data P&L" over headings that say "Later period (unseen data)".
+    // Each keeps its own bubble: a held-out figure's says held out (unseen), never laterperiod's "wasn’t held out".
+    const laterQual = splitOnly ? 'not held out' : 'unseen data';
+    const topLabel = splitOnly ? gl('Later-period P&L (not held out)', 'laterperiod') : gl('Later-period P&L (unseen data)', 'unseen');
+    const splitFig = (r) => r.out_of_sample ? fig(topLabel, usd(r.out_of_sample.pnl, true), { v: r.out_of_sample.pnl,
       small: `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} after the split date, which picked it: not held out` }) : '';
     const heldFig = (h, label) => fig(label, h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return), { v: h.net_pnl != null ? h.net_pnl : h.mean_net_return,
       small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
     const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
     // In Tau's words and the rest of Meridian's (the glossary's "Unseen data", the Strategies list's "P&L on data it
     // never saw", a row's "on unseen data"): this page alone said "Out-of-sample P&L" (walked 2026-10-27).
-    const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, gl('Unseen-data P&L', 'unseen')) : fig(gl('Unseen-data P&L', 'unseen'), r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
+    const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
       fig(gl('In-sample P&L', 'insample'), r.in_sample ? usd(r.in_sample.pnl, true) : '—', { v: r.in_sample && r.in_sample.pnl, small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
       // Return on capital is the backtest's later slice over its capital. A research session's strategy has none (its
       // unseen result is the gatekeeper's, above): "Return on capital —" stood on every one of their pages, so it is left out.
@@ -703,7 +708,7 @@ window.TauPage('strategies', (T) => {
     const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(gateName(g.name))}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
     const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
-      </tbody></table>` : `<p class="hint">No ${splitOnly ? 'later-period' : 'unseen-data'} trades to show.</p>`;
+      </tbody></table>` : `<p class="hint">No later-period trades (${laterQual}) to show.</p>`;
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     // Stopped deployments can still hold positions; the server refuses the delete until they close.
     const delBlock = restricted ? null : (s.delete_block || null);
@@ -740,7 +745,7 @@ window.TauPage('strategies', (T) => {
             <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth(), ...cutWords }) : ''}${!perpetual && s.equity && oos ? DEV_PENDING(splitOnly ? 'later' : 'unseen') : ''}</div>
             <div class="split"><div><h4>Tested on (in-sample)</h4>${s.in_sample ? metricRows(ins) : '<p class="hint">No in-sample result recorded.</p>'}</div><div><h4>${oosHead}</h4>${metricRows(oos)}</div></div>
           </div></div>`
-      + fold(`Most recent ${splitOnly ? 'later-period' : 'unseen'} trades`, `<div class="paper-sub"><h4 class="paper-h">Most recent ${splitOnly ? 'later-period' : 'unseen'} trades</h4>${trades}</div>`);
+      + fold(`Most recent later-period trades (${laterQual})`, `<div class="paper-sub"><h4 class="paper-h">Most recent later-period trades (${laterQual})</h4>${trades}</div>`);
     let verdictBody = rp.verdict;
     if (!hasExp) {
       const btOnly = ['sig', 'armed', 'Backtest only', 'It never went through the held-out tests: no test on data it hadn’t seen, no one-time final test and no correction for how many ideas were tried. These numbers come from a sample too small to separate skill from luck. ' + (perpetual ? 'This market remains research only.' : restricted ? 'Agent-written code stays in research.' : 'It can’t be deployed: only a strategy put through those checks can be.')];

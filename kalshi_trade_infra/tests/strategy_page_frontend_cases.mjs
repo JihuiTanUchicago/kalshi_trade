@@ -93,13 +93,14 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       profit_factor: 1.2, max_drawdown: 2, sharpe: .5, roi: .1}, days: 15.2}, dataset: {out_of_sample_from: '1970-01-01T00:03:20Z'}});
     const figs = f.root.querySelector('#figs').innerHTML, html = main(f);
     const labels = f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent);
-    assert.deepEqual(labels, ['Unseen-data P&L', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
+    assert.deepEqual(labels, ['Later-period P&L (unseen data)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
     assert.match(figs, /<dd class="sub-fig">6 trades over 15 days the agent never saw<\/dd>/);
     assert.match(figs, /<dd class="sub-fig">Unseen data over 15 days · \$100 at risk at most<\/dd>/);
     assert.match(figs, /<dd class="sub-fig">in the session that found it; this is the one that passed\. More ideas tried, more chance one passes by luck \(multiple testing\)\.<\/dd>/);
     assert.match(html, /On unseen data the agent never touched while iterating, it returned \$12\.00 over 6 trades, and cleared the gate as one of 5 ideas tested this run\./);
     assert.match(html, /<h4>Tested on \(in-sample\)<\/h4>/); assert.match(html, /<h4>Later period \(unseen data\)<\/h4>/);
-    assert.match(html, /UNSEEN BY THE AGENT →|Unseen by the agent →|UNSEEN →|Unseen →/);
+    assert.match(html, /LATER PERIOD\u00a0· UNSEEN DATA →|Later period\u00a0· unseen data →/);
+    assert.doesNotMatch(html, /UNSEEN BY THE AGENT|Unseen by the agent|>UNSEEN →|>Unseen →/);
     assert.doesNotMatch(html, /Out-of-sample P&|Not tested out-of-sample|On out-of-sample data|<h4>Out-of-sample<\/h4>|Out-of-sample →|No unseen trades\./);
     const none = await open({status: 'rejected', out_of_sample: null, experiment: null});
     assert.match(f.root.querySelector('#figs').innerHTML + none.root.querySelector('#figs').innerHTML, /Rejected before the unseen test/);
@@ -115,7 +116,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(figs, /\+\$20\.46/); assert.match(figs, /after fees, over 132 trades the agent never saw/);
     // Its record has no return on capital (that is the old backtest's later slice): "Return on capital —" stood on every
     // research session's strategy page. With no figure it is left out.
-    assert.deepEqual(f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['Unseen-data P&L', 'In-sample P&L', 'Ideas tested']);
+    assert.deepEqual(f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (unseen data)', 'In-sample P&L', 'Ideas tested']);
     assert.doesNotMatch(figs, /Return on capital/);
     assert.doesNotMatch(figs + main(f), /Rejected before the unseen test|Not tested out-of-sample|not advanced to the unseen-data test/);
     assert.match(main(f), /On 132 trades of data the agent never saw while iterating, it made \$20\.46 after fees \(\+3\.10% of the stake per trade\), one of 5 ideas tested this run\./);
@@ -148,15 +149,15 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       const gateText = f.root.querySelector('#gates').textContent;
       assert.match(gateText, /Makes money on data after the split date/); assert.match(gateText, /Enough trades after the split date to judge/);
       assert.doesNotMatch(gateText, /unseen/i);
-      assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
+      assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (not held out)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
       assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it: not held out/);
       assert.match(figs.innerHTML, /After the split date over 15 days\u00a0· \$100 at risk at most/);
       assert.match(html, /After the backtest’s split date it returned \$12\.00 over 6 trades\. That later slice is what picked it, so it isn’t held-out evidence\./);
       assert.match(html, /<h4>Later period \(not held out\)<\/h4>/);
       assert.match(html, /<dt>Split date<\/dt>/); assert.match(html, /The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out\./);
-      assert.match(html, /AFTER THE SPLIT DATE →|After the split date →|LATER →|Later →/);
+      assert.match(html, /LATER PERIOD\u00a0· NOT HELD OUT →|Later period\u00a0· not held out →/);
       assert.match(html, /Replaying the later window against Kalshi’s demo book/);
-      assert.match(html, /Most recent later-period trades/); assert.match(html, /No later-period trades to show\./);
+      assert.match(html, /Most recent later-period trades \(not held out\)/); assert.match(html, /No later-period trades \(not held out\) to show\./);
       assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest’s later-period pace \(not held out\), 2 trades would have made/);
       assert.doesNotMatch(html, /never saw|never touched|Unseen-data P&|in-sample only|Never seen \(out-of-sample\)|UNSEEN|Unseen by the agent|Unseen →|Unseen \(held out\)|unseen window|unseen trades|unseen-data pace|only ever saw/);
       // Plain words for what it is, never the pipeline's own ("statistical-gatekeeper record", "pre-registration",
@@ -178,7 +179,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(main(bare) + bare.root.querySelector('#figs').innerHTML, /never saw|Unseen-data P&|Rejected before the unseen test|Not tested on unseen data|not advanced to the unseen-data test|ranked below/);
     // A strategy with its record keeps its unseen-data words, and an old Void one keeps its own.
     const kept = await open({status: 'passed', out_of_sample: oos, gates});
-    assert.match(kept.root.querySelector('#figs').innerHTML, /Unseen-data P&amp;L|Unseen-data P&L/);
+    assert.match(kept.root.querySelector('#figs').innerHTML, /Later-period P&L \(unseen <span class="nobr">data\)<button type="button" class="info" data-glo="unseen"/);
     assert.match(kept.root.querySelector('#gates').textContent, /Makes money on unseen data/);
     const voided = await open({status: 'failed', experiment: null, out_of_sample: oos});
     assert.match(voided.root.querySelector('#figs').innerHTML, /the agent never saw/);
@@ -559,5 +560,21 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(body().innerHTML, /Realistic paper trades/);
     assert.equal(body().querySelector('[data-road-retry]'), null);
     if (f.clearTimers) f.clearTimers();
+  });
+
+  // "Most recent unseen trades", "No unseen-data trades to show" and the chart's "UNSEEN →" said the headings' figure in
+  // other words. One family now, as the headings say it: later period, plus unseen data (held out) or not held out.
+  test(`${name}: the trades list and its empty line say "later period", plus whether it was held out`, async () => {
+    const held = await open({status: 'passed', recent_trades: []});
+    assert.match(main(held), /Most recent later-period trades \(unseen data\)/);
+    assert.match(main(held), /<p class="hint">No later-period trades \(unseen data\) to show\.<\/p>/);
+    assert.doesNotMatch(main(held), /unseen trades|unseen-data trades|not held out\) to show/);
+    const split = await open({status: 'backtest-only', experiment: null, recent_trades: []});
+    assert.match(main(split), /Most recent later-period trades \(not held out\)/);
+    assert.doesNotMatch(main(split), /\(unseen data\)/);
+    // Each figure's bubble says what its own figure is: a held-out one never points at "wasn’t held out".
+    assert.match(held.root.querySelector('#figs dt').innerHTML, /data-glo="unseen"/);
+    assert.doesNotMatch(held.root.querySelector('#figs').innerHTML, /data-glo="laterperiod"/);
+    assert.match(split.root.querySelector('#figs dt').innerHTML, /data-glo="laterperiod"/);
   });
 }

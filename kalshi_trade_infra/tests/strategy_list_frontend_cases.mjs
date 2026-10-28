@@ -350,7 +350,7 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     // The glossary (#606) defines the sort's own term, and says the held-out slice is a later period too.
     const later = src.match(/\n {4}laterperiod: \['Later-period P&L', '([^']*)'\]/)[1];
     assert.match(later, /after its split date/); assert.match(later, /wasn’t held out/);
-    const unseen = src.match(/\n {4}unseen: \['Unseen-data P&L', '([^']*)'\]/)[1];
-    assert.match(unseen, /held-out slice/);
+    const unseen = src.match(/\n {4}unseen: \['Later-period P&L \(unseen data\)', '([^']*)'\]/)[1];
+    assert.match(unseen, /after its split date, on a held-out slice/); assert.doesNotMatch(unseen, /wasn’t held out/);
   });
 }
