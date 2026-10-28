@@ -131,6 +131,21 @@ export function countFormatCases({name, frontend, detailStrategy, strategyFronte
     s.clearTimers();
   });
 
+  // The Explore market page's "Your positions" table (marketMine): an open and a closed position, each book apart.
+  test(`${name}: a position's quantity reads "×1,201" on the Explore market page, open or closed`, async () => {
+    const page = {ticker: pos.ticker, series: 'KXBTC15M', title: 'BTC up or down?', sub: '', status: 'active', yes_bid: '0.55',
+      yes_ask: '0.57', last: '0.55', volume_24h: '10', open_interest: '10', close_time: '2030-01-15T17:30:00Z', as_of: '2026-10-27T16:00:00Z',
+      rules: 'Resolves Yes if up.', period_min: 1, points: [],
+      mine: {open: [pos], closed: [{...pos, id: 6, mode: 'demo', side: 'no', qty: 1202, status: 'closed', pnl: 12.02, exit_price: .45, close_reason: 'take_profit'}]}};
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/explore/market?') ? response(page) : response({})});
+    f.location.pathname = '/explore'; f.location.search = '?m=' + encodeURIComponent(page.ticker);
+    await f.viewExplore(); await settle();
+    const cells = [...f.root.innerHTML.matchAll(/data-lab="Position">([^<]*)</g)].map((m) => m[1]);
+    assert.deepEqual(cells, ['NO ×1,202 @ 38¢', 'YES ×1,201 @ 38¢'], 'the demo book, then paper');
+    assert.doesNotMatch(f.root.innerHTML, /×120[12]\b/);
+    if (f.clearTimers) f.clearTimers();
+  });
+
   test(`${name}: the strategy page's small-sample caution says "Only 1,201 trades" in plain words, never "n=1201"`, async () => {
     // "n=" is a statistician's shorthand; the line now says what it counts, with the separator.
     const f = strategyFrontend(detailStrategy({out_of_sample: big, in_sample: {...big, trades: 1}, sample_caution: {min_trades: 3000, gate_min_oos_trades: 1500}}), () => response({}));
