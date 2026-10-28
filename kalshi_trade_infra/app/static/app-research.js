@@ -4,7 +4,7 @@
 window.TauPage('research', (T) => {
   'use strict';
   const {
-    alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, clipWords, esc, EXAMPLE_NOTE, exampleLine,
+    alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionTitle, shell, tzName, usd, waitSpan, when, whyFailedHtml, wireMarketPicker
@@ -39,13 +39,14 @@ window.TauPage('research', (T) => {
   const loopFamily = (f) => LOOP_FAMILY[f] || (f ? f.charAt(0).toUpperCase() + f.slice(1).replace(/-/g, ' ') : '');
   const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', spec_invalid: 'spec rejected', missing_context: 'needs data we lack', thin_sample: 'too few examples', no_signal: 'no signal', wrong_fit: 'wrong for this market', other: 'other' };
   const loopRate = (r) => (r == null ? '—' : Math.round(r * 100) + '%');
-  const rsiLoop = { board: null, at: 0, req: null };
+  // failed: what the last read said when it failed (cleared by the next read that comes back).
+  const rsiLoop = { board: null, at: 0, req: null, failed: null };
   // The board's read, at most once a minute and one at a time. The Research page starts it as it opens,
   // beside the session list: asked from the list's first paint, it waited a whole round trip for the list.
   function rsiLoopRead() {
     if (!rsiLoop.req && Date.now() - rsiLoop.at > 60000) {
       rsiLoop.req = api('/api/research/scoreboard?days=14', undefined, { keep: true })
-        .then((b) => { rsiLoop.board = b; }, () => { /* keep the last board; the old card still renders */ })
+        .then((b) => { rsiLoop.board = b; rsiLoop.failed = null; }, (e) => { rsiLoop.failed = errText(e); /* a board read before is kept */ })
         .finally(() => { rsiLoop.at = Date.now(); rsiLoop.req = null; });
     }
     return rsiLoop.req;
@@ -55,6 +56,14 @@ window.TauPage('research', (T) => {
     const reading = rsiLoopRead();
     if (reading) await reading;
     const b = rsiLoop.board;
+    // A board that never came says so, with Try again: it fell back to the older "Self-improving research
+    // engine" card as if that were the current read, and said nothing (walk 2026-10-28).
+    if (!b && rsiLoop.failed) {
+      paint(host, loadFail(rsiLoop.failed, 'Your research results'));
+      const again = host.querySelector('[data-retry]');
+      if (again) again.onclick = () => { rsiLoop.at = 0; paint(host, loading(56)); renderResearchLoop(host, pol, tried); };
+      return;
+    }
     if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }
     const t = b.total, tr = b.trend;
     const delta = tr ? `<span class="rsi-score">${loopRate(tr.before.gate_reach_rate)} <span class="rsi-arrow">→</span> ${loopRate(tr.after.gate_reach_rate)}</span>` : '';
