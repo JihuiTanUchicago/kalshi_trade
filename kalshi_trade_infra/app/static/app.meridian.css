@@ -579,6 +579,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 
 /* ---- Research cockpit ---- */
 #rsimo .rsi-card { margin: 16px 0 0; }
+#rsimo .load-fail { margin: 14px 0 16px; }  /* research results that didn't load: Try again stood flush against what follows */
 .dispatch > h3 { display: flex; align-items: center; gap: 8px; }
 .dispatch > h3 svg { width: 15px; height: 15px; color: var(--ink-2); }
 .dispatch-tune { display: flex; gap: 18px 24px; flex-wrap: wrap; align-items: flex-end; }
