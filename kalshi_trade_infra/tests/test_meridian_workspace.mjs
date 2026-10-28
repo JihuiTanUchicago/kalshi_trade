@@ -2337,7 +2337,7 @@ test('Community snapshots retain source financial values, missing versus zero, e
     assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42');
     assert.equal(host.querySelector('.snap-head .mk').textContent, 'Void');
     assert.match(host.innerHTML, /Title &quot;quoted&quot; &lt;script&gt;unsafe&lt;\/script&gt;/);
-    assert.equal(host.querySelector('.snap-meta').textContent, '&lt;unsafe&gt;');
+    assert.equal(host.querySelector('.snap-meta').textContent, 'Unlisted market');  // a key the catalog doesn’t list, never the key
     assert.deepEqual(host.querySelectorAll('dt').map(dt => dt.textContent),
       ['Unseen-data P&amp;L', ...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
     assert.deepEqual(host.querySelectorAll('.snap-secondary dt').map(dt => dt.textContent),
@@ -2349,7 +2349,7 @@ test('Community snapshots retain source financial values, missing versus zero, e
     assert.deepEqual(render({kind: 'deployment', id: 7, title: '<script>unsafe</script>', market: '<unsafe>', mode, realized_pnl, closed_trades}), values);
     assert.equal(host.querySelector('.snap-head .mk').textContent, badge);
     assert.equal(host.querySelector('.snap-head .mk').classList.contains('live'), mode === 'live');
-    assert.equal(host.querySelector('.snap-meta').textContent, '&lt;unsafe&gt;');
+    assert.equal(host.querySelector('.snap-meta').textContent, 'Unlisted market');
     assert.deepEqual(host.querySelectorAll('dt').map(dt => dt.textContent), ['Realized P&amp;L', 'Closed trades']);
     assert.deepEqual(host.querySelectorAll('.snap-secondary dt').map(dt => dt.textContent), ['Closed trades']);
     assert.equal(host.querySelector('a'), null);

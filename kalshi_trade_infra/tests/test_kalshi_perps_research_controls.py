@@ -48,7 +48,8 @@ def test_agent_cannot_queue_disabled_perpetual_research(monkeypatch, sid):
         "type": "research", "market": "btc_perp", "strategy_id": sid,
         "idea": "Study an observed funding imbalance",
     }, autopilot=True)
-    assert "disabled" in message.lower() and proposal is None
+    # Plain words, never the setting that opens it (tests/test_customer_leaks.py).
+    assert message == agent.PERPS_RESEARCH_CLOSED and "TAU_" not in message and proposal is None
 
 
 def test_enabled_perpetual_research_uses_the_existing_manual_queue(monkeypatch):
