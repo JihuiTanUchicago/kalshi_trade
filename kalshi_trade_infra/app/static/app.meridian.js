@@ -2778,7 +2778,7 @@
     const n = +r.excluded_instant_fills || 0;
     return `<div class="sub-fig">${gl(`${n === 1 ? 'Its only trade was an instant fill' : `All ${num(n)} of its trades were instant fills`}, left out of this record (${usd(+r.excluded_instant_pnl || 0, true)})`, 'instantfill')}</div>`;
   };
-  const trRowLeft = (r) => (r.instant_only ? trInstantOnly(r) : r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
+  const trRowLeft = (r) => (r.instant_only ? trInstantOnly(r) : r.excluded_instant_fills ? `<div class="sub-fig">${gl(`${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}`, 'instantfill')}</div>` : '');
   // The span a return is over, as the sample line counts it (track_record.sample_read): a return with no period read
   // the same for a week as for a year once the headline's "since" had scrolled away.
   const trOver = (m) => (m.span_days == null ? '' : (() => { const d = Math.max(1, Math.round(+m.span_days)); return ` over ${num(d)} day${d === 1 ? '' : 's'}`; })());

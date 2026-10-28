@@ -42,7 +42,11 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     assert.match(flat, /1 instant-fill paper trade left out \(fills real execution would not get\)\s?\. 2 open trades/);
     // The strategy's own row says its share, beside its 26 trades; a row with none left out says nothing.
     const rows = html.match(/<tr><td class="name" data-lab="Strategy">[\s\S]*?<\/tr>/g);
-    assert.match(rows[0], /Fade the 15-minute Bitcoin overshoot<\/a><div class="sub-fig">1 instant fill left out \(\+\$4\.82\)<\/div><\/td>/);
+    // Its note carries the instant-fill bubble too, glued to its last word (the amount, or "out" when it made nothing).
+    assert.match(rows[0], /Fade the 15-minute Bitcoin overshoot<\/a><div class="sub-fig">1 instant fill left out <span class="nobr">\(\+⁠?\$4\.82\)<button type="button" class="info" data-glo="instantfill"[^>]*>[\s\S]*?<\/button><\/span><\/div><\/td>/);
+    assert.match(plain(rows[0]), /1 instant fill left out \(\+\$4\.82\)/);
+    const none = f.trackRecordPanel(paperBook({excluded_instant_pnl: 0, strategies: [{...paperBook().strategies[0], excluded_instant_pnl: 0}]}), 'paper', TH);
+    assert.match(none, /<div class="sub-fig">1 instant fill left <span class="nobr">out<button type="button" class="info" data-glo="instantfill"/);
     assert.doesNotMatch(rows[1], /left out/);
   });
 
