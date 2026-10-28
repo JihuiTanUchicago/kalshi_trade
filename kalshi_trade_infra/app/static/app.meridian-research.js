@@ -24,7 +24,7 @@ window.TauPage('research', (T) => {
     const body = pol.evolved
       ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
          ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
-         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? `${SEP}adopted ` + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
+         <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? `${SEP}adopted ` + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can’t overfit)</span></p>`
       : `<p>New search policies are scored against the current policy over shuffled history. Only an improvement is adopted.</p>`;
     // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
     const expanded = !!host.querySelector('details[open]');
@@ -1238,8 +1238,8 @@ window.TauPage('research', (T) => {
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
-               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? `${SEP}adopted ` + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can't overfit)</span></p>`
-            : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can't overfit).</p>
+               <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? `${SEP}adopted ` + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can’t overfit)</span></p>`
+            : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can’t overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? SEP + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
           </div></details>`);
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });

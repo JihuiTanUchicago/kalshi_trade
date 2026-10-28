@@ -193,6 +193,9 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     assert.doesNotMatch(g.root.querySelector('#log').textContent, /[a-z]'[a-z]/);
     g = await page(session({status: 'cancelled', started_at: null, finished_at: '2026-10-27T22:04:00Z', stop_reason: 'user'}));
     assert.match(g.root.querySelector('#runfigs').textContent, /Time\s*Never started/);
+    // The research loop's explainer ("so it can’t overfit"), open on Research and a session page, writes curly ones too.
+    assert.doesNotMatch(pageFile('research'), /phase it's in|can't overfit/);
+    assert.match(pageFile('research'), /so it can’t overfit/);
   });
 
   // Walk 2026-10-28: a new account's Strategies page read "Pass rate —" under three zeros.
