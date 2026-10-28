@@ -771,13 +771,16 @@
   const staleAfter = (ms) => Math.max(2 * ms, 10000);
   const staleText = (at) => `Last updated ${age(Math.max(0, Math.round((Date.now() - at) / 1000)))} ago, retrying`;
   function paced(read, ms, note) {
-    let busy = false, fails = 0, wait = 0, okAt = Date.now();
+    let busy = false, fails = 0, wait = 0, okAt = Date.now(), wokeAt = 0;
     const mark = () => { if (note) note((busy || fails) && Date.now() - okAt > staleAfter(ms) ? okAt : null); };
     // wake (the browser came back online) skips what is left of the back-off.
     return (wake) => {
       if (wake === true && !busy) wait = 0;
+      // Back on the tab it read at once (wake): the interval's next tick, due within half an interval, would
+      // ask the same again a second or two later, so it sits that one out.
+      if (wake !== true && wokeAt && !busy && !fails && Date.now() - wokeAt < ms / 2) { wokeAt = 0; mark(); return null; }
       if (busy || wait > 0) { if (!busy) wait--; mark(); return null; }
-      busy = true;
+      busy = true; wokeAt = wake === true ? Date.now() : 0;
       // The read starts now, not a microtask later: a page left in between must not start it.
       let run; try { run = Promise.resolve(read(POLL_READ)); } catch (e) { run = Promise.reject(e); }
       return run.then(
@@ -1045,7 +1048,7 @@
   // they can see what a normal user sees. Default: admin view on.
   const isAdmin = () => !!(S.me && S.me.is_admin);
   const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
-  let bellReq = null, bellReqAt = 0, bellFresh = null, bellStale = null;
+  let bellReq = null, bellReqAt = 0, bellOkAt = 0, bellFresh = null, bellStale = null;
   // The autopilot panel's status read (every 20s, on every signed-in page) keeps the bell current too:
   // at most once a minute it re-reads the list, with no timer of its own.
   const BELL_EVERY_MS = 60000;
@@ -1053,9 +1056,16 @@
   const BELL_OPEN_FRESH_MS = 15000;
   function bellTick() {
     if (!bellFresh || Date.now() - bellReqAt < BELL_EVERY_MS) return;
-    bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now();
+    bellRead();
     // best-effort, like the first read; one that fails says the list kept may be out of date (bellStale)
     bellReq.then((d) => bellFresh && bellFresh(d), () => bellStale && bellStale()).catch(() => {});
+  }
+  // One read of the list; bellOkAt is when the newest one that came back was asked.
+  function bellRead() {
+    const at = bellReqAt = Date.now();
+    bellReq = api('/api/notifications', undefined, { keep: true });
+    bellReq.then(() => { bellOkAt = at; }, () => {});
+    return bellReq;
   }
   // A list that filled up while the user was away opens with what it holds, by kind (the server's
   // unread_kinds): a week back, seven "Autopilot put ... on paper" lines ran past the first screen
@@ -1135,8 +1145,12 @@
     };
     const load = async () => {
       // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
-      if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
-      try { data = await bellReq; dataAt = Date.now(); paint(data); stale(false); return true; } catch (e) { if (!data) unloaded(); else stale(true); return false; }  // bell is best-effort
+      // A list that came back under a minute ago serves the next page's bell too, since the autopilot's read
+      // keeps it current within the minute (bellTick): every page change read it again. One that failed is read again.
+      const kept = bellReq && bellOkAt === bellReqAt ? BELL_EVERY_MS : 2000;
+      if (!bellReq || Date.now() - bellReqAt > kept) bellRead();
+      const at = bellReqAt;
+      try { data = await bellReq; dataAt = at; paint(data); stale(false); return true; } catch (e) { if (!data) unloaded(); else stale(true); return false; }  // bell is best-effort
     };
     // The bell opens while its list is still reading (walk 2026-10-28: on a slow reply a tap did nothing until
     // the read came back, up to READ_MS), so it says it is loading, and the list fills in where it stands.
@@ -3388,6 +3402,8 @@
 
   // ---------- floating autopilot window ----------
   const apExpanded = () => localStorage.getItem('tau_ap_open') === '1';
+  // A status read under half the poll's interval ago: the poll's tick has nothing new to ask.
+  const apFresh = () => !!S.apAt && !S.apFailing && Date.now() - S.apAt < 10000;
   function mountAutopilot() {
     if (!S.me || !S.me.user) return;
     let box = document.getElementById('autopilot-float');
@@ -3400,7 +3416,9 @@
       // Background tabs don't poll (each status read is ~14 queries); coming back refreshes a stale one.
       apLoop = true;
       const tick = paced((cfg) => refreshAutopilot(document.getElementById('autopilot-float'), false, cfg).then((ok) => { if (!ok) throw new Error('Autopilot status read failed'); }), 20000, apPaintStale);
-      setInterval(() => { if (document.getElementById('autopilot-float') && !document.hidden) tick(); }, 20000);
+      // A page that mounts the panel reads a status over 18s old, just before this tick was due: the tick then
+      // skips (apFresh), where it read the status again a second or two later.
+      setInterval(() => { if (document.getElementById('autopilot-float') && !document.hidden && !apFresh()) tick(); }, 20000);
       wakers.add(() => { if (document.getElementById('autopilot-float') && !document.hidden) tick(true); });
       document.addEventListener('visibilitychange', () => {
         const b = document.getElementById('autopilot-float');
@@ -4284,6 +4302,7 @@
   // The rail is read only while it shows (hotShown), on mounting, every HOT_POLL_MS (backing off while reads
   // fail), when it comes into view and on coming back to the tab. Hidden, nothing on the page uses the snapshot,
   // and it was one of every page's first reads on a phone.
+  const hotFresh = () => !!S.hotAt && !S.hotFail && Date.now() - S.hotAt < HOT_POLL_MS / 2;
   const hotSoon = () => { if (hotShown() && (!S.hot || !S.hotAt || Date.now() - S.hotAt > HOT_POLL_MS - 5000)) refreshHot(); };
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
@@ -4293,7 +4312,9 @@
     hotSoon();
     if (!hotLoop) { hotLoop = true;
       const tick = paced(() => refreshHot().then((ok) => { if (!ok) throw new Error('hot markets'); }), HOT_POLL_MS, () => { if (hotStaleText() || document.getElementById('hot-stale')) renderHotRail(); });
-      setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) tick(); }, HOT_POLL_MS);
+      // A page that mounts the rail reads a snapshot over 25s old, just before this tick was due: the tick then
+      // skips, where it read the same snapshot again a few seconds later.
+      setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown() && !hotFresh()) tick(); }, HOT_POLL_MS);
       wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) tick(true); });
       // A window widened past phone width shows the rail: it reads then.
       const wide = window.matchMedia && window.matchMedia('(max-width: 760px)');

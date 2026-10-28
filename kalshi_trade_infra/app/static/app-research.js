@@ -1273,7 +1273,7 @@ window.TauPage('research', (T) => {
       <section><div class="section-head"><h2>Agent log</h2></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it’s in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
-    let after = 0, tried = 0, outOfCredits = false;
+    let after = 0, tried = 0, runActive = true, outOfCredits = false;
     const pauses = { ms: 0, since: null, last: null };
     const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
     const ideasEl = root.querySelector('#runideas');
@@ -1291,6 +1291,7 @@ window.TauPage('research', (T) => {
       const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+      runActive = active;
       d.events.forEach((ev) => {
         after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
         runPauses(pauses, ev);
@@ -1355,7 +1356,8 @@ window.TauPage('research', (T) => {
       if (!active) clearTimers();
     };
     await load();
-    poll(load, 2000, 'run-stale');
+    // A finished session never changes again: it is read once, where its poll read it once more 2s later.
+    if (runActive) poll(load, 2000, 'run-stale');
   }
   const DIR_BRIEF = (k) => ((S.me.directions.find((d) => d.key === k)) || { brief: '' }).brief;
 

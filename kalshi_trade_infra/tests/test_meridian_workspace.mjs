@@ -23,6 +23,7 @@ import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
+import {loadPollCases} from './load_poll_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
@@ -272,6 +273,8 @@ kalshiWaitCases({name: 'Meridian', frontend, detailStrategy});
 phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 exploreSpotListCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 explorePollCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
+loadPollCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']],
+  storageFor: m => m});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -674,6 +677,7 @@ test('Overview empty paper track record follows the autopilot switch when a stat
   // Nothing deployed on this dashboard, so the button skips the empty Deploy board.
   assert.match(panel(), /See passed strategies/); assert.doesNotMatch(panel(), /Go to Deploy/);
   status = {autopilot: true, mode: 'paper', story: [], research: {}, live_running: 0, demo_running: 0, paper_running: 0};
+  f.shiftClock(20000);  // the next status poll, 20s on (a tick under 10s after a read asks nothing new)
   for (const tick of [...f.intervals.values()]) tick();
   await flush(); await flush();
   assert.equal(f.S.me.user.autopilot, true);
@@ -3778,7 +3782,7 @@ test('the autopilot card keeps its figures when the status poll fails, notes the
   }});
   f.S.me.user.autopilot = true; f.S.ap = status; f.S.apAt = Date.now();
   await f.viewDashboard(); await flush(); await flush();
-  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden) tick()"));
+  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden && !apFresh()) tick()"));
   const note = () => f.root.querySelector('#dash-ap-stale').textContent;
   const card = () => f.root.querySelector('#dash-ap').innerHTML;
   const reads = () => f.requests.filter(r => r.path === '/api/autopilot/status').length;
