@@ -4074,7 +4074,7 @@ test('a returning user reads what happened since the last visit at the top of th
   // Paper says what its figure is net of, as every paper P&L does; demo and live don't.
   assert.match(text, /<span class="nobr"><b>Paper<\/b> <span class="pos">\+\$2\.42<\/span><\/span> on 3 trades, after Kalshi fees and the spread<\/span>/);
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
-  assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
+  assert.match(text, /4 strategies passed: <span class="since-links"><a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a><\/span>/);
   assert.match(text, /3 research sessions started/);
   assert.match(text, /It put 1 on paper, paused 2, made 1 other change\./);
   assert.match(text, /<a href="#dash-paused">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);

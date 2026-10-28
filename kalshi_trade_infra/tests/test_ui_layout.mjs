@@ -183,7 +183,8 @@ const px = (v) => parseFloat(v);
 for (const [bundle, file, extra] of [['Tau', 'app.css', ['.ri-why a']], ['Meridian', 'app.meridian.css', []]]) {
   const all = rules(read(file));
   test(`${bundle}: links in a line of figures and a contract's ticker are 40px tall to a thumb, the line left alone`, () => {
-    for (const sel of ['.since-row dd a', '.apcard-figs dd a', '.tick a', ...extra]) {
+    // The since strip's links are boxes in their own lines now (the overlap tests at the end of this file).
+    for (const sel of ['.apcard-figs dd a', '.tick a', ...extra]) {
       const pad = decl(all, sel, 'padding-block', COARSE), margin = decl(all, sel, 'margin-block', COARSE);
       assert.ok(pad && 16 + 2 * px(pad) >= 40, `${sel}: padding-block ${pad}`);
       assert.equal(px(margin), -px(pad), `${sel}: the margin gives the padding back`);
@@ -507,4 +508,80 @@ test('Meridian: Explore\'s search box shows focus with the field\'s border, as e
   assert.equal(decl(all, '.explore-filters .input', 'border-color'), 'var(--rule-2)');
   assert.equal(decl(all, '.explore-filters .input:focus', 'border-color'), decl(all, '.input:focus', 'border-color'));
   assert.equal(decl(all, '.t-explore .xlink a:focus-visible', 'outline-offset'), '-4px');
+});
+
+// Overlap walk 2026-10-28 (Playwright at 360, 390 and 768px with a touch pointer, both themes, every signed-in page,
+// the bell, the account menu and the autopilot sheet, seeded with 80-character strategy titles and one 82-character
+// title with no spaces): every interactive box was checked against every other one and against every text line,
+// every text box for a cut without an ellipsis, the page for sideways scroll, and fixed bars for what they cover.
+// Before: 44 overlapping pairs of targets, the session page scrolling 217-254px sideways at 360/390 (both themes) and
+// Deploy 24px at 768 (Tau), and Tau's markets rail open over the left 306px of every page at 768. After: none.
+for (const [bundle, file, js] of [['Tau', 'app.css', 'app.js'], ['Meridian', 'app.meridian.css', 'app.meridian.js']]) {
+  const all = rules(read(file));
+  const src = read(js);
+
+  test(`${bundle}: the since strip's links are each 44px to a thumb inside their own line, a list of them stacked`, () => {
+    // "4 strategies passed: A, B, C, 1 more": 44px boxes on a 21px line reached 26-27px into the next line's link.
+    assert.equal(decl(all, '.since-row dd a', 'display', COARSE), 'inline-block');
+    assert.equal(decl(all, '.since-row dd a', 'margin-block', COARSE), '0', 'no negative margin: the line holds the box');
+    const pad = px(decl(all, '.since-row dd a', 'padding-block', COARSE));
+    const line = px(decl(all, '.since-row dd', 'font-size')) * parseFloat(decl(all, '.since-row dd', 'line-height'));
+    assert.ok(line + 2 * pad >= 44, `${line}px line + 2 x ${pad}px`);
+    assert.equal(decl(all, '.since-row dd a', 'max-width', COARSE), '100%', 'a long title wraps inside its box');
+    // Two or more links in a row stack one under another; their commas (the list's only text) take no room.
+    assert.equal(decl(all, '.since-links', 'display', COARSE), 'flex');
+    assert.equal(decl(all, '.since-links', 'flex-direction', COARSE), 'column');
+    assert.equal(decl(all, '.since-links', 'font-size', COARSE), '0');
+    assert.equal(decl(all, '.since-links > a', 'font-size', COARSE), decl(all, '.since-row dd', 'font-size'));
+    assert.ok(!all.some((r) => r.media !== COARSE && /since-links/.test(r.sel)), 'a mouse reads the line as before');
+    assert.match(src, /const sinceLinks = \(links\) => \(links\.length > 1 \? `<span class="since-links">\$\{links\.join\(', '\)\}<\/span>` : links\.join\(''\)\);/);
+    assert.match(src, /passed: \$\{sinceLinks\(\[\.\.\.pass\.items\.map\(/);
+    assert.match(src, /const fwdText = `\$\{sinceLinks\(fwd\)\} passed/);
+  });
+
+  test(`${bundle}: a link wrapped under a glossary (i) starts clear of the (i)'s 44px`, () => {
+    // "…and the spread (i) · Download trades (CSV)": the (i) reached 25px into the CSV link on the next line (Tau, 360/390).
+    const sel = '.nobr:has(> .info) + a.csv-link';
+    assert.equal(decl(all, sel, 'display', COARSE), 'inline-block', 'the link’s box sets its line');
+    const below = -px(decl(all, '.info', 'margin', COARSE).split(/\s+/)[2]);  // the (i)'s 44px under its 14px icon
+    assert.ok(px(decl(all, sel, 'margin-top', COARSE)) >= below - 2, `margin-top vs the (i)'s ${below}px`);
+    assert.equal(decl(all, 'a.csv-link', 'padding', COARSE), '13px 4px', 'the link stays 44px');
+  });
+
+  test(`${bundle}: a deploy hint's link keeps clear of the button or fold next to it, and Research's totals of the first session`, () => {
+    assert.ok(px(decl(all, '.btn + .hint:has(a)', 'margin-top', COARSE)) >= 4, 'Deploy on demo over a demo-key hint’s "Funds page"');
+    if (bundle === 'Tau') {
+      // "See them on the Deploy page" over "Open … on Kalshi ↗": two hint lines 12px apart (an inline margin), 11px overlap.
+      assert.match(read('app-strategies.js'), /<p class="hint" style="margin-top:12px">Already deployed: /);
+      assert.ok(12 + px(decl(all, 'p.hint:has(a) + p.hint:has(a)', 'padding-top', COARSE)) >= 26);
+    } else {
+      assert.ok(px(decl(all, '.hint.on-paper + .deployment-environments', 'margin-top', COARSE)) >= 4, '"See it on Deploy" over Demo & live');
+      assert.ok(px(decl(all, '.research-total', 'padding-bottom', COARSE)) >= 8, '"Passed (i)" over the first session at 768');
+    }
+  });
+
+  test(`${bundle}: two track-record rows' strategy links don't meet when their titles wrap`, () => {
+    const [top, bottom] = decl(all, '.trpanel td.name', 'padding-block', COARSE).split(/\s+/).map(px);
+    assert.ok(top + bottom >= 21, `${top} + ${bottom}: was 10 + 9, 1px short`);
+  });
+
+  test(`${bundle}: a title with no spaces breaks in a session's result line, and an open position's market cell wraps`, () => {
+    assert.equal(decl(all, '.run-next', 'overflow-wrap'), 'anywhere');
+    assert.equal(decl(all, '#openpos td.pos-name', 'white-space'), 'normal');
+    assert.ok(decl(all, '#openpos td.pos-name', 'min-width'));
+  });
+}
+
+test('Tau: a 768px tablet\'s Deploy board fits its sheet, and the markets rail opens over a tablet page only when asked', () => {
+  const all = rules(read('app.css'));
+  const NARROWER = '@container deployments (max-width: 760px)';
+  assert.ok(/@media \(min-width: 761px\) \{[\s\S]*@container deployments \(max-width: 760px\)/.test(read('app.css').replace(/\/\*[\s\S]*?\*\//g, '')));
+  assert.ok(px(decl(all, '.t-dep th', 'padding-left', NARROWER)) <= 5);
+  assert.ok(parseFloat(decl(all, '.t-dep td.name', 'min-width', NARROWER)) >= 8, 'the title still reads');
+  // The rail is an overlay up to 1080px (app.css) and opens there only on a saved "1" (test_frontend_merge.mjs).
+  assert.equal(decl(all, 'body.hot-open .hotrail', 'z-index', '@media (max-width: 1080px)'), '60');
+  assert.match(read('app.js'), /const hotOver = \(\) => !!\(window\.matchMedia && window\.matchMedia\('\(max-width: 1080px\)'\)\.matches\);/);
+  // A hot market's title is cut at two lines: its whole name is the row's tooltip, as Meridian's.
+  assert.equal(decl(all, '.hot-title', '-webkit-line-clamp'), '2');
+  assert.match(read('app.js'), /<span class="hot-title" title="\$\{esc\(mktLabel\(m\)\)\}">/);
 });

@@ -2785,6 +2785,9 @@ body.landing-body .apf { display: none; }
 .research-ap button { background: none; border: 0; padding: 10px 4px; margin: -10px -4px; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .research-ap button.busy { opacity: .6; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+/* A strategy title with no spaces in it (80 characters of one word) ran 600px past a phone's edge and scrolled
+   the whole page sideways; it breaks at the column's edge now. */
+.run-next { overflow-wrap: anywhere; }
 .run-next .btn { display: table; margin: 10px 0 0; }
 /* The foot of a finished session (runEnd): under the last strategy card, or the example's last log line. */
 .run-end { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 14px 0 0; }
@@ -2823,6 +2826,9 @@ body.landing-body .apf { display: none; }
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
 #openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
 #openpos .pos-why { min-width: 24ch; max-width: 60ch; }
+/* Its market cell kept the name and "Kalshi contract KX…" on one line each, which squeezed the Strategy column
+   (Tau's table ran past a 768px tablet's window with it). They wrap now. */
+#openpos td.pos-name { white-space: normal; min-width: 14ch; }
 
 /* Failed load: the error plus a retry button, stacked. */
 .load-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -2980,6 +2986,25 @@ body.landing-body .apf { display: none; }
   /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
      the autopilot card's figures, a held contract's ticker): 44px tall, the line box left alone. */
   .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 15px; margin-block: -15px; }
+  /* The strip's links follow one another line after line ("4 strategies passed: A, B, C, 1 more", a paused
+     strategy over "Add it on the Funds page"), and 44px boxes set on a 21px line reached 27px into the next
+     line's link (walked 2026-10-28, 360-768px): a thumb on one title could open the next. Each link's 44px is
+     inside its own line now, so no two touch: a list of titles stacks one under another (its commas, the list's
+     only text, take no room) and a lone link is a box in its line. A long title still wraps inside its box. */
+  .since-row dd a { display: inline-block; max-width: 100%; padding-block: 12px; margin-block: 0; }
+  .since-links { display: flex; flex-direction: column; align-items: flex-start; font-size: 0; }
+  .since-links > a { font-size: 14.5px; }
+  /* A link right after a glossary (i) ("…and the spread (i) · Download trades (CSV)") starts clear of the (i)'s
+     44px when it wraps under it. */
+  .nobr:has(> .info) + a.csv-link { display: inline-block; margin-top: 13px; }
+  /* The strategy page's "See it on Deploy" reached 2px into the Demo & live fold's 44px under it; a demo-key
+     hint's "Funds page" sits as close under Deploy on demo. Research's totals line: its "Passed (i)" reached 6px
+     into the first session under it at 768px. */
+  .hint.on-paper + .deployment-environments { margin-top: 6px; }
+  .btn + .hint:has(a) { margin-top: 6px; }
+  .research-total { padding-bottom: 8px; }
+  /* The track record's By strategy titles wrap to two lines, and two rows' 44px links met by 1px at 768px. */
+  .trpanel td.name { padding-block: 11px 10px; }
   a.apcard-alt { padding-block: 10px; margin-block: -10px; }
   /* The autopilot line's "Change" (41px from its own padding). */
   .ap-focus button { padding-block: 11.5px; margin-block: -11.5px; }
