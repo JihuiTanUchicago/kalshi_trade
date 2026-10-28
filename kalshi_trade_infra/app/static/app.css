@@ -1974,11 +1974,20 @@ body.landing-body .apf { display: none; }
   .btn, .btn.sm, .chip, .pill { min-height: 44px; }
   .admin-toggle, .bell-trig, .profile-trig { min-height: 44px; }
   .bell-trig { min-width: 44px; justify-content: center; }
-  :root { --apf-h: 40px; }
+  /* The account menu's items (31-34px) and the bell's "Try again" (a 17px text button at the end of its
+     "Couldn't refresh" line): 44px. The line keeps its height; its padding makes room for the grown button. */
+  .profile-menu a, .profile-item { display: flex; align-items: center; min-height: 44px; }
+  .bell-stale { padding-block: 14px; }
+  .bell-again { padding: 13.5px 6px; margin: -13.5px -6px; }
+  :root { --apf-h: 44px; }
   .apf-pill { min-height: var(--apf-h); }
   .t-explore .xlink a { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -14px -14px -14px 0; }
-  .info { width: 40px; height: 40px; margin: -13px -13px -13px -8px; }
+  /* A glossary marker's 14px icon sits where it did (5px after its word), in a 44px target the margins give back. */
+  .info { width: 44px; height: 44px; margin: -15px -15px -15px -10px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
+  /* The autopilot sheet's message box (41px) and a short button such as Meridian's Send (42px wide). */
+  .apf-composer-row textarea { min-height: 44px; }
+  .btn { min-width: 44px; }
   .pick, #pick-all { width: 22px; height: 22px; }
 }
 @media (max-width: 600px) {
@@ -2260,31 +2269,39 @@ body.landing-body .apf { display: none; }
   .pipecap { position: relative; padding-right: 44px; }
   .pipecap > .pipechev { position: absolute; right: 16px; top: 14px; }
 }
-/* Touch: every control at least 40px tall. Inline links grow with padding, which leaves the line
-   box alone; block links pair it with a negative margin so the layout does not move. */
+/* Touch: every control at least 44px tall (links set in a line of text stay 40px or more). Inline links
+   grow with padding, which leaves the line box alone; block links pair it with a negative margin so the
+   layout does not move. */
 @media (pointer: coarse) {
   .input, select, input[type=text], input[type=search], input[type=email], input[type=number], input[type=password] { min-height: 44px; }
-  input[type=range] { height: 40px; }
-  .key-file input[type=file] { padding-block: 10px; }
-  .switch { min-height: 44px; }
-  details > summary { padding-block: 11px; min-height: 40px; }
+  input[type=range] { height: 44px; }
+  .key-file input[type=file] { padding-block: 12px; }
+  .switch { min-height: 44px; min-width: 44px; }
+  details > summary { padding-block: 13px; min-height: 44px; }
   .wordmark a { padding-block: 12px; margin-block: -12px; }
   .sub-fig a, .said a, .hint a, .steps a, a.csv-link { padding: 13px 4px; margin-inline: -4px; }
-  td.name > a:not(.btn) { padding-block: 10px; margin-block: -10px; }
+  td.name > a:not(.btn) { padding-block: 12px; margin-block: -12px; }
   .stub-all { padding-bottom: 12px; margin-bottom: -12px; }
   .lbrand { padding-block: 7px; margin-block: -7px; }
   .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
-  .demo-bar .replay { min-height: 40px; }
-  .dispatch-go .ex-run { min-height: 40px; }
+  .demo-bar .replay { min-height: 44px; }
+  .dispatch-go .ex-run { min-height: 44px; }
   /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
-     the autopilot card's figures, a held contract's ticker): 40px tall, the line box left alone. */
-  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a, .ri-why a { padding-block: 12px; margin-block: -12px; }
-  a.apcard-alt { padding-block: 8px; margin-block: -8px; }
+     the autopilot card's figures, a held contract's ticker): 44px tall, the line box left alone. */
+  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 15px; margin-block: -15px; }
+  .ri-why a { padding-block: 14px; margin-block: -14px; }
+  a.apcard-alt { padding-block: 10px; margin-block: -10px; }
+  /* The autopilot line's "Change" (41px from its own padding). */
+  .ap-focus button { padding-block: 11.5px; margin-block: -11.5px; }
+  /* In the autopilot sheet it reached 2px into Model and markets under it (their margins collapse to 10px). */
+  .apf-top > .ap-focus { margin-bottom: 12px; }
   /* A research result's title (20px) and a community post's Reply, Edit and reactions (25-28px). */
-  .ri-title { padding-block: 10px; margin-block: -10px; }
+  .ri-title { padding-block: 12px; margin-block: -12px; }
   /* Room between the title and its Deploy link (and the next result), so the two grown targets don't overlap. */
-  .ri-list li { row-gap: 22px; padding-block: 12px; }
-  .post-actions .thread-link, .reactions .rx { min-height: 40px; }
+  .ri-list li { row-gap: 26px; padding-block: 14px; }
+  .post-actions .thread-link, .reactions .rx { min-height: 44px; }
+  .reactions .rx { min-width: 44px; justify-content: center; }
+  .composer-post textarea { min-height: 44px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */
@@ -2323,6 +2340,15 @@ body.landing-body .apf { display: none; }
    which have no border to change; and on the chosen market row the ink ring sat on the ink fill. */
 .switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
+/* A ring drawn outside its control was cut off where a box scrolls or clips its contents. A table's sheet
+   scrolls sideways and cut the ring off a first-column link's left side: on a desktop the sheet keeps 4px for
+   it (a phone's sheet already runs into the gutter). The markets rail's rows, the phone's sideways tab strip
+   and the theme picker's rounded box draw the ring just inside the control; on the ink-filled chosen theme it
+   is light. */
+@media (min-width: 761px) { .sheet { padding-inline: 4px; margin-inline: -4px; } }
+.hot-row:focus-visible, .svc-link:focus-visible { outline-offset: -2px; }
+.theme-opt:focus-visible { outline-offset: -4px; }
+.theme-opt.on:focus-visible { outline-color: #F1F3ED; }
 
 /* A trades CSV link stays whole: "Download" ended one line and "trades (CSV)" began the next (walked 2026-10-27). */
 a.csv-link { white-space: nowrap; }

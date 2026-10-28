@@ -189,17 +189,19 @@ for (const [bundle, file, extra] of [['Tau', 'app.css', ['.ri-why a']], ['Meridi
       assert.equal(px(margin), -px(pad), `${sel}: the margin gives the padding back`);
     }
     assert.ok(24 + 2 * px(decl(all, 'a.apcard-alt', 'padding-block', COARSE)) >= 40);  // "or research by hand", 24px tall
-    assert.equal(decl(all, '.dispatch-go .ex-run', 'min-height', COARSE), '40px');
+    assert.equal(decl(all, '.dispatch-go .ex-run', 'min-height', COARSE), '44px');
   });
 }
 
-test('Tau: a research result\'s title and a post\'s Reply, Edit and reactions are 40px to a thumb; a small button is 24px on a desktop', () => {
+test('Tau: a research result\'s title and a post\'s Reply, Edit and reactions are 44px to a thumb; a small button is 24px on a desktop', () => {
   const all = rules(read('app.css'));
   const pad = px(decl(all, '.ri-title', 'padding-block', COARSE));
-  assert.ok(20 + 2 * pad >= 40);
+  assert.ok(20 + 2 * pad >= 44);
   assert.equal(px(decl(all, '.ri-title', 'margin-block', COARSE)), -pad);
-  assert.equal(decl(all, '.post-actions .thread-link', 'min-height', COARSE), '40px');
-  assert.equal(decl(all, '.reactions .rx', 'min-height', COARSE), '40px');
+  assert.equal(decl(all, '.post-actions .thread-link', 'min-height', COARSE), '44px');
+  assert.equal(decl(all, '.reactions .rx', 'min-height', COARSE), '44px');
+  assert.equal(decl(all, '.reactions .rx', 'min-width', COARSE), '44px');  // the "+" add-a-reaction was 43px wide
+  assert.equal(decl(all, '.composer-post textarea', 'min-height', COARSE), '44px');
   assert.equal(decl(all, '.btn.sm', 'min-height'), '24px');
 });
 
@@ -262,8 +264,8 @@ test('Tau: every page leaves room under its last line for the floating autopilot
     const pill = px(t['--apf-gap']) + px(t['--apf-h']) + 8;  // apYield's 8px margin round the pill
     assert.ok(room >= pill + 12, `${where}: ${room}px of room under a ${pill}px pill strip`);
   }
-  assert.equal(phone['--apf-gap'], '10px'); assert.equal(thumb['--apf-h'], '40px');
-  // The pill's measured height (Playwright, 390px): 40px to a thumb, 37px with a mouse.
+  assert.equal(phone['--apf-gap'], '10px'); assert.equal(thumb['--apf-h'], '44px');
+  // The pill's measured height (Playwright, 390px): 44px to a thumb, 37px with a mouse.
   assert.ok(px(desk['--apf-h']) >= 37);
 });
 test('Meridian: the collapsed autopilot pill sits in the masthead, so it never covers a page\'s foot', () => {
@@ -440,4 +442,69 @@ test('Strategies: a phone keeps "Void on unseen data" on one line, in both theme
   assert.equal(decl(mer, '.strategy-summary #sfigs', 'column-gap', PHONE), '16px');
   assert.equal(decl(mer, '.strategy-summary #sfigs .lab', 'text-wrap', PHONE), 'balance');
   for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) assert.match(read(f), /gl\('Void on unseen data', 'void'\)/, `${f}: the label's words`);
+});
+
+// Walk 2026-10-28 (Playwright, 390x844, touch, both themes, every main page, the bell, the account menu and the
+// autopilot sheet): the bell's "Try again" was 17px tall, the account menu's items 31-35px, a glossary (i) 40x40,
+// every <summary> 40-41px, a table's strategy link 40-42px, a held contract's market link 39-43px, Tau's pill 40px,
+// the sheet's message box 41px and Meridian's Send 42px wide. Each is 44px to a thumb now, under (pointer: coarse)
+// only, so a desktop is unchanged; a text control grows by padding a matching negative margin gives back.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  const all = rules(read(file));
+  test(`${bundle}: to a thumb the bell's Try again, the account menu, a glossary (i), a disclosure and the autopilot sheet's controls are 44px`, () => {
+    for (const sel of ['.profile-menu a', '.profile-item', 'details > summary', '.apf-composer-row textarea', '.dispatch-go .ex-run', '.demo-bar .replay', '.switch']) {
+      assert.equal(decl(all, sel, 'min-height', COARSE), '44px', sel);
+    }
+    for (const sel of ['.switch', '.btn']) assert.equal(decl(all, sel, 'min-width', COARSE), '44px', sel);
+    assert.equal(decl(all, 'input[type=range]', 'height', COARSE), '44px');
+    assert.equal(decl(all, '.profile-menu a', 'min-height'), undefined, 'a desktop menu keeps its size');
+    // "Try again" sits at the end of a 12px line (17px tall): its padding makes 44px, its margin gives it back, and
+    // the line's own padding holds the grown button inside the line, clear of the bell's list under it.
+    const [padY] = decl(all, '.bell-again', 'padding', COARSE).split(/\s+/).map(px);
+    const [marginY] = decl(all, '.bell-again', 'margin', COARSE).split(/\s+/).map(px);
+    assert.ok(17 + 2 * padY >= 44, `.bell-again padding ${padY}`);
+    assert.equal(marginY, -padY);
+    assert.ok(px(decl(all, '.bell-stale', 'padding-block', COARSE)) >= padY);
+    assert.equal(decl(all, '.bell-again', 'padding'), '0', 'a desktop keeps the plain text button');
+    // The (i): 44px square, its 14px icon still 5px after its word and the line's height unchanged.
+    assert.equal(decl(all, '.info', 'width', COARSE), '44px'); assert.equal(decl(all, '.info', 'height', COARSE), '44px');
+    const [mt, mr, mb, ml] = decl(all, '.info', 'margin', COARSE).split(/\s+/).map(px);
+    assert.equal(44 + mt + mb, 14); assert.equal(44 + ml + mr, 14 + 5); assert.equal(ml + (44 - 14) / 2, 5);
+    // A table's strategy link (20px) and a held contract's market link (15px), the line box left alone.
+    const name = bundle === 'Tau' ? 'td.name > a:not(.btn)' : 'td.name > a:not(.btn):not(.market-name)';
+    for (const [sel, h] of [[name, 20], ['.pos-name a', 15]]) {
+      const pad = px(decl(all, sel, 'padding-block', COARSE));
+      assert.ok(h + 2 * pad >= 44, `${sel}: padding-block ${pad}`);
+      assert.equal(px(decl(all, sel, 'margin-block', COARSE)), -pad, `${sel}: the margin gives it back`);
+    }
+    // The autopilot line's "Change" (21px line): 44px, and in the sheet its line keeps it clear of "Model and markets".
+    const change = px(decl(all, '.ap-focus button', 'padding-block', COARSE));
+    assert.ok(21 + 2 * change >= 44);
+    assert.ok(px(decl(all, '.apf-top > .ap-focus', 'margin-bottom', COARSE)) >= change);
+  });
+
+  // Keyboard walk at 1280px, same day: a ring drawn 2px outside its control (2px wide) was cut off where a box
+  // scrolls: a first-column link in a table's sheet lost its left side, Meridian's masthead tabs their top and bottom.
+  test(`${bundle}: a keyboard focus ring is not cut off by a table's sheet or the scrolling tab strip`, () => {
+    const ring = px(decl(all, ':focus-visible', 'outline')) + px(decl(all, ':focus-visible', 'outline-offset'));
+    assert.ok(px(decl(all, '.sheet', 'padding-inline', DESKTOP)) >= ring, 'room for the ring');
+    assert.equal(px(decl(all, '.sheet', 'margin-inline', DESKTOP)), -px(decl(all, '.sheet', 'padding-inline', DESKTOP)), 'the table stays where it was');
+    assert.equal(decl(all, '.svc-link:focus-visible', 'outline-offset'), '-2px', 'drawn inside the tab');
+  });
+}
+
+test('Tau: the markets rail and the theme picker draw the ring inside, light on the ink-filled chosen theme', () => {
+  const all = rules(read('app.css'));
+  assert.equal(decl(all, '.hot-row:focus-visible', 'outline-offset'), '-2px');
+  assert.equal(decl(all, '.theme-opt:focus-visible', 'outline-offset'), '-4px');
+  assert.equal(decl(all, '.theme-opt.on', 'background'), 'var(--ink)');
+  assert.equal(decl(all, '.theme-opt.on:focus-visible', 'outline-color'), '#F1F3ED');
+});
+
+test('Meridian: Explore\'s search box shows focus with the field\'s border, as every other field does', () => {
+  const all = rules(read('app.meridian.css'));
+  // `.explore-filters .input` set its own border colour after `.input:focus`, so a focused search looked unfocused.
+  assert.equal(decl(all, '.explore-filters .input', 'border-color'), 'var(--rule-2)');
+  assert.equal(decl(all, '.explore-filters .input:focus', 'border-color'), decl(all, '.input:focus', 'border-color'));
+  assert.equal(decl(all, '.t-explore .xlink a:focus-visible', 'outline-offset'), '-4px');
 });

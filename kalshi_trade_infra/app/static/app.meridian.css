@@ -2445,6 +2445,8 @@ body.landing-body .apf { display: none; }
 .section-head.explore-filters, #xfigs.measure { display: contents; }
 .explore-filters .xsearch { grid-column: 3; grid-row: 1; min-width: 0; width: 100%; max-width: 100%; }
 .explore-filters .input { min-height: 36px; padding: 7px 10px; border-color: var(--rule-2); background: var(--stock-raised); font-size: 14px; }
+/* Its border outranked `.input:focus`, so the search box looked the same tabbed to: it takes the field's focus border. */
+.explore-filters .input:focus { border-color: var(--ink); background: var(--stock); }
 .explore-counts { display: flex; grid-column: 2; grid-row: 1; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin: 0; }
 #xfigs .explore-counts > .m { display: flex; align-items: baseline; gap: 6px; margin: 0; padding: 0; border: 0; }
 #xfigs .lab { margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); }
@@ -2648,9 +2650,18 @@ body.landing-body .apf { display: none; }
   .btn, .btn.sm, .chip, .pill { min-height: 44px; }
   .masthead .admin-toggle, .masthead .bell-trig, .masthead .profile-trig, .masthead .apf-pill, .market-control .hot-tab { min-height: 44px; }
   .masthead .bell-trig { min-width: 44px; justify-content: center; }
+  /* The account menu's items (33-35px) and the bell's "Try again" (a 17px text button at the end of its
+     "Couldn't refresh" line): 44px. The line keeps its height; its padding makes room for the grown button. */
+  .profile-menu a, .profile-item { display: flex; align-items: center; min-height: 44px; }
+  .bell-stale { padding-block: 14px; }
+  .bell-again { padding: 13.5px 6px; margin: -13.5px -6px; }
   .market-control .hot-tab { width: 44px; }
-  .info { width: 40px; height: 40px; margin: -13px -13px -13px -8px; }
+  /* A glossary marker's 14px icon sits where it did (5px after its word), in a 44px target the margins give back. */
+  .info { width: 44px; height: 44px; margin: -15px -15px -15px -10px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
+  /* The autopilot sheet's message box (41px) and a short button such as Meridian's Send (42px wide). */
+  .apf-composer-row textarea { min-height: 44px; }
+  .btn { min-width: 44px; }
   .pick, #pick-all { width: 22px; height: 22px; }
 }
 @media (max-width: 760px) {
@@ -2945,29 +2956,34 @@ body.landing-body .apf { display: none; }
   .research-compose .pipecap { padding-right: 28px; }
   .research-compose .pipecap > .pipechev { right: 0; top: 50%; margin-top: -8px; }
 }
-/* Touch: every control at least 40px tall. Inline links grow with padding, which leaves the line
-   box alone; block links pair it with a negative margin so the layout does not move. */
+/* Touch: every control at least 44px tall (links set in a line of text stay 40px or more). Inline links
+   grow with padding, which leaves the line box alone; block links pair it with a negative margin so the
+   layout does not move. */
 @media (pointer: coarse) {
   .input, select, input[type=text], input[type=search], input[type=email], input[type=number], input[type=password], .post-tools select, .explore-filters .input { min-height: 44px; }
-  input[type=range], .dial input[type=range] { height: 40px; }
-  .key-file input[type=file] { padding-block: 10px; }
-  .switch { min-height: 44px; }
-  details > summary { padding-block: 11px; min-height: 40px; }
-  .rsiobs-head, .research-compose .pipecap { min-height: 40px; }
-  summary.section-head { min-height: 40px; align-items: center; }
-  .dep-evidence > summary { display: inline-flex; align-items: center; min-height: 40px; padding-top: 0; }
+  input[type=range], .dial input[type=range] { height: 44px; }
+  .key-file input[type=file] { padding-block: 12px; }
+  .switch { min-height: 44px; min-width: 44px; }
+  details > summary { padding-block: 13px; min-height: 44px; }
+  .rsiobs-head, .research-compose .pipecap { min-height: 44px; }
+  summary.section-head { min-height: 44px; align-items: center; }
+  .dep-evidence > summary { display: inline-flex; align-items: center; min-height: 44px; padding-top: 0; }
   .wordmark a { padding: 3px 5px; margin: -3px -5px; }
   .sub-fig a, .said a, .hint a, .steps a, .dep-monitor h3 a, a.csv-link { padding: 13px 4px; margin-inline: -4px; }
-  td.name > a:not(.btn):not(.market-name) { padding-block: 10px; margin-block: -10px; }
+  td.name > a:not(.btn):not(.market-name) { padding-block: 12px; margin-block: -12px; }
   .t-explore a.market-name { padding-block: 4px; margin-block: -4px; }
   .lbrand { padding-block: 7px; margin-block: -7px; }
   .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
-  .demo-bar .replay { min-height: 40px; }
-  .dispatch-go .ex-run { min-height: 40px; }
+  .demo-bar .replay { min-height: 44px; }
+  .dispatch-go .ex-run { min-height: 44px; }
   /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
-     the autopilot card's figures, a held contract's ticker): 40px tall, the line box left alone. */
-  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 12px; margin-block: -12px; }
-  a.apcard-alt { padding-block: 8px; margin-block: -8px; }
+     the autopilot card's figures, a held contract's ticker): 44px tall, the line box left alone. */
+  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 15px; margin-block: -15px; }
+  a.apcard-alt { padding-block: 10px; margin-block: -10px; }
+  /* The autopilot line's "Change" (41px from its own padding). */
+  .ap-focus button { padding-block: 11.5px; margin-block: -11.5px; }
+  /* In the autopilot sheet it reached 2px into Model and markets under it (their margins collapse to 10px). */
+  .apf-top > .ap-focus { margin-bottom: 12px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */
@@ -3008,6 +3024,14 @@ body.landing-body .apf { display: none; }
 .switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
 .mktrow.lead .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--ink); }
+/* A ring drawn outside its control was cut off where a box scrolls its contents. A table's sheet scrolls
+   sideways and cut the ring off a first-column link's left side: on a desktop the sheet keeps 4px for it (a
+   phone's sheet already runs into the gutter). Explore's sheet keeps no room (its market names, and its last
+   column, which ends 2px past the edge) and the masthead's tabs (the strip scrolls sideways) draw the ring
+   just inside the control. */
+@media (min-width: 761px) { .sheet { padding-inline: 4px; margin-inline: -4px; } }
+.svc-link:focus-visible, .t-explore .market-name:focus-visible { outline-offset: -2px; }
+.t-explore .xlink a:focus-visible { outline-offset: -4px; }
 /* Research: "See an example session first" gets its own full-width row. With autopilot on (no line
    above it) it fell into the heading's second column: "Research" was squeezed to one letter a line
    on a phone, and on a wide screen the line ran under "New session". */

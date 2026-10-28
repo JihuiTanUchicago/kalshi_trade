@@ -3818,7 +3818,7 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.masthead \.bell-trig \{ min-width: 44px;/);
   assert.match(block, /\.market-control \.hot-tab \{ width: 44px; \}/);
-  assert.match(block, /\.info \{ width: 40px; height: 40px;/);
+  assert.match(block, /\.info \{ width: 44px; height: 44px; margin: -15px -15px -15px -10px; \}/);
   assert.match(css, /\.research-ap button \{[^}]*padding: 10px 4px; margin: -10px -4px;/);
   assert.match(css, /\.ap-focus button \{[^}]*padding: 10px 4px; margin: -10px -4px -10px 0;/);
   assert.match(css, /\.rsidisc \.pipechev \{ position: absolute; right: 14px;/);
@@ -3849,8 +3849,8 @@ test('Meridian phone polish: a glossary marker keeps its last word, one rule whe
   const touch = css.slice(css.lastIndexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.input, select, input\[type=text\][^{]*\.post-tools select, \.explore-filters \.input \{ min-height: 44px; \}/);
-  assert.match(block, /input\[type=range\], \.dial input\[type=range\] \{ height: 40px; \}/);
-  assert.match(block, /details > summary \{ padding-block: 11px; min-height: 40px; \}/);
+  assert.match(block, /input\[type=range\], \.dial input\[type=range\] \{ height: 44px; \}/);
+  assert.match(block, /details > summary \{ padding-block: 13px; min-height: 44px; \}/);
   assert.match(block, /\.wordmark a \{ padding: 3px 5px; margin: -3px -5px; \}/);
   assert.match(block, /\.legal-nav a, \.legal-foot a, \.lfoot-links a, \.linkish \{ padding: 10px 4px; margin: -10px -4px; \}/);
   assert.doesNotMatch(block, /#dep-(paper|demo|live)|\.go\b|strat-quick/);
