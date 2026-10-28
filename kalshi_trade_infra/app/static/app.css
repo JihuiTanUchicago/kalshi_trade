@@ -1974,7 +1974,12 @@ body.landing-body .apf { display: none; }
   .btn, .btn.sm, .chip, .pill { min-height: 44px; }
   .admin-toggle, .bell-trig, .profile-trig { min-height: 44px; }
   .bell-trig { min-width: 44px; justify-content: center; }
-  :root { --apf-h: 40px; }
+  /* The account menu's items (31-34px) and the bell's "Try again" (a 17px text button at the end of its
+     "Couldn't refresh" line): 44px. The line keeps its height; its padding makes room for the grown button. */
+  .profile-menu a, .profile-item { display: flex; align-items: center; min-height: 44px; }
+  .bell-stale { padding-block: 14px; }
+  .bell-again { padding: 13.5px 6px; margin: -13.5px -6px; }
+  :root { --apf-h: 44px; }
   .apf-pill { min-height: var(--apf-h); }
   .t-explore .xlink a { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -14px -14px -14px 0; }
   .info { width: 40px; height: 40px; margin: -13px -13px -13px -8px; }

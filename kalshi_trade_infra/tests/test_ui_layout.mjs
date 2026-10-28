@@ -262,8 +262,8 @@ test('Tau: every page leaves room under its last line for the floating autopilot
     const pill = px(t['--apf-gap']) + px(t['--apf-h']) + 8;  // apYield's 8px margin round the pill
     assert.ok(room >= pill + 12, `${where}: ${room}px of room under a ${pill}px pill strip`);
   }
-  assert.equal(phone['--apf-gap'], '10px'); assert.equal(thumb['--apf-h'], '40px');
-  // The pill's measured height (Playwright, 390px): 40px to a thumb, 37px with a mouse.
+  assert.equal(phone['--apf-gap'], '10px'); assert.equal(thumb['--apf-h'], '44px');
+  // The pill's measured height (Playwright, 390px): 44px to a thumb, 37px with a mouse.
   assert.ok(px(desk['--apf-h']) >= 37);
 });
 test('Meridian: the collapsed autopilot pill sits in the masthead, so it never covers a page\'s foot', () => {

@@ -2648,6 +2648,11 @@ body.landing-body .apf { display: none; }
   .btn, .btn.sm, .chip, .pill { min-height: 44px; }
   .masthead .admin-toggle, .masthead .bell-trig, .masthead .profile-trig, .masthead .apf-pill, .market-control .hot-tab { min-height: 44px; }
   .masthead .bell-trig { min-width: 44px; justify-content: center; }
+  /* The account menu's items (33-35px) and the bell's "Try again" (a 17px text button at the end of its
+     "Couldn't refresh" line): 44px. The line keeps its height; its padding makes room for the grown button. */
+  .profile-menu a, .profile-item { display: flex; align-items: center; min-height: 44px; }
+  .bell-stale { padding-block: 14px; }
+  .bell-again { padding: 13.5px 6px; margin: -13.5px -6px; }
   .market-control .hot-tab { width: 44px; }
   .info { width: 40px; height: 40px; margin: -13px -13px -13px -8px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }

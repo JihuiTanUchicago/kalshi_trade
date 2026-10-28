@@ -2516,7 +2516,7 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   const touch = css.slice(css.indexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.bell-trig \{ min-width: 44px;/);
-  assert.match(block, /:root \{ --apf-h: 40px; \}\s*\.apf-pill \{ min-height: var\(--apf-h\); \}/);  // the height the page's bottom room counts
+  assert.match(block, /:root \{ --apf-h: 44px; \}\s*\.apf-pill \{ min-height: var\(--apf-h\); \}/);  // the height the page's bottom room counts
   assert.match(block, /\.t-explore \.xlink a \{ min-width: 44px; min-height: 44px;/);
   assert.match(block, /\.info \{ width: 40px; height: 40px;/);
   // Inline text buttons get a 41px tall hit area from padding that a matching negative margin cancels out.
