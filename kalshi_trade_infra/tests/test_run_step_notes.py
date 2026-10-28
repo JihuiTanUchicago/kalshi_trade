@@ -15,7 +15,7 @@ STEP_LINES = [
     ("Plan: explore up to 6 hypotheses, refining each round on the in-sample results, then gate the best on data never seen.",
      "Plan: try up to 6 ideas, sharpen each one on past data, then test the best on data it hasn’t seen."),
     ("Plan: explore hypotheses until you stop it, refining each round on the in-sample results, then gate the best on "
-     "data never seen. I'll keep going until you stop me.",
+     "data never seen. I’ll keep going until you stop me.",
      "Plan: try ideas until you stop it, sharpen each one on past data, then test the best on data it hasn’t seen."),
     ("Proposing round 2 — generating up to 1 hypothesis…", "Round 2: coming up with up to 1 idea…"),
     ("Proposing round 1 — generating up to 3 hypotheses…", "Round 1: coming up with up to 3 ideas…"),

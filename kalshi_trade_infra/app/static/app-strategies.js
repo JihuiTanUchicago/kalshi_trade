@@ -445,7 +445,7 @@ window.TauPage('strategies', (T) => {
       // stays with the button (gloSep): "· 1 open" began a line.
       const head = n ? `${money(pnl)} realized over ${n} closed trade${n === 1 ? '' : 's'}, ${BOOK_NET[mode]}` : 'No closed trades yet';
       const tail = [open ? `${open} open, counted once ${open === 1 ? 'it closes' : 'they close'}` : '', since ? `<span class="nobr">deployed ${when(since)}</span>` : ''].filter(Boolean).join(SEP);
-      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : head + glo('paperfills')) : head + (tail ? SEP : '')}${tail}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
+      return `<p><span class="mk ${cls[mode]}">${label[mode]}</span>${mode === 'live' && ds.some((d) => d.status === 'running') ? liveWaitMark() : ''} ${n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : gl(head, 'paperfills')) : head + (tail ? SEP : '')}${tail}</p>${mode === 'paper' && n && slipEst(slip) ? `<p class="sub-fig real-slip">${slipEst(slip)}</p>` : ''}${mode === 'paper' ? instantNote(instant, n, 'sub-fig real-instant') : ''}${checks ? btCheckLine(checks.find((c) => c.mode === mode), 'p') : pace(ds, n)}${pausedLine(ds)}`;
     }).join('');
     // Removed deployments leave the list (and the lines above) but keep their record: one short line,
     // newest first, each with its own book, dates and realized P&L (books never added together), and,

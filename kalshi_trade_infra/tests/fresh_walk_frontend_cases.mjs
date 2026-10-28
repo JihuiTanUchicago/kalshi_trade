@@ -79,6 +79,27 @@ export function freshWalkCases({name, frontend, dashboard}) {
     assert.equal(live, '−$2.00 <small class="apf-note">real money, after Kalshi fees</small>');
   });
 
+  // Walk 2026-10-28: the dashboard card read "Strategies running 2" under "Autopilot · paper", with no word on which
+  // money they trade, where the panel's own Running figure said "2 paper". Each count names its book, in SEP's dots.
+  test(`${name}: the autopilot card's Strategies running names each book, as the panel's Running figure does`, async () => {
+    const running = async (status) => {
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/dashboard' || path.startsWith('/api/dashboard?')) return response(dashboard());
+        if (path === '/api/autopilot/status') return response(status);
+        return response({messages: [], models: []});
+      }});
+      f.S.me.user.autopilot = true; f.S.ap = status;
+      await f.viewDashboard(); await settle();
+      f.S.ap = status; f.paintDashAp();
+      const html = f.root.querySelector('#dash-ap').innerHTML;
+      f.clearTimers();
+      return /<dt>Strategies running<\/dt><dd>(.*?)<\/dd>/.exec(html)[1];
+    };
+    assert.equal(await running({...FRESH_ON, paper_running: 2}), '2 paper');
+    assert.equal(await running({...FRESH_ON, paper_running: 2, demo_running: 1}), `1 demo${SEP}2 paper`);
+    assert.equal(await running(FRESH_ON), 'None yet');
+  });
+
   // The System page is in every customer's menu, and its research, backtest and engine boxes read every user's rows:
   // "7 strategies tested" and "1 running · 1 queued · 2 done" beside a customer's one session. The server now counts
   // a customer's own (`mine`), and each such box says so under its name; the operator's still count every user's.

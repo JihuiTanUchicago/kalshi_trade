@@ -90,7 +90,12 @@ def test_both_themes_carry_the_same_words(bundle):
     # last-7-days paper P&L, and the paper book of "Since your last visit" (live and demo say nothing of
     # the kind). Deploy's rows don't repeat it under the headline that says it: a row's backtest line
     # says the short form beside its own per-trade paper figure (tests/deploy_errors_frontend_cases.mjs).
-    assert src.count("${PAPER_NET}") >= 7
+    assert src.count("${PAPER_NET}") + src.count("${gl(PAPER_NET, 'paperfills')}") >= 7
+    # Its bubble is glued to the last word ("spread"), so it never wraps onto a line by itself: Deploy's paper
+    # figure and the paper amount on a board led by live money both say it with gl(), never a bare glo() after it.
+    assert "counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''" in src
+    assert "\\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}" in src
+    assert "${PAPER_NET}${glo('paperfills')}" not in src.replace("<span class=\"nobr\">${PAPER_NET}${glo('paperfills')}</span>", "")
     assert "m === 'live' ? ' (real money)' : m === 'paper' ? `, ${PAPER_NET}` : ''" in src
 
 
@@ -140,6 +145,6 @@ def test_the_strategy_page_says_it_beside_its_paper_record(page):
     assert re.search(r"\bPAPER_NET\b", names) and re.search(r"\bglo\b", names)
     # Since deploying: each book's line says what its P&L is net of, paper's in PAPER_NET's words with its bubble.
     assert "paper: PAPER_NET };" in src and ", ${BOOK_NET[mode]}` : 'No closed trades yet'" in src
-    # Its bubble follows on paper, glued to the last word and the "·" after it (gloSep) when more of the line follows.
-    assert "n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : head + glo('paperfills'))" in src
+    # Its bubble follows on paper, glued to the last word (gl), and to the "·" after it (gloSep) when more of the line follows.
+    assert "n && mode === 'paper' ? (tail ? gloSep('paperfills', head) : gl(head, 'paperfills'))" in src
     assert "name: 'Net, ' + PAPER_NET" in src  # Road to live

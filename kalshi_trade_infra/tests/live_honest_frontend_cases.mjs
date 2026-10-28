@@ -202,10 +202,11 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     await f.viewDashboard(); await settle();
     f.S.ap = status; f.paintDashAp();
     const card = f.root.querySelector('#dash-ap').innerHTML;
-    assert.match(card, new RegExp(`<dt>Strategies running</dt><dd>2 <small>${IDLE_COUNT}</small></dd>`));
+    // Each count names its book, as the panel's does: "Strategies running 2" didn't say which money.
+    assert.match(card, new RegExp(`<dt>Strategies running</dt><dd>2\u00a0paper <small>${IDLE_COUNT}</small></dd>`));
     // Open, the counts read as before.
     f.S.me.live_trading_available = true; f.paintDashAp();
-    assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Strategies running<\/dt><dd>3<\/dd>/);
+    assert.match(f.root.querySelector('#dash-ap').innerHTML, /<dt>Strategies running<\/dt><dd>1\u00a0live\u00a0· 2\u00a0paper<\/dd>/);
     await f.apUpdate(box, status); await settle();
     assert.match(box.querySelector('#apf-stats').innerHTML, /class="apf-live">1 live<\/span>/);
     f.clearTimers();

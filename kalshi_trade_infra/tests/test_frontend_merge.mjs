@@ -1216,8 +1216,8 @@ test('Deploy realized says it counts only the strategies listed, never summing l
   const dep = (id, mode, pnl) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode, status: 'running', status_reason: null,
     realized_pnl: pnl, closed_trades: 1, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
     backtest: {out_of_sample: null}});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart/]]) {
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/]]) {
     const f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments, open_positions: []}) : response({})});
     await f.viewDeploy(); await flush(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;

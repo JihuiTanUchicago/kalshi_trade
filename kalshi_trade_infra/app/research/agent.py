@@ -730,6 +730,12 @@ def focus_refusal(user: Dict, market: Optional[str]) -> Optional[str]:
 AUTOPILOT_CRYPTO_COINS = [c for c in re.split(r"[,\s]+", os.getenv("TAU_AUTOPILOT_CRYPTO_COINS", "btc").lower()) if c]
 
 
+def _scope_coin_words(conj: str) -> str:
+    """The autopilot's crypto coins in words for a chat line ("Bitcoin", "Bitcoin and Ethereum"), as FOCUS_WORDS says them."""
+    names = [FOCUS_WORDS.get(c, c.upper()) for c in AUTOPILOT_CRYPTO_COINS]
+    return names[0] if len(names) == 1 else "%s %s %s" % (", ".join(names[:-1]), conj, names[-1])
+
+
 def autopilot_scope_ok(market: Optional[str]) -> bool:
     """False for a crypto market whose coin the autopilot no longer researches (AUTOPILOT_CRYPTO_COINS)."""
     if not market or not AUTOPILOT_CRYPTO_COINS:
@@ -1329,12 +1335,12 @@ def _rsi_learn(conn, cur, run: Dict, ds, explored: int, tokens_in: int, tokens_o
                                    rsi_playbook.idea_lines(events), facts[:6000])
         version = rsi_playbook.add_candidate(cur, user_id, fam, current, new["playbook"], new["changes"], run_id)
         conn.commit()
-        log("step", "Wrote research playbook v%d for %s markets from this run's verdicts; it now runs on "
+        log("step", "Wrote research playbook v%d for %s markets from this run’s verdicts; it now runs on "
                     "trial against v%s. %s" % (version, fam, current["version"], new["changes"]),
             {"phase": "playbook", "family": fam, "version": version, "changes": new["changes"]})
     except Exception as e:  # noqa: BLE001 - learning is best-effort; the run's results are already saved
         _LOG.exception("rsi learn step failed for run %s", run_id)
-        log("step", "Playbook update skipped this time. The run's results are saved.")
+        log("step", "Playbook update skipped this time. The run’s results are saved.")
 
 
 _FV_BANDS_H = ((24.0, None, ">24h"), (12.0, 24.0, "12-24h"), (4.0, 12.0, "4-12h"), (0.0, 4.0, "<4h"))
@@ -2833,7 +2839,7 @@ def run_research(
         forever = bool(run.get("run_forever"))
         log("step", "Plan: explore %s, refining each round on the in-sample results, then gate the best on data never seen.%s"
             % ("hypotheses until you stop it" if forever else "up to %d hypotheses" % budget,
-               " I'll keep going until you stop me." if forever else ""))
+               " I’ll keep going until you stop me." if forever else ""))
 
         # Counters seed FROM the checkpoint so a resume continues the tally rather than restarting it.
         total_passed, tot_in, tot_out, chunks = ckpt["total_passed"], 0, 0, ckpt["chunks_done"]
@@ -4327,7 +4333,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         else:
             if market is not None and market not in MARKETS:
                 if not autopilot:
-                    return "I can't research that market — pick one Tau supports, or let me choose.", None
+                    return "I can’t research that market — pick one Tau supports, or let me choose.", None
                 # Prod 2026-10-26 06:10-07:40Z: every review proposed "z-score on LTC 15m"; ltc15m
                 # isn't a Tau market, so nothing started for 90 minutes. Keep the angle and let the
                 # research specialist pick a supported, in-focus market, as the cooldown path does.
@@ -4338,10 +4344,11 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 return "Tell me the idea to research in a sentence or two.", None
             coin = autopilot_off_scope_coin(idea) if autopilot else None
             if coin:
-                return ("I didn't start that: crypto research is %s only now, and this angle is about %s. "
-                        "I'll look for a %s angle instead." % (
-                            "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS), coin,
-                            "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS))), None
+                # The coins in words, as the panel's "Focus:" line says them: "BTC only now ... about SOL" read tickers.
+                return ("I didn’t start that: crypto research is %s only now, and this angle is about %s. "
+                        "I’ll look for a %s angle instead." % (
+                            _scope_coin_words("and"), FOCUS_WORDS.get(coin.lower(), coin),
+                            _scope_coin_words("or"))), None
         refusal = focus_refusal(user, strat["market"] if sid else market)
         if refusal:
             return refusal, None
@@ -4349,16 +4356,16 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if unavailable:
             return unavailable, None
         if repo.count_runs(cur, user_id, "research", active_only=True) >= MAX_ACTIVE_RESEARCH:
-            return "You already have a couple of research sessions running — let one finish and I'll start this then.", None
+            return "You already have a couple of research sessions running — let one finish and I’ll start this then.", None
         if MAX_RESEARCH_PER_DAY and repo.count_runs(
                 cur, user_id, "research", since=repo.now_utc() - timedelta(days=1)) >= MAX_RESEARCH_PER_DAY:
-            return ("You've hit the daily research limit (%d) — it resets over the next 24 hours, "
-                    "and I'll resume then." % MAX_RESEARCH_PER_DAY), None
+            return ("You’ve hit the daily research limit (%d) — it resets over the next 24 hours, "
+                    "and I’ll resume then." % MAX_RESEARCH_PER_DAY), None
         if MAX_GLOBAL_ACTIVE_RESEARCH and repo.count_active_research(cur) >= MAX_GLOBAL_ACTIVE_RESEARCH:
-            return ("The research queue is full right now — I'll start this once a slot frees up.", None)
+            return ("The research queue is full right now — I’ll start this once a slot frees up.", None)
         if sid:
             dig_deeper_run(cur, user_id, strat)
-            return ("Started a new research session digging deeper into “%s”: I'll refine and "
+            return ("Started a new research session digging deeper into “%s”: I’ll refine and "
                     "stress-test its mechanism, and every variant still has to pass the same gates. "
                     "Follow it on the Research page." % strat["title"], None)
         if autopilot and not sid:
@@ -4369,8 +4376,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 if named and all(k in blocked for k in named):
                     # Rerouting it (below) sends it to a market that cannot test it: prod 2026-10-27 run
                     # 3847, a daily-ladder angle on the one-strike 15-minute market, 7 of 8 ideas wrong_fit.
-                    return ("I didn't start that: this angle is about %s, which was researched in the last few "
-                            "hours, and no other market can test it. I'll come back to it after the cooldown "
+                    return ("I didn’t start that: this angle is about %s, which was researched in the last few "
+                            "hours, and no other market can test it. I’ll come back to it after the cooldown "
                             "or pick an angle for another market." % " and ".join(
                                 MARKETS[k].label for k in named)), None
         # Dedup/cooldown: don't re-launch a line on a market that's already running or just finished
@@ -4382,8 +4389,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 # `why` names the market by its key for the review's context; the customer reads its label.
                 said = why.replace(market, MARKETS[market].label, 1) if market in MARKETS else why
                 # ...and never the run's row number ("(run #41)"), which the review's context keeps.
-                said = _RUN_REF.sub("", said)
-                return ("I didn't start that — %s. I'll hunt a different market instead of "
+                said = _RUN_REF.sub("", said).replace("'", "’")
+                return ("I didn’t start that — %s. I’ll hunt a different market instead of "
                         "re-running the same line." % said), None
             if why:
                 # Prod 2026-10-24: reviews kept proposing the same three cooldown markets every few
@@ -4396,7 +4403,7 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
                 # lines that start "Started a fresh research session"); `why` names the market key and
                 # run id, which the review's context keeps but the customer never needs.
                 return ("Started a fresh research session on a market the research specialist picks. %s %s, "
-                        "so this angle goes to one that isn't on cooldown. Follow it on the Research page."
+                        "so this angle goes to one that isn’t on cooldown. Follow it on the Research page."
                         % (MARKETS[market].label if market in MARKETS else market,
                            "keeps failing today" if "backed off" in why else "was researched in the last few hours")), None
         direction = action.get("direction") if action.get("direction") in DIRECTIONS else None
@@ -4408,20 +4415,20 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
         if not sid and off_scope:
             return ("Crypto research is %s only now, so I started this angle on a market the research "
                     "specialist picks instead of %s. Follow it on the Research page."
-                    % ("/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS), off_scope)), None
+                    % (_scope_coin_words("and"), MARKETS[off_scope].label if off_scope in MARKETS else off_scope)), None
         if not sid and unsupported:
-            return ("%s isn't a market Tau supports, so I started this angle on a supported market the "
+            return ("%s isn’t a market Tau supports, so I started this angle on a supported market the "
                     "research specialist picks. Follow it on the Research page." % unsupported), None
         # Customer words: the autopilot panel's feed shows this line as written, and a new user's first one
         # read "on btc15m — same gates as any run (pre-registration, holdout, diversification)": a market
         # key and three terms of art. It keeps its first words (chat_repository.last_autopilot_action).
         return ("Started a fresh research session on %s. Anything it finds has to pass the same tests as "
                 "any session before it trades, even on paper. Follow it on the Research page."
-                % (MARKETS[market].label if market in MARKETS else (market or "a market I'll choose")), None)
+                % (MARKETS[market].label if market in MARKETS else (market or "a market I’ll choose")), None)
     # Should be unreachable for a well-formed action. Log the raw dict so a genuinely new/malformed
     # action kind is diagnosable from the agents journal instead of only this opaque chat line.
     print("[agents] copilot emitted an unhandled action: %r" % (action,), flush=True)
-    return "I tried an action I'm not allowed to take (%s)." % (kind or "unknown"), None
+    return "I tried an action I’m not allowed to take (%s)." % (kind or "unknown"), None
 
 
 def apply_proposal(cur, user_id: int, proposal: Dict) -> None:
