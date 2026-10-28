@@ -2079,7 +2079,7 @@ test('the autopilot card and panel say where it may trade, with a Change that op
   line.querySelector('[data-ap="focus"]').onclick();
   assert.equal(box.querySelector('.apf-prefs').open, true);
   // No focus reads as any market; tokens the presets don't name are spelled out.
-  for (const [focus, text] of [[[], 'any market'], [['btc'], 'Bitcoin'], [['weather-high', 'sports'], 'Weather high, Sports']]) {
+  for (const [focus, text] of [[[], 'any market'], [['btc'], 'Bitcoin'], [['weather-high', 'sports'], 'Daily high temperatures, Sports']]) {
     f.S.ap = {...apOn, focus}; f.paintDashAp();
     assert.match(f.root.querySelector('#dash-ap .ap-focus').innerHTML, new RegExp(`^Focus: ${text} <button`), text);
   }

@@ -3728,8 +3728,11 @@
     const preset = AP_FOCUS.find(([v]) => v && v === f.join(','));
     if (preset) return preset[1].replace(/ only$/, '');
     const keys = new Set(((S.me && S.me.markets) || []).map((m) => m.key));
-    return f.map((t) => keys.has(t) ? marketShort(t) : t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ')).join(', ');
+    return f.map((t) => FOCUS_WORDS[t] || (keys.has(t) ? marketShort(t) : t.charAt(0).toUpperCase() + t.slice(1).replace(/[-_]/g, ' '))).join(', ');
   }
+  // A coin or family in words, as the server's chat lines say it (agent.FOCUS_WORDS): "Focus: Btc, eth" read the raw tokens.
+  const FOCUS_WORDS = { btc: 'Bitcoin', eth: 'Ethereum', sol: 'Solana', xrp: 'XRP', doge: 'Dogecoin', hype: 'Hyperliquid', near: 'NEAR',
+    zec: 'Zcash', tao: 'Bittensor', 'crypto-perpetuals': 'Crypto perpetuals', 'weather-high': 'Daily high temperatures' };
   const apFocusLine = (focus, attr) => `Focus: ${esc(apFocusText(focus))} <button type="button" ${attr}>Change</button>`;
   function apBindFocus(host) {
     const b = host.querySelector('[data-apcard="focus"]');
@@ -4258,7 +4261,7 @@
   let shareMap = null;
   const shared = () => shareMap || (shareMap = new Proxy({
     actionLink, adminViewOn, alert0, announce, SEP, sepLine, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
-    apExpanded, apFlash, apFloorText, apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
+    apExpanded, apFlash, apFloorText, apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
     apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,

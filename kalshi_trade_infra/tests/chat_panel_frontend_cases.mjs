@@ -63,6 +63,26 @@ export function chatPanelCases({name, frontend, storageFor}) {
     assert.equal(p.ta.value, '');
   });
 
+  // Walk 2026-10-28: a focus set in chat to Bitcoin and Ethereum read "Focus: Btc, eth" in the panel and "Only btc, eth"
+  // in its select, where the chat's own line said "Market focus set to Bitcoin, Ethereum."
+  test(`${name}: a focus set in chat reads in words in the panel and its select, never as raw tokens`, async () => {
+    const status = {autopilot: true, mode: 'paper', research: {active: [], tested_7d: 0, passed_7d: 0}, paper_running: 0, live_running: 0};
+    const p = await panel({autopilot: true, status: () => status});
+    const said = (focus) => {
+      p.f.apUpdate(p.box, {...status, focus});
+      return [p.box.querySelector('#apf-focusline').textContent.replace(/\s*Change$/, ''), p.box.querySelector('#apf-focus').innerHTML];
+    };
+    let [line, options] = said(['btc', 'eth']);
+    assert.equal(line, 'Focus: Bitcoin, Ethereum');
+    assert.match(options, /<option value="btc,eth" selected>Only Bitcoin, Ethereum<\/option>/);
+    [line, options] = said(['weather-high']);
+    assert.equal(line, 'Focus: Daily high temperatures');
+    assert.match(options, /<option value="weather-high" selected>Only Daily high temperatures<\/option>/);
+    assert.equal(said(['btc'])[0], 'Focus: Bitcoin');
+    assert.equal(said([])[0], 'Focus: any market');
+    p.f.clearTimers && p.f.clearTimers();
+  });
+
   test(`${name}: the line under the composer says what a message may do and what the last one cost`, async () => {
     const billed = {billing_enabled: true};
     let p = await panel({me: billed, turnCost: 0.153});
