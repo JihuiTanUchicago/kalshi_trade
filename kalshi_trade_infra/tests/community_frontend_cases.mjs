@@ -155,5 +155,11 @@ export function communityCases({name, frontend}) {
       // Its span is said once, and the figure is a signed amount.
       assert.equal((html.match(/over 9 days/g) || []).length, 1); assert.match(html, /\+\$5\.50/);
     }
+    // A Void, Rejected or missed-final idea's figure is never green: Meridian's card toned "+$42.17" under a Void
+    // stamp, where its row on Strategies mutes it.
+    for (const over of [{status: 'failed'}, {status: 'rejected'}, {verdict: 'missed_final'}]) {
+      const html = f.postSnapshot({...card, pnl: 42.17, ...over}, '');
+      assert.match(html, /\+\$42\.17/); assert.doesNotMatch(html, /class="[^"]*\b(gain|loss)\b[^"]*">\+\$42\.17/, JSON.stringify(over));
+    }
   });
 }

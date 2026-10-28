@@ -2279,6 +2279,7 @@ body.landing-body .apf { display: none; }
 .feedwrap a.snap:hover .snap-title > b, .feedwrap a.snap:focus-visible .snap-title > b { text-decoration: underline; text-underline-offset: 3px; }
 .feedwrap .snap .mk { margin: 0; padding: 0; border: 0; background: none; color: var(--ink-2); font-size: 12px; line-height: 18px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .feedwrap .snap .mk.on, .feedwrap .snap .gain { color: #365D3B; }
+.feedwrap .snap .pnl-nopass { color: var(--ink-3); }  /* a Void or Rejected idea's figure, as on Strategies */
 .feedwrap .snap .mk.live, .feedwrap .snap .loss { color: var(--signal); }
 .feedwrap .snap-meta-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; }
 .feedwrap .snap-kind, .feedwrap .snap-meta { color: var(--ink-2); font-size: 12px; line-height: 18px; }
