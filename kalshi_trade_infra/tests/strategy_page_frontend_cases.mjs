@@ -571,6 +571,18 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     if (f.clearTimers) f.clearTimers();
   });
 
+  // A figure's note said "1201 trades" over an abstract that said "1,201 trades" for the same slice (walked 2026-10-28).
+  test(`${name}: the figures up top count trades with separators, as the abstract does`, async () => {
+    const big = {pnl: 9876.54, trades: 1201, win_rate: .6, fees: 1, profit_factor: 1.2, max_drawdown: 2, sharpe: .5, roi: .05, days: 9};
+    for (const over of [{status: 'backtest-only', experiment: null}, {status: 'failed'}]) {
+      const f = await open({...over, out_of_sample: big, in_sample: {pnl: 12345.67, trades: 3300, days: 31}, recent_trades: []});
+      const figs = f.root.querySelector('#figs').innerHTML;
+      assert.match(figs, /1,201 trades over 9 days/, over.status);
+      assert.match(figs, /3,300 trades on the history it searched/, over.status);
+      assert.doesNotMatch(figs, /1201|3300/, over.status);
+    }
+  });
+
   // Its missed checks are the backtest's own gates in gate_explain's words ("Didn’t make money on unseen data"). A
   // backtest-only page listed them under a gate list that says "Makes money on data after the split date" (walked
   // 2026-10-28): with no gatekeeper record they say the split date too; a held-out page keeps "unseen data".

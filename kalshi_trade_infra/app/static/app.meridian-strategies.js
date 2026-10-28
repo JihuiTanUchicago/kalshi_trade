@@ -652,14 +652,14 @@ window.TauPage('strategies', (T) => {
     const toneV = (v) => (noPass ? undefined : v);
     const mute = (html) => (noPass ? `<span class="pnl-nopass">${html}</span>` : html);
     const splitFig = (r) => r.out_of_sample ? fig(topLabel, mute(usd(r.out_of_sample.pnl, true)), { v: toneV(r.out_of_sample.pnl),
-      small: `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} after the split date, which picked it${SEP}not\u00a0held\u00a0out` }) : '';
+      small: `${num(r.out_of_sample.trades)} trades${overDays(r.out_of_sample.days)} after the split date, which picked it${SEP}not\u00a0held\u00a0out` }) : '';
     const heldFig = (h, label) => fig(label, mute(h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return)), { v: toneV(h.net_pnl != null ? h.net_pnl : h.mean_net_return),
       small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
     const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
     // In Tau's words and the rest of Meridian's (the glossary's "Unseen data", the Strategies list's "P&L on data it
     // never saw", a row's "on unseen data"): this page alone said "Out-of-sample P&L" (walked 2026-10-27).
-    const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? mute(usd(r.out_of_sample.pnl, true)) : '—', { v: toneV(r.out_of_sample && r.out_of_sample.pnl), small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
-      fig(gl('In-sample P&L', 'insample'), r.in_sample ? mute(usd(r.in_sample.pnl, true)) : '—', { v: toneV(r.in_sample && r.in_sample.pnl), small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
+    const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? mute(usd(r.out_of_sample.pnl, true)) : '—', { v: toneV(r.out_of_sample && r.out_of_sample.pnl), small: r.out_of_sample ? `${num(r.out_of_sample.trades)} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
+      fig(gl('In-sample P&L', 'insample'), r.in_sample ? mute(usd(r.in_sample.pnl, true)) : '—', { v: toneV(r.in_sample && r.in_sample.pnl), small: r.in_sample ? `${num(r.in_sample.trades)} trades on the history it searched` : 'No in-sample result recorded' }) +
       // Return on capital is the backtest's later slice over its capital. A research session's strategy has none (its
       // unseen result is the gatekeeper's, above): "Return on capital —" stood on every one of their pages, so it is left out.
       // Its note names the slice as the headings above it do ("Later period (unseen data)" / "(not held out)") and the
