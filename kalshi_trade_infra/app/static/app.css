@@ -2340,6 +2340,15 @@ body.landing-body .apf { display: none; }
    which have no border to change; and on the chosen market row the ink ring sat on the ink fill. */
 .switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
+/* A ring drawn outside its control was cut off where a box scrolls or clips its contents. A table's sheet
+   scrolls sideways and cut the ring off a first-column link's left side: on a desktop the sheet keeps 4px for
+   it (a phone's sheet already runs into the gutter). The markets rail's rows, the phone's sideways tab strip
+   and the theme picker's rounded box draw the ring just inside the control; on the ink-filled chosen theme it
+   is light. */
+@media (min-width: 761px) { .sheet { padding-inline: 4px; margin-inline: -4px; } }
+.hot-row:focus-visible, .svc-link:focus-visible { outline-offset: -2px; }
+.theme-opt:focus-visible { outline-offset: -4px; }
+.theme-opt.on:focus-visible { outline-color: #F1F3ED; }
 
 /* A trades CSV link stays whole: "Download" ended one line and "trades (CSV)" began the next (walked 2026-10-27). */
 a.csv-link { white-space: nowrap; }

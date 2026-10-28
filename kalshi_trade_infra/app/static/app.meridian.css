@@ -2445,6 +2445,8 @@ body.landing-body .apf { display: none; }
 .section-head.explore-filters, #xfigs.measure { display: contents; }
 .explore-filters .xsearch { grid-column: 3; grid-row: 1; min-width: 0; width: 100%; max-width: 100%; }
 .explore-filters .input { min-height: 36px; padding: 7px 10px; border-color: var(--rule-2); background: var(--stock-raised); font-size: 14px; }
+/* Its border outranked `.input:focus`, so the search box looked the same tabbed to: it takes the field's focus border. */
+.explore-filters .input:focus { border-color: var(--ink); background: var(--stock); }
 .explore-counts { display: flex; grid-column: 2; grid-row: 1; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin: 0; }
 #xfigs .explore-counts > .m { display: flex; align-items: baseline; gap: 6px; margin: 0; padding: 0; border: 0; }
 #xfigs .lab { margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); }
@@ -3022,6 +3024,14 @@ body.landing-body .apf { display: none; }
 .switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
 .mktrow.lead .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--ink); }
+/* A ring drawn outside its control was cut off where a box scrolls its contents. A table's sheet scrolls
+   sideways and cut the ring off a first-column link's left side: on a desktop the sheet keeps 4px for it (a
+   phone's sheet already runs into the gutter). Explore's sheet keeps no room (its market names, and its last
+   column, which ends 2px past the edge) and the masthead's tabs (the strip scrolls sideways) draw the ring
+   just inside the control. */
+@media (min-width: 761px) { .sheet { padding-inline: 4px; margin-inline: -4px; } }
+.svc-link:focus-visible, .t-explore .market-name:focus-visible { outline-offset: -2px; }
+.t-explore .xlink a:focus-visible { outline-offset: -4px; }
 /* Research: "See an example session first" gets its own full-width row. With autopilot on (no line
    above it) it fell into the heading's second column: "Research" was squeezed to one letter a line
    on a phone, and on a wide screen the line ran under "New session". */
