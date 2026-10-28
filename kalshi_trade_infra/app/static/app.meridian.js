@@ -273,14 +273,21 @@
   // plain() text (copyPlain), and CSV downloads come from the server.
   const WJ = '\u2060';
   const plain = (s) => String(s == null ? '' : s).replace(/\u2060/g, '');
+  // The sign is the shown amount's, rounded as shown: −0.002 read "−$0.00" (the track record's Avg trade for a
+  // strategy a fraction of a cent down), a sign on a figure that reads as no money either way.
   const usd = (v, signed = false) => {
     if (v == null || Number.isNaN(+v)) return '—';
-    const n = +v;
-    const s = '$' + (Math.abs(n) >= 100000 ? fmt0.format(Math.abs(n)) : fmt2.format(Math.abs(halfUp(n))));
+    const n = Math.abs(+v) >= 100000 ? Math.round(+v) : halfUp(+v);
+    const s = '$' + (Math.abs(n) >= 100000 ? fmt0.format(Math.abs(n)) : fmt2.format(Math.abs(n)));
     if (n < 0) return '−' + WJ + s;
     return signed && n > 0 ? '+' + WJ + s : s;
   };
-  const pct = (v, signed = true) => (v == null ? '—' : (v < 0 ? '−' : signed && v > 0 ? '+' : '') + Math.abs(v * 100).toFixed(1) + '%');
+  // A share to one decimal of a percent, its sign the shown figure's (−0.0001 read "−0.0%").
+  const pct = (v, signed = true) => {
+    if (v == null) return '—';
+    const n = halfUp(+v * 100, 1);
+    return (n < 0 ? '−' : signed && n > 0 ? '+' : '') + Math.abs(n).toFixed(1) + '%';
+  };
   // Kalshi quotes some markets in tenths of a cent: 0.1¢ read as 0¢ and a 99.9¢ bid as 100¢.
   const cents = (v) => (v == null ? '—' : Math.round(v * 1000) / 10 + '¢');
   const isPerpetual = (s) => s.kind === 'perpetual' || s.market === 'btc_perp' || s.key === 'btc_perp' || (s.spec && s.spec.market === 'btc_perp');
@@ -1780,7 +1787,11 @@
   // after passing on paper kept its "Void".
   const VERDICT = { missed_final: ['mk', 'Missed final test'], held_back: ['mk quiet', 'Held back'] };
   const statusMark = (s) => VERDICT[s.verdict] ? `<span class="${VERDICT[s.verdict][0]}">${VERDICT[s.verdict][1]}</span>` : mark(s.status);
-  const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
+  // Stored money (4 places: a position's pnl, fees, prices) summed exactly, as the server's SUM is, before usd()
+  // rounds it once, half up. Adding the floats drifted: −0.0036 + −0.1314 is −0.13499…, which read −$0.13 beside
+  // the track record's −$0.14 for the same two trades.
+  const sum4 = (xs) => xs.reduce((a, v) => a + Math.round((+v || 0) * 1e4), 0) / 1e4;
+  const money = (v) => `<span class="${tone(v == null ? v : halfUp(+v))}">${usd(v, true)}</span>`;
   // `inRun`: the table sits on its own session's page, where every row's "Ideas tested" was that session's
   // count again (a running session's counter, behind the Tested figure above it), so the column is left out.
   const STRAT_HEAD = (pick, inRun) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Backtest P&amp;L</th><th class="num">Trades</th><th class="num">Win</th>${inRun ? '' : '<th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th>'}<th>Status</th></tr></thead>`;
@@ -2750,7 +2761,7 @@
         (liveDeps.length
           ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}${noneLine('live', liveDeps)}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
           : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}${noneLine('paper', paperDeps)}\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}` }) : '') +
-        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}${noneLine('demo', demoDeps)}\u00a0· after Kalshi fees` }) : '') +
+        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}${noneLine('demo', demoDeps)}\u00a0· after Kalshi fees${noneYet('demo', demoDeps) ? '' : DEMO_RELOAD_KEPT}` }) : '') +
         fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? liveIdleCount(liveIdle) : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
@@ -2866,12 +2877,12 @@
     const good = s.level === 'solid' && s.edge === 'positive';
     const figs = `<dl class="figures measure tr-figs">
       ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `${key === 'paper' ? (m.first_trade_at ? gloSep('paperfills', `${PAPER_NET} (${usd(m.fees)} in fees)`) : gl(`${PAPER_NET} (${usd(m.fees)} in fees)`, 'paperfills')) : `after ${usd(m.fees)} in fees${m.first_trade_at ? SEP : ''}`}${m.first_trade_at ? `since ${trDay(m.first_trade_at)}` : ''}${key === 'paper' ? slipEst(m.slippage_estimate) : ''}` })}
-      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? `${SEP}${pct(m.annualized_return)} a year` : ''}` })}
+      ${fig('Return', pct(m.return), { v: m.return == null ? null : halfUp(m.return, 3), small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? `${SEP}${pct(m.annualized_return)} a year` : ''}` })}
       ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
       ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)}${SEP}Sortino ${trFix(m.sortino)}` })}
       ${fig('Win rate', pct(m.win_rate, false), { small: trCi(m.win_rate_ci, (v) => pct(v, false)) })}
       ${fig('Trades', num(m.trades), { small: `${num(m.wins)} won${SEP}${num(m.losses)} lost` })}
-      ${fig('Avg trade', usd(m.avg_trade, true), { v: m.avg_trade, small: trCi(m.avg_trade_ci, (v) => usd(v, true)) })}
+      ${fig('Avg trade', usd(m.avg_trade, true), { v: m.avg_trade == null ? null : halfUp(m.avg_trade), small: trCi(m.avg_trade_ci, (v) => usd(v, true)) })}
       ${fig('Profit factor', trFix(m.profit_factor), { small: 'winning trades ÷ losing trades, after fees' })}
     </dl>`;
     const risk = `<dl class="kv tr-kv">
@@ -3050,7 +3061,7 @@
       const marked = op.filter((p) => p.unrealized != null);
       const lastMark = marked.map((p) => p.mark_ts).filter(Boolean).sort().pop();
       const sum = [op.length ? `${num(op.length)} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}awaiting first mark`}` : '',
-        cl.length ? `${num(cl.length)} closed${SEP}realized ${money(cl.reduce((a, p) => a + (+p.pnl || 0), 0))}` : ''].filter(Boolean).join(SEP);
+        cl.length ? `${num(cl.length)} closed${SEP}realized ${money(sum4(cl.map((p) => p.pnl)))}` : ''].filter(Boolean).join(SEP);
       const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? NO_MARK : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? `Open, settles ${settleAt(p.market_close_time)}` : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
@@ -3611,6 +3622,10 @@
   }
   // What demo is, for a reader who has never used it: real exchange fills, pretend money.
   const DEMO_WHAT = 'real fills on Kalshi’s sandbox, not real money';
+  // Deploy's demo realized sums every closed trade of the demo deployments listed, as their rows, the strategy page
+  // and the track record do; the dashboard's and Funds' demo book counts from the last reload. Beside a
+  // dashboard reading "+$1.24 realized since reload" it read +$1.00 and didn't say why the two differ.
+  const DEMO_RELOAD_KEPT = '\u00a0· a demo reload doesn’t reset it, so it can differ from the demo book’s P&amp;L since reload';
   // The demo figure's one name, on every page that shows it (the dashboard, Funds): Tau's own book, never a balance
   // at Kalshi. The dashboard called it "Demo Sandbox" (Meridian: "Demo balance") beside Funds' "Tau's demo book".
   const DEMO_BOOK = 'Tau\u2019s demo book';
