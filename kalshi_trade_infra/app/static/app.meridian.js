@@ -859,6 +859,10 @@
     window.scrollTo(0, 0);
     // On a phone the open autopilot panel fills the screen, so moving to a page closes it.
     if (phone()) { try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ } }
+    // The panel that switching autopilot on opened by itself (desktop) folds to its pill on the next page: left
+    // open, it covered half of that page, the nav links under it and the research form (walk 2026-10-28). A panel
+    // the reader opened stays open.
+    if (S.apAutoOpen && S.apAutoOpen !== location.pathname) { S.apAutoOpen = null; try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ } }
     const path = location.pathname;
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
@@ -1045,6 +1049,8 @@
   // The autopilot panel's status read (every 20s, on every signed-in page) keeps the bell current too:
   // at most once a minute it re-reads the list, with no timer of its own.
   const BELL_EVERY_MS = 60000;
+  // Opening the bell reads the list again when the one it keeps is older than this (see trig.onclick).
+  const BELL_OPEN_FRESH_MS = 15000;
   function bellTick() {
     if (!bellFresh || Date.now() - bellReqAt < BELL_EVERY_MS) return;
     bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now();
@@ -1146,8 +1152,15 @@
       if (data && data.unread && !list.querySelector('.notif.unread')) paint(data);  // a mark that didn't save: new again
       if (staleEl && !staleEl.hidden) stale(true);  // its "3 min ago" as of now
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
-      focusIn();
+      // A list read a while ago is read again as it opens: the bell's own read comes at most once a minute, so a
+      // strategy the autopilot had just put on paper (the dashboard already said so) opened as “No notifications
+      // yet” (walk 2026-10-28). The kept list shows at once; focus waits on the list while it reads, as Try again's does.
+      const old = data && Date.now() - dataAt > BELL_OPEN_FRESH_MS;
+      if (old) menu.focus({ preventScroll: true }); else focusIn();
       seen();
+      if (!old) return;
+      bellReqAt = 0;
+      if (await load() && !menu.hidden) { focusIn(); seen(); }
     };
     // Focus waits on the list itself while it reads: the browser blurs a button that goes disabled or is
     // painted over, and focus leaving the bell closes the list.
@@ -1908,7 +1921,7 @@
       ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
-      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}${missed}</td>
+      <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}${missed}${opts.next ? `<div class="slip-next">${opts.next}</div>` : ''}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))}\u00a0· ${esc(dirLabel(s.direction))}</span></td>
       <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : num(m.trades)}</td>
@@ -3951,6 +3964,7 @@
       : ' and pauses when they run out. Turn it off any time.'}</p>`;
   }
   function apOpen() {
+    S.apAutoOpen = null;  // opened by the reader: it stays open from page to page
     try { localStorage.setItem('tau_ap_open', '1'); } catch (e) { /* private mode */ }
     const box = document.getElementById('autopilot-float');
     if (box) renderAutopilot(box, S.ap);
@@ -4051,7 +4065,7 @@
     // that replaced it — the open panel's close button, else the card's Open autopilot.
     announce('Autopilot is on. It researches and trades on paper by itself; every move shows up in the autopilot panel.');
     // The open panel's file first (app.meridian-autopilot.js), so its Model and markets is there to open below.
-    if (!phone()) { await pageLoad('autopilot').catch(() => {}); apOpen(); }  // on a phone the open panel fills the screen; the card already says it's on
+    if (!phone()) { await pageLoad('autopilot').catch(() => {}); apOpen(); S.apAutoOpen = location.pathname; }  // on a phone the open panel fills the screen; the card already says it's on
     const box = document.getElementById('autopilot-float');
     if (box && apExpanded()) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
     if (box) await refreshAutopilot(box);
@@ -4146,6 +4160,7 @@
   async function apAction(box, action, e) {
     if (action === 'toggle') {
       const opening = !apExpanded();
+      S.apAutoOpen = null;
       localStorage.setItem('tau_ap_open', opening ? '1' : '0'); renderAutopilot(box, S.ap);
       // Opened, focus goes into the panel (its close button comes first); closed, back to the pill.
       const to = opening && box.querySelector('.apf-x'); if (to && to.focus) to.focus({ preventScroll: true });

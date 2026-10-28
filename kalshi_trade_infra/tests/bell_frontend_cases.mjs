@@ -135,26 +135,29 @@ export function bellCases({name, frontend}) {
     assert.equal(line.getAttribute('role'), null, 'quiet: not an alert');
     assert.match(wrap.querySelector('a.notif').textContent, /Edge made a trade/, 'the list it had stays');
     assert.doesNotMatch(line.textContent, /went wrong|\(500\)|undefined|NaN/);
-    // Opened later, it says how old the list is as of then.
+    // Opened later, it says how old the list is as of then. Opening reads it again (the list is minutes old,
+    // first_session_frontend_cases.mjs); that read failing too keeps the list and the line.
     f.shiftClock(2 * 60e3);
-    await trig.onclick({stopPropagation() {}});
+    await trig.onclick({stopPropagation() {}}); await settle();
     assert.equal(menu.hidden, false);
+    assert.equal(notesRead(f), 4);
     assert.match(line.textContent, /from 5 min ago\./);
+    assert.match(wrap.querySelector('a.notif').textContent, /Edge made a trade/);
     // Try again that fails again keeps the line (and the list); one that comes back takes the line away.
     const press = () => line.listeners.get('click')({target: line.querySelector('[data-bell-retry]')});
     press(); await settle();
-    assert.equal(notesRead(f), 4); assert.equal(line.hidden, false);
+    assert.equal(notesRead(f), 5); assert.equal(line.hidden, false);
     assert.ok(wrap.querySelector('a.notif'));
     failing = false;
     notes.items.unshift({id: 4, kind: 'paused', body: '“Edge” was paused automatically.', link: '/strategies/7', created_at: ago(5e3), read: false, more: 0});
     notes.unread = 1;
     press(); await settle();
-    assert.equal(notesRead(f), 5);
+    assert.equal(notesRead(f), 6);
     assert.equal(line.hidden, true);
     assert.equal(line.textContent, '');
     assert.match(wrap.querySelector('#bell-list').textContent, /was paused automatically/);
     // Nothing reads on its own because of the failure: no extra reads beyond the ones above.
-    assert.deepEqual(f.requests.filter(({path}) => path === '/api/notifications').length, 5);
+    assert.deepEqual(f.requests.filter(({path}) => path === '/api/notifications').length, 6);
   });
 
   // Walk 2026-10-28: with /api/notifications slow (8s), a tap on the bell did nothing until the read came back.

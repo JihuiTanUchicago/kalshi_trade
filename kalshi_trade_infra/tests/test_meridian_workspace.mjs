@@ -41,6 +41,7 @@ import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 import {newUserCases} from './new_user_frontend_cases.mjs';
+import {firstSessionCases} from './first_session_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -6541,6 +6542,7 @@ test('a Deploy row’s details keep "Deployed" with its date and "Later-period P
   assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span> · unseen data · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
 newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});
+firstSessionCases({name: 'Meridian', frontend, dashboard: dashboardData, apStatus, storageFor: m => m});
 
 test('a Share my P&L card lines its Paper and Live labels up at the top', () => {
   // Walk 2026-10-27: Paper's figure carries "on 17 trades" under it, so with the row aligned to the bottom

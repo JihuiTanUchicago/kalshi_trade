@@ -1006,6 +1006,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 .slip-missed { margin-top: 6px; font-weight: 400; overflow-wrap: break-word; }
 .slip-missed .why-failed { margin: 0; }
 .slip-missed > a.sub-fig { display: inline-block; margin-top: 2px; font-size: 12px; }
+.slip-next { margin-top: 4px; font-size: 13px; line-height: 19px; font-weight: 400; color: var(--ink-2); overflow-wrap: break-word; }
 .dial { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
 .dial:last-of-type { border-bottom: 0; }
 .dial .top { display: flex; justify-content: space-between; align-items: baseline; }
