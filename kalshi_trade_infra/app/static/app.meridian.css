@@ -2460,7 +2460,8 @@ body.landing-body .apf { display: none; }
 }
 @container deployment-ledger (max-width: 399px) {
   .dep-monitor { grid-template-columns: minmax(0, 1fr); }
-  .dep-monitor header, .monitor-config, .monitor-metrics, .dep-monitor .monitor-footer { grid-column: 1; grid-row: auto; }
+  /* An opened Details' footer too: the wide card's "row 3" (:has, more specific) put it above the figures here. */
+  .dep-monitor header, .monitor-config, .monitor-metrics, .dep-monitor .monitor-footer, .dep-monitor .monitor-footer:has(.dep-evidence[open]) { grid-column: 1; grid-row: auto; }
 }
 @container dashboard (max-width: 779px) {
   .positions-ledger .sheet { margin-inline: 0; padding-inline: 0; }

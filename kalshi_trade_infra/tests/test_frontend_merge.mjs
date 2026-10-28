@@ -708,8 +708,8 @@ test('a backtest-only strategy’s Deploy row says its backtest estimate is late
   await f.viewDeploy(); await flush(); await flush();
   const cells = [...f.root.querySelector('#deps').innerHTML.matchAll(/<td class="num" data-lab="Backtest estimate" title="([^"]*)">/g)].map((m) => m[1]);
   assert.deepEqual(cells, [
-    'What these same closed trades would have made at the backtest’s average per trade after its split date (later-period, which picked it: not held out)',
-    'What these same closed trades would have made at the backtest’s average per trade on unseen data']);
+    'What these same closed trades would have made at the backtest’s average per trade after its split date, which picked it (later period\u00a0· not held out)',
+    'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· unseen data)']);
 });
 
 test('an Overview row’s backtest estimate says later-period for a strategy whose page does', async () => {
@@ -724,8 +724,8 @@ test('an Overview row’s backtest estimate says later-period for a strategy who
   await f.viewDashboard(); await flush(); await flush();
   const cells = [...f.root.querySelector('#dash-deps').innerHTML.matchAll(/<td class="num" data-lab="Backtest estimate" title="([^"]*)">/g)].map((m) => m[1]);
   assert.equal(cells.length, 2);
-  assert.match(cells[0], /after its split date \(later-period, which picked it: not held out\)$/);
-  assert.match(cells[1], /on unseen data$/);
+  assert.match(cells[0], /after its split date, which picked it \(later period\u00a0· not held out\)$/);
+  assert.match(cells[1], /after its split date \(later period\u00a0· unseen data\)$/);
 });
 
 test('an Explore row’s chip breaks only at its "·", never inside the market’s name or its close', async () => {
@@ -776,7 +776,7 @@ test('the Deploy board puts realized P&L beside the backtest pace for the same t
   // is which: held out with a gatekeeper record, later-period without one (it read "on unseen data" over all of them).
   assert.match(html, /<th class="num" title="What these same closed trades would have made at the backtest’s average per trade after its split date: held out for a strategy with a gatekeeper record, later-period \(the slice that picked it\) for one without">Backtest <span class="nobr">estimate<button type="button" class="info" data-glo="pace" aria-label="What does “Backtest estimate” mean\?">/);
   assert.doesNotMatch(html.match(/<th class="num" title="[^"]*">Backtest/)[0], /unseen/);
-  assert.match(html, /<td class="num" data-lab="Backtest estimate" title="What these same closed trades would have made at the backtest’s average per trade on unseen data">\+\$10\.00/);
+  assert.match(html, /<td class="num" data-lab="Backtest estimate" title="What these same closed trades would have made at the backtest’s average per trade after its split date \(later period\u00a0· unseen data\)">\+\$10\.00/);
   assert.doesNotMatch(html, /Test expected/);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
   assert.match(html, /\+\$10\.00<div class="sub-fig">same 5 trades<\/div>/);
