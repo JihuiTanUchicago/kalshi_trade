@@ -342,6 +342,40 @@ def test_autopilot_status_says_when_a_review_is_in_flight(monkeypatch):
     assert off['reviewing'] is False  # an off autopilot reads nothing extra
 
 
+def test_autopilot_status_says_how_often_it_checks_in_never_when_the_next_one_is(monkeypatch):
+    """"At its next check-in" said nothing of when. The worker's heartbeat (worker.autopilot_scheduler) runs on a
+    timer from its own start, skips, waits for a free worker and spaces idle users out, so no next time can be
+    promised: the status carries the usual cadence in minutes (from the same settings the worker reads), beside
+    last_review_at, and None while no check-in is coming. No new read: the hot-endpoint budget pins that."""
+    from datetime import datetime
+    ctx = _ap_ctx(monkeypatch, autopilot=1)
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: True)
+    out = server.autopilot_status(ctx)
+    assert out['checkin_every_min'] == chat_routes.COPILOT_REVIEW_MINUTES == server.worker.COPILOT_REVIEW_SECONDS // 60
+    assert 'next_checkin_at' not in out  # a cadence, never a time it can't keep
+    # Every research slot busy and nothing running: the worker spaces heartbeat reviews to APP_IDLE_REVIEW_SECONDS.
+    busy = [{'id': 20 + i, 'kind': 'research', 'market': 'btc15m', 'status': 'running', 'created_at': datetime(2026, 10, 25, 15),
+             'started_at': datetime(2026, 10, 25, 15), 'heartbeat_at': datetime(2026, 10, 25, 15)}
+            for i in range(server.agent.MAX_ACTIVE_RESEARCH)]
+    monkeypatch.setattr(server.repo, 'list_runs', lambda *a, **k: list(busy))
+    assert server.autopilot_status(ctx)['checkin_every_min'] == chat_routes.IDLE_REVIEW_MINUTES == server.worker.IDLE_REVIEW_SECONDS // 60
+    # Off, or paused by billing: no check-in is coming, so there is no cadence to show.
+    assert server.autopilot_status(_ap_ctx(monkeypatch, autopilot=0))['checkin_every_min'] is None
+    monkeypatch.setattr(server.billing, 'is_ready', lambda cur, uid, reads=None: False)
+    monkeypatch.setattr(chat_routes, '_needs_card', lambda c, reads=None: False)
+    assert server.autopilot_status(_ap_ctx(monkeypatch, autopilot=1))['checkin_every_min'] is None
+
+
+def test_checkin_cadence_follows_the_workers_idle_rule():
+    every = chat_routes._checkin_every_min
+    two = [{'status': 'running'}] * server.agent.MAX_ACTIVE_RESEARCH
+    assert every(False, [], 0) is None
+    assert every(True, [], 0) == chat_routes.COPILOT_REVIEW_MINUTES
+    assert every(True, two[:1], 0) == chat_routes.COPILOT_REVIEW_MINUTES  # a free research slot: the usual beat
+    assert every(True, two, 0) == chat_routes.IDLE_REVIEW_MINUTES          # worker._idle_review_skip spaces it out
+    assert every(True, two, 1) == chat_routes.COPILOT_REVIEW_MINUTES       # something running: never spaced out
+
+
 def test_a_review_queued_or_silent_past_the_reaper_limit_stops_reading_as_reviewing(monkeypatch):
     from datetime import datetime, timedelta
     now = datetime(2026, 10, 25, 16, 0)

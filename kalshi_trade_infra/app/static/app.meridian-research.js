@@ -4,7 +4,7 @@
 window.TauPage('research', (T) => {
   'use strict';
   const {
-    alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, errText, loadFail, esc, EXAMPLE_NOTE, exampleLine,
+    alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionNo, sessionTitle, shell, strategySlip, strategyTable, tzName, usd, waitSpan, when,
@@ -1158,7 +1158,7 @@ window.TauPage('research', (T) => {
       // by hand all the same. The server marks the ones it will put on paper itself (autopilot_next).
       const auto = passed.filter((s) => !s.deployed && s.autopilot_next).length;
       const way = deployed === passed.length ? ` ${passed.length === 1 ? 'It is' : 'They are'} already deployed. <a href="/deploy">See ${passed.length === 1 ? 'it' : 'them'} on Deploy</a>.`
-        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
+        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in${apWhenSpan()}, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
         : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
         : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
       return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}${fellLine ? ' ' + fellLine : ''}</p>`;
@@ -1249,7 +1249,7 @@ window.TauPage('research', (T) => {
       // A passed one says what happens next, as Tau's Ideas tested rows do: a running session's passed card said
       // only “Passed”, with no word on whether to deploy it or wait for the autopilot (walk 2026-10-28).
       const passedNext = (s) => s.status !== 'passed' ? '' : s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
-        : s.autopilot_next ? 'The autopilot puts it on paper at its next check-in' : 'Open it to deploy on paper';  // its title above is the link
+        : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}` : 'Open it to deploy on paper';  // its title above is the link
       const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;

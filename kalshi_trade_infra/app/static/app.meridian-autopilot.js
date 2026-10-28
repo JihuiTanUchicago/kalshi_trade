@@ -6,7 +6,7 @@ window.TauPage('autopilot', (T) => {
   const {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
-    apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
+    apEvery, apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
     liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, refreshAutopilot, S, SEP, settleAt, sinceMin, slipEst, usd, waitNote, waitSpan,
     wakers
   } = T;
@@ -494,7 +494,7 @@ window.TauPage('autopilot', (T) => {
     if (story) {
       // The billing pause has its own line under the switch, so the idle line skips it.
       const idleShown = !!(d.idle && !d.billing_blocked);
-      story.innerHTML = (idleShown ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"')}</p>` : '')
+      story.innerHTML = (idleShown ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"', d)}</p>` : '')
         + apStoryUnderIdle(d, idleShown).map((line) => `<p>${esc(line)}</p>`).join('');
       const idleFocus = story.querySelector('[data-ap="idle-focus"]');
       if (idleFocus) idleFocus.onclick = () => apShowFocus(box);
@@ -531,7 +531,7 @@ window.TauPage('autopilot', (T) => {
       // Check-ins are the autopilot's own: with it off (or a flip to off still saving) the figure goes, as the switch
       // says. Right after turning it off the panel kept "Last check-in 37m ago" under "Off: it only suggests ideas".
       .concat(!(flip ? flip.on : on) ? [] : d.review_wait ? [`<dt>Check-in</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
-        : d.reviewing ? ['<dt>Last check-in</dt><dd>Reviewing now</dd>'] : d.last_review_at ? [`<dt>Last check-in</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+        : d.reviewing ? ['<dt>Last check-in</dt><dd>Reviewing now</dd>'] : d.last_review_at ? [`<dt>Last check-in</dt><dd>${sinceMin(d.last_review_at)}${apEvery(d, 'apf-note')}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `

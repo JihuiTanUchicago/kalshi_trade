@@ -4,7 +4,7 @@
 window.TauPage('strategies', (T) => {
   'use strict';
   const {
-    actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
+    actionLink, announce, api, ApiError, apNudge, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
@@ -519,7 +519,7 @@ window.TauPage('strategies', (T) => {
       const paused = (s.deployments || []).some((d) => d.mode === 'paper' && d.status === 'paused');
       const tpd = pace && pace.trades_per_day;
       if (pace && !pace.running) lines.push(`<p class="hint">${paused ? 'Its paper deployment is paused, so its record isn’t growing. <a href="/deploy">Resume it on Deploy</a>.'
-        : `It isn’t running on paper, so its record isn’t growing${+p.trades ? `. Its ${num(p.trades)} earlier paper trade${+p.trades === 1 ? '' : 's'} still count` : ''}. ${apPaper ? `<span data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>The autopilot puts it on paper at its next check-in.</span><span data-ap-off${S.me.user.autopilot ? ' hidden' : ''}>Deploy it on paper to add to it.</span>` : 'Deploy it on paper to add to it.'}`}</p>`);
+        : `It isn’t running on paper, so its record isn’t growing${+p.trades ? `. Its ${num(p.trades)} earlier paper trade${+p.trades === 1 ? '' : 's'} still count` : ''}. ${apPaper ? `<span data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>The autopilot puts it on paper at its next check-in${apWhenSpan()}.</span><span data-ap-off${S.me.user.autopilot ? ' hidden' : ''}>Deploy it on paper to add to it.</span>` : 'Deploy it on paper to add to it.'}`}</p>`);
       else if (pace && counts && pace.eta_days != null) lines.push(`<p class="hint road-eta">At its ${pace.rate_from === 'paper' ? 'paper' : 'backtest'} pace (${tpd >= 1 ? `about ${num(Math.round(tpd))} trade${Math.round(tpd) === 1 ? '' : 's'} a day` : 'under one trade a day'}), it could have the trades, events and hours in <b>${roadDays(pace.eta_days)}</b>. The P&amp;L, edge and demo checks are judged on that record, and it may not pass them.</p>`);
       else if (pace && counts) lines.push('<p class="hint road-eta">It hasn’t traded enough yet to estimate when it could have the trades, events and hours.</p>');
     }
@@ -562,7 +562,7 @@ window.TauPage('strategies', (T) => {
     else if (next[0] === 'paper') {
       // One the autopilot puts on paper itself says so while the switch is on (syncApCopy follows a flip).
       const on = !!(S.me && S.me.user && S.me.user.autopilot), hand = 'nothing needed. Deploy it on paper below.';
-      need = 'Next rung, paper: ' + (apPaper ? `<span data-ap-next${on ? '' : ' hidden'}>the autopilot puts it there at its next check-in.</span><span data-ap-off${on ? ' hidden' : ''}>${hand}</span>` : hand);
+      need = 'Next rung, paper: ' + (apPaper ? `<span data-ap-next${on ? '' : ' hidden'}>the autopilot puts it there at its next check-in${apWhenSpan()}.</span><span data-ap-off${on ? ' hidden' : ''}>${hand}</span>` : hand);
     }
     else if (next[0] === 'demo') need = (demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds#connect-kalshi">Funds page</a>.'
       : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}`
@@ -801,7 +801,7 @@ window.TauPage('strategies', (T) => {
     const quickPaper = canDeploy && passedAll && hasExp && !onPaper;
     const apOn = !!(S.me && S.me.user && S.me.user.autopilot), apPaper = quickPaper && !!s.autopilot_paper;
     const apOff = apPaper ? ` data-ap-off${apOn ? ' hidden' : ''}` : '';
-    const apLine = apPaper ? `<p class="hint ap-paper" data-ap-next${apOn ? '' : ' hidden'}>The autopilot is putting this on paper at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows it once it’s there.</p>` : '';
+    const apLine = apPaper ? `<p class="hint ap-paper" data-ap-next${apOn ? '' : ' hidden'}>The autopilot is putting this on paper at its next check-in${apWhenSpan()}, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows it once it’s there.</p>` : '';
     const quickHtml = quickPaper ? `<div class="strat-quick" id="strat-quick">${apLine}<button class="btn primary" id="dep-paper-quick"${apOff}>Deploy on paper</button><p class="hint"${apOff}>Paper trades with pretend money against live prices, so nothing real is at risk. Demo and live are in Deploy, further down.</p><div id="depflash-quick"></div></div>` : '';
     const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy, apPaper });
     // Already on paper (running or paused): where to find it, beside the button and its second-copy warning.
