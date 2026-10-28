@@ -124,6 +124,8 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     let figs = f.root.querySelector('#bfigs').textContent;
     assert.match(figs, /Spent so far\s*None yet\s*research sessions and chat draw on your credits as they run/);
     assert.doesNotMatch(figs, /\$0\.00|Spent, last 7 days/);
+    // Walk 2026-10-28: the welcome credit says what it is in both themes (Meridian's had no line under it).
+    assert.match(figs, /Welcome credit\s*\$\d+\.00\s*one-time, free/);
     f = billingPage(cardedBilling({spent: 0.83, spent_7d: 0.83, spent_24h: 0.83}));
     await f.viewBilling(); await flush();
     figs = f.root.querySelector('#bfigs').textContent;
