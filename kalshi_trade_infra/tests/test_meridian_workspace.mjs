@@ -414,6 +414,18 @@ test('the shipped equity chart anchors the real demo replay without mutating eit
   assert.deepEqual(demo, [[200, 2], [300, 4]]); assert.deepEqual(curve, [[100, 50], [200, 60], [300, 70]]);
 });
 
+// Tau's later-period shading was the sheet's own colour and never showed (walked 2026-10-28). Meridian's strategy
+// sheet has no fill of its own, so the band (--stock-raised) sits on the page's cream (--stock) and shows, quietly.
+test('the strategy chart’s later-period shading shows against the Meridian page', () => {
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  const chart = frontend().equityChart([[0, 0], [50, 1], [100, 2]], new Date(30000).toISOString(), null, {width: 760});
+  const fill = chart.match(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" fill="var\(--([a-z-]+)\)"\/>/)[1];
+  assert.match(css, /\n\.sheet-doc\.paper \{ border: 0; background: none; padding: 0; \}/);
+  const tok = (name) => css.match(new RegExp(`--${name}: (#[0-9A-Fa-f]{6});`))[1].toUpperCase();
+  assert.equal(fill, 'stock-raised');
+  assert.notEqual(tok(fill), tok('stock'));
+});
+
 test('paper chart rounds display bounds with headroom without changing signed observations or backtest scales', () => {
   const f = frontend();
   for (const values of [[3.2, .8, 24.8], [-3.2, -.8, -24.8], [-3.2, 0, 24.8], [0, 0, 0], [.01, .02, .03]]) {

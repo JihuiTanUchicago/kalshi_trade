@@ -3525,6 +3525,28 @@ test('the equity chart\'s unseen-data label fits its window instead of running o
   }
 });
 
+// The later period's shading was var(--stock-raised), the strategy sheet's own colour, so it never showed (walked
+// 2026-10-28). It has its own token: a shade darker than the sheet, lighter than a sunk well, so it reads but stays quiet.
+test('the strategy chart shades its later period in a colour that shows on the sheet', () => {
+  const curve = [[0, 0], [50, 1], [100, 2]];
+  const chart = frontend().equityChart(curve, new Date(30000).toISOString(), null, {width: 760});
+  assert.match(chart, /<rect class="chart-later" x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" fill="var\(--chart-later\)"\/>/);
+  // No cut, no shading.
+  assert.doesNotMatch(frontend().equityChart(curve, null, null, {width: 760}), /chart-later/);
+  const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
+  const root = css.match(/:root \{([^}]*)\}/)[1];
+  const tok = (name) => (root.match(new RegExp(`--${name}: (#[0-9A-Fa-f]{6});`)) || [])[1];
+  const lum = (hex) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4));
+    return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + .05) / (Math.min(lum(a), lum(b)) + .05);
+  assert.ok(tok('chart-later'), 'the token is on :root');
+  assert.match(css, /\.sheet-doc \{[^}]*background: var\(--stock-raised\);/);
+  // Visible against the sheet it sits on, and quieter than the page's sunk wells; the curve still reads over it.
+  assert.ok(ratio(tok('chart-later'), tok('stock-raised')) >= 1.08, 'shows against the sheet');
+  assert.ok(ratio(tok('chart-later'), tok('stock-raised')) < ratio(tok('stock-sunk'), tok('stock-raised')), 'quieter than a sunk well');
+  assert.ok(ratio(tok('ink'), tok('chart-later')) >= 4.5, 'the curve still reads over it');
+});
+
 test('the open-positions why line and a long strategy name wrap, so Deploy never scrolls sideways', () => {
   const css = readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8');
   assert.match(css, /\.pos-why \{[^}]*white-space: normal;/);
