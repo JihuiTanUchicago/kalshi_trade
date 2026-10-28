@@ -152,7 +152,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.match(gateText, /Makes money on data after the split date/); assert.match(gateText, /Enough trades after the split date to judge/);
       assert.doesNotMatch(gateText, /unseen/i);
       assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (not\u00a0held\u00a0out)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
-      assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it: not held out/);
+      assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it\u00a0· not held out/);
       assert.match(figs.innerHTML, /Later period over 15 days\u00a0· not\u00a0held\u00a0out\u00a0· \$100 at risk at most/);
       assert.doesNotMatch(figs.innerHTML, /After the split date over/);
       assert.match(html, /After the backtest’s split date it returned \$12\.00 over 6 trades\. That later slice is what picked it, so it isn’t held-out evidence\./);
