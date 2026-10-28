@@ -176,4 +176,20 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
     assert.match(css, /@media \(min-width: 721px\) \{ \.detail #figs\.measure\[data-cols="3"\] \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \} \}/);
   });
+
+  // Walk 2026-10-28: a first session, just started, waits for the worker. Its Time figure was a bare "—" beside
+  // "Status: Waiting", and Tau's empty log ended "the phase it's in" with a straight apostrophe.
+  test(`${name}: a session that hasn't started yet says so in its Time figure, not a bare dash`, async () => {
+    const page = async (r) => {
+      const g = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9') ? response({run: r, events: [], strategies: []}) : response({})});
+      await g.viewRun(9); await flush(); g.clearTimers();
+      return g;
+    };
+    let g = await page(session({status: 'queued', started_at: null}));
+    assert.match(g.root.querySelector('#runfigs').textContent, /Time\s*Not started yet/);
+    assert.doesNotMatch(g.root.querySelector('#runfigs').textContent, /Time\s*—/);
+    assert.doesNotMatch(g.root.querySelector('#log').textContent, /[a-z]'[a-z]/);
+    g = await page(session({status: 'cancelled', started_at: null, finished_at: '2026-10-27T22:04:00Z', stop_reason: 'user'}));
+    assert.match(g.root.querySelector('#runfigs').textContent, /Time\s*Never started/);
+  });
 }
