@@ -3537,7 +3537,9 @@ test('Research says a low balance before Start, shows a running session’s spen
   assert.match(f.root.querySelector('#dispatch .notice').textContent, /You have \$0\.50 in credits — a research session needs at least \$1\.00 to start\./);
   const foot = f.root.querySelector('#active-research .active-foot');
   assert.deepEqual(foot.querySelectorAll('dt').map(dt => dt.textContent), ['Tested', 'Passed', 'Spent so far']);
-  assert.equal(foot.querySelectorAll('dd')[2].textContent, '$2.37');
+  // It names its credits, as the session rows and page do, and the amount can't split across lines.
+  assert.equal(foot.querySelectorAll('dd')[2].textContent, '$2.37 in\u00a0credits');
+  assert.equal(foot.querySelectorAll('dd')[2].querySelector('.nobr').textContent, '$2.37');
   // A session that ran until stopped reads like a finished one, not a red "Failed".
   const card = f.root.querySelector('#runs a[href="/research/4"]');
   assert.doesNotMatch(card.innerHTML, /Failed|loss/);

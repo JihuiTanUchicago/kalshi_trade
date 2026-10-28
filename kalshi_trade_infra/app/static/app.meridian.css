@@ -2321,6 +2321,7 @@ body.landing-body .apf { display: none; }
 .active-foot > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .active-foot dt { margin: 0; font: 400 12px/18px var(--f-ui); color: var(--ink-2); }
 .active-foot dd { margin: 0; font: 500 16px/22px var(--f-ui); color: var(--ink); font-variant-numeric: tabular-nums lining-nums; overflow-wrap: anywhere; }
+.active-foot .run-cred { font: 400 12px/18px var(--f-ui); color: var(--ink-2); }
 .research-create { min-width: 0; }
 .research-create:not([open]) { height: 0; }
 .research-page .research-create > summary { position: absolute; top: 16px; right: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 32px; background: transparent; border-color: var(--ink-2); color: var(--ink); }
