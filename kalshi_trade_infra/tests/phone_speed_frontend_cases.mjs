@@ -58,6 +58,8 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     answerRuns(); await page; await settle();
     assert.equal(asked(f, '/api/research/scoreboard'), 1, 'and read once for the page');
     assert.match(f.root.querySelector('#rsimo').innerHTML, /Ideas tried/, 'the loop card draws the board');
+    // Its hint is prose: a curly apostrophe (walk 2026-10-28 read "Each session's ideas").
+    assert.match(f.root.querySelector('#rsimo .loop-trend').textContent, /^Each session’s ideas are counted/);
     // The 5s poll draws from the kept board inside the minute: no second read.
     for (const tick of [...f.intervals.values()]) tick();
     await settle();
