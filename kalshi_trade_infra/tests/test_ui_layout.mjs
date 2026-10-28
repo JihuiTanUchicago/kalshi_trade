@@ -60,6 +60,15 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.equal(decl(all, '.t-strat td.name', 'min-width'), undefined);
   });
 
+  test(`${bundle}: the Strategies list's Backtest P&L line wraps under its figure, so Status stays on the sheet at 1280`, () => {
+    // "later-period P&L over 9 days after the split date, which picked it: not held out" ran on one line (~440px):
+    // with Tau's markets rail open at 1280 it pushed Ideas tested and Status past the sheet's edge (walked 2026-10-27).
+    assert.equal(decl(all, '.t-strat td.num .sub-fig', 'white-space', DESKTOP), 'normal');
+    const max = decl(all, '.t-strat td.num .sub-fig', 'max-width', DESKTOP);
+    assert.ok(max && max.endsWith('ch') && parseFloat(max) >= 20 && parseFloat(max) <= 30, `max-width ${max}`);
+    assert.equal(decl(all, '.t-strat td.num .sub-fig', 'margin-left', DESKTOP), 'auto');  // right-aligned under its figure
+  });
+
   test(`${bundle}: the Deploy board's Strategy column holds its width and the short cells wrap first`, () => {
     if (bundle === 'Tau') {
       const min = decl(all, '.t-dep td.name', 'min-width', DESKTOP);

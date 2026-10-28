@@ -125,7 +125,7 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
 
   // Walk 2026-10-27: the open positions board's Unrealized column had no "as of" time. Each figure says when its mark
   // was read (the engine's mark_ts, with its zone, as Settles is), the time moves with the marks a "same" answer
-  // carries, an unmarked position stays "—" with no time, and a figure the answer gives no time for says it is
+  // carries, an unmarked position says Unavailable with no time (not a bare "—"), and a figure the answer gives no time for says it is
   // the last mark's.
   test(`${name}: the Deploy board's open positions say when each Unrealized figure was marked`, async () => {
     // The page's own format for a time (settleAt): the clock and zone today, the date too on any other day.
@@ -142,18 +142,19 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
     f.location.pathname = '/deploy';
     await f.viewDeploy(); await settle();
     const open = f.root.querySelector('#openpos');
-    const cells = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
-    assert.deepEqual(cells(), [`+$0.13 as of ${at('2026-10-26T12:00:00Z')}`, '—']);
+    // What a reader hears: Meridian's dash for an unmarked position is aria-hidden, its word read out.
+    const cells = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1].replace(/<span aria-hidden="true">[^<]*<\/span>/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+    assert.deepEqual(cells(), [`+$0.13 as of ${at('2026-10-26T12:00:00Z')}`, 'Unavailable']);
     // The time is tucked under its figure in one block of the Unrealized cell: as a child of the cell itself, a
     // phone's stacked card set it on a row of its own under the card's labels, one more row a position.
     const tucked = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1]);
     assert.match(tucked()[0], /^<div class="pos-unreal"><span class="[^"]*">\+\$0\.13<\/span><div class="sub-fig">as of [^<]+<\/div><\/div>$/);
-    assert.equal(tucked()[1], '—');
+    assert.doesNotMatch(tucked()[1], /pos-unreal|as of|last mark/);
 
     // Marked again: the figure and its time move together.
     answer = {v: 'b1', same: true, marks: marks(.52, '2026-10-26T12:05:15Z'), unrealized: {1: null}};
     await pollOf(f, '/api/deployments');
-    assert.deepEqual(cells(), [`+$0.41 as of ${at('2026-10-26T12:05:15Z')}`, '—']);
+    assert.deepEqual(cells(), [`+$0.41 as of ${at('2026-10-26T12:05:15Z')}`, 'Unavailable']);
     assert.match(tucked()[0], /^<div class="pos-unreal"><span class="[^"]*">\+\$0\.41<\/span><div class="sub-fig">as of [^<]+<\/div><\/div>$/);
     f.clearTimers();
 

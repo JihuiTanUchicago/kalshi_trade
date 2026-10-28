@@ -25,16 +25,17 @@ export function strategyListCases({name, frontend, detailStrategy}) {
   const listOf = (n, pages = 1) => ({counts: {total: n, passed: n}, matched: n, pages,
     strategies: Array.from({length: Math.min(n, 2)}, (_, i) => detailStrategy({id: 60 + i, title: 'Sorted ' + i}))});
 
-  test(`${name}: "P&L on data it never saw" sorts the whole list server-side and survives a reload`, async () => {
+  test(`${name}: "Later-period P&L" sorts the whole list server-side and survives a reload`, async () => {
     const f = frontend({fetchImpl: () => response(listOf(2))});
     f.location.pathname = '/strategies'; f.location.search = '?status=&sort=best';
     await f.viewStrategies(); await flush();
     const sel = f.root.querySelector('#strat-sort');
-    // It says what it sorts by, in the words a strategy's test uses (gate_explain.step_note: "data it never
-    // saw"); "Best on unseen data" never said best at what.
+    // It says what it sorts by: the backtest P&L after the split date, which is held out for a strategy with a
+    // gatekeeper record and the later period that picked it for one without (passed with no record, backtest
+    // only). "P&L on data it never saw" was untrue of the second kind, and "Best on unseen data" never said best at what.
     const html = f.root.innerHTML;
-    assert.match(html, /<option value="best" selected>P&amp;L on data it never saw<\/option>/);
-    assert.doesNotMatch(html, /Best on unseen data/);
+    assert.match(html, /<option value="best" selected>Later-period P&amp;L<\/option>/);
+    assert.doesNotMatch(html, /Best on unseen data|data it never saw<\/option>/);
     const chosen = s => (s.querySelectorAll('option').find(o => 'selected' in o.attributes) || {attributes: {}}).attributes.value;
     assert.equal(chosen(sel), 'best');  // read back from the URL on a reload
     const asked = f.requests.filter(({path}) => path.startsWith('/api/strategies?')).map(({path}) => new URLSearchParams(path.split('?')[1]));

@@ -366,6 +366,10 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
 @media (min-width: 761px) {
   .t-strat td.name { min-width: 14em; }
   .t-strat td[data-lab="Market"], .t-strat td.st { white-space: normal; }
+  /* The Backtest P&L cell's line under its figure ("later-period P&L over 9 days after the split date, which
+     picked it: not held out") ran on one line, ~440px: at 1280 with the markets rail open it pushed Ideas tested
+     and Status past the sheet's edge. It wraps under its figure in a column of its own size. */
+  .t-strat td.num .sub-fig { white-space: normal; max-width: 26ch; margin-left: auto; }
 }
 th, td { padding: 10px 12px 9px; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--rule); white-space: nowrap; }
 th { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--rule-2); }
@@ -1904,12 +1908,10 @@ body.landing-body .apf { display: none; }
 .stratfilters .chip { border: 0; border-radius: 3px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; padding: 6px 8px; }
 .stratfilters .chip[aria-pressed="true"] { background: var(--stock-sunk); color: var(--ink); font-weight: 600; }
 .stratfilters .chips { gap: 2px; }
-.stratfilters .searchwrap { flex: 0 1 205px; margin-left: auto; }  /* 205: chips, market, sort and search share one row at 1366 and up */
+/* 220: chips, market, sort and search share one row at 1366 and up. The sort reads "Later-period P&L" (~110px
+   of text), whole in the 175px the market filter has, so neither needs the 25px #571 took from the search. */
+.stratfilters .searchwrap { flex: 0 1 220px; margin-left: auto; }
 .stratfilters .strat-mkt { flex-basis: 175px; max-width: 175px; }
-/* The sort reads "P&L on data it never saw" (~160px of text): at 175px it was cut. The market filter and the
-   search gave up the 25px between them (its placeholder still whole), so the filter row breaks where it did. */
-.stratfilters #strat-market { flex-basis: 165px; max-width: 165px; }
-.stratfilters .strat-sort { flex-basis: 200px; max-width: 200px; }
 .t-strat .mk.on { padding: 0; border: 0; background: none; color: #365D3B; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .t-strat td.name a { text-decoration: none; }
 .t-strat td.name a:hover { text-decoration: underline; }

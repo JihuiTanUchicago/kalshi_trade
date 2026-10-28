@@ -2452,7 +2452,11 @@
   function viewStrategy(id) { return pageView('strategies', 'viewStrategy', '/strategies', [id]); }
 
   // ---------- deploy + chat ----------
-  const deployedNote = (n) => `Deployed on ${n.mode}: ${n.title}. It trades only when its rule fires, ${n.mode === 'demo' ? 'on Kalshi’s demo exchange with no real money' : 'against live prices with paper money'}, so the first trade can take a while. Its trades show up here and on your dashboard.`;
+  const deployedNote = (n) => `Deployed on ${n.mode}: ${n.title}. It trades only when its rule fires, ${n.mode === 'demo' ? 'on Kalshi’s demo exchange with no real money' : 'against live prices with paper money'}, so the first trade can take a while. Its trades show up here and on the Dashboard.`;
+  // An open position with no mark yet (the engine prices it on its next tick) says so in its Unrealized cell, as a
+  // deployment row does: a bare "—" there said nothing, and a screen reader read it as "dash". Deploy's open
+  // positions and a market page's own positions; the dashboard's cards show the position's cost until then.
+  const NO_MARK = '<span class="no-mark">Unavailable</span>';
   async function viewDeploy() {
     // Autopilot + the agent chat now live in the floating window (reachable from every view),
     // so Deploy is just the board: what's trading and the open positions.
@@ -2551,7 +2555,7 @@
       // card's labels, one more row a position; it sits under its figure, in the Unrealized cell.
       const posUnreal = (p) => `<div class="pos-unreal">${money(p.unrealized)}${posMarked(p)}</div>`;
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unrealized</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? '—' : posUnreal(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? NO_MARK : posUnreal(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
@@ -2587,7 +2591,7 @@
   // book, with nothing saying the gap was one instant fill's +$4.82.
   const trLeftGap = (m) => {
     const v = +m.excluded_instant_pnl || 0, n = m.excluded_instant_fills;
-    return !v ? '.' : `: ${usd(v, true)}. The realized P&L on the dashboard, Funds and Deploy counts ${n === 1 ? 'it' : 'them'}, so it reads ${usd(Math.abs(v))} ${v > 0 ? 'higher' : 'lower'} than this record.`;
+    return !v ? '.' : `: ${usd(v, true)}. The realized P&L on the Dashboard, Funds and Deploy counts ${n === 1 ? 'it' : 'them'}, so it reads ${usd(Math.abs(v))} ${v > 0 ? 'higher' : 'lower'} than this record.`;
   };
   // A strategy row's share of them, so its figures meet its Strategies list line ("+$74.33 · 27 trades" beside 26 here).
   // A strategy whose only trades were instant fills (the server's `instant_only`) has a row of its own, last, so it is
@@ -2821,7 +2825,7 @@
       const lastMark = marked.map((p) => p.mark_ts).filter(Boolean).sort().pop();
       const sum = [op.length ? `${op.length} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}awaiting first mark`}` : '',
         cl.length ? `${cl.length} closed${SEP}realized ${money(cl.reduce((a, p) => a + (+p.pnl || 0), 0))}` : ''].filter(Boolean).join(SEP);
-      const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? '—' : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? `Open, settles ${settleAt(p.market_close_time)}` : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
+      const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? NO_MARK : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? `Open, settles ${settleAt(p.market_close_time)}` : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
   }

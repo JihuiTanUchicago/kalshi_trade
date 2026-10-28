@@ -9,7 +9,7 @@ import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
-import {moneyDisplayCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
+import {moneyDisplayCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
@@ -3861,7 +3861,7 @@ test('first-run funnel: deploying from a strategy page lands on Deploy with a no
   await flush(); await flush();
   const note = f.root.querySelector('#flash').innerHTML;
   assert.match(note, /class="notice good"/);
-  assert.match(note, /Deployed on paper: Momentum &lt;b&gt;fade&lt;\/b&gt;\. It trades only when its rule fires, against live prices with paper money, so the first trade can take a while\. Its trades show up here and on your dashboard\./);
+  assert.match(note, /Deployed on paper: Momentum &lt;b&gt;fade&lt;\/b&gt;\. It trades only when its rule fires, against live prices with paper money, so the first trade can take a while\. Its trades show up here and on the Dashboard\./);
   assert.equal(f.S.deployed, null);
   // Once: the next visit to Deploy has no note.
   await f.viewDeploy(); await flush();
@@ -5400,6 +5400,7 @@ deployErrorCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, postR
 liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unrealizedCellCases({name: 'Tau', frontend, dashboard: emptyDashboard});
+unmarkedPositionCases({name: 'Tau', frontend});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
 slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 

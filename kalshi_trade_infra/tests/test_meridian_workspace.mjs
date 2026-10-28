@@ -10,7 +10,7 @@ import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
-import {moneyDisplayCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
+import {moneyDisplayCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
@@ -6244,22 +6244,23 @@ deployErrorCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, 
 liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 freshWalkCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unrealizedCellCases({name: 'Meridian', frontend, dashboard: dashboardData});
+unmarkedPositionCases({name: 'Meridian', frontend});
 moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, hotRail: (f, markets) => {
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
 }});
 slippageEstimateCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 
-test('the strategies sort shows "P&L on data it never saw" whole, and the filter row still fits one line at 1366', () => {
-  // Measured in DM Sans 14px: the label is ~160px of text; at 175px the select cut it. The market filter and the
-  // search give up the 25px, so chips, market, sort and search sum to what they did.
+test('the strategies sort shows "Later-period P&L" whole, and the filter row still fits one line at 1366', () => {
+  // Measured in DM Sans 14px: the label is ~110px of text, whole in the 175px select the market filter has. The
+  // 25px #571 took from the market filter and the search for "P&L on data it never saw" went back to them.
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
   const px = (re) => { const m = css.match(re); return m ? +m[1] : null; };
-  const sort = px(/\n\.stratfilters \.strat-sort \{ flex-basis: (\d+)px; max-width: \1px; \}/);
-  const market = px(/\n\.stratfilters #strat-market \{ flex-basis: (\d+)px; max-width: \1px; \}/);
+  const both = px(/\n\.stratfilters \.strat-mkt \{ flex-basis: (\d+)px; max-width: \1px; \}/);
   const search = px(/\n\.stratfilters \.searchwrap \{ flex: 0 1 (\d+)px; margin-left: auto; \}/);
-  assert.ok(sort >= 200, String(sort));
-  assert.ok(sort + market + search <= 175 + 175 + 220, `${sort} + ${market} + ${search}`);
+  assert.ok(both >= 150, String(both));  // ~110px of label, the select's padding and its arrow
+  assert.doesNotMatch(css, /\n\.stratfilters (?:\.strat-sort|#strat-market) \{/);  // one width for both selects
+  assert.ok(both * 2 + search <= 175 + 175 + 220, `${both} x 2 + ${search}`);
   assert.ok(search >= 205, 'its placeholder, "Search name or thesis…", stays whole');
 });
 

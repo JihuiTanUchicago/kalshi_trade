@@ -30,10 +30,10 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
     const html = f.trackRecordPanel(paperBook(), 'paper', TH);
     const cav = plain(html.match(/<p class="hint tr-caveat">[\s\S]*?<\/p>/)[0]);
-    assert.match(cav, /1 instant-fill paper trade left out \(fills real execution would not get\): \+\$4\.82\. The realized P&L on the dashboard, Funds and Deploy counts it, so it reads \$4\.82 higher than this record\./);
+    assert.match(cav, /1 instant-fill paper trade left out \(fills real execution would not get\): \+\$4\.82\. The realized P&L on the Dashboard, Funds and Deploy counts it, so it reads \$4\.82 higher than this record\./);
     // A loss left out reads the other way; none made or lost says nothing more.
     const lost = plain(f.trackRecordPanel(paperBook({excluded_instant_fills: 2, excluded_instant_pnl: -3.1}), 'paper', TH));
-    assert.match(lost, /2 instant-fill paper trades left out \(fills real execution would not get\): −\$3\.10\. The realized P&L on the dashboard, Funds and Deploy counts them, so it reads \$3\.10 lower than this record\./);
+    assert.match(lost, /2 instant-fill paper trades left out \(fills real execution would not get\): −\$3\.10\. The realized P&L on the Dashboard, Funds and Deploy counts them, so it reads \$3\.10 lower than this record\./);
     const flat = plain(f.trackRecordPanel(paperBook({excluded_instant_pnl: 0}), 'paper', TH));
     assert.match(flat, /1 instant-fill paper trade left out \(fills real execution would not get\)\. 2 open trades/);
     // The strategy's own row says its share, beside its 26 trades; a row with none left out says nothing.

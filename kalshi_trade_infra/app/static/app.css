@@ -321,6 +321,9 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 .sub-fig { font-size: 12px; color: var(--ink-3); margin-top: 4px; overflow-wrap: anywhere; }
 /* The track record's by-month row for a month with no closes: muted, and inline (a .sub-fig would drop under its phone label). */
 .tr-none { color: var(--ink-3); }
+/* An open position's Unrealized before its first mark (app.js NO_MARK): muted like a .sub-fig, but inline, so a
+   phone's stacked card reads "UNREALIZED Unavailable" on one line, as Cost + fee does, not the word alone under it. */
+.no-mark { font-size: 12px; color: var(--ink-3); }
 /* The track record's By strategy titles wrap: on one line a long title pushed Trades, Net P&L and the rest
    out of view behind a sideways scroll at every desktop width. */
 .trpanel td.name { white-space: normal; overflow-wrap: anywhere; min-width: 14em; }
@@ -355,6 +358,10 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
 @media (min-width: 761px) {
   .t-strat td.name, .t-dep td.name { min-width: 14em; }
   .t-strat td[data-lab="Market"], .t-dep td[data-lab="Market"], .t-dep td[data-lab="Status"], .t-strat td.st, .t-dep th.num, .t-dep td.act { white-space: normal; }
+  /* The Backtest P&L cell's line under its figure ("later-period P&L over 9 days after the split date, which
+     picked it: not held out") ran on one line, ~440px: at 1280 with the markets rail open it pushed Ideas tested
+     and Status past the sheet's edge. It wraps under its figure in a column of its own size. */
+  .t-strat td.num .sub-fig { white-space: normal; max-width: 26ch; margin-left: auto; }
 }
 /* Still the board ran ~935px wide, and with the rail open a 1100-1280 window gives it 745-920: the
    Resume and Remove buttons sat past the sheet's edge ("RESUM", "REMOV"), and their hidden labels
