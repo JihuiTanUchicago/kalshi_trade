@@ -261,6 +261,8 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     // Read as text, the link and its note stay apart (the <small> sits on its own line on screen; its text ran on).
     assert.match(cell, /0 of 30 realistic paper trades instant-fill paper trades left out/);
     assert.doesNotMatch(cell, /trades<\/a><small>|tradesinstant-fill|\$[\d.]+after/);
+    // "instant-fill" has its bubble, glued to the note's last word.
+    assert.match(f.root.querySelector('#dash-ap .apcard-figs').innerHTML, /<span class="nobr">get\)<button type="button" class="info" data-glo="instantfill"/);
     f.clearTimers();
     // The track record's own caveat keeps the same words.
     const record = frontend({fetchImpl: () => response({})}), host = record.document.createElement('section');

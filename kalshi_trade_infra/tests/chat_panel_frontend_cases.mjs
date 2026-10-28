@@ -191,6 +191,8 @@ export function chatPanelCases({name, frontend, storageFor}) {
     const said = dd.textContent.replace(/\s+/g, ' ');
     assert.match(said, /22 of 30 realistic paper trades · \+\$15\.26 net on them\. Instant-fill paper trades left out \(fills real execution would not get\)\.$/);
     assert.doesNotMatch(said, /net on them instant-fill/);
+    // The term has its bubble, on the line with the note's last word.
+    assert.match(dd.innerHTML, /<span class="nobr">get\)\.<button type="button" class="info" data-glo="instantfill"/);
   });
 
   test(`${name}: autopilot keeping a young paper strategy reads as its own rule after the agent's suggestion`, async () => {
