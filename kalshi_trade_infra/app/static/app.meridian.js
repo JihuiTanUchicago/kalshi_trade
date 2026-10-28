@@ -577,11 +577,12 @@
   // What a failed request says when Tau sent no words of its own (the edge's HTML error page, a cut-off
   // reply, no network): plain words, never the page itself. A write that Tau may have taken anyway (no
   // reply, or the edge's 5xx) says so, so nobody deploys or sends twice by trying again blind.
+  // A read's 5xx names no code: the reader can't act on "(500)", and the operator's readout (apiBroke) has it.
   const failText = (status, write) => write && (!status || status >= 500)
     ? "Tau didn't confirm this, so it may or may not have gone through. Reload the page to check before you try again."
     : !status ? 'Can’t reach Tau. Check your connection.'
     : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
-    : status >= 500 ? `Tau is having trouble right now (${status}). Try again in a moment.`
+    : status >= 500 ? 'Tau is having trouble right now. Try again in a moment.'
     // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code.
     : `Tau couldn't do that (${status}). Reload the page and try again.`;
   // A failure the page shows as an error goes to the operator's readout on /admin (boot.js sends it).
