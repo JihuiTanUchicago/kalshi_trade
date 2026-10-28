@@ -2941,7 +2941,9 @@
     const show = (s) => {
       const el = root.querySelector('#mk-spot-body');
       if (!el) return;
-      el.innerHTML = s.failed ? `<p class="hint">${esc(s.failed)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s, d);
+      // A failed read names what didn't load (it said only "Something went wrong on our side."), unless Tau's own words do.
+      const why = s.failed && (/didn\u2019t load/.test(s.failed) ? s.failed : `Bitcoin\u2019s latest stored price didn\u2019t load. ${s.failed}`) + ' Everything else on this page did.';
+      el.innerHTML = s.failed ? `<p class="hint">${esc(why)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s, d);
       const b = el.querySelector('[data-spot-retry]');
       if (b) b.onclick = () => spotRead(ticker).then(show);
     };
