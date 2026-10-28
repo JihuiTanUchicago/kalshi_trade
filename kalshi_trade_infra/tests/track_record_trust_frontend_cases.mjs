@@ -53,7 +53,7 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     const rows = html.match(/<tr><td class="name" data-lab="Strategy">[\s\S]*?<\/tr>/g);
     assert.equal(rows.length, 3);
     const row = plain(rows[2]);
-    assert.match(rows[2], /Bitcoin hourly fade<\/a><div class="sub-fig">All 2 of its trades were instant fills, left out of this record \(\+\$3\.81\)<\/div><\/td>/);
+    assert.match(rows[2], /Bitcoin hourly fade<\/a><div class="sub-fig">All 2 of its trades were instant fills, left out of this record <span class="nobr">\(\+\$3\.81\)<button type="button" class="info" data-glo="instantfill"[^>]*>[\s\S]*?<\/button><\/span><\/div><\/td>/);
     assert.match(rows[2], /<td data-lab="Read"><span class="mk quiet">Left out<\/span><\/td>/);
     assert.match(row, /Not in the record/);
     assert.doesNotMatch(row, /Too few|\$0\.00/, 'no figure reads as a record of $0 on 0 trades');

@@ -56,7 +56,8 @@
     passed: ['Passed', 'Cleared every gate on data the agent never saw while searching. Only passed strategies can be deployed.'],
     void: ['Void', 'The strategy was good enough in-sample to be tested on unseen data — but it failed at least one gate there. A real candidate that didn’t hold up.'],
     rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
-    unseen: ['Unseen data', 'A held-out slice of history the agent never looks at while searching, so the result can’t be curve-fit. This is the P&L that counts.'],
+    unseen: ['Unseen-data P&L', 'What the strategy made on a held-out slice of history the agent never looked at while searching, so the result can’t be curve-fit. This is the backtest figure that counts.'],
+    laterperiod: ['Later-period P&L', 'What the strategy made in the backtest after its split date. That later stretch is what picked it, so unlike unseen data it wasn’t held out: a weaker test.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
     pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade after its split date. For a strategy with a gatekeeper record, that data was held out: the agent never saw it. For one without (backtest only, or a pass from the old backtest gate), it is the later period that picked it, so not held out. Compare it with Realized: well below it means trading is falling short of the test.'],
@@ -67,6 +68,9 @@
     range90: ['Likely average per trade (90% range)', 'Where the true average return per trade after fees most likely sits, 9 times in 10. A range wholly above 0% is what a real edge shows.'],
     placebo: ['Same test on shuffled outcomes (placebo)', 'The same test run on outcomes redrawn at random, so they hold no signal: how often they did at least as well. Lower means the signal, not luck, did the work.'],
     drawdown: ['Worst drop (max drawdown)', 'The biggest fall in P&amp;L from a high point to a later low during the test.'],
+    realized: ['Realized', 'Profit or loss on trades that have closed, sold or settled when the market resolved, after the fees they paid. A closed trade’s figure doesn’t change.'],
+    unrealized: ['Unrealized', 'What the positions still open would gain or lose if sold now, at the price Kalshi’s order book offers, after what they cost including fees. An estimate: it moves with the market until they close.'],
+    instantfill: ['Instant fill', 'An early kind of paper trade that filled the whole order at the quoted price, without checking how many contracts Kalshi’s order book offered there. Too easy to count as evidence, so the track record and the count toward live leave it out.'],
     paperfills: ['Paper fills', 'Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second or two before a real order lands. Where a page shows an estimate after typical live slippage, it takes 0.5¢ a contract off each time an order fills to allow for that.'],
   };
   // What every paper P&L figure includes, said beside it (services/customer_text.PAPER_NET; the bubble
@@ -1841,7 +1845,7 @@
   // The column's header covers both kinds of row, so it says which is which (its glossary marker says the same at
   // more length); it read "on unseen data" over rows whose figure is later-period.
   const PACE_HEAD_TIP = 'What these same closed trades would have made at the backtest’s average per trade after its split date: held out for a strategy with a gatekeeper record, later-period (the slice that picked it) for one without';
-  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">Realized</th><th class="num">Unrealized</th><th class="num">Trades</th><th class="num" title="${PACE_HEAD_TIP}">${gl('Backtest estimate', 'pace')}</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
+  const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Market</th><th>Status</th><th class="num">${gl('Realized', 'realized')}</th><th class="num">${gl('Unrealized', 'unrealized')}</th><th class="num">Trades</th><th class="num" title="${PACE_HEAD_TIP}">${gl('Backtest estimate', 'pace')}</th><th>Since</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
   // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
   const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
   const deploymentTable = (rows, controls) => `<div class="sheet dep-sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
@@ -2598,7 +2602,7 @@
   // named beside what they made instead of only in the book's caveat: none of its figures is in the record's totals.
   const trInstantOnly = (r) => {
     const n = +r.excluded_instant_fills || 0;
-    return `<div class="sub-fig">${n === 1 ? 'Its only trade was an instant fill' : `All ${num(n)} of its trades were instant fills`}, left out of this record (${usd(+r.excluded_instant_pnl || 0, true)})</div>`;
+    return `<div class="sub-fig">${gl(`${n === 1 ? 'Its only trade was an instant fill' : `All ${num(n)} of its trades were instant fills`}, left out of this record (${usd(+r.excluded_instant_pnl || 0, true)})`, 'instantfill')}</div>`;
   };
   const trRowLeft = (r) => (r.instant_only ? trInstantOnly(r) : r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
   // The span a return is over, as the sample line counts it (track_record.sample_read): a return with no period read
