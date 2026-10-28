@@ -2294,7 +2294,9 @@ body.landing-body .apf { display: none; }
   .ri-title { padding-block: 12px; margin-block: -12px; }
   /* Room between the title and its Deploy link (and the next result), so the two grown targets don't overlap. */
   .ri-list li { row-gap: 26px; padding-block: 14px; }
-  .post-actions .thread-link, .reactions .rx { min-height: 40px; }
+  .post-actions .thread-link, .reactions .rx { min-height: 44px; }
+  .reactions .rx { min-width: 44px; justify-content: center; }
+  .composer-post textarea { min-height: 44px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */

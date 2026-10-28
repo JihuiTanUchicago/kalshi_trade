@@ -193,13 +193,15 @@ for (const [bundle, file, extra] of [['Tau', 'app.css', ['.ri-why a']], ['Meridi
   });
 }
 
-test('Tau: a research result\'s title and a post\'s Reply, Edit and reactions are 40px to a thumb; a small button is 24px on a desktop', () => {
+test('Tau: a research result\'s title and a post\'s Reply, Edit and reactions are 44px to a thumb; a small button is 24px on a desktop', () => {
   const all = rules(read('app.css'));
   const pad = px(decl(all, '.ri-title', 'padding-block', COARSE));
-  assert.ok(20 + 2 * pad >= 40);
+  assert.ok(20 + 2 * pad >= 44);
   assert.equal(px(decl(all, '.ri-title', 'margin-block', COARSE)), -pad);
-  assert.equal(decl(all, '.post-actions .thread-link', 'min-height', COARSE), '40px');
-  assert.equal(decl(all, '.reactions .rx', 'min-height', COARSE), '40px');
+  assert.equal(decl(all, '.post-actions .thread-link', 'min-height', COARSE), '44px');
+  assert.equal(decl(all, '.reactions .rx', 'min-height', COARSE), '44px');
+  assert.equal(decl(all, '.reactions .rx', 'min-width', COARSE), '44px');  // the "+" add-a-reaction was 43px wide
+  assert.equal(decl(all, '.composer-post textarea', 'min-height', COARSE), '44px');
   assert.equal(decl(all, '.btn.sm', 'min-height'), '24px');
 });
 
