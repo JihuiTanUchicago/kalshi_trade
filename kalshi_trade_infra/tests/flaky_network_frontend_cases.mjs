@@ -53,10 +53,28 @@ export function flakyNetworkCases({name, frontend}) {
         assert.match(page, /This page loads by itself once you’re back online\./);
         assert.doesNotMatch(page, /Something went wrong/);
       } else {
-        assert.match(page, /Something went wrong/);
+        assert.match(page, /This page didn’t load/);
         assert.match(page, /Can’t reach Tau\. Check your connection\./);
       }
       assert.ok(f.root.querySelector('[data-retry]'), 'Try again stays');
+      f.clearTimers();
+    }
+  });
+
+  // Walk 2026-10-28 (each read failing as JSON 500, HTML 500 and no reply): a failed list said only "Something went
+  // wrong on our side." under the page's own filters, and never which part hadn't come.
+  test(`${name}: a list that didn't load names itself, says the rest of the page did, and gives no status code`, async () => {
+    for (const [answer, why] of [[() => response({error: 'Something went wrong on our side. It’s been logged.'}, 500), 'Something went wrong on our side. It’s been logged.'],
+      [() => ({ok: false, status: 500, json: async () => { throw new SyntaxError('Unexpected token <'); }}), 'Tau is having trouble right now. Try again in a moment.']]) {
+      const f = frontend({fetchImpl: (asked) => (asked.startsWith('/api/strategies') ? answer() : response({}))});
+      f.location.pathname = '/strategies';
+      const rendering = f.render();
+      for (let i = 0; i < 4; i++) { await settle(); f.elapse(2000); }
+      await rendering; await settle();
+      const slips = f.root.querySelector('#slips');
+      assert.equal(slips.querySelector('.notice').textContent.trim(), `Your strategies didn’t load. ${why} Everything else on this page did.`);
+      assert.ok(slips.querySelector('[data-retry]'), 'Try again');
+      assert.doesNotMatch(f.root.textContent, /\(500\)|undefined|null|NaN|\[object/);
       f.clearTimers();
     }
   });
@@ -71,7 +89,7 @@ export function flakyNetworkCases({name, frontend}) {
       const rendering = f.render();
       for (let i = 0; i < 4; i++) { await settle(); f.elapse(2000); }
       await rendering; await settle();
-      assert.match(f.root.innerHTML, status === 404 ? /Not found/ : /Something went wrong/, path);
+      assert.match(f.root.innerHTML, status === 404 ? /Not found/ : /This page didn’t load/, path);
       const marked = f.root.querySelectorAll('a.svc-link').filter((a) => a.getAttribute('aria-current') === 'page').map((a) => a.getAttribute('href'));
       assert.deepEqual(marked, [tab], path);
       f.clearTimers();

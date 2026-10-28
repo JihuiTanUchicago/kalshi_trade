@@ -882,7 +882,7 @@
         // Offline, it isn't "something went wrong": the page loads by itself once the network is back
         // (the online handler presses Try again).
         const off = e.status === 0 && offline();
-        shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
+        shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'This page didn’t load'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
       }
     }
@@ -1369,7 +1369,9 @@
   const fundsLinked = (html) => String(html).replace(/\b(?:the )?Funds page\b/, '<a href="/funds#connect-kalshi">$&</a>');
   const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${fundsLinked(esc(msg))}</span></div>`;
   // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
-  const loadFail = (msg) => `<div class="load-fail">${notice(msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
+  // A section whose own read failed on a page that otherwise loaded names itself and says the rest is there
+  // (`what`): the dashboard's track record said only "Something went wrong on our side." (walk 2026-10-28).
+  const loadFail = (msg, what) => `<div class="load-fail">${notice(what ? `${what} didn\u2019t load. ${msg} Everything else on this page did.` : msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
   // A page's own bug (a TypeError on a reply it didn't expect) is not something to print to the user.
   // It is reported (reportBroken), so a page that breaks this way shows up on /admin.
   const errText = (e) => (e instanceof ApiError ? e.message : (reportBroken('view', e), 'Something went wrong on this page. Try again.'));
@@ -2927,7 +2929,7 @@
       const read = pending; pending = null;  // the view's own read once; a retry asks again
       try { await mountTrackRecord(host, last, read); } catch (e) {
         if (gen !== S.gen) return;
-        host.innerHTML = loadFail(errText(e));
+        host.innerHTML = loadFail(errText(e), 'Your track record');
         host.querySelector('[data-retry]').onclick = () => { host.innerHTML = loading(260); return first(); };
         return;
       }

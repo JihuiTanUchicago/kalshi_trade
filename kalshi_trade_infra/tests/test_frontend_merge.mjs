@@ -4159,6 +4159,7 @@ test('the dashboard asks for the track record beside the board, once, and draws 
     await view; await flush(); await flush();
     const host = f.root.querySelector('#track-record');
     assert.match(host.innerHTML, /Tau is restarting\./);  // the early read failed: the record says so, with a retry
+    assert.match(host.textContent, /Your track record didn’t load\. Tau is restarting\. Everything else on this page did\./);
     failTrack = false;
     host.querySelector('[data-retry]').onclick(); await flush(); await flush();
     assert.match(host.innerHTML, /Track record/);
