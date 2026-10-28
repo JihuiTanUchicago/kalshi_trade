@@ -6425,3 +6425,11 @@ test('a Share my P&L card lines its Paper and Live labels up at the top', () => 
   const f = frontend();
   assert.match(f.postSnapshot({kind: 'pnl', paper_pnl: 12.34, live_pnl: 0, paper_trades: 17, live_trades: 0}), /^<div class="snap snap-pnl">[\s\S]*<dl class="snap-metrics">/);
 });
+
+test('Meridian Billing: the default card’s mark in its table is a plain word, not a padless filled box', () => {
+  // Walk 2026-10-28: ".t-dep .mk" drops a mark's padding and border, and ".mk.on" kept its dark fill, so "Default"
+  // sat in a black box tight to its letters.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.t-dep \.mk:not\(\.live\):not\(\.armed\) \{ padding: 0; border: 0;/);
+  assert.match(css, /\.t-dep \.mk\.on \{ background: none; color: var\(--ink\); \}/);
+});

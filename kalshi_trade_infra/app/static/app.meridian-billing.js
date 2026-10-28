@@ -345,7 +345,8 @@ window.TauPage('billing', (T) => {
       const micros = (rows) => rows.reduce((s, r) => s + Math.round(r.amount * 1e6), 0) / 1e6;
       const used = cents ? cents.get(g) / 100 : -micros(g.rows.filter((r) => r.kind === 'usage'));
       const added = micros(g.rows.filter((r) => r.kind !== 'usage'));
-      return `<tr class="ledger-day"><td colspan="3" data-lab="Day"><b>${ledgerDay(g.day)}</b><span class="day-sum">${[used >= 0.005 ? `${usd(used)} used` : '', added ? `${usd(added, true)} credits` : ''].filter(Boolean).join(SEP)}</span></td></tr>`;
+      // A day whose only use was under a cent (one short chat) says so, as the 7-day split does, not a bare date.
+      return `<tr class="ledger-day"><td colspan="3" data-lab="Day"><b>${ledgerDay(g.day)}</b><span class="day-sum">${[used >= 0.005 ? `${usd(used)} used` : -micros(g.rows.filter((r) => r.kind === 'usage')) > 0 ? 'under $0.01 used' : '', added ? `${usd(added, true)} credits` : ''].filter(Boolean).join(SEP)}</span></td></tr>`;
     };
     const key = d.math ? `Last ${d.math.days} days, newest first. Each research line is one session’s model calls that day; open it to see the session. Lines are rounded to the cent so they add up to their day; the receipt has every call and every card charge, exactly.`
       : 'Newest first. The receipt has every line, with exact amounts.';
