@@ -40,13 +40,14 @@ window.TauPage('research', (T) => {
   const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', spec_invalid: 'spec rejected', missing_context: 'needs data we lack', thin_sample: 'too few examples', no_signal: 'no signal', wrong_fit: 'wrong for this market', other: 'other' };
   const loopRate = (r) => (r == null ? '—' : Math.round(r * 100) + '%');
   // failed: what the last read said when it failed (cleared by the next read that comes back).
-  const rsiLoop = { board: null, at: 0, req: null, failed: null };
+  // okAt: when the board on hand came back, for the line a failed refresh puts above it.
+  const rsiLoop = { board: null, at: 0, okAt: 0, req: null, failed: null };
   // The board's read, at most once a minute and one at a time. The Research page starts it as it opens,
   // beside the session list: asked from the list's first paint, it waited a whole round trip for the list.
   function rsiLoopRead() {
     if (!rsiLoop.req && Date.now() - rsiLoop.at > 60000) {
       rsiLoop.req = api('/api/research/scoreboard?days=14', undefined, { keep: true })
-        .then((b) => { rsiLoop.board = b; rsiLoop.failed = null; }, (e) => { rsiLoop.failed = errText(e); /* a board read before is kept */ })
+        .then((b) => { rsiLoop.board = b; rsiLoop.okAt = Date.now(); rsiLoop.failed = null; }, (e) => { rsiLoop.failed = errText(e); /* a board read before is kept */ })
         .finally(() => { rsiLoop.at = Date.now(); rsiLoop.req = null; });
     }
     return rsiLoop.req;
@@ -65,6 +66,10 @@ window.TauPage('research', (T) => {
       return;
     }
     if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }
+    // A refresh that failed with a board up kept it and said nothing, so it read as current. One quiet line above the
+    // card says so, as the bell's does, with Try again; the next read that comes back takes it away.
+    const loopAgo = () => { const m = Math.max(1, Math.round((Date.now() - rsiLoop.okAt) / 60000)); if (m < 60) return `${num(m)} min ago`; const h = Math.round(m / 60); return `${num(h)} hour${h === 1 ? '' : 's'} ago`; };
+    const staleLine = rsiLoop.failed && rsiLoop.okAt ? `<p class="stale-note loop-stale" role="status">Couldn’t refresh. Showing your research results from ${loopAgo()}. <button type="button" class="stale-again" data-loop-retry>Try again</button></p>` : '';
     const t = b.total, tr = b.trend;
     const delta = tr ? `<span class="rsi-score">${loopRate(tr.before.gate_reach_rate)} <span class="rsi-arrow">→</span> ${loopRate(tr.after.gate_reach_rate)}</span>` : '';
     const tag = tr ? (tr.better ? '<span class="rsi-tag">Improving</span>' : '<span class="rsi-tag quiet">Not improving yet</span>') : '<span class="rsi-tag quiet">Learning</span>';
@@ -110,10 +115,12 @@ window.TauPage('research', (T) => {
     const focused = !!host.querySelector('details.rsidisc > summary:focus');
     const inner = [...host.querySelectorAll('details.loop-pb')].map((d) => d.open);
     // The 5s poll re-renders from the kept board: the card is rebuilt only when its markup changed.
-    paint(host, `<details class="rsidisc loop"${open ? ' open' : ''}>
+    paint(host, `${staleLine}<details class="rsidisc loop"${open ? ' open' : ''}>
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Is research getting better?</span>${tag}${delta ? `<span class="rsidisc-delta">${delta} reach the gate</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="rsidisc-body">${body}</div>
     </details>`);
+    const again = host.querySelector('[data-loop-retry]');
+    if (again) again.onclick = () => { rsiLoop.at = 0; return renderResearchLoop(host, pol, tried); };
     host.querySelectorAll('details.loop-pb').forEach((d, i) => { if (inner[i] && !d.open) d.open = true; });
     if (focused) host.querySelector('details.rsidisc > summary').focus({ preventScroll: true });
   }
