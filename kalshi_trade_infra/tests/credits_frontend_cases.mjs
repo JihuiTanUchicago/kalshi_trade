@@ -198,6 +198,18 @@ export function creditsCases({name, frontend, billingPage, cardedBilling, dashbo
     g.clearTimers();
   });
 
+  test(`${name}: a Billing day whose only use was under a cent says "under $0.01 used", not a bare date`, async () => {
+    // Walk 2026-10-28: a day with one short chat (−$0.004) showed its date and nothing beside it.
+    const f = billingPage(cardedBilling({
+      math: {days: 30, start: 20, bought: 0, purchases: 0, other: 0, usage: 0, end: 20},
+      ledger: [{kind: 'usage', amount: -0.0043, item: 'Chat', model: 'Claude Sonnet 4.6', calls: 1, day: '2026-10-26',
+        created_at: '2026-10-26T15:00:00Z', first_at: '2026-10-26T15:00:00Z'}],
+      ledger_cut: false}));
+    await f.viewBilling(); await flush();
+    assert.equal(f.root.querySelector('#bledger .day-sum').textContent, 'under $0.01 used');
+    assert.equal(f.root.querySelector('#bledger td.num').textContent, '−\u2060$0.004');
+  });
+
   test(`${name}: Billing's statement adds up: the lines under a day to its "used", and the days to the usage above`, async () => {
     // Walk 2026-10-27, a few days of autopilot research: each figure rounded half up on its own, so "Sun $7.98 used"
     // sat over −$7.95 and −$0.02, and the days added up a cent short of "Agent usage −$12.99".

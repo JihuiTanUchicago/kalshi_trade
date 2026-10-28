@@ -1978,6 +1978,8 @@ body.landing-body .apf { display: none; }
 .t-dep .btn.danger:not(.armed):hover { color: var(--signal); background: var(--signal-wash); }
 .t-dep .mk:not(.live):not(.armed) { padding: 0; border: 0; font-size: 12px; letter-spacing: 0; font-weight: 500; text-transform: none; }
 .t-dep .mk.dep { background: none; color: var(--ink-2); }
+/* A table's .mk loses its padding above, so a filled one (Billing's "Default" card) read as a cramped black box. */
+.t-dep .mk.on { background: none; color: var(--ink); }
 .dep-evidence { display: inline-block; margin: 0 0 0 10px; font-weight: 400; }
 .dep-evidence[open] { display: block; margin: 4px 0 0; }
 .dep-evidence > summary { display: inline-block; padding: 3px 0 0; font-size: 12px; color: var(--ink-2); }
@@ -2321,6 +2323,7 @@ body.landing-body .apf { display: none; }
 .active-foot > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .active-foot dt { margin: 0; font: 400 12px/18px var(--f-ui); color: var(--ink-2); }
 .active-foot dd { margin: 0; font: 500 16px/22px var(--f-ui); color: var(--ink); font-variant-numeric: tabular-nums lining-nums; overflow-wrap: anywhere; }
+.active-foot .run-cred { font: 400 12px/18px var(--f-ui); color: var(--ink-2); }
 .research-create { min-width: 0; }
 .research-create:not([open]) { height: 0; }
 .research-page .research-create > summary { position: absolute; top: 16px; right: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 32px; background: transparent; border-color: var(--ink-2); color: var(--ink); }

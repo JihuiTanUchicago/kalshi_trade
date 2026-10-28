@@ -3537,7 +3537,9 @@ test('Research says a low balance before Start, shows a running session’s spen
   assert.match(f.root.querySelector('#dispatch .notice').textContent, /You have \$0\.50 in credits — a research session needs at least \$1\.00 to start\./);
   const foot = f.root.querySelector('#active-research .active-foot');
   assert.deepEqual(foot.querySelectorAll('dt').map(dt => dt.textContent), ['Tested', 'Passed', 'Spent so far']);
-  assert.equal(foot.querySelectorAll('dd')[2].textContent, '$2.37');
+  // It names its credits, as the session rows and page do, and the amount can't split across lines.
+  assert.equal(foot.querySelectorAll('dd')[2].textContent, '$2.37 in\u00a0credits');
+  assert.equal(foot.querySelectorAll('dd')[2].querySelector('.nobr').textContent, '$2.37');
   // A session that ran until stopped reads like a finished one, not a red "Failed".
   const card = f.root.querySelector('#runs a[href="/research/4"]');
   assert.doesNotMatch(card.innerHTML, /Failed|loss/);
@@ -6422,4 +6424,12 @@ test('a Share my P&L card lines its Paper and Live labels up at the top', () => 
   assert.match(css, /\n\.feedwrap \.snap-pnl \.snap-metrics \{ align-items: start; \}/);
   const f = frontend();
   assert.match(f.postSnapshot({kind: 'pnl', paper_pnl: 12.34, live_pnl: 0, paper_trades: 17, live_trades: 0}), /^<div class="snap snap-pnl">[\s\S]*<dl class="snap-metrics">/);
+});
+
+test('Meridian Billing: the default card’s mark in its table is a plain word, not a padless filled box', () => {
+  // Walk 2026-10-28: ".t-dep .mk" drops a mark's padding and border, and ".mk.on" kept its dark fill, so "Default"
+  // sat in a black box tight to its letters.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.t-dep \.mk:not\(\.live\):not\(\.armed\) \{ padding: 0; border: 0;/);
+  assert.match(css, /\.t-dep \.mk\.on \{ background: none; color: var\(--ink\); \}/);
 });

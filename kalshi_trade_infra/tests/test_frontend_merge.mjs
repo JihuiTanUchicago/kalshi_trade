@@ -632,7 +632,9 @@ test('Tau: a new user\'s first idea reads "1 idea tested", not "1 ideas"', async
   let f = at({research_running: 1, research_queued: 0});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /— all time, <em>1<\/em> idea tested, <em>0<\/em> through every gate\./);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /researching now\. All time: <em>1<\/em> idea tested · <em>0<\/em> through every gate\./);
+  // "researching now — all time, …" set "now" against "all time" in one phrase: they are two sentences.
+  assert.doesNotMatch(f.root.querySelector('#rstatus .said').innerHTML, /—|now[^.]*all time/i);
   f.clearTimers();
   f = at({research_running: 0, research_queued: 0});
   f.S.me.user.autopilot = false;
@@ -1889,14 +1891,14 @@ test('Tau: research counts a paused session as paused, not as researching', asyn
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
   const said = f.root.querySelector('#rstatus .said').innerHTML, figs = f.root.querySelector('#rfigs').innerHTML;
-  assert.match(said, /<em>1<\/em> agent researching now · <em>1<\/em> paused — /);
+  assert.match(said, /<em>1<\/em> agent researching now · <em>1<\/em> paused\. All time: /);
   assert.match(figs, /Researching now<\/dt><dd><span class="fig ">1<\/span><\/dd><dd class="sub-fig">1 paused<\/dd>/);
   f.clearTimers();
   // Only a paused one: nothing is researching, and the line still says one is paused.
   f = at({research_running: 0, research_paused: 1, research_queued: 0});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /^<em>1<\/em> paused — /);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /^<em>1<\/em> paused\. All time: /);
   assert.doesNotMatch(f.root.querySelector('#rstatus .said').innerHTML, /researching now/);
   f.clearTimers();
 });
