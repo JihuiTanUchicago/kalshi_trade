@@ -2625,13 +2625,14 @@
   const trOver = (m) => (m.span_days == null ? '' : (() => { const d = Math.max(1, Math.round(+m.span_days)); return ` over ${num(d)} day${d === 1 ? '' : 's'}`; })());
   function trackRecordPanel(m, key, th) {
     const caveats = [];
-    if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY})${trLeftGap(m)}`);
+    if (m.excluded_instant_fills) caveats.push({html: `${gl(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY})`, 'instantfill')}${esc(trLeftGap(m))}`});
     if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_cost)} at cost + fees) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
       // A part-sold trade's sold slice is realized (the dashboard counts it) but waits here for the rest.
       + (m.open_realized_pnl ? ` Part of ${m.open_trades === 1 ? 'it' : 'them'} is already sold: ${usd(m.open_realized_pnl, true)} realized, not yet in these figures.` : ''));
     if (key === 'live' && m.trades) caveats.push('Live results count only the trades Tau placed, net of Kalshi fees. Your Kalshi cash also moves with deposits, withdrawals and anything you trade yourself.');
     if (key === 'demo' && m.trades) caveats.push('Demo trades are real fills on Kalshi’s sandbox exchange with simulated money. Reloading the demo account doesn’t reset this record, so it can differ from the realized P&L since reload on Funds.');
-    const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map(esc).join(' ')}</p>` : '';
+    // A caveat is text, escaped here, or {html} when it carries a glossary bubble (the instant-fill one).
+    const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map((c) => (typeof c === 'string' ? esc(c) : c.html)).join(' ')}</p>` : '';
     if (!m.trades) {
       // Paper only: the live and demo tabs keep their own copy.
       const apOn = key === 'paper' && !!(S.me && S.me.user && S.me.user.autopilot);

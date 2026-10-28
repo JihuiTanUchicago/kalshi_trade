@@ -268,7 +268,7 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     const record = frontend({fetchImpl: () => response({})}), host = record.document.createElement('section');
     host.innerHTML = record.trackRecordPanel({trades: 3, wins: 2, losses: 1, label: 'Paper', net_pnl: 4, fees: 0.2, excluded_instant_fills: 12,
       monthly: [], strategies: [], curve: [], sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge.'}}, 'paper', {min_sharpe_days: 14, min_trades: 30});
-    assert.match(host.innerHTML, /12 instant-fill paper trades left out \(fills real execution would not get\)\./);
+    assert.match(host.textContent, /12 instant-fill paper trades left out \(fills real execution would not get\)\./);
   });
 
   test(`${name}: Research counts your sessions as sessions, never "runs"`, async () => {

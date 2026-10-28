@@ -67,6 +67,7 @@ test('the Deploy table and the strategy page carry the new markers in both theme
     const src = read(f);
     assert.match(src, /<th class="num">\$\{gl\('Realized(?: P&amp;L)?', 'realized'\)\}<\/th><th class="num">\$\{gl\('Unrealized', 'unrealized'\)\}<\/th>/, f);
     assert.match(src, /left out of this record \(\$\{usd\(\+r\.excluded_instant_pnl \|\| 0, true\)\}\)`, 'instantfill'\)/, f);
+    assert.match(src, /left out \(\$\{INSTANT_WHY\}\)`, 'instantfill'\)\}\$\{esc\(trLeftGap\(m\)\)\}/, f);  // the track record's caveat
   }
   for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) {
     const src = read(f);
