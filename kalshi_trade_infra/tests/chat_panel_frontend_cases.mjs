@@ -66,18 +66,18 @@ export function chatPanelCases({name, frontend, storageFor}) {
   test(`${name}: the line under the composer says what a message may do and what the last one cost`, async () => {
     const billed = {billing_enabled: true};
     let p = await panel({me: billed, turnCost: 0.153});
-    assert.equal(p.cost(), 'Any change it suggests waits for your Approve. Each message is paid from your credits. Your last one cost $0.15.');
+    assert.equal(p.cost(), 'Any change it suggests waits for you to approve it. Each message is paid from your credits. Your last one cost $0.15.');
     assert.equal(p.box.querySelector('#apf-cost').hidden, false);
     p = await panel({me: billed, turnCost: 0.153, autopilot: true});
     assert.equal(p.cost(), 'It may act on what you ask, within your limits. Each message is paid from your credits. Your last one cost $0.15.');
     p = await panel({me: billed, turnCost: null});  // no answered message yet
-    assert.equal(p.cost(), 'Any change it suggests waits for your Approve. Each message is paid from your credits.');
+    assert.equal(p.cost(), 'Any change it suggests waits for you to approve it. Each message is paid from your credits.');
     p = await panel({me: billed, turnCost: 0});  // a turn that failed before the model ran
     assert.match(p.cost(), /Your last one cost nothing\.$/);
     p = await panel({me: billed, turnCost: 0.004});  // under half a cent is not "$0.00"
     assert.match(p.cost(), /Your last one cost under \$0\.01\.$/);
     p = await panel({me: {billing_enabled: false}, turnCost: 0.153});  // payments off: nothing is billed
-    assert.equal(p.cost(), 'Any change it suggests waits for your Approve.');
+    assert.equal(p.cost(), 'Any change it suggests waits for you to approve it.');
     // A poll without turn_cost keeps the figure the last read gave.
     let calls = 0;
     p = await panel({me: billed, chat: () => (calls++, []), turnCost: 0.42});

@@ -47,7 +47,7 @@ window.TauPage('autopilot', (T) => {
   function apCostPaint(box) {
     const el = box.querySelector('#apf-cost'); if (!el) return;
     const me = S.me || {}, on = S.ap ? S.ap.autopilot : !!(me.user && me.user.autopilot);
-    const what = on ? 'It may act on what you ask, within your limits.' : 'Any change it suggests waits for your Approve.';
+    const what = on ? 'It may act on what you ask, within your limits.' : 'Any change it suggests waits for you to approve it.';
     const c = apTurnCost, last = c == null ? '' : c === 0 ? ' Your last one cost nothing.'
       : c < 0.005 ? ' Your last one cost under $0.01.' : ` Your last one cost ${usd(c)}.`;
     el.textContent = what + (me.billing_enabled ? ' Each message is paid from your credits.' + last : '');
