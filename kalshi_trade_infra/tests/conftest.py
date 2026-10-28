@@ -192,4 +192,6 @@ def _fresh_server_shared_cache():
             kalshi_dev._cache.clear()
             kalshi_dev._candles.clear()
             kalshi_dev._warmed.clear()
+            kalshi_dev._queue.clear()
+            kalshi_dev._queued.clear()
     yield

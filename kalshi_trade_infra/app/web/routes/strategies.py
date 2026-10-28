@@ -787,6 +787,7 @@ def _no_dev_curve(s: Dict) -> Optional[str]:
 
 
 DEV_CURVE_UNSET = "Kalshi demo replay isn’t available on this server."
+DEV_CURVE_PENDING = "Replaying the unseen window against Kalshi’s demo book; it shows here in a moment."
 
 
 # Passed strategies a session page warms at once (kalshi_dev.warm replays them one after another).
@@ -804,12 +805,18 @@ def strategy_dev_curve(ctx: Ctx):
     """Realized out-of-sample curve replayed READ-ONLY against the Kalshi DEMO
     (dev) environment, for the sim-vs-real second line on the equity chart.
     Degrades to {"dev_curve": None} (no second line) when dev replay is
-    unconfigured or the demo host/data is unavailable - it never errors the page."""
+    unconfigured or the demo host/data is unavailable - it never errors the page.
+
+    It never waits on the market history or the demo host (kalshi_dev.kept_dev_curve): a replay not
+    worked out yet answers {"dev_curve": None, "pending": True} at once while the server works it out,
+    and the page asks again. Once worked out, the answer is the one this read always gave."""
     s = _owned_strategy(ctx)
     reason = _no_dev_curve(s)
     if reason:
         return {"dev_curve": None, "reason": reason}
-    out = kalshi_dev.dev_curve_for_strategy(s["id"], s["spec"], s["market"])
+    kept, out = kalshi_dev.kept_dev_curve(s["id"], s["spec"], s["market"])
+    if not kept:
+        return {"dev_curve": None, "pending": True, "reason": DEV_CURVE_PENDING}
     if out is None:
         # kalshi_dev's reason names the server setting when replay isn't set up; the customer reads it in plain words.
         return {"dev_curve": None, "reason": DEV_CURVE_UNSET if not kalshi_dev.KALSHI_DEV_API_BASE
