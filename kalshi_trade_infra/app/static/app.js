@@ -3196,8 +3196,11 @@
   // ago, retrying"), where it kept them with no word.
   const HOT_POLL_MS = 30000;
   const hotStaleText = () => (S.hot && S.hotFail && S.hotAt && Date.now() - S.hotAt > staleAfter(HOT_POLL_MS) ? staleText(S.hotAt) : '');
-  // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page.
-  const hotOpen = () => !phone() && localStorage.getItem('tau_hotrail') !== '0';
+  // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page. Up to 1080px it
+  // opens over the page (app.css), not beside it: open on every load, it covered the left 306px of every page on a
+  // 768px tablet (walked 2026-10-28). There it opens only when you have opened it; wider, it is open unless closed.
+  const hotOver = () => !!(window.matchMedia && window.matchMedia('(max-width: 1080px)').matches);
+  const hotOpen = () => !phone() && (hotOver() ? localStorage.getItem('tau_hotrail') === '1' : localStorage.getItem('tau_hotrail') !== '0');
   const hotShown = () => !phone();  // app.css hides the rail under 761px, the width phone() asks
   let hotLoop = false, hotMoving = 0;
   let apLoop = false, apReq = null;
@@ -3349,6 +3352,9 @@
       return `<div class="since-split" data-book="${m}">${books.length > 1 ? `<span class="since-sub">${label}:</span> ` : ''}${rows.slice(0, SINCE_SPLIT_SHOWN).map(item).join('<span class="sep">·</span>')}${more > 0 ? `<span class="sep">·</span><span class="since-sub">${num(more)} more</span>` : ''}</div>`;
     }).join('');
   }
+  // Two or more links in a row ("A, B, C, 1 more"): to a thumb they stack one under another (.since-links, app.css),
+  // each its own 44px, where on a line they reached into one another.
+  const sinceLinks = (links) => (links.length > 1 ? `<span class="since-links">${links.join(', ')}</span>` : links.join(''));
   function sinceStrip(d, pausedHref) {
     const s = d.since;
     if (!s) return '';
@@ -3372,7 +3378,7 @@
       return `<a href="/strategies/${encodeURIComponent(sid)}">${esc(dep ? dep.title : 'Strategy ' + sid)}</a>`;
     };
     const fwd = (ms.passed || []).slice(0, 3).map(named);
-    const fwdText = `${fwd.join(', ')} passed ${fwd.length === 1 ? 'its' : 'their'} paper forward test: ${fwd.length === 1 ? 'a candidate' : 'candidates'} for live`;
+    const fwdText = `${sinceLinks(fwd)} passed ${fwd.length === 1 ? 'its' : 'their'} paper forward test: ${fwd.length === 1 ? 'a candidate' : 'candidates'} for live`;
     // A pass a later check left uncleared (the server's not_cleared: its one-time holdout then failed, or
     // the diversification check held it back) is named apart, as its page and the lists stamp it: the
     // strip counted it among "2 strategies passed".
@@ -3382,7 +3388,7 @@
     const fellText = fell.length ? ` Not cleared to trade: ${fell.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a> (${NOT_CLEARED[x.verdict] || 'held back'})`).join(', ')}${pass.not_cleared_n > fell.length ? `, ${num(pass.not_cleared_n - fell.length)}${atLeast} more` : ''}.` : '';
     // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
     const found = s.own_sessions === false && !pass.n && !fwd.length ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
-      ? `${num(pass.n)}${atLeast} ${pass.n === 1 && !atLeast ? 'strategy' : 'strategies'} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length || atLeast ? `, <a href="/strategies">${num(pass.n - pass.items.length)}${atLeast} more</a>` : ''}`
+      ? `${num(pass.n)}${atLeast} ${pass.n === 1 && !atLeast ? 'strategy' : 'strategies'} passed: ${sinceLinks([...pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`), ...(pass.n > pass.items.length || atLeast ? [`<a href="/strategies">${num(pass.n - pass.items.length)}${atLeast} more</a>`] : [])])}`
       : fwd.length ? fwdText : 'Nothing new passed') + (started ? `<span class="since-sub">${SEP}${plural(started, 'research session', 'research sessions')} started, ${sinceRunsState(runs, started, !pass.n)}</span>` : '') + '.' + (pass.n && fwd.length ? ` ${fwdText}.` : '') + fellText);
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
@@ -4137,7 +4143,7 @@
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener">
-      <span class="hot-title">${glueTarget(esc(mktLabel(m)))}</span>${hotWhen(m)}
+      <span class="hot-title" title="${esc(mktLabel(m))}">${glueTarget(esc(mktLabel(m)))}</span>${hotWhen(m)}
       <span class="hot-mid">${hotChart(h)}<span class="hot-price"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
       <span class="hot-foot">${contractShort(m.t) ? `<span class="mk quiet">${esc(contractShort(m.t))}</span>` : ''}<span class="hot-vol">${kfmt(m.v24)} vol${SEP}24h</span>${ICON.ext}</span></a>`;
   }

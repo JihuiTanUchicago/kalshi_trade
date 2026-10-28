@@ -3527,6 +3527,9 @@
       return `<div class="since-split" data-book="${m}">${books.length > 1 ? `<span class="since-sub">${label}:</span> ` : ''}${rows.slice(0, SINCE_SPLIT_SHOWN).map(item).join('<span class="sep">·</span>')}${more > 0 ? `<span class="sep">·</span><span class="since-sub">${num(more)} more</span>` : ''}</div>`;
     }).join('');
   }
+  // Two or more links in a row ("A, B, C, 1 more"): to a thumb they stack one under another (.since-links, app.css),
+  // each its own 44px, where on a line they reached into one another.
+  const sinceLinks = (links) => (links.length > 1 ? `<span class="since-links">${links.join(', ')}</span>` : links.join(''));
   function sinceStrip(d, pausedHref) {
     const s = d.since;
     if (!s) return '';
@@ -3550,7 +3553,7 @@
       return `<a href="/strategies/${encodeURIComponent(sid)}">${esc(dep ? dep.title : 'Strategy ' + sid)}</a>`;
     };
     const fwd = (ms.passed || []).slice(0, 3).map(named);
-    const fwdText = `${fwd.join(', ')} passed ${fwd.length === 1 ? 'its' : 'their'} paper forward test: ${fwd.length === 1 ? 'a candidate' : 'candidates'} for live`;
+    const fwdText = `${sinceLinks(fwd)} passed ${fwd.length === 1 ? 'its' : 'their'} paper forward test: ${fwd.length === 1 ? 'a candidate' : 'candidates'} for live`;
     // A pass a later check left uncleared (the server's not_cleared: its one-time holdout then failed, or
     // the diversification check held it back) is named apart, as its page and the lists stamp it: the
     // strip counted it among "2 strategies passed".
@@ -3560,7 +3563,7 @@
     const fellText = fell.length ? ` Not cleared to trade: ${fell.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a> (${NOT_CLEARED[x.verdict] || 'held back'})`).join(', ')}${pass.not_cleared_n > fell.length ? `, ${num(pass.not_cleared_n - fell.length)}${atLeast} more` : ''}.` : '';
     // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
     const found = s.own_sessions === false && !pass.n && !fwd.length ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
-      ? `${num(pass.n)}${atLeast} ${pass.n === 1 && !atLeast ? 'strategy' : 'strategies'} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length || atLeast ? `, <a href="/strategies">${num(pass.n - pass.items.length)}${atLeast} more</a>` : ''}`
+      ? `${num(pass.n)}${atLeast} ${pass.n === 1 && !atLeast ? 'strategy' : 'strategies'} passed: ${sinceLinks([...pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`), ...(pass.n > pass.items.length || atLeast ? [`<a href="/strategies">${num(pass.n - pass.items.length)}${atLeast} more</a>`] : [])])}`
       : fwd.length ? fwdText : 'Nothing new passed') + (started ? `<span class="since-sub">${SEP}${plural(started, 'research session', 'research sessions')} started, ${sinceRunsState(runs, started, !pass.n)}</span>` : '') + '.' + (pass.n && fwd.length ? ` ${fwdText}.` : '') + fellText);
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));

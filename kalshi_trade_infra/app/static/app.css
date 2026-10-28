@@ -387,6 +387,12 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .t-dep td.name { min-width: 10em; }
     .t-dep .spark { width: 56px; }
   }
+  /* A 768px tablet's board (708px) still ran 34px past its sheet: Resume and Remove were cut at the edge until you
+     scrolled the table sideways (walked 2026-10-28). Tighter cells and a narrower title column fit it. */
+  @container deployments (max-width: 760px) {
+    .t-dep th, .t-dep td { padding-left: 5px; padding-right: 5px; }
+    .t-dep td.name { min-width: 8em; }
+  }
 }
 th, td { padding: 10px 12px 9px; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--rule); white-space: nowrap; }
 th { font-family: var(--f-nar); font-size: 12px; letter-spacing: .02em; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--rule-2); }
@@ -2090,6 +2096,9 @@ body.landing-body .apf { display: none; }
 .research-ap button { background: none; border: 0; padding: 10px 4px; margin: -10px -4px; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .research-ap button.busy { opacity: .6; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+/* A strategy title with no spaces in it (80 characters of one word) ran 600px past a phone's edge and scrolled
+   the whole page sideways; it breaks at the column's edge now. */
+.run-next { overflow-wrap: anywhere; }
 .run-next .btn { display: table; margin: 10px 0 0; }
 /* Ideas tested (runIdeas): each idea's outcome and the first check it missed, above the log. */
 /* Its heading keeps a gap from the figures above: on a running session (no line between them) it sat
@@ -2146,6 +2155,9 @@ body.landing-body .apf { display: none; }
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
 #openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
 #openpos .pos-why { min-width: 24ch; max-width: 60ch; }
+/* Its market cell kept the name and "Kalshi contract KX…" on one line each: at a 768px tablet the table ran 24px past
+   the window (the page scrolled sideways) and the Strategy column was squeezed to 72px. They wrap now. */
+#openpos td.pos-name { white-space: normal; min-width: 14ch; }
 
 /* Failed load: the error plus a retry button, stacked. */
 .load-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -2289,6 +2301,23 @@ body.landing-body .apf { display: none; }
   /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
      the autopilot card's figures, a held contract's ticker): 44px tall, the line box left alone. */
   .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 15px; margin-block: -15px; }
+  /* The strip's links follow one another line after line ("4 strategies passed: A, B, C, 1 more", a paused
+     strategy over "Add it on the Funds page"), and 44px boxes set on a 21px line reached 26px into the next
+     line's link (walked 2026-10-28, 360-768px): a thumb on one title could open the next. Each link's 44px is
+     inside its own line now, so no two touch: a list of titles stacks one under another (its commas, the list's
+     only text, take no room) and a lone link is a box in its line. A long title still wraps inside its box. */
+  .since-row dd a { display: inline-block; max-width: 100%; padding-block: 12px; margin-block: 0; }
+  .since-links { display: flex; flex-direction: column; align-items: flex-start; font-size: 0; }
+  .since-links > a { font-size: 14.5px; }
+  /* A link right after a glossary (i) ("…and the spread (i) · Download trades (CSV)"): the (i)'s 44px reached 25px
+     into it on the next line. The link keeps its 44px and starts clear of the (i)'s. */
+  .nobr:has(> .info) + a.csv-link { display: inline-block; margin-top: 13px; }
+  /* The strategy page's "See them on the Deploy page" and "Open … on Kalshi" (two hint lines 12px apart, each link
+     44px) overlapped by 11px; a demo-key hint's "Funds page" reached 3px into the Deploy on demo button over it. */
+  p.hint:has(a) + p.hint:has(a) { padding-top: 14px; }
+  .btn + .hint:has(a) { margin-top: 6px; }
+  /* The track record's By strategy titles wrap to two lines, and two rows' 44px links met by 1px at 768px. */
+  .trpanel td.name { padding-block: 11px 10px; }
   .ri-why a { padding-block: 14px; margin-block: -14px; }
   a.apcard-alt { padding-block: 10px; margin-block: -10px; }
   /* The autopilot line's "Change" (41px from its own padding). */
@@ -2339,6 +2368,11 @@ body.landing-body .apf { display: none; }
    also took it from the switches (Options: "Let it run until I stop it") and the What-if sliders,
    which have no border to change; and on the chosen market row the ink ring sat on the ink fill. */
 .switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* A text field, a select and a message box showed focus only by their border going from --rule-2 to --ink, 1px:
+   too slight to find the caret's field at a glance (WCAG 2.4.7). They take the ring every button has, 2px of ink
+   2px outside, 3:1 or more on every surface a field sits on (1.4.11), and keep the darker border inside it. Not
+   the landing page's or the card form's fields, which show focus with their own soft halo. */
+:where(body:not(.landing-body)) :is(.input, select, textarea, input:is([type=text], [type=email], [type=number], [type=password], [type=search], [type=url], [type=tel], :not([type]))):not(.linput, .wl-ifield input):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
 /* A ring drawn outside its control was cut off where a box scrolls or clips its contents. A table's sheet
    scrolls sideways and cut the ring off a first-column link's left side: on a desktop the sheet keeps 4px for

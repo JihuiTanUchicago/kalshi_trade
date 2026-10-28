@@ -46,7 +46,7 @@ import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
 // What the checks read from the bundle and its page files (bundle_source.mjs).
-const EXPOSE = ['S', 'api', 'PAGES', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater'];
+const EXPOSE = ['S', 'api', 'PAGES', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater', 'hotOpen'];
 const source = bundleSource('app.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -1459,6 +1459,18 @@ test('the floating autopilot pill hit-tests the page a frame after it renders, n
   frames.shift()();
   assert.ok(hits > 0);
   assert.equal(box.classes.has('yield'), true, 'the pill still steps aside, a frame later');
+});
+
+test('Tau: the hot-markets rail opens beside a desktop page by default, and over a tablet page only when you opened it', () => {
+  // Walk 2026-10-28 at 768px: up to 1080px the rail opens over the page (app.css), and open on every load it covered
+  // the left 306px of every page. A phone never shows it; a desktop keeps it open unless you closed it.
+  for (const [width, saved, expected] of [[1280, null, true], [1280, '0', false], [1280, '1', true], [1081, null, true],
+    [1080, null, false], [768, null, false], [768, '1', true], [768, '0', false], [760, '1', false], [390, null, false]]) {
+    const store = new Map(saved == null ? [] : [['tau_hotrail', saved]]);
+    const f = frontend({storage: {getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v)},
+      matchMedia: (q) => ({matches: width <= +/max-width: (\d+)px/.exec(q)[1]})});
+    assert.equal(f.hotOpen(), expected, `${width}px with saved preference ${saved}`);
+  }
 });
 
 test('the hot-markets rail slides only while you open or close it, never as a page loads', async () => {
@@ -3000,7 +3012,7 @@ test('a returning user reads what happened since the last visit at the top of th
   // Paper says what its figure is net of, as every paper P&L does; demo and live don't.
   assert.match(text, /<span class="nobr"><b>Paper<\/b> <span class="pos">\+\$2\.42<\/span><\/span> on 3 trades, after Kalshi fees and the spread<\/span>/);
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
-  assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
+  assert.match(text, /4 strategies passed: <span class="since-links"><a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a><\/span>/);
   assert.match(text, /3 research sessions started/);
   assert.match(text, /It put 1 on paper, paused 2, made 1 other change\./);
   assert.match(text, /<a href="#dash-deps">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);
@@ -3906,10 +3918,10 @@ test('Tau: a hot-markets row keeps "Target Price:" on one line with its amount',
   f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}];
   const html = f.hotRowHtml({t: 'KXBTC15M-26OCT271830-30', s: 'KXBTC15M', ti: 'Bitcoin price up or down in next 15 mins?', su: 'Target Price: $113,512.08',
     bid: .54, ask: .56, v24: 1200, h: [.4, .5]});
-  assert.match(html, /<span class="hot-title">Bitcoin price up or down in next 15 mins\? · <span class="nobr">Target Price: \$113,512\.08<\/span><\/span>/);
+  assert.match(html, /<span class="hot-title" title="[^"<>]*">Bitcoin price up or down in next 15 mins\? · <span class="nobr">Target Price: \$113,512\.08<\/span><\/span>/);
   // Any other title is as before.
   assert.match(f.hotRowHtml({t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price?', su: '$113,000 or above', bid: .48, ask: .52, v24: 1, h: [.4, .5]}),
-    /<span class="hot-title">Bitcoin price\? · \$113,000 or above<\/span>/);
+    /<span class="hot-title" title="[^"<>]*">Bitcoin price\? · \$113,000 or above<\/span>/);
   assert.match(readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8'), /\n\.nobr \{ white-space: nowrap; \}/);
 });
 
