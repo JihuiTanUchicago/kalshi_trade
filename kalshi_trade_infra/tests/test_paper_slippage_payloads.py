@@ -164,6 +164,23 @@ def test_a_passed_strategy_with_no_gatekeeper_record_says_later_period_like_its_
     assert views._deployment_out(dict(row, strategy_status="passed", no_gatekeeper_record=None), [])["backtest_only"] is False
 
 
+def test_a_void_strategy_with_no_gatekeeper_record_says_not_held_out_and_that_nothing_picked_it():
+    """The first version's simple backtest stored a void strategy with no gatekeeper record: its Strategies row and
+    page say "not held out". The row's own read says so (void_no_record, MySQL's 1/0): backtest_only, so its details
+    say "not held out", and void_no_record, so its hover leaves out "which picked it". A recorded void, or a read
+    without the column (the gates'), claims nothing."""
+    row = dict(_dep(7, "paper", "1.2000", 2, 8, 1), title="t", direction=None, market="btc15m", status_reason=None, wins=1,
+               created_at=None, result={"out_of_sample": {"pnl": 6.0, "trades": 40}})
+    out = views._deployment_out(dict(row, strategy_status="failed", no_gatekeeper_record=0, void_no_record=1), [])
+    assert out["backtest_only"] is True and out["void_no_record"] is True
+    for over in ({"void_no_record": 0}, {"void_no_record": None}, {}):
+        out = views._deployment_out(dict(row, strategy_status="failed", **over), [])
+        assert out["backtest_only"] is False and "void_no_record" not in out, over
+    # Only a void row's column counts (the column is false for any other status; a stray one still claims nothing).
+    out = views._deployment_out(dict(row, strategy_status="passed", void_no_record=1), [])
+    assert out["backtest_only"] is False and "void_no_record" not in out
+
+
 def test_the_autopilots_day_and_week_sum_their_fills_in_the_reads_they_already_make():
     cur = _Rows([{"mode": "paper", "p": Decimal("1.2340"), "f": 12}, {"mode": "live", "p": Decimal("-2.0000"), "f": 40}])
     pnl, fills = position_repository.realized_pnl_by_mode(cur, 7, ("live", "paper"), datetime(2026, 10, 27), fills=True)

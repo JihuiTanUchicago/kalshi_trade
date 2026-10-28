@@ -17,8 +17,8 @@ from trading_core.domain.slippage import contract_fills
 
 # The display reads' own columns, which the gates' list_deployments never carries: the paper after-slippage
 # estimate's input, and the strategy's status and whether a passed one has no gatekeeper record (a
-# backtest-only or record-less row's "later-period" words).
-DISPLAY_ONLY = ("contract_fills", "strategy_status", "no_gatekeeper_record")
+# backtest-only or record-less row's "later-period" words), and whether a void one has none (void_no_record).
+DISPLAY_ONLY = ("contract_fills", "strategy_status", "no_gatekeeper_record", "void_no_record")
 
 pytestmark = pytest.mark.skipif(os.getenv("APP_TEST_MYSQL") != "1", reason="needs APP_TEST_MYSQL=1 and a MySQL")
 

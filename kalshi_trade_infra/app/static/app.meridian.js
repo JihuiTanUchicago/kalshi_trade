@@ -58,6 +58,9 @@
     rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
     unseen: ['Later-period P&L (unseen data)', 'What the strategy made in the backtest after its split date, on a held-out slice of history the agent never looked at while searching, so the result can’t be curve-fit. This is the backtest figure that counts.'],
     laterperiod: ['Later-period P&L', 'What the strategy made in the backtest after its split date. That later stretch is what picked it, so unlike unseen data it wasn’t held out: a weaker test.'],
+    // A Void strategy's later stretch picked nothing: the first version's simple backtest judged it there, it failed, and
+    // nothing says the stretch was held out ("what picked it" was wrong for it). Its page's bubble says this instead.
+    latervoid: ['Later-period P&L', 'What the strategy made in the backtest after its split date, where it failed its checks. There’s no record that stretch was held out, so unlike unseen data it isn’t held-out evidence.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
     pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade after its split date. For a strategy with a gatekeeper record, that data was held out: the agent never saw it. For one without (backtest only, or a pass from the old backtest gate), it is the later period that picked it, so not held out. Compare it with Realized: well below it means trading is falling short of the test.'],
@@ -1934,7 +1937,10 @@
   // says the same pair as Tau's Backtest estimate hover; only the backtest-only one had one ("…which picked it: not held out").
   const DEP_FACT_TIP = 'After its split date (later period\u00a0· unseen data)';
   const DEP_FACT_TIP_LATER = 'After its split date, which picked it (later period\u00a0· not held out)';
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact" title="${d.backtest_only ? DEP_FACT_TIP_LATER : DEP_FACT_TIP}">Later-period P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}${d.backtest_only ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data'}${SEP}` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  // A Void strategy with no gatekeeper record (the server's void_no_record, with backtest_only): not held out either,
+  // but nothing picked it, so its hover leaves that out, as its Strategies row and page do. It read "unseen data".
+  const DEP_FACT_TIP_VOID = 'After its split date (later period\u00a0· not held out)';
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact" title="${d.void_no_record ? DEP_FACT_TIP_VOID : d.backtest_only ? DEP_FACT_TIP_LATER : DEP_FACT_TIP}">Later-period P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}${d.backtest_only ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data'}${SEP}` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   // One plain line on how a book is doing against its backtest, written by the server
   // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
   // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.

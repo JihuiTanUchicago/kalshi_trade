@@ -56,7 +56,8 @@ def delete_post(cur, post_id: int, user_id: int) -> bool:
 # A shared strategy card whose strategy has no gatekeeper record (NO_EXPERIMENT_SQL), as a column of the feed's own
 # read, not a read of its own: its author's strategy by the snapshot's id (primary key), the seeded example never.
 # A card stored before the snapshot carried `no_gatekeeper_record` (#598) said "on unseen data" for a pass from the
-# old loose backtest gate; the feed adds the flag to a "passed" card from this (community._snapshot_out). Display only.
+# old loose backtest gate; the feed adds the flag to a "passed" card from this (community._snapshot_out), and to a
+# "failed" one, a void the first version's simple backtest stored with no record (VOID_NO_RECORD_SQL). Display only.
 POST_NO_RECORD_SQL = ("(p.kind='strategy' AND EXISTS (SELECT 1 FROM app_strategies s "
                       "WHERE s.id=CAST(JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json, '$.id')) AS UNSIGNED) "
                       "AND s.user_id=p.user_id AND s.direction<>%s AND " + NO_EXPERIMENT_SQL + ")) AS no_gatekeeper_record")

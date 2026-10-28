@@ -172,3 +172,19 @@ def test_the_strategies_list_sends_the_unrecorded_void_count_and_flags_its_rows(
     flagged = {c["id"]: c.get("no_gatekeeper_record", False) for c in out["strategies"]}
     assert flagged == {20: True, 21: False}
     assert len(calls) == 2  # no read of its own
+
+
+def test_the_deployment_reads_carry_the_void_flag_in_their_own_statements():
+    # Deploy and the Overview said "unseen data" on a row of a void strategy with no record. Its flag is a column of
+    # the two display reads (the full one and book_memo's kept one), never a read of its own, and never of the gates'.
+    from app.adapters.db import deployment_repository as deps
+    from app.adapters.db import strategy_repository as strat
+
+    assert deps.VOID_RECORD_COL == strat.VOID_NO_RECORD_SQL + " AS void_no_record"
+    for read in (deps.list_deployments_for_display, deps.deployment_rows_for_display):
+        cur = _Cur([])
+        read(cur, 7)
+        assert len(cur.sqls) == 1 and deps.VOID_RECORD_COL in cur.sqls[0] and deps.NO_RECORD_SQL in cur.sqls[0], read
+    cur = _Cur([])
+    deps.list_deployments(cur, 7)
+    assert all("void_no_record" not in q for q in cur.sqls)

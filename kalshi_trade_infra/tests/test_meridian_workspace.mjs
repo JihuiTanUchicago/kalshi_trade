@@ -6497,6 +6497,19 @@ test('a backtest-only strategy’s Deploy row says "Later-period P&L · not held
   assert.doesNotMatch(html, /Unseen P&amp;L/);
 });
 
+test('a Void strategy with no gatekeeper record’s Deploy row says "not held out", without "which picked it"', async () => {
+  // The first version's simple backtest stored it as Void with no record: its details said "· unseen data". The server
+  // sends backtest_only and void_no_record; nothing picked a void one, as its Strategies row and page say.
+  const row = (o) => ({id: 11, strategy_id: 111, title: 'S', market: 'btc15m', mode: 'paper', status: 'running', stake: 5, max_positions: 2,
+    backtest: {out_of_sample: {pnl: 12, trades: 20}}, created_at: '2026-10-17T10:00:00Z', realized_pnl: 3, unrealized_pnl: null,
+    closed_trades: 2, open_positions: 0, curve: [], ...o});
+  const f = frontend({fetchImpl: () => response({deployments: [row({backtest_only: true, void_no_record: true})], open_positions: []})});
+  await f.viewDeploy();
+  const html = f.root.querySelector('#deps').innerHTML;
+  assert.match(html, /<span class="dep-fact" title="After its split date \(later period\u00a0· not held out\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· not\u00a0held\u00a0out\u00a0· /);
+  assert.doesNotMatch(html, /unseen|picked it/i);
+});
+
 test('an Overview monitor’s details say "Later-period P&L · not held out" for a strategy whose page does, never unseen', async () => {
   // Walk 2026-10-27: a passed strategy with no gatekeeper record, whose page reads "Later-period P&L … after the split
   // date, which picked it: not held out", had "Unseen P&L +$0.90" in its Overview details. The server's backtest_only

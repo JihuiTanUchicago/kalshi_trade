@@ -627,6 +627,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const figs = f.root.querySelector('#figs'), html = main(f);
     // The figure up top, its note and the return on capital.
     assert.equal(figs.querySelector('dt').textContent, 'Later-period P&L (not held out)');
+    // Its bubble says it failed there, never laterperiod's "what picked it" (nothing picked a void one).
+    assert.match(figs.querySelector('dt').innerHTML, /data-glo="latervoid"/);
+    assert.doesNotMatch(figs.innerHTML, /data-glo="laterperiod"/);
     assert.match(figs.innerHTML, /6 trades over 9 days after the split date · not held out/);
     assert.match(figs.innerHTML, /Later period over 9 days · not held out/);
     assert.match(figs.innerHTML, /<span class="pnl-nopass">/);  // still muted, as a Void figure is
@@ -699,6 +702,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(held.root.querySelector('#figs dt').innerHTML, /data-glo="unseen"/);
     assert.doesNotMatch(held.root.querySelector('#figs').innerHTML, /data-glo="laterperiod"/);
     assert.match(split.root.querySelector('#figs dt').innerHTML, /data-glo="laterperiod"/);
+    // A pass with no record keeps laterperiod's bubble (its later slice did pick it); only a Void one takes latervoid.
+    const loose = await open({status: 'passed', experiment: null, no_gatekeeper_record: true, recent_trades: []});
+    assert.match(loose.root.querySelector('#figs dt').innerHTML, /data-glo="laterperiod"/);
   });
 
   // Road to live's realization hint compares paper with the backtest's later slice (the server's out_of_sample). It read
