@@ -3615,7 +3615,9 @@
     const m = AP_MODE[d.mode] || AP_MODE.paper, r = d.research || {}, prog = d.paper_progress;
     // A live one while live trading is closed places no orders: counted apart, as Deploy counts it.
     const liveIdle = liveOpen() ? 0 : +d.live_running || 0;
-    const running = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0) - liveIdle;
+    // Each book by name, as the panel's Running figure says it: "Strategies running 2" didn't say which money they trade.
+    const running = [[(+d.live_running || 0) - liveIdle, 'live'], [+d.demo_running || 0, 'demo'], [+d.paper_running || 0, 'paper']]
+      .filter(([n]) => n > 0).map(([n, book]) => `${n}\u00a0${book}`).join(SEP);
     // Realized, as the paper portfolio, the Closed P&L chart, the track record, Deploy and the strategy
     // page count it. The equity change (total_pnl) took off open positions' entry fees and dropped every
     // trade before a reset, so "All-time P&L +$5.19" sat beside "Closed P&L +$5.61" for one book.
@@ -3626,7 +3628,7 @@
     const paperNone = pnl != null && !+S.dashPaper.closed_trades && !+pnl;
     const cells = [
       d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEst(S.dashPaper.slippage_estimate)}`],
-      ['Strategies running', `${running ? String(running) : 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
+      ['Strategies running', `${running || 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${PAPER_COUNT_WHY}</small>`]
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
