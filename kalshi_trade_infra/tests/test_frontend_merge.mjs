@@ -905,6 +905,21 @@ test('an empty Deployed box names its next step "research an idea yourself", as 
   }
 });
 
+test('the empty Deployed box\'s button says what its sentence says, "Research an idea", as Meridian\'s does', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), since: {own_sessions: true}});
+    if (path === '/api/autopilot/status') return response({...apOn, autopilot: false, mode: 'off'});
+    if (path.startsWith('/api/')) return response({});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); f.clearTimers();
+  const box = f.root.querySelector('#deps-empty');
+  // "Or research an idea yourself." sat over a "New session" button: the sentence and the button named two things.
+  assert.match(box.innerHTML, /Or research an idea yourself\.<\/p><a class="btn" href="\/research">Research an idea<\/a>/);
+  assert.doesNotMatch(box.innerHTML, /New session/);
+});
+
 test('the autopilot pill goes by the saved switch until its first status read lands', async () => {
   for (const on of [true, false]) {
     const f = frontend({fetchImpl: path => {

@@ -738,6 +738,21 @@ test('Meridian: the empty Deployed box names its next step "research an idea you
   }
 });
 
+test('Meridian: the empty Deployed box\'s button says what its sentence says, "Research an idea", as Tau\'s does', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData({since: {own_sessions: true}}));
+    if (path === '/api/autopilot/status') return response({...apStatus, autopilot: false, mode: 'off'});
+    if (path.startsWith('/api/')) return response({});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); f.clearTimers();
+  const box = f.root.querySelector('#deps-empty');
+  // "Or research an idea yourself." sat over a "New session" button: the sentence and the button named two things.
+  assert.match(box.innerHTML, /Or research an idea yourself\.<\/p><a class="btn" href="\/research\?new=1">Research an idea<\/a>/);
+  assert.doesNotMatch(box.innerHTML, /New session/);
+});
+
 test('Overview offers each mode its own trades CSV only when that mode has closed trades', async () => {
   for (const [counts, connected, deployments] of [[{paper: 0, demo: 0, live: 0}, false, []], [{paper: 4, demo: 0, live: 0}, false, []],
     [{paper: 1, demo: 2, live: 3}, true, [dashboardDeployment('live')]], [{paper: 0, demo: 0, live: 3}, false, []]]) {
@@ -1078,7 +1093,7 @@ test('Overview polling shares paper-running context only for a nonempty uniform 
     const createLinks = section.querySelectorAll('a[href="/research?new=1"]');
     assert.equal(createLinks.length, 1);
     const create = createLinks[0];
-    assert.equal(create.textContent, frame.deployments.length ? 'New research' : 'New session');
+    assert.equal(create.textContent, frame.deployments.length ? 'New research' : 'Research an idea');
     assert.equal(create.getAttribute('href'), '/research?new=1');
     if (!frame.deployments.length) {
       assert.equal(section.querySelector('.empty h3').textContent, 'Nothing deployed yet');
