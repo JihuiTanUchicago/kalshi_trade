@@ -312,6 +312,11 @@ test('the research page takes its model list from the account instead of waiting
   await f.viewResearch(); await flush(); await flush();
   assert.ok(!f.requests.some(({path}) => path === '/api/models'));
   assert.match(f.root.innerHTML, /<option value="m2" selected>Model two/);
+  // The pipeline figure's diversification step (gatekeeper.marginal_contribution_ok) said "Marginal-contribution
+  // check". It says what the check tests: daily returns against a strategy already passed on the same market.
+  const fig = f.root.querySelector('.pipefig').innerHTML;
+  assert.match(fig, /Adds something new[\s\S]*Its daily returns can’t move too closely with a strategy that already passed here on the same market \(correlation \|ρ\| ≤ 0\.80\)\. A near-copy adds nothing\./);
+  assert.doesNotMatch(fig, /Marginal|contribution/i);
   f.clearTimers();
 });
 

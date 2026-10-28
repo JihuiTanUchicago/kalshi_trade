@@ -2106,6 +2106,17 @@ function researchFrontend(runs = [], {policy = null, ...options} = {}) {
   }});
 }
 
+// The pipeline figure's diversification step (gatekeeper.marginal_contribution_ok) said "Marginal-contribution check".
+// It says what the check tests: daily returns against a strategy already passed on the same market, |ρ| ≤ 0.80.
+test('Meridian: Research’s pipeline figure names the diversification check in plain words', async () => {
+  const f = researchFrontend([]);
+  await f.viewResearch(); await flush();
+  const fig = f.root.querySelector('.pipefig').innerHTML;
+  assert.match(fig, /Adds something new[\s\S]*Its daily returns can’t move too closely with a strategy that already passed here on the same market \(correlation \|ρ\| ≤ 0\.80\)\. A near-copy adds nothing\./);
+  assert.doesNotMatch(fig, /Marginal|contribution/i);
+  f.clearTimers();
+});
+
 test('Meridian: Research counts a paused session as paused, not as running', async () => {
   // One running and one paused said "Running 2" (the server folded paused into running).
   let f = researchFrontend([researchRun(4, 'running'), researchRun(5, 'paused')]);
