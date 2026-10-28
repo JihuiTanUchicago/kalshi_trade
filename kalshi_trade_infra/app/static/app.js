@@ -576,7 +576,7 @@
   // reply, or the edge's 5xx) says so, so nobody deploys or sends twice by trying again blind.
   const failText = (status, write) => write && (!status || status >= 500)
     ? "Tau didn't confirm this, so it may or may not have gone through. Reload the page to check before you try again."
-    : !status ? "Can't reach Tau. Check your connection."
+    : !status ? 'Can’t reach Tau. Check your connection.'
     : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
     : status >= 500 ? `Tau is having trouble right now (${status}). Try again in a moment.`
     // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code.
@@ -658,7 +658,7 @@
     // built on {} showed the browser's own TypeError text.
     if (!data || typeof data !== 'object') {
       apiBroke(path, body !== undefined, 'replied with no JSON');
-      throw new ApiError(res.status, body !== undefined ? failText(0, true) : "Tau's reply didn't come through whole. Try again.");
+      throw new ApiError(res.status, body !== undefined ? failText(0, true) : 'Tau’s reply didn’t come through whole. Try again.');
     }
     return data;
   }
