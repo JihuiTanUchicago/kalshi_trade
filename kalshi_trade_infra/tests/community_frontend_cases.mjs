@@ -159,6 +159,17 @@ export function communityCases({name, frontend}) {
       // Its span is said once, and the figure is a signed amount.
       assert.equal((html.match(/over 9 days/g) || []).length, 1); assert.match(html, /\+\$5\.50/);
     }
+    // Walk 2026-10-28: a held-out card with no later-period figure read "—" beside "(later period · unseen data)", a
+    // note on a figure that wasn't there. With no figure there is no note, as a Strategies row with none has no line.
+    for (const over of [{}, {no_gatekeeper_record: true}, {status: 'backtest-only'}, {status: 'rejected'}]) {
+      for (const owner of ['', '@maya']) {
+        const html = f.postSnapshot({...card, ...over, pnl: null}, owner);
+        assert.match(html, /—/, JSON.stringify(over));
+        assert.doesNotMatch(html, /later\u00a0period|unseen\u00a0data|not\u00a0held\u00a0out|split date|over 9 days/, JSON.stringify(over));
+        if (owner) assert.match(html, /Only @maya can open this strategy[.;] [Aa]sk them to share a copy from its page\./);
+        else assert.doesNotMatch(html, /snap-note/, JSON.stringify(over));
+      }
+    }
     // A Void, Rejected or missed-final idea's figure is never green: Meridian's card toned "+$42.17" under a Void
     // stamp, where its row on Strategies mutes it.
     for (const over of [{status: 'failed'}, {status: 'rejected'}, {verdict: 'missed_final'}]) {
