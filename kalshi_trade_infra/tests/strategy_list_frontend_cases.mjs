@@ -284,9 +284,9 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const f = frontend({fetchImpl: () => response({})});
     const oos = {pnl: 6.2, trades: 40, win_rate: 0.61, days: 30};
     const bt = row(f, {status: 'backtest-only', out_of_sample: oos});
-    assert.match(bt, /later-period P&amp;L over 30 days after the split date, which picked it: not held out/);
+    assert.match(bt, /later-period P&amp;L over 30 days after the split date, which picked it\u00a0· not held out/);
     assert.doesNotMatch(bt, /unseen/);
-    assert.match(row(f, {status: 'passed', out_of_sample: oos}), /later-period P&amp;L over 30 days after the split date, on unseen data/);
+    assert.match(row(f, {status: 'passed', out_of_sample: oos}), /later-period P&amp;L over 30 days after the split date\u00a0· unseen data/);
     // With only in-sample figures, it says so, as before.
     assert.match(row(f, {status: 'backtest-only', out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}), /on the history it searched over 60 days/);
   });
@@ -297,9 +297,9 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const f = frontend({fetchImpl: () => response({})});
     const oos = {pnl: 6.2, trades: 40, win_rate: 0.61, days: 30};
     const none = row(f, {status: 'passed', no_gatekeeper_record: true, out_of_sample: oos});
-    assert.match(none, /later-period P&amp;L over 30 days after the split date, which picked it: not held out/);
+    assert.match(none, /later-period P&amp;L over 30 days after the split date, which picked it\u00a0· not held out/);
     assert.doesNotMatch(none, /unseen/);
-    assert.match(row(f, {status: 'passed', no_gatekeeper_record: false, out_of_sample: oos}), /later-period P&amp;L over 30 days after the split date, on unseen data/);
+    assert.match(row(f, {status: 'passed', no_gatekeeper_record: false, out_of_sample: oos}), /later-period P&amp;L over 30 days after the split date\u00a0· unseen data/);
     assert.match(row(f, {status: 'passed', no_gatekeeper_record: true, out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}),
       /on the history it searched over 60 days/);
   });
@@ -320,8 +320,8 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const held = btLine(row(f, {status: 'passed', no_gatekeeper_record: false, out_of_sample: oos}));
     const searched = btLine(row(f, {status: 'passed', out_of_sample: null, in_sample: {pnl: 3, trades: 9, days: 60}}));
     // Desktop's sentences: the later-period one as before, and a held-out one that names the period as the sort does.
-    assert.equal(later.long, 'later-period P&amp;L over 9 days after the split date, which picked it: not held out');
-    assert.equal(held.long, 'later-period P&amp;L over 9 days after the split date, on unseen data');
+    assert.equal(later.long, 'later-period P&amp;L over 9 days after the split date, which picked it\u00a0· not held out');
+    assert.equal(held.long, 'later-period P&amp;L over 9 days after the split date\u00a0· unseen data');
     assert.equal(searched.long, 'on the history it searched over 60 days');
     // The phone's three read as one family: which data, over how long, and (for the later period) whether held out.
     assert.equal(later.short, `later\u00a0period${SEP}9\u00a0days${SEP}not\u00a0held\u00a0out`);
@@ -335,7 +335,7 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     // A verdict word rides on both forms; a day or less, and no stated span, read in words.
     const voidRow = btLine(row(f, {status: 'failed', out_of_sample: {...oos, days: 0.5}}));
     assert.equal(voidRow.short, `later\u00a0period${SEP}under a day${SEP}unseen\u00a0data${SEP}did\u00a0not\u00a0pass`);
-    assert.equal(voidRow.long, `later-period P&amp;L in under a day after the split date, on unseen data${SEP}did not pass`);
+    assert.equal(voidRow.long, `later-period P&amp;L in under a day after the split date\u00a0· unseen data${SEP}did not pass`);
     assert.equal(btLine(row(f, {status: 'passed', out_of_sample: {...oos, days: null}})).short, `later\u00a0period${SEP}unseen\u00a0data`);
     // No figure: the verdict alone, one line with nothing to shorten.
     assert.match(row(f, {status: 'rejected', out_of_sample: null, in_sample: {}}), /<div class="sub-fig">did not pass<\/div>/);

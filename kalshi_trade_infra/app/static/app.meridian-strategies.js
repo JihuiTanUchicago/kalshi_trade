@@ -650,7 +650,7 @@ window.TauPage('strategies', (T) => {
     const toneV = (v) => (noPass ? undefined : v);
     const mute = (html) => (noPass ? `<span class="pnl-nopass">${html}</span>` : html);
     const splitFig = (r) => r.out_of_sample ? fig(topLabel, mute(usd(r.out_of_sample.pnl, true)), { v: toneV(r.out_of_sample.pnl),
-      small: `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} after the split date, which picked it: not held out` }) : '';
+      small: `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} after the split date, which picked it${SEP}not held out` }) : '';
     const heldFig = (h, label) => fig(label, mute(h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return)), { v: toneV(h.net_pnl != null ? h.net_pnl : h.mean_net_return),
       small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
     const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
@@ -931,7 +931,10 @@ window.TauPage('strategies', (T) => {
         const auto = r.live_autopilot && r.live_autopilot.ok;
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = roadSummary(r, s, liveWhy, rows.length, apPaper) + gatesHtml(rows)
-          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money on ${splitOnly ? 'the data after its split date' : 'unseen data'}.` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest’s later-period P&amp;L per trade${splitOnly ? ' (not held out)' : ' on unseen data'}.`}</p>` : '')
+          // The server's realization is against the backtest's later slice (its out_of_sample), so the hint names it as
+          // the figure up top does, by laterQual: "later period · unseen data" only with a gatekeeper record (splitOnly
+          // otherwise). It read "made money on unseen data" and "…P&L per trade on unseen data".
+          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period${SEP}${laterQual}).` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest’s P&amp;L per trade after its split date (later period${SEP}${laterQual}).`}</p>` : '')
           + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book (bought at the ask, sold at the bid, after Kalshi fees), from every paper run of this strategy, removed ones included, so these figures are not its realized P&amp;L above. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading on this server: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
       } catch (e) {
         // A read that failed (a bad connection) says why and offers Try again: it said "unavailable" for the

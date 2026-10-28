@@ -248,7 +248,7 @@ const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false}
   ]}});
 
 test('road to live says plainly when paper is losing money against the backtest', async () => {
-  for (const [realization, said] of [[-0.18, /Paper is <b>losing money<\/b> per trade, while the backtest made money on unseen data\./], [0.6, /Paper earns <b>60%<\/b> of the backtest/]]) {
+  for (const [realization, said] of [[-0.18, /Paper is <b>losing money<\/b> per trade, while the backtest made money after its split date \(later period\u00a0· unseen data\)\./], [0.6, /Paper earns <b>60%<\/b> of the backtest/]]) {
     const readiness = {ready: false, blocking: 'the gatekeeper has not cleared it', deployment_candidate: false, live_autopilot: {ok: false},
       paper: {trades: 12, trades_needed: 30, net_pnl: -0.76, events: 12, events_needed: 20, span_hours: 5, span_needed_hours: 48,
         p_value: null, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 2.64, realization,
@@ -1680,10 +1680,13 @@ test('another trader’s shared strategy says whose it is instead of linking to 
   const strat = {kind: 'strategy', id: 42, title: 'Fade', market: 'btc15m', status: 'passed', pnl: 42.17, trades: 23, win_rate: .61, days: 9.4};
   host.innerHTML = f.postSnapshot(strat, '@bob');
   assert.equal(host.querySelector('a'), null);
-  assert.equal(host.querySelector('.snap-note').textContent, 'Only @bob can open this strategy. Ask them to share a copy from its page.');
-  assert.match(host.querySelector('.snap-meta').textContent, /later-period backtest over 9 days on unseen data: \+\$42\.17\u00a0· 23 trades\u00a0· 61\.0% win$/);
+  assert.equal(host.querySelector('.snap-note').textContent, 'Backtest over 9 days after the split date (later period\u00a0· unseen data). Only @bob can open this strategy. Ask them to share a copy from its page.');
+  // The figure is "later-period P&L", as the Strategies list's sort names it; the note says which kind, as Meridian's
+  // card does: it read "later-period backtest over 9 days on unseen data: +$42.17" in the figures' line.
+  assert.match(host.querySelector('.snap-meta').textContent, /^BTC 15-min up\/down\u00a0· later-period P&amp;L: \+\$42\.17\u00a0· 23 trades\u00a0· 61\.0% win$/);
   host.innerHTML = f.postSnapshot(strat, '');
-  assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42'); assert.equal(host.querySelector('.snap-note'), null);
+  assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42');
+  assert.equal(host.querySelector('.snap-note').textContent, 'Backtest over 9 days after the split date (later period\u00a0· unseen data).');
   host.innerHTML = f.postSnapshot(strat, '<img src=x>');
   assert.doesNotMatch(host.innerHTML, /<img/);
 });

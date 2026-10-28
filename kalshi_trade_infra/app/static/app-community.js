@@ -24,14 +24,16 @@ window.TauPage('community', (T) => {
       // A backtest-only strategy, or a pass the server found no gatekeeper record for (no_gatekeeper_record), has a
       // later-period figure: the slice after the split date that picked it, not held out, as its page and list say.
       const later = snap.status === 'backtest-only' || snap.no_gatekeeper_record;
-      // Why it is later-period goes in the note under the figures, as Meridian's card has it: in the figures' line,
-      // "…which picked it: not held out: +$12.40" ran two colons into the P&L. A held-out one says "later-period backtest
-      // … on unseen data", as the Strategies list's row and sort do: it read "backtest on unseen data" beside them.
-      const why = later ? `Backtest${overDays(snap.days)} after the split date, which picked it: not held out.` : '';
+      // Either kind's figure is "later-period P&L", as the Strategies list's sort names it, and the note under the
+      // figures says which, as Meridian's card does: "later period · unseen data" (held out) or "· not held out". In the
+      // figures' line, "…which picked it: not held out: +$12.40" ran two colons into the P&L, and a held-out card read
+      // "later-period backtest over 9 days on unseen data", in words the list and the Deploy hover no longer use.
+      const why = later ? `Backtest${overDays(snap.days)} after the split date, which picked it (later period${SEP}not held out).`
+        : `Backtest${overDays(snap.days)} after the split date (later period${SEP}unseen data).`;
       const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
-        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}${later ? 'later-period backtest' : `later-period backtest${overDays(snap.days)} on unseen data`}: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
-      return owner ? `<div class="snap">${head}<div class="snap-note">${why ? why + ' ' : ''}Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
-        : `<a class="snap" href="/strategies/${snap.id}">${head}${why ? `<div class="snap-note">${why}</div>` : ''}</a>`;
+        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}later-period P&amp;L: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
+      return owner ? `<div class="snap">${head}<div class="snap-note">${why} Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
+        : `<a class="snap" href="/strategies/${snap.id}">${head}<div class="snap-note">${why}</div></a>`;
     }
     if (snap.kind === 'deployment') {
       const book = snap.mode === 'live' ? 'live' : snap.mode === 'demo' ? 'demo' : 'paper';

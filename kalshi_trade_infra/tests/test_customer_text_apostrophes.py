@@ -102,7 +102,7 @@ def test_the_strategy_pages_research_paper_and_pace_lines_are_curly(name):
     src = (APP / "static" / name).read_text(encoding="utf-8")
     for word in ("The holdout’s is", "than validation’s", "each trade’s net return", "each slice’s average",
                  "At the backtest’s later-period pace", "Kalshi’s taker fee", "the agent’s own in-sample",
-                 "of the backtest’s later-period P&amp;L"):
+                 "of the backtest’s P&amp;L per trade after its split date"):
         assert word in src, word
         assert word.replace("’", "'") not in src and word.replace("’", "\\'") not in src, word
 
