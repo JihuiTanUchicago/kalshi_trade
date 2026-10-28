@@ -3197,7 +3197,12 @@
       renderAutopilot(box, S.ap); paintDashAp(); bellTick();
       if (S.ap.idle_pending && !afterDemo) demoCashRead().then(() => refreshAutopilot(document.getElementById('autopilot-float'), false, undefined, true));
     }
-    catch (e) { S.apFailing = true; apPaintStale(); return false; }  // best-effort: never block the app
+    catch (e) {
+      S.apFailing = true; apPaintStale();
+      // Never read: an open panel says the status didn't load (apUpdate), and its Try again is given back.
+      if (!S.ap && box && apExpanded()) renderAutopilot(box, null);
+      return false;
+    }  // best-effort: never block the app
     return true;
   }
   // The autopilot's figures (the panel's and the dashboard card's) say how old they are once its
