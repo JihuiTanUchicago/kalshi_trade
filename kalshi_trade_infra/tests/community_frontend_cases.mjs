@@ -120,6 +120,18 @@ export function communityCases({name, frontend}) {
     assert.match(f.postSnapshot({...card, verdict: 'held_back'}, '@bob'), /<span class="mk quiet">Held back<\/span>/);
     assert.match(f.postSnapshot(card, ''), /<span class="mk on">Passed<\/span>/);
   });
+  test(`${name}: a strategy list that didn't load says so in the picker, and the composer still posts`, async () => {
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/strategies') return response({error: 'Something went wrong on our side. It’s been logged.'}, 500);
+      if (path.startsWith('/api/community')) return response({posts: []});
+      return response({});
+    }});
+    f.location.pathname = '/community';
+    await f.viewCommunity(); await settle();
+    const options = f.root.querySelector('#post-strat').querySelectorAll('option');
+    assert.deepEqual(options.map((o) => o.textContent), ['Your strategies didn’t load. Reload the page to attach one.']);
+    assert.ok(f.root.querySelector('#composer-post [type=submit]'));
+  });
   test(`${name}: a shared strategy with no gatekeeper record calls its figure later-period, never unseen`, () => {
     // Walk 2026-10-27: a pass from the old loose gate (the server's no_gatekeeper_record) and a backtest-only
     // strategy read "on unseen data" / "Unseen-data P&L" on the card, where its page and list say later-period.
