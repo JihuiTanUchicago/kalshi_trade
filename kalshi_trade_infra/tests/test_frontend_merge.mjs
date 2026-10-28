@@ -2554,7 +2554,7 @@ test('Tau phone polish: a glossary marker keeps its last word, one rule where bo
   const touch = css.slice(css.lastIndexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.input, select, input\[type=text\][^{]*\{ min-height: 44px; \}/);
-  assert.match(block, /input\[type=range\] \{ height: 40px; \}/);
+  assert.match(block, /input\[type=range\] \{ height: 44px; \}/);
   assert.match(block, /details > summary \{ padding-block: 13px; min-height: 44px; \}/);
   assert.match(block, /td\.name > a:not\(\.btn\) \{ padding-block: 12px; margin-block: -12px; \}/);
   assert.match(block, /\.legal-nav a, \.legal-foot a, \.lfoot-links a, \.linkish \{ padding: 10px 4px; margin: -10px -4px; \}/);

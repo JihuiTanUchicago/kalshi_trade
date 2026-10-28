@@ -2657,6 +2657,9 @@ body.landing-body .apf { display: none; }
   /* A glossary marker's 14px icon sits where it did (5px after its word), in a 44px target the margins give back. */
   .info { width: 44px; height: 44px; margin: -15px -15px -15px -10px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
+  /* The autopilot sheet's message box (41px) and a short button such as Meridian's Send (42px wide). */
+  .apf-composer-row textarea { min-height: 44px; }
+  .btn { min-width: 44px; }
   .pick, #pick-all { width: 22px; height: 22px; }
 }
 @media (max-width: 760px) {
@@ -2956,9 +2959,9 @@ body.landing-body .apf { display: none; }
    layout does not move. */
 @media (pointer: coarse) {
   .input, select, input[type=text], input[type=search], input[type=email], input[type=number], input[type=password], .post-tools select, .explore-filters .input { min-height: 44px; }
-  input[type=range], .dial input[type=range] { height: 40px; }
-  .key-file input[type=file] { padding-block: 10px; }
-  .switch { min-height: 44px; }
+  input[type=range], .dial input[type=range] { height: 44px; }
+  .key-file input[type=file] { padding-block: 12px; }
+  .switch { min-height: 44px; min-width: 44px; }
   details > summary { padding-block: 13px; min-height: 44px; }
   .rsiobs-head, .research-compose .pipecap { min-height: 44px; }
   summary.section-head { min-height: 44px; align-items: center; }
@@ -2977,6 +2980,8 @@ body.landing-body .apf { display: none; }
   a.apcard-alt { padding-block: 10px; margin-block: -10px; }
   /* The autopilot line's "Change" (41px from its own padding). */
   .ap-focus button { padding-block: 11.5px; margin-block: -11.5px; }
+  /* In the autopilot sheet it reached 2px into Model and markets under it (their margins collapse to 10px). */
+  .apf-top > .ap-focus { margin-bottom: 12px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */
