@@ -183,6 +183,17 @@ window.TauPage('research', (T) => {
       ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
       : `A session like this usually takes about ${usd(v)} from your credits (${basis}).`;
   }
+  // A usual session (or round) that costs more than the credits on hand, said beside Start: research stops
+  // when the balance runs out, so it may stop short. Not said under the floor (the form's low-credit note says
+  // that) or while auto-reload tops the balance up; a declined reload card is the step instead (walk 2026-10-28:
+  // $1.40 of credits sat beside "usually costs about $4.05" with no word that it wouldn't cover it).
+  function shortOfCredits(v, forever, me) {
+    if (v == null || !me || !me.billing_enabled || me.needs_card || (me.auto_reload && !me.reload_failed)) return '';
+    const bal = +me.credit_balance || 0;
+    if (bal < (+me.min_run_balance || 0) || !(+v > bal)) return '';
+    return `That\u2019s more than the ${usd(bal)} you have, so it may stop ${forever ? 'in its first round' : 'short'} when your credits run out. ${me.reload_failed
+      ? 'Auto-reload couldn\u2019t charge your card: update it and add credits on Billing first.' : 'Add credits or turn on auto-reload on Billing first.'}`;
+  }
   // Run-until-stopped has no natural size, so say its pace: about what an hour costs at recent rates
   // (/api/research/estimate per_hour, the user's own else the model's typical) and how long the
   // balance covers that. It stops by itself only when credits run out, unless auto-reload tops up.
@@ -343,7 +354,7 @@ window.TauPage('research', (T) => {
         // A read that failed says so: "No cost estimate for this model yet" claimed there was none (walk 2026-10-28).
         const none = v == null && !pace && me.billing_enabled ? (estFailed ? 'The cost estimate didn\u2019t load. ' : 'No cost estimate for this model yet. ') + 'It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
         rc.hidden = v == null && !pace && !none;
-        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace, none].filter(Boolean).join(' ');
+        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), shortOfCredits(v, forever, me), pace, none].filter(Boolean).join(' ');
       };
       if (msel) msel.addEventListener('change', sync);
       api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; estFailed = true; }).then(sync);
@@ -1287,6 +1298,20 @@ window.TauPage('research', (T) => {
     });
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
+    // A finished session's cost beside what the research form says sessions like it usually cost: the same
+    // /api/research/estimate read (your own figure for its model, else everyone's), asked once the session is
+    // done, for one that ran its set size (walk 2026-10-28: "Cost $3.43" and nothing showed the form's "about
+    // $2.43" to hold it against). A failed read leaves the cost as it was.
+    let usual = null, usualAsked = false, repaintFigs = () => {};
+    const askUsual = (r) => {
+      if (usualAsked || r.example || r.run_forever || r.stop_reason !== 'limit' || !r.model || r.spent_usd == null) return;
+      usualAsked = true;
+      api('/api/research/estimate').then((e) => {
+        const by = e && e.yours_by_model, mine = by ? by[r.model] : null;
+        const v = mine != null ? mine : ((e && e.typical) || {})[r.model];
+        if (v != null && +v > 0) { usual = +v; repaintFigs(); }
+      }).catch(() => { /* no estimate: the cost stands alone */ });
+    };
     const load = async (cfg) => {
       const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
@@ -1310,11 +1335,13 @@ window.TauPage('research', (T) => {
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
         : runDoneText(r);
-      paint(root.querySelector('#runfigs'),
+      repaintFigs = () => paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', worked == null ? (active ? 'Not started yet' : 'Never started') : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' + (usual != null && !active ? `${SEP}sessions like it usually cost about ${usd(usual)}` : '') }) : '') +
         runCountFigs(r, active, tried, d.strategies));
+      repaintFigs();
+      if (!active) askUsual(r);
       const next = root.querySelector('#runnext');
       paint(next, active ? '' : runNext(r, d.strategies));
       // Painted only when it changes: a finished run still polls, and a repaint would undo the

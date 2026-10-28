@@ -108,4 +108,4 @@ def test_review_context_line_flags_exits_that_cost_money():
 
 def test_story_counts_read_with_thousands_separators():
     story = server._autopilot_story({"autopilot": True, "research": {"tested_7d": 1708, "passed_7d": 0}})
-    assert "This week it tested 1,708 ideas" in story[1]
+    assert "This week your sessions and the autopilot’s tested 1,708 ideas" in story[1]

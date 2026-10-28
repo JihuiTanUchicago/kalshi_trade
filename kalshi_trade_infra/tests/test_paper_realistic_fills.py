@@ -377,7 +377,7 @@ def test_autopilot_status_reports_research_activity(monkeypatch):
     assert abs((now - seen[0]).total_seconds() - 7 * 86400) < 5 and spent == seen  # one window for both
     story = server._autopilot_story({"autopilot": True, "research": dict(out, active=["a market it’s still picking"])})
     assert story[0] == "Right now it’s picking a market to research."
-    assert story[1] == "This week it tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
+    assert story[1] == "This week your sessions and the autopilot’s tested 2,668 ideas for ${:,.2f} and 1 passed.".format(out["cost_7d"])
 
 
 def test_the_story_says_a_pass_a_later_check_left_uncleared_apart_from_what_passed():
@@ -388,13 +388,25 @@ def test_the_story_says_a_pass_a_later_check_left_uncleared_apart_from_what_pass
     def line(passed, fell):
         return server._autopilot_story({"autopilot": True, "research": {
             "active": [], "tested_7d": 12, "passed_7d": passed, "not_cleared_7d": fell}})[1]
-    assert line(1, 0) == "This week it tested 12 ideas and 1 passed."
-    assert line(1, 1) == "This week it tested 12 ideas and 1 passed, and 1 more passed but wasn’t cleared to trade."
-    assert line(2, 3) == "This week it tested 12 ideas and 2 passed, and 3 more passed but weren’t cleared to trade."
-    assert line(0, 2) == ("This week it tested 12 ideas and none has been cleared to trade yet: 2 passed, but a later "
+    assert line(1, 0) == "This week your sessions and the autopilot’s tested 12 ideas and 1 passed."
+    assert line(1, 1) == "This week your sessions and the autopilot’s tested 12 ideas and 1 passed, and 1 more passed but wasn’t cleared to trade."
+    assert line(2, 3) == "This week your sessions and the autopilot’s tested 12 ideas and 2 passed, and 3 more passed but weren’t cleared to trade."
+    assert line(0, 2) == ("This week your sessions and the autopilot’s tested 12 ideas and none has been cleared to trade yet: 2 passed, but a later "
                           "check didn’t clear them. Each one’s page says which check.")
     assert line(0, 1).endswith("1 passed, but a later check didn’t clear it. Each one’s page says which check.")
     assert "none has passed its tests yet" in line(0, 0)
+
+
+def test_the_story_never_puts_the_users_own_research_spend_on_the_autopilot():
+    """Walk 2026-10-28: an account whose every session was its own read "This week it tested 32 ideas for
+    $17.40" in the autopilot panel. tested_7d and cost_7d count every research session, the user's and the
+    autopilot's, so the sentence says whose."""
+    from app import server
+
+    story = server._autopilot_story({"autopilot": True, "research": {
+        "active": [], "tested_7d": 32, "passed_7d": 0, "not_cleared_7d": 0, "cost_7d": 17.4}})
+    assert story[1].startswith("This week your sessions and the autopilot’s tested 32 ideas for $17.40 and none")
+    assert not any(s.startswith("This week it tested") for s in story)
 
 
 def test_research_activity_counts_only_runs_that_are_working_now(monkeypatch):
