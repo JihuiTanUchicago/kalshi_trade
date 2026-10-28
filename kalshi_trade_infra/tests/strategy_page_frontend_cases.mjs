@@ -571,6 +571,30 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     if (f.clearTimers) f.clearTimers();
   });
 
+  // Its missed checks are the backtest's own gates in gate_explain's words ("Didn’t make money on unseen data"). A
+  // backtest-only page listed them under a gate list that says "Makes money on data after the split date" (walked
+  // 2026-10-28): with no gatekeeper record they say the split date too; a held-out page keeps "unseen data".
+  test(`${name}: a page with no gatekeeper record says its missed checks were on data after the split date, never unseen`, async () => {
+    const oos = {pnl: -4, trades: 6, win_rate: .3, fees: 1, profit_factor: .6, max_drawdown: 9, sharpe: -.5, roi: -.04, days: 9};
+    const whyFailed = [
+      {gate: 'unseen_pnl', label: 'Didn’t make money on unseen data', measured: '−$4.00', needed: 'more than $0', next: 'Simplify the rule and test again.'},
+      {gate: 'unseen_trades', label: 'Too few trades on unseen data (6 of 10)', measured: '6 trades on unseen data', needed: 'at least 10 trades', next: 'Widen the entry.'},
+    ];
+    const items = (f) => f.root.querySelectorAll('.why-failed li').map((li) => li.textContent);
+    for (const status of ['backtest-only', 'passed']) {
+      const f = await open({status, experiment: null, out_of_sample: oos, why_failed: whyFailed, recent_trades: []});
+      const said = items(f);
+      assert.equal(said.length, 2, status);
+      assert.match(said[0], /^Didn’t make money on data after the split date/, status);
+      assert.match(said[1], /^Too few trades on data after the split date \(6 of 10\)Measured 6 trades on data after the split date;/, status);
+      assert.doesNotMatch(said.join(' '), /unseen/i, status);
+    }
+    // A strategy with a gatekeeper record keeps the server's words: its later slice was held out.
+    const held = await open({status: 'failed', out_of_sample: oos, why_failed: whyFailed, recent_trades: [],
+      experiment: {classification: 'inconclusive', validation: {n_trades: 6}}});
+    assert.match(items(held)[0], /^Didn’t make money on unseen data/);
+  });
+
   // The page's top figure read "+$42.17" in a green tint beside a Void stamp, though its Strategies row and Community card
   // mute the same figure (pnl-nopass): a Void, Rejected or missed-final strategy's P&L never reads as a result.
   test(`${name}: a Void, Rejected or missed-final strategy's figures up top are muted, never tinted green`, async () => {

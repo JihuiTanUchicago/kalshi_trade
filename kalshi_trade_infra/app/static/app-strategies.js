@@ -771,7 +771,11 @@ window.TauPage('strategies', (T) => {
       const [vt, chip, label, words] = vmap[s.status] || ['quiet', 'quiet', rpHuman(s.status), 'Awaiting a recorded verdict.'];
       verdictBody = `<div class="rp-verdict ${vt}"><span class="mk ${chip}">${esc(label)}</span><p>${esc(words)}</p></div>`;
     }
-    if (missed) verdictBody += `<div class="paper-sub"><h4 class="paper-h">What it missed, and what to try next</h4>${whyFailedHtml(missed)}</div>`;
+    // Its missed checks are the same backtest gates, in the server's words ("Didn’t make money on unseen data"): on a
+    // page with no gatekeeper record they say the split date as the gate list above them does. A backtest-only page
+    // read "Makes money on data after the split date" over "Didn’t make money on unseen data" (walked 2026-10-28).
+    const missedShown = missed && splitOnly ? missed.map((l) => ({ ...l, label: gateName(l.label), measured: gateName(l.measured), next: gateName(l.next) })) : missed;
+    if (missed) verdictBody += `<div class="paper-sub"><h4 class="paper-h">What it missed, and what to try next</h4>${whyFailedHtml(missedShown)}</div>`;
     // On a phone the Deploy panel sits below the whole paper, screens down. A validated passed
     // strategy (one with its gatekeeper record) that isn't on paper yet gets its primary action up
     // top too; same call as #dep-paper. Wide screens hide it (the panel is beside the paper there).
