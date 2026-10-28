@@ -127,7 +127,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
 
   // The server's per-book comparison with the backtest (services/backtest_check.py).
   const btPaper = {mode: 'paper', trades: 34, verdict: 'within',
-    line: "On paper: 34 trades, +$0.12/trade vs backtest +$0.15/trade; won 56% vs 61%. Within the backtest's usual range."};
+    line: "On paper: 34 trades, +$0.12/trade vs backtest +$0.15/trade; won 56% vs 61%. Within the backtest’s usual range."};
   const btLive = {mode: 'live', trades: 40, verdict: 'behind',
     line: 'Behind its backtest on live: 40 trades, −$0.10/trade vs backtest +$0.15/trade; won 41% vs 61%. Below the usual range for 40 trades (+$0.09 to +$0.21).'};
   const btDemo = {mode: 'demo', trades: 3, verdict: 'early',

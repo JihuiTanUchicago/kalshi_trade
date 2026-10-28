@@ -24,7 +24,7 @@ def test_within_the_usual_range_reads_plainly():
     assert c["verdict"] == "within" and c["trades"] == 34
     assert c["line"] == ("On paper: 34 trades across all its paper runs, realistic fills only: +$0.12/trade net of fees "
                          "and spread vs backtest +$0.15/trade; won 50% vs 61%. "
-                         "Within the backtest's usual range.")
+                         "Within the backtest’s usual range.")
 
 
 def test_the_band_is_two_standard_errors_of_the_books_own_spread():
@@ -62,7 +62,7 @@ def test_a_demo_line_says_its_thin_book_is_no_evidence_of_the_edge():
     bt = bc.backtest_figures(OOS, 5.0)
     for pnls in ([5.0] * 4, _alternating(40, 0.40, 0.2), _alternating(40, -0.10, 0.2)):
         line = bc.book_check("demo", _stats(pnls), bt)["line"]
-        assert line.endswith("Demo's book is thin, so this is no evidence of the edge either way.")
+        assert line.endswith("Demo’s book is thin, so this is no evidence of the edge either way.")
     for mode in ("paper", "live"):
         assert "thin" not in bc.book_check(mode, _stats([5.0] * 4), bt)["line"]
 
@@ -83,7 +83,7 @@ def test_much_smaller_trades_scale_the_backtest_to_the_books_size():
     bt = bc.backtest_figures(OOS, 5.0)
     small = bc.book_check("live", _stats(_alternating(20, 0.03, 0.1), cost_each=1.25), bt)
     assert small["scaled"] and small["backtest_per_trade"] == pytest.approx(0.15 * 0.25)
-    assert "vs backtest +$0.04/trade at this book's trade size" in small["line"]
+    assert "vs backtest +$0.04/trade at this book’s trade size" in small["line"]
     # Contract rounding alone (a trade costing a little under the stake) is the same size.
     same = bc.book_check("live", _stats(_alternating(20, 0.15, 0.1), cost_each=4.1), bt)
     assert not same["scaled"] and same["backtest_per_trade"] == pytest.approx(0.15)
