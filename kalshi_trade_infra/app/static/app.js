@@ -4057,7 +4057,7 @@
         <div class="hot-head"><div><span class="hot-kicker">Hot markets</span><span class="hot-now"><span class="hot-dot"></span>Right now</span></div><button class="hot-x" data-hot="toggle" aria-label="Collapse hot markets">‹</button></div>
         <p class="stale-note" id="hot-stale" role="status">${hotStaleText()}</p>
         <div class="hot-list">${rows}</div>
-        <div class="hot-ft">${d && d.at ? 'Updated ' + sinceMin(d.at) : ''} ·\u00a0<a href="/explore">See all markets →</a></div>
+        <div class="hot-ft">${d && d.at ? 'Updated ' + sinceMin(d.at) + ' ·\u00a0' : ''}<a href="/explore">See all markets →</a></div>
       </div>`; });
     rail.querySelectorAll('[data-hot="toggle"]').forEach((b) => b.onclick = (e) => {
       if (e.currentTarget.classList.contains('hot-tab') && open) return; // the spine only expands

@@ -226,7 +226,12 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     const {f, el} = await rail({at: null, markets: []});
     assert.equal(el.querySelector('.hot-empty').textContent, 'Warming up: the hottest markets show here within a minute.');
     assert.doesNotMatch(el.textContent, /live book/);
+    // With no feed time there is nothing before the link: Tau's footer read "· See all markets →".
+    assert.match(el.querySelector('.hot-ft').textContent.trim(), /^See all markets →$/);
     f.clearTimers();
+    const {f: h, el: full} = await rail({markets: ROWS.map((m) => ({...m, h: [.4, .5]}))});
+    assert.doesNotMatch(full.querySelector('.hot-ft').textContent.trim(), /^·/);
+    h.clearTimers();
     const {f: g} = await list({markets: ROWS});
     assert.doesNotMatch(g.root.textContent, /live book/, 'nor does Explore’s own heading');
     g.clearTimers();
