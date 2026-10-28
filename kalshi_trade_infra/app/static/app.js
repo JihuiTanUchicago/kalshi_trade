@@ -56,7 +56,7 @@
     passed: ['Passed', 'Cleared every gate on data the agent never saw while searching. Only passed strategies can be deployed.'],
     void: ['Void', 'The strategy was good enough in-sample to be tested on unseen data — but it failed at least one gate there. A real candidate that didn’t hold up.'],
     rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
-    unseen: ['Unseen-data P&L', 'What the strategy made on a held-out slice of history the agent never looked at while searching, so the result can’t be curve-fit. This is the backtest figure that counts.'],
+    unseen: ['Later-period P&L (unseen data)', 'What the strategy made in the backtest after its split date, on a held-out slice of history the agent never looked at while searching, so the result can’t be curve-fit. This is the backtest figure that counts.'],
     laterperiod: ['Later-period P&L', 'What the strategy made in the backtest after its split date. That later stretch is what picked it, so unlike unseen data it wasn’t held out: a weaker test.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
@@ -1674,7 +1674,7 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${plain(usd(vals[vals.length - 1], true))}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
-              ${unseenLabel(cx, W - R, T - 10, options.cutLabel)}` : ''}
+              ${unseenLabel(cx, W - R, T - 10, options.cutLabel, dev ? L + 112 + 'Kalshi dev (real)'.length * 7 + 8 : 0)}` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${ticks}${zeroTick}
       <text x="${L}" y="${H - 6}">${day(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>
@@ -3757,14 +3757,18 @@
   // A backtest trade's exit, in words (backtest.py / spec.exit_signal reasons); an unknown one loses its underscores.
   const EXIT_WORD = { settled: 'settled', take_profit: 'take-profit', stop_loss: 'stop-loss', stop: 'stop', edge_gone: 'edge gone', signal: 'signal', exit: 'signal', mark: 'marked at end' };
   const exitWord = (r) => r == null ? '' : EXIT_WORD[r] || String(r).replace(/_/g, ' ');
-  // The equity chart's label over its unseen-data window: the full words when they fit, else
-  // "UNSEEN →", pinned to the chart's right edge when even that would run past it.
-  // `words` ([full, short]) names another window: a strategy with no gatekeeper record has no unseen window, only
-  // the backtest's later slice, which its loose gate used to pick it.
-  const unseenLabel = (cx, right, y, words = ['UNSEEN BY THE AGENT →', 'UNSEEN →']) => {
-    const room = right - cx - 8, text = room >= 150 ? words[0] : words[1];
-    return room >= 64 ? `<text x="${cx + 8}" y="${y}" style="fill:var(--ink-2)">${text}</text>`
-      : `<text x="${right}" y="${y}" text-anchor="end" style="fill:var(--ink-2)">${text}</text>`;
+  // The equity chart's label over its unseen-data window. `words` (longest first) names another window: a strategy
+  // with no gatekeeper record has no unseen window, only the backtest's later slice, which its loose gate used to pick it.
+  const unseenLabel = (cx, right, y, words = [`LATER PERIOD${SEP}UNSEEN DATA →`, `LATER${SEP}UNSEEN →`, 'LATER →'], clearOf = 0) => {
+    // In the strategy page's words ("Later period (unseen data)"): it read "UNSEEN →" over that heading. Measured at about
+    // 7px a character in the chart’s 11px capitals: the full or short words in place right of the cut where they fit, else the short
+    // words pinned to the chart's right edge, clear of the demo-replay legend (clearOf, its right end) on a phone. Only
+    // where even those would run into the legend does it take the last, shortest words.
+    const room = right - cx - 8, wide = (t) => t.length * 7;
+    const inPlace = words.slice(0, 2).find((t) => room >= wide(t));
+    if (inPlace) return `<text x="${cx + 8}" y="${y}" style="fill:var(--ink-2)">${inPlace}</text>`;
+    const pinned = words.slice(1).find((t) => right - wide(t) >= clearOf) || words[words.length - 1];
+    return `<text x="${right}" y="${y}" text-anchor="end" style="fill:var(--ink-2)">${pinned}</text>`;
   };
   // On a phone, a secondary section (method, raw lists, what-if, share, remove) folds behind its
   // title, closed; wider screens render it as before. Money figures and verdicts never fold.

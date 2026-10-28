@@ -47,11 +47,12 @@ test('every marker a page draws names a term its theme defines', () => {
 test('the money words a customer meets are defined, plainly', () => {
   const g = glossary('app.js');
   for (const k of ['realized', 'unrealized', 'unseen', 'laterperiod', 'insample', 'instantfill', 'paperfills']) assert.ok(g[k], k);
-  assert.equal(g.unseen[0], 'Unseen-data P&L');
+  assert.equal(g.unseen[0], 'Later-period P&L (unseen data)');
   assert.equal(g.laterperiod[0], 'Later-period P&L');
   // Later-period P&L is the slice that picked the strategy; only unseen data is held out.
   assert.match(g.laterperiod[1], /wasn’t held out/);
-  assert.match(g.unseen[1], /never looked at/);
+  assert.match(g.unseen[1], /held-out slice of history the agent never looked at/);
+  assert.doesNotMatch(g.unseen[1], /wasn’t held out/);
   // "after typical live slippage" (slipEst, beside paper P&L) is said and sized in the paper fills bubble.
   assert.match(g.paperfills[1], /price moving in the second or two before a real order lands\. Where a page shows an estimate after typical live slippage/);
   for (const [k, [title, words]] of Object.entries(g)) {
@@ -71,7 +72,7 @@ test('the Deploy table and the strategy page carry the new markers in both theme
   }
   for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) {
     const src = read(f);
-    for (const k of ['laterperiod', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L', '${k}'\\)`), `${f}: ${k}`);
+    for (const k of ['laterperiod', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L(?: \\([^)']+\\))?', '${k}'\\)`), `${f}: ${k}`);
   }
 });
 

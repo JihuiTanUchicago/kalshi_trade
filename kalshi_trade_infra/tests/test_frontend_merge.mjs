@@ -3112,12 +3112,12 @@ test('on a phone the strategy page folds its secondary sections, never money fig
     }});
     await f.viewStrategy(42); await flush();
     const folds = f.root.querySelectorAll('details.fold');
-    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Methodology', 'Most recent unseen trades', 'Demo &amp; live', 'What if…', 'Share', 'Remove']);
+    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Methodology', 'Most recent later-period trades (unseen data)', 'Demo &amp; live', 'What if…', 'Share', 'Remove']);
     for (const d of folds) assert.equal('open' in d.attributes, open);
     for (const sel of ['#dep-demo', '#dep-live', '#live-confirm', '#whatif', '#share-form', '#del-strat']) assert.ok(f.root.querySelector(sel).closest('details.fold'), sel);
     for (const sel of ['#figs', '#dep-paper', '#gates', '#depflash']) assert.equal(f.root.querySelector(sel).closest('details.fold'), null, sel);
     for (const label of ['Results', 'Verdict', 'Abstract']) assert.ok(!folds.some((d) => d.querySelector('summary').textContent === label), label);
-    assert.match(f.root.querySelector('#figs').innerHTML, /Unseen-data P&L/);
+    assert.match(f.root.querySelector('#figs').innerHTML, /Later-period P&L <span class="nobr">\(unseen\u00a0data\)<button/);
   }
 });
 
@@ -3498,11 +3498,30 @@ test('the equity chart\'s unseen-data label fits its window instead of running o
   const curve = [[0, 0], [50, 1], [100, 2]];
   const iso = (t) => new Date(t * 1000).toISOString();
   const wide = frontend().equityChart(curve, iso(30), null, {width: 760});
-  assert.match(wide, /<text x="[\d.]+" y="[\d.]+" style="fill:var\(--ink-2\)">UNSEEN BY THE AGENT →<\/text>/);
+  // In the strategy page's words, "Later period (unseen data)": it read "UNSEEN BY THE AGENT →" / "UNSEEN →".
+  assert.match(wide, /<text x="[\d.]+" y="[\d.]+" style="fill:var\(--ink-2\)">LATER PERIOD\u00a0· UNSEEN DATA →<\/text>/);
   // A cut near the right edge (a phone): the short label, pinned to the chart's right edge.
   const narrow = frontend().equityChart(curve, iso(97), null, {width: 340});
-  assert.doesNotMatch(narrow, /UNSEEN BY THE AGENT/);
-  assert.match(narrow, /text-anchor="end" style="fill:var\(--ink-2\)">UNSEEN →<\/text>/);
+  assert.doesNotMatch(narrow, /UNSEEN BY THE AGENT|LATER PERIOD|>UNSEEN →/);
+  assert.match(narrow, /text-anchor="end" style="fill:var\(--ink-2\)">LATER\u00a0· UNSEEN →<\/text>/);
+  // Room for the short words right of the cut, not the full ones: in place.
+  const mid = frontend().equityChart(curve, iso(55), null, {width: 340});
+  assert.match(mid, /<text x="[\d.]+" y="[\d.]+" style="fill:var\(--ink-2\)">LATER\u00a0· UNSEEN →<\/text>/);
+  // Pinned beside the demo replay's legend on a phone, it takes the shortest words so it never runs into "Kalshi dev (real)".
+  const legend = frontend().equityChart(curve, iso(97), [[40, 0], [100, 1]], {width: 340});
+  assert.match(legend, /Kalshi dev \(real\)/);
+  assert.match(legend, /text-anchor="end" style="fill:var\(--ink-2\)">LATER →<\/text>/);
+  // A strategy with no gatekeeper record names its own window, never unseen.
+  const split = frontend().equityChart(curve, iso(30), null, {width: 760, cutLabel: ['LATER PERIOD\u00a0· NOT HELD OUT →', 'LATER\u00a0· NOT HELD OUT →', 'LATER →']});
+  assert.match(split, />LATER PERIOD\u00a0· NOT HELD OUT →<\/text>/); assert.doesNotMatch(split, /UNSEEN/);
+  // Room right of the cut for "LATER →" alone: it still says which window, pinned, and never drops the qualifier
+  // where no legend is in the way (a phone walk read a bare "LATER →" over a held-out window).
+  for (const cut of [70, 75]) {
+    const tight = frontend().equityChart(curve, iso(cut), null, {width: 340});
+    assert.match(tight, /text-anchor="end" style="fill:var\(--ink-2\)">LATER\u00a0· UNSEEN →<\/text>/, String(cut));
+    const later = frontend().equityChart(curve, iso(cut), null, {width: 340, cutLabel: ['LATER PERIOD\u00a0· NOT HELD OUT →', 'LATER\u00a0· NOT HELD OUT →', 'LATER →']});
+    assert.match(later, />LATER\u00a0· NOT HELD OUT →<\/text>/, String(cut));
+  }
 });
 
 test('the open-positions why line and a long strategy name wrap, so Deploy never scrolls sideways', () => {
