@@ -570,6 +570,27 @@ for (const [bundle, file, js] of [['Tau', 'app.css', 'app.js'], ['Meridian', 'ap
     assert.equal(decl(all, '#openpos td.pos-name', 'white-space'), 'normal');
     assert.ok(decl(all, '#openpos td.pos-name', 'min-width'));
   });
+
+  test(`${bundle}: a focused text field, select or message box shows the ring a button does, 3:1 or more`, () => {
+    const ring = all.find((r) => r.media === '' && /:focus-visible$/.test(r.sel) && r.sel.includes(':is(.input, select, textarea, input:is([type=text]'));
+    assert.ok(ring, 'the field ring rule');
+    assert.match(ring.sel, /^:where\(body:not\(\.landing-body\)\) /, 'not on the landing page');
+    assert.match(ring.sel, /:not\(\.linput, \.wl-ifield input\)/, 'not the landing or card form fields');
+    for (const t of ['[type=email]', '[type=number]', '[type=password]', '[type=search]', ':not([type])']) assert.ok(ring.sel.includes(t), t);
+    assert.match(ring.body, /outline: 2px solid var\(--ink\)/);
+    assert.match(ring.body, /outline-offset: 2px/);
+    assert.equal(decl(all, ':focus-visible', 'outline'), '2px solid var(--ink)', 'as every button');
+    assert.equal(decl(all, '.input:focus', 'border-color'), 'var(--ink)', 'the darker border stays');
+    // The ring against every surface a field sits on.
+    const root = read(file).match(/:root\s*\{([^}]*)\}/)[1];
+    const raw = Object.fromEntries([...root.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+    const hex = (k) => { let v = raw[k]; while (v && v.startsWith('var(')) v = raw[v.slice(4, -1)]; return v; };
+    const lum = (h) => { const [r, g, b] = h.replace('#', '').match(/../g).map((x) => parseInt(x, 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    for (const bg of ['--stock', '--stock-raised', '--stock-sunk']) {
+      const [a, b] = [lum(hex('--ink')), lum(hex(bg))];
+      assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 3, `--ink on ${bg}`);
+    }
+  });
 }
 
 test('Tau: a 768px tablet\'s Deploy board fits its sheet, and the markets rail opens over a tablet page only when asked', () => {
