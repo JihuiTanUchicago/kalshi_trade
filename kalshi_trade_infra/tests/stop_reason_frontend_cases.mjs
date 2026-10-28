@@ -119,7 +119,7 @@ export function stopReasonCases({name, frontend}) {
     assert.match(figs, /Tested 37 all time/i);
     assert.match(figs, /Passed[^0-9]*4 all time/);
     const said = f.root.querySelector('#rstatus .said');
-    if (said) assert.match(words(said.innerHTML), /all time, 37 ideas tested, 4 through every gate/);  // Tau's line beside "researching now"
+    if (said) assert.match(words(said.innerHTML), /researching now\. All time: 37 ideas tested · 4 through every gate/);  // Tau's line beside "researching now"
     else assert.match(f.root.querySelector('#rfigs').getAttribute('title'), /of 37 tested, all time/);
     f.clearTimers();
   });

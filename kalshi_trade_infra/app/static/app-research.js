@@ -385,8 +385,10 @@ window.TauPage('research', (T) => {
       const fellWords = `more passed but ${fell === 1 ? 'wasn’t' : 'weren’t'} cleared to trade`;
       // A paused session holds one of the two session slots but isn't researching: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
+      // The live count and the all-time totals are two sentences: "1 agent researching now — all time, 13 ideas
+      // tested" set "now" against "all time" in one breath.
       const said = running || paused
-        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(SEP)} — all time, <em>${tried}</em> idea${+tried === 1 ? '' : 's'} tested, <em>${passed}</em> through every gate${fell ? `, <em>${num(fell)}</em> not cleared` : ''}.`
+        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(SEP)}. All time: <em>${tried}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${passed}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
         : tried
           ? `Your engine has tested <em>${tried}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${passed}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
           : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
