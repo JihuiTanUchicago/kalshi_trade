@@ -1897,8 +1897,10 @@
   // "Oct 18" began the next, on a phone and in the Deploy table's name column on a desktop.
   // A strategy from a research session keeps its unseen result with the gatekeeper, not in its backtest: its row read
   // "Unseen P&L —" as though it had none. The fact shows only with a backtest figure to give. A backtest-only strategy's
-  // (the server's backtest_only) is its backtest's later slice, which picked it: "Later-period P&L", never unseen.
-  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? (d.backtest_only ? `<span class="dep-fact" title="After the split date, which picked it: not held out">Later-period P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}` : `<span class="dep-fact">Unseen P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}`) : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
+  // (the server's backtest_only) is its backtest's later slice, which picked it: "not held out", never unseen. Either
+  // is the backtest after its split date, so both say "Later-period P&L" and then which kind, as the Strategies list
+  // does ("later period · unseen data" / "· not held out"): a held-out row read "Unseen P&L" here alone.
+  const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact"${d.backtest_only ? ' title="After the split date, which picked it: not held out"' : ''}>Later-period P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}${d.backtest_only ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data'}${SEP}` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
   // One plain line on how a book is doing against its backtest, written by the server
   // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
   // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.

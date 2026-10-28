@@ -993,9 +993,9 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.equal(field('Closed').textContent, `${d.closed_trades} / ${d.open_positions}`);
     assert.equal(field('Closed').getAttribute('aria-label'), `${d.closed_trades} closed trades, ${d.open_positions} open positions`);
     const evidence = evidenceFor(monitor, d.id); assert.equal(evidence.tag, 'details'); assert.equal(evidence.open, false);
-    // No backtest figure (a research session's strategy keeps its unseen result with the gatekeeper): no "Unseen P&L —".
-    if (d.status === 'running') assert.ok(!evidence.textContent.includes('Unseen P&amp;L'), evidence.textContent);
-    else assert.ok(visible(evidence.textContent).includes(`Unseen P&amp;L ${d.status === 'paused' ? '$0.00' : '+$7.25'}`));
+    // No backtest figure (a research session's strategy keeps its unseen result with the gatekeeper): no "Later-period P&L —".
+    if (d.status === 'running') assert.ok(!evidence.textContent.includes('P&amp;L'), evidence.textContent);
+    else assert.ok(visible(evidence.textContent).includes(`Later-period P&amp;L ${d.status === 'paused' ? '$0.00' : '+$7.25'}\u00a0· unseen\u00a0data`));
     assert.ok(evidence.textContent.includes('Deployed ' + new Date(d.created_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})));
     assert.deepEqual(monitor.querySelectorAll('[data-dep]').map(button => button.dataset.act),
       d.status === 'running' ? ['pause', 'stop'] : d.status === 'paused' ? ['resume', 'stop'] : ['stop']);
@@ -3100,7 +3100,7 @@ test('deployment details hold realized P&L against the backtest pace for the sam
   await f.viewDashboard();
   const text = id => visible(evidenceFor(f.root.querySelector('#dash-deps'), id).textContent);
   // $12 over 6 unseen trades = $2 a trade, so 5 closed trades -> +$10.00.
-  assert.ok(text(1).includes('Backtest estimate +$10.00 for the same 5 trades\u00a0· Unseen P&amp;L +$12.00'), text(1));
+  assert.ok(text(1).includes('Backtest estimate +$10.00 for the same 5 trades\u00a0· Later-period P&amp;L +$12.00'), text(1));
   assert.ok(!text(2).includes('Backtest estimate')); assert.ok(!text(3).includes('Backtest estimate'));
 });
 
@@ -6349,7 +6349,7 @@ test('an Overview paper monitor says how many of its closed trades were instant 
   assert.match(css, /\n\.monitor-config \.dep-instant \{ margin: 4px 0 10px; white-space: normal; \}/);
 });
 
-test('a backtest-only strategy’s Deploy row says "Later-period P&L", never "Unseen P&L"', async () => {
+test('a backtest-only strategy’s Deploy row says "Later-period P&L · not held out", never unseen', async () => {
   // Its out_of_sample is the old loose gate's later slice, which picked it (#590's strategy-page words); the server says
   // so per row (backtest_only, from the strategy's status in the row's own read).
   const row = (o) => ({id: 11, strategy_id: 111, title: 'S', market: 'btc15m', mode: 'paper', status: 'running', stake: 5, max_positions: 2,
@@ -6358,14 +6358,17 @@ test('a backtest-only strategy’s Deploy row says "Later-period P&L", never "Un
   const f = frontend({fetchImpl: () => response({deployments: [row({backtest_only: true}), row({id: 12, strategy_id: 112, backtest_only: false})], open_positions: []})});
   await f.viewDeploy();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, /<span class="dep-fact" title="After the split date, which picked it: not held out">Later-period P&amp;L \+\$12\.00<\/span>/);
-  assert.equal((html.match(/Unseen P&amp;L/g) || []).length, 1, 'only the strategy with a gatekeeper record says unseen');
+  assert.match(html, /<span class="dep-fact" title="After the split date, which picked it: not held out">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· not\u00a0held\u00a0out\u00a0· /);
+  assert.equal((html.match(/unseen\u00a0data/g) || []).length, 1, 'only the strategy with a gatekeeper record says unseen');
+  assert.equal((visible(html).match(/Later-period P&amp;L \+\$12\.00<\/span>/g) || []).length, 2, 'both name the figure as the Strategies list does');
+  assert.doesNotMatch(html, /Unseen P&amp;L/);
 });
 
-test('an Overview monitor’s details say "Later-period P&L" for a strategy whose page does, never "Unseen P&L"', async () => {
+test('an Overview monitor’s details say "Later-period P&L · not held out" for a strategy whose page does, never unseen', async () => {
   // Walk 2026-10-27: a passed strategy with no gatekeeper record, whose page reads "Later-period P&L … after the split
   // date, which picked it: not held out", had "Unseen P&L +$0.90" in its Overview details. The server's backtest_only
-  // now covers it (and backtest-only ones); a strategy with a record keeps "Unseen P&L".
+  // now covers it (and backtest-only ones); a strategy with a record says "unseen data" after the same label, as the
+  // Strategies list does ("later period · unseen data"): it read "Unseen P&L" here alone.
   const bt = {backtest: {out_of_sample: {pnl: 0.9, trades: 60}}};
   const deployments = [{...dashboardDeployment('paper'), id: 81, ...bt, backtest_only: true},
     {...dashboardDeployment('paper'), id: 82, ...bt, backtest_only: false}];
@@ -6373,11 +6376,11 @@ test('an Overview monitor’s details say "Later-period P&L" for a strategy whos
   await f.viewDashboard();
   const facts = [...f.root.querySelectorAll('#dash-deps article.dep-monitor .dep-evidence')].map((d) => d.textContent);
   assert.equal(facts.length, 2);
-  assert.match(facts[0], /Later-period P&(amp;)?L \+\$0\.90/); assert.doesNotMatch(facts[0], /Unseen/);
-  assert.match(facts[1], /Unseen P&(amp;)?L \+\$0\.90/);
+  assert.match(facts[0], /Later-period P&(amp;)?L \+\$0\.90\u00a0· not\u00a0held\u00a0out/); assert.doesNotMatch(facts[0], /unseen/i);
+  assert.match(facts[1], /Later-period P&(amp;)?L \+\$0\.90\u00a0· unseen\u00a0data/); assert.doesNotMatch(facts[1], /Unseen P&/);
 });
 
-test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" with its figure', async () => {
+test('a Deploy row’s details keep "Deployed" with its date and "Later-period P&L" with its figure', async () => {
   // Walk 2026-10-27: "· Deployed" ended one line of a row's details and "Oct 18" began the next, at 390px and in
   // the 1280px table's name column. Each fact is one .dep-fact span, which never wraps inside.
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
@@ -6387,7 +6390,7 @@ test('a Deploy row’s details keep "Deployed" with its date and "Unseen P&L" wi
     realized_pnl: 3, unrealized_pnl: null, closed_trades: 2, open_positions: 0, curve: []}], open_positions: []})});
   await f.viewDeploy();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Unseen P&amp;L \+\$12\.00<\/span> · <span class="dep-fact">Deployed [^<]+<\/span>/);
+  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Later-period P&amp;L \+\$12\.00<\/span> · unseen data · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
 newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});
 
