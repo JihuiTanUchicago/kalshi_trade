@@ -38,6 +38,7 @@ import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
+import {spendTrustCases} from './spend_trust_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
@@ -269,6 +270,7 @@ countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, 
 explorePageCases({name: 'Meridian', frontend});
 trackRecordTrustCases({name: 'Meridian', frontend, Element, dashboard: () => dashboardData()});
 researchFormCases({name: 'Meridian', frontend});
+spendTrustCases({name: 'Meridian', frontend});
 kalshiWaitCases({name: 'Meridian', frontend, detailStrategy});
 phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 exploreSpotListCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
