@@ -72,7 +72,7 @@ test('the Deploy table and the strategy page carry the new markers in both theme
   }
   for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) {
     const src = read(f);
-    for (const k of ['laterperiod', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L(?: \\([a-z ]+\\))?', '${k}'\\)`), `${f}: ${k}`);
+    for (const k of ['laterperiod', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L(?: \\([^)']+\\))?', '${k}'\\)`), `${f}: ${k}`);
   }
 });
 

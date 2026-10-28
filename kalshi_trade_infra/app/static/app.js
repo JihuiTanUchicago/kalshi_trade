@@ -3760,11 +3760,12 @@
   // The equity chart's label over its unseen-data window. `words` (longest first) names another window: a strategy
   // with no gatekeeper record has no unseen window, only the backtest's later slice, which its loose gate used to pick it.
   const unseenLabel = (cx, right, y, words = [`LATER PERIOD${SEP}UNSEEN DATA →`, `LATER${SEP}UNSEEN →`, 'LATER →'], clearOf = 0) => {
-    // In the strategy page's words ("Later period (unseen data)"): it read "UNSEEN →" over that heading. Each label is
-    // tried longest first, about 7px a character at the chart's 11px face: in place right of the cut where it fits,
-    // else in short words pinned to the chart’s right edge, clear of the demo-replay legend (clearOf, its right end) on a phone.
+    // In the strategy page's words ("Later period (unseen data)"): it read "UNSEEN →" over that heading. Measured at about
+    // 7px a character in the chart’s 11px capitals: the full or short words in place right of the cut where they fit, else the short
+    // words pinned to the chart's right edge, clear of the demo-replay legend (clearOf, its right end) on a phone. Only
+    // where even those would run into the legend does it take the last, shortest words.
     const room = right - cx - 8, wide = (t) => t.length * 7;
-    const inPlace = words.find((t) => room >= wide(t));
+    const inPlace = words.slice(0, 2).find((t) => room >= wide(t));
     if (inPlace) return `<text x="${cx + 8}" y="${y}" style="fill:var(--ink-2)">${inPlace}</text>`;
     const pinned = words.slice(1).find((t) => right - wide(t) >= clearOf) || words[words.length - 1];
     return `<text x="${right}" y="${y}" text-anchor="end" style="fill:var(--ink-2)">${pinned}</text>`;

@@ -1620,11 +1620,12 @@
   // The equity chart's label over its unseen-data window. `words` (longest first) names another window: a strategy
   // with no gatekeeper record has no unseen window, only the backtest's later slice, which its loose gate used to pick it.
   const unseenLabel = (cx, right, y, words = [`Later period${SEP}unseen data →`, `Later${SEP}unseen →`, 'Later →'], clearOf = 0) => {
-    // In the strategy page's words ("Later period (unseen data)"): it read "Unseen →" over that heading. Each label is
-    // tried longest first, about 7px a character at the chart's 11px face: in place right of the cut where it fits,
-    // else in short words pinned to the chart’s right edge, clear of the demo-replay legend (clearOf, its right end) on a phone.
-    const room = right - cx - 8, wide = (t) => t.length * 7;
-    const inPlace = words.find((t) => room >= wide(t));
+    // In the strategy page's words ("Later period (unseen data)"): it read "Unseen →" over that heading. Measured at about
+    // 6px a character in the chart’s 11px face: the full or short words in place right of the cut where they fit, else the short
+    // words pinned to the chart's right edge, clear of the demo-replay legend (clearOf, its right end) on a phone. Only
+    // where even those would run into the legend does it take the last, shortest words.
+    const room = right - cx - 8, wide = (t) => t.length * 6;
+    const inPlace = words.slice(0, 2).find((t) => room >= wide(t));
     if (inPlace) return `<text x="${cx + 8}" y="${y}" style="fill:var(--ink-2)">${inPlace}</text>`;
     const pinned = words.slice(1).find((t) => right - wide(t) >= clearOf) || words[words.length - 1];
     return `<text x="${right}" y="${y}" text-anchor="end" style="fill:var(--ink-2)">${pinned}</text>`;
@@ -1692,7 +1693,7 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="${options.paper ? 'group' : 'img'}" aria-label="${esc(plain(options.label || `Cumulative profit and loss over the backtest${dev ? ', with a realized Kalshi demo-environment curve' : ''}; ends at ${usd(vals[vals.length - 1], true)}`))}">
       ${cx ? `<rect x="${cx}" y="${T}" width="${W - R - cx}" height="${H - T - B}" fill="var(--stock-raised)"/>
               <line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" stroke="var(--ink-3)" stroke-dasharray="4 4"/>
-              ${unseenLabel(cx, W - R, T - 10, options.cutLabel, dev ? L + 112 + 'Kalshi dev (real)'.length * 7 + 8 : 0)}` : ''}
+              ${unseenLabel(cx, W - R, T - 10, options.cutLabel, dev ? L + 112 + 'Kalshi dev (real)'.length * 6 + 8 : 0)}` : ''}
       <line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--rule-2)"/>
       ${reference}${ticks}${zeroTick}${dates}${endLabel}
       <polyline points="${line(curve)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>

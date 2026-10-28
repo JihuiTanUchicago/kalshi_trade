@@ -634,14 +634,15 @@ window.TauPage('strategies', (T) => {
     const hasExp = !!s.experiment;
     const splitOnly = !hasExp && ['passed', 'backtest-only'].includes(s.status);
     // The chart's cut label says it in the heading's words too (equityChart's own default says unseen data).
-    const cutWords = splitOnly ? { cutLabel: [`LATER PERIOD${SEP}NOT HELD OUT →`, 'LATER →'] } : {};
+    const cutWords = splitOnly ? { cutLabel: [`LATER PERIOD${SEP}NOT HELD OUT →`, `LATER${SEP}NOT HELD OUT →`, 'LATER →'] } : {};
     // The later slice's heading, in the Strategies list's and Community card's words: "later period" plus whether it was
     // held out. "Never seen (out-of-sample)" stood beside a list that called the same figure "later period · unseen data".
     const oosHead = splitOnly ? 'Later period (not held out)' : 'Later period (unseen data)';
     // The figure up top says the same: it read "Unseen-data P&L" over headings that say "Later period (unseen data)".
     // Each keeps its own bubble: a held-out figure's says held out (unseen), never laterperiod's "wasn’t held out".
     const laterQual = splitOnly ? 'not held out' : 'unseen data';
-    const topLabel = splitOnly ? gl('Later-period P&L (not held out)', 'laterperiod') : gl('Later-period P&L (unseen data)', 'unseen');
+    // The qualifier keeps together with its marker: a phone broke it "(unseen / data)".
+    const topLabel = splitOnly ? gl('Later-period P&L (not\u00a0held\u00a0out)', 'laterperiod') : gl('Later-period P&L (unseen\u00a0data)', 'unseen');
     // A Void, Rejected or missed-final strategy's P&L is muted, as its Strategies row (pnl-nopass) and Community card
     // mute it: a green "+$42.17" up top read as a result beside its Void stamp. Display only.
     const noPass = s.status === 'failed' || s.status === 'rejected' || s.verdict === 'missed_final';

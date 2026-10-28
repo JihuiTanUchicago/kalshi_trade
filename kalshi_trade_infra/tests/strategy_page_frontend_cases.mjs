@@ -93,7 +93,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       profit_factor: 1.2, max_drawdown: 2, sharpe: .5, roi: .1}, days: 15.2}, dataset: {out_of_sample_from: '1970-01-01T00:03:20Z'}});
     const figs = f.root.querySelector('#figs').innerHTML, html = main(f);
     const labels = f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent);
-    assert.deepEqual(labels, ['Later-period P&L (unseen data)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
+    assert.deepEqual(labels, ['Later-period P&L (unseen\u00a0data)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
     assert.match(figs, /<dd class="sub-fig">6 trades over 15 days the agent never saw<\/dd>/);
     assert.match(figs, /<dd class="sub-fig">Unseen data over 15 days · \$100 at risk at most<\/dd>/);
     assert.match(figs, /<dd class="sub-fig">in the session that found it; this is the one that passed\. More ideas tried, more chance one passes by luck \(multiple testing\)\.<\/dd>/);
@@ -116,7 +116,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(figs, /\+\$20\.46/); assert.match(figs, /after fees, over 132 trades the agent never saw/);
     // Its record has no return on capital (that is the old backtest's later slice): "Return on capital —" stood on every
     // research session's strategy page. With no figure it is left out.
-    assert.deepEqual(f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (unseen data)', 'In-sample P&L', 'Ideas tested']);
+    assert.deepEqual(f.root.querySelector('#figs').querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (unseen\u00a0data)', 'In-sample P&L', 'Ideas tested']);
     assert.doesNotMatch(figs, /Return on capital/);
     assert.doesNotMatch(figs + main(f), /Rejected before the unseen test|Not tested out-of-sample|not advanced to the unseen-data test/);
     assert.match(main(f), /On 132 trades of data the agent never saw while iterating, it made \$20\.46 after fees \(\+3\.10% of the stake per trade\), one of 5 ideas tested this run\./);
@@ -149,7 +149,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       const gateText = f.root.querySelector('#gates').textContent;
       assert.match(gateText, /Makes money on data after the split date/); assert.match(gateText, /Enough trades after the split date to judge/);
       assert.doesNotMatch(gateText, /unseen/i);
-      assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (not held out)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
+      assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (not\u00a0held\u00a0out)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
       assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it: not held out/);
       assert.match(figs.innerHTML, /After the split date over 15 days\u00a0· \$100 at risk at most/);
       assert.match(html, /After the backtest’s split date it returned \$12\.00 over 6 trades\. That later slice is what picked it, so it isn’t held-out evidence\./);
@@ -179,7 +179,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(main(bare) + bare.root.querySelector('#figs').innerHTML, /never saw|Unseen-data P&|Rejected before the unseen test|Not tested on unseen data|not advanced to the unseen-data test|ranked below/);
     // A strategy with its record keeps its unseen-data words, and an old Void one keeps its own.
     const kept = await open({status: 'passed', out_of_sample: oos, gates});
-    assert.match(kept.root.querySelector('#figs').innerHTML, /Later-period P&L \(unseen <span class="nobr">data\)<button type="button" class="info" data-glo="unseen"/);
+    assert.match(kept.root.querySelector('#figs').innerHTML, /Later-period P&L <span class="nobr">\(unseen\u00a0data\)<button type="button" class="info" data-glo="unseen"/);
     assert.match(kept.root.querySelector('#gates').textContent, /Makes money on unseen data/);
     const voided = await open({status: 'failed', experiment: null, out_of_sample: oos});
     assert.match(voided.root.querySelector('#figs').innerHTML, /the agent never saw/);
@@ -580,7 +580,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.match(html, /<span class="fig "><span class="pnl-nopass">\+\$42\.17<\/span><\/span>/, label);
       assert.match(html, /<span class="fig "><span class="pnl-nopass">\+\$20\.00<\/span><\/span>/, label);
       assert.doesNotMatch(html, /tint pos|tint neg/, label);
-      assert.match(figs(f).querySelector('dt').textContent, /^Later-period P&L \(unseen data\)$/, label);
+      assert.match(figs(f).querySelector('dt').textContent, /^Later-period P&L \(unseen\u00a0data\)$/, label);
     }
     // A passed one keeps its tint.
     const passed = await open({status: 'passed', out_of_sample: oos});

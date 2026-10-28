@@ -3117,7 +3117,7 @@ test('on a phone the strategy page folds its secondary sections, never money fig
     for (const sel of ['#dep-demo', '#dep-live', '#live-confirm', '#whatif', '#share-form', '#del-strat']) assert.ok(f.root.querySelector(sel).closest('details.fold'), sel);
     for (const sel of ['#figs', '#dep-paper', '#gates', '#depflash']) assert.equal(f.root.querySelector(sel).closest('details.fold'), null, sel);
     for (const label of ['Results', 'Verdict', 'Abstract']) assert.ok(!folds.some((d) => d.querySelector('summary').textContent === label), label);
-    assert.match(f.root.querySelector('#figs').innerHTML, /Later-period P&L \(unseen <span class="nobr">data\)/);
+    assert.match(f.root.querySelector('#figs').innerHTML, /Later-period P&L <span class="nobr">\(unseen\u00a0data\)<button/);
   }
 });
 
@@ -3512,8 +3512,16 @@ test('the equity chart\'s unseen-data label fits its window instead of running o
   assert.match(legend, /Kalshi dev \(real\)/);
   assert.match(legend, /text-anchor="end" style="fill:var\(--ink-2\)">LATER →<\/text>/);
   // A strategy with no gatekeeper record names its own window, never unseen.
-  const split = frontend().equityChart(curve, iso(30), null, {width: 760, cutLabel: ['LATER PERIOD\u00a0· NOT HELD OUT →', 'LATER →']});
+  const split = frontend().equityChart(curve, iso(30), null, {width: 760, cutLabel: ['LATER PERIOD\u00a0· NOT HELD OUT →', 'LATER\u00a0· NOT HELD OUT →', 'LATER →']});
   assert.match(split, />LATER PERIOD\u00a0· NOT HELD OUT →<\/text>/); assert.doesNotMatch(split, /UNSEEN/);
+  // Room right of the cut for "LATER →" alone: it still says which window, pinned, and never drops the qualifier
+  // where no legend is in the way (a phone walk read a bare "LATER →" over a held-out window).
+  for (const cut of [70, 75]) {
+    const tight = frontend().equityChart(curve, iso(cut), null, {width: 340});
+    assert.match(tight, /text-anchor="end" style="fill:var\(--ink-2\)">LATER\u00a0· UNSEEN →<\/text>/, String(cut));
+    const later = frontend().equityChart(curve, iso(cut), null, {width: 340, cutLabel: ['LATER PERIOD\u00a0· NOT HELD OUT →', 'LATER\u00a0· NOT HELD OUT →', 'LATER →']});
+    assert.match(later, />LATER\u00a0· NOT HELD OUT →<\/text>/, String(cut));
+  }
 });
 
 test('the open-positions why line and a long strategy name wrap, so Deploy never scrolls sideways', () => {
