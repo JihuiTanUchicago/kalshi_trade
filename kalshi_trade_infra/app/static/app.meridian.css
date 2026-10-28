@@ -1937,6 +1937,22 @@ body.landing-body .apf { display: none; }
 .strategy-summary > summary svg { width: 12px; height: 12px; }
 .strategy-summary[open] > summary svg { transform: rotate(180deg); }
 .strategy-summary #sfigs { position: absolute; top: calc(100% + 12px); right: 0; z-index: 12; width: min(560px, calc(100vw - 28px)); padding: 4px 20px; border: 1px solid var(--rule-2); background: var(--stock-raised); grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+/* Walk 2026-10-28 at 1024/1280px: opened, the figures (the popover above) covered the intro line and the filters.
+   On a desktop they now open in the page: the summary spans the title's row and a second, flexible row its figures
+   fill, and the intro drops to the row under them, pushing the filters down. The flexible row takes all the figures'
+   height, so the title's row keeps its closed height (the title's line box matches the closed summary: 31px, 44px to
+   a coarse pointer) and neither the title nor the summary moves. Closed, nothing here applies. */
+@media (min-width: 761px) {
+  .strategy-heading:has(> .strategy-summary[open]) { grid-template-rows: auto 1fr auto; }
+  .strategy-heading:has(> .strategy-summary[open]) > h1.page { line-height: 31px; }
+  .strategy-heading > .strategy-summary[open] { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+  .strategy-heading:has(> .strategy-summary[open]) > .page-lede { grid-row: 3; }
+  .strategy-summary[open] > summary { width: fit-content; margin-left: auto; }
+  .strategy-summary[open] #sfigs { position: static; margin-top: 4px; }
+}
+@media (min-width: 761px) and (hover: none), (min-width: 761px) and (pointer: coarse) {
+  .strategy-heading:has(> .strategy-summary[open]) > h1.page { line-height: 44px; }
+}
 .t-strat td.num, .t-dep td.num, .quote-side, .hot-price .fig, .hot-delta, #figs .fig, #bfigs .fig, .snap-metrics dd, .dial output, .apf-stats dd, .split dd {
   font-family: var(--f-number);
   font-variant-numeric: tabular-nums lining-nums;
@@ -2060,6 +2076,13 @@ body.landing-body .apf { display: none; }
   .strategy-heading > .page-lede { grid-row: 2; }
   .strategy-heading > .strategy-summary { grid-row: 3; justify-self: stretch; }
   .strategy-summary #sfigs { position: static; width: auto; margin: 8px 0 0; }
+  /* Walk 2026-10-28 at 360px: "Void on unseen data" ran two lines, and the phone grid's divider (a .measure rule)
+     sat flush against the right column's labels, since #sfigs zeroes the cells' side padding. The box's own gap
+     separates its columns, as on a desktop; a little less side padding gives the label its one line at 360 and up.
+     Narrower still, a long label breaks into even lines. */
+  .strategy-summary #sfigs { padding: 4px 16px; column-gap: 16px; }
+  .strategy-summary #sfigs > .m:nth-child(even) { border-left: 0; }
+  .strategy-summary #sfigs .lab { text-wrap: balance; }
 }
 
 /* Tau workspace: one ruled hierarchy for records, financial evidence and actions. */

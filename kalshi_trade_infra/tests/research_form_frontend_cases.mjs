@@ -21,8 +21,9 @@ const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
 const MODELS = {models: [{key: 'opus', label: 'Claude Opus 4.6'}, {key: 'nova', label: 'Amazon Nova Micro'}], default: 'opus'};
 
 export function researchFormCases({name, frontend}) {
-  const form = async ({estimate = {}, me = {}, runs = [], create, search = '', globals} = {}) => {
+  const form = async ({estimate = {}, me = {}, runs = [], create, search = '', globals, over = {}} = {}) => {
     const f = frontend({globals, fetchImpl: (path, options) => {
+      if (over[path]) return over[path]();
       if (path === '/api/models') return response(MODELS);
       if (path === '/api/research/context') return response({markets: []});
       if (path === '/api/research/estimate') return response(estimate);
@@ -171,6 +172,22 @@ export function researchFormCases({name, frontend}) {
     assert.equal(ex(), 'or run it yourself');
     f.clearTimers();
   });
+
+  // Walk 2026-10-28 (each read failing): a failed estimate read said "No cost estimate for this model yet", which
+  // wasn't known. (A failed quotes read no longer marks every picker row "No live quote": checked in the browser.)
+  test(`${name}: a cost estimate that didn't load says so, not that there is none`, async () => {
+    const fail = () => response({error: 'Something went wrong on our side. It’s been logged.'}, 500);
+    const me = {billing_enabled: true, credit_balance: 20, auto_reload: null};
+    const f = await form({me, over: {'/api/research/estimate': fail, '/api/research/context': fail}});
+    assert.equal(f.root.querySelector('#rcost').textContent,
+      'The cost estimate didn’t load. It’s charged to your credits as it runs, and you can stop it any time from its session page.');
+    f.clearTimers();
+    // Answered, with no figure for the model: there is none yet.
+    const g = await form({me, estimate: {yours: null, sessions: 0, typical: {}}});
+    assert.match(g.root.querySelector('#rcost').textContent, /^No cost estimate for this model yet\./);
+    g.clearTimers();
+  });
+
 }
 
 // What the browser's FormData reads off the form, for the offline harness: the checked radio and

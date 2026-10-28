@@ -211,6 +211,15 @@ export function explorePageCases({name, frontend}) {
     assert.match(body().innerHTML, /Bitcoin’s latest price didn’t load\. Try again in a moment\./);
     await body().querySelector('[data-spot-retry]').onclick(); await settle();
     assert.match(body().innerHTML, /\+\$420\.01/);
+    // Walk 2026-10-28: Tau's generic words (a 500) or no reply said only "Something went wrong on our side." in the
+    // section. It names what didn't load and that the rest of the page is there.
+    for (const [answer, why] of [[() => response({error: 'Something went wrong on our side. It’s been logged.'}, 500), 'Something went wrong on our side. It’s been logged.'],
+      [() => ({ok: false, status: 500, json: async () => { throw new SyntaxError('Unexpected token <'); }}), 'Tau is having trouble right now. Try again in a moment.']]) {
+      const g = await openSpot(answer);
+      assert.equal(g.body().querySelector('p.hint').textContent.trim(), `Bitcoin’s latest stored price didn’t load. ${why} Everything else on this page did. Try again`);
+      assert.match(g.f.root.innerHTML, /How it settles/);
+      g.f.clearTimers && g.f.clearTimers();
+    }
   });
 
   // The figures carry the age Tau read them at ("Coinbase · 4s ago"), which stood still while the 15s poll

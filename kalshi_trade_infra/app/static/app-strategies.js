@@ -316,7 +316,7 @@ window.TauPage('strategies', (T) => {
       let d;
       try { d = await api('/api/strategies?' + p.toString()); } catch (e) {
         if (e.status === 401) throw e;
-        slipsEl.innerHTML = loadFail(errText(e));
+        slipsEl.innerHTML = loadFail(errText(e), 'Your strategies');
         slipsEl.querySelector('[data-retry]').onclick = () => load();
         return;
       }
@@ -944,7 +944,7 @@ window.TauPage('strategies', (T) => {
         // rest of the visit, and only a reload asked again.
         const body = root.querySelector('#road-live-body');
         if (!body) return;
-        const why = e instanceof ApiError ? e.message : 'Live readiness is unavailable right now.';
+        const why = 'Road to live didn\u2019t load. ' + (e instanceof ApiError ? e.message : 'Try again in a moment.') + ' Everything else on this page did.';
         body.innerHTML = `<p class="hint">${esc(why)} <button class="btn sm" type="button" data-road-retry>Try again</button></p>`;
         body.querySelector('[data-road-retry]').onclick = () => { body.innerHTML = '<p class="hint">Checking…</p>'; return roadRead(); };
       }

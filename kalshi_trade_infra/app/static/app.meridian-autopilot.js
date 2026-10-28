@@ -162,7 +162,12 @@ window.TauPage('autopilot', (T) => {
     let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId), undefined, { keep: true, ...cfg }); }
     catch (e) {
       // Nothing painted yet: say the feed didn't load rather than leave it blank. The poll retries.
-      if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty ap-fail">Couldn\u2019t load the autopilot\u2019s activity. Retrying.</li>';
+      // Try again reads now: the poll backs off while reads fail (walk 2026-10-28: still "Retrying." 5s after Tau was back).
+      if (!msgs.children.length) {
+        msgs.innerHTML = '<li class="ap-empty ap-fail">Couldn\u2019t load the autopilot\u2019s activity. Retrying. <button type="button" class="btn sm" data-ap-chat-retry>Try again</button></li>';
+        const again = msgs.querySelector('[data-ap-chat-retry]');
+        if (again) again.onclick = () => { again.disabled = true; apLoadChat(box, true); };
+      }
       return false;
     }
     msgs.querySelectorAll('.ap-fail').forEach((n) => n.remove());
@@ -231,6 +236,8 @@ window.TauPage('autopilot', (T) => {
     const d = S.ap, la = d && d.last_action;
     const last = la && la.at && !spoken ? `${SEP}last move ` + sinceMin(la.at) : '';
     if (!(d ? d.autopilot : apSwitchOn())) return 'Off: it acts only when you message it' + last;
+    // Its status not read (or the read failed): on, and no more. "Idle" was a guess.
+    if (!d) return 'On';
     return apNowWord(d) + last;
   }
   // The pulse's lead: what the status read says it is doing, so it never reads "Idle" over research.
@@ -455,10 +462,12 @@ window.TauPage('autopilot', (T) => {
     return (rest ? [rest] : []).concat(lines.slice(1));
   }
   function apUpdate(box, d) {
-    const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
+    const on = d ? d.autopilot : (S.me.user && S.me.user.autopilot);
+    // Before its status has been read (or when that read failed), the head goes by the saved switch, as the pill
+    // does: it said "Autopilot off" over a switch that was on (walk 2026-10-28, status read failing).
+    const m = (d && AP_MODE[d.mode]) || (!d && on ? { label: 'Autopilot on', cls: 'paper' } : AP_MODE.off);
     box.className = 'apf open' + (m.cls ? ' ' + m.cls : '');
     const label = box.querySelector('#apf-label'); if (label) label.textContent = m.label;
-    const on = d ? d.autopilot : (S.me.user && S.me.user.autopilot);
     const ap = box.querySelector('#apf-ap'); if (ap) ap.classList.toggle('on', !!on);
     // A flip still waiting for Tau keeps the switch where it was flipped, locked, with its note: the
     // status read may have left before the write landed (and the panel may have been built again).
@@ -470,7 +479,16 @@ window.TauPage('autopilot', (T) => {
     if (copy) copy.innerHTML = on
       ? '<b>Autopilot</b>Researches, deploys and tunes paper strategies on its own, and adjusts your risk &amp; execution controls within safe bounds. It never touches live money without the step below.'
       : '<b>Autopilot</b>Off: it only suggests ideas and changes, and you approve each one. Flip the switch to let it research and trade on paper by itself.';
-    if (!d) return;
+    if (!d) {
+      // A status read that failed says so, with Try again, instead of a panel with no figures and nothing said.
+      const st = box.querySelector('#apf-story');
+      if (st) {
+        st.innerHTML = S.apFailing ? '<p class="apf-fail">The autopilot\u2019s status didn\u2019t load, so its figures are left out. The switch shows how you last set it. <button type="button" class="btn sm" data-ap-status-retry>Try again</button></p>' : '';
+        const again = st.querySelector('[data-ap-status-retry]');
+        if (again) again.onclick = () => { again.disabled = true; refreshAutopilot(box); };
+      }
+      return;
+    }
     // Plain-language summary from the server (what it's doing, why no trades yet, what live needs).
     const story = box.querySelector('#apf-story');
     if (story) {

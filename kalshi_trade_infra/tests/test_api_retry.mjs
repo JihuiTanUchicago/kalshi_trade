@@ -51,7 +51,7 @@ for (const file of ['app.js', 'app.meridian.js']) {
   test(file + ': a GET gives up after two retries with the real error', async () => {
     const t = loadApi(file);
     t.replies.push(edge(503), edge(504), edge(503));
-    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 503 && /503/.test(e.message));
+    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 503 && e.message === 'Tau is having trouble right now. Try again in a moment.');
     assert.equal(t.calls.length, 3);
   });
 
@@ -95,7 +95,9 @@ for (const file of ['app.js', 'app.meridian.js']) {
   test(file + ': an HTML error page or a 429 reads as plain words', async () => {
     const t = loadApi(file);
     t.replies.push(edge(500));
-    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 500 && e.message === 'Tau is having trouble right now (500). Try again in a moment.');
+    // Walk 2026-10-28: a read's HTML 500 put "(500)" on the page. The code is the operator's, not the reader's.
+    await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 500 && e.message === 'Tau is having trouble right now. Try again in a moment.');
+    for (const code of [500, 502, 503, 504]) assert.doesNotMatch(vm.runInContext(`failText(${code}, false)`, t.ctx), /\d{3}/);
     t.replies.push({ok: false, status: 429, json: async () => { throw new SyntaxError('Unexpected token <'); }});
     await assert.rejects(t.api('/api/dashboard'), (e) => e.status === 429 && /Try again in a minute/.test(e.message));
     t.replies.push(reply(429, {error: 'You can run up to 5 deployments at once.'}));

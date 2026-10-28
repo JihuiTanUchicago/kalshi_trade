@@ -160,7 +160,12 @@ window.TauPage('community', (T) => {
       d.strategies.filter((s) => s.status !== 'rejected' || s.title).slice(0, 50).forEach((s) => {
         const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.title} (${STATUS_WORD[s.verdict] || STATUS_WORD[s.status] || s.status})`; sel.appendChild(o);
       });
-    }).catch(() => {});
+    }).catch(() => {
+      // A list that didn't load says so in the picker: it read "Attach a strategy… (optional)" over no strategies
+      // (walk 2026-10-28). The post itself still works.
+      const first = root.querySelector('#post-strat option');
+      if (first) first.textContent = 'Your strategies didn\u2019t load. Reload the page to attach one.';
+    });
     const form = root.querySelector('#composer-post');
     // One post at a time: Post and Share my P&L both lock while either is sent (a second tap on Share
     // my P&L, which busy() didn't lock, posted it twice). A post that landed says so even when the feed

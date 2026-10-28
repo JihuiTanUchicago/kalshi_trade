@@ -112,6 +112,27 @@ export function bellCases({name, frontend}) {
     assert.equal(g.root.querySelector('.bell-trig').getAttribute('aria-label'), 'Notifications, 1 unread');
   });
 
+  // Walk 2026-10-28: with /api/notifications slow (8s), a tap on the bell did nothing until the read came back.
+  test(`${name}: the bell opens while its list is still reading, says so, and fills in where it stands`, async () => {
+    let answer;
+    const pending = new Promise((resolve) => { answer = resolve; });
+    const f = dashboard(() => pending);
+    f.location.pathname = '/';
+    await f.render(); await settle();
+    const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
+    const list = wrap.querySelector('#bell-list');
+    assert.equal(typeof trig.onclick, 'function', 'the bell answers a tap before its list has come back');
+    await trig.onclick({stopPropagation() {}});
+    assert.equal(menu.hidden, false);
+    assert.equal(list.textContent, 'Loading notifications…');
+    assert.equal(f.requests.filter(({path}) => path === '/api/notifications/read').length, 0, 'nothing to mark read yet');
+    answer(response({unread: 1, items: [{id: 3, kind: 'deploy', body: 'Edge made a trade.', link: '/deploy', created_at: ago(60e3), read: false, more: 0}]}));
+    await settle();
+    assert.match(list.querySelector('a.notif').textContent, /Edge made a trade/);
+    assert.equal(menu.hidden, false);
+    assert.equal(f.requests.filter(({path}) => path === '/api/notifications/read').length, 1, 'read as it shows, open');
+  });
+
   test(`${name}: marking the list read that didn't save puts the dot back, and the next open tries once more`, async () => {
     // The dot cleared on screen and the items came back unread on the next page: the bell said nothing was new.
     const notes = () => response(structuredClone({unread: 2, items: [

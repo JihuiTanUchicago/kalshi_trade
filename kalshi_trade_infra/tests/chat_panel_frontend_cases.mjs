@@ -312,4 +312,43 @@ export function chatPanelCases({name, frontend, storageFor}) {
     for (let i = 0; i < 8; i++) await flush();
     assert.equal(reads, 1, 'an approved pause reads the status at once');
   });
+
+  // Walk 2026-10-28 (a full load with /api/autopilot/status, then /api/chat, failing): the open panel said
+  // "Autopilot off" over a switch that was on, its pulse said "Idle — reviews run on a schedule", nothing said
+  // the status hadn't come, and the feed's "Retrying." waited out the poll's back-off with no way to ask now.
+  test(`${name}: an autopilot whose status or feed didn't load says so, with Try again, and never reads as off or idle`, async () => {
+    let statusFails = true, chatFails = true;
+    const store = new Map([['tau_ap_open', '1']]);
+    const f = frontend({storage: storageFor(store), fetchImpl: (path) => {
+      if (path.startsWith('/api/chat?')) return chatFails ? response({error: 'Something went wrong on our side. It’s been logged.'}, 500) : response({messages: [], agent_busy: false});
+      if (path === '/api/models') return response({models: [], default: ''});
+      if (path === '/api/autopilot/status') return statusFails ? response({error: 'Something went wrong on our side. It’s been logged.'}, 500) : response({autopilot: true, mode: 'paper', paper_running: 1});
+      if (path === '/api/notifications') return response({items: [], unread: 0});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me = {...f.S.me, user: {...(f.S.me && f.S.me.user), id: 7, autopilot: true}};
+    f.S.ap = null; f.S.apAt = 0;
+    const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+    f.renderAutopilot(box, null);
+    await flush(); await flush();
+    assert.equal(await f.refreshAutopilot(box), false);
+    await flush();
+    assert.equal(box.querySelector('#apf-label').textContent, 'Autopilot on');
+    assert.equal(box.querySelector('#apf-apswitch').checked, true);
+    const story = box.querySelector('#apf-story');
+    assert.match(story.innerHTML, /The autopilot’s status didn’t load, so its figures are left out\. The switch shows how you last set it\./);
+    assert.doesNotMatch(box.innerHTML, /Autopilot off|reviews run on a schedule|\$0\.00/);
+    assert.equal(f.apIdleLine(box), 'On');
+    const feed = box.querySelector('#apf-messages');
+    assert.match(feed.innerHTML, /Couldn’t load the autopilot’s activity\. Retrying\./);
+    // Try again asks now, for either one.
+    chatFails = false;
+    await feed.querySelector('[data-ap-chat-retry]').onclick(); await flush(); await flush();
+    assert.doesNotMatch(feed.innerHTML, /Couldn’t load/);
+    statusFails = false;
+    story.querySelector('[data-ap-status-retry]').onclick(); await flush(); await flush(); await flush();
+    assert.doesNotMatch(box.querySelector('#apf-story').innerHTML, /didn’t load/);
+    assert.equal(f.S.ap.mode, 'paper');
+  });
+
 }

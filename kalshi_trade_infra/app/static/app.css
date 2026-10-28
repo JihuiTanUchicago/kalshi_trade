@@ -1108,6 +1108,10 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
    reads on one line (beside its chip it wrapped "BOOK" onto a second line at 390px). */
 @media (max-width: 480px) {
   .measure dt.lab > .mk:first-child { display: block; width: fit-content; margin: 0 0 5px; }
+  /* Walk 2026-10-28 at 360/390px: the Strategies figures' "VOID ON UNSEEN DATA" broke "DATA" onto a second line,
+     dropping its count below its neighbour's. A phone's labels there track tighter (the stacked tables' 10.5px), so
+     each reads on one line at 360 and up; narrower still, a long one breaks into even lines. */
+  #sfigs .lab { font-size: 10.5px; letter-spacing: .03em; text-wrap: balance; }
 }
 @media (max-width: 760px) {
   .measure { grid-template-columns: repeat(2, minmax(0, 1fr)); }

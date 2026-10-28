@@ -574,11 +574,12 @@
   // What a failed request says when Tau sent no words of its own (the edge's HTML error page, a cut-off
   // reply, no network): plain words, never the page itself. A write that Tau may have taken anyway (no
   // reply, or the edge's 5xx) says so, so nobody deploys or sends twice by trying again blind.
+  // A read's 5xx names no code: the reader can't act on "(500)", and the operator's readout (apiBroke) has it.
   const failText = (status, write) => write && (!status || status >= 500)
     ? "Tau didn't confirm this, so it may or may not have gone through. Reload the page to check before you try again."
     : !status ? 'Can’t reach Tau. Check your connection.'
     : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
-    : status >= 500 ? `Tau is having trouble right now (${status}). Try again in a moment.`
+    : status >= 500 ? 'Tau is having trouble right now. Try again in a moment.'
     // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code.
     : `Tau couldn't do that (${status}). Reload the page and try again.`;
   // A failure the page shows as an error goes to the operator's readout on /admin (boot.js sends it).
@@ -900,7 +901,7 @@
         // Offline, it isn't "something went wrong": the page loads by itself once the network is back
         // (the online handler presses Try again).
         const off = e.status === 0 && offline();
-        shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
+        shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'This page didn’t load'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
       }
     }
@@ -1126,7 +1127,10 @@
       if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
       try { data = await bellReq; paint(data); return true; } catch (e) { if (!data) unloaded(); return false; }  // bell is best-effort
     };
-    await load();
+    // The bell opens while its list is still reading (walk 2026-10-28: on a slow reply a tap did nothing until
+    // the read came back, up to READ_MS), so it says it is loading, and the list fills in where it stands.
+    if (!data && !list.children.length) list.innerHTML = '<p class="bell-empty">Loading notifications\u2026</p>';
+    load().then((ok) => { if (ok) seen(); });
     // Autopilot pauses or readies a strategy while the page sits open: the dot shows it within a minute,
     // without a reload (bellTick). An open list is left as the reader sees it, unless it never loaded.
     bellFresh = (d) => { if (menu.hidden || !data) { data = d; paint(d); seen(); } };
@@ -1379,7 +1383,9 @@
   const fundsLinked = (html) => String(html).replace(/\b(?:the )?Funds page\b/, '<a href="/funds#connect-kalshi">$&</a>');
   const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${fundsLinked(esc(msg))}</span></div>`;
   // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
-  const loadFail = (msg) => `<div class="load-fail">${notice(msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
+  // A section whose own read failed on a page that otherwise loaded names itself and says the rest is there
+  // (`what`): the dashboard's track record said only "Something went wrong on our side." (walk 2026-10-28).
+  const loadFail = (msg, what) => `<div class="load-fail">${notice(what ? `${what} didn\u2019t load. ${msg} Everything else on this page did.` : msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
   // A page's own bug (a TypeError on a reply it didn't expect) is not something to print to the user.
   // It is reported (reportBroken), so a page that breaks this way shows up on /admin.
   const errText = (e) => (e instanceof ApiError ? e.message : (reportBroken('view', e), 'Something went wrong on this page. Try again.'));
@@ -2756,7 +2762,7 @@
       const read = pending; pending = null;  // the view's own read once; a retry asks again
       try { await mountTrackRecord(host, last, read); } catch (e) {
         if (gen !== S.gen) return;
-        host.innerHTML = loadFail(errText(e));
+        host.innerHTML = loadFail(errText(e), 'Your track record');
         host.querySelector('[data-retry]').onclick = () => { host.innerHTML = loading(260); return first(); };
         return;
       }
@@ -2935,7 +2941,9 @@
     const show = (s) => {
       const el = root.querySelector('#mk-spot-body');
       if (!el) return;
-      el.innerHTML = s.failed ? `<p class="hint">${esc(s.failed)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s, d);
+      // A failed read names what didn't load (it said only "Something went wrong on our side."), unless Tau's own words do.
+      const why = s.failed && (/didn\u2019t load/.test(s.failed) ? s.failed : `Bitcoin\u2019s latest stored price didn\u2019t load. ${s.failed}`) + ' Everything else on this page did.';
+      el.innerHTML = s.failed ? `<p class="hint">${esc(why)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s, d);
       const b = el.querySelector('[data-spot-retry]');
       if (b) b.onclick = () => spotRead(ticker).then(show);
     };
@@ -3189,7 +3197,12 @@
       renderAutopilot(box, S.ap); paintDashAp(); bellTick();
       if (S.ap.idle_pending && !afterDemo) demoCashRead().then(() => refreshAutopilot(document.getElementById('autopilot-float'), false, undefined, true));
     }
-    catch (e) { S.apFailing = true; apPaintStale(); return false; }  // best-effort: never block the app
+    catch (e) {
+      S.apFailing = true; apPaintStale();
+      // Never read: an open panel says the status didn't load (apUpdate), and its Try again is given back.
+      if (!S.ap && box && apExpanded()) renderAutopilot(box, null);
+      return false;
+    }  // best-effort: never block the app
     return true;
   }
   // The autopilot's figures (the panel's and the dashboard card's) say how old they are once its

@@ -561,6 +561,8 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const body = () => f.root.querySelector('#road-live-body');
     assert.match(body().innerHTML, /Tau is busy\. Try again in a moment\./);
     assert.doesNotMatch(body().innerHTML, /unavailable/);
+    // It names what didn't load and says the rest of the page did (walk 2026-10-28).
+    assert.match(body().textContent, /^Road to live didn’t load\. Tau is busy\. Try again in a moment\. Everything else on this page did\./);
     await body().querySelector('[data-road-retry]').onclick(); await flush(); await flush();
     assert.equal(reads, 2);
     assert.match(body().innerHTML, /Realistic paper trades/);

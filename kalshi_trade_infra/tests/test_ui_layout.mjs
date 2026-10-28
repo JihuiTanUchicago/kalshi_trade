@@ -389,10 +389,55 @@ test('Meridian: on a phone the Strategies summary sits under the intro and opens
   assert.equal(decl(all, '.strategy-heading > .strategy-summary', 'justify-self', PHONE), 'stretch');
   assert.equal(decl(all, '.strategy-summary #sfigs', 'position', PHONE), 'static', 'opened, it pushes the filters down');
   assert.equal(decl(all, '.strategy-summary #sfigs', 'width', PHONE), 'auto');
-  // Desktop is unchanged: the summary at the title's right, its figures a popover under it.
+  // A desktop keeps the summary at the title's right (how its figures open there is the next test's).
   assert.equal(decl(all, '.strategy-heading', 'grid-template-columns'), 'max-content minmax(0, 1fr)');
   assert.equal(decl(all, '.strategy-heading > .strategy-summary', 'justify-self'), 'end');
   assert.equal(decl(all, '.strategy-summary #sfigs', 'position'), 'absolute');
   // A thumb's 44px to open it.
   assert.ok(all.some((r) => r.media === '@media (hover: none), (pointer: coarse)' && sels(r).includes('.strategy-summary > summary') && /min-height\s*:\s*44px/.test(r.body)));
+});
+
+// Walk 2026-10-28, Meridian's Strategies at 1024 and 1280px: opened, the Research results figures (an absolute popover)
+// still covered the intro line and the filters there. On a desktop they open in the page: the summary spans the title's
+// row and a flexible row its figures fill, the intro drops under them, and the filters move down. The flexible row
+// takes all the figures' height, so the title's row keeps its closed height (31px, the closed summary's; 44px to a
+// coarse pointer) and neither the title nor the summary moves. Every rule waits for [open], so closed is as before.
+test('Meridian: on a desktop the opened Strategies summary pushes the intro and filters down, covering nothing', () => {
+  const all = rules(read('app.meridian.css'));
+  const OPEN = '.strategy-heading:has(> .strategy-summary[open])';
+  assert.equal(decl(all, OPEN, 'grid-template-rows', DESKTOP), 'auto 1fr auto', 'the figures fill a flexible row of their own');
+  assert.equal(decl(all, '.strategy-heading > .strategy-summary[open]', 'grid-column', DESKTOP), '2', 'still beside the title');
+  assert.equal(decl(all, '.strategy-heading > .strategy-summary[open]', 'grid-row', DESKTOP), '1 / span 2');
+  assert.equal(decl(all, '.strategy-heading > .strategy-summary[open]', 'align-self', DESKTOP), 'start');
+  assert.equal(decl(all, `${OPEN} > .page-lede`, 'grid-row', DESKTOP), '3', 'the intro sits under the figures');
+  assert.equal(decl(all, '.strategy-summary[open] #sfigs', 'position', DESKTOP), 'static', 'in the page, not over it');
+  // The summary keeps its place at the right edge, at its own width, as the figures widen the box under it.
+  assert.equal(decl(all, '.strategy-summary[open] > summary', 'margin-left', DESKTOP), 'auto');
+  assert.equal(decl(all, '.strategy-summary[open] > summary', 'width', DESKTOP), 'fit-content');
+  // The title's line box is the closed summary's height, so the title's row (and the title) stays put.
+  assert.equal(decl(all, `${OPEN} > h1.page`, 'line-height', DESKTOP), '31px');
+  assert.equal(decl(all, `${OPEN} > h1.page`, 'line-height', '@media (min-width: 761px) and (hover: none), (min-width: 761px) and (pointer: coarse)'), '44px');
+  // Closed it is the layout it was: the summary beside the title, the figures a popover nothing opens.
+  assert.equal(decl(all, '.strategy-summary #sfigs', 'position'), 'absolute');
+  assert.ok(!all.some((r) => r.media === DESKTOP && /strategy-(heading|summary)/.test(r.sel) && !/\[open\]/.test(r.sel)), 'every desktop rule here waits for [open]');
+});
+
+// Walk 2026-10-28 at 360 and 390px: Tau's Strategies figure "VOID ON UNSEEN DATA" broke "DATA" onto a second line,
+// dropping its count below its neighbour's, and Meridian's "Void on unseen data" did the same at 360, with the phone
+// grid's divider flush against the label. Tau's labels there track tighter at the stacked tables' 10.5px; Meridian's
+// box drops the divider for its own gap and trims its side padding. Each reads on one line at 360 and up; narrower
+// still, a long one breaks into even lines. The words are unchanged.
+test('Strategies: a phone keeps "Void on unseen data" on one line, in both themes', () => {
+  const tau = rules(read('app.css'));
+  const NARROW = '@media (max-width: 480px)';
+  assert.equal(decl(tau, '#sfigs .lab', 'font-size', NARROW), '10.5px');
+  assert.ok(parseFloat(decl(tau, '#sfigs .lab', 'letter-spacing', NARROW)) <= 0.04, 'tracked tighter than .11em');
+  assert.equal(decl(tau, '#sfigs .lab', 'text-wrap', NARROW), 'balance');
+  assert.equal(decl(tau, '#sfigs .lab', 'letter-spacing'), undefined, 'a desktop keeps the labels as they were');
+  const mer = rules(read('app.meridian.css'));
+  assert.equal(decl(mer, '.strategy-summary #sfigs > .m:nth-child(even)', 'border-left', PHONE), '0', 'no divider flush against the label');
+  assert.equal(decl(mer, '.strategy-summary #sfigs', 'padding', PHONE), '4px 16px');
+  assert.equal(decl(mer, '.strategy-summary #sfigs', 'column-gap', PHONE), '16px');
+  assert.equal(decl(mer, '.strategy-summary #sfigs .lab', 'text-wrap', PHONE), 'balance');
+  for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) assert.match(read(f), /gl\('Void on unseen data', 'void'\)/, `${f}: the label's words`);
 });
