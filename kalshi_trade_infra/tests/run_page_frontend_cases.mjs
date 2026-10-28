@@ -302,12 +302,12 @@ export function runPageCases({name, frontend}) {
       const unseen = cell({status, out_of_sample: m(3), in_sample: m(2.1)});
       assert.match(unseen, /^<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig bt-sub"/, status);
       assert.deepEqual(btLine(unseen), {title: `later-period P&amp;L after the split date, on unseen data${SEP}did not pass`,
-        long: `later-period P&amp;L after the split date, on unseen data${SEP}did not pass`, short: `later period${SEP}unseen data${SEP}did not pass`}, status);
+        long: `later-period P&amp;L after the split date, on unseen data${SEP}did not pass`, short: `later\u00a0period${SEP}unseen\u00a0data${SEP}did\u00a0not\u00a0pass`}, status);
     }
     // Passed and backtest-only keep the money tone and say nothing of the kind.
     const passed = cell({status: 'passed', out_of_sample: m(3)});
     assert.match(passed, /^<span class="gain">\+\$3\.00<\/span><div class="sub-fig bt-sub"[^>]*>(?:<span[^>]*>[^<]*<\/span>){2}<\/div>$/);
-    assert.equal(btLine(passed).short, 'later period' + SEP + 'unseen data');
+    assert.equal(btLine(passed).short, 'later\u00a0period' + SEP + 'unseen\u00a0data');
     const kept = cell({status: 'backtest-only', out_of_sample: null, in_sample: m(2.1)});
     assert.match(kept, /class="gain"/); assert.doesNotMatch(kept, /did not pass/);
   });
@@ -327,7 +327,7 @@ export function runPageCases({name, frontend}) {
     assert.doesNotMatch(html, /Unseen P&amp;L|tested only|\(tested\)/);
     assert.match(html, /\+\$8\.40<\/span><div class="sub-fig bt-sub" title="on the history it searched"><span class="bt-long">on the history it searched<\/span><span class="bt-short" aria-hidden="true">history it searched<\/span><\/div>/);
     // A held-out figure is the later period too, as the sort that orders it ("Later-period P&L") says.
-    assert.match(html, /\+\$5\.00<\/span><div class="sub-fig bt-sub" title="later-period P&amp;L after the split date, on unseen data"><span class="bt-long">later-period P&amp;L after the split date, on unseen data<\/span><span class="bt-short" aria-hidden="true">later period\u00a0· unseen data<\/span><\/div>/);
+    assert.match(html, /\+\$5\.00<\/span><div class="sub-fig bt-sub" title="later-period P&amp;L after the split date, on unseen data"><span class="bt-long">later-period P&amp;L after the split date, on unseen data<\/span><span class="bt-short" aria-hidden="true">later\u00a0period\u00a0· unseen\u00a0data<\/span><\/div>/);
     // No figure, no data line.
     assert.doesNotMatch(f.strategySlip({id: 3, title: 'T', thesis: '', market: 'btc15m', status: 'queued', in_sample: {}}, {}), /sub-fig[^"]*"[^>]*>(?:<span[^>]*>)?(?:on|later|history) /);
     f.clearTimers();

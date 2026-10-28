@@ -1833,8 +1833,10 @@
     const spanDays = (d) => !(+d > 0) ? '' : +d < 1 ? 'under a day' : `${num(Math.round(+d))}\u00a0day${Math.round(+d) === 1 ? '' : 's'}`;
     const longSub = [m.pnl == null ? '' : later ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
       : oos ? `later-period P&amp;L${overDays(m.days)} after the split date, on unseen data` : 'on the history it searched' + overDays(m.days), verdictWord].filter(Boolean).join(SEP);
-    const shortSub = [...(m.pnl == null ? [] : [oos ? 'later period' : 'history it searched', spanDays(m.days), later ? 'not held out' : oos ? 'unseen data' : '']), verdictWord].filter(Boolean).join(SEP);
-    const pnlSub = !longSub ? '' : shortSub === longSub ? `<div class="sub-fig">${longSub}</div>`
+    // Each short phrase holds together, so a narrow card breaks only at a separator ("unseen / data" split it).
+    const shortSub = [...(m.pnl == null ? [] : [oos ? 'later\u00a0period' : 'history it searched', spanDays(m.days), later ? 'not\u00a0held\u00a0out' : oos ? 'unseen\u00a0data' : '']),
+      verdictWord === 'did not pass' ? 'did\u00a0not\u00a0pass' : verdictWord].filter(Boolean).join(SEP);
+    const pnlSub = !longSub ? '' : shortSub.replace(/\u00a0/g, ' ') === longSub.replace(/\u00a0/g, ' ') ? `<div class="sub-fig">${longSub}</div>`
       : `<div class="sub-fig bt-sub" title="${longSub}"><span class="bt-long">${longSub}</span><span class="bt-short" aria-hidden="true">${shortSub}</span></div>`;
     const tried = s.hypotheses_tried ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
