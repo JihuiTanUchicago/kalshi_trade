@@ -248,7 +248,7 @@ const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false}
   ]}});
 
 test('road to live says plainly when paper is losing money against the backtest', async () => {
-  for (const [realization, said] of [[-0.18, /Paper is <b>losing money<\/b> per trade, while the backtest made money after its split date \(later period\u00a0· unseen data\)\./], [0.6, /Paper earns <b>60%<\/b> of the backtest/]]) {
+  for (const [realization, said] of [[-0.18, /Paper is <b>losing money<\/b> per trade, while the backtest made money after its split date \(later period\u00a0· unseen\u00a0data\)\./], [0.6, /Paper earns <b>60%<\/b> of the backtest/]]) {
     const readiness = {ready: false, blocking: 'the gatekeeper has not cleared it', deployment_candidate: false, live_autopilot: {ok: false},
       paper: {trades: 12, trades_needed: 30, net_pnl: -0.76, events: 12, events_needed: 20, span_hours: 5, span_needed_hours: 48,
         p_value: null, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 2.64, realization,
@@ -3139,7 +3139,7 @@ test('on a phone the strategy page folds its secondary sections, never money fig
     }});
     await f.viewStrategy(42); await flush();
     const folds = f.root.querySelectorAll('details.fold');
-    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Methodology', 'Most recent later-period trades (unseen data)', 'Demo &amp; live', 'What if…', 'Share', 'Remove']);
+    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Methodology', 'Most recent later-period trades (unseen\u00a0data)', 'Demo &amp; live', 'What if…', 'Share', 'Remove']);
     for (const d of folds) assert.equal('open' in d.attributes, open);
     for (const sel of ['#dep-demo', '#dep-live', '#live-confirm', '#whatif', '#share-form', '#del-strat']) assert.ok(f.root.querySelector(sel).closest('details.fold'), sel);
     for (const sel of ['#figs', '#dep-paper', '#gates', '#depflash']) assert.equal(f.root.querySelector(sel).closest('details.fold'), null, sel);

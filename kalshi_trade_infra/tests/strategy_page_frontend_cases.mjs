@@ -152,15 +152,18 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.match(gateText, /Makes money on data after the split date/); assert.match(gateText, /Enough trades after the split date to judge/);
       assert.doesNotMatch(gateText, /unseen/i);
       assert.deepEqual(figs.querySelectorAll('dt').map((dt) => dt.textContent), ['Later-period P&L (not\u00a0held\u00a0out)', 'In-sample P&L', 'Return on capital', 'Ideas tested']);
-      assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it\u00a0· not held out/);
+      assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it\u00a0· not\u00a0held\u00a0out/);
       assert.match(figs.innerHTML, /Later period over 15 days\u00a0· not\u00a0held\u00a0out\u00a0· \$100 at risk at most/);
       assert.doesNotMatch(figs.innerHTML, /After the split date over/);
+      // The qualifier never breaks inside, in any figure up top: at 360px the first figure's note ended "· not" with
+      // "held out" on the next line (walked 2026-10-28).
+      assert.doesNotMatch(figs.innerHTML, /not held|held out/);
       assert.match(html, /After the backtest’s split date it returned \$12\.00 over 6 trades\. That later slice is what picked it, so it isn’t held-out evidence\./);
       assert.match(html, /<h4>Later period \(not held out\)<\/h4>/);
       assert.match(html, /<dt>Split date<\/dt>/); assert.match(html, /The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out\./);
       assert.match(html, /LATER PERIOD\u00a0· NOT HELD OUT →|Later period\u00a0· not held out →/);
       assert.match(html, /Replaying the later window against Kalshi’s demo book/);
-      assert.match(html, /Most recent later-period trades \(not held out\)/); assert.match(html, /No later-period trades \(not held out\) to show\./);
+      assert.match(html, /Most recent later-period trades \(not\u00a0held\u00a0out\)/); assert.match(html, /No later-period trades \(not\u00a0held\u00a0out\) to show\./);
       assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest’s later-period pace \(not held out\), 2 trades would have made/);
       assert.doesNotMatch(html, /never saw|never touched|Unseen-data P&|in-sample only|Never seen \(out-of-sample\)|UNSEEN|Unseen by the agent|Unseen →|Unseen \(held out\)|unseen window|unseen trades|unseen-data pace|only ever saw/);
       // Plain words for what it is, never the pipeline's own ("statistical-gatekeeper record", "pre-registration",
@@ -598,12 +601,12 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
   // other words. One family now, as the headings say it: later period, plus unseen data (held out) or not held out.
   test(`${name}: the trades list and its empty line say "later period", plus whether it was held out`, async () => {
     const held = await open({status: 'passed', recent_trades: []});
-    assert.match(main(held), /Most recent later-period trades \(unseen data\)/);
-    assert.match(main(held), /<p class="hint">No later-period trades \(unseen data\) to show\.<\/p>/);
-    assert.doesNotMatch(main(held), /unseen trades|unseen-data trades|not held out\) to show/);
+    assert.match(main(held), /Most recent later-period trades \(unseen\u00a0data\)/);
+    assert.match(main(held), /<p class="hint">No later-period trades \(unseen\u00a0data\) to show\.<\/p>/);
+    assert.doesNotMatch(main(held), /unseen trades|unseen-data trades|not[ \u00a0]held[ \u00a0]out\) to show/);
     const split = await open({status: 'backtest-only', experiment: null, recent_trades: []});
-    assert.match(main(split), /Most recent later-period trades \(not held out\)/);
-    assert.doesNotMatch(main(split), /\(unseen data\)/);
+    assert.match(main(split), /Most recent later-period trades \(not\u00a0held\u00a0out\)/);
+    assert.doesNotMatch(main(split), /\(unseen[ \u00a0]data\)/);
     // Each figure's bubble says what its own figure is: a held-out one never points at "wasn’t held out".
     assert.match(held.root.querySelector('#figs dt').innerHTML, /data-glo="unseen"/);
     assert.doesNotMatch(held.root.querySelector('#figs').innerHTML, /data-glo="laterperiod"/);
@@ -626,9 +629,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       return html.match(/<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">(.*?)<\/p>/)[1];
     };
     const held = {status: 'passed'}, split = {status: 'passed', experiment: null};
-    assert.equal(await hint(held, -0.18), 'Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period · unseen data).');
-    assert.equal(await hint(split, -0.18), 'Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period · not held out).');
-    assert.equal(await hint(held, 0.6), 'Paper earns <b>60%</b> of the backtest’s P&amp;L per trade after its split date (later period · unseen data).');
-    assert.equal(await hint(split, 0.6), 'Paper earns <b>60%</b> of the backtest’s P&amp;L per trade after its split date (later period · not held out).');
+    assert.equal(await hint(held, -0.18), 'Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period · unseen\u00a0data).');
+    assert.equal(await hint(split, -0.18), 'Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period · not\u00a0held\u00a0out).');
+    assert.equal(await hint(held, 0.6), 'Paper earns <b>60%</b> of the backtest’s P&amp;L per trade after its split date (later period · unseen\u00a0data).');
+    assert.equal(await hint(split, 0.6), 'Paper earns <b>60%</b> of the backtest’s P&amp;L per trade after its split date (later period · not\u00a0held\u00a0out).');
   });
 }
