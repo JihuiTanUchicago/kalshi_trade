@@ -2639,7 +2639,7 @@ test('Tau: a finished session says what to do next: your own idea after the exam
   assert.match(await at({status: 'failed', error: 'The model <i>timed out</i>.'}, []),
     /This session stopped on an error\. The model &lt;i&gt;timed out&lt;\/i&gt;\. <a href="\/research\?new=1">Start a new session<\/a>/);
   assert.match(await at({status: 'cancelled'}, [{id: 43, title: 'Fade', status: 'rejected'}]),
-    /This session was cancelled before it finished\. The ideas it tested are listed below\. <a href="\/research\?new=1">Try another idea<\/a>/);
+    /You stopped this session before it finished\. The ideas it tested are listed below\. <a href="\/research\?new=1">Try another idea<\/a>/);
 });
 
 const OUT_OF_CREDITS_STEP = {id: 7, kind: 'step', message: 'Paused — out of credits. Add more (or turn on auto-reload) and start a new session to keep researching.', created_at: '2026-10-25T11:00:00Z'};

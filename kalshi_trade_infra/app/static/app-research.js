@@ -1183,7 +1183,8 @@ window.TauPage('research', (T) => {
     // The server's reason is written for the customer; one that already says the session stopped
     // stands alone ("…stopped on an error. …so the session stopped.").
     if (r.status === 'failed') return `<p class="run-next">${r.error && /\bstopped\b/.test(r.error) ? esc(r.error) : `This session stopped on an error.${r.error ? ' ' + esc(r.error) : ''}`}${apNext(r)} <a href="/research?new=1">Start a new session</a></p>`;
-    if (r.status === 'cancelled') return `<p class="run-next">This session was cancelled before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
+    // In the status figure's and the list's words ("Stopped by you"): it said "cancelled" right under it.
+    if (r.status === 'cancelled') return `<p class="run-next">You stopped this session before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
     const none = !(strategies || []).length;
     if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : `${fellLine ? fellLine + ' ' : ''}${nothing} before then; each idea below says which check it missed.`}</p>`;
     if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)}${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
