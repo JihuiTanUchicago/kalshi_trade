@@ -1687,13 +1687,13 @@ test('another trader’s shared strategy says whose it is instead of linking to 
   const strat = {kind: 'strategy', id: 42, title: 'Fade', market: 'btc15m', status: 'passed', pnl: 42.17, trades: 23, win_rate: .61, days: 9.4};
   host.innerHTML = f.postSnapshot(strat, '@bob');
   assert.equal(host.querySelector('a'), null);
-  assert.equal(host.querySelector('.snap-note').textContent, 'Backtest over 9 days after the split date (later period\u00a0· unseen data). Only @bob can open this strategy. Ask them to share a copy from its page.');
+  assert.equal(host.querySelector('.snap-note').textContent, 'Backtest over 9 days after the split date (later\u00a0period\u00a0· unseen\u00a0data). Only @bob can open this strategy. Ask them to share a copy from its page.');
   // The figure is "later-period P&L", as the Strategies list's sort names it; the note says which kind, as Meridian's
   // card does: it read "later-period backtest over 9 days on unseen data: +$42.17" in the figures' line.
   assert.match(host.querySelector('.snap-meta').textContent, /^BTC 15-min up\/down\u00a0· later-period P&amp;L: \+\$42\.17\u00a0· 23 trades\u00a0· 61\.0% win$/);
   host.innerHTML = f.postSnapshot(strat, '');
   assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42');
-  assert.equal(host.querySelector('.snap-note').textContent, 'Backtest over 9 days after the split date (later period\u00a0· unseen data).');
+  assert.equal(host.querySelector('.snap-note').textContent, 'Backtest over 9 days after the split date (later\u00a0period\u00a0· unseen\u00a0data).');
   host.innerHTML = f.postSnapshot(strat, '<img src=x>');
   assert.doesNotMatch(host.innerHTML, /<img/);
 });
