@@ -376,3 +376,23 @@ test('Tau: a track-record caveat keeps clear of an empty tab’s dashed box', ()
   assert.match(decl(tau, '.empty', 'border') || '', /dashed/);
   assert.equal(decl(rules(read('app.meridian.css')), '.empty', 'border'), undefined);
 });
+
+// Walk 2026-10-28, Meridian's Strategies at 360 and 390px: the Research results summary sat beside the title, so its
+// "N% pass rate, of the N strategies here" ran two lines there, and opened, its figures (an absolute popover) covered
+// the intro line and the filters. On a phone the summary takes its own row under the intro, and its figures open in
+// the page's flow, pushing the filters down. A desktop keeps the summary beside the title and the popover.
+test('Meridian: on a phone the Strategies summary sits under the intro and opens in the page, covering nothing', () => {
+  const all = rules(read('app.meridian.css'));
+  assert.equal(decl(all, '.strategy-heading', 'grid-template-columns', PHONE), 'minmax(0, 1fr)', 'one column: nothing beside the title');
+  assert.equal(decl(all, '.strategy-heading > .page-lede', 'grid-row', PHONE), '2');
+  assert.equal(decl(all, '.strategy-heading > .strategy-summary', 'grid-row', PHONE), '3', 'under the intro, not between the title and it');
+  assert.equal(decl(all, '.strategy-heading > .strategy-summary', 'justify-self', PHONE), 'stretch');
+  assert.equal(decl(all, '.strategy-summary #sfigs', 'position', PHONE), 'static', 'opened, it pushes the filters down');
+  assert.equal(decl(all, '.strategy-summary #sfigs', 'width', PHONE), 'auto');
+  // Desktop is unchanged: the summary at the title's right, its figures a popover under it.
+  assert.equal(decl(all, '.strategy-heading', 'grid-template-columns'), 'max-content minmax(0, 1fr)');
+  assert.equal(decl(all, '.strategy-heading > .strategy-summary', 'justify-self'), 'end');
+  assert.equal(decl(all, '.strategy-summary #sfigs', 'position'), 'absolute');
+  // A thumb's 44px to open it.
+  assert.ok(all.some((r) => r.media === '@media (hover: none), (pointer: coarse)' && sels(r).includes('.strategy-summary > summary') && /min-height\s*:\s*44px/.test(r.body)));
+});
