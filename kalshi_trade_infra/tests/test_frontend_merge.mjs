@@ -2798,7 +2798,7 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   await f.viewStrategy(42); await flush();
   const figs = f.root.querySelector('#figs').innerHTML, html = f.root.querySelector('#main').innerHTML;
   assert.match(figs, /6 trades over 15 days the agent never saw/);
-  assert.match(figs, /Unseen data over 15 days · \$100 at risk at most/);
+  assert.match(figs, /Later period over 15 days\u00a0· unseen\u00a0data\u00a0· \$100 at risk at most/);
   assert.match(html, /Already deployed: Demo \(running\), Paper \(paused\)\./);
   assert.match(html, /Stop deployments \(demo, paper\)/);
   assert.doesNotMatch(html, /#81[12]/);
@@ -2812,7 +2812,8 @@ test('strategy page: unseen figures say their span, deployments go by book not r
   const g = strategyFrontend(detailStrategy({capital: 100}), () => response({deployments: [], open_positions: []}));
   await g.viewStrategy(42); await flush();
   assert.match(g.root.querySelector('#figs').innerHTML, /6 trades the agent never saw/);
-  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">\$100 at risk at most<\/dd>/);
+  // With no span it still names the slice its return is on.
+  assert.match(g.root.querySelector('#figs').innerHTML, /<dd class="sub-fig">Later period\u00a0· unseen\u00a0data\u00a0· \$100 at risk at most<\/dd>/);
   assert.doesNotMatch(g.root.querySelector('#main').innerHTML, /paper-again|on-paper/);
 });
 
