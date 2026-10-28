@@ -36,7 +36,7 @@ RUNS = {"live": "across all its live runs", "demo": "across all its demo runs",
         "paper": "across all its paper runs, realistic fills only"}
 # Demo fills come from Kalshi's sandbox book, which is thin: a demo book ahead of or behind its
 # backtest says how its orders filled there, not whether the edge is real (paper keeps that job).
-DEMO_NOTE = " Demo's book is thin, so this is no evidence of the edge either way."
+DEMO_NOTE = " Demo’s book is thin, so this is no evidence of the edge either way."
 
 
 def _usd(v: float) -> str:
@@ -99,7 +99,7 @@ def _book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optiona
     low, high = expect - Z * se, expect + Z * se
     out.update(low=round(low, 4), high=round(high, 4))
     vs = "backtest" if bt["source"] == "out_of_sample" else "in-sample backtest"
-    size = " at this book's trade size" if scale != 1.0 else ""
+    size = " at this book’s trade size" if scale != 1.0 else ""
     # A paper per-trade figure says what it is net of, as every paper P&L does (customer_text.PAPER_NET).
     net = " " + PAPER_NET_SHORT if mode == "paper" else ""
     figures = "%d trades %s: %s/trade%s vs %s %s/trade%s" % (n, RUNS[mode], _usd(per), net, vs, _usd(expect), size)
@@ -114,7 +114,7 @@ def _book_check(mode: str, stats: Optional[Dict], bt: Optional[Dict]) -> Optiona
         out["line"] = "Ahead of its backtest on %s: %s. Above the usual range for %d trades %s." % (LABEL[mode], figures, n, band)
     else:
         out["verdict"] = "within"
-        out["line"] = "%s: %s. Within the backtest's usual range." % (book, figures)
+        out["line"] = "%s: %s. Within the backtest’s usual range." % (book, figures)
     return out
 
 

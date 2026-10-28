@@ -1906,13 +1906,14 @@
   // A paper row's closed trades that were instant fills (the server's `instant_fills`: its closed trades less those
   // filled through the simulated order book, the track record's split). "2 closed" sat beside "0/30 trades" toward
   // live with no word why: the track record leaves those trades out, and so does the count of realistic paper trades
-  // toward live (paper_evidence). Display only: what counts toward live is the server's alone.
+  // toward live (paper_evidence). Display only: what counts toward live is the server's alone. The term carries its
+  // bubble, glued to the note's last word, as the track record's and the autopilot card's instant-fill notes do.
   const depInstant = (d) => {
     const k = +d.instant_fills || 0, n = +d.closed_trades || 0;
     if (d.mode !== 'paper' || !(k > 0) || !(n > 0)) return '';
     const lead = k >= n ? (n === 1 ? 'Its 1 closed trade was an instant fill' : `All ${num(n)} of its closed trades were instant fills`)
       : `${num(k)} of its ${num(n)} closed trades ${k === 1 ? 'was an instant fill' : 'were instant fills'}`;
-    return `<div class="sub-fig dep-instant">${lead}, left out of the track record and of the count of realistic paper trades toward live.</div>`;
+    return `<div class="sub-fig dep-instant">${gl(`${lead}, left out of the track record and of the count of realistic paper trades toward live.`, 'instantfill')}</div>`;
   };
   const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   function deploymentSlip(d, regs, controls) {
@@ -2619,7 +2620,7 @@
     const n = +r.excluded_instant_fills || 0;
     return `<div class="sub-fig">${gl(`${n === 1 ? 'Its only trade was an instant fill' : `All ${num(n)} of its trades were instant fills`}, left out of this record (${usd(+r.excluded_instant_pnl || 0, true)})`, 'instantfill')}</div>`;
   };
-  const trRowLeft = (r) => (r.instant_only ? trInstantOnly(r) : r.excluded_instant_fills ? `<div class="sub-fig">${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}</div>` : '');
+  const trRowLeft = (r) => (r.instant_only ? trInstantOnly(r) : r.excluded_instant_fills ? `<div class="sub-fig">${gl(`${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}`, 'instantfill')}</div>` : '');
   // The span a return is over, as the sample line counts it (track_record.sample_read): a return with no period read
   // the same for a week as for a year once the headline's "since" had scrolled away.
   const trOver = (m) => (m.span_days == null ? '' : (() => { const d = Math.max(1, Math.round(+m.span_days)); return ` over ${num(d)} day${d === 1 ? '' : 's'}`; })());

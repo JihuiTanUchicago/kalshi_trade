@@ -127,7 +127,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
 
   // The server's per-book comparison with the backtest (services/backtest_check.py).
   const btPaper = {mode: 'paper', trades: 34, verdict: 'within',
-    line: "On paper: 34 trades, +$0.12/trade vs backtest +$0.15/trade; won 56% vs 61%. Within the backtest's usual range."};
+    line: "On paper: 34 trades, +$0.12/trade vs backtest +$0.15/trade; won 56% vs 61%. Within the backtest’s usual range."};
   const btLive = {mode: 'live', trades: 40, verdict: 'behind',
     line: 'Behind its backtest on live: 40 trades, −$0.10/trade vs backtest +$0.15/trade; won 41% vs 61%. Below the usual range for 40 trades (+$0.09 to +$0.21).'};
   const btDemo = {mode: 'demo', trades: 3, verdict: 'early',
@@ -150,7 +150,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     // Each book's line sits under that book, live first; none is a sum of books.
     assert.match(html, /<p class="sub-fig bt-check bt-behind">Behind its backtest on live: 40 trades, −\$0\.10\/trade vs backtest \+\$0\.15\/trade; won 41% vs 61%\. Below the usual range for 40 trades \(\+\$0\.09 to \+\$0\.21\)\.<\/p>/);
     assert.match(html, /<p class="sub-fig bt-check bt-early">On demo: 3 completed trades so far, too early to tell against the backtest \(it takes about 10\)\.<\/p>/);
-    assert.match(html, /<p class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest&#39;s usual range\.<\/p>/);
+    assert.match(html, /<p class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest’s usual range\.<\/p>/);
     assert.ok(at(/>Live</) < at(/Behind its backtest on live/) && at(/Behind its backtest on live/) < at(/>Demo</));
     assert.ok(at(/>Demo</) < at(/On demo: 3/) && at(/On demo: 3/) < at(/>Paper</) && at(/>Paper</) < at(/On paper: 34/));
     assert.equal((html.match(/bt-check/g) || []).length, 3);
@@ -175,7 +175,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const rows = [...f.root.querySelectorAll('#deps tbody tr')].map(r => unAmt(r.innerHTML));
     f.clearTimers && f.clearTimers();
     assert.equal(rows.length, 4);
-    assert.match(rows[0], /class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest&#39;s usual range\.</);
+    assert.match(rows[0], /class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest’s usual range\.</);
     assert.match(rows[1], /class="sub-fig bt-check bt-behind">Behind its backtest on live: 40 trades/);
     assert.doesNotMatch(rows[0], /on live/); assert.doesNotMatch(rows[1], /On paper/);
     assert.doesNotMatch(rows[2], /bt-check/); assert.doesNotMatch(rows[3], /bt-check/);
@@ -572,8 +572,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const cell = f.root.querySelectorAll('td.name')[0].innerHTML;
     f.clearTimers && f.clearTimers();
     const tail = ', left out of the track record and of the count of realistic paper trades toward live.';
-    assert.deepEqual(notes, ['All 2 of its closed trades were instant fills' + tail, '1 of its 3 closed trades was an instant fill' + tail,
+    // Each note's text, and the instant-fill bubble glued to its last word ("live."), as the track record's note has.
+    const words = (html) => html.replace(/<button[\s\S]*?<\/button>/g, '').replace(/<[^>]*>/g, '');
+    assert.deepEqual(notes.map(words), ['All 2 of its closed trades were instant fills' + tail, '1 of its 3 closed trades was an instant fill' + tail,
       'Its 1 closed trade was an instant fill' + tail]);
+    for (const n of notes) assert.match(n, /toward <span class="nobr">live\.<button type="button" class="info" data-glo="instantfill"[^>]*>[\s\S]*?<\/button><\/span>$/);
     assert.ok(cell.indexOf('dep-instant') < cell.indexOf('road-line'), cell);  // right above "0/30 trades"
   });
 
