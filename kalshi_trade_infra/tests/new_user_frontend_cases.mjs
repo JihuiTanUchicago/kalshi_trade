@@ -192,4 +192,18 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     g = await page(session({status: 'cancelled', started_at: null, finished_at: '2026-10-27T22:04:00Z', stop_reason: 'user'}));
     assert.match(g.root.querySelector('#runfigs').textContent, /Time\s*Never started/);
   });
+
+  // Walk 2026-10-28: a new account's Strategies page read "Pass rate —" under three zeros.
+  test(`${name}: Strategies with nothing tested yet says the pass rate shows later, not a bare dash`, async () => {
+    const list = async (counts) => {
+      const f = frontend({fetchImpl: (path) => path.startsWith('/api/strategies?') ? response({strategies: [], matched: 0, counts}) : response({})});
+      f.location.pathname = '/strategies';
+      await f.viewStrategies(); await settle();
+      return f.root.querySelector('#sfigs').textContent;
+    };
+    const empty = await list({total: 0});
+    assert.match(empty, /Pass rate\s*None yet\s*shows once a strategy here is tested/);
+    assert.doesNotMatch(empty, /Pass rate\s*—/);
+    assert.match(await list({total: 4, passed: 1, failed: 2, rejected: 1}), /Pass rate\s*25\.0%\s*of the 4 strategies here/);
+  });
 }
