@@ -609,6 +609,56 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(items(held)[0], /^Didn’t make money on unseen data/);
   });
 
+  // The first version's simple backtest stored strategies as Void (failed) with no gatekeeper record. Their page said
+  // "Later period (unseen data)" and "failed the unseen-data gate". The server flags them (no_gatekeeper_record, from
+  // the page's own experiment read), and the page says "not held out" wherever a pass with no record does, without
+  // "which picked it" (nothing picked a void one).
+  test(`${name}: a Void strategy with no gatekeeper record says not held out, never unseen data or the unseen-data gate`, async () => {
+    const oos = {pnl: -4, trades: 6, win_rate: .3, fees: 1, profit_factor: .6, max_drawdown: 9, sharpe: -.5, roi: -.04, days: 9};
+    const gates = [{name: 'Makes money on unseen data', threshold: '> $0', ok: false, value: -4},
+      {name: 'Enough unseen trades to judge', threshold: '≥ 10', ok: false, value: 6}];
+    const whyFailed = [
+      {gate: 'unseen_pnl', label: 'Didn’t make money on unseen data', measured: '−$4.00', needed: 'more than $0', next: 'Simplify the rule and test again.'},
+      {gate: 'unseen_trades', label: 'Too few trades on unseen data (6 of 10)', measured: '6 trades on unseen data', needed: 'at least 10 trades', next: 'Widen the entry.'},
+    ];
+    const base = {status: 'failed', experiment: null, no_gatekeeper_record: true, capital: 100, out_of_sample: oos, gates,
+      recent_trades: [], dataset: {out_of_sample_from: '1970-01-01T00:03:20Z'}};
+    const f = await open({...base, why_failed: whyFailed});
+    const figs = f.root.querySelector('#figs'), html = main(f);
+    // The figure up top, its note and the return on capital.
+    assert.equal(figs.querySelector('dt').textContent, 'Later-period P&L (not held out)');
+    assert.match(figs.innerHTML, /6 trades over 9 days after the split date · not held out/);
+    assert.match(figs.innerHTML, /Later period over 9 days · not held out/);
+    assert.match(figs.innerHTML, /<span class="pnl-nopass">/);  // still muted, as a Void figure is
+    // The headings, the trades list, the chart's cut label and the data note.
+    assert.match(html, /<h4>Later period \(not held out\)<\/h4>/);
+    assert.match(html, /Most recent later-period trades \(not held out\)/); assert.match(html, /No later-period trades \(not held out\) to show\./);
+    assert.match(html, /LATER PERIOD · NOT HELD OUT →|Later period · not held out →/);
+    assert.match(html, /<dt>Split date<\/dt>/);
+    assert.match(html, /The rule was fit on data before the split date; there’s no record that the data after it was held out\./);
+    assert.match(html, /After the backtest’s split date it lost \$4\.00 over 6 trades\. There’s no record it was held out, so it isn’t held-out evidence\./);
+    // The gate list, its missed checks and the Deploy panel's notice say the split date, as a pass with no record's do.
+    assert.match(f.root.querySelector('#gates').textContent, /Makes money on data after the split date/);
+    const said = f.root.querySelectorAll('.why-failed li').map((li) => li.textContent);
+    assert.match(said[0], /^Didn’t make money on data after the split date/);
+    assert.match(said[1], /^Too few trades on data after the split date \(6 of 10\)/);
+    assert.match(html, /Void: didn’t make money on data after the split date, and 1 more check missed \(see Verdict\)\./);
+    // The verdict's words (Tau puts its Void chip before them; Meridian's stamp is up top).
+    assert.match(html, /<p>It failed its backtest checks on the data after the split date\. There’s no record of its held-out tests, so nothing on this page is held-out evidence, and it was not validated\.<\/p>/);
+    assert.doesNotMatch(html + figs.innerHTML, /unseen|UNSEEN|Unseen|never saw|never touched|picked it|picked the rule/);
+    // With no missed checks sent, the notice still never names an unseen-data gate.
+    const bare = await open(base);
+    assert.match(main(bare), /Void: it failed its backtest checks after the split date\./);
+    assert.doesNotMatch(main(bare), /unseen-data gate/);
+    // A Void with its record (the gatekeeper's inconclusive verdict) keeps its words, and so does one from a server
+    // that doesn't send the flag.
+    const held = await open({...base, no_gatekeeper_record: undefined, why_failed: undefined,
+      experiment: {classification: 'inconclusive', validation: {n_trades: 6}}});
+    assert.match(main(held), /Later period \(unseen data\)/);
+    const old = await open({...base, no_gatekeeper_record: undefined, why_failed: undefined});
+    assert.match(main(old), /Void: it failed the unseen-data gate\./);
+  });
+
   // The page's top figure read "+$42.17" in a green tint beside a Void stamp, though its Strategies row and Community card
   // mute the same figure (pnl-nopass): a Void, Rejected or missed-final strategy's P&L never reads as a result.
   test(`${name}: a Void, Rejected or missed-final strategy's figures up top are muted, never tinted green`, async () => {

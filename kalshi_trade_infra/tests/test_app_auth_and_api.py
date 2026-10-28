@@ -472,7 +472,8 @@ def test_count_strategies_leaves_the_seeded_example_out():
     cur = StratCur([{"status": "rejected", "n": 2, "dep": 0, "ex": 2}])
     counts = server.repo.count_strategies(cur, 1)
     assert counts == {"rejected": 0, "total": 0, "deployed": 0, "examples": {"rejected": 2}}
-    assert "s.direction=%s" in cur.sql and cur.params[0] == server.repo.DEMO_DIRECTION and cur.params[1] == 1
+    # The example's direction twice: its count, and the void-with-no-record count it is left out of.
+    assert "s.direction=%s" in cur.sql and cur.params[:3] == [server.repo.DEMO_DIRECTION, server.repo.DEMO_DIRECTION, 1]
     cur = StratCur([{"status": "passed", "n": 3, "dep": 1, "ex": 0}, {"status": "rejected", "n": 7, "dep": 0, "ex": 2}])
     assert server.repo.count_strategies(cur, 1) == {"passed": 3, "rejected": 5, "total": 8, "deployed": 1, "examples": {"rejected": 2}}
 

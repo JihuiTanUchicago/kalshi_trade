@@ -304,6 +304,44 @@ export function strategyListCases({name, frontend, detailStrategy}) {
       /on the history it searched over 60 days/);
   });
 
+  // The first version's simple backtest stored strategies as Void (failed) with no gatekeeper record. Their rows said
+  // "unseen data": the server flags them now (no_gatekeeper_record, from the list's own read), and they say "not held
+  // out" as a flagged pass does, without "which picked it" (nothing picked a void one).
+  test(`${name}: a Void row with no gatekeeper record says not held out, not unseen data`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const oos = {pnl: -1.5, trades: 40, win_rate: 0.41, days: 9};
+    const line = btLine(row(f, {status: 'failed', no_gatekeeper_record: true, out_of_sample: oos}));
+    assert.equal(line.long, `later-period P&amp;L over 9 days after the split date · not held out${SEP}did not pass`);
+    assert.equal(line.short, `later period${SEP}9 days${SEP}not held out${SEP}did not pass`);
+    assert.doesNotMatch(line.title + line.long + line.short, /unseen|picked/);
+    // A Void row with its record (the gatekeeper's inconclusive verdict) keeps "unseen data".
+    const held = btLine(row(f, {status: 'failed', out_of_sample: oos}));
+    assert.equal(held.long, `later-period P&amp;L over 9 days after the split date · unseen data${SEP}did not pass`);
+  });
+
+  // They count under the Void chip (it lists every void row) but never under "Void on unseen data": the summary takes
+  // the server's failed_no_record off, and its note counts them, as Passed's counts the ones not cleared.
+  test(`${name}: "Void on unseen data" leaves out the void ones with no gatekeeper record and says how many`, async () => {
+    const open = async (counts) => {
+      const f = frontend({fetchImpl: () => response({...listOf(2), counts})});
+      f.location.pathname = '/strategies'; f.location.search = '?status=';
+      await f.viewStrategies(); await flush();
+      return f;
+    };
+    const f = await open({total: 20, passed: 5, failed: 9, failed_no_record: 3, rejected: 6});
+    const figs = f.root.querySelector('#sfigs').innerHTML;
+    assert.match(figs, /data-glo="void"[\s\S]*?<span class="fig ">6<\/span><\/dd><dd class="sub-fig">3 more were void on a backtest that wasn’t held out<\/dd>/);
+    assert.match(figs, /25\.0%/);  // the pass rate is of every strategy here, as before
+    const chip = f.root.querySelectorAll('[data-f="status"]').find((b) => b.dataset.v === 'failed');
+    assert.equal(chip.textContent, 'Void (9)');
+    const one = (await open({total: 4, passed: 1, failed: 2, failed_no_record: 1})).root.querySelector('#sfigs').innerHTML;
+    assert.match(one, /<span class="fig ">1<\/span><\/dd><dd class="sub-fig">1 more was void on a backtest that wasn’t held out<\/dd>/);
+    // With none (every account whose voids all have a record, and a server that doesn't send it) nothing changes.
+    const none = (await open({total: 4, passed: 1, failed: 2})).root.querySelector('#sfigs').innerHTML;
+    assert.match(none, /data-glo="void"[\s\S]*?<span class="fig ">2<\/span><\/dd>/);
+    assert.doesNotMatch(none, /void on a backtest/);
+  });
+
   // A row's Backtest P&L line: its full sentence (the hover, and what a screen reader says) and a phone's short form.
   const btLine = (html) => {
     const m = html.match(/<div class="sub-fig bt-sub" title="([^"]*)"><span class="bt-long">([^<]*)<\/span><span class="bt-short" aria-hidden="true">([^<]*)<\/span><\/div>/);

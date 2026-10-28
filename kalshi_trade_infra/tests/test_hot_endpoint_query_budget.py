@@ -536,7 +536,7 @@ def _book_rows():
         "FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id WHERE d.id IN": [
             {"id": 5, "strategy_id": 9, "status": "running", "title": "Fade tails", "market": "btc15m"},
             {"id": 6, "strategy_id": 9, "status": "running", "title": "Fade tails", "market": "btc15m"}],
-        "AS ex FROM app_strategies s WHERE s.user_id=%s": [{"status": "passed", "n": 1, "dep": 1, "ex": 0}],
+        "AS norec FROM app_strategies s WHERE s.user_id=%s": [{"status": "passed", "n": 1, "dep": 1, "ex": 0, "norec": 0}],
     })
     rows["FROM app_strategies s LEFT JOIN app_agent_runs r"][0].update(active_deps=1, live_deps=0)
     return rows

@@ -269,7 +269,8 @@ def test_the_list_flags_a_pass_with_no_gatekeeper_record_as_its_page_does(conn, 
     counting.sqls = []
     session = server.get_run(server.Ctx(conn, user, (str(run),), {}, {}, None))
     in_run = {c["id"]: c.get("no_gatekeeper_record", False) for c in session["strategies"]}
-    assert {k: in_run[v] for k, v in sid.items()} == {"linked": False, "legacy": False, "loose": True, "void": False}
+    # The loose void too, from the list read's own column (test_the_list_says_a_void_with_no_record_...).
+    assert {k: in_run[v] for k, v in sid.items()} == {"linked": False, "legacy": False, "loose": True, "void": True}
     counting.sqls = []  # warm now (its first call fills the page's short caches), count a second call each way
     server.get_run(server.Ctx(conn, user, (str(run),), {}, {}, None))
     sent = len(counting.sqls)
@@ -277,6 +278,68 @@ def test_the_list_flags_a_pass_with_no_gatekeeper_record_as_its_page_does(conn, 
     counting.sqls = []
     server.get_run(server.Ctx(conn, user, (str(run),), {}, {}, None))
     assert len(counting.sqls) == sent
+
+
+def test_the_list_says_a_void_with_no_record_is_not_held_out_and_the_summary_leaves_it_out(conn, monkeypatch):
+    """The first version's simple backtest path stored strategies as "failed" with no gatekeeper record. Their rows
+    said "unseen data" and counted under "Void on unseen data". The list's own read flags them (void_no_record, by
+    the rule a pass is flagged by), each page says the same from its experiment read, and the counts' one
+    statement says how many of the counted voids have none, the seeded example's left out. No new statement."""
+    from app import repository as repo
+    from app import server
+    from app.adapters.db import strategy_repository as strat
+    from app.research import research_repository as rr
+    from app.trading import spec as specmod
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "voidflag@example.invalid", "V", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": 5.0, "max_positions": 1}})
+    run = repo.create_run(cur, uid, "research", "btc15m", "custom", "idea")
+    oos = {"in_sample": {"pnl": 2.0, "trades": 20}, "out_of_sample": {"pnl": -1.5, "trades": 40, "days": 30}}
+
+    def strategy(title, status, link, direction="custom"):
+        sid = repo.insert_strategy(cur, uid, run, None, "btc15m", direction, title, "t", spec, status, dict(oos))
+        if link is None:
+            return sid
+        eid = rr.preregister(cur, {"user_id": uid, "run_id": run, "strategy_id": sid, "market": "btc15m",
+                                   "hypothesis_hash": uuid.uuid4().hex, "spec": spec, "economic_rationale": "{}",
+                                   "primary_metric": "m", "null_hypothesis": "", "alt_hypothesis": "", "planned_test": "t",
+                                   "falsification_criteria": "", "min_sample": 30, "cost_assumptions": {},
+                                   "research_partition_id": 0, "planned_n_tests": 2, "correction_method": "BH"})
+        if link == "id":
+            cur.execute("UPDATE app_strategies SET experiment_id=%s WHERE id=%s", (eid, sid))
+        return sid
+
+    sid = {"gated": strategy("Gatekeeper void", "failed", "id"), "legacy": strategy("Legacy void", "failed", "strategy"),
+           "loose": strategy("Loose void", "failed", None), "loose2": strategy("Loose void 2", "failed", None),
+           "pass": strategy("Loose pass", "passed", None),
+           "example": strategy("Example void", "failed", None, direction=repo.DEMO_DIRECTION)}
+    # The counts: every void (the Void chip), and those with no record apart, the seeded example's in neither.
+    counts = repo.count_strategies(cur, uid)
+    assert (counts["failed"], counts["failed_no_record"], counts["passed"]) == (4, 2, 1)
+    assert counts["examples"]["failed"] == 1
+    user = repo.get_user(cur, uid)
+    counting = _Counting(cur)
+    monkeypatch.setattr(conn, "cursor", lambda *a, **k: counting)
+    ask = lambda: server.list_strategies(server.Ctx(conn, user, (), {"status": "failed", "page": "0"}, {}, None))
+    listed = ask()
+    sent = len(counting.sqls)
+    assert listed["counts"]["failed"] == 4 and listed["counts"]["failed_no_record"] == 2
+    flags = {c["id"]: c.get("no_gatekeeper_record", False) for c in listed["strategies"]}
+    want = {"gated": False, "legacy": False, "loose": True, "loose2": True, "example": True}
+    assert {k: flags[sid[k]] for k in want} == want
+    for k in want:  # each page: flagged exactly when the list flags it, from its own experiment read
+        page = server.get_strategy(server.Ctx(conn, user, (str(sid[k]),), {}, {}, None))
+        assert page.get("no_gatekeeper_record", False) == flags[sid[k]] == (page.get("experiment") is None), k
+    # The pass is flagged as before, by the list's later-check reads, not by the void column.
+    kept = server.list_strategies(server.Ctx(conn, user, (), {"status": "passed", "page": "0"}, {}, None))
+    assert [c.get("no_gatekeeper_record") for c in kept["strategies"]] == [True]
+    # The same statements as with no void column: the flag and the count ride in reads the list already sent.
+    monkeypatch.setattr(strat, "VOID_NO_RECORD_SQL", "(0)")
+    counting.sqls = []
+    bare = ask()
+    assert len(counting.sqls) == sent and "failed_no_record" not in bare["counts"]
+    assert not any(c.get("no_gatekeeper_record") for c in bare["strategies"])
 
 
 def test_the_since_strip_judges_every_pass_since_the_visit_in_one_read(conn):
