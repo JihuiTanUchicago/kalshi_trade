@@ -562,6 +562,32 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     if (f.clearTimers) f.clearTimers();
   });
 
+  // The page's top figure read "+$42.17" in a green tint beside a Void stamp, though its Strategies row and Community card
+  // mute the same figure (pnl-nopass): a Void, Rejected or missed-final strategy's P&L never reads as a result.
+  test(`${name}: a Void, Rejected or missed-final strategy's figures up top are muted, never tinted green`, async () => {
+    const oos = {pnl: 42.17, trades: 12, win_rate: .6, fees: 1, profit_factor: 1.4, max_drawdown: 2, sharpe: .5, roi: .1, days: 9};
+    const missed = [{gate: 'significance', label: 'The edge could be luck on the locked holdout', measured: 'p 0.58', needed: '0.10', next: 'Try again.'}];
+    const figs = (f) => f.root.querySelector('#figs');
+    const cases = [
+      ['Void', {status: 'failed', out_of_sample: oos}],
+      ['Rejected', {status: 'rejected', out_of_sample: oos}],
+      ['missed the final test', {status: 'passed', out_of_sample: oos, why_failed: missed, experiment: {classification: 'statistically_supported', validation: {n_trades: 40}}}],
+      ['Void, held-out record', {status: 'failed', out_of_sample: null, experiment: {classification: 'inconclusive', validation: {n_trades: 38, net_pnl: 42.17}}}],
+    ];
+    for (const [label, over] of cases) {
+      const f = await open({in_sample: {pnl: 20, trades: 6}, ...over});
+      const html = figs(f).innerHTML;
+      assert.match(html, /<span class="fig "><span class="pnl-nopass">\+\$42\.17<\/span><\/span>/, label);
+      assert.match(html, /<span class="fig "><span class="pnl-nopass">\+\$20\.00<\/span><\/span>/, label);
+      assert.doesNotMatch(html, /tint pos|tint neg/, label);
+      assert.match(figs(f).querySelector('dt').textContent, /^Later-period P&L \(unseen data\)$/, label);
+    }
+    // A passed one keeps its tint.
+    const passed = await open({status: 'passed', out_of_sample: oos});
+    assert.match(figs(passed).innerHTML, /<span class="fig tint pos">\+\$42\.17<\/span>/);
+    assert.doesNotMatch(figs(passed).innerHTML, /pnl-nopass/);
+  });
+
   // "Most recent unseen trades", "No unseen-data trades to show" and the chart's "UNSEEN →" said the headings' figure in
   // other words. One family now, as the headings say it: later period, plus unseen data (held out) or not held out.
   test(`${name}: the trades list and its empty line say "later period", plus whether it was held out`, async () => {

@@ -642,13 +642,18 @@ window.TauPage('strategies', (T) => {
     // Each keeps its own bubble: a held-out figure's says held out (unseen), never laterperiod's "wasn’t held out".
     const laterQual = splitOnly ? 'not held out' : 'unseen data';
     const topLabel = splitOnly ? gl('Later-period P&L (not held out)', 'laterperiod') : gl('Later-period P&L (unseen data)', 'unseen');
-    const splitFig = (r) => r.out_of_sample ? fig(topLabel, usd(r.out_of_sample.pnl, true), { v: r.out_of_sample.pnl,
+    // A Void, Rejected or missed-final strategy's P&L is muted, as its Strategies row (pnl-nopass) and Community card
+    // mute it: a green "+$42.17" up top read as a result beside its Void stamp. Display only.
+    const noPass = s.status === 'failed' || s.status === 'rejected' || s.verdict === 'missed_final';
+    const toneV = (v) => (noPass ? undefined : v);
+    const mute = (html) => (noPass ? `<span class="pnl-nopass">${html}</span>` : html);
+    const splitFig = (r) => r.out_of_sample ? fig(topLabel, mute(usd(r.out_of_sample.pnl, true)), { v: toneV(r.out_of_sample.pnl),
       small: `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} after the split date, which picked it: not held out` }) : '';
-    const heldFig = (h, label) => fig(label, h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return), { v: h.net_pnl != null ? h.net_pnl : h.mean_net_return,
+    const heldFig = (h, label) => fig(label, mute(h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return)), { v: toneV(h.net_pnl != null ? h.net_pnl : h.mean_net_return),
       small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
     const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
-    const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? usd(r.out_of_sample.pnl, true) : '—', { v: r.out_of_sample && r.out_of_sample.pnl, small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
-      fig(gl('In-sample P&L', 'insample'), r.in_sample ? usd(r.in_sample.pnl, true) : '—', { v: r.in_sample && r.in_sample.pnl, small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
+    const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? mute(usd(r.out_of_sample.pnl, true)) : '—', { v: toneV(r.out_of_sample && r.out_of_sample.pnl), small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
+      fig(gl('In-sample P&L', 'insample'), r.in_sample ? mute(usd(r.in_sample.pnl, true)) : '—', { v: toneV(r.in_sample && r.in_sample.pnl), small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
       // Return on capital is the backtest's later slice over its capital. A research session's strategy has none (its
       // unseen result is the gatekeeper's, above): "Return on capital —" stood on every one of their pages, so it is left out.
       (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [overDays(r.out_of_sample.days) ? (splitOnly ? 'After the split date' : 'Unseen data') + overDays(r.out_of_sample.days) : '', r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +

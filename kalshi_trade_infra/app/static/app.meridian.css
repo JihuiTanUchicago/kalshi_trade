@@ -915,6 +915,8 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 #figs .fig.tint { padding: 0; margin-left: 0; background: none; }
 #figs .fig.pos { color: #365D3B; }
 #figs .fig.neg { color: var(--signal); }
+/* A Void, Rejected or missed-final strategy's P&L on its page, untinted and muted as on its Strategies row. */
+#figs .fig .pnl-nopass { color: var(--ink-3); }
 #figs .sub-fig { font-size: 12px; max-width: 25ch; }
 .strategy-pagehead .deck { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; font-size: 12px; }
 .strategy-pagehead .mk { border: 0; padding: 0; background: none; color: var(--ink-2); font-size: 12px; text-transform: none; letter-spacing: 0; }

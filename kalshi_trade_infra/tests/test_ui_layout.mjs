@@ -313,3 +313,13 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     }
   });
 }
+
+// A Void, Rejected or missed-final strategy's page figure is drawn untinted inside .pnl-nopass: it takes the muted ink
+// its Strategies row and Community card use, from the theme's own token, never a hard-coded colour.
+for (const [bundle, file, sel] of [['Tau', 'app.css', '.fig .pnl-nopass'], ['Meridian', 'app.meridian.css', '#figs .fig .pnl-nopass']]) {
+  test(`${bundle}: a strategy that did not pass has its page figure muted with the theme’s ink`, () => {
+    const all = rules(read(file));
+    assert.equal(decl(all, sel, 'color'), 'var(--ink-3)');
+    assert.equal(decl(all, '.t-strat .pnl-nopass', 'color'), 'var(--ink-3)');
+  });
+}
