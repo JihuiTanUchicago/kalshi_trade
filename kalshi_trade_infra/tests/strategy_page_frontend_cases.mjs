@@ -98,7 +98,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(figs, /<dd class="sub-fig">Unseen data over 15 days · \$100 at risk at most<\/dd>/);
     assert.match(figs, /<dd class="sub-fig">in the session that found it; this is the one that passed\. More ideas tried, more chance one passes by luck \(multiple testing\)\.<\/dd>/);
     assert.match(html, /On unseen data the agent never touched while iterating, it returned \$12\.00 over 6 trades, and cleared the gate as one of 5 ideas tested this run\./);
-    assert.match(html, /<h4>Tested on \(in-sample\)<\/h4>/); assert.match(html, /<h4>Never seen \(out-of-sample\)<\/h4>/);
+    assert.match(html, /<h4>Tested on \(in-sample\)<\/h4>/); assert.match(html, /<h4>Later period \(unseen data\)<\/h4>/);
     assert.match(html, /UNSEEN BY THE AGENT →|Unseen by the agent →|UNSEEN →|Unseen →/);
     assert.doesNotMatch(html, /Out-of-sample P&|Not tested out-of-sample|On out-of-sample data|<h4>Out-of-sample<\/h4>|Out-of-sample →|No unseen trades\./);
     const none = await open({status: 'rejected', out_of_sample: null, experiment: null});
@@ -152,12 +152,12 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       assert.match(figs.innerHTML, /6 trades over 15 days after the split date, which picked it: not held out/);
       assert.match(figs.innerHTML, /After the split date over 15 days\u00a0· \$100 at risk at most/);
       assert.match(html, /After the backtest’s split date it returned \$12\.00 over 6 trades\. That later slice is what picked it, so it isn’t held-out evidence\./);
-      assert.match(html, /<h4>After the split date \(not held out\)<\/h4>/);
+      assert.match(html, /<h4>Later period \(not held out\)<\/h4>/);
       assert.match(html, /<dt>Split date<\/dt>/); assert.match(html, /The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out\./);
       assert.match(html, /AFTER THE SPLIT DATE →|After the split date →|LATER →|Later →/);
       assert.match(html, /Replaying the later window against Kalshi’s demo book/);
       assert.match(html, /Most recent later-period trades/); assert.match(html, /No later-period trades to show\./);
-      assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest’s later-period pace, 2 trades would have made/);
+      assert.match(f.root.querySelector('.real-pace').textContent, /^At the backtest’s later-period pace \(not held out\), 2 trades would have made/);
       assert.doesNotMatch(html, /never saw|never touched|Unseen-data P&|in-sample only|Never seen \(out-of-sample\)|UNSEEN|Unseen by the agent|Unseen →|Unseen \(held out\)|unseen window|unseen trades|unseen-data pace|only ever saw/);
       // Plain words for what it is, never the pipeline's own ("statistical-gatekeeper record", "pre-registration",
       // "record missing", "reclassified to backtest-only").
@@ -445,9 +445,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       return el ? el.textContent : null;
     };
     // 1 realistic trade at $5 (+$2) and 1 at $10 (+$4): 2 trades, +$6.00; the instant fill is left out.
-    assert.equal(await pace(deployments, 1), "At the backtest’s unseen-data pace, 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
+    assert.equal(await pace(deployments, 1), "At the backtest’s later-period pace (unseen data), 2 trades on realistic fills would have made +$6.00 · too few trades to judge yet");
     // None instant: the line is as before, over all 3 trades.
-    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest’s unseen-data pace, 3 trades would have made +$8.00 · too few trades to judge yet");
+    assert.equal(await pace(deployments.map(({instant_fills, ...d}) => d), 0), "At the backtest’s later-period pace (unseen data), 3 trades would have made +$8.00 · too few trades to judge yet");
     // Every one an instant fill: no realistic trade to hold against the backtest, so no line.
     assert.equal(await pace([{...deployments[0], instant_fills: 2}], 2), null);
   });

@@ -1347,6 +1347,32 @@ test('the floating autopilot pill steps aside while it would cover a primary or 
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
+test('the floating autopilot pill steps aside from a card’s Market line and from a page’s or section’s heading', () => {
+  // Walk 2026-10-28 at 390px: the pill sat on a Strategies card's "ETH 15-min up/down · Volatility mispricing" as
+  // the list scrolled, and on a market page's "Price history · Yes price · Kalshi hourly candles" as it opened.
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><div class="board-title"><h1 class="page">Highest temperature in NYC today?</h1></div>'
+    + '<table class="stack"><tbody><tr><td class="name" data-lab=""><a href="/strategies/3">Idea</a></td><td data-lab="Market"><span class="tick">ETH 15-min up/down · Volatility mispricing</span></td></tr></tbody></table>'
+    + '<section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price</p></div></section><p class="plain">Prose</p></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const away = rect(0, 0, 0, 0);
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);
+  const market = f.root.querySelector('td[data-lab="Market"]'), head = f.root.querySelector('.sect-head'), title = f.root.querySelector('.board-title');
+  for (const el of [market, head, title, f.root.querySelector('p.plain')]) el.getBoundingClientRect = away;
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  for (const el of [market, head, title]) {
+    el.getBoundingClientRect = rect(16, 800, 374, 830);
+    f.apYield(); assert.equal(box.classes.has('yield'), true, el.className || el.getAttribute('data-lab'));
+    el.getBoundingClientRect = away;
+    f.apYield(); assert.equal(box.classes.has('yield'), false);
+  }
+  // Running prose is not on the list: the pill stays put over a paragraph.
+  f.root.querySelector('p.plain').getBoundingClientRect = rect(16, 800, 374, 830);
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+});
+
 test('the floating autopilot pill hit-tests the page a frame after it renders, never inside a page render', () => {
   // elementsFromPoint lays out and pre-paints the page on the spot: run from the pill's render, inside
   // Research's first render, it fixed the form where it stood before the session list moved above it on
@@ -1655,7 +1681,7 @@ test('another trader’s shared strategy says whose it is instead of linking to 
   host.innerHTML = f.postSnapshot(strat, '@bob');
   assert.equal(host.querySelector('a'), null);
   assert.equal(host.querySelector('.snap-note').textContent, 'Only @bob can open this strategy. Ask them to share a copy from its page.');
-  assert.match(host.querySelector('.snap-meta').textContent, /backtest on unseen data over 9 days: \+\$42\.17\u00a0· 23 trades\u00a0· 61\.0% win$/);
+  assert.match(host.querySelector('.snap-meta').textContent, /later-period backtest over 9 days on unseen data: \+\$42\.17\u00a0· 23 trades\u00a0· 61\.0% win$/);
   host.innerHTML = f.postSnapshot(strat, '');
   assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42'); assert.equal(host.querySelector('.snap-note'), null);
   host.innerHTML = f.postSnapshot(strat, '<img src=x>');
@@ -5322,7 +5348,7 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
   const g = strategyFrontend(detailStrategy({deployments: deps.map((d) => ({...d, stake: null}))}), () => response({}));
   await g.viewStrategy(42); await flush();
   const real = g.root.querySelector('#main').innerHTML;
-  assert.match(real, /unseen-data pace, 4 trades would have made \+\$8\.00/);
+  assert.match(real, /later-period pace \(unseen data\), 4 trades would have made \+\$8\.00/);
   assert.doesNotMatch(real, /NaN/);
   assert.ok(g.root.querySelector('#whatif #wk'), 'a strategy with a stake keeps its dial');
   g.clearTimers();
