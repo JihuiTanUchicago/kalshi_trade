@@ -17,6 +17,7 @@ import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
+import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
@@ -228,6 +229,7 @@ runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend, stripe: () => ({stripe: STRIPE_STUB})});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Tau', frontend, detailStrategy});
+countFormatCases({name: 'Tau', frontend, detailStrategy, strategyFrontend});
 explorePageCases({name: 'Tau', frontend});
 trackRecordTrustCases({name: 'Tau', frontend, Element, dashboard: () => emptyDashboard()});
 researchFormCases({name: 'Tau', frontend});
@@ -622,7 +624,7 @@ test('the research headline uses all-time totals, not the 50 newest runs', async
   }});
   f.S.me.user.autopilot = false;
   await f.viewResearch(); await flush(); await flush();
-  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1240<\/em> ideas and kept <em>4<\/em>/);
+  assert.match(f.root.querySelector('#rstatus .said').innerHTML, /tested <em>1,240<\/em> ideas and kept <em>4<\/em>/);  // counted as the abstract counts, "1,240"
 });
 
 test('Tau: a new user\'s first idea reads "1 idea tested", not "1 ideas"', async () => {
@@ -883,6 +885,23 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
     assert.match(body, on ? /Autopilot is on\. Strategies that pass/ : /Research an idea</);
     assert.doesNotMatch(body, on ? /Research an idea</ : /See its research/);
     if (!on) assert.match(body, /Turn on autopilot above and the strategies that pass every research test/);  // points at the card's switch
+  }
+});
+
+test('an empty Deployed box names its next step "research an idea yourself", as Meridian does, with or without a session yet', async () => {
+  for (const own_sessions of [false, true]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response({...emptyDashboard(), since: {own_sessions}});
+      if (path === '/api/autopilot/status') return response({...apOn, autopilot: false, mode: 'off'});
+      if (path.startsWith('/api/')) return response({});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = false;
+    await f.viewDashboard(); await flush(); f.clearTimers();
+    const deps = f.root.querySelector('#deps-empty').innerHTML;
+    // The words name the Research page (the nav item, and the autopilot card's "or research by hand"), not a "session".
+    assert.match(deps, own_sessions ? /on paper first\. Or research an idea yourself\.<\/p>/ : /<p>Turn on autopilot above, or research an idea yourself\.<\/p>/);
+    assert.doesNotMatch(deps, /start a session/);
   }
 });
 

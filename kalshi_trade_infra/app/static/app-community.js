@@ -5,7 +5,7 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, boardTitle, busy, clock, esc, flash, ICON, liveWaitMark, loading,
-    marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP, shell,
+    marketShort, mdLite, notice, num, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP, shell,
     statusMark, tone, trDay, usd, when
   } = T;
 
@@ -30,12 +30,14 @@ window.TauPage('community', (T) => {
       // "later-period backtest over 9 days on unseen data", in words the list and the Deploy hover no longer use.
       // Each piece of the pair holds together, so a phone breaks only after the "·": it read "(later / period" and
       // "not / held out" at 360-390px (walked 2026-10-28).
-      const why = later ? `Backtest${overDays(snap.days)} after the split date, which picked it (later\u00a0period${SEP}not\u00a0held\u00a0out).`
+      // A card with no later-period figure ("—") has no note on it, as a Strategies row with no figure has no line
+      // under it: "(later period · unseen data)" beside a dash described a figure that wasn't there (walked 2026-10-28).
+      const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date, which picked it (later\u00a0period${SEP}not\u00a0held\u00a0out).`
         : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data).`;
       const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
         <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}later-period P&amp;L: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
-      return owner ? `<div class="snap">${head}<div class="snap-note">${why} Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
-        : `<a class="snap" href="/strategies/${snap.id}">${head}<div class="snap-note">${why}</div></a>`;
+      return owner ? `<div class="snap">${head}<div class="snap-note">${why ? why + ' ' : ''}Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
+        : `<a class="snap" href="/strategies/${snap.id}">${head}${why ? `<div class="snap-note">${why}</div>` : ''}</a>`;
     }
     if (snap.kind === 'deployment') {
       const book = snap.mode === 'live' ? 'live' : snap.mode === 'demo' ? 'demo' : 'paper';
@@ -57,11 +59,11 @@ window.TauPage('community', (T) => {
     if (!names.length) return '';
     const extra = (rx.count || 0) - names.length;
     const list = names.map(esc).join(', ');
-    return extra > 0 ? `${list} and ${extra} other${extra > 1 ? 's' : ''}` : list;
+    return extra > 0 ? `${list} and ${num(extra)} other${extra > 1 ? 's' : ''}` : list;
   }
   function rxChip(rx) {
     const who = rxWho(rx);
-    return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-label="${esc(rx.emoji)}, ${rx.count}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
+    return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-label="${esc(rx.emoji)}, ${num(rx.count)}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${num(rx.count)}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
   }
   // Pills for the reactions a post has, plus an always-present inline "+" to add one.
   function reactionChips(list) {

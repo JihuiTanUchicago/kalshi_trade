@@ -18,6 +18,7 @@ import {runPageCases} from './run_page_frontend_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
+import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
@@ -260,6 +261,7 @@ runPageCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async () => STRIPE_STUB})});
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
+countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend});
 explorePageCases({name: 'Meridian', frontend});
 trackRecordTrustCases({name: 'Meridian', frontend, Element, dashboard: () => dashboardData()});
 researchFormCases({name: 'Meridian', frontend});
@@ -716,6 +718,23 @@ test('Overview empty Deployed box never says autopilot is researching while the 
     assert.match(f.root.querySelector('#dash-ap').innerHTML, status.billing_blocked ? /Paused: / : /longer than usual/);
     const deps = f.root.querySelector('#deps-empty').innerHTML;
     assert.match(deps, /Autopilot is on\./); assert.doesNotMatch(deps, /is researching/);
+  }
+});
+
+test('Meridian: the empty Deployed box names its next step "research an idea yourself", as Tau does, with or without a session yet', async () => {
+  for (const own_sessions of [false, true]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(dashboardData({since: {own_sessions}}));
+      if (path === '/api/autopilot/status') return response({...apStatus, autopilot: false, mode: 'off'});
+      if (path.startsWith('/api/')) return response({});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = false;
+    await f.viewDashboard(); await flush(); f.clearTimers();
+    const deps = f.root.querySelector('#deps-empty').innerHTML;
+    // The words name the Research page (the nav item, and the autopilot card's "or research by hand"), not a "session".
+    assert.match(deps, own_sessions ? /on paper first\. Or research an idea yourself\.<\/p>/ : /<p>Turn on autopilot above, or research an idea yourself\.<\/p>/);
+    assert.doesNotMatch(deps, /start a session/);
   }
 });
 
@@ -5971,6 +5990,51 @@ test('Meridian: a brand-new account\'s empty Strategies, Deploy and Research say
   f.location.pathname = '/research';
   await f.viewResearch(); await flush(); await flush(); f.clearTimers();
   assert.match(f.root.querySelector('.research-page').innerHTML, /<h1 class="page">Research<\/h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw\. The ones that pass can trade on paper\.<\/p>/);
+});
+
+test('Meridian: Deploy, Explore, Settings and Community each say under their name what the page is for, in Tau\'s words', async () => {
+  const tauSource = ['app.js', 'app-community.js'].map(file => readFileSync(new URL('../app/static/' + file, import.meta.url), 'utf8')).join('\n');
+  const LEDES = {
+    Deploy: 'Your strategies trading now.',
+    Explore: 'Every market Tau is tracking right now, across crypto, politics, sports, weather and more, hottest first. Prices refresh each minute.',
+    Settings: 'How Tau looks and works for you.',
+    Community: 'Share a strategy, an idea, or how your money is doing. Like and reply to other traders.',
+  };
+  // Tau's heading says the same words: the two themes never describe one page two ways.
+  for (const [page, text] of Object.entries(LEDES)) assert.ok(tauSource.includes(`boardTitle('${page}', '${text}')`), page);
+  const lede = (f, selector) => {
+    const head = f.root.querySelector(selector).innerHTML;
+    const [, line] = head.match(/<h1 class="page">[^<]+<\/h1>(?:\s|<div class="chips feed-filter"[^]*?<\/div>\s*)*<p class="lede page-lede">([^<]*)<\/p>/) || [];
+    return line;
+  };
+
+  let f = frontend({fetchImpl: path => path === '/api/deployments' ? response({deployments: [], open_positions: []}) : response({counts: {passed: 0}})});
+  f.location.pathname = '/deploy';
+  await f.viewDeploy(); await flush(); f.clearTimers();
+  assert.equal(lede(f, '.board-title'), LEDES.Deploy);
+
+  f = frontend({fetchImpl: () => response({total: 0, shown: 0, matched: 0, per: 40, page: 0, markets: []})});
+  await f.viewExplore(); await flush(); f.clearTimers();
+  assert.equal(lede(f, '.explore-heading'), LEDES.Explore);
+
+  f = frontend({fetchImpl: () => response({})});
+  await f.viewSettings(); await flush();
+  assert.equal(lede(f, '.board-title'), LEDES.Settings);
+
+  f = frontend({fetchImpl: path => path === '/api/community' ? response({posts: []}) : response({strategies: []})});
+  await f.viewCommunity(); await flush(); f.clearTimers();
+  assert.equal(lede(f, '.community-heading'), LEDES.Community);
+
+  // Research's lede type; on Explore it takes its own full row under the name, and the price age and (on a
+  // narrow column) the search move down a row instead of sharing it.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.page-lede \{ margin: 4px 0 0; font-size: 14px; line-height: 1\.5;/);
+  assert.match(css, /\.explore-heading > \.page-lede \{ grid-column: 1 \/ -1; grid-row: 2; margin: 0; \}/);
+  assert.match(css, /\.explore-freshness \{ display: flex; grid-column: 1 \/ -1; grid-row: 3;/);
+  assert.match(css, /\.explore-filters \.xsearch \{ grid-column: 1 \/ -1; grid-row: 3; \}\n  \.explore-freshness \{ grid-column: 1 \/ -1; grid-row: 4; \}/);
+  // Community's takes its own row under the name and filters (its 70ch measure fit beside them at 1280px).
+  assert.match(css, /\.community-heading > \.page-lede \{ flex-basis: 100%; max-width: none; margin: 0; \}/);
+  assert.match(css, /\.feed-filter \{ grid-column: 1 \/ -1; grid-row: 2; \}\n  \.community-heading > \.page-lede \{ grid-column: 1 \/ -1; grid-row: 3; \}/);
 });
 
 // Keyboard and screen-reader paths through the autopilot switch and the notification list. A reader

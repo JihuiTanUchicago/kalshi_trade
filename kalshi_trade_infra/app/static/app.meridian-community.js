@@ -5,7 +5,7 @@ window.TauPage('community', (T) => {
   'use strict';
   const {
     alert0, api, armed, attachMention, authorLine, BEHIND, busy, clock, deploymentMode, esc, flash, ICON,
-    liveWaitMark, loading, marketShort, mdLite, notice, overDays, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP,
+    liveWaitMark, loading, marketShort, mdLite, notice, num, overDays, pageLede, pct, poll, realTrades, refreshed, researchBadge, root, S, SEP,
     shell, statusMark, tone, trDay, usd, when
   } = T;
 
@@ -33,11 +33,16 @@ window.TauPage('community', (T) => {
       // Each piece of the note's pair holds together, so a phone breaks only after the "·": it read "(later / period"
       // and "unseen / data" at 390px (walked 2026-10-28).
       const noPass = snap.status === 'failed' || snap.status === 'rejected' || snap.verdict === 'missed_final';
-      const body = `<div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Strategy</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Later-period P&amp;L</dt><dd class="${noPass ? 'pnl-nopass' : tone(snap.pnl)}">${snap.pnl == null ? '—' : usd(snap.pnl, true)}</dd></div>${snap.trades != null ? `<div class="snap-secondary"><dt>Trades</dt><dd>${esc(snap.trades)}</dd></div>` : ''}${snap.win_rate != null ? `<div class="snap-secondary"><dt>Win rate</dt><dd>${pct(snap.win_rate, false)}</dd></div>` : ''}</dl><p class="snap-note">${later ? `Backtest${overDays(snap.days)} after the split date, which picked it (later\u00a0period${SEP}not\u00a0held\u00a0out), not paper or live trading.` : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data), not paper or live trading.`}${owner ? ` Only ${esc(owner)} can open this strategy; ask them to share a copy from its page.` : ''}</p>`;
+      // A card with no later-period figure ("—") has no note on it, as a Strategies row with no figure has no line
+      // under it: "(later period · unseen data)" beside a dash described a figure that wasn't there (walked 2026-10-28).
+      const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date, which picked it (later\u00a0period${SEP}not\u00a0held\u00a0out), not paper or live trading.`
+        : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data), not paper or live trading.`;
+      const note = [why, owner ? `Only ${esc(owner)} can open this strategy; ask them to share a copy from its page.` : ''].filter(Boolean).join(' ');
+      const body = `<div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</span><div class="snap-meta-line"><span class="snap-kind">Strategy</span><span class="snap-meta">${esc(marketShort(snap.market))}</span></div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Later-period P&amp;L</dt><dd class="${noPass ? 'pnl-nopass' : tone(snap.pnl)}">${snap.pnl == null ? '—' : usd(snap.pnl, true)}</dd></div>${snap.trades != null ? `<div class="snap-secondary"><dt>Trades</dt><dd>${num(snap.trades)}</dd></div>` : ''}${snap.win_rate != null ? `<div class="snap-secondary"><dt>Win rate</dt><dd>${pct(snap.win_rate, false)}</dd></div>` : ''}</dl>${note ? `<p class="snap-note">${note}</p>` : ''}`;
       return owner ? `<div class="snap snap-strategy">${body}</div>` : `<a class="snap snap-strategy" href="/strategies/${snap.id}">${body}</a>`;
     }
     if (snap.kind === 'deployment') {
-      return `<div class="snap snap-deployment"><div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${deploymentMode(snap)}${snap.mode === 'live' ? liveWaitMark() : ''}</span><div class="snap-meta-line"><span class="snap-kind">Deployment</span><span class="snap-meta">${esc(marketShort(snap.market))}</span>${snap.since ? `<span class="snap-kind snap-since">since ${trDay(Date.parse(snap.since) / 1000)}</span>` : ''}</div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Realized P&amp;L</dt><dd class="${tone(snap.realized_pnl)}">${usd(snap.realized_pnl, true)}</dd></div><div class="snap-secondary"><dt>Closed trades</dt><dd>${esc(snap.closed_trades)}</dd></div></dl></div>`;
+      return `<div class="snap snap-deployment"><div class="snap-head"><span class="snap-title"><b>${esc(snap.title)}</b>${deploymentMode(snap)}${snap.mode === 'live' ? liveWaitMark() : ''}</span><div class="snap-meta-line"><span class="snap-kind">Deployment</span><span class="snap-meta">${esc(marketShort(snap.market))}</span>${snap.since ? `<span class="snap-kind snap-since">since ${trDay(Date.parse(snap.since) / 1000)}</span>` : ''}</div></div><dl class="snap-metrics snap-evidence-metrics"><div class="snap-result"><dt>Realized P&amp;L</dt><dd class="${tone(snap.realized_pnl)}">${usd(snap.realized_pnl, true)}</dd></div><div class="snap-secondary"><dt>Closed trades</dt><dd>${num(snap.closed_trades)}</dd></div></dl></div>`;
     }
     return '';
   }
@@ -54,11 +59,11 @@ window.TauPage('community', (T) => {
     if (!names.length) return '';
     const extra = (rx.count || 0) - names.length;
     const list = names.map(esc).join(', ');
-    return extra > 0 ? `${list} and ${extra} other${extra > 1 ? 's' : ''}` : list;
+    return extra > 0 ? `${list} and ${num(extra)} other${extra > 1 ? 's' : ''}` : list;
   }
   function rxChip(rx) {
     const who = rxWho(rx);
-    return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-pressed="${!!rx.mine}" aria-label="${esc(rx.emoji)}, ${rx.count}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${rx.count}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
+    return `<button class="rx ${rx.mine ? 'on' : ''}" data-emoji="${esc(rx.emoji)}" aria-pressed="${!!rx.mine}" aria-label="${esc(rx.emoji)}, ${num(rx.count)}${who ? ' — ' + who : ''}">${emojiHtml(rx.emoji)}<span class="n">${num(rx.count)}</span>${who ? `<span class="rxtip" role="tooltip">${who}</span>` : ''}</button>`;
   }
   // Existing reactions and an explicit action to open the palette.
   function reactionChips(list) {
@@ -111,6 +116,7 @@ window.TauPage('community', (T) => {
     shell('/community', '', `
       <div class="feedwrap"><div class="community-heading"><h1 class="page">Community</h1>
         <div class="chips feed-filter" role="group" aria-label="Filter posts"><button class="chip" type="button" data-feed="all" aria-pressed="true">All posts</button><button class="chip" type="button" data-feed="mine" aria-pressed="false">My posts</button></div>
+        ${pageLede('Share a strategy, an idea, or how your money is doing. Like and reply to other traders.')}
       </div>
         <details class="community-compose"><summary>New post ${ICON.chev}</summary>
         <form class="panel composer-post" id="composer-post" aria-label="New post">
