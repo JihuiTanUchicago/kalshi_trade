@@ -8,7 +8,7 @@ window.TauPage('strategies', (T) => {
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
-    money, notice, num, overDays, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
+    money, notice, num, overDays, pageLede, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
@@ -273,7 +273,7 @@ window.TauPage('strategies', (T) => {
   async function viewStrategies() {
     const q = new URLSearchParams(location.search);
     const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '', q: q.get('q') || '', deployed: q.get('deployed') === '1' ? '1' : '', sort: q.get('sort') === 'best' ? 'best' : '' };
-    shell('/strategies', `<div class="board-title strategy-heading"><h1 class="page">Strategies</h1><details class="strategy-summary"><summary><span id="strategy-passrate">Research results</span> ${ICON.chev}</summary><dl class="figures measure" id="sfigs"></dl></details></div>`, `
+    shell('/strategies', `<div class="board-title strategy-heading"><h1 class="page">Strategies</h1><details class="strategy-summary"><summary><span id="strategy-passrate">Research results</span> ${ICON.chev}</summary><dl class="figures measure" id="sfigs"></dl></details>${pageLede('Every strategy your agents researched. Passed strategies on deployable markets can be deployed; void ones stay here so you can see what didn’t work.')}</div>`, `
       <div class="section-head filters stratfilters">
         <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['not_cleared', 'Not cleared'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}"${v === 'not_cleared' && f.status !== v ? ' hidden' : ''}${v ? '' : ' title="Passed and backtest-only strategies"'} aria-pressed="${f.status === v}">${l}</button>`).join('')}
           <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>

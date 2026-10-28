@@ -1927,7 +1927,10 @@ body.landing-body .apf { display: none; }
 .t-strat td { padding-top: 10px; padding-bottom: 10px; }
 .t-strat td.name a { font-size: 14px; font-weight: 500; }
 .t-strat td.num:first-of-type, .t-strat td.num .gain, .t-strat td.num .loss, .t-strat td.num .pnl-nopass { font-size: 16px; font-weight: 500; }
-.strategy-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 24px; }
+.strategy-heading { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 20px; padding-bottom: 24px; }
+.strategy-heading > .strategy-summary { justify-self: end; }
+/* Tau's intro line takes its own row under the name, so Research results keeps its place beside the title. */
+.strategy-heading > .page-lede { grid-column: 1 / -1; margin: 0; }
 .strategy-summary { position: relative; }
 .strategy-summary > summary { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
 .strategy-summary > summary::before { content: none; }

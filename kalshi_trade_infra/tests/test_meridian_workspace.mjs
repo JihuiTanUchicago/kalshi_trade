@@ -6007,6 +6007,26 @@ test('Meridian: a brand-new account\'s empty Strategies, Deploy and Research say
   assert.match(f.root.querySelector('.research-page').innerHTML, /<h1 class="page">Research<\/h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw\. The ones that pass can trade on paper\.<\/p>/);
 });
 
+test('Meridian: Strategies says under its name what the page is for, in Tau\'s words, and Research results stays beside the name', async () => {
+  const text = 'Every strategy your agents researched. Passed strategies on deployable markets can be deployed; void ones stay here so you can see what didn’t work.';
+  const tauSource = readFileSync(new URL('../app/static/app-strategies.js', import.meta.url), 'utf8');
+  assert.ok(tauSource.includes(`boardTitle('Strategies', '${text}')`));
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 0, passed: 0, failed: 0, rejected: 0}}) : response({}))});
+  await f.viewStrategies(); await flush(); await flush();
+  const head = f.root.querySelector('.strategy-heading').innerHTML;
+  // The name, then the summary beside it, then the line on a row of its own.
+  assert.match(head, /^<h1 class="page">Strategies<\/h1><details class="strategy-summary">[^]*?<\/details><p class="lede page-lede">([^<]*)<\/p>$/);
+  assert.equal(f.root.querySelector('.strategy-heading .page-lede').textContent, text);
+  f.clearTimers();
+  // At 390px the name keeps its width and a long "N% pass rate, of the 1,201 strategies here" wraps beside it;
+  // the line spans both columns underneath.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.strategy-heading \{ display: grid; grid-template-columns: max-content minmax\(0, 1fr\);/);
+  assert.match(css, /\.strategy-heading > \.strategy-summary \{ justify-self: end; \}/);
+  assert.match(css, /\.strategy-heading > \.page-lede \{ grid-column: 1 \/ -1; margin: 0; \}/);
+});
+
 test('Meridian: Deploy, Explore, Settings and Community each say under their name what the page is for, in Tau\'s words', async () => {
   const tauSource = ['app.js', 'app-community.js'].map(file => readFileSync(new URL('../app/static/' + file, import.meta.url), 'utf8')).join('\n');
   const LEDES = {
