@@ -150,10 +150,10 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
       out_of_sample: {pnl: 6.2, trades: 48, win_rate: 0.58, days: 30.2}, in_sample: {pnl: 21, trades: 120, win_rate: 0.61, days: 90}};
     // Its full line, then a phone's short form of it (the full line is that form's hover).
     const line = (html) => (html.match(/<span class="bt-long">([^<]*)<\/span><span class="bt-short" aria-hidden="true">([^<]*)<\/span>/) || []).slice(1);
-    assert.deepEqual(line(f.strategySlip(s, {})), ['later-period P&amp;L over 30 days after the split date\u00a0· unseen data', `later\u00a0period${SEP}30\u00a0days${SEP}unseen\u00a0data`]);
+    assert.deepEqual(line(f.strategySlip(s, {})), ['later-period P&amp;L over 30 days after the split date\u00a0· unseen\u00a0data', `later\u00a0period${SEP}30\u00a0days${SEP}unseen\u00a0data`]);
     assert.deepEqual(line(f.strategySlip({...s, out_of_sample: null})), ['on the history it searched over 90 days', `history it searched${SEP}90\u00a0days`]);
-    assert.deepEqual(line(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: null}})), ['later-period P&amp;L after the split date\u00a0· unseen data', `later\u00a0period${SEP}unseen\u00a0data`]);
-    assert.deepEqual(line(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: 0.4}})), ['later-period P&amp;L in under a day after the split date\u00a0· unseen data', `later\u00a0period${SEP}under a day${SEP}unseen\u00a0data`]);
+    assert.deepEqual(line(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: null}})), ['later-period P&amp;L after the split date\u00a0· unseen\u00a0data', `later\u00a0period${SEP}unseen\u00a0data`]);
+    assert.deepEqual(line(f.strategySlip({...s, out_of_sample: {...s.out_of_sample, days: 0.4}})), ['later-period P&amp;L in under a day after the split date\u00a0· unseen\u00a0data', `later\u00a0period${SEP}under a day${SEP}unseen\u00a0data`]);
   });
 
   test(`${name}: the equity curve labels its break-even line when the record has been both above and below it`, () => {

@@ -325,8 +325,8 @@ export function runPageCases({name, frontend}) {
       assert.match(tested, /on the history it searched · did not pass/, status);
       const unseen = cell({status, out_of_sample: m(3), in_sample: m(2.1)});
       assert.match(unseen, /^<span class="pnl-nopass">\+\$3\.00<\/span><div class="sub-fig bt-sub"/, status);
-      assert.deepEqual(btLine(unseen), {title: `later-period P&amp;L after the split date\u00a0· unseen data${SEP}did not pass`,
-        long: `later-period P&amp;L after the split date\u00a0· unseen data${SEP}did not pass`, short: `later\u00a0period${SEP}unseen\u00a0data${SEP}did\u00a0not\u00a0pass`}, status);
+      assert.deepEqual(btLine(unseen), {title: `later-period P&amp;L after the split date\u00a0· unseen\u00a0data${SEP}did not pass`,
+        long: `later-period P&amp;L after the split date\u00a0· unseen\u00a0data${SEP}did not pass`, short: `later\u00a0period${SEP}unseen\u00a0data${SEP}did\u00a0not\u00a0pass`}, status);
     }
     // Passed and backtest-only keep the money tone and say nothing of the kind.
     const passed = cell({status: 'passed', out_of_sample: m(3)});
@@ -351,7 +351,7 @@ export function runPageCases({name, frontend}) {
     assert.doesNotMatch(html, /Unseen P&amp;L|tested only|\(tested\)/);
     assert.match(html, /\+\$8\.40<\/span><div class="sub-fig bt-sub" title="on the history it searched"><span class="bt-long">on the history it searched<\/span><span class="bt-short" aria-hidden="true">history it searched<\/span><\/div>/);
     // A held-out figure is the later period too, as the sort that orders it ("Later-period P&L") says.
-    assert.match(html, /\+\$5\.00<\/span><div class="sub-fig bt-sub" title="later-period P&amp;L after the split date\u00a0· unseen data"><span class="bt-long">later-period P&amp;L after the split date\u00a0· unseen data<\/span><span class="bt-short" aria-hidden="true">later\u00a0period\u00a0· unseen\u00a0data<\/span><\/div>/);
+    assert.match(html, /\+\$5\.00<\/span><div class="sub-fig bt-sub" title="later-period P&amp;L after the split date\u00a0· unseen\u00a0data"><span class="bt-long">later-period P&amp;L after the split date\u00a0· unseen\u00a0data<\/span><span class="bt-short" aria-hidden="true">later\u00a0period\u00a0· unseen\u00a0data<\/span><\/div>/);
     // No figure, no data line.
     assert.doesNotMatch(f.strategySlip({id: 3, title: 'T', thesis: '', market: 'btc15m', status: 'queued', in_sample: {}}, {}), /sub-fig[^"]*"[^>]*>(?:<span[^>]*>)?(?:on|later|history) /);
     f.clearTimers();
@@ -365,9 +365,9 @@ export function runPageCases({name, frontend}) {
     let f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [row({no_gatekeeper_record: true})]);
     const html = list(f);
     assert.match(html, /Loose pass/); assert.doesNotMatch(html, /unseen data/);
-    if (/Backtest P&amp;L/.test(html)) assert.match(html, /later-period P&amp;L over 30 days after the split date, which picked it\u00a0· not held out/);
+    if (/Backtest P&amp;L/.test(html)) assert.match(html, /later-period P&amp;L over 30 days after the split date, which picked it\u00a0· not\u00a0held\u00a0out/);
     f = await open({status: 'succeeded', hypotheses_tried: 1, strategies_passed: 1}, [], [row({})]);
-    if (/Backtest P&amp;L/.test(list(f))) assert.match(list(f), /later-period P&amp;L over 30 days after the split date\u00a0· unseen data/);
+    if (/Backtest P&amp;L/.test(list(f))) assert.match(list(f), /later-period P&amp;L over 30 days after the split date\u00a0· unseen\u00a0data/);
   });
   test(`${name}: the ideas list says what its count counts`, async () => {
     // Walk 2026-10-27 (Tau, 390px): its head read "1 · 1 more still being tested", a bare figure beside a counted one.

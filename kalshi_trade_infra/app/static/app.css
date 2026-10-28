@@ -2017,6 +2017,9 @@ body.landing-body .apf { display: none; }
 /* Track record (viewTrackRecord): realized results per money bucket, the figures an allocator checks. */
 .tr-tabs { margin-bottom: 4px; }
 .tr-caveat { margin: -4px 0 12px; max-width: 72ch; }
+/* Under an empty tab's dashed box the pull-up ran its first line through the box's bottom border ("42 instant-fill
+   paper trades left out" sat on the dashes, every width): it keeps clear of the box instead. */
+.empty + .tr-caveat { margin-top: 12px; }
 .tr-asof { white-space: nowrap; }
 .tr-figs { margin-top: 4px; }
 @media (min-width: 761px) {

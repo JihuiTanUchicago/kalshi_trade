@@ -641,7 +641,9 @@ window.TauPage('strategies', (T) => {
     const oosHead = splitOnly ? 'Later period (not held out)' : 'Later period (unseen data)';
     // The figure up top says the same: it read "Unseen-data P&L" over headings that say "Later period (unseen data)".
     // Each keeps its own bubble: a held-out figure's says held out (unseen), never laterperiod's "wasn’t held out".
-    const laterQual = splitOnly ? 'not held out' : 'unseen data';
+    // It holds together wherever it stands (no-break spaces), as the label's does: at 360-390px the trades list's
+    // heading broke "(not / held out)" and "(unseen / data)" (walked 2026-10-28).
+    const laterQual = splitOnly ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data';
     // The qualifier keeps together with its marker: a phone broke it "(unseen / data)".
     const topLabel = splitOnly ? gl('Later-period P&L (not\u00a0held\u00a0out)', 'laterperiod') : gl('Later-period P&L (unseen\u00a0data)', 'unseen');
     // A Void, Rejected or missed-final strategy's P&L is muted, as its Strategies row (pnl-nopass) and Community card
@@ -650,20 +652,20 @@ window.TauPage('strategies', (T) => {
     const toneV = (v) => (noPass ? undefined : v);
     const mute = (html) => (noPass ? `<span class="pnl-nopass">${html}</span>` : html);
     const splitFig = (r) => r.out_of_sample ? fig(topLabel, mute(usd(r.out_of_sample.pnl, true)), { v: toneV(r.out_of_sample.pnl),
-      small: `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} after the split date, which picked it${SEP}not held out` }) : '';
+      small: `${num(r.out_of_sample.trades)} trades${overDays(r.out_of_sample.days)} after the split date, which picked it${SEP}not\u00a0held\u00a0out` }) : '';
     const heldFig = (h, label) => fig(label, mute(h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return)), { v: toneV(h.net_pnl != null ? h.net_pnl : h.mean_net_return),
       small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
     const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
     // In Tau's words and the rest of Meridian's (the glossary's "Unseen data", the Strategies list's "P&L on data it
     // never saw", a row's "on unseen data"): this page alone said "Out-of-sample P&L" (walked 2026-10-27).
-    const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? mute(usd(r.out_of_sample.pnl, true)) : '—', { v: toneV(r.out_of_sample && r.out_of_sample.pnl), small: r.out_of_sample ? `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
-      fig(gl('In-sample P&L', 'insample'), r.in_sample ? mute(usd(r.in_sample.pnl, true)) : '—', { v: toneV(r.in_sample && r.in_sample.pnl), small: r.in_sample ? `${r.in_sample.trades} trades on the history it searched` : 'No in-sample result recorded' }) +
+    const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? mute(usd(r.out_of_sample.pnl, true)) : '—', { v: toneV(r.out_of_sample && r.out_of_sample.pnl), small: r.out_of_sample ? `${num(r.out_of_sample.trades)} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
+      fig(gl('In-sample P&L', 'insample'), r.in_sample ? mute(usd(r.in_sample.pnl, true)) : '—', { v: toneV(r.in_sample && r.in_sample.pnl), small: r.in_sample ? `${num(r.in_sample.trades)} trades on the history it searched` : 'No in-sample result recorded' }) +
       // Return on capital is the backtest's later slice over its capital. A research session's strategy has none (its
       // unseen result is the gatekeeper's, above): "Return on capital —" stood on every one of their pages, so it is left out.
       // Its note names the slice as the headings above it do ("Later period (unseen data)" / "(not held out)") and the
       // Strategies list's short form does ("later period · 9 days · unseen data"): it read "Unseen data over 9 days", or
       // "After the split date over 9 days", in neither's words. The qualifier keeps together, as the label's does.
-      (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [`Later period${overDays(r.out_of_sample.days)}`, laterQual.replace(/ /g, '\u00a0'), r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +
+      (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [`Later period${overDays(r.out_of_sample.days)}`, laterQual, r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +
       fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
     // How many figures the row holds (fig() opens each with <div class="m">): a research session's strategy has no
     // Return on capital, and its three figures sat in a four-column grid with an empty slot at the end. The grid
@@ -775,7 +777,11 @@ window.TauPage('strategies', (T) => {
       const said = String(statusMark(s)).replace(/<[^>]*>/g, '').trim();
       verdictBody = `<div class="rp-verdict ${vt}">${label === said ? '' : `<span class="mk ${chip}">${esc(label)}</span>`}<p>${esc(words)}</p></div>`;
     }
-    if (missed) verdictBody += `<div class="paper-sub"><h4 class="paper-h">What it missed, and what to try next</h4>${whyFailedHtml(missed)}</div>`;
+    // Its missed checks are the same backtest gates, in the server's words ("Didn’t make money on unseen data"): on a
+    // page with no gatekeeper record they say the split date as the gate list above them does. A backtest-only page
+    // read "Makes money on data after the split date" over "Didn’t make money on unseen data" (walked 2026-10-28).
+    const missedShown = missed && splitOnly ? missed.map((l) => ({ ...l, label: gateName(l.label), measured: gateName(l.measured), next: gateName(l.next) })) : missed;
+    if (missed) verdictBody += `<div class="paper-sub"><h4 class="paper-h">What it missed, and what to try next</h4>${whyFailedHtml(missedShown)}</div>`;
     // On a phone the Deploy panel sits below the whole paper, screens down. A validated passed
     // strategy (one with its gatekeeper record) that isn't on paper yet gets its primary action up
     // top too; same call as #dep-paper. Wide screens hide it (the panel is beside the paper there).

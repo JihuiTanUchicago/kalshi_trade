@@ -366,3 +366,13 @@ test('Meridian: a demo or live Overview card’s book line under Realized P&L is
     assert.equal(decl(all, sel, 'color'), 'var(--ink-3)', sel);
   }
 });
+
+// Tau's empty track-record tab is a dashed box, and its caveat line pulls up 4px to sit close under the figures: under
+// the box that ran its first line through the bottom border (walked 2026-10-28). Meridian's empty state has no border.
+test('Tau: a track-record caveat keeps clear of an empty tab’s dashed box', () => {
+  const tau = rules(read('app.css'));
+  assert.equal(decl(tau, '.tr-caveat', 'margin'), '-4px 0 12px');
+  assert.ok(parseFloat(decl(tau, '.empty + .tr-caveat', 'margin-top')) > 0);
+  assert.match(decl(tau, '.empty', 'border') || '', /dashed/);
+  assert.equal(decl(rules(read('app.meridian.css')), '.empty', 'border'), undefined);
+});

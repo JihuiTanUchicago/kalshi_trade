@@ -1978,7 +1978,7 @@ test('Research results keep every returned status and source value with escaped 
   // Each figure's line as a desktop reads it (bt-long), then a phone's short form of it (bt-short, its hover the full line).
   const shortOf = row => { const s = row.querySelector('.num .bt-short'); return s ? s.textContent : null; };
   assert.deepEqual(rows.map(row => { const c = row.querySelector('.num'), s = shortOf(row); return s == null ? c.textContent : c.textContent.slice(0, -s.length); }),
-    ['+$12.00later-period P&amp;L after the split date\u00a0· unseen data', '−$4.25later-period P&amp;L after the split date\u00a0· unseen data\u00a0· did not pass', '−$7.50on the history it searched\u00a0· did not pass', '$0.00on the history it searched', '—']);
+    ['+$12.00later-period P&amp;L after the split date\u00a0· unseen\u00a0data', '−$4.25later-period P&amp;L after the split date\u00a0· unseen\u00a0data\u00a0· did not pass', '−$7.50on the history it searched\u00a0· did not pass', '$0.00on the history it searched', '—']);
   assert.deepEqual(rows.map(shortOf), ['later\u00a0period\u00a0· unseen\u00a0data', 'later\u00a0period\u00a0· unseen\u00a0data\u00a0· did\u00a0not\u00a0pass', 'history it searched\u00a0· did\u00a0not\u00a0pass', 'history it searched', null]);
   assert.deepEqual(rows.map(row => row.querySelector('.num').getAttribute('data-lab')), ['Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L']);
   assert.match(results.innerHTML, /Kept &lt;script&gt;unsafe&lt;\/script&gt;/); assert.match(results.innerHTML, /&lt;img src=x&gt;/);
@@ -2391,12 +2391,12 @@ test('Community: another trader’s strategy card says whose it is instead of a 
   const strat = {kind: 'strategy', id: 42, title: 'Fade', market: 'btc15m', status: 'passed', pnl: 42.17, trades: 23, win_rate: .61, days: 9.4};
   host.innerHTML = f.postSnapshot(strat, '@bob');
   assert.equal(host.querySelector('a'), null, 'their strategy page is theirs alone');
-  assert.match(host.querySelector('.snap-note').textContent, /^Backtest over 9 days after the split date \(later period\u00a0· unseen data\), not paper or live trading\. Only @bob can open this strategy; ask them to share a copy from its page\.$/);
+  assert.match(host.querySelector('.snap-note').textContent, /^Backtest over 9 days after the split date \(later\u00a0period\u00a0· unseen\u00a0data\), not paper or live trading\. Only @bob can open this strategy; ask them to share a copy from its page\.$/);
   host.innerHTML = f.postSnapshot(strat, '');
   assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42');
   assert.doesNotMatch(host.querySelector('.snap-note').textContent, /Only/);
   host.innerHTML = f.postSnapshot({...strat, days: undefined}, '<b>x</b>');
-  assert.match(host.querySelector('.snap-note').textContent, /^Backtest after the split date \(later period\u00a0· unseen data\), not paper/); assert.doesNotMatch(host.innerHTML, /<b>x/);
+  assert.match(host.querySelector('.snap-note').textContent, /^Backtest after the split date \(later\u00a0period\u00a0· unseen\u00a0data\), not paper/); assert.doesNotMatch(host.innerHTML, /<b>x/);
   // Each book on its own line with its trades; a book with none says so rather than $0.00. Never one sum.
   host.innerHTML = f.postSnapshot({kind: 'pnl', paper_pnl: 120.5, live_pnl: 0, paper_trades: 12, live_trades: 0});
   assert.deepEqual(host.querySelectorAll('dd').map(dd => dd.textContent), ['+$120.50on 12 trades', 'No trades yet']);
@@ -4234,7 +4234,7 @@ test('on a phone the strategy page folds its secondary sections, never money fig
     }});
     await f.viewStrategy(42); await flush();
     const folds = f.root.querySelectorAll('details.fold');
-    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Most recent later-period trades (unseen data)', 'Methodology', 'Sensitivity']);
+    assert.deepEqual(folds.map((d) => d.querySelector('summary').textContent), ['Most recent later-period trades (unseen\u00a0data)', 'Methodology', 'Sensitivity']);
     for (const d of folds) assert.equal('open' in d.attributes, open);
     assert.ok(f.root.querySelector('#whatif').closest('details.fold'));
     for (const sel of ['#figs', '#dep-paper', '#gates']) assert.equal(f.root.querySelector(sel).closest('details.fold'), null, sel);
