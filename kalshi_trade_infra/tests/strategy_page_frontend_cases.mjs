@@ -291,6 +291,49 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.equal(none.root.querySelector('#dev-pending'), null);
   });
 
+  // The server works a cold replay out off the request and answers {pending: true} at once (it took ~3s on the
+  // request, reading the market's history and the S3 books): the page keeps its pending line and asks again.
+  test(`${name}: a replay still being worked out keeps the pending line, asks again, then draws the line`, async () => {
+    const answers = [{dev_curve: null, pending: true, reason: 'Replaying…'}, {dev_curve: null, pending: true, reason: 'Replaying…'},
+      {dev_curve: [[200, 1], [300, 2]]}];
+    let asked = 0;
+    const f = frontend({fetchImpl: async (path) => {
+      if (path === '/api/strategies/42') return response(detailStrategy({status: 'passed'}));
+      if (path === '/api/strategies/42/dev-curve') return response(answers[Math.min(asked++, answers.length - 1)]);
+      return response({});
+    }});
+    await f.viewStrategy(42); await flush();
+    const pending = f.root.querySelector('#dev-pending');
+    for (let i = 0; i < 6; i++) await flush();
+    assert.equal(asked, 1);
+    assert.ok(pending && !pending.removed, 'pending line kept while the server replays');
+    assert.doesNotMatch(f.root.querySelector('#equity-wrap').innerHTML, /Dashed line/);
+    for (let round = 0; round < 2; round++) {
+      f.elapse(20000);
+      for (let i = 0; i < 6; i++) await flush();
+    }
+    assert.equal(asked, 3);
+    assert.equal(pending.removed, true);
+    assert.match(f.root.querySelector('#equity-wrap').innerHTML, /Dashed line: the unseen window replayed read-only against Kalshi’s demo environment/);
+    // Still pending after every retry: the page stops asking and drops the pending line, chart sim-only.
+    asked = 0;
+    answers.length = 1;
+    const g = frontend({fetchImpl: async (path) => {
+      if (path === '/api/strategies/42') return response(detailStrategy({status: 'passed'}));
+      if (path === '/api/strategies/42/dev-curve') { asked++; return response(answers[0]); }
+      return response({});
+    }});
+    await g.viewStrategy(42); await flush();
+    const line = g.root.querySelector('#dev-pending');
+    for (let round = 0; round < 12; round++) {
+      g.elapse(20000);
+      for (let i = 0; i < 6; i++) await flush();
+    }
+    assert.equal(asked, 9, "the first ask and eight more");
+    assert.equal(line.removed, true);
+    assert.doesNotMatch(g.root.querySelector('#equity-wrap').innerHTML, /Dashed line/);
+  });
+
   // A validation pass keeps the status "passed" when a later check fails; the server's why_failed names it.
   const val = {classification: 'statistically_supported', n_trades: 150, mean_net_return: 0.026};
   const holdoutMiss = [{gate: 'significance', label: 'The edge could be luck on the locked holdout', measured: 'p-value 0.480', needed: '0.050 or lower', next: 'Try a simpler version.'}];

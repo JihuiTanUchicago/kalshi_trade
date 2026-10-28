@@ -24,6 +24,9 @@ window.TauPage('strategies', (T) => {
   // Under the equity chart while its demo-replay line loads (seconds on a cold server): the rest of the
   // page is already drawn, and this says the chart has one more line coming.
   const DEV_PENDING = (win = 'unseen') => `<p class="hint dev-pending" id="dev-pending"><span class="skeleton" aria-hidden="true"></span>Replaying the ${win} window against Kalshi’s demo book…</p>`;
+  // Waits (ms) before asking again while the server is still working the demo replay out ({pending: true}):
+  // it replays off the request, so the first ask on a cold server answers at once and the line follows.
+  const DEV_RETRY_MS = [1500, 2000, 3000, 5000, 8000, 10000, 15000, 15000];
   const rpProb = (v, d = 3) => (v == null ? '—' : Number(v).toFixed(d));
   const rpInt = (v) => (v == null ? '—' : num(v));
   const rpText = (v) => esc(v == null ? '' : String(v));
@@ -901,10 +904,18 @@ window.TauPage('strategies', (T) => {
     // the Kalshi demo environment. Fetched after the page so a slow/absent demo
     // never blocks the view; absent -> the chart simply stays sim-only. Until it answers,
     // the chart carries its own pending line (DEV_PENDING), gone with or without a curve.
+    // A replay the server hasn't worked out yet answers {pending: true} at once: asked again after
+    // DEV_RETRY_MS while this page is still the one drawn (a redraw asks for itself).
     if (!perpetual && s.equity && oos) (async () => {
       const pending = root.querySelector('#dev-pending');
+      const drawn = root.querySelector('#equity-wrap');
       try {
-        const r = await api('/api/strategies/' + s.id + '/dev-curve');
+        let r = await api('/api/strategies/' + s.id + '/dev-curve');
+        for (let i = 0; r && r.pending && i < DEV_RETRY_MS.length; i++) {
+          await new Promise((resolve) => setTimeout(resolve, DEV_RETRY_MS[i]));
+          if (root.querySelector('#equity-wrap') !== drawn) return;
+          r = await api('/api/strategies/' + s.id + '/dev-curve');
+        }
         const wrap = root.querySelector('#equity-wrap');
         if (wrap && r && r.dev_curve && r.dev_curve.length > 1) {
           const sl = r.slippage, sc = (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + '¢';

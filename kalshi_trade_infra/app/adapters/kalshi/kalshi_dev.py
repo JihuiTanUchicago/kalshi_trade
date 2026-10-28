@@ -25,6 +25,7 @@ import json
 import os
 import threading
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
@@ -348,6 +349,67 @@ def _replay(key: Tuple[int, str], spec: Dict, market_key: str, hit: Optional[Tup
         if per_fill is not None:
             _slippage_by_market[market_key] = per_fill
     return out
+
+
+# The strategy page's read (kept_dev_curve) never works a replay out on the request once the web server
+# has called start(): a replay is the market's history (a DB read of every candle in its window, plus the
+# Deribit and Polymarket books from S3 for a Bitcoin strike series) and up to MAX_CONTRACTS candlestick
+# GETs to the demo host, 2.5-3s on a cold process with nothing to fetch and longer when S3 or the demo
+# host is slow. One background worker replays what pages asked for, one after another.
+MAX_QUEUED = 64  # replays waiting for the worker; past this a page is told it is pending and asks again
+_BACKGROUND: Dict = {"on": False, "worker": None}
+_queue: List[Tuple[int, Dict, str, Tuple[int, str]]] = []
+_queued: set = set()
+
+
+def start() -> None:
+    """Work replays out in the background for the page read (the web server calls this). Tests and
+    scripts leave it off and read in the request, as before."""
+    _BACKGROUND["on"] = True
+
+
+def kept_dev_curve(strategy_id: int, spec: Dict, market_key: str) -> Tuple[bool, Optional[Dict]]:
+    """(True, what dev_curve_for_strategy answers) when it can be answered without waiting on the
+    market history or the demo host, else (False, None) with the replay started in the background.
+
+    Kept from the last CACHE_TTL_SECONDS: served as it is. Older: served as it is while the worker
+    replays it (the same bytes when the history is the same version, which dev_curve_for_strategy
+    reuses too). None kept yet: the worker replays it, and the page asks again. With start() not
+    called, dev_curve_for_strategy is called in the request, as before."""
+    if not (_BACKGROUND["on"] and KALSHI_DEV_API_BASE):
+        return True, dev_curve_for_strategy(strategy_id, spec, market_key)
+    key = (int(strategy_id), _spec_key(spec))
+    with _lock:
+        hit = _cache.get(key)
+        if hit and time.time() - hit[0] < CACHE_TTL_SECONDS:
+            return True, hit[2]
+        if key not in _inflight and key not in _queued and len(_queue) < MAX_QUEUED:
+            _queued.add(key)
+            _queue.append((int(strategy_id), spec, market_key, key))
+            worker = _BACKGROUND["worker"]
+            if worker is None or not worker.is_alive():
+                worker = threading.Thread(target=_work, name="dev-curve-replay", daemon=True)
+                _BACKGROUND["worker"] = worker
+                worker.start()
+    return (True, hit[2]) if hit else (False, None)
+
+
+def _work() -> None:
+    """Replay the queued strategies one after another (the first loads the market's history, the rest
+    reuse it); exits when the queue is empty and is started again when needed."""
+    while True:
+        with _lock:
+            if not _queue:
+                _BACKGROUND["worker"] = None
+                return
+            strategy_id, spec, market_key, key = _queue.pop(0)
+        try:
+            dev_curve_for_strategy(strategy_id, spec, market_key)
+        except Exception:  # noqa: BLE001 - never raises by design; the page asks again
+            traceback.print_exc()
+        finally:
+            with _lock:
+                _queued.discard(key)
 
 
 def warm(strategies: List[Tuple[int, Dict, str]]) -> None:
