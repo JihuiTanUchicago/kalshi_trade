@@ -129,29 +129,32 @@ export function communityCases({name, frontend}) {
       const html = f.postSnapshot({...card, ...over}, '@maya');
       assert.match(html, /later-period/i, JSON.stringify(over));
       // In the strategy page's words: the split date picked it, so it isn't held out.
-      assert.match(html, /after the split date, which picked it: not held out[.,]/);
+      assert.match(html, /after the split date, which picked it \(later period\u00a0· not held out\)[.,]/);
       // One colon before the figure: "…not held out: +$5.50" ran the reason into the P&L.
       assert.doesNotMatch(html, /not held out:/);
       assert.doesNotMatch(html, /unseen|never saw/i, JSON.stringify(over));
     }
     // The author's own card, a link, says it too.
     const own = f.postSnapshot({...card, no_gatekeeper_record: true}, '');
-    assert.match(own, /^<a [^>]*href="\/strategies\/42"/); assert.match(own, /Backtest over 9 days after the split date, which picked it: not held out/);
+    assert.match(own, /^<a [^>]*href="\/strategies\/42"/); assert.match(own, /Backtest over 9 days after the split date, which picked it \(later period\u00a0· not held out\)/);
     const kept = f.postSnapshot(card, '@maya');
     // A held-out one is later-period too, as the Strategies list's row and sort say, and says it was unseen data.
-    assert.match(kept, /unseen data/i); assert.match(kept, /later-period/i); assert.doesNotMatch(kept, /not held out|which picked it/);
+    assert.match(kept, /after the split date \(later period\u00a0· unseen data\)/); assert.match(kept, /later-period/i);
+    assert.doesNotMatch(kept, /not held out|which picked it/);
   });
 
   test(`${name}: a shared strategy card names its backtest figure as the Strategies list does, held out or not`, () => {
     // Walk 2026-10-28: the list and its sort say "Later-period P&L"; a held-out card said "backtest on unseen data" in
-    // Tau and "Unseen-data P&L" in Meridian. One family now: later period, plus unseen data or not held out.
+    // Tau and "Unseen-data P&L" in Meridian. One family now: later period, plus unseen data or not held out, with
+    // "·" bound to the word before it (SEP), as the Deploy hover says it; "on unseen data" and "picked it: not held
+    // out" were the last of the older words.
     const f = frontend({fetchImpl: () => response({})});
     const card = {kind: 'strategy', id: 42, title: 'Kept', market: 'btc15m', status: 'passed', pnl: 5.5, trades: 48, win_rate: 0.58, days: 9};
     for (const over of [{}, {no_gatekeeper_record: true}, {status: 'backtest-only'}]) {
       const html = f.postSnapshot({...card, ...over}, '');
-      assert.match(html, /[Ll]ater-period (P&amp;L|backtest)/, JSON.stringify(over));
-      assert.match(html, over.no_gatekeeper_record || over.status ? /not held out/ : /on unseen data/, JSON.stringify(over));
-      assert.doesNotMatch(html, /backtest on unseen data|Unseen-data P&|never saw|out-of-sample/, JSON.stringify(over));
+      assert.match(html, /[Ll]ater-period P&amp;L/, JSON.stringify(over));
+      assert.match(html, over.no_gatekeeper_record || over.status ? /\(later period\u00a0· not held out\)/ : /\(later period\u00a0· unseen data\)/, JSON.stringify(over));
+      assert.doesNotMatch(html, /later-period backtest|on unseen data|\(held out\)|picked it:|Unseen-data P&|never saw|out-of-sample/, JSON.stringify(over));
       // Its span is said once, and the figure is a signed amount.
       assert.equal((html.match(/over 9 days/g) || []).length, 1); assert.match(html, /\+\$5\.50/);
     }

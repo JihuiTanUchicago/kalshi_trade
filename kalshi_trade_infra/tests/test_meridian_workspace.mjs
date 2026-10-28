@@ -1978,7 +1978,7 @@ test('Research results keep every returned status and source value with escaped 
   // Each figure's line as a desktop reads it (bt-long), then a phone's short form of it (bt-short, its hover the full line).
   const shortOf = row => { const s = row.querySelector('.num .bt-short'); return s ? s.textContent : null; };
   assert.deepEqual(rows.map(row => { const c = row.querySelector('.num'), s = shortOf(row); return s == null ? c.textContent : c.textContent.slice(0, -s.length); }),
-    ['+$12.00later-period P&amp;L after the split date, on unseen data', '−$4.25later-period P&amp;L after the split date, on unseen data\u00a0· did not pass', '−$7.50on the history it searched\u00a0· did not pass', '$0.00on the history it searched', '—']);
+    ['+$12.00later-period P&amp;L after the split date\u00a0· unseen data', '−$4.25later-period P&amp;L after the split date\u00a0· unseen data\u00a0· did not pass', '−$7.50on the history it searched\u00a0· did not pass', '$0.00on the history it searched', '—']);
   assert.deepEqual(rows.map(shortOf), ['later\u00a0period\u00a0· unseen\u00a0data', 'later\u00a0period\u00a0· unseen\u00a0data\u00a0· did\u00a0not\u00a0pass', 'history it searched\u00a0· did\u00a0not\u00a0pass', 'history it searched', null]);
   assert.deepEqual(rows.map(row => row.querySelector('.num').getAttribute('data-lab')), ['Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L']);
   assert.match(results.innerHTML, /Kept &lt;script&gt;unsafe&lt;\/script&gt;/); assert.match(results.innerHTML, /&lt;img src=x&gt;/);
@@ -2380,12 +2380,12 @@ test('Community: another trader’s strategy card says whose it is instead of a 
   const strat = {kind: 'strategy', id: 42, title: 'Fade', market: 'btc15m', status: 'passed', pnl: 42.17, trades: 23, win_rate: .61, days: 9.4};
   host.innerHTML = f.postSnapshot(strat, '@bob');
   assert.equal(host.querySelector('a'), null, 'their strategy page is theirs alone');
-  assert.match(host.querySelector('.snap-note').textContent, /^Backtest over 9 days after the split date, on unseen data \(held out\), not paper or live trading\. Only @bob can open this strategy; ask them to share a copy from its page\.$/);
+  assert.match(host.querySelector('.snap-note').textContent, /^Backtest over 9 days after the split date \(later period\u00a0· unseen data\), not paper or live trading\. Only @bob can open this strategy; ask them to share a copy from its page\.$/);
   host.innerHTML = f.postSnapshot(strat, '');
   assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42');
   assert.doesNotMatch(host.querySelector('.snap-note').textContent, /Only/);
   host.innerHTML = f.postSnapshot({...strat, days: undefined}, '<b>x</b>');
-  assert.match(host.querySelector('.snap-note').textContent, /^Backtest after the split date, on unseen data \(held out\), not paper/); assert.doesNotMatch(host.innerHTML, /<b>x/);
+  assert.match(host.querySelector('.snap-note').textContent, /^Backtest after the split date \(later period\u00a0· unseen data\), not paper/); assert.doesNotMatch(host.innerHTML, /<b>x/);
   // Each book on its own line with its trades; a book with none says so rather than $0.00. Never one sum.
   host.innerHTML = f.postSnapshot({kind: 'pnl', paper_pnl: 120.5, live_pnl: 0, paper_trades: 12, live_trades: 0});
   assert.deepEqual(host.querySelectorAll('dd').map(dd => dd.textContent), ['+$120.50on 12 trades', 'No trades yet']);
@@ -6376,7 +6376,10 @@ test('a backtest-only strategy’s Deploy row says "Later-period P&L · not held
   const f = frontend({fetchImpl: () => response({deployments: [row({backtest_only: true}), row({id: 12, strategy_id: 112, backtest_only: false})], open_positions: []})});
   await f.viewDeploy();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, /<span class="dep-fact" title="After the split date, which picked it: not held out">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· not\u00a0held\u00a0out\u00a0· /);
+  assert.match(html, /<span class="dep-fact" title="After its split date, which picked it \(later period\u00a0· not held out\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· not\u00a0held\u00a0out\u00a0· /);
+  // The held-out one's hover says the family's other half, as Tau's Backtest estimate hover does: it had none.
+  assert.match(html, /<span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· unseen\u00a0data\u00a0· /);
+  assert.doesNotMatch(html, /picked it: not held out|on unseen data/);
   assert.equal((html.match(/unseen\u00a0data/g) || []).length, 1, 'only the strategy with a gatekeeper record says unseen');
   assert.equal((visible(html).match(/Later-period P&amp;L \+\$12\.00<\/span>/g) || []).length, 2, 'both name the figure as the Strategies list does');
   assert.doesNotMatch(html, /Unseen P&amp;L/);
@@ -6408,7 +6411,7 @@ test('a Deploy row’s details keep "Deployed" with its date and "Later-period P
     realized_pnl: 3, unrealized_pnl: null, closed_trades: 2, open_positions: 0, curve: []}], open_positions: []})});
   await f.viewDeploy();
   const html = f.root.querySelector('#deps').innerHTML;
-  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact">Later-period P&amp;L \+\$12\.00<\/span> · unseen data · <span class="dep-fact">Deployed [^<]+<\/span>/);
+  assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span> · unseen data · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
 newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});
 

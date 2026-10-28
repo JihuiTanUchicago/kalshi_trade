@@ -931,7 +931,10 @@ window.TauPage('strategies', (T) => {
         const auto = r.live_autopilot && r.live_autopilot.ok;
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = roadSummary(r, s, liveWhy, rows.length, apPaper) + gatesHtml(rows)
-          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money on ${splitOnly ? 'the data after its split date' : 'unseen data'}.` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest’s later-period P&amp;L per trade${splitOnly ? ' (not held out)' : ' on unseen data'}.`}</p>` : '')
+          // The server's realization is against the backtest's later slice (its out_of_sample), so the hint names it as
+          // the figure up top does, by laterQual: "later period · unseen data" only with a gatekeeper record (splitOnly
+          // otherwise). It read "made money on unseen data" and "…P&L per trade on unseen data".
+          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period${SEP}${laterQual}).` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest’s P&amp;L per trade after its split date (later period${SEP}${laterQual}).`}</p>` : '')
           + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book (bought at the ask, sold at the bid, after Kalshi fees), from every paper run of this strategy, removed ones included, so these figures are not its realized P&amp;L above. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading on this server: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
       } catch (e) {
         // A read that failed (a bad connection) says why and offers Try again: it said "unavailable" for the

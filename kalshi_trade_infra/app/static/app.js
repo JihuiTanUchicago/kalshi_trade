@@ -1822,8 +1822,9 @@
     // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590). So is
     // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's or the session page's own reads).
     // A held-out row's figure is the backtest after its split date too, so it says "later-period", as the sort
-    // ("Later-period P&L") that orders it does: it read "on unseen data" under a sort named otherwise. "On unseen
-    // data" says it was held out, as "which picked it: not held out" says the other kind was not.
+    // ("Later-period P&L") that orders it does: it read "on unseen data" under a sort named otherwise. Its last piece
+    // says which kind, in the family's words ("later period · unseen data" / "· not held out", as the short form, the
+    // Deploy hover and the strategy page say): it read "…, on unseen data" and "…, which picked it: not held out".
     // A phone's stacked card puts the line in a third of the row under "BACKTEST P&L": the sentence ran about five
     // lines there, and said "P&L" again under the label. It reads the short form ("later period · 9 days · not held
     // out"); the full sentence is its hover and what a screen reader says (bt-long, hidden on a phone only visually).
@@ -1831,8 +1832,8 @@
     const verdictWord = missedFinal ? 'missed the final test' : noPass ? 'did not pass' : '';
     // The count and its unit hold together ("30 / days" broke across a phone's lines).
     const spanDays = (d) => !(+d > 0) ? '' : +d < 1 ? 'under a day' : `${num(Math.round(+d))}\u00a0day${Math.round(+d) === 1 ? '' : 's'}`;
-    const longSub = [m.pnl == null ? '' : later ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
-      : oos ? `later-period P&amp;L${overDays(m.days)} after the split date, on unseen data` : 'on the history it searched' + overDays(m.days), verdictWord].filter(Boolean).join(SEP);
+    const longSub = [...(m.pnl == null ? [] : later ? [`later-period P&amp;L${overDays(m.days)} after the split date, which picked it`, 'not held out']
+      : oos ? [`later-period P&amp;L${overDays(m.days)} after the split date`, 'unseen data'] : ['on the history it searched' + overDays(m.days)]), verdictWord].filter(Boolean).join(SEP);
     // Each short phrase holds together, so a narrow card breaks only at a separator ("unseen / data" split it).
     const shortSub = [...(m.pnl == null ? [] : [oos ? 'later\u00a0period' : 'history it searched', spanDays(m.days), later ? 'not\u00a0held\u00a0out' : oos ? 'unseen\u00a0data' : '']),
       verdictWord === 'did not pass' ? 'did\u00a0not\u00a0pass' : verdictWord].filter(Boolean).join(SEP);

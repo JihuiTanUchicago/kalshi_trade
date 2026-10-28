@@ -606,4 +606,26 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(held.root.querySelector('#figs').innerHTML, /data-glo="laterperiod"/);
     assert.match(split.root.querySelector('#figs dt').innerHTML, /data-glo="laterperiod"/);
   });
+
+  // Road to live's realization hint compares paper with the backtest's later slice (the server's out_of_sample). It read
+  // "made money on unseen data" / "…P&L per trade on unseen data": now it says the family's pair, by the figure up top's
+  // rule ("unseen data" only with a gatekeeper record), with its "·" bound to the word before it.
+  test(`${name}: Road to live's paper-against-backtest hint says "later period · unseen data" only when it was held out`, async () => {
+    const road = (realization) => ({ready: false, deployment_candidate: false, live_autopilot: {ok: false},
+      paper: {trades: 12, trades_needed: 30, net_pnl: 3.4, events: 12, events_needed: 20, span_hours: 50, span_needed_hours: 48,
+        p_value: 0.2, p_value_needed: 0.1, recent_trades: 6, recent_net_pnl: 1, realization, demo_orders: 7, demo_orders_needed: 20,
+        checks: {realistic_trades: false, net_pnl: true, events: false, span: true, edge: false, recent: true}}});
+    const hint = async (over, realization) => {
+      const f = strategyFrontend(detailStrategy(over), (path) => response(path === '/api/strategies/42/live-readiness' ? road(realization) : {}));
+      await f.viewStrategy(42); await flush(); await flush();
+      const html = f.root.querySelector('#road-live-body').innerHTML;
+      if (f.clearTimers) f.clearTimers();
+      return html.match(/<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">(.*?)<\/p>/)[1];
+    };
+    const held = {status: 'passed'}, split = {status: 'passed', experiment: null};
+    assert.equal(await hint(held, -0.18), 'Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period · unseen data).');
+    assert.equal(await hint(split, -0.18), 'Paper is <b>losing money</b> per trade, while the backtest made money after its split date (later period · not held out).');
+    assert.equal(await hint(held, 0.6), 'Paper earns <b>60%</b> of the backtest’s P&amp;L per trade after its split date (later period · unseen data).');
+    assert.equal(await hint(split, 0.6), 'Paper earns <b>60%</b> of the backtest’s P&amp;L per trade after its split date (later period · not held out).');
+  });
 }
