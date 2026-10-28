@@ -3617,6 +3617,16 @@
   // charged; and with payments off Billing sends no card_charged at all, and the week still said "real money"
   // under free-credit research spend. Unknown claims nothing ('' here): each caller says what it was spent on.
   const creditsPaid = (charged) => charged === true ? 'real money' : charged === false ? 'free credits so far: your card hasn’t been charged' : '';
+  // The week's "Credits spent on research" figure. Its heading already says what it was spent on, so the figure is
+  // just the amount ("$0.84"), and "None yet" while nothing was ("$0.00 research spend" said it twice). Beside it:
+  // who paid (creditsPaid: real money only once card_charged is true) and the check-ins.
+  function apWeekSpent(w, spend, checkins) {
+    const researched = +w.research_credits >= 0.005 || !!w.research_under_cent;
+    const ci = checkins ? `${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : '';
+    const paid = researched || checkins ? creditsPaid(w.card_charged) : '';
+    const note = (researched ? [paid, ci && `plus ${ci}`] : [ci && `but ${ci}`, paid]).filter(Boolean).join(SEP);
+    return `${researched ? spend(w.research_credits, w.research_under_cent) : 'None yet'}${note ? ` <small>${note}</small>` : ''}`;
+  }
   function apWeek(w, d) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
@@ -3635,7 +3645,7 @@
       ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
       : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${[creditsPaid(w.card_charged) || 'research spend', checkins ? `plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''].filter(Boolean).join(SEP)}</small></dd></div>
+      <div><dt>Credits spent on research</dt><dd>${apWeekSpent(w, spend, checkins)}</dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${trades} closed trade${trades === 1 ? '' : 's'}</small>${slipEst(w.paper_slippage_estimate)}`}</dd></div>

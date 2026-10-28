@@ -113,7 +113,7 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     // who paid: it says what the spend was. The week called a new user's free-credit research "real money".
     for (const charged of [undefined, null]) {
       f.S.ap = {...apStatus, week: {...week, card_charged: charged}}; f.paintDashAp();
-      assert.match(spent(), /^\$0\.84 research spend$/);
+      assert.match(spent(), /^\$0\.84$/);  // the heading says what it was spent on
       assert.doesNotMatch(spent(), /real money|free credits|card/);
     }
     f.clearTimers();
