@@ -141,7 +141,7 @@ window.TauPage('research', (T) => {
         ])}
         ${fstage('Confirm', [
           fnode('One-time holdout', 'The locked 15% is spent once, and only for a finalist the validation window already supported.'),
-          fnode('Marginal-contribution check', 'It must add something new — low correlation (|ρ| ≤ 0.80) to the strategies you already run.'),
+          fnode('Adds something new', 'Its daily returns can’t move too closely with a strategy that already passed here on the same market (correlation |ρ| ≤ 0.80). A near-copy adds nothing.'),
           fnode('<span class="mk on">Passed</span> Deployment candidate', 'An edge that survived every check on data it never saw.', { cls: 'pass-node' }),
         ])}
         ${fstage('Trade', [

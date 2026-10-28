@@ -377,7 +377,9 @@ test('billing continues to render the server-provided welcome credit instead of 
     await f.viewBilling();
     const figures = f.root.querySelector('#bfigs').innerHTML;
     assert.match(figures, /Welcome credit/); assert.ok(figures.includes('$' + free_bonus.toFixed(2)));
-    assert.match(f.root.querySelector('#main').innerHTML, /Payments aren’t enabled/);
+    // Payments off says so in a customer's words: it read "Payments aren’t enabled on this server yet".
+    assert.match(f.root.querySelector('#main').innerHTML, /Card payments aren’t available yet\. You can still use your free credits\./);
+    assert.doesNotMatch(f.root.querySelector('#main').innerHTML, /server/i);
     assert.equal(posts(f).length, 0);
   }
 });

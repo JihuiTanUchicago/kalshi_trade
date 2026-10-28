@@ -312,6 +312,11 @@ test('the research page takes its model list from the account instead of waiting
   await f.viewResearch(); await flush(); await flush();
   assert.ok(!f.requests.some(({path}) => path === '/api/models'));
   assert.match(f.root.innerHTML, /<option value="m2" selected>Model two/);
+  // The pipeline figure's diversification step (gatekeeper.marginal_contribution_ok) said "Marginal-contribution
+  // check". It says what the check tests: daily returns against a strategy already passed on the same market.
+  const fig = f.root.querySelector('.pipefig').innerHTML;
+  assert.match(fig, /Adds something new[\s\S]*Its daily returns can’t move too closely with a strategy that already passed here on the same market \(correlation \|ρ\| ≤ 0\.80\)\. A near-copy adds nothing\./);
+  assert.doesNotMatch(fig, /Marginal|contribution/i);
   f.clearTimers();
 });
 
@@ -1114,7 +1119,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   assert.match(figs, /\$1,000\.00 capital\u00a0· 1 open \(\$3\.11 at cost \+ fees, all of it in Tau’s demo book\)\u00a0· needs a demo key\u00a0· real fills/);
   // Paper is the dashboard's figure (cash + open at their price), never cash alone under another name; its open
   // positions are named at cost + fees, with the part the balance holds.
-  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)\u00a0· practice money</); assert.doesNotMatch(figs, /Paper cash/);
   // Each book stays its own figure: no sum of live, demo and paper anywhere.
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);
   // Nothing open says so; Kalshi not answering says what to do instead of a bare "Unavailable".

@@ -809,7 +809,7 @@ test('Funds says when Kalshi cash was read, what each book has open, and matches
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Real money at Kalshi, read 5m ago\. 1 open live position \(\$3\.11 at cost \+ fees\) not included/);
   assert.match(figs, /starting capital\u00a0· 2 open \(\$8\.25 at cost \+ fees, all of it in Tau’s demo book\)\u00a0· needs a demo key\u00a0· real fills/);
-  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)/); assert.doesNotMatch(figs, /Paper cash/);
+  assert.match(figs, /Paper balance[\s\S]*\$1,000\.00[\s\S]*\$991\.91 cash\u00a0· 3 open \(\$8\.25 at cost \+ fees, \$8\.09 of it in the balance\)\u00a0· practice money</); assert.doesNotMatch(figs, /Paper cash/);
   assert.doesNotMatch(figs, /\$1,120|\$2,120|\$1,991/);  // books are never summed
   const h = frontend({fetchImpl: () => { const d = funds(); d.kalshi = {connected: true, key_id: 'k', balance: null, open_positions: 0, open_at_cost: 0}; return response(d); }});
   await h.viewFunds(); await flush();
@@ -855,7 +855,7 @@ test('Funds says what each book has made, realized, never summed, and when a new
   await f.viewFunds(); await flush();
   const figs = f.root.querySelector('#ffigs').innerHTML;
   assert.match(figs, /Real money at Kalshi\. Tau’s live trades: \+\$3\.11 realized all time, after Kalshi fees\. 1 open live position/);
-  assert.match(figs, /\$995\.19 cash\u00a0· 1 open \(\$10\.00 at cost \+ fees\)\u00a0· \+\$5\.61 realized all time, after Kalshi fees and the spread</);
+  assert.match(figs, /\$995\.19 cash\u00a0· 1 open \(\$10\.00 at cost \+ fees\)\u00a0· \+\$5\.61 realized all time, after Kalshi fees and the spread\u00a0· practice money</);  // as Tau's Funds says it
   assert.match(figs, /\+\$9\.77 realized since reload, after Kalshi fees\u00a0· needs a demo key/);
   assert.doesNotMatch(figs, /18\.49|15\.38|12\.88|8\.72/);  // no two books added together
   const g = frontend({fetchImpl: () => { const d = funds();
@@ -863,7 +863,7 @@ test('Funds says what each book has made, realized, never summed, and when a new
     d.demo = {...d.demo, closed_trades: 0}; d.paper = {...d.paper, realized_pnl: 0, closed_trades: 0}; return response(d); }});
   await g.viewFunds(); await flush();
   const empty = g.root.querySelector('#ffigs').innerHTML;
-  assert.match(empty, /P&amp;L shows once a demo trade closes/); assert.match(empty, /cash\u00a0· P&amp;L shows once a paper trade closes</);
+  assert.match(empty, /P&amp;L shows once a demo trade closes/); assert.match(empty, /cash\u00a0· P&amp;L shows once a paper trade closes\u00a0· practice money</);
   assert.doesNotMatch(empty, /realized all time|Tau’s live/);
 });
 
@@ -2105,6 +2105,17 @@ function researchFrontend(runs = [], {policy = null, ...options} = {}) {
       research_queued: runs.filter(run => run.status === 'queued').length}, policy: typeof policy === 'function' ? policy() : policy});
   }});
 }
+
+// The pipeline figure's diversification step (gatekeeper.marginal_contribution_ok) said "Marginal-contribution check".
+// It says what the check tests: daily returns against a strategy already passed on the same market, |ρ| ≤ 0.80.
+test('Meridian: Research’s pipeline figure names the diversification check in plain words', async () => {
+  const f = researchFrontend([]);
+  await f.viewResearch(); await flush();
+  const fig = f.root.querySelector('.pipefig').innerHTML;
+  assert.match(fig, /Adds something new[\s\S]*Its daily returns can’t move too closely with a strategy that already passed here on the same market \(correlation \|ρ\| ≤ 0\.80\)\. A near-copy adds nothing\./);
+  assert.doesNotMatch(fig, /Marginal|contribution/i);
+  f.clearTimers();
+});
 
 test('Meridian: Research counts a paused session as paused, not as running', async () => {
   // One running and one paused said "Running 2" (the server folded paused into running).

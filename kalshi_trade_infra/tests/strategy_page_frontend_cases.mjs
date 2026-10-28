@@ -562,6 +562,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.equal(reads, 2);
     assert.match(body().innerHTML, /Realistic paper trades/);
     assert.equal(body().querySelector('[data-road-retry]'), null);
+    // Its last line says whether live trading is open in plain words: it read "Live trading on this server: …".
+    assert.match(body().innerHTML, /Live trading: (open|not open yet)\. Your Kalshi key: /);
+    assert.doesNotMatch(body().innerHTML, /server/i);
     if (f.clearTimers) f.clearTimers();
   });
 
