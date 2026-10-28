@@ -425,7 +425,7 @@ test('market focus picker shows the saved focus, posts a change and follows stat
   assert.deepEqual([...f.S.ap.focus], ['crypto']); assert.equal(select.value, 'crypto'); assert.equal(select.disabled, false);
   f.apUpdate(f.box, status({focus: ['high_ny']}));
   const synced = f.box.querySelector('#apf-focus');
-  assert.equal(synced.value, 'high_ny'); assert.match(synced.innerHTML, /Only high_ny/);
+  assert.equal(synced.value, 'high_ny'); assert.match(synced.innerHTML, /Only High ny/);  // a key the harness's catalog doesn't list; a listed one reads by its name
   f.apUpdate(f.box, status({focus: []})); assert.equal(f.box.querySelector('#apf-focus').value, '');
 });
 

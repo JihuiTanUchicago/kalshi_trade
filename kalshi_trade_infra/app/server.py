@@ -67,6 +67,15 @@ CSP = (
     "connect-src 'self' https://api.stripe.com https://*.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com https://*.stripe.com https://pay.google.com; "
     "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
+# The page for an address Tau has no page for (_send_page_not_found). No script: the theme's stylesheet and words.
+PAGE_NOT_FOUND = (
+    '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+    '<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Page not found · Tau</title>\n'
+    '<link rel="icon" href="/static/icon.svg">\n<link rel="stylesheet" href="{{css}}">\n</head>\n<body>\n'
+    '<main id="main" style="max-width:36rem;margin:12vh auto 0;padding:0 16px">\n<h1>Page not found</h1>\n'
+    '<p>There’s no page at this address. Check the link, or go back to Tau.</p>\n'
+    '<p style="margin-top:16px"><a class="btn" href="/">Go to Tau</a></p>\n</main>\n</body>\n</html>\n'
+)
 
 
 from app.web.http import ApiError, Ctx, _int_param, _json_default, _num  # noqa: F401  (request types)
@@ -692,6 +701,15 @@ class Handler(BaseHTTPRequestHandler):
             if conn is not None:
                 conn.close()
 
+    def _send_page_not_found(self) -> None:
+        """A page address Tau has no page for (a mistyped or old link). It read a bare "Not found" in plain text,
+        unstyled, with no way back; it is a page in the reader's theme that says so and links home."""
+        cookies = self.cookies() if getattr(self, "headers", None) is not None else {}
+        css = "app.meridian.css" if cookies.get(UI_COOKIE) == "meridian" else "app.css"
+        body = PAGE_NOT_FOUND.replace("{{css}}", "/static/%s?v=%s" % (css, _static_versions()[css])).encode("utf-8")
+        self._headers(404, "text/html; charset=utf-8", len(body), [("Cache-Control", "no-cache"), ("Vary", "Cookie")])
+        self.wfile.write(body)
+
     def _send_static(self, path: str, query: str = "") -> None:
         if path == "/.well-known/apple-developer-merchantid-domain-association":
             f = STATIC_DIR / "apple-developer-merchantid-domain-association"
@@ -739,6 +757,8 @@ class Handler(BaseHTTPRequestHandler):
                        [("Cache-Control", "no-cache" if account is None else "private, no-cache"), ("Vary", "Cookie")]
                        + [("Set-Cookie", c) for c in cookies])
             return
+        if not path.startswith("/static/"):
+            return self._send_page_not_found()
         m = re.match(r"^/static/([a-z0-9_.-]+\.(css|js|svg|png|ico|woff2))$", path)
         f = STATIC_DIR / m.group(1) if m else None
         if f is None or not f.is_file():
@@ -922,7 +942,7 @@ class Handler(BaseHTTPRequestHandler):
             self._status, self.close_connection = 499, True
         except Exception:
             traceback.print_exc()
-            self._send_json(500, {"error": "Something went wrong on our side. It's been logged."}, [])
+            self._send_json(500, {"error": "Something went wrong on our side. It’s been logged."}, [])
         finally:
             if conn is not None:
                 conn.close()

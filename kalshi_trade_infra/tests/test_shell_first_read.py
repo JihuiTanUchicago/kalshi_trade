@@ -674,7 +674,7 @@ def test_scoreboard_kept_once_the_route_has_worked_the_board_out(monkeypatch):
 
 
 def test_a_failed_first_read_leaves_the_page_to_ask_and_the_account_carried(web, monkeypatch):
-    _record(monkeypatch, "get_run", ApiError(404, "No such research run."))
+    _record(monkeypatch, "get_run", ApiError(404, "No such research session."))
     r, html = _shell(web, "/research/5")
     assert r.status == 200 and _first(html) == [] and 'id="tau-me"' in html
     _record(monkeypatch, "list_deployments", RuntimeError("db down"))

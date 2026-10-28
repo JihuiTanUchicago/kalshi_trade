@@ -5,7 +5,7 @@ window.TauPage('autopilot', (T) => {
   'use strict';
   const {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
-    apFocusPaint, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
+    apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
     apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, go, ICON, mdLite,
     liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, refreshAutopilot, S, SEP, settleAt, sinceMin, slipEst, usd, waitNote, waitSpan,
     wakers
@@ -47,7 +47,7 @@ window.TauPage('autopilot', (T) => {
   function apCostPaint(box) {
     const el = box.querySelector('#apf-cost'); if (!el) return;
     const me = S.me || {}, on = S.ap ? S.ap.autopilot : !!(me.user && me.user.autopilot);
-    const what = on ? 'It may act on what you ask, within your limits.' : 'Any change it suggests waits for your Approve.';
+    const what = on ? 'It may act on what you ask, within your limits.' : 'Any change it suggests waits for you to approve it.';
     const c = apTurnCost, last = c == null ? '' : c === 0 ? ' Your last one cost nothing.'
       : c < 0.005 ? ' Your last one cost under $0.01.' : ` Your last one cost ${usd(c)}.`;
     el.textContent = what + (me.billing_enabled ? ' Each message is paid from your credits.' + last : '');
@@ -431,7 +431,7 @@ window.TauPage('autopilot', (T) => {
   }
   function apFocusOptions(sel, focus) {
     const cur = (focus || []).join(',');
-    const opts = AP_FOCUS.some(([v]) => v === cur) ? AP_FOCUS : AP_FOCUS.concat([[cur, 'Only ' + (focus || []).join(', ')]]);
+    const opts = AP_FOCUS.some(([v]) => v === cur) ? AP_FOCUS : AP_FOCUS.concat([[cur, 'Only ' + apFocusText(focus)]]);
     sel.innerHTML = opts.map(([v, label]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`).join('');
     sel.dataset.cur = cur;
   }

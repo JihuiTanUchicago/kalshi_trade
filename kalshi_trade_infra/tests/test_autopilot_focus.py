@@ -23,8 +23,12 @@ def _capture(monkeypatch):
 def test_focus_tokens_cover_families_coins_and_keys():
     assert agent.normalize_focus(["Crypto", "bitcoin"]) == ["crypto", "btc"]
     assert agent.normalize_focus("crypto, high_ny") == ["crypto", "high_ny"]
-    with pytest.raises(ValueError, match="'stocks'"):
+    with pytest.raises(ValueError) as e:
         agent.normalize_focus(["stocks"])
+    # Said curly, the token quoted as typed, and the examples are words a customer types, each of them taken.
+    assert str(e.value) == ("I don’t recognise “stocks” as a market, coin or category. Try crypto, Bitcoin, "
+                            "sports or weather.")
+    assert agent.normalize_focus(["crypto", "Bitcoin", "sports", "weather"]) == ["crypto", "btc", "sports", "weather-high"]
     assert agent.in_focus("btc15m", ["crypto"]) and agent.in_focus("eth_daily", ["crypto"])
     assert agent.in_focus("btc_daily", ["btc"]) and not agent.in_focus("eth15m", ["btc"])
     assert not agent.in_focus("nfl_game", ["crypto"]) and agent.in_focus("nfl_game", ["sports"])

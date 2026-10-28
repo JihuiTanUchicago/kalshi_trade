@@ -167,7 +167,7 @@ def save_kalshi_key(ctx: Ctx):
     except kalshi_account.KalshiKeyError as e:
         raise ApiError(400, str(e))
     except RuntimeError:
-        raise ApiError(503, "This server can’t store keys yet (encryption key not configured).")
+        raise ApiError(503, "Tau can’t store API keys yet. Please try again later.")
     with repo.transaction(ctx.conn) as tx:
         repo.lock_user(tx, ctx.uid)
         # Replacing the key while live deployments run would point their open positions' exits at
@@ -208,7 +208,7 @@ def save_kalshi_dev_key(ctx: Ctx):
     try:
         kalshi_dev_exec.demo_fills(creds)  # authenticate against the sandbox only — proves the key works
     except kalshi_dev_exec.DemoHostError:
-        raise ApiError(503, "The demo (sandbox) exchange isn’t configured on this server yet.")
+        raise ApiError(503, "Kalshi’s demo exchange isn’t available on Tau yet. Please try again later.")
     except Exception:
         raise ApiError(400, "Kalshi’s demo exchange didn’t accept this key, or couldn’t be reached just now. Check "
                             "that the Key ID and the private key come from the same key, and that you made it on "
@@ -216,7 +216,7 @@ def save_kalshi_dev_key(ctx: Ctx):
     try:
         blob = kalshi_account.encrypt_private_key(ctx.uid, pem.strip())
     except RuntimeError:
-        raise ApiError(503, "This server can’t store keys yet (encryption key not configured).")
+        raise ApiError(503, "Tau can’t store API keys yet. Please try again later.")
     with repo.transaction(ctx.conn) as tx:
         _perps_live_call(kalshi_perps_trading.guard_key_change, tx, ctx.uid, "demo")
         repo.set_kalshi_dev_key(tx, ctx.uid, key_id, blob)

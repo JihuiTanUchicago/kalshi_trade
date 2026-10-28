@@ -415,7 +415,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
       return {record: text('.real-record p'), ladder: text('#ladder-body p'), html: main(f)};
     };
     const part = await page(1);
-    const said = /1 of these 2 trades was an instant fill, filled whole at the quoted price without the simulated order book\. The track record leaves it out, and so does the count of realistic paper trades toward live\./;
+    const said = /1 of these 2 trades was an instant fill, filled whole at the quoted price without checking how many contracts Kalshi’s order book offered there\. The track record leaves it out, and so does the count of realistic paper trades toward live\./;
     assert.match(part.record, /Paper \+\$3\.80 realized over 2 closed trades/);
     assert.match(part.record, said);
     assert.match(part.ladder, /Paper running · 2 closed trades · \+\$3\.80 realized/);
@@ -424,7 +424,7 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.doesNotMatch(part.record.split(' | ').filter((t) => t.startsWith('Demo')).join(' '), /instant/);
     assert.doesNotMatch(part.html, /\$4\.30/);
     const all = await page(2);
-    assert.match(all.record, /All 2 of these trades were instant fills, filled whole at the quoted price without the simulated order book\. The track record leaves them out/);
+    assert.match(all.record, /All 2 of these trades were instant fills, filled whole at the quoted price without checking how many contracts Kalshi’s order book offered there\. The track record leaves them out/);
     assert.match(all.ladder, /All 2 of these trades were instant fills/);
     // None (or a server that sends no count): no note.
     assert.doesNotMatch((await page(0)).html, /instant fill/);

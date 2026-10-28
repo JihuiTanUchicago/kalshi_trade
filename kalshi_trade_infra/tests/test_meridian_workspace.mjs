@@ -3349,11 +3349,11 @@ test("boot.js keeps the browser's UTC offset in the tau_tz cookie, the one Billi
 });
 
 test('a research session that does not exist links to the list instead of offering Try again', async () => {
-  const f = frontend({fetchImpl: path => (path.startsWith('/api/runs/9') ? {ok: false, status: 404, json: async () => ({error: 'No such research run.'})} : {ok: true, status: 200, json: async () => ({})})});
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/runs/9') ? {ok: false, status: 404, json: async () => ({error: 'No such research session.'})} : {ok: true, status: 200, json: async () => ({})})});
   f.location.pathname = '/research/9';
   await f.render(); await flush();
   const html = f.root.innerHTML;
-  assert.match(html, /No such research run\./); assert.match(html, /href="\/research">All research sessions</);
+  assert.match(html, /No such research session\./); assert.match(html, /href="\/research">All research sessions</);
   assert.doesNotMatch(html, /data-retry/);
 });
 
@@ -5066,7 +5066,7 @@ test('the autopilot feed never repeats a move and says when it could not load', 
   await f.apLoadChat(box);
   assert.equal(moves(), 3);
   const empty = f.document.createElement('div'); empty.innerHTML = '<ol id="apf-messages"></ol>';
-  reply = () => response({error: "Something went wrong on our side. It's been logged."}, 500);
+  reply = () => response({error: "Something went wrong on our side. It’s been logged."}, 500);
   assert.equal(await f.apLoadChat(empty, true), false);
   assert.match(empty.querySelector('#apf-messages').innerHTML, /Couldn’t load the autopilot’s activity\. Retrying\./);
 });
@@ -5074,7 +5074,7 @@ test('the autopilot feed never repeats a move and says when it could not load', 
 test('back online, a dashboard poll sitting out its back-off reads at once and clears its note', async () => {
   let down = false, equity = 1000;
   const f = frontend({fetchImpl: path => {
-    if (path === '/api/dashboard') return down ? response({error: "Something went wrong on our side. It's been logged."}, 500) : response(staleDashboard(equity));
+    if (path === '/api/dashboard') return down ? response({error: "Something went wrong on our side. It’s been logged."}, 500) : response(staleDashboard(equity));
     if (path === '/api/autopilot/status') return response({autopilot: false, mode: 'off'});
     throw new Error('Unexpected offline request: ' + path);
   }});
@@ -5096,7 +5096,7 @@ test('back online, a dashboard poll sitting out its back-off reads at once and c
 });
 
 test('a boot whose account read fails offers Try again instead of sending a signed-in user to sign in', async () => {
-  for (const me of [response({error: "Something went wrong on our side. It's been logged."}, 500), {ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); }}]) {
+  for (const me of [response({error: "Something went wrong on our side. It’s been logged."}, 500), {ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); }}]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/me'); return me; }});
     f.S.me = null;
     await f.render(); await flush(); await flush();
