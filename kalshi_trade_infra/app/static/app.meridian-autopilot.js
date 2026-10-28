@@ -98,6 +98,10 @@ window.TauPage('autopilot', (T) => {
   // feedMd markdown, lane tint) so the autopilot reads as one family with the research log —
   // a legible end-to-end session, not a cramped chat. m.content is Markdown; m.stage/m.strategy/
   // m.detail are OPTIONAL structured fields the backend can add later (see the note in PLAN.md).
+  // The agent's reply is shown as it said it, typeset: an apostrophe inside a word is curly ("Bitcoin’s", "can’t"), as
+  // every line Tau writes is. Code (fenced or `inline`) and the reader's own lines are left exactly as typed.
+  const apTypeset = (s) => String(s == null ? '' : s).split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((part, i) => (i % 2 ? part : part.replace(/([A-Za-z])'(?=[A-Za-z])/g, '$1\u2019'))).join('');
   function apFeedLi(m) {
     const li = document.createElement('li');
     const t = `<time datetime="${esc(m.created_at)}" title="${esc(settleAt(m.created_at))}">${clock(m.created_at)}</time><span class="node" aria-hidden="true"></span>`;
@@ -108,7 +112,7 @@ window.TauPage('autopilot', (T) => {
     }
     if (m.role !== 'system') {   // the agent's think-aloud reasoning
       li.className = 'ln lane-think apf-think';
-      li.innerHTML = `${t}<div class="say"><span class="say-kind">Agent</span><div class="apf-md">${feedMd(m.content)}</div></div>`;
+      li.innerHTML = `${t}<div class="say"><span class="say-kind">Agent</span><div class="apf-md">${feedMd(apTypeset(m.content))}</div></div>`;
       return li;
     }
     // A system line = an autopilot action (or a blocked/holding note).
