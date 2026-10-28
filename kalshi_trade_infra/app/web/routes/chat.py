@@ -352,7 +352,7 @@ def _autopilot_story(d: Dict) -> List[str]:
         lines.append("%s on paper (pretend money). The furthest along has %d of the %d realistic paper trades live "
                      "needs and is %s on them %s, across all its paper runs." % (
             _plural(paper, "strategy is", "strategies are"), int(prog["trades"]), int(prog["trades_needed"]),
-            ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"]),
+            _money(prog["net_pnl"]),
             customer_text.PAPER_NET_SHORT))
     elif int(d.get("paper_open") or 0):
         # Bought but not yet settled: "none has traded yet" told Todd nothing happened while his
@@ -486,7 +486,11 @@ def _waiting_lines(waiting: List[Dict]) -> List[str]:
 
 
 def _money(x: float) -> str:
-    return ("up $%.2f" % x) if x >= 0 else ("down $%.2f" % -x)
+    """"up $1.45" / "down $0.75": the amount rounded once, half up, as every page rounds it (money.cents).
+    "%.2f" rounded the float, so an exact -$0.7450 read "down $0.74" beside the strategy page's -$0.75, and
+    -$0.004 read "down $0.00"."""
+    v = cents(x)
+    return ("up $%.2f" % v) if v >= 0 else ("down $%.2f" % -v)
 
 
 def _tournament_summary(cur, uid: int, deps: List[Dict]) -> Optional[Dict]:

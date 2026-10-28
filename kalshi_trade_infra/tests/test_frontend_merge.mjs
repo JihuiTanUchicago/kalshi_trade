@@ -10,6 +10,7 @@ import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {moneyDisplayCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
+import {moneyAgreementCases} from './money_agreement_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
@@ -5550,6 +5551,7 @@ liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashbo
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unrealizedCellCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unmarkedPositionCases({name: 'Tau', frontend});
+moneyAgreementCases({name: 'Tau', frontend});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
 slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 

@@ -11,6 +11,7 @@ import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {moneyDisplayCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
+import {moneyAgreementCases} from './money_agreement_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
@@ -44,7 +45,7 @@ import {newUserCases} from './new_user_frontend_cases.mjs';
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
 // What the checks read from the bundle and its page files (bundle_source.mjs).
-const EXPOSE = ['S', 'api', 'PAGES', 'deploymentMonitor', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'render', 'viewExample', 'viewSettings', 'viewBilling', 'viewSystem', 'viewAdmin', 'routes', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'tabEdges', 'viewRun', 'viewResearch', 'viewFunds', 'viewDashboard', 'viewDeploy', 'viewCommunity', 'viewExplore', 'postSnapshot', 'replaceDeploymentContent', 'marketPicker', 'wireMarketPicker', 'hotOpen', 'renderHotRail', 'trackRecordPanel', 'paintDashAp', 'mountTrackRecord', 'apUpdate', 'paymentGate'];
+const EXPOSE = ['S', 'api', 'PAGES', 'deploymentMonitor', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'render', 'viewExample', 'viewSettings', 'viewBilling', 'viewSystem', 'viewAdmin', 'routes', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'tabEdges', 'viewRun', 'viewResearch', 'viewFunds', 'viewDashboard', 'viewDeploy', 'viewCommunity', 'viewExplore', 'postSnapshot', 'replaceDeploymentContent', 'marketPicker', 'wireMarketPicker', 'hotOpen', 'renderHotRail', 'trackRecordPanel', 'paintDashAp', 'mountTrackRecord', 'apUpdate', 'paymentGate', 'viewMarketDetail'];
 const source = bundleSource('app.meridian.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -6381,6 +6382,7 @@ liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, d
 freshWalkCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unrealizedCellCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unmarkedPositionCases({name: 'Meridian', frontend});
+moneyAgreementCases({name: 'Meridian', frontend});
 moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, hotRail: (f, markets) => {
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
