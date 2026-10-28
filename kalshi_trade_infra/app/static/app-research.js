@@ -311,7 +311,7 @@ window.TauPage('research', (T) => {
     (() => {
       const rc = form.querySelector('#rcost'), msel = form.querySelector('#rmodel');
       if (!rc) return;
-      let est = null;
+      let est = null, estFailed = false;
       const sync = syncCost = () => {
         // The user's own figure for the model picked (yours_by_model): "yours" pooled every model, so a
         // history on the default model read beside the cheapest one too. An older server sends "yours" alone.
@@ -324,12 +324,13 @@ window.TauPage('research', (T) => {
         const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ownRate, me) : '';
         // No ledger figure for this model (or the read failed): with payments on, still say how it
         // is billed and that it can be stopped, rather than leaving the cost blank.
-        const none = v == null && !pace && me.billing_enabled ? 'No cost estimate for this model yet. It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
+        // A read that failed says so: "No cost estimate for this model yet" claimed there was none (walk 2026-10-28).
+        const none = v == null && !pace && me.billing_enabled ? (estFailed ? 'The cost estimate didn\u2019t load. ' : 'No cost estimate for this model yet. ') + 'It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
         rc.hidden = v == null && !pace && !none;
         rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace, none].filter(Boolean).join(' ');
       };
       if (msel) msel.addEventListener('change', sync);
-      api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; }).then(sync);
+      api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; estFailed = true; }).then(sync);
     })();
     // A start Tau didn't confirm may have landed: the sessions on this page read every 5s, so the words
     // point there instead of at a reload (the typed idea is kept either way).
@@ -366,8 +367,9 @@ window.TauPage('research', (T) => {
       try {
         const c = await api('/api/research/context');
         (c.markets || []).forEach((m) => fillLiveRow(form, m));
+        // Only an answer says a row has no live quote: a read that failed said it of every market (walk 2026-10-28).
+        markQuietRows(form);
       } catch (e) { /* no feed yet -> the picker still works blind */ }
-      markQuietRows(form);
     })();
     // The poll sends back the version of its last full answer; while nothing the list shows has moved the
     // server answers {same: true} from two reads, and the page repaints from the answer it kept (its
