@@ -72,7 +72,7 @@ window.TauPage('billing', (T) => {
             <td class="act" data-lab="">${d.cards.length > 1 ? `<button class="btn sm danger" data-remove="${c.id}">Remove</button>` : '<span class="hint">Only card</span>'}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No card on file. Add one to buy credits or turn on auto-reload.</p>';
       const main = !d.configured
-        ? `<div class="notice">${ICON.warn}<span>Payments aren’t enabled on this server yet. You can still use your free credits.</span></div>
+        ? `<div class="notice">${ICON.warn}<span>Card payments aren’t available yet. You can still use your free credits.</span></div>
            <section class="sect"><div class="sect-head"><h2>Credits &amp; usage</h2><a class="btn sm" href="/api/billing/receipt" download>Download receipt (CSV)</a></div><div id="bledger">${ledgerTable(d)}</div></section>`
         : `<div id="blow">${lowNote(d)}</div><div class="detail bill-detail">
             <div>
