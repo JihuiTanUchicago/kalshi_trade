@@ -338,7 +338,10 @@ def _autopilot_story(d: Dict) -> List[str]:
         else:
             outcome = ("none has passed its tests yet. That’s normal: most ideas fail. Each session’s page names "
                        "the test each idea missed and what to try next")
-        lines.append("This week it tested %s%s and %s." % (
+        # The week's research is every session, the user's own and the autopilot's (the scorecard's note says
+        # so): "This week it tested 32 ideas for $17.40" put the user's own sessions' spend on the autopilot
+        # (walk 2026-10-28, an account whose every session was its own).
+        lines.append("This week your sessions and the autopilot’s tested %s%s and %s." % (
             _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01
             else " for under $0.01" if research.get("cost_7d_under_cent") else "", outcome))
     paper, prog = int(d.get("paper_running") or 0), d.get("paper_progress")

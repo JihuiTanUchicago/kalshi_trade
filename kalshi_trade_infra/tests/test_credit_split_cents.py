@@ -178,6 +178,6 @@ def test_research_under_half_a_cent_says_under_a_cent_on_the_autopilot_panel(mon
     assert server._research_activity(None, 7, None, 0.12, 0.1203)["cost_7d_under_cent"] is False
     story = server._autopilot_story({"autopilot": True, "research": {"active": [], "tested_7d": 3, "passed_7d": 0,
                                                                       "cost_7d": 0.0, "cost_7d_under_cent": True}})
-    assert story[1].startswith("This week it tested 3 ideas for under $0.01 and none has passed")
+    assert story[1].startswith("This week your sessions and the autopilot’s tested 3 ideas for under $0.01 and none has passed")
     plain = server._autopilot_story({"autopilot": True, "research": {"active": [], "tested_7d": 3, "passed_7d": 0, "cost_7d": 0.0}})
-    assert plain[1].startswith("This week it tested 3 ideas and none has passed")
+    assert plain[1].startswith("This week your sessions and the autopilot’s tested 3 ideas and none has passed")
