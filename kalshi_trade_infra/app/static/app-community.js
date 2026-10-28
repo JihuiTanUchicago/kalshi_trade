@@ -25,10 +25,11 @@ window.TauPage('community', (T) => {
       // later-period figure: the slice after the split date that picked it, not held out, as its page and list say.
       const later = snap.status === 'backtest-only' || snap.no_gatekeeper_record;
       // Why it is later-period goes in the note under the figures, as Meridian's card has it: in the figures' line,
-      // "…which picked it: not held out: +$12.40" ran two colons into the P&L.
+      // "…which picked it: not held out: +$12.40" ran two colons into the P&L. A held-out one says "later-period backtest
+      // … on unseen data", as the Strategies list's row and sort do: it read "backtest on unseen data" beside them.
       const why = later ? `Backtest${overDays(snap.days)} after the split date, which picked it: not held out.` : '';
       const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
-        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}${later ? 'later-period backtest' : `backtest on unseen data${overDays(snap.days)}`}: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
+        <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}${later ? 'later-period backtest' : `later-period backtest${overDays(snap.days)} on unseen data`}: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
       return owner ? `<div class="snap">${head}<div class="snap-note">${why ? why + ' ' : ''}Only ${esc(owner)} can open this strategy. Ask them to share a copy from its page.</div></div>`
         : `<a class="snap" href="/strategies/${snap.id}">${head}${why ? `<div class="snap-note">${why}</div>` : ''}</a>`;
     }

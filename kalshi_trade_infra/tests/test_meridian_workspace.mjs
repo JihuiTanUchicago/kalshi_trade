@@ -2343,7 +2343,7 @@ test('Community snapshots retain source financial values, missing versus zero, e
     assert.match(host.innerHTML, /Title &quot;quoted&quot; &lt;script&gt;unsafe&lt;\/script&gt;/);
     assert.equal(host.querySelector('.snap-meta').textContent, 'Unlisted market');  // a key the catalog doesn’t list, never the key
     assert.deepEqual(host.querySelectorAll('dt').map(dt => dt.textContent),
-      ['Unseen-data P&amp;L', ...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
+      ['Later-period P&amp;L', ...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
     assert.deepEqual(host.querySelectorAll('.snap-secondary dt').map(dt => dt.textContent),
       [...(trades == null ? [] : ['Trades']), ...(win_rate == null ? [] : ['Win rate'])]);
   }
@@ -2366,12 +2366,12 @@ test('Community: another trader’s strategy card says whose it is instead of a 
   const strat = {kind: 'strategy', id: 42, title: 'Fade', market: 'btc15m', status: 'passed', pnl: 42.17, trades: 23, win_rate: .61, days: 9.4};
   host.innerHTML = f.postSnapshot(strat, '@bob');
   assert.equal(host.querySelector('a'), null, 'their strategy page is theirs alone');
-  assert.match(host.querySelector('.snap-note').textContent, /^Backtest on data the agent never saw over 9 days, not paper or live trading\. Only @bob can open this strategy; ask them to share a copy from its page\.$/);
+  assert.match(host.querySelector('.snap-note').textContent, /^Backtest over 9 days after the split date, on unseen data \(held out\), not paper or live trading\. Only @bob can open this strategy; ask them to share a copy from its page\.$/);
   host.innerHTML = f.postSnapshot(strat, '');
   assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42');
   assert.doesNotMatch(host.querySelector('.snap-note').textContent, /Only/);
   host.innerHTML = f.postSnapshot({...strat, days: undefined}, '<b>x</b>');
-  assert.match(host.querySelector('.snap-note').textContent, /never saw, not paper/); assert.doesNotMatch(host.innerHTML, /<b>x/);
+  assert.match(host.querySelector('.snap-note').textContent, /^Backtest after the split date, on unseen data \(held out\), not paper/); assert.doesNotMatch(host.innerHTML, /<b>x/);
   // Each book on its own line with its trades; a book with none says so rather than $0.00. Never one sum.
   host.innerHTML = f.postSnapshot({kind: 'pnl', paper_pnl: 120.5, live_pnl: 0, paper_trades: 12, live_trades: 0});
   assert.deepEqual(host.querySelectorAll('dd').map(dd => dd.textContent), ['+$120.50on 12 trades', 'No trades yet']);
@@ -6164,7 +6164,7 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
   const g = strategyFrontend(detailStrategy({deployments: deps.map((d) => ({...d, stake: null}))}), () => response({}));
   await g.viewStrategy(42); await flush();
   const real = g.root.querySelector('#main').innerHTML;
-  assert.match(real, /unseen-data pace, 4 trades would have made \+\$8\.00/);
+  assert.match(real, /later-period pace \(unseen data\), 4 trades would have made \+\$8\.00/);
   assert.doesNotMatch(real, /NaN/);
   assert.ok(g.root.querySelector('#whatif #wk'), 'a strategy with a stake keeps its dial');
   g.clearTimers();

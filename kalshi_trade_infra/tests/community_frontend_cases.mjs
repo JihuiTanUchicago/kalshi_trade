@@ -138,6 +138,22 @@ export function communityCases({name, frontend}) {
     const own = f.postSnapshot({...card, no_gatekeeper_record: true}, '');
     assert.match(own, /^<a [^>]*href="\/strategies\/42"/); assert.match(own, /Backtest over 9 days after the split date, which picked it: not held out/);
     const kept = f.postSnapshot(card, '@maya');
-    assert.match(kept, /unseen|never saw/i); assert.doesNotMatch(kept, /later-period/i);
+    // A held-out one is later-period too, as the Strategies list's row and sort say, and says it was unseen data.
+    assert.match(kept, /unseen data/i); assert.match(kept, /later-period/i); assert.doesNotMatch(kept, /not held out|which picked it/);
+  });
+
+  test(`${name}: a shared strategy card names its backtest figure as the Strategies list does, held out or not`, () => {
+    // Walk 2026-10-28: the list and its sort say "Later-period P&L"; a held-out card said "backtest on unseen data" in
+    // Tau and "Unseen-data P&L" in Meridian. One family now: later period, plus unseen data or not held out.
+    const f = frontend({fetchImpl: () => response({})});
+    const card = {kind: 'strategy', id: 42, title: 'Kept', market: 'btc15m', status: 'passed', pnl: 5.5, trades: 48, win_rate: 0.58, days: 9};
+    for (const over of [{}, {no_gatekeeper_record: true}, {status: 'backtest-only'}]) {
+      const html = f.postSnapshot({...card, ...over}, '');
+      assert.match(html, /[Ll]ater-period (P&amp;L|backtest)/, JSON.stringify(over));
+      assert.match(html, over.no_gatekeeper_record || over.status ? /not held out/ : /on unseen data/, JSON.stringify(over));
+      assert.doesNotMatch(html, /backtest on unseen data|Unseen-data P&|never saw|out-of-sample/, JSON.stringify(over));
+      // Its span is said once, and the figure is a signed amount.
+      assert.equal((html.match(/over 9 days/g) || []).length, 1); assert.match(html, /\+\$5\.50/);
+    }
   });
 }

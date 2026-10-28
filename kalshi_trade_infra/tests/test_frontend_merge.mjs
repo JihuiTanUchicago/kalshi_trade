@@ -1655,7 +1655,7 @@ test('another trader’s shared strategy says whose it is instead of linking to 
   host.innerHTML = f.postSnapshot(strat, '@bob');
   assert.equal(host.querySelector('a'), null);
   assert.equal(host.querySelector('.snap-note').textContent, 'Only @bob can open this strategy. Ask them to share a copy from its page.');
-  assert.match(host.querySelector('.snap-meta').textContent, /backtest on unseen data over 9 days: \+\$42\.17\u00a0· 23 trades\u00a0· 61\.0% win$/);
+  assert.match(host.querySelector('.snap-meta').textContent, /later-period backtest over 9 days on unseen data: \+\$42\.17\u00a0· 23 trades\u00a0· 61\.0% win$/);
   host.innerHTML = f.postSnapshot(strat, '');
   assert.equal(host.querySelector('a.snap').getAttribute('href'), '/strategies/42'); assert.equal(host.querySelector('.snap-note'), null);
   host.innerHTML = f.postSnapshot(strat, '<img src=x>');
@@ -5322,7 +5322,7 @@ test('a strategy page with no stake drops the stake dial and the pace line, and 
   const g = strategyFrontend(detailStrategy({deployments: deps.map((d) => ({...d, stake: null}))}), () => response({}));
   await g.viewStrategy(42); await flush();
   const real = g.root.querySelector('#main').innerHTML;
-  assert.match(real, /unseen-data pace, 4 trades would have made \+\$8\.00/);
+  assert.match(real, /later-period pace \(unseen data\), 4 trades would have made \+\$8\.00/);
   assert.doesNotMatch(real, /NaN/);
   assert.ok(g.root.querySelector('#whatif #wk'), 'a strategy with a stake keeps its dial');
   g.clearTimers();

@@ -426,7 +426,8 @@ window.TauPage('strategies', (T) => {
       const m = ds.reduce((a, d) => a + real(d), 0);
       if (!m) return '';
       const exp = ds.reduce((a, d) => a + real(d) * per * ((+d.stake || stake) / stake), 0);
-      return `<p class="sub-fig real-pace">At the backtest’s ${!s.experiment && ['passed', 'backtest-only'].includes(s.status) ? 'later-period' : 'unseen-data'} pace, ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? `${SEP}too few trades to judge yet` : ''}</p>`;
+      // "later-period pace" plus whether it was held out, as the list's rows say it ("unseen-data pace" read otherwise).
+      return `<p class="sub-fig real-pace">At the backtest’s later-period pace (${!s.experiment && ['passed', 'backtest-only'].includes(s.status) ? 'not held out' : 'unseen data'}), ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? `${SEP}too few trades to judge yet` : ''}</p>`;
     };
     // A server that compares each book with the backtest sends backtest_checks; it replaces the pace line.
     const checks = Array.isArray(s.backtest_checks) ? s.backtest_checks : null;
@@ -633,7 +634,9 @@ window.TauPage('strategies', (T) => {
     const hasExp = !!s.experiment;
     const splitOnly = !hasExp && ['passed', 'backtest-only'].includes(s.status);
     const cutWords = splitOnly ? { cutLabel: ['AFTER THE SPLIT DATE →', 'LATER →'] } : {};
-    const oosHead = splitOnly ? 'After the split date (not held out)' : 'Never seen (out-of-sample)';
+    // The later slice's heading, in the Strategies list's and Community card's words: "later period" plus whether it was
+    // held out. "Never seen (out-of-sample)" stood beside a list that called the same figure "later period · unseen data".
+    const oosHead = splitOnly ? 'Later period (not held out)' : 'Later period (unseen data)';
     const splitFig = (r) => r.out_of_sample ? fig(gl('Later-period P&L', 'laterperiod'), usd(r.out_of_sample.pnl, true), { v: r.out_of_sample.pnl,
       small: `${r.out_of_sample.trades} trades${overDays(r.out_of_sample.days)} after the split date, which picked it: not held out` }) : '';
     const heldFig = (h, label) => fig(label, h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return), { v: h.net_pnl != null ? h.net_pnl : h.mean_net_return,
@@ -910,7 +913,7 @@ window.TauPage('strategies', (T) => {
         const auto = r.live_autopilot && r.live_autopilot.ok;
         const body = root.querySelector('#road-live-body');
         if (body) body.innerHTML = roadSummary(r, s, liveWhy, rows.length, apPaper) + gatesHtml(rows)
-          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money on ${splitOnly ? 'the data after its split date' : 'unseen data'}.` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest’s ${splitOnly ? 'later-period' : 'unseen-data'} P&amp;L per trade.`}</p>` : '')
+          + (p.realization != null ? `<p class="hint" style="margin-top:6px;font-variant-numeric:tabular-nums">${p.realization < 0 ? `Paper is <b>losing money</b> per trade, while the backtest made money on ${splitOnly ? 'the data after its split date' : 'unseen data'}.` : `Paper earns <b>${Math.round(p.realization * 100)}%</b> of the backtest’s later-period P&amp;L per trade${splitOnly ? ' (not held out)' : ' on unseen data'}.`}</p>` : '')
           + `<p class="hint" style="margin-top:6px">Paper counts only fills simulated against the live order book (bought at the ask, sold at the bid, after Kalshi fees), from every paper run of this strategy, removed ones included, so these figures are not its realized P&amp;L above. Clearing every check never starts real money by itself: you deploy it with live money and type LIVE${auto ? ', or live autopilot, which you turned on, may do it within your caps' : ''}. Live trading on this server: ${S.me.live_trading_available ? 'open' : 'not open yet'}. Your Kalshi key: ${S.me.kalshi_connected ? 'connected' : 'not connected'}.</p>`;
       } catch (e) {
         // A read that failed (a bad connection) says why and offers Try again: it said "unavailable" for the
