@@ -2945,14 +2945,18 @@
     if (S.spotPoll !== S.gen) { S.spotPoll = S.gen; poll((cfg) => api(path, undefined, cfg).then(show), 15000, 'mk-spot-stale'); }
   }
   const spotRead = (ticker) => api('/api/explore/spot?ticker=' + encodeURIComponent(ticker)).catch((e) => ({ failed: errText(e) }));
+  const MKT_GONE = 'Kalshi has no market at this link. It may have been taken down, or the link is incomplete. Find it again on Explore.';
   async function viewMarketDetail(ticker) {
     shell('/explore', boardTitle('Market'), loading(300));
     const spotReq = BTC_CONTRACT.test(ticker || '') ? spotRead(ticker) : null;
     let d;
     try { d = await api('/api/explore/market?ticker=' + encodeURIComponent(ticker)); }
     catch (e) {
-      root.querySelector('#main').innerHTML = notice(e.message, 'bad') + `<p style="margin-top:12px"><button class="btn sm" type="button" id="mk-retry">Try again</button> <a class="btn sm" href="/explore">← Back to Explore</a></p>`;
-      root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
+      // A market Kalshi doesn't have (404) won't come back on a retry: it says so in words, without the raw code
+      // from the link ("Kalshi has no market KXNOPE-…"), and offers only the way back to Explore.
+      const gone = e.status === 404;
+      root.querySelector('#main').innerHTML = notice(gone ? MKT_GONE : e.message, 'bad') + `<p style="margin-top:12px">${gone ? '' : '<button class="btn sm" type="button" id="mk-retry">Try again</button> '}<a class="btn sm" href="/explore">← Back to Explore</a></p>`;
+      if (!gone) root.querySelector('#mk-retry').onclick = () => viewMarketDetail(ticker);
       return;
     }
     const mid = midOf({ bid: d.yes_bid, ask: d.yes_ask, last: d.last });

@@ -243,6 +243,22 @@ export function explorePageCases({name, frontend}) {
     assert.ok(closes && /21:00/.test(closes[1]) && !/—/.test(closes[1]), closes && closes[1]);
   });
 
+  // Walked 2026-10-28: a link to a market Kalshi doesn't have read "Kalshi has no market KXNOPE-26OCT28-X." over a
+  // Try again that could only fail the same way.
+  test(`${name}: a market Kalshi has no record of says so in words, with only the way back to Explore`, async () => {
+    let calls = 0;
+    const f = frontend({fetchImpl: (path) => (path.startsWith('/api/explore/market?')
+      ? (calls++, response({error: 'Kalshi has no market KXNOPE-26OCT28-X.'}, 404)) : response({}))});
+    f.location.pathname = '/explore'; f.location.search = '?m=KXNOPE-26OCT28-X';
+    await f.viewExplore(); await settle();
+    const main = f.root.querySelector('#main');
+    assert.match(main.textContent, /Kalshi has no market at this link\. It may have been taken down, or the link is incomplete\./);
+    assert.doesNotMatch(main.innerHTML, /KXNOPE/, 'no raw code from the link');
+    assert.equal(main.querySelector('#mk-retry'), null, 'no Try again that can only fail again');
+    assert.equal(main.querySelector('a.btn').getAttribute('href'), '/explore');
+    assert.equal(calls, 1);
+  });
+
   test(`${name}: Research opened from a market page has that market picked and the options open`, async () => {
     const f = frontend({fetchImpl: (path) => {
       if (path.startsWith('/api/runs')) return response({runs: [], counts: {}, policy: null, totals: {tried: 0, passed: 0}, v: 'v1'});
