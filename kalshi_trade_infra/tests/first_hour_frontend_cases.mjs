@@ -113,7 +113,7 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     // who paid: it says what the spend was. The week called a new user's free-credit research "real money".
     for (const charged of [undefined, null]) {
       f.S.ap = {...apStatus, week: {...week, card_charged: charged}}; f.paintDashAp();
-      assert.match(spent(), /^\$0\.84 research spend$/);
+      assert.match(spent(), /^\$0\.84$/);  // the heading says what it was spent on
       assert.doesNotMatch(spent(), /real money|free credits|card/);
     }
     f.clearTimers();
@@ -261,12 +261,14 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
     // Read as text, the link and its note stay apart (the <small> sits on its own line on screen; its text ran on).
     assert.match(cell, /0 of 30 realistic paper trades instant-fill paper trades left out/);
     assert.doesNotMatch(cell, /trades<\/a><small>|tradesinstant-fill|\$[\d.]+after/);
+    // "instant-fill" has its bubble, glued to the note's last word.
+    assert.match(f.root.querySelector('#dash-ap .apcard-figs').innerHTML, /<span class="nobr">get\)<button type="button" class="info" data-glo="instantfill"/);
     f.clearTimers();
     // The track record's own caveat keeps the same words.
     const record = frontend({fetchImpl: () => response({})}), host = record.document.createElement('section');
     host.innerHTML = record.trackRecordPanel({trades: 3, wins: 2, losses: 1, label: 'Paper', net_pnl: 4, fees: 0.2, excluded_instant_fills: 12,
       monthly: [], strategies: [], curve: [], sample: {level: 'thin', edge: 'unclear', text: 'Too early to judge.'}}, 'paper', {min_sharpe_days: 14, min_trades: 30});
-    assert.match(host.innerHTML, /12 instant-fill paper trades left out \(fills real execution would not get\)\./);
+    assert.match(host.textContent, /12 instant-fill paper trades left out \(fills real execution would not get\)\./);
   });
 
   test(`${name}: Research counts your sessions as sessions, never "runs"`, async () => {

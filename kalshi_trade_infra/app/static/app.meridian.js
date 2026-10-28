@@ -2780,13 +2780,14 @@
   const trOver = (m) => (m.span_days == null ? '' : (() => { const d = Math.max(1, Math.round(+m.span_days)); return ` over ${num(d)} day${d === 1 ? '' : 's'}`; })());
   function trackRecordPanel(m, key, th) {
     const caveats = [];
-    if (m.excluded_instant_fills) caveats.push(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY})${trLeftGap(m)}`);
+    if (m.excluded_instant_fills) caveats.push({html: `${gl(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY})`, 'instantfill')}${esc(trLeftGap(m))}`});
     if (m.open_trades) caveats.push(`${num(m.open_trades)} open trade${m.open_trades === 1 ? '' : 's'} (${usd(m.open_cost)} at cost + fees) ${m.open_trades === 1 ? 'joins the record when it closes' : 'join the record when they close'}.`
       // A part-sold trade's sold slice is realized (the dashboard counts it) but waits here for the rest.
       + (m.open_realized_pnl ? ` Part of ${m.open_trades === 1 ? 'it' : 'them'} is already sold: ${usd(m.open_realized_pnl, true)} realized, not yet in these figures.` : ''));
     if (key === 'live' && m.trades) caveats.push('Live results count only the trades Tau placed, net of Kalshi fees. Your Kalshi cash also moves with deposits, withdrawals and anything you trade yourself.');
     if (key === 'demo' && m.trades) caveats.push('Demo trades are real fills on Kalshi’s sandbox exchange with simulated money. Reloading the demo account doesn’t reset this record, so it can differ from the realized P&L since reload on Funds.');
-    const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map(esc).join(' ')}</p>` : '';
+    // A caveat is text, escaped here, or {html} when it carries a glossary bubble (the instant-fill one).
+    const cav = caveats.length ? `<p class="hint tr-caveat">${caveats.map((c) => (typeof c === 'string' ? esc(c) : c.html)).join(' ')}</p>` : '';
     if (!m.trades) {
       // Paper only: the live and demo tabs keep their own copy.
       const apOn = key === 'paper' && !!(S.me && S.me.user && S.me.user.autopilot);
@@ -3631,7 +3632,7 @@
       d.live_running ? ['Live realized today (UTC)', `${money(d.today_live_pnl || 0)} <small>real money, after Kalshi fees</small>`] : ['Paper P&amp;L, realized all time', pnl == null ? '—' : paperNone ? 'None yet <small>no paper trade has closed</small>' : `${money(pnl)} <small>${PAPER_NET}</small>${slipEst(S.dashPaper.slippage_estimate)}`],
       ['Strategies running', `${running || 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
-      prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${PAPER_COUNT_WHY}</small>`]
+      prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${gl(PAPER_COUNT_WHY, 'instantfill')}</small>`]
         : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
     ].filter(Boolean);
     const now = d.billing_blocked
@@ -3782,6 +3783,16 @@
   // charged; and with payments off Billing sends no card_charged at all, and the week still said "real money"
   // under free-credit research spend. Unknown claims nothing ('' here): each caller says what it was spent on.
   const creditsPaid = (charged) => charged === true ? 'real money' : charged === false ? 'free credits so far: your card hasn’t been charged' : '';
+  // The week's "Credits spent on research" figure. Its heading already says what it was spent on, so the figure is
+  // just the amount ("$0.84"), and "None yet" while nothing was ("$0.00 research spend" said it twice). Beside it:
+  // who paid (creditsPaid: real money only once card_charged is true) and the check-ins.
+  function apWeekSpent(w, spend, checkins) {
+    const researched = +w.research_credits >= 0.005 || !!w.research_under_cent;
+    const ci = checkins ? `${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : '';
+    const paid = researched || checkins ? creditsPaid(w.card_charged) : '';
+    const note = (researched ? [paid, ci && `plus ${ci}`] : [ci && `but ${ci}`, paid]).filter(Boolean).join(SEP);
+    return `${researched ? spend(w.research_credits, w.research_under_cent) : 'None yet'}${note ? ` <small>${note}</small>` : ''}`;
+  }
   function apWeek(w, d) {
     if (!w) return '';
     const pnl = +w.paper_pnl || 0, trades = +w.paper_trades || 0;
@@ -3800,7 +3811,7 @@
       ? 'a research session is running and none has finished yet. What it tests, puts on paper and spends shows here as it goes.'
       : 'nothing yet. Its research, paper strategies and credits spent show here once it starts.'}</p>${d && (d.billing_blocked || d.reload_failed) ? apCreditsLeft(w, d) : ''}</section>`;
     return `<section class="ap-week" aria-label="Autopilot, last 7 days"><h3>Last 7 days</h3><dl>
-      <div><dt>Credits spent on research</dt><dd>${spend(w.research_credits, w.research_under_cent)} <small>${[creditsPaid(w.card_charged) || 'research spend', checkins ? `plus ${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : ''].filter(Boolean).join(SEP)}</small></dd></div>
+      <div><dt>Credits spent on research</dt><dd>${apWeekSpent(w, spend, checkins)}</dd></div>
       <div><dt>Ideas</dt><dd>${Number(w.tested || 0).toLocaleString('en-US')} tested${SEP}${Number(w.passed || 0).toLocaleString('en-US')} passed${+w.not_cleared ? `, ${num(w.not_cleared)} not cleared` : ''}</dd></div>
       <div><dt>Autopilot put on paper</dt><dd>${Number(w.paper_started || 0)} strateg${+w.paper_started === 1 ? 'y' : 'ies'} <small>not counting yours</small></dd></div>
       <div><dt>Autopilot’s paper P&amp;L</dt><dd>${!trades && !pnl ? 'None yet <small>none of its paper trades has closed</small>' : `<span class="${pnl < 0 ? 'neg' : pnl > 0 ? 'pos' : ''}">${usd(pnl, true)}</span> <small>paper, not real money, ${PAPER_NET}${SEP}${trades} closed trade${trades === 1 ? '' : 's'}</small>${slipEst(w.paper_slippage_estimate)}`}</dd></div>

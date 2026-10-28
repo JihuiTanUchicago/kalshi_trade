@@ -3482,7 +3482,7 @@ test('the Overview autopilot card and panel show the last 7 days with real credi
   await f.viewDashboard(); await flush();
   f.S.ap = {...apStatus, week}; f.paintDashAp();
   const card = f.root.querySelector('#dash-ap .ap-week').innerHTML;
-  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>research spend<\/small><\/dd>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50<\/dd>/);
   assert.match(card, /<dt>Autopilot put on paper<\/dt><dd>3 strategies <small>not counting yours<\/small><\/dd>/);
   assert.match(card, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.25<\/span> <small>paper, not real money, after Kalshi fees and the spread\u00a0· 1 closed trade<\/small><\/dd>/);
   assert.doesNotMatch(card, /\$1\.75|\$0\.75/);  // never netted or summed
@@ -5220,7 +5220,7 @@ test('the autopilot card puts credits left and the only limit beside its spend, 
   await f.viewDashboard(); await flush();
   f.S.ap = {...apStatus, week}; f.paintDashAp();
   const card = f.root.querySelector('#dash-ap').innerHTML;
-  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>research spend\u00a0· plus \$0\.42 on its check-ins<\/small><\/dd>/);
+  assert.match(card, /<dt>Credits spent on research<\/dt><dd>\$0\.50 <small>plus \$0\.42 on its check-ins<\/small><\/dd>/);
   assert.match(card, /Credits left: <b>\$23\.40<\/b>, about 6 days at this week’s pace\. It has no daily spending cap: it uses credits until your balance is under \$1\.00, then pauses\./);
   f.S.ap = {...apStatus, week, billing_blocked: true, billing_reason: 'credits'}; f.paintDashAp();
   assert.match(f.root.querySelector('#dash-ap').innerHTML, /Paused: starting research needs \$1\.00 in credits\. <a href="\/billing">Add credits<\/a> and it picks up on its own\./);

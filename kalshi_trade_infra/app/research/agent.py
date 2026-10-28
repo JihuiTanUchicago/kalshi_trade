@@ -4428,7 +4428,8 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
     # Should be unreachable for a well-formed action. Log the raw dict so a genuinely new/malformed
     # action kind is diagnosable from the agents journal instead of only this opaque chat line.
     print("[agents] copilot emitted an unhandled action: %r" % (action,), flush=True)
-    return "I tried an action I’m not allowed to take (%s)." % (kind or "unknown"), None
+    # The customer reads plain words, never the raw kind (the line above logs it).
+    return customer_text.UNKNOWN_ACTION_LINE, None
 
 
 def apply_proposal(cur, user_id: int, proposal: Dict) -> None:

@@ -32,12 +32,14 @@ export function trackRecordTrustCases({name, frontend, Element, dashboard}) {
     const f = frontend({fetchImpl: () => { throw new Error('offline'); }});
     const html = f.trackRecordPanel(paperBook(), 'paper', TH);
     const cav = plain(html.match(/<p class="hint tr-caveat">[\s\S]*?<\/p>/)[0]);
-    assert.match(cav, /1 instant-fill paper trade left out \(fills real execution would not get\): \+\$4\.82\. The realized P&L on the Dashboard, Funds and Deploy counts it, so it reads \$4\.82 higher than this record\./);
+    assert.match(cav, /1 instant-fill paper trade left out \(fills real execution would not get\)\s?: \+\$4\.82\. The realized P&L on the Dashboard, Funds and Deploy counts it, so it reads \$4\.82 higher than this record\./);
+    // The term has its bubble, glued to the caveat's last word before the amount (as the autopilot card's note).
+    assert.match(html, /left out \(fills real execution would not <span class="nobr">get\)<button type="button" class="info" data-glo="instantfill"[^>]*>[\s\S]*?<\/button><\/span>: \+⁠?\$4\.82\./);
     // A loss left out reads the other way; none made or lost says nothing more.
     const lost = plain(f.trackRecordPanel(paperBook({excluded_instant_fills: 2, excluded_instant_pnl: -3.1}), 'paper', TH));
-    assert.match(lost, /2 instant-fill paper trades left out \(fills real execution would not get\): −\$3\.10\. The realized P&L on the Dashboard, Funds and Deploy counts them, so it reads \$3\.10 lower than this record\./);
+    assert.match(lost, /2 instant-fill paper trades left out \(fills real execution would not get\)\s?: −\$3\.10\. The realized P&L on the Dashboard, Funds and Deploy counts them, so it reads \$3\.10 lower than this record\./);
     const flat = plain(f.trackRecordPanel(paperBook({excluded_instant_pnl: 0}), 'paper', TH));
-    assert.match(flat, /1 instant-fill paper trade left out \(fills real execution would not get\)\. 2 open trades/);
+    assert.match(flat, /1 instant-fill paper trade left out \(fills real execution would not get\)\s?\. 2 open trades/);
     // The strategy's own row says its share, beside its 26 trades; a row with none left out says nothing.
     const rows = html.match(/<tr><td class="name" data-lab="Strategy">[\s\S]*?<\/tr>/g);
     assert.match(rows[0], /Fade the 15-minute Bitcoin overshoot<\/a><div class="sub-fig">1 instant fill left out \(\+\$4\.82\)<\/div><\/td>/);

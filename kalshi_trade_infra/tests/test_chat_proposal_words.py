@@ -181,3 +181,25 @@ def test_the_chat_read_says_what_the_last_answered_message_cost_without_a_read_o
     assert out["turn_cost"] is None
     out, reads = _chat(monkeypatch, [reply], 0, configured=False)  # payments off: nothing is billed
     assert "turn_cost" not in out and reads == []
+
+
+@pytest.mark.parametrize("action", [{"type": "launch_rocket"}, {"kind": "Research_v2 "}, {}])
+def test_an_action_the_autopilot_has_no_handler_for_says_so_in_words_not_by_its_raw_kind(capsys, action):
+    # The chat read "I tried an action I'm not allowed to take (research)." with the model's action kind in it.
+    text, pid = agent.act(None, {"id": 1}, action, True)
+    assert (text, pid) == ("I tried an action I’m not allowed to take, so nothing changed.", None)
+    assert "(" not in text
+    assert "unhandled action" in capsys.readouterr().out  # the journal still names it
+
+
+def test_an_older_unknown_action_line_reads_without_its_raw_kind_and_other_lines_are_untouched():
+    rows = customer_text.chat_rows([
+        {"role": "system", "content": "I tried an action I’m not allowed to take (research)."},
+        {"role": "system", "content": "I tried an action I'm not allowed to take (unknown)."},
+        {"role": "agent", "content": "I tried an action I’m not allowed to take (research)."},
+        {"role": "system", "content": "Started a fresh research session on Bitcoin (15-minute)."},
+    ])
+    said = [r["content"] for r in rows]
+    assert said[:2] == ["I tried an action I’m not allowed to take, so nothing changed."] * 2
+    assert said[2:] == ["I tried an action I’m not allowed to take (research).",
+                        "Started a fresh research session on Bitcoin (15-minute)."]

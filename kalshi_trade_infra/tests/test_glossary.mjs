@@ -25,7 +25,7 @@ const used = (pick) => {
   for (const f of files.filter(pick)) {
     const src = read(f);
     for (const m of src.matchAll(/\bglo(?:Sep)?\('([a-z0-9]+)'/g)) keys.add(m[1]);
-    for (const m of src.matchAll(/\bgl\((?:'[^']*'|`[^`]*`), '([a-z0-9]+)'\)/g)) keys.add(m[1]);
+    for (const m of src.matchAll(/\bgl\((?:'[^']*'|`[^`]*`|[A-Z_]+), '([a-z0-9]+)'\)/g)) keys.add(m[1]);
   }
   return keys;
 };
@@ -67,9 +67,21 @@ test('the Deploy table and the strategy page carry the new markers in both theme
     const src = read(f);
     assert.match(src, /<th class="num">\$\{gl\('Realized(?: P&amp;L)?', 'realized'\)\}<\/th><th class="num">\$\{gl\('Unrealized', 'unrealized'\)\}<\/th>/, f);
     assert.match(src, /left out of this record \(\$\{usd\(\+r\.excluded_instant_pnl \|\| 0, true\)\}\)`, 'instantfill'\)/, f);
+    assert.match(src, /left out \(\$\{INSTANT_WHY\}\)`, 'instantfill'\)\}\$\{esc\(trLeftGap\(m\)\)\}/, f);  // the track record's caveat
   }
   for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) {
     const src = read(f);
     for (const k of ['laterperiod', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L', '${k}'\\)`), `${f}: ${k}`);
+  }
+});
+
+// The autopilot card's "Furthest on paper" and its panel said "instant-fill paper trades left out (…)" with no
+// bubble; both carry the instant-fill one now, glued to the note's last word (gl), in both themes.
+test('the autopilot card and panel give the instant-fill note its bubble in both themes', () => {
+  for (const f of ['app.js', 'app.meridian.js']) {
+    assert.match(read(f), /\$\{paperCount\(prog\)\}<\/a> <small>\$\{gl\(PAPER_COUNT_WHY, 'instantfill'\)\}<\/small>/, f);
+  }
+  for (const f of ['app-autopilot.js', 'app.meridian-autopilot.js']) {
+    assert.match(read(f), /net on them\. <small>\$\{gl\(PAPER_COUNT_WHY_SAID, 'instantfill'\)\}<\/small>/, f);
   }
 });
