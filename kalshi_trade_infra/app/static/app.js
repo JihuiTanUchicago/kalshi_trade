@@ -2456,7 +2456,7 @@
   // An open position with no mark yet (the engine prices it on its next tick) says so in its Unrealized cell, as a
   // deployment row does: a bare "—" there said nothing, and a screen reader read it as "dash". Deploy's open
   // positions and a market page's own positions; the dashboard's cards show the position's cost until then.
-  const NO_MARK = '<span class="sub-fig">Unavailable</span>';
+  const NO_MARK = '<span class="no-mark">Unavailable</span>';
   async function viewDeploy() {
     // Autopilot + the agent chat now live in the floating window (reachable from every view),
     // so Deploy is just the board: what's trading and the open positions.

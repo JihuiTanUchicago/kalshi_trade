@@ -133,17 +133,23 @@ export function unmarkedPositionCases({name, frontend}) {
   const unmarked = pos({id: 7, deployment_id: 1, mode: 'paper', ticker: 'KXBTC15M-26OCT271615-15', market: 'btc15m'});
   const marked = {...unmarked, id: 8, unrealized: .14, mark_ts: '2026-10-27T15:00:00Z'};
 
-  test(`${name}: Deploy's open position with no mark yet says Unavailable, never a bare dash`, async () => {
-    const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [{id: 1, strategy_id: 1, title: 'Drift',
-      market: 'btc15m', mode: 'paper', status: 'running', realized_pnl: 0, closed_trades: 0, open_positions: 2, unrealized_pnl: .14,
-      created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 2, backtest: {out_of_sample: null}}], open_positions: [unmarked, marked]})
-      : response({})});
+  test(`${name}: Deploy's open position with no mark yet says Unavailable, never a bare dash, and so does its deployment's row`, async () => {
+    // Meridian's deployment row read "—" too, where Tau's and Meridian's dashboard monitor say why.
+    const dep = (id, open, unrealized) => ({id, strategy_id: id, title: 'Drift ' + id, market: 'btc15m', mode: 'paper', status: 'running',
+      realized_pnl: 0, closed_trades: 0, open_positions: open, unrealized_pnl: unrealized, created_at: '2026-10-24T08:00:00Z', curve: [],
+      stake: 5, max_positions: 2, backtest: {out_of_sample: null}});
+    const f = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: [dep(1, 1, null), dep(2, 0, null), dep(3, 1, .14)],
+      open_positions: [unmarked, {...marked, deployment_id: 3}]}) : response({})});
     f.S.me.markets = BTC; f.location.pathname = '/deploy';
     await f.viewDeploy(); await settle();
     const got = cells(f.root.querySelector('#openpos').innerHTML);
     assert.equal(got.length, 2);
     assert.equal(spoken(got[0]), 'Unavailable');
     assert.match(spoken(got[1]), /^\+\$0\.14/);
+    const rows = cells(f.root.querySelector('#deps').innerHTML).map(spoken).sort();
+    assert.equal(rows.length, 3);
+    assert.deepEqual(rows.slice(1), ['None open', 'Unavailable']);
+    assert.match(rows[0], /^\+\$0\.14/);  // '+' sorts first
     if (f.clearTimers) f.clearTimers();
   });
 
