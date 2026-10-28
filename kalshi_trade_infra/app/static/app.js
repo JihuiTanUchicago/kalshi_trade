@@ -1853,10 +1853,11 @@
       <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${bookLive(s) ? liveWaitLine() : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
     </tr>`;
   }
-  // The Backtest estimate cell's hover text: a strategy with a gatekeeper record's held-out figure.
-  const PACE_TIP = 'What these same closed trades would have made at the backtest’s average per trade on unseen data';
+  // The Backtest estimate cell's hover text: a strategy with a gatekeeper record's held-out figure. Both say
+  // "later period · unseen data" / "· not held out" as the Details line and lists do: a held-out row's read "on unseen data".
+  const PACE_TIP = 'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· unseen data)';
   // A backtest-only strategy's row (the server's backtest_only): its backtest's later slice picked it, so not unseen.
-  const PACE_TIP_LATER = 'What these same closed trades would have made at the backtest’s average per trade after its split date (later-period, which picked it: not held out)';
+  const PACE_TIP_LATER = 'What these same closed trades would have made at the backtest’s average per trade after its split date, which picked it (later period\u00a0· not held out)';
   // The column's header covers both kinds of row, so it says which is which (its glossary marker says the same at
   // more length); it read "on unseen data" over rows whose figure is later-period.
   const PACE_HEAD_TIP = 'What these same closed trades would have made at the backtest’s average per trade after its split date: held out for a strategy with a gatekeeper record, later-period (the slice that picked it) for one without';
