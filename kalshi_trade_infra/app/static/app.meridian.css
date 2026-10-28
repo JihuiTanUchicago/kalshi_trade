@@ -2076,6 +2076,13 @@ body.landing-body .apf { display: none; }
   .strategy-heading > .page-lede { grid-row: 2; }
   .strategy-heading > .strategy-summary { grid-row: 3; justify-self: stretch; }
   .strategy-summary #sfigs { position: static; width: auto; margin: 8px 0 0; }
+  /* Walk 2026-10-28 at 360px: "Void on unseen data" ran two lines, and the phone grid's divider (a .measure rule)
+     sat flush against the right column's labels, since #sfigs zeroes the cells' side padding. The box's own gap
+     separates its columns, as on a desktop; a little less side padding gives the label its one line at 360 and up.
+     Narrower still, a long label breaks into even lines. */
+  .strategy-summary #sfigs { padding: 4px 16px; column-gap: 16px; }
+  .strategy-summary #sfigs > .m:nth-child(even) { border-left: 0; }
+  .strategy-summary #sfigs .lab { text-wrap: balance; }
 }
 
 /* Tau workspace: one ruled hierarchy for records, financial evidence and actions. */

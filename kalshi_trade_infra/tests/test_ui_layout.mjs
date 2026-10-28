@@ -422,3 +422,22 @@ test('Meridian: on a desktop the opened Strategies summary pushes the intro and 
   assert.ok(!all.some((r) => r.media === DESKTOP && /strategy-(heading|summary)/.test(r.sel) && !/\[open\]/.test(r.sel)), 'every desktop rule here waits for [open]');
 });
 
+// Walk 2026-10-28 at 360 and 390px: Tau's Strategies figure "VOID ON UNSEEN DATA" broke "DATA" onto a second line,
+// dropping its count below its neighbour's, and Meridian's "Void on unseen data" did the same at 360, with the phone
+// grid's divider flush against the label. Tau's labels there track tighter at the stacked tables' 10.5px; Meridian's
+// box drops the divider for its own gap and trims its side padding. Each reads on one line at 360 and up; narrower
+// still, a long one breaks into even lines. The words are unchanged.
+test('Strategies: a phone keeps "Void on unseen data" on one line, in both themes', () => {
+  const tau = rules(read('app.css'));
+  const NARROW = '@media (max-width: 480px)';
+  assert.equal(decl(tau, '#sfigs .lab', 'font-size', NARROW), '10.5px');
+  assert.ok(parseFloat(decl(tau, '#sfigs .lab', 'letter-spacing', NARROW)) <= 0.04, 'tracked tighter than .11em');
+  assert.equal(decl(tau, '#sfigs .lab', 'text-wrap', NARROW), 'balance');
+  assert.equal(decl(tau, '#sfigs .lab', 'letter-spacing'), undefined, 'a desktop keeps the labels as they were');
+  const mer = rules(read('app.meridian.css'));
+  assert.equal(decl(mer, '.strategy-summary #sfigs > .m:nth-child(even)', 'border-left', PHONE), '0', 'no divider flush against the label');
+  assert.equal(decl(mer, '.strategy-summary #sfigs', 'padding', PHONE), '4px 16px');
+  assert.equal(decl(mer, '.strategy-summary #sfigs', 'column-gap', PHONE), '16px');
+  assert.equal(decl(mer, '.strategy-summary #sfigs .lab', 'text-wrap', PHONE), 'balance');
+  for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) assert.match(read(f), /gl\('Void on unseen data', 'void'\)/, `${f}: the label's words`);
+});
