@@ -189,7 +189,7 @@ for (const [bundle, file, extra] of [['Tau', 'app.css', ['.ri-why a']], ['Meridi
       assert.equal(px(margin), -px(pad), `${sel}: the margin gives the padding back`);
     }
     assert.ok(24 + 2 * px(decl(all, 'a.apcard-alt', 'padding-block', COARSE)) >= 40);  // "or research by hand", 24px tall
-    assert.equal(decl(all, '.dispatch-go .ex-run', 'min-height', COARSE), '40px');
+    assert.equal(decl(all, '.dispatch-go .ex-run', 'min-height', COARSE), '44px');
   });
 }
 

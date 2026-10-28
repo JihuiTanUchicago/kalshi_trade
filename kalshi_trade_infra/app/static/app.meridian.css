@@ -2951,29 +2951,32 @@ body.landing-body .apf { display: none; }
   .research-compose .pipecap { padding-right: 28px; }
   .research-compose .pipecap > .pipechev { right: 0; top: 50%; margin-top: -8px; }
 }
-/* Touch: every control at least 40px tall. Inline links grow with padding, which leaves the line
-   box alone; block links pair it with a negative margin so the layout does not move. */
+/* Touch: every control at least 44px tall (links set in a line of text stay 40px or more). Inline links
+   grow with padding, which leaves the line box alone; block links pair it with a negative margin so the
+   layout does not move. */
 @media (pointer: coarse) {
   .input, select, input[type=text], input[type=search], input[type=email], input[type=number], input[type=password], .post-tools select, .explore-filters .input { min-height: 44px; }
   input[type=range], .dial input[type=range] { height: 40px; }
   .key-file input[type=file] { padding-block: 10px; }
   .switch { min-height: 44px; }
-  details > summary { padding-block: 11px; min-height: 40px; }
-  .rsiobs-head, .research-compose .pipecap { min-height: 40px; }
-  summary.section-head { min-height: 40px; align-items: center; }
-  .dep-evidence > summary { display: inline-flex; align-items: center; min-height: 40px; padding-top: 0; }
+  details > summary { padding-block: 13px; min-height: 44px; }
+  .rsiobs-head, .research-compose .pipecap { min-height: 44px; }
+  summary.section-head { min-height: 44px; align-items: center; }
+  .dep-evidence > summary { display: inline-flex; align-items: center; min-height: 44px; padding-top: 0; }
   .wordmark a { padding: 3px 5px; margin: -3px -5px; }
   .sub-fig a, .said a, .hint a, .steps a, .dep-monitor h3 a, a.csv-link { padding: 13px 4px; margin-inline: -4px; }
-  td.name > a:not(.btn):not(.market-name) { padding-block: 10px; margin-block: -10px; }
+  td.name > a:not(.btn):not(.market-name) { padding-block: 12px; margin-block: -12px; }
   .t-explore a.market-name { padding-block: 4px; margin-block: -4px; }
   .lbrand { padding-block: 7px; margin-block: -7px; }
   .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
-  .demo-bar .replay { min-height: 40px; }
-  .dispatch-go .ex-run { min-height: 40px; }
+  .demo-bar .replay { min-height: 44px; }
+  .dispatch-go .ex-run { min-height: 44px; }
   /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
-     the autopilot card's figures, a held contract's ticker): 40px tall, the line box left alone. */
-  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 12px; margin-block: -12px; }
-  a.apcard-alt { padding-block: 8px; margin-block: -8px; }
+     the autopilot card's figures, a held contract's ticker): 44px tall, the line box left alone. */
+  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 15px; margin-block: -15px; }
+  a.apcard-alt { padding-block: 10px; margin-block: -10px; }
+  /* The autopilot line's "Change" (41px from its own padding). */
+  .ap-focus button { padding-block: 11.5px; margin-block: -11.5px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */

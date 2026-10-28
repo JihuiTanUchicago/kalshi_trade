@@ -2555,8 +2555,8 @@ test('Tau phone polish: a glossary marker keeps its last word, one rule where bo
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.input, select, input\[type=text\][^{]*\{ min-height: 44px; \}/);
   assert.match(block, /input\[type=range\] \{ height: 40px; \}/);
-  assert.match(block, /details > summary \{ padding-block: 11px; min-height: 40px; \}/);
-  assert.match(block, /td\.name > a:not\(\.btn\) \{ padding-block: 10px; margin-block: -10px; \}/);
+  assert.match(block, /details > summary \{ padding-block: 13px; min-height: 44px; \}/);
+  assert.match(block, /td\.name > a:not\(\.btn\) \{ padding-block: 12px; margin-block: -12px; \}/);
   assert.match(block, /\.legal-nav a, \.legal-foot a, \.lfoot-links a, \.linkish \{ padding: 10px 4px; margin: -10px -4px; \}/);
   // The onboarding controls (Deploy, Start session, the quick deploy) keep their own sizes.
   assert.doesNotMatch(block, /#dep-(paper|demo|live)|\.go\b|strat-quick/);
@@ -3633,7 +3633,7 @@ test('the open-positions why line and a long strategy name wrap, so Deploy never
   assert.match(css, /\.pos-why \{[^}]*white-space: normal;/);
   assert.match(css, /#openpos td\.name \{ white-space: normal;/);
   assert.match(css, /\.fold > summary\.fold-h \{[^}]*gap: 6px;/);
-  assert.match(css, /\.dispatch-go \.ex-run \{ min-height: 40px; \}/);
+  assert.match(css, /\.dispatch-go \.ex-run \{ min-height: 44px; \}/);
 });
 
 test('Deploy prices a deployment\'s open positions in its row, as the dashboard does, one deployment at a time', async () => {

@@ -3850,7 +3850,7 @@ test('Meridian phone polish: a glossary marker keeps its last word, one rule whe
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.input, select, input\[type=text\][^{]*\.post-tools select, \.explore-filters \.input \{ min-height: 44px; \}/);
   assert.match(block, /input\[type=range\], \.dial input\[type=range\] \{ height: 40px; \}/);
-  assert.match(block, /details > summary \{ padding-block: 11px; min-height: 40px; \}/);
+  assert.match(block, /details > summary \{ padding-block: 13px; min-height: 44px; \}/);
   assert.match(block, /\.wordmark a \{ padding: 3px 5px; margin: -3px -5px; \}/);
   assert.match(block, /\.legal-nav a, \.legal-foot a, \.lfoot-links a, \.linkish \{ padding: 10px 4px; margin: -10px -4px; \}/);
   assert.doesNotMatch(block, /#dep-(paper|demo|live)|\.go\b|strat-quick/);
