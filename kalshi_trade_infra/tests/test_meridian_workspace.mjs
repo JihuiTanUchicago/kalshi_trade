@@ -2505,8 +2505,11 @@ test('Explore preserves distinct source counts and search zeroes while omitting 
     const snapshot = f.root.querySelector('.snapshot-time'), time = snapshot && snapshot.querySelector('time');
     if (!total) assert.equal(snapshot, null);
     else if (Number.isFinite(Date.parse(at))) {
-      assert.equal(time.getAttribute('datetime'), at); assert.match(time.textContent, / UTC$/);
-      assert.equal(Date.parse(time.textContent), Date.parse(at));
+      // The age is the visible figure; the snapshot's own time is its hover, never a second raw stamp beside it
+      // ("Prices updated 6m ago 2026-10-28 00:12:19 UTC").
+      assert.equal(time.getAttribute('datetime'), at); assert.equal(time, snapshot.querySelector('.snapshot-age'));
+      assert.equal(snapshot.querySelectorAll('time').length, 1); assert.doesNotMatch(snapshot.textContent, /UTC|\d{4}-\d\d-\d\d/);
+      assert.match(time.getAttribute('title'), / UTC$/); assert.equal(Date.parse(time.getAttribute('title')), Date.parse(at));
       assert.equal(snapshot.classList.contains('snapshot-old'), at === old);
       assert.equal(!!snapshot.querySelector('.snapshot-behind'), at === old);
       if (at === old) assert.equal(snapshot.querySelector('.snapshot-behind').textContent, 'Behind: prices normally refresh each minute');
@@ -2623,6 +2626,8 @@ test('Explore keeps every source event and contract independently legible when t
   assert.equal(yesGroup.getAttribute('colspan'), '3');
   const unsplit = rows[0].querySelectorAll('td');
   assert.equal(unsplit.length, 8);
+  // A phone's stacked row labels its prices as Tau's Explore does ("Yes price"): "YES Price / YES Bid" mixed capitals.
+  assert.deepEqual(unsplit.slice(2).map(td => td.getAttribute('data-lab')), ['Yes price', 'Yes bid', 'Yes ask', '24h volume', 'Open interest', null]);
   assert.equal(unsplit[0].querySelector('.market-event').textContent, 'Bitcoin 5pm', 'retain the entire unsplit source title');
   assert.equal(unsplit[0].querySelector('a.market-name').getAttribute('href'), '/explore?m=A-1');
   assert.equal(f.root.querySelectorAll('#xbody .market-ref').length, 0, 'no row prints its raw ticker');

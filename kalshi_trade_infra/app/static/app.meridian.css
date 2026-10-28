@@ -2404,7 +2404,6 @@ body.landing-body .apf { display: none; }
 #xfigs .snapshot-time { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; }
 #xfigs .snapshot-time .lab { font-weight: 600; }
 #xfigs .snapshot-time > dd, #xfigs .snapshot-time .fig { display: contents; }
-#xfigs .snapshot-time time { font: 400 12px/18px var(--f-terminal); color: var(--ink-2); }
 #xfigs .snapshot-age { font-size: 12px; line-height: 18px; font-weight: 500; color: var(--ink-2); }
 #xfigs .snapshot-old .lab, #xfigs .snapshot-old .snapshot-age { color: #8A5D18; }
 #xfigs .snapshot-behind { font-size: 12px; line-height: 18px; font-weight: 500; color: #8A5D18; }

@@ -3223,13 +3223,13 @@
       return Number.isFinite(+value) ? cents(+value) : '—';
     };
     const sync = () => history.replaceState(null, '', '/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
-    // How old the prices are, as Tau says it ("Prices updated 2m ago"), beside the snapshot's own time; past three
-    // minutes it says the list is behind.
+    // How old the prices are, as Tau says it ("Prices updated 2m ago"); past three minutes it says the list is behind.
+    // The snapshot's own time is the age's hover: "6m ago" beside a raw "2026-10-28 00:12:19 UTC" said it twice.
     const paintFigs = (d) => {
       if (exploreNoFeed(d)) { paint(figs, '<dl class="explore-counts">' + EXPLORE_NO_FEED + '</dl>'); return; }
       const snapshotAt = d.at ? Date.parse(d.at) : NaN;
       const snapshotOld = !Number.isFinite(snapshotAt) || Date.now() - snapshotAt > 180000;
-      paint(figs, '<dl class="explore-counts">' + fig('In this list', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig('Prices updated', Number.isFinite(snapshotAt) ? `<span class="snapshot-age">${sinceMin(d.at)}</span><time datetime="${esc(d.at)}">${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}</time>${snapshotOld ? '<span class="snapshot-behind">Behind: prices normally refresh each minute</span>' : ''}` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>');
+      paint(figs, '<dl class="explore-counts">' + fig('In this list', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig('Prices updated', Number.isFinite(snapshotAt) ? `<time class="snapshot-age" datetime="${esc(d.at)}" title="${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}">${sinceMin(d.at)}</time>${snapshotOld ? '<span class="snapshot-behind">Behind: prices normally refresh each minute</span>' : ''}` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>');
       figs.querySelector('.snapshot-time').setAttribute('title', Number.isFinite(snapshotAt) ? 'Source snapshot: ' + d.at : 'Source snapshot time unavailable');
     };
     // The list stays current while it shows (EXPLORE_POLL_MS, paused while the tab is hidden, read at once on
@@ -3257,6 +3257,7 @@
         return;
       }
       shown = d;
+      // A phone's stacked row labels its prices in Tau's words ("Yes price", "Yes bid", "Yes ask"): "YES Price" mixed capitals.
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
         const label = mktLabel(m);
@@ -3271,7 +3272,7 @@
         const chip = contractShort(m.t), closes = m.ct ? 'Closes ' + settleAt(m.ct) : '';
         const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc([label, chip, closes].filter(Boolean).join(SEP))}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? `<span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${closes ? `<span class="market-close">${esc(closes)}</span>` : ''}</a>${vsHtml(m)}`;
         return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(SEP))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
-          <td class="num yes-price" data-lab="YES Price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="YES Bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="YES Ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
+          <td class="num yes-price" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="Yes bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="Yes ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
       });
       const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot, d.markets);
