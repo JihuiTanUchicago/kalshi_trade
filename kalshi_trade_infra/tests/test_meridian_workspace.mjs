@@ -6197,7 +6197,7 @@ test('Meridian: a paper card on the dashboard says "after Kalshi fees and the sp
   // The phrase (customer_text.PAPER_NET) with its PAPER_FILLS bubble, under the P&L, not a 20px figure of its own.
   assert.match(html, /<dd class="sub-fig paper-net">after Kalshi fees and the <span class="nobr">spread<button type="button" class="info" data-glo="paperfills"[\s\S]*?<\/button><\/span><\/dd>/);
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
-  assert.match(css, /\n\.monitor-metrics dd\.paper-net \{[^}]*font: 400 12px\/16px var\(--f-ui\);[^}]*color: var\(--ink-3\);/);
+  assert.match(css, /\n\.monitor-metrics dd\.paper-net, \.monitor-metrics dd\.book-net \{[^}]*font: 400 12px\/16px var\(--f-ui\);[^}]*color: var\(--ink-3\);/);
   assert.doesNotMatch(f.deploymentMonitor(nullStakeDep({mode: 'live', status: 'running', stake: 5})), /paper-net/);
 });
 
@@ -6341,10 +6341,13 @@ test('an Overview paper monitor says how many of its closed trades were instant 
   const f = frontend({fetchImpl: () => response(dashboardData({deployments}))});
   await f.viewDashboard();
   const monitors = f.root.querySelectorAll('#dash-deps article.dep-monitor'); assert.equal(monitors.length, 5);
-  const line = (m) => { const el = m.querySelector('.monitor-config .dep-instant'); return el ? el.innerHTML : null; };
+  const html = (m) => { const el = m.querySelector('.monitor-config .dep-instant'); return el ? el.innerHTML : null; };
+  // The note's words, less the instant-fill bubble glued to its last word ("live."), which each note carries.
+  const line = (m) => { const h = html(m); return h == null ? null : h.replace(/<button[\s\S]*?<\/button>/g, '').replace(/<[^>]*>/g, ''); };
   const tail = ', left out of the track record and of the count of realistic paper trades toward live.';
   assert.deepEqual(monitors.map(line), ['1 of its 2 closed trades was an instant fill' + tail, 'All 2 of its closed trades were instant fills' + tail,
     'Its 1 closed trade was an instant fill' + tail, null, null]);
+  for (const m of monitors.slice(0, 3)) assert.match(html(m), /toward <span class="nobr">live\.<button type="button" class="info" data-glo="instantfill"/);
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
   assert.match(css, /\n\.monitor-config \.dep-instant \{ margin: 4px 0 10px; white-space: normal; \}/);
 });

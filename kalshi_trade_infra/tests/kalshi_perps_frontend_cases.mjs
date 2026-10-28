@@ -572,8 +572,11 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const cell = f.root.querySelectorAll('td.name')[0].innerHTML;
     f.clearTimers && f.clearTimers();
     const tail = ', left out of the track record and of the count of realistic paper trades toward live.';
-    assert.deepEqual(notes, ['All 2 of its closed trades were instant fills' + tail, '1 of its 3 closed trades was an instant fill' + tail,
+    // Each note's text, and the instant-fill bubble glued to its last word ("live."), as the track record's note has.
+    const words = (html) => html.replace(/<button[\s\S]*?<\/button>/g, '').replace(/<[^>]*>/g, '');
+    assert.deepEqual(notes.map(words), ['All 2 of its closed trades were instant fills' + tail, '1 of its 3 closed trades was an instant fill' + tail,
       'Its 1 closed trade was an instant fill' + tail]);
+    for (const n of notes) assert.match(n, /toward <span class="nobr">live\.<button type="button" class="info" data-glo="instantfill"[^>]*>[\s\S]*?<\/button><\/span>$/);
     assert.ok(cell.indexOf('dep-instant') < cell.indexOf('road-line'), cell);  // right above "0/30 trades"
   });
 

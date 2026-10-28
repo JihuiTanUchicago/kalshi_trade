@@ -70,6 +70,7 @@ test('the Deploy table and the strategy page carry the new markers in both theme
     assert.match(src, /left out of this record \(\$\{usd\(\+r\.excluded_instant_pnl \|\| 0, true\)\}\)`, 'instantfill'\)/, f);
     assert.match(src, /left out \(\$\{INSTANT_WHY\}\)`, 'instantfill'\)\}\$\{esc\(trLeftGap\(m\)\)\}/, f);  // the track record's caveat
     assert.match(src, /left out\$\{\+r\.excluded_instant_pnl \? ` \(\$\{usd\(\+r\.excluded_instant_pnl, true\)\}\)` : ''\}`, 'instantfill'\)\}<\/div>/, f);  // its per-strategy note
+    assert.match(src, /of the count of realistic paper trades toward live\.`, 'instantfill'\)\}<\/div>/, f);  // a Deploy row's instant-fill note
   }
   for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) {
     const src = read(f);
