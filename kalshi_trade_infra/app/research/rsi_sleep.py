@@ -11,9 +11,10 @@ Our proposer is prompted, not fine-tuned, so the two memories are prompt text:
     slow  ── this module, one row per (user, family) and version:
              ledger   deterministic, never ages out: per market x mechanism, ideas tested, reached the
                       gate, passed, death tags, first/last day. Updated even when the model call fails.
-             lessons  the model MERGES new evidence into the standing lessons. Every old lesson must be
-                      kept, merged into a new one, or retired with a stated contradiction (_check), so
-                      one run can't rewrite what thirty taught (the playbook's failure mode).
+             lessons  frozen once learned, like the paper's old weights: the model keeps each standing
+                      lesson word for word, merges near-duplicates, or retires it with a stated
+                      contradiction; new evidence goes into NEW lessons (check_merge). One run can't
+                      rewrite what thirty taught (the playbook's failure mode).
 
     sleep()  after a run, once SLEEP_MIN_NEW new ideas have accumulated since the last consolidation
     prompt_block()  what the proposer reads: the ledger for its market, what is exhausted, what was never
@@ -182,13 +183,13 @@ what it learned into LONG-TERM LESSONS that every future proposal will read. You
 lesson learned from thirty runs must not be lost because the latest run didn't mention it.
 
 You get the standing lessons (ids L1, L2, ...), the all-time ledger, and the reasons recent ideas died.
-Return the FULL new lesson list. Rules:
-- Every standing lesson id must appear exactly once: either in some lesson's "from" (kept as is, merged
-  with others, or sharpened with new evidence) or in "retired" with the concrete new evidence that
-  contradicts it. Never drop a lesson silently. Retire one only when the evidence contradicts it, never
-  because it is old or unmentioned.
-- Add new lessons with "from": []. Merge near-duplicates. At most %d lessons, each under %d characters;
-  when over the cap, merge the most closely related ones, do not drop any.
+Standing lessons are FROZEN: you cannot reword one. For each standing lesson choose exactly one of:
+- "keep": it stays word for word (you may raise its evidence count from the ledger);
+- "merged": fold two or more near-duplicate standing lessons into one new lesson (list all their ids);
+- "retired": the new evidence contradicts it; say what contradicts it. Never retire a lesson because it
+  is old or unmentioned.
+Everything the new evidence teaches goes into "new" lessons. At most %d lessons in total, each under %d
+characters; when over the cap, merge the most closely related standing ones, never drop one.
 - A lesson generalises across many ideas: WHY a class of ideas dies here (who is on the other side, what
   the data shows), what the data really contains, or what showed real signal. Not one idea's title.
 - kind is one of: dead_end, data_fact, signal, open_question. "evidence" is about how many ideas back it
@@ -198,7 +199,8 @@ Return the FULL new lesson list. Rules:
 - An idea dropped because the proposer BELIEVED a feature was missing is a data_fact, not a dead end.
   [spec_invalid] drops are system bugs: ignore them.
 - You see only research-window reasons and gate labels. Never invent validation or holdout numbers.
-Reply with ONE JSON object: {"lessons": [{"text": "...", "kind": "...", "evidence": N, "from": ["L1"]}],
+Reply with ONE JSON object: {"keep": [{"id": "L1", "evidence": N}], "merged": [{"from": ["L2", "L3"],
+"text": "...", "kind": "...", "evidence": N}], "new": [{"text": "...", "kind": "...", "evidence": N}],
 "retired": [{"id": "L4", "why": "..."}], "changes": "<one sentence: what changed>"}""" % (MAX_LESSONS, LESSON_CHARS)
 
 
@@ -206,36 +208,59 @@ def _ids(lessons: List[Dict]) -> List[str]:
     return ["L%d" % (i + 1) for i in range(len(lessons))]
 
 
+def _lesson(item, where: str) -> Dict:
+    if not isinstance(item, dict) or not str(item.get("text") or "").strip():
+        raise ValueError("%s needs a non-empty 'text'" % where)
+    kind = str(item.get("kind") or "dead_end")
+    return {"text": " ".join(str(item["text"]).split())[:LESSON_CHARS], "kind": kind if kind in KINDS else "dead_end",
+            "evidence": max(0, int(item.get("evidence") or 0))}
+
+
 def check_merge(old: List[Dict]):
-    """The ask_json check for a consolidation reply: every standing lesson accounted for."""
-    want = set(_ids(old))
+    """The ask_json check for a consolidation reply. Like SLEEP's parameter expansion (old weights frozen,
+    new knowledge goes into new parameters): a standing lesson is kept word for word, merged with at least
+    one other, or retired with a stated contradiction; it is never reworded or dropped silently."""
+    by_id = dict(zip(_ids(old), old))
 
     def check(obj: Dict) -> Dict:
-        raw = obj.get("lessons")
-        if not isinstance(raw, list) or not raw:
-            raise ValueError("'lessons' must be a non-empty list")
-        if len(raw) > MAX_LESSONS:
-            raise ValueError("at most %d lessons: merge related ones (keep their ids in 'from')" % MAX_LESSONS)
-        lessons, seen = [], []
-        for i, item in enumerate(raw):
-            if not isinstance(item, dict) or not str(item.get("text") or "").strip():
-                raise ValueError("lessons[%d] needs a non-empty 'text'" % i)
-            src = [str(x) for x in (item.get("from") or []) if str(x)]
+        seen: List[str] = []
+        kept = []
+        for k in obj.get("keep") or []:
+            lid = str(k.get("id") if isinstance(k, dict) else k)
+            if lid not in by_id:
+                raise ValueError("keep names %s, which is not a standing lesson" % lid)
+            seen.append(lid)
+            ev = int(k.get("evidence") or 0) if isinstance(k, dict) else 0
+            kept.append(dict(by_id[lid], evidence=max(int(by_id[lid].get("evidence") or 0), ev)))
+        merged = []
+        for i, m in enumerate(obj.get("merged") or []):
+            src = [str(x) for x in ((m or {}).get("from") or []) if str(x)]
+            if len(set(src)) < 2 or not set(src) <= set(by_id):
+                raise ValueError("merged[%d] must fold two or more standing lessons (ids in 'from'); a standing "
+                                 "lesson cannot be reworded alone: keep it, or add a new lesson" % i)
             seen += src
-            kind = str(item.get("kind") or "dead_end")
-            lessons.append({"text": " ".join(str(item["text"]).split())[:LESSON_CHARS],
-                            "kind": kind if kind in KINDS else "dead_end",
-                            "evidence": max(0, int(item.get("evidence") or 0))})
+            merged.append(dict(_lesson(m, "merged[%d]" % i), since=min(int(by_id[x].get("since") or 0) for x in src)))
+        new = [_lesson(n, "new[%d]" % i) for i, n in enumerate(obj.get("new") or [])]
         retired = []
         for r in obj.get("retired") or []:
             if isinstance(r, dict) and r.get("id") and str(r.get("why") or "").strip():
                 seen.append(str(r["id"]))
                 retired.append({"id": str(r["id"]), "why": str(r["why"])[:300]})
-        missing = sorted(want - set(seen), key=lambda s: int(s[1:]))
+        missing = sorted(set(by_id) - set(seen), key=lambda s: int(s[1:]))
         if missing:
-            raise ValueError("standing lessons %s are missing: put each in some lesson's 'from' or in 'retired' "
-                             "with the evidence that contradicts it" % ", ".join(missing))
-        return {"lessons": lessons, "retired": retired, "changes": str(obj.get("changes") or "")[:500]}
+            raise ValueError("standing lessons %s are missing: keep, merge or retire (with the evidence that "
+                             "contradicts it) each one" % ", ".join(missing))
+        twice = sorted({x for x in seen if seen.count(x) > 1}, key=lambda s: int(s[1:]))
+        if twice:
+            raise ValueError("standing lessons %s are used more than once: each goes in exactly one of keep, "
+                             "merged or retired" % ", ".join(twice))
+        lessons = kept + merged + new
+        if not lessons:
+            raise ValueError("no lessons: keep the standing ones or add new ones")
+        if len(lessons) > MAX_LESSONS:
+            raise ValueError("%d lessons, at most %d: merge related standing lessons" % (len(lessons), MAX_LESSONS))
+        return {"lessons": lessons, "new": len(new), "retired": retired,
+                "changes": str(obj.get("changes") or "")[:500]}
     return check
 
 
@@ -329,7 +354,7 @@ def sleep(cur, model, usage, user_id: int, family: str, markets: List[str], run_
     version = (int(prev["version"]) + 1) if prev else 1
     try:
         merged = consolidate(model, usage, family, lessons, ledger, evidence_lines(events))
-        lessons, changes = merged["lessons"], merged["changes"]
+        lessons, changes = [dict(l, since=l.get("since", version)) for l in merged["lessons"]], merged["changes"]
         if merged["retired"]:
             changes += " Retired: " + "; ".join("%s (%s)" % (r["id"], r["why"]) for r in merged["retired"])
     except Exception as e:  # noqa: BLE001 - the ledger alone is worth keeping; lessons carry over

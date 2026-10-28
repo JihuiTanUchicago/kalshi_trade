@@ -31,9 +31,14 @@ grows instead of being overwritten. Prompted, not fine-tuned, so both memories a
   `MIN_REACHED`=3 gate reaches on the candidate.
 - `app/research/rsi_sleep.py` (table `app_rsi_knowledge`, one row per version): after a run, once 40 new
   ideas exist across the family, fold every verdict into an all-time ledger (market x mechanism: tested,
-  gated, passed, death tags, first/last day; never ages out) and have the model MERGE the evidence into
-  at most 16 lessons. `check_merge` refuses a reply that drops a standing lesson without a stated
-  contradiction. The ledger is saved even when the merge fails.
+  gated, passed, death tags, first/last day; never ages out) and have the model add what it learned as
+  NEW lessons (at most 16 in all). Standing lessons are frozen like the paper's old weights: kept word for
+  word, merged two-or-more at a time, or retired with a stated contradiction; `check_merge` refuses a
+  rewrite or a silent drop. The ledger is saved even when the merge fails.
+- Not ported from the paper yet: dreaming (its biggest ablation, 46.2 -> 36.2 on SQuAD without it). Our
+  analogue is sleep proposing recombined research angles, kept or discarded by outcome (ReST-EM); it
+  needs a denser reward than gate reach, which is 0 on BTC. Also: prune the recent-drop list of what the
+  ledger already covers (the paper resets the fast block after consolidating it).
 - The proposer reads one LONG-TERM MEMORY block after the rationing block: live mechanisms, EXHAUSTED
   ones (10+ tested, none gated), never-tested ones, lessons. Rationing itself is unchanged (short-term).
 - Kill switch `TAU_RSI_SLEEP=0`. Watch: share of drops on fresh ground (baseline 16%), aged-out re-kills

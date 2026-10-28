@@ -76,20 +76,31 @@ def test_the_prompt_block_names_exhausted_and_never_held_out_numbers():
     assert sl.render(None, "btc15m", "crypto") == "" and sl.render({"ledger": {}}, "btc15m", "crypto") == ""
 
 
-def test_a_merge_that_silently_drops_a_lesson_is_refused():
-    old = [{"text": "a", "kind": "dead_end", "evidence": 5}, {"text": "b", "kind": "data_fact", "evidence": 2}]
+def test_standing_lessons_are_frozen_kept_merged_or_retired():
+    old = [{"text": "a", "kind": "dead_end", "evidence": 5, "since": 1},
+           {"text": "b", "kind": "data_fact", "evidence": 2, "since": 2},
+           {"text": "c", "kind": "dead_end", "evidence": 4, "since": 3}]
     check = sl.check_merge(old)
-    with pytest.raises(ValueError, match="L2"):
-        check({"lessons": [{"text": "a sharpened", "from": ["L1"]}]})
+    with pytest.raises(ValueError, match="L2, L3"):                 # dropped silently
+        check({"keep": ["L1"], "new": [{"text": "d"}]})
+    with pytest.raises(ValueError, match="reworded alone"):         # a one-lesson "merge" is a rewrite
+        check({"keep": ["L2", "L3"], "merged": [{"from": ["L1"], "text": "a, softened"}]})
+    with pytest.raises(ValueError, match="more than once"):
+        check({"keep": ["L1", "L2", "L3"], "merged": [{"from": ["L1", "L2"], "text": "ab"}]})
+    with pytest.raises(ValueError, match="L3"):                     # a retirement needs a reason
+        check({"keep": ["L1", "L2"], "retired": [{"id": "L3", "why": ""}]})
     with pytest.raises(ValueError, match="at most"):
-        check({"lessons": [{"text": "x", "from": ["L1", "L2"]}] * (sl.MAX_LESSONS + 1)})
-    out = check({"lessons": [{"text": "a and b", "kind": "weird", "evidence": 7, "from": ["L1"]}],
-                 "retired": [{"id": "L2", "why": "the feature exists since 10-25"}], "changes": "merged"})
-    assert out["lessons"] == [{"text": "a and b", "kind": "dead_end", "evidence": 7}]
-    assert out["retired"] == [{"id": "L2", "why": "the feature exists since 10-25"}]
-    # A retirement needs a reason.
-    with pytest.raises(ValueError, match="L2"):
-        check({"lessons": [{"text": "a", "from": ["L1"]}], "retired": [{"id": "L2", "why": ""}]})
+        check({"keep": ["L1", "L2", "L3"], "new": [{"text": "x%d" % i} for i in range(sl.MAX_LESSONS)]})
+    out = check({"keep": [{"id": "L2", "evidence": 9}, {"id": "L3", "evidence": 1}],
+                 "merged": [], "new": [{"text": "d  new", "kind": "weird", "evidence": 7}],
+                 "retired": [{"id": "L1", "why": "the feature exists since 10-25"}], "changes": "one new"})
+    # Kept lessons come back word for word; evidence only grows.
+    assert out["lessons"] == [{"text": "b", "kind": "data_fact", "evidence": 9, "since": 2},
+                              {"text": "c", "kind": "dead_end", "evidence": 4, "since": 3},
+                              {"text": "d new", "kind": "dead_end", "evidence": 7}]
+    assert out["retired"] == [{"id": "L1", "why": "the feature exists since 10-25"}] and out["new"] == 1
+    out = check({"keep": ["L2"], "merged": [{"from": ["L1", "L3"], "text": "a and c", "evidence": 9}]})
+    assert out["lessons"][1] == {"text": "a and c", "kind": "dead_end", "evidence": 9, "since": 1}
 
 
 def test_evidence_lines_cap_one_bucket():
@@ -134,8 +145,8 @@ def _model(reply):
 
 def test_sleep_bootstraps_then_waits_for_enough_new_ideas(store):
     usage = Usage()
-    m = _model({"lessons": [{"text": "lag theses die: Kalshi reprices in ms", "kind": "dead_end", "evidence": 12,
-                             "from": []}], "changes": "first lessons"})
+    m = _model({"new": [{"text": "lag theses die: Kalshi reprices in ms", "kind": "dead_end", "evidence": 12}],
+                "changes": "first lessons"})
     did = sl.sleep(None, m, usage, 1, "crypto", ["btc15m", "btc_daily"], run_id=300)
     assert did.startswith("memory v1: 16 new ideas from 16 runs") and usage.input_tokens == 100
     assert "loses money after fees" in m.seen and "0.071" not in m.seen
@@ -146,17 +157,19 @@ def test_sleep_bootstraps_then_waits_for_enough_new_ideas(store):
     # Enough new ideas, and a late-finishing run below the cursor is still picked up once.
     store.events += [_drop(303 + i, "btc15m", OPTS, "no signal") for i in range(sl.SLEEP_MIN_NEW)]
     store.events.append(_drop(299, "btc15m", STALE, "loses"))
-    m2 = _model({"lessons": [{"text": "lag theses die", "from": ["L1"], "evidence": 15}], "changes": "kept"})
+    m2 = _model({"keep": [{"id": "L1", "evidence": 15}], "changes": "kept"})
     did = sl.sleep(None, m2, Usage(), 1, "crypto", ["btc15m"], run_id=342)
     led = store.rows[-1]["ledger"]
     assert did.startswith("memory v2") and led["ideas"] == 16 + 2 + sl.SLEEP_MIN_NEW + 1
-    assert "L1 [dead_end, ~12 ideas] lag theses die" in m2.seen
+    assert "L1 [dead_end, ~12 ideas] lag theses die: Kalshi reprices in ms" in m2.seen
+    assert store.rows[-1]["lessons"] == [{"text": "lag theses die: Kalshi reprices in ms", "kind": "dead_end",
+                                          "evidence": 15, "since": 1}]
 
 
 def test_a_failed_merge_still_saves_the_ledger_and_keeps_the_lessons(store):
-    sl.sleep(None, _model({"lessons": [{"text": "keep me", "from": []}]}), Usage(), 1, "crypto", ["btc15m"], 300)
+    sl.sleep(None, _model({"new": [{"text": "keep me"}]}), Usage(), 1, "crypto", ["btc15m"], 300)
     store.events += [_drop(400 + i, "btc15m", STALE, "loses") for i in range(sl.SLEEP_MIN_NEW)]
-    did = sl.sleep(None, _model({"lessons": [{"text": "forgot L1", "from": []}]}), Usage(), 1, "crypto",
+    did = sl.sleep(None, _model({"new": [{"text": "forgot L1"}]}), Usage(), 1, "crypto",
                    ["btc15m"], 439)
     assert "ledger only" in did
     assert store.rows[-1]["lessons"] == store.rows[0]["lessons"] and store.rows[-1]["ledger"]["ideas"] == 56
@@ -223,7 +236,7 @@ def test_sleep_round_trip_on_mysql():
     assert len(repo.research_verdicts_after(cur, uid, ["btc15m"], 0, include_run_id=live)) == 4
     assert repo.research_verdicts_after(cur, uid, ["btc15m"], live) == []
 
-    model = _model({"lessons": [{"text": "lag theses die", "kind": "dead_end", "evidence": 3, "from": []}]})
+    model = _model({"new": [{"text": "lag theses die", "kind": "dead_end", "evidence": 3}]})
     did = sl.sleep(cur, model, Usage(), uid, fam, ["btc15m"], run_id=live)
     assert did.startswith("memory v1: 4 new ideas from 2 runs")
     know = sl.latest(cur, uid, fam)
