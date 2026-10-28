@@ -583,7 +583,10 @@
     : !status ? 'Can’t reach Tau. Check your connection.'
     : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
     : status >= 500 ? 'Tau is having trouble right now. Try again in a moment.'
-    // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code.
+    // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code. A read
+    // names no code either (it put "Tau couldn't do that (403)" over a section that hadn't loaded); a write's
+    // line is unchanged.
+    : !write ? 'Tau couldn’t load this. Reload the page and try again.'
     : `Tau couldn't do that (${status}). Reload the page and try again.`;
   // A failure the page shows as an error goes to the operator's readout on /admin (boot.js sends it).
   // An API call that broke: no reply (not our own timeout), the server's 5xx, or a reply that isn't
@@ -1028,14 +1031,15 @@
   // they can see what a normal user sees. Default: admin view on.
   const isAdmin = () => !!(S.me && S.me.is_admin);
   const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
-  let bellReq = null, bellReqAt = 0, bellFresh = null;
+  let bellReq = null, bellReqAt = 0, bellFresh = null, bellStale = null;
   // The autopilot panel's status read (every 20s, on every signed-in page) keeps the bell current too:
   // at most once a minute it re-reads the list, with no timer of its own.
   const BELL_EVERY_MS = 60000;
   function bellTick() {
     if (!bellFresh || Date.now() - bellReqAt < BELL_EVERY_MS) return;
     bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now();
-    bellReq.then((d) => bellFresh && bellFresh(d)).catch(() => {});  // best-effort, like the first read
+    // best-effort, like the first read; one that fails says the list kept may be out of date (bellStale)
+    bellReq.then((d) => bellFresh && bellFresh(d), () => bellStale && bellStale()).catch(() => {});
   }
   // A list that filled up while the user was away opens with what it holds, by kind (the server's
   // unread_kinds): a week back, seven "Autopilot put ... on paper" lines ran past the first screen
@@ -1059,7 +1063,7 @@
     if (!wrap) return;
     const trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
     const dot = wrap.querySelector('.bell-dot'), list = wrap.querySelector('#bell-list');
-    const head = wrap.querySelector('.bell-head');
+    const head = wrap.querySelector('.bell-head'), staleEl = wrap.querySelector('.bell-stale');
     // The new items stay marked while the list is open (they are read on the server as it opens), so
     // the reader can see what came in since last time; closing it clears the marks.
     const close = () => {
@@ -1084,7 +1088,17 @@
     };
     // A list that didn't load still opens, says so and offers Try again; the next read (bellTick) fills it
     // too. It used to leave the bell dead for the rest of the visit: a tap did nothing and no dot ever came.
-    let data = null;
+    let data = null, dataAt = 0;
+    // A refresh that failed with a list up kept the list and said nothing, so it read as current. One quiet
+    // line above the list says it may be out of date, only after a failed refresh, and the next read that
+    // comes back takes it away (walk 2026-10-28).
+    const ago = () => { const m = Math.max(1, Math.round((Date.now() - dataAt) / 60000)); if (m < 60) return `${m} min ago`; const h = Math.round(m / 60); return `${h} hour${h === 1 ? '' : 's'} ago`; };
+    const stale = (on) => {
+      if (!staleEl) return;
+      if (on && data) staleEl.innerHTML = `Couldn\u2019t refresh. Showing notifications from ${ago()}. <button type="button" class="bell-again" data-bell-retry>Try again</button>`;
+      else staleEl.innerHTML = '';
+      staleEl.hidden = !(on && data);
+    };
     const unloaded = () => { list.innerHTML = '<p class="bell-empty">Notifications didn\u2019t load just now. <button type="button" class="btn sm" data-bell-retry>Try again</button></p>'; };
     // Focus goes into the list (its first notice, or the list itself when it is empty), so Tab and a
     // screen reader carry on from what just opened; Esc brings it back to the bell.
@@ -1106,7 +1120,7 @@
     const load = async () => {
       // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
       if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
-      try { data = await bellReq; paint(data); return true; } catch (e) { if (!data) unloaded(); return false; }  // bell is best-effort
+      try { data = await bellReq; dataAt = Date.now(); paint(data); stale(false); return true; } catch (e) { if (!data) unloaded(); else stale(true); return false; }  // bell is best-effort
     };
     // The bell opens while its list is still reading (walk 2026-10-28: on a slow reply a tap did nothing until
     // the read came back, up to READ_MS), so it says it is loading, and the list fills in where it stands.
@@ -1114,11 +1128,13 @@
     load().then((ok) => { if (ok) seen(); });
     // Autopilot pauses or readies a strategy while the page sits open: the dot shows it within a minute,
     // without a reload (bellTick). An open list is left as the reader sees it, unless it never loaded.
-    bellFresh = (d) => { if (menu.hidden || !data) { data = d; paint(d); seen(); } };
+    bellFresh = (d) => { if (menu.hidden || !data) { data = d; dataAt = Date.now(); paint(d); stale(false); seen(); } };
+    bellStale = () => stale(true);
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
       if (data && data.unread && !list.querySelector('.notif.unread')) paint(data);  // a mark that didn't save: new again
+      if (staleEl && !staleEl.hidden) stale(true);  // its "3 min ago" as of now
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
       focusIn();
       seen();
@@ -1130,7 +1146,7 @@
       btn.dataset.busy = '1';
       menu.focus({ preventScroll: true });
       bellReqAt = 0;  // a fresh read, not the one that just failed
-      if (await load()) { focusIn(); seen(); } else { const b = list.querySelector('[data-bell-retry]'); if (b) b.focus({ preventScroll: true }); }
+      if (await load()) { focusIn(); seen(); } else { const b = menu.querySelector('[data-bell-retry]'); if (b) b.focus({ preventScroll: true }); }
     };
     // Esc closes the list and gives focus back to the bell.
     wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); trig.focus(); } });
@@ -1142,6 +1158,7 @@
       const again = e.target.closest('[data-bell-retry]');
       if (again) retry(again); else if (e.target.closest('a.notif')) close();
     });
+    if (staleEl) staleEl.addEventListener('click', (e) => { const again = e.target.closest('[data-bell-retry]'); if (again) retry(again); });
   }
 
   function shell(active, board, main) {
@@ -1161,7 +1178,7 @@
       <header class="masthead"><div class="masthead-in">
         <div class="brand-controls"><span class="market-control"></span><p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p></div>
         <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
-        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false"><span class="profile-name" title="${esc(u.name || u.email)}">${esc(u.name || u.email)}</span><svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/funds">Funds</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/devlog">Dev Logs</a><a href="/system">System</a>${adminViewOn() ? '<a href="/admin">Admin</a>' : ''}<button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><p class="bell-stale" hidden></p><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false"><span class="profile-name" title="${esc(u.name || u.email)}">${esc(u.name || u.email)}</span><svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/funds">Funds</a><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/devlog">Dev Logs</a><a href="/system">System</a>${adminViewOn() ? '<a href="/admin">Admin</a>' : ''}<button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <div class="workspace"><aside class="hotrail" id="hotrail" aria-label="Hot markets"></aside><main class="wrap">
         <div id="boardbody">${board}</div>

@@ -104,6 +104,29 @@ for (const file of ['app.js', 'app.meridian.js']) {
     await assert.rejects(t.api('/api/deployments', {strategy_id: 1}), (e) => e.message === 'You can run up to 5 deployments at once.');
   });
 
+  test(file + ': a read’s 4xx with no words of Tau’s own names no code; a write’s line is unchanged', async () => {
+    // Walk 2026-10-28: a read that got the edge's 403 page said "Tau couldn't do that (403)" over a section that
+    // hadn't loaded. A read says a plain line; a write keeps its exact text.
+    const t = loadApi(file);
+    for (const code of [400, 403, 404, 405, 409]) {
+      t.replies.push(edge(code));
+      await assert.rejects(t.api('/api/dashboard'), (e) => e.status === code && e.message === 'Tau couldn’t load this. Reload the page and try again.');
+      assert.doesNotMatch(vm.runInContext(`failText(${code}, false)`, t.ctx), /\d{3}|couldn't do that/);
+      assert.equal(vm.runInContext(`failText(${code}, true)`, t.ctx), `Tau couldn't do that (${code}). Reload the page and try again.`);
+    }
+    t.replies.push(edge(403));
+    await assert.rejects(t.api('/api/funds/paper', {kind: 'deposit', amount: 5}), (e) => e.status === 403 && e.message === "Tau couldn't do that (403). Reload the page and try again.");
+    // Tau's own words still win on a read's 4xx.
+    t.replies.push(reply(404, {error: 'That strategy isn’t yours.'}));
+    await assert.rejects(t.api('/api/strategies/9'), (e) => e.message === 'That strategy isn’t yours.');
+    // The write lines that ride on failText stay word for word.
+    const unsure = "Tau didn't confirm this, so it may or may not have gone through. Reload the page to check before you try again.";
+    assert.equal(vm.runInContext('failText(0, true)', t.ctx), unsure);
+    assert.equal(vm.runInContext('failText(502, true)', t.ctx), unsure);
+    assert.equal(vm.runInContext('failText(429, true)', t.ctx), 'Tau is getting a lot of requests right now. Try again in a minute.');
+    assert.deepEqual(t.calls, ['GET', 'GET', 'GET', 'GET', 'GET', 'POST', 'GET']);
+  });
+
   test(file + ': a write with no answer says it may have gone through, once, with no retry', async () => {
     const t = loadApi(file);
     const unsure = (e) => /may or may not have gone through/.test(e.message) && /check before you try again/.test(e.message);

@@ -95,4 +95,34 @@ export function flakyNetworkCases({name, frontend}) {
       f.clearTimers();
     }
   });
+
+  // Walk 2026-10-28: a Research page whose scoreboard read failed showed the older "Self-improving research engine"
+  // card as if it were the current read, and said nothing about the failure.
+  test(`${name}: research results that didn't load say so with Try again, not the older engine card`, async () => {
+    const BOARD = {total: {runs: 2, explored: 10, gated: 3, passed: 1, cost_usd: 2, gate_reach_rate: 0.3, pipeline_death_share: 0.2}};
+    for (const [fail, why] of [[() => response({error: 'Something went wrong on our side. It’s been logged.'}, 500), 'Something went wrong on our side. It’s been logged.'],
+      [() => ({ok: false, status: 403, json: async () => { throw new SyntaxError('Unexpected token <'); }}), 'Tau couldn’t load this. Reload the page and try again.']]) {
+      let down = true, asked = 0;
+      const f = frontend({fetchImpl: (path) => {
+        if (path === '/api/models') return response({models: [{key: 'opus', label: 'Opus'}], default: 'opus'});
+        if (path.startsWith('/api/research/scoreboard')) { asked++; return down ? fail() : response(BOARD); }
+        // An evolved policy: the older card had something to show, so it stood in for the failed read.
+        if (path.startsWith('/api/runs')) return response({runs: [], counts: {research_running: 0, research_queued: 0}, policy: {evolved: true, base_score: 1, score: 2}, totals: {tried: 4, passed: 1}});
+        return response({});
+      }});
+      f.S.me.user.autopilot = false;
+      f.location.pathname = '/research';
+      await f.viewResearch(); await settle();
+      const host = f.root.querySelector('#rsimo');
+      assert.equal(host.querySelector('.notice').textContent.trim(), `Your research results didn’t load. ${why} Everything else on this page did.`);
+      assert.doesNotMatch(host.textContent, /Self-improving research engine|\(403\)|\(500\)|undefined|null|NaN/);
+      assert.ok(f.root.querySelector('#dispatch'), 'the form is there');
+      down = false;
+      await host.querySelector('[data-retry]').onclick(); await settle();
+      assert.equal(asked, 2, 'Try again reads it once more');
+      assert.match(host.textContent, /Is research getting better\?/);
+      assert.doesNotMatch(host.textContent, /didn’t load|Self-improving research engine/);
+      f.clearTimers();
+    }
+  });
 }
