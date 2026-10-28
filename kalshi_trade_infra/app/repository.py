@@ -41,7 +41,7 @@ from app.adapters.db.agent_run_repository import (  # noqa: F401
     heartbeat, list_runs, list_runs_version,
     load_checkpoint, pause_run, research_queue_ahead, research_week, resume_run, run_events, run_worker, save_checkpoint,
     set_run_counts, set_run_market, update_run_progress, yield_run, count_own_research, RUNS_LISTED,
-    research_session_numbers,
+    research_session_numbers, research_verdicts_after,
 )
 from app.adapters.db.strategy_repository import (  # noqa: F401
     DEMO_DIRECTION, NOISE_STATUSES, count_strategies, delete_strategy, get_strategy, insert_strategy,

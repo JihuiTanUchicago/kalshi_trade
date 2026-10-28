@@ -1343,6 +1343,40 @@ def _rsi_learn(conn, cur, run: Dict, ds, explored: int, tokens_in: int, tokens_o
         log("step", "Playbook update skipped this time. The run’s results are saved.")
 
 
+def _rsi_memory(cur, user_id: int, market: str, log) -> str:
+    """The family's consolidated long-term memory (rsi_sleep) as the proposer reads it, "" before the
+    first sleep or with TAU_RSI_SLEEP=0. Best-effort: a read hiccup never blocks research."""
+    from app.research import rsi, rsi_sleep
+    fam = rsi.family(market)
+    try:
+        block = rsi_sleep.prompt_block(cur, user_id, fam, market)
+    except Exception:  # noqa: BLE001
+        _LOG.exception("rsi memory read failed for user %s %s", user_id, market)
+        return ""
+    if block:
+        log("step", "Using long-term research memory for %s markets." % fam, {"phase": "memory", "family": fam})
+    return block
+
+
+def _rsi_sleep(conn, cur, run: Dict, model, usage, log) -> None:
+    """After a run: once enough new ideas have piled up across the family, consolidate them into the
+    long-term memory (rsi_sleep.sleep). Research-window reasons and gate labels only; best-effort."""
+    from app.research import rsi, rsi_sleep
+    if not rsi_sleep.enabled():
+        return
+    fam = rsi.family(run["market"])
+    markets = [k for k in MARKETS if rsi.family(k) == fam] if fam not in ("other", "unknown") else [run["market"]]
+    try:
+        did = rsi_sleep.sleep(cur, model, usage, run["user_id"], fam, markets, run["id"])
+        conn.commit()
+    except Exception:  # noqa: BLE001 - the run's results are already saved
+        _LOG.exception("rsi sleep failed for run %s", run["id"])
+        return
+    if did:
+        log("step", "Consolidated long-term research memory for %s markets: %s" % (fam, did),
+            {"phase": "memory", "family": fam})
+
+
 _FV_BANDS_H = ((24.0, None, ">24h"), (12.0, 24.0, "12-24h"), (4.0, 12.0, "4-12h"), (0.0, 4.0, "<4h"))
 _FV_MIN_EVENTS = 10   # per half: fewer events than this and a band says nothing
 _FV_MIN_EDGE = 0.02   # the probe trades only when its probability clears the quote + fee by 2c
@@ -1831,7 +1865,7 @@ def _round_prompt(run: Dict, ds: backtest.Dataset, memory: List[Dict], want: int
     """Round 1 asks fresh; later rounds show the agent its own in-sample results so it
     refines — the loop is a conversation with the data, not a fixed two-shot."""
     base = (_research_prompt(run, ds, memory, want) + _dropped_block(dropped, run.get("market"))
-            + _own_dead_block(dropped, run))
+            + _own_dead_block(dropped, run) + (("\n\n" + run["_knowledge"]) if run.get("_knowledge") else ""))
     if not chunk:
         return base + THINK_ALOUD
     # Digest, not a dump: full detail for the best few to refine, bare titles for the rest so the
@@ -2818,6 +2852,9 @@ def run_research(
         playbook = _rsi_choose(cur, user_id, market, run_id, log)
         if playbook:
             run = {**run, "_playbook": playbook}
+        knowledge = _rsi_memory(cur, user_id, market, log)
+        if knowledge:
+            run = {**run, "_knowledge": knowledge}
         # Data-first A/B (services.research_leads): a leads-arm run scans every feature cell for
         # measured mispricing before the first proposal, and its prompts build on what it finds.
         scan = None
@@ -2912,6 +2949,7 @@ def run_research(
         # playbook from this run's verdicts. Billed like dreaming; a hiccup never fails the run.
         if explored():
             _rsi_learn(conn, cur, run, ds, explored(), tot_in, tot_out, model, usage, log)
+            _rsi_sleep(conn, cur, run, model, usage, log)
             if usage.input_tokens or usage.output_tokens:
                 tot_in += usage.input_tokens
                 tot_out += usage.output_tokens

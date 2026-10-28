@@ -19,6 +19,27 @@
   alert now include the app's real-money book (app_positions mode 'live', one line per deployment),
   not only the legacy live_* tables. "Live:" still lists legacy model switches only.
 
+## Research RSI: a sleep step that consolidates long-term memory (2026-10-28)
+After SLEEP (Behrouz et al. 2026, arXiv 2606.03979): fast memory is consolidated into slow memory that
+grows instead of being overwritten. Prompted, not fine-tuned, so both memories are prompt text.
+- Problem measured on 142 BTC runs (10-26 15:15Z to 10-28 03:00Z, research-watch reports): the recent-drop
+  lists and rationing see ~10 runs per market, so after 10-27 16:00Z 30% of drops were mechanisms already
+  killed 5+ times that had aged out, and only 16% were on fresh (market, mechanism) ground. btc15m: 699
+  ideas, 0 reached the gate, 13 of 14 mechanism buckets tested 10+ times.
+- The playbook trial promoted on sample size when nothing reaches the gate (16 ideas/0 reached beat
+  300/0 at P=0.945), so one-run rewrites replaced the family playbook every ~2 runs. `decide` now needs
+  `MIN_REACHED`=3 gate reaches on the candidate.
+- `app/research/rsi_sleep.py` (table `app_rsi_knowledge`, one row per version): after a run, once 40 new
+  ideas exist across the family, fold every verdict into an all-time ledger (market x mechanism: tested,
+  gated, passed, death tags, first/last day; never ages out) and have the model MERGE the evidence into
+  at most 16 lessons. `check_merge` refuses a reply that drops a standing lesson without a stated
+  contradiction. The ledger is saved even when the merge fails.
+- The proposer reads one LONG-TERM MEMORY block after the rationing block: live mechanisms, EXHAUSTED
+  ones (10+ tested, none gated), never-tested ones, lessons. Rationing itself is unchanged (short-term).
+- Kill switch `TAU_RSI_SLEEP=0`. Watch: share of drops on fresh ground (baseline 16%), aged-out re-kills
+  (baseline 30%), gated per 100 ideas. Next: let rationing read the ledger; give the autopilot review
+  the exhaustion line so it moves spend off exhausted markets.
+
 ## Deribit options-implied fair value for Kalshi BTC (2026-10-25)
 
 - Idea (coordinator proposal 1, Todd approved 00:56Z): Deribit's BTC options are the deepest market for

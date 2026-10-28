@@ -11,7 +11,7 @@ from app.adapters.kalshi_perps import kalshi_perps_repository
 from app.adapters.alpaca import alpaca_paper_repository
 from app.adapters.brokers import broker_repository
 from app import rsi_scout
-from app.research import rsi_playbook, rsi_repair, tournament
+from app.research import rsi_playbook, rsi_repair, rsi_sleep, tournament
 from app.adapters.kalshi_perps import kalshi_perps_orders_repository
 
 DDL = [
@@ -651,6 +651,7 @@ DDL.extend(alpaca_paper_repository.DDL)
 DDL.extend(kalshi_perps_repository.DDL)
 DDL.extend(kalshi_perps_orders_repository.DDL)
 DDL.extend(rsi_playbook.DDL)
+DDL.extend(rsi_sleep.DDL)
 DDL.extend(rsi_scout.DDL)
 DDL.extend(tournament.DDL)
 DDL.extend(rsi_repair.DDL)
