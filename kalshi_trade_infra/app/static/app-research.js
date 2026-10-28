@@ -4,7 +4,7 @@
 window.TauPage('research', (T) => {
   'use strict';
   const {
-    alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
+    alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionTitle, shell, tzName, usd, waitSpan, when, whyFailedHtml, wireMarketPicker
@@ -1207,7 +1207,7 @@ window.TauPage('research', (T) => {
       // by hand all the same. The server marks the ones it will put on paper itself (autopilot_next).
       const auto = passed.filter((s) => !s.deployed && s.autopilot_next).length;
       const way = deployed === passed.length ? ` ${passed.length === 1 ? 'It is' : 'They are'} already deployed. <a href="/deploy">See ${passed.length === 1 ? 'it' : 'them'} on Deploy</a>.`
-        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
+        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in${apWhenSpan()}, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
         : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
         : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
       return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}${fellLine ? ' ' + fellLine : ''}</p>`;
@@ -1254,7 +1254,7 @@ window.TauPage('research', (T) => {
       const said = laterMissed(s) ? `Passed validation, then missed the final test: ${esc(lcFirst(s.later_missed[0].label))}`
         : heldBack(s) ? `Held back after passing its tests: ${heldWhy(s)}`
         : s.status === 'passed' ? (s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
-        : s.autopilot_next ? 'The autopilot puts it on paper at its next check-in'
+        : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}`
         : `<a href="/strategies/${s.id}">Open it to deploy on paper</a>`)
         : why.length ? `${esc(why[0].label)}${why.length > 1 ? `${SEP}${why.length - 1} more check${why.length > 2 ? 's' : ''}` : ''}` : '';
       return `<li><span class="hx-stamp ${cls}">${label}</span><button type="button" class="ri-title" data-goto="${s.id}">${esc(s.title)}</button>${said ? `<span class="ri-why">${said}</span>` : ''}</li>`;

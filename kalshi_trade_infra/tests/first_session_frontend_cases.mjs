@@ -161,7 +161,7 @@ export function firstSessionCases({name, frontend, dashboard, apStatus, storageF
       await f.viewRun(9); await settle(); f.clearTimers();
       return f.root.querySelector('#run-artifacts').querySelectorAll('.slip-next').map((el) => el.innerHTML);
     };
-    assert.deepEqual(await next(strat({autopilot_next: true})), ['The autopilot puts it on paper at its next check-in']);
+    assert.deepEqual(await next(strat({autopilot_next: true})), ['The autopilot puts it on paper at its next check-in<span data-ap-when></span>']);
     assert.deepEqual(await next(strat({deployed: true})), ['<a href="/deploy">Already deployed: see it on Deploy</a>']);
     // Its title above is the link to the page it deploys from, so the line is not a second one.
     assert.deepEqual(await next(strat()), ['Open it to deploy on paper']);

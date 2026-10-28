@@ -3721,13 +3721,13 @@
       ['Strategies running', `${running || 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${gl(PAPER_COUNT_WHY, 'instantfill')}</small>`]
-        : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
+        : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) + apEvery(d) : 'Starting up'],
     ].filter(Boolean);
     const now = d.billing_blocked
       ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.' + apStillTrading(d)
         : apReloadFailed(d) ? `Paused: ${AP_CARD_FIX}${apStillTrading(d)}`
         : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`)
-      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') + apMeanwhile(d) : esc(apStory(d)[0] || 'Autopilot is on.');
+      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"', d) + apMeanwhile(d) : esc(apStory(d)[0] || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${apLastHtml(d.last_action)}${Array.isArray(d.focus) ? `
@@ -3824,11 +3824,36 @@
   }
   // Why autopilot isn't trading right now (the server's d.idle): one plain line, plus the action to
   // take when there is one (a link, or the focus control). The card and the panel both lead with it.
-  function apIdleHtml(idle, focusAttr) {
+  // A strategy cleared for paper waits for the next review ("to_deploy"): the line says how often those come.
+  function apIdleHtml(idle, focusAttr, d = S.ap) {
     const a = idle.action;
     const act = !a ? '' : a.href ? actionLink(idle)
       : a.do === 'focus' ? ` <button type="button" ${focusAttr}>${esc(a.label)}</button>` : '';
-    return esc(idle.line) + act;
+    const when = idle.code === 'to_deploy' ? apCadence(d) : '';
+    return esc(idle.line) + (when ? ` <span class="ap-when">Check-ins: ${when}.</span>` : '') + act;
+  }
+  // "At its next check-in" said nothing of when. Its time can't be known: the worker's heartbeat runs on its
+  // own timer, skips a user it just reviewed, waits for a free worker and spaces idle users out, and a finished
+  // research session starts one at once. So the copy gives the status's usual cadence (checkin_every_min) and
+  // how long ago the last one ran (last_review_at), never a time; nothing while none is coming (off, a billing
+  // pause) or the status isn't read yet. The [data-ap-when] spans follow each status read (syncApCopy).
+  function apAgo(iso) {
+    const m = Math.max(0, (Date.now() - Date.parse(iso)) / 60000);
+    return !(m >= 0) ? '' : m < 1.5 ? 'just now' : m < 90 ? `${Math.round(m)} min ago`
+      : m < 2880 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`;
+  }
+  function apCadence(d = S.ap) {
+    if (!d || !d.autopilot || d.billing_blocked || !(+d.checkin_every_min > 0)) return '';
+    if (d.reviewing) return 'one is under way now';
+    if (d.review_wait && d.review_wait.state === 'queued') return 'one is waiting for a free worker';
+    const ago = d.last_review_at && !d.review_wait ? apAgo(d.last_review_at) : '';
+    return `usually every ${num(+d.checkin_every_min)} min${ago ? `; last one ${ago}` : ''}`;
+  }
+  function apWhen() { const c = apCadence(); return c ? ` (${c})` : ''; }
+  function apWhenSpan() { return `<span data-ap-when>${apWhen()}</span>`; }
+  // The usual cadence under a "Last check-in" figure (the card's and the panel's), or nothing.
+  function apEvery(d, cls = '') {
+    return d && +d.checkin_every_min > 0 && !d.reviewing ? ` <small${cls ? ` class="${cls}"` : ''}>usually every ${num(+d.checkin_every_min)} min</small>` : '';
   }
   // The market focus is binding on research, deploys and the picker, so it reads as a plain line on
   // the card and the panel, with a Change that opens the control (it lives in "Model and markets").
@@ -4033,6 +4058,7 @@
     if (document.body) document.body.querySelectorAll('.research-ap').forEach((p) => { p.hidden = on; });
     if (document.body) document.body.querySelectorAll('[data-ap-next]').forEach((n) => { n.hidden = !on; });
     if (document.body) document.body.querySelectorAll('[data-ap-off]').forEach((n) => { n.hidden = on; });
+    if (document.body) document.body.querySelectorAll('[data-ap-when]').forEach((n) => { const t = apWhen(); if (n.textContent !== t) n.textContent = t; });
     if (document.body) document.body.querySelectorAll('[data-since-ap]').forEach((n) => { n.textContent = sinceApWord(on); });
     if (trAp && trAp.host.isConnected && trAp.on !== apSwitchOn()) trAp.repaint();
   }
@@ -4384,7 +4410,7 @@
   const shared = () => shareMap || (shareMap = new Proxy({
     actionLink, adminViewOn, alert0, announce, SEP, sepLine, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
-    apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
+    apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn, apEvery, apWhenSpan,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, pageLede,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
     clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig, demoSpan,

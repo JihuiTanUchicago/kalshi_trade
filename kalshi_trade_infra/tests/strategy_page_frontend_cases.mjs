@@ -363,10 +363,10 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const f = strategyFrontend(detailStrategy(detail), () => response({}));
     f.S.me.user.autopilot = true;
     await f.viewStrategy(42); await flush();
-    const said = /The autopilot is putting this on paper at its next check-in, so there is nothing for you to deploy\./;
+    const said = /The autopilot is putting this on paper at its next check-in<span data-ap-when><\/span>, so there is nothing for you to deploy\./;
     assert.match(f.root.querySelector('#strat-quick').innerHTML, said);
     assert.equal(f.root.querySelector('#dep-paper-quick').hidden, true); assert.equal(f.root.querySelector('#dep-paper').hidden, true);
-    assert.match(main(f), /Next rung, paper: <span data-ap-next>the autopilot puts it there at its next check-in\.<\/span><span data-ap-off hidden>/);
+    assert.match(main(f), /Next rung, paper: <span data-ap-next>the autopilot puts it there at its next check-in<span data-ap-when><\/span>\.<\/span><span data-ap-off hidden>/);
     // The switch flips off while the page is open: the buttons come back and the line hides.
     f.S.ap = {autopilot: false, mode: 'off'}; f.paintDashAp();
     assert.equal(f.root.querySelector('#dep-paper-quick').hidden, false); assert.equal(f.root.querySelector('#dep-paper').hidden, false);

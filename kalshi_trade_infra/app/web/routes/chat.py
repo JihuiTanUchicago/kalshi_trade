@@ -563,10 +563,26 @@ def _stop_line(exits: Dict[str, Dict]) -> str:
 
 
 COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 60
+IDLE_REVIEW_MINUTES = int(os.getenv("APP_IDLE_REVIEW_SECONDS", "1800")) // 60
 
 
 # The worker spaces idle reviews up to APP_IDLE_REVIEW_SECONDS apart, so only a gap well past that is late.
-QUIET_AFTER_MINUTES = max(COPILOT_REVIEW_MINUTES, int(os.getenv("APP_IDLE_REVIEW_SECONDS", "1800")) // 60) * 3 // 2
+QUIET_AFTER_MINUTES = max(COPILOT_REVIEW_MINUTES, IDLE_REVIEW_MINUTES) * 3 // 2
+
+
+def _checkin_every_min(due: bool, research_live: List[Dict], running: int) -> Optional[int]:
+    """How often the autopilot usually checks in, in whole minutes, for the pages' "at its next check-in"
+    (display only). The time of the next one can't be known: the worker's heartbeat (worker.autopilot_scheduler)
+    fires every APP_COPILOT_REVIEW_SECONDS from when the process started, skips a user who had a review in the
+    last half of that or with a review or chat still in flight, waits for a free worker, and spaces reviews out to
+    APP_IDLE_REVIEW_SECONDS when every research slot is busy and nothing runs (worker._idle_review_skip); a
+    finished research session starts one at once. So this is the cadence and never a time. `due`: autopilot on
+    and not paused by billing (otherwise no check-in is coming and this is None). From reads already made."""
+    if not due:
+        return None
+    idle = (IDLE_REVIEW_MINUTES > COPILOT_REVIEW_MINUTES and not running
+            and len(research_live or []) >= agent.MAX_ACTIVE_RESEARCH)
+    return max(1, IDLE_REVIEW_MINUTES if idle else COPILOT_REVIEW_MINUTES)
 
 
 def _span(mins: int) -> str:
@@ -863,6 +879,8 @@ def autopilot_status(ctx: Ctx):
         "loss_headroom": cents(max(0.0, limit + min(0.0, today_live))),  # how much loss budget is left today
         "last_action": _last_move(_last_action(cur, ctx.uid, pulse["chat"]), deps),
         "last_review_at": pulse["last_review_at"],  # liveness: a quiet review posts nothing, this still shows it ran
+        # How often it usually checks in (minutes), beside "at its next check-in"; None while none is coming.
+        "checkin_every_min": _checkin_every_min(on and not billing_blocked, pulse["research_live"], running),
         # A review queued or running now. Switching on queues the first one at once, and the panel said
         # "between research runs, checks in every 10 minutes" over a "Working" pulse while it waited.
         "reviewing": bool(review) and not review_wait["overdue"],

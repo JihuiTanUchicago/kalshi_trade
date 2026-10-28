@@ -41,6 +41,7 @@ import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 import {newUserCases} from './new_user_frontend_cases.mjs';
 import {firstSessionCases} from './first_session_frontend_cases.mjs';
+import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
@@ -3800,7 +3801,7 @@ test('Tau: a run lists each idea it tested with its outcome and first missed che
   const g = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies: [strategies[0], {...strategies[1], autopilot_next: true}]}) : response({})});
   await g.viewRun(9); await flush();
   const auto = g.root.querySelector('#runideas').innerHTML;
-  assert.match(auto, /data-goto="42">Lean in<\/button><span class="ri-why">The autopilot puts it on paper at its next check-in<\/span>/);
+  assert.match(auto, /data-goto="42">Lean in<\/button><span class="ri-why">The autopilot puts it on paper at its next check-in<span data-ap-when><\/span><\/span>/);
   assert.doesNotMatch(auto, /Open it to deploy on paper/);
   g.clearTimers();
 });
@@ -5585,6 +5586,7 @@ test('Tau phone: a folded paper section does not count, so the numbered sections
 newUserCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, billingPage, cardedBilling, apStatus: apOn});
 firstSessionCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn,
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+checkinCadenceCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, dashboard: emptyDashboard});
 
 test('Tau: the composer’s hint fits its one line at 390px, with a curly apostrophe, and the picker takes its own row', async () => {
   // Walk 2026-10-27 at 390px: "Share an idea, a strategy, or how it's going…" wrapped in the one-line box (cut
