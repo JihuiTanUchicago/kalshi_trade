@@ -250,7 +250,8 @@ def explore_market(ctx: Ctx):
                           "last": f.get("last"), "volume_24h": f.get("v24"), "open_interest": f.get("oi"),
                           "status": f.get("st"), "close_time": _ticker_close(ticker), "as_of": feed.get("at"), "snapshot": True}
         if not snap:
-            raise ApiError(502, "Kalshi didn’t send this market’s history just now. Try again in a minute.")
+            # Nothing of the market came (not only its chart): it said "this market's history" over an empty page.
+            raise ApiError(502, "Kalshi didn’t send this market just now. Try again in a minute.")
         return {**snap, "ticker": ticker, "series": series, "title": snap["title"] or "", "sub": snap["sub"] or "",
                 "period_min": None, "points": [], "history_unavailable": True, "mine": _market_mine(ctx, ticker, open_ts),
                 "my_markets": _my_strategy_markets(ctx, ticker)}

@@ -1507,7 +1507,7 @@ test('a market Kalshi did not answer for offers Try again and loads on retry', a
   let calls = 0;
   const f = frontend({fetchImpl: path => {
     if (!path.startsWith('/api/explore/market?')) return response({});
-    return ++calls === 1 ? response({error: "Kalshi didn't send this market's history just now. Try again in a minute."}, 502)
+    return ++calls === 1 ? response({error: 'Kalshi didn’t send this market just now. Try again in a minute.'}, 502)
       : response({ticker: 'KXNBAGAME-X', title: 'Minnesota wins', points: [], yes_bid: .5, yes_ask: .51, last: .5});
   }});
   await f.viewMarketDetail('KXNBAGAME-X'); await flush();

@@ -1224,6 +1224,8 @@ def test_explore_market_errors_never_show_the_raw_exception(monkeypatch, capsys)
     with pytest.raises(server.ApiError) as err:
         server.explore_market(c)
     assert err.value.status == 502 and "Try again in a minute" in str(err.value)
+    # Nothing of the market came, so it doesn't say only its history is missing.
+    assert str(err.value) == "Kalshi didn’t send this market just now. Try again in a minute."
     assert "HTTPSConnectionPool" not in str(err.value) and "HTTPSConnectionPool" in capsys.readouterr().out
 
     def missing(path, params=None):
