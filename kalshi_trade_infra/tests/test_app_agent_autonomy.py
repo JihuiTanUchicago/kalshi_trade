@@ -147,7 +147,7 @@ def test_research_action_respects_the_daily_cap(monkeypatch):
     text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m",
                           "idea": "Fade the overreaction after a large 1-minute BTC move."}, True)
     assert pid is None and rec["runs"] == []
-    assert "daily research limit" in text.lower()
+    assert text == "You’ve hit the daily research limit (5) — it resets over the next 24 hours, and I’ll resume then."
 
 
 def test_research_action_proceeds_under_the_daily_cap(monkeypatch):
@@ -201,7 +201,7 @@ def test_research_action_skips_a_market_already_running(monkeypatch):
     assert "already running" in text.lower()
     # The chat line names the market as the app does; the market key stays in the review's context only.
     # ...and never the run's row number, which the review's context keeps ("(run #5)").
-    assert "already running on Bitcoin up or down in 15 minutes. I'll hunt" in text and "btc15m" not in text
+    assert "already running on Bitcoin up or down in 15 minutes. I’ll hunt" in text and "btc15m" not in text
     assert "run #" not in text and not re.search(r"\b5\b", text)
 
 
@@ -241,11 +241,11 @@ def test_autopilot_research_on_an_unsupported_market_lets_the_specialist_pick(mo
     text, pid = agent.act(None, USER, {"type": "research", "market": "ltc15m",
                           "idea": "Diversify the z-score mechanism to another crypto 15m."}, True)
     assert pid is None and rec["runs"] == [(None, None, "Diversify the z-score mechanism to another crypto 15m.")]
-    assert "ltc15m isn't a market tau supports" in text.lower()
+    assert "ltc15m isn’t a market tau supports" in text.lower()
     # a person asking by hand still gets told the market isn't supported
     text, _ = agent.act(None, USER, {"type": "research", "market": "ltc15m",
                         "idea": "Diversify the z-score mechanism to another crypto 15m."}, False)
-    assert "can't research that market" in text and len(rec["runs"]) == 1
+    assert "can’t research that market" in text and len(rec["runs"]) == 1
 
 
 def test_blocked_markets_and_cooldown_line_come_from_one_read(monkeypatch):
@@ -287,8 +287,8 @@ def test_a_proposed_research_on_a_cooldown_market_is_refused_without_the_runs_nu
         {"id": 41, "market": "btc15m", "status": "failed", "finished_at": agent.repo.now_utc()}])
     text, pid = agent.act(None, USER, {"type": "research", "market": "btc15m", "idea": "Another angle."}, False)
     assert pid is None
-    assert text == ("I didn't start that — Bitcoin up or down in 15 minutes was just researched and is on a short "
-                    "cooldown. I'll hunt a different market instead of re-running the same line.")
+    assert text == ("I didn’t start that — Bitcoin up or down in 15 minutes was just researched and is on a short "
+                    "cooldown. I’ll hunt a different market instead of re-running the same line.")
     # The review's own context keeps the run's number.
     assert "(run #41, failed)" in agent._market_research_recent(None, 1, "btc15m")
 
@@ -328,7 +328,11 @@ def test_autopilot_crypto_research_is_bitcoin_only_and_manual_research_is_not(mo
     monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [])
     text, _ = agent.act(None, USER, {"type": "research", "market": "zec15m",
                         "idea": "Order-flow imbalance right before expiry."}, True)
-    assert rec["runs"][-1][0] is None and "BTC only" in text and "zec15m" in text
+    # The coin and the market in words, never a ticker or a market key ("BTC only ... instead of zec15m").
+    assert rec["runs"][-1][0] is None and text == (
+        "Crypto research is Bitcoin only now, so I started this angle on a market the research specialist picks "
+        "instead of %s. Follow it on the Research page." % agent.MARKETS["zec15m"].label)
+    assert "zec15m" not in text and "BTC" not in text
     agent.act(None, USER, {"type": "research", "market": "zec15m", "idea": "Order-flow imbalance on ZEC 15m."}, False)
     assert rec["runs"][-1][0] == "zec15m"  # a person asking by hand still gets the coin they named
     assert agent.autopilot_scope_ok("btc15m_tick") and agent.autopilot_scope_ok("nba_game")
@@ -343,13 +347,15 @@ def test_an_autopilot_angle_about_another_coin_is_refused_not_rerun_on_bitcoin(m
     # to SOL dailies?"; the scope sent each to a BTC market, which can only re-test BTC's own mechanism.
     rec = _capture(monkeypatch)
     monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [])
-    for idea, coin in (("Late-phase structural edge on SOL dailies: test whether the BTC daily mechanism transfers", "SOL"),
-                       ("Solana-specific microstructure: retail participation and flow", "SOL"),
-                       ("Meme-coin sentiment: test whether DOGE's social-media jumps create edges", "DOGE"),
+    # Said curly, each coin by its name as the panel's "Focus:" line says it, never its ticker.
+    for idea, coin in (("Late-phase structural edge on SOL dailies: test whether the BTC daily mechanism transfers", "Solana"),
+                       ("Solana-specific microstructure: retail participation and flow", "Solana"),
+                       ("Meme-coin sentiment: test whether DOGE's social-media jumps create edges", "Dogecoin"),
                        ("Test whether BTC 15-min's z-score mechanism transfers to another coin's 15-min", "another coin"),
-                       ("Mean reversion after sharp moves on ETH 15-min", "ETH")):
+                       ("Mean reversion after sharp moves on ETH 15-min", "Ethereum")):
         text, _ = agent.act(None, USER, {"type": "research", "idea": idea}, True)
-        assert "didn't start" in text and coin in text and "BTC only" in text, (idea, text)
+        assert text == ("I didn’t start that: crypto research is Bitcoin only now, and this angle is about %s. "
+                        "I’ll look for a Bitcoin angle instead." % coin), (idea, text)
     assert rec["runs"] == []
     # A coin used as a signal FOR Bitcoin, or a plain English "near", is still a Bitcoin angle.
     for idea in ("ETH momentum spillover: BTC catches up when ETH leads",
@@ -403,7 +409,7 @@ def test_an_angle_that_names_its_market_is_only_tested_there(monkeypatch):
     for market in (None, "btc_daily"):
         text, pid = agent.act(None, USER, {"type": "research", "market": market,
                               "idea": "Cross-strike arbitrage on BTC dailies: ladder monotonicity"}, True)
-        assert pid is None and "didn't start" in text and "Bitcoin above $X at 5pm ET" in text, text
+        assert pid is None and "didn’t start" in text and "Bitcoin above $X at 5pm ET" in text, text
     assert rec["runs"] == []
     agent.act(None, USER, {"type": "research", "idea": "Order-flow imbalance near expiry"}, True)
     agent.act(None, USER, {"type": "research", "market": "btc_daily", "idea": "Another angle on overreaction."}, True)

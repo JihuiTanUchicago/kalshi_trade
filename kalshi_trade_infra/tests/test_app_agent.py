@@ -492,7 +492,7 @@ def test_copilot_research_action_branches_a_passed_strategy(monkeypatch):
     text, pid = agent.act(None, {"id": 7}, {"type": "research", "strategy_id": 55, "reason": "dig deeper"}, False)
     assert pid is None                                   # research queues a run; it is not a proposal
     assert created == [("research", "btc15m", 55)]       # a research run seeded from the passed strategy
-    assert "digging deeper" in text.lower()
+    assert "digging deeper" in text.lower() and "I’ll refine" in text and "'" not in text
 
 
 def test_copilot_research_action_refuses_a_strategy_that_did_not_pass(monkeypatch):
