@@ -25,7 +25,9 @@ const NOT_SENT = 'You’re offline, so this wasn’t sent. Try again once you’
 const dep = (overrides = {}) => ({id: 1, strategy_id: 1, title: 'Dep one', market: 'btc15m', mode: 'paper', status: 'running',
   status_reason: null, realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z',
   curve: [], stake: 5, max_positions: 1, backtest: {out_of_sample: null}, ...overrides});
-const count = (text, phrase) => text.split(phrase).length - 1;
+// What a reader sees: tags out, so a phrase split by the span that glues its last word to a bubble still counts.
+const plain = (html) => html.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+const count = (text, phrase) => plain(text).split(phrase).length - 1;
 
 export function deployErrorCases({name, frontend, strategyFrontend, detailStrategy, postRequests}) {
   // A board with one deployment whose action answers with `answer` (a response, or a thrown error).
@@ -197,7 +199,9 @@ export function deployErrorCases({name, frontend, strategyFrontend, detailStrate
     assert.equal(count(paper.row(3), PAPER_NET_SHORT) + count(paper.row(3), PAPER_NET), 0, 'demo says nothing of the kind');
     // A board led by live money says it beside the paper amount it names, once; live money never gets it.
     const live = await deploys({deployments: [dep({id: 1, mode: 'live', realized_pnl: 2}), dep({id: 2, strategy_id: 2, title: 'Dep two', realized_pnl: 40})]});
-    assert.match(live.figs, /real money · after Kalshi fees · \+\$40\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the spread/);
+    assert.match(live.figs, /real money · after Kalshi fees · \+\$40\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"/);
+    // The paper figure's bubble stays on the line with "spread", never on a line by itself.
+    assert.match(paper.figs, /after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/);
     assert.equal(count(live.figs, PAPER_NET), 1);
     assert.equal(count(live.rows, PAPER_NET), 0);
   });

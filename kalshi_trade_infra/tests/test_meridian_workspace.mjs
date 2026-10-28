@@ -906,8 +906,8 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
 
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button>/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart/]]) {
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments, open_positions: []}); }});
     await f.viewDeploy(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;
@@ -6190,7 +6190,7 @@ test('Meridian: a paper card on the dashboard says "after Kalshi fees and the sp
   const f = frontend();
   const html = f.deploymentMonitor(nullStakeDep({mode: 'paper', status: 'running', stake: 5}));
   // The phrase (customer_text.PAPER_NET) with its PAPER_FILLS bubble, under the P&L, not a 20px figure of its own.
-  assert.match(html, /<dd class="sub-fig paper-net">after Kalshi fees and the spread<button type="button" class="info" data-glo="paperfills"/);
+  assert.match(html, /<dd class="sub-fig paper-net">after Kalshi fees and the <span class="nobr">spread<button type="button" class="info" data-glo="paperfills"[\s\S]*?<\/button><\/span><\/dd>/);
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
   assert.match(css, /\n\.monitor-metrics dd\.paper-net \{[^}]*font: 400 12px\/16px var\(--f-ui\);[^}]*color: var\(--ink-3\);/);
   assert.doesNotMatch(f.deploymentMonitor(nullStakeDep({mode: 'live', status: 'running', stake: 5})), /paper-net/);
