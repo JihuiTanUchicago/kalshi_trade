@@ -347,9 +347,10 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     await f.viewStrategies(); await flush();
     assert.match(f.root.innerHTML, /<option value="best" selected>Later-period P&amp;L<\/option>/);
     const src = bundleSource(name === 'Meridian' ? 'app.meridian.js' : 'app.js');
-    const unseen = src.match(/\n {4}unseen: \['Unseen data', '([^']*)'\]/)[1];
-    assert.match(unseen, /^The later period, after the split date, held out/);
-    assert.match(unseen, /later-period P&L on it/); assert.match(unseen, /so not held out\.$/);
-    assert.doesNotMatch(unseen, /the P&L that counts/);  // a later-period row's figure counts as much on the sort
+    // The glossary (#606) defines the sort's own term, and says the held-out slice is a later period too.
+    const later = src.match(/\n {4}laterperiod: \['Later-period P&L', '([^']*)'\]/)[1];
+    assert.match(later, /after its split date/); assert.match(later, /wasn’t held out/);
+    const unseen = src.match(/\n {4}unseen: \['Unseen-data P&L', '([^']*)'\]/)[1];
+    assert.match(unseen, /held-out slice/);
   });
 }
