@@ -150,7 +150,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     // Each book's line sits under that book, live first; none is a sum of books.
     assert.match(html, /<p class="sub-fig bt-check bt-behind">Behind its backtest on live: 40 trades, −\$0\.10\/trade vs backtest \+\$0\.15\/trade; won 41% vs 61%\. Below the usual range for 40 trades \(\+\$0\.09 to \+\$0\.21\)\.<\/p>/);
     assert.match(html, /<p class="sub-fig bt-check bt-early">On demo: 3 completed trades so far, too early to tell against the backtest \(it takes about 10\)\.<\/p>/);
-    assert.match(html, /<p class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest&#39;s usual range\.<\/p>/);
+    assert.match(html, /<p class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest’s usual range\.<\/p>/);
     assert.ok(at(/>Live</) < at(/Behind its backtest on live/) && at(/Behind its backtest on live/) < at(/>Demo</));
     assert.ok(at(/>Demo</) < at(/On demo: 3/) && at(/On demo: 3/) < at(/>Paper</) && at(/>Paper</) < at(/On paper: 34/));
     assert.equal((html.match(/bt-check/g) || []).length, 3);
@@ -175,7 +175,7 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     const rows = [...f.root.querySelectorAll('#deps tbody tr')].map(r => unAmt(r.innerHTML));
     f.clearTimers && f.clearTimers();
     assert.equal(rows.length, 4);
-    assert.match(rows[0], /class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest&#39;s usual range\.</);
+    assert.match(rows[0], /class="sub-fig bt-check bt-within">On paper: 34 trades, \+\$0\.12\/trade vs backtest \+\$0\.15\/trade; won 56% vs 61%\. Within the backtest’s usual range\.</);
     assert.match(rows[1], /class="sub-fig bt-check bt-behind">Behind its backtest on live: 40 trades/);
     assert.doesNotMatch(rows[0], /on live/); assert.doesNotMatch(rows[1], /On paper/);
     assert.doesNotMatch(rows[2], /bt-check/); assert.doesNotMatch(rows[3], /bt-check/);
