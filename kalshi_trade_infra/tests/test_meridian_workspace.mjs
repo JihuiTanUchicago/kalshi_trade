@@ -6444,3 +6444,11 @@ test('Meridian Billing: the default card’s mark in its table is a plain word, 
   assert.match(css, /\.t-dep \.mk:not\(\.live\):not\(\.armed\) \{ padding: 0; border: 0;/);
   assert.match(css, /\.t-dep \.mk\.on \{ background: none; color: var\(--ink\); \}/);
 });
+
+test('Meridian Research: the outlined New session button stays readable when hovered or tapped', () => {
+  // Walk 2026-10-28: the button is a .btn.primary drawn outlined (transparent, ink text). .btn.primary:hover turned
+  // it black and kept the dark ink text, so on hover, and after a tap on a phone, "New session" all but vanished.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.research-page \.research-create > summary \{[^}]*background: transparent;[^}]*color: var\(--ink\); \}/);
+  assert.match(css, /\n\.research-page \.research-create > summary:hover \{ background: var\(--ink\); color: #F1F3ED; \}/);
+});
