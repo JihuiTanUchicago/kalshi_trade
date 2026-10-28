@@ -721,6 +721,23 @@ test('Overview empty Deployed box never says autopilot is researching while the 
   }
 });
 
+test('Meridian: the empty Deployed box names its next step "research an idea yourself", as Tau does, with or without a session yet', async () => {
+  for (const own_sessions of [false, true]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response(dashboardData({since: {own_sessions}}));
+      if (path === '/api/autopilot/status') return response({...apStatus, autopilot: false, mode: 'off'});
+      if (path.startsWith('/api/')) return response({});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = false;
+    await f.viewDashboard(); await flush(); f.clearTimers();
+    const deps = f.root.querySelector('#deps-empty').innerHTML;
+    // The words name the Research page (the nav item, and the autopilot card's "or research by hand"), not a "session".
+    assert.match(deps, own_sessions ? /on paper first\. Or research an idea yourself\.<\/p>/ : /<p>Turn on autopilot above, or research an idea yourself\.<\/p>/);
+    assert.doesNotMatch(deps, /start a session/);
+  }
+});
+
 test('Overview offers each mode its own trades CSV only when that mode has closed trades', async () => {
   for (const [counts, connected, deployments] of [[{paper: 0, demo: 0, live: 0}, false, []], [{paper: 4, demo: 0, live: 0}, false, []],
     [{paper: 1, demo: 2, live: 3}, true, [dashboardDeployment('live')]], [{paper: 0, demo: 0, live: 3}, false, []]]) {

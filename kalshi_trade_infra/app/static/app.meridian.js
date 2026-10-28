@@ -3948,9 +3948,9 @@
   function depsEmpty(on) {
     return S.dashNoSessions ? (on
       ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every research test land here on paper first, with no real money.</p></div>`
-      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or start a session yourself.</p></div>`) : on
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above, or research an idea yourself.</p></div>`) : on
       ? `<div class="empty"><h3>Nothing deployed yet</h3><p>Autopilot is on. Strategies that pass every research test land here on paper first, with no real money.</p><a class="btn" href="/research">See its research</a></div>`
-      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every research test on data they never saw land here on their own, on paper first. Or start a session yourself.</p><a class="btn" href="/research?new=1">New session</a></div>`;
+      : `<div class="empty"><h3>Nothing deployed yet</h3><p>Turn on autopilot above and the strategies that pass every research test on data they never saw land here on their own, on paper first. Or research an idea yourself.</p><a class="btn" href="/research?new=1">New session</a></div>`;
   }
   // Copy that depends on the switch follows it without a reload, so turning autopilot on doesn't leave
   // "Turn on autopilot above" or a Turn on nudge under a card that already says it's on.

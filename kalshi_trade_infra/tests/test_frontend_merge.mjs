@@ -888,6 +888,23 @@ test('an empty Deployed box asks for research only when autopilot is off; Funds 
   }
 });
 
+test('an empty Deployed box names its next step "research an idea yourself", as Meridian does, with or without a session yet', async () => {
+  for (const own_sessions of [false, true]) {
+    const f = frontend({fetchImpl: path => {
+      if (path === '/api/dashboard') return response({...emptyDashboard(), since: {own_sessions}});
+      if (path === '/api/autopilot/status') return response({...apOn, autopilot: false, mode: 'off'});
+      if (path.startsWith('/api/')) return response({});
+      throw new Error('Unexpected offline request: ' + path);
+    }});
+    f.S.me.user.autopilot = false;
+    await f.viewDashboard(); await flush(); f.clearTimers();
+    const deps = f.root.querySelector('#deps-empty').innerHTML;
+    // The words name the Research page (the nav item, and the autopilot card's "or research by hand"), not a "session".
+    assert.match(deps, own_sessions ? /on paper first\. Or research an idea yourself\.<\/p>/ : /<p>Turn on autopilot above, or research an idea yourself\.<\/p>/);
+    assert.doesNotMatch(deps, /start a session/);
+  }
+});
+
 test('the autopilot pill goes by the saved switch until its first status read lands', async () => {
   for (const on of [true, false]) {
     const f = frontend({fetchImpl: path => {
