@@ -69,6 +69,20 @@ _DROP_RULES: Tuple[Tuple[str, str, str], ...] = (
      r"|misaligned|inverted|backwards|conflat|circular|tautolog|contradictory|internally|overfit|fundamentally"
      r"|not grounded|confuses|ambiguous|nonsensical|not a standard|fatal|does not support|functionally"
      r"|atomic|continuous(ly)? (observable|order|underlying)|facts kill"),
+    # Prod 2026-10-27/28 BTC: ~20% of drops were "other". Most re-proposed a mechanism the playbook
+    # already lists as dead, or cited #420's research-fold numbers (t far below ~3, profit from 3 events).
+    ("known_dead", "fit",             # a mechanism the playbook already rules out: a proposer miss
+     r"dead[- ](end|region)|documented (as )?(a )?(dead|failure)|prior (tests|failures)|\d+\+? (prior )?failures"
+     r"|\d+\s?[x×] (failures|dead)|exhaustively.?mined|failed \d+\+? times|tested \d+\+? times"),
+    ("wrong_fit", "fit",
+     r"(lacks|no) (an? )?(sound |viable |specific |clear )?(economic )?mechanism|mechanism (is )?(flawed|broken|invalid)"
+     r"|median 1 contracts? per event|does(n't| not) actually (test|express|filter)|mathematically wrong"
+     r"|redundan|not independent|by construction|does(n't| not) (translate|hold|exist on)|structural flaw"
+     r"|mechanism (failure|assumes)|breaks the core|suited to|different (pro|thing)|(multiple|across) strikes (within|in) the same"),
+    ("no_signal", "edge",
+     r"\bt\s?=\s?-?\d|~\s?3 threshold|top.?3 events|profit concentrat|luck|noise|anti.?(signal|predict)"
+     r"|already (prices|priced|incorporat|reflect)|well.?calibrated|near.?identity|recovers the market|t-stat"
+     r"|no exploitable|reprices? (faster|instantly|in \d)|too efficient|faster than|arbitraged within"),
 )
 _COMPILED = tuple((tag, kind, re.compile(pat, re.I)) for tag, kind, pat in _DROP_RULES)
 KINDS = ("pipeline", "spec", "edge", "fit", "other")
