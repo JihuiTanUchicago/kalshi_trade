@@ -1963,7 +1963,11 @@ test('Research results keep every returned status and source value with escaped 
   assert.equal(results.hidden, false); assert.equal(results.querySelector('.section-count').textContent, '5');
   const rows = results.querySelectorAll('tbody tr'); assert.equal(rows.length, 5);
   assert.deepEqual(rows.map(row => row.querySelector('.act .mk').textContent), ['Passed', 'Void', 'Rejected', 'Backtest only', 'Testing']);
-  assert.deepEqual(rows.map(row => row.querySelector('.num').textContent), ['+$12.00on unseen data', '−$4.25on unseen data\u00a0· did not pass', '−$7.50on the history it searched\u00a0· did not pass', '$0.00on the history it searched', '—']);
+  // Each figure's line as a desktop reads it (bt-long), then a phone's short form of it (bt-short, its hover the full line).
+  const shortOf = row => { const s = row.querySelector('.num .bt-short'); return s ? s.textContent : null; };
+  assert.deepEqual(rows.map(row => { const c = row.querySelector('.num'), s = shortOf(row); return s == null ? c.textContent : c.textContent.slice(0, -s.length); }),
+    ['+$12.00later-period P&amp;L after the split date, on unseen data', '−$4.25later-period P&amp;L after the split date, on unseen data\u00a0· did not pass', '−$7.50on the history it searched\u00a0· did not pass', '$0.00on the history it searched', '—']);
+  assert.deepEqual(rows.map(shortOf), ['later\u00a0period\u00a0· unseen\u00a0data', 'later\u00a0period\u00a0· unseen\u00a0data\u00a0· did\u00a0not\u00a0pass', 'history it searched\u00a0· did\u00a0not\u00a0pass', 'history it searched', null]);
   assert.deepEqual(rows.map(row => row.querySelector('.num').getAttribute('data-lab')), ['Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L', 'Backtest P&amp;L']);
   assert.match(results.innerHTML, /Kept &lt;script&gt;unsafe&lt;\/script&gt;/); assert.match(results.innerHTML, /&lt;img src=x&gt;/);
   assert.doesNotMatch(results.innerHTML, /<script>|<img|data-dep|class="pick"/);

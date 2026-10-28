@@ -245,4 +245,34 @@ export function freshWalkCases({name, frontend, dashboard}) {
     // The track record's instant-fill note (track_record_trust_frontend_cases) and Deploy's first-deploy note
     // name it "the Dashboard" too.
   });
+
+  // Walk 2026-10-28, Explore at 390 and 1280, both themes: a multi-game combo's row and its market page were headed
+  // "yes Denver,yes Boston,no Over 220.5 points scored", Kalshi's legs run together with no space after each comma.
+  test(`${name}: a multi-game combo's title reads its legs apart, on Explore's list and on its market page`, async () => {
+    const TICKER = 'KXMVESPORTSMULTIGAMEEXTENDED-S2026ABC123-DEF', RAW = 'yes Denver,yes Boston,no Over 220.5 points scored';
+    const NICE = 'Yes Denver, yes Boston, no Over 220.5 points scored';
+    const combo = {t: TICKER, s: 'KXMVESPORTSMULTIGAMEEXTENDED', ev: 'KXMVESPORTSMULTIGAMEEXTENDED-S2026ABC123', ti: RAW, su: '',
+      bid: '0', ask: '0.0300', last: '0', v24: '40000', oi: '0', st: 'active'};
+    const plainRow = {...combo, t: 'KXFEDDECISION-26DEC-H0', s: 'KXFEDDECISION', ev: 'KXFEDDECISION-26DEC', ti: 'Fed decision in Dec 2026?', su: 'Hike 0bps'};
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/explore?')
+      ? response({at: new Date().toISOString(), total: 41233, shown: 2, matched: 2, page: 0, per: 40, sort: 'v24', markets: [combo, plainRow]})
+      : response({})});
+    f.location.pathname = '/explore'; f.location.search = '';
+    await f.viewExplore(); await settle();
+    const list = f.root.querySelector('#xrows').innerHTML;
+    assert.ok(list.includes(NICE), list.slice(0, 400));
+    assert.ok(!list.includes(RAW));
+    assert.ok(list.includes(`Fed decision in Dec 2026?${SEP}Hike 0bps`));  // any other title as sent
+    f.clearTimers();
+    const g = frontend({fetchImpl: (path) => path.startsWith('/api/explore/market?')
+      ? response({ticker: TICKER, series: combo.s, title: RAW, sub: '', status: 'active', yes_bid: '0', yes_ask: '0.03', last: '0',
+        volume_24h: '40000', open_interest: '0', close_time: '2026-10-28T21:00:00Z', as_of: '2026-10-28T00:17:00Z', rules: '', period_min: 1,
+        points: [], mine: {open: [], closed: []}})
+      : response({})});
+    g.location.pathname = '/explore'; g.location.search = '?m=' + encodeURIComponent(TICKER);
+    await g.viewExplore(); await settle();
+    assert.equal(g.root.querySelector('h1').textContent, NICE);
+    assert.ok(!g.root.innerHTML.includes(RAW));
+    g.clearTimers();
+  });
 }

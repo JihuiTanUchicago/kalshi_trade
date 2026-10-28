@@ -1835,8 +1835,23 @@
     // A backtest-only strategy (the old loose gate) has no gatekeeper record: its out_of_sample is the backtest's
     // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590). So is
     // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's or the session page's own reads).
-    const pnlSub = [m.pnl == null ? '' : oos && (s.status === 'backtest-only' || s.no_gatekeeper_record) ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
-      : (oos ? 'on unseen data' : 'on the history it searched') + overDays(m.days), missedFinal ? 'missed the final test' : noPass ? 'did not pass' : ''].filter(Boolean).join(SEP);
+    // A held-out row's figure is the backtest after its split date too, so it says "later-period", as the sort
+    // ("Later-period P&L") that orders it does: it read "on unseen data" under a sort named otherwise. "On unseen
+    // data" says it was held out, as "which picked it: not held out" says the other kind was not.
+    // A phone's stacked card puts the line in a third of the row under "BACKTEST P&L": the sentence ran about five
+    // lines there, and said "P&L" again under the label. It reads the short form ("later period · 9 days · not held
+    // out"); the full sentence is its hover and what a screen reader says (bt-long, hidden on a phone only visually).
+    const later = oos && (s.status === 'backtest-only' || s.no_gatekeeper_record);
+    const verdictWord = missedFinal ? 'missed the final test' : noPass ? 'did not pass' : '';
+    // The count and its unit hold together ("30 / days" broke across a phone's lines).
+    const spanDays = (d) => !(+d > 0) ? '' : +d < 1 ? 'under a day' : `${num(Math.round(+d))}\u00a0day${Math.round(+d) === 1 ? '' : 's'}`;
+    const longSub = [m.pnl == null ? '' : later ? `later-period P&amp;L${overDays(m.days)} after the split date, which picked it: not held out`
+      : oos ? `later-period P&amp;L${overDays(m.days)} after the split date, on unseen data` : 'on the history it searched' + overDays(m.days), verdictWord].filter(Boolean).join(SEP);
+    // Each short phrase holds together, so a narrow card breaks only at a separator ("unseen / data" split it).
+    const shortSub = [...(m.pnl == null ? [] : [oos ? 'later\u00a0period' : 'history it searched', spanDays(m.days), later ? 'not\u00a0held\u00a0out' : oos ? 'unseen\u00a0data' : '']),
+      verdictWord === 'did not pass' ? 'did\u00a0not\u00a0pass' : verdictWord].filter(Boolean).join(SEP);
+    const pnlSub = !longSub ? '' : shortSub.replace(/\u00a0/g, ' ') === longSub.replace(/\u00a0/g, ' ') ? `<div class="sub-fig">${longSub}</div>`
+      : `<div class="sub-fig bt-sub" title="${longSub}"><span class="bt-long">${longSub}</span><span class="bt-short" aria-hidden="true">${shortSub}</span></div>`;
     const tried = s.hypotheses_tried != null ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const missed = Array.isArray(opts.missed) && opts.missed.length ? `<div class="slip-missed">${whyFailedHtml(opts.missed.slice(0, 1))}${opts.missed.length > 1 ? `<a class="sub-fig" href="/strategies/${s.id}">${opts.missed.length - 1} more check${opts.missed.length > 2 ? 's' : ''} on its page</a>` : ''}</div>` : '';
@@ -1846,7 +1861,7 @@
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
       <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}${missed}</td>
       <td data-lab="Market"><span class="tick">${esc(marketShort(s.market))}\u00a0· ${esc(dirLabel(s.direction))}</span></td>
-      <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub ? `<div class="sub-fig">${pnlSub}</div>` : ''}</td>
+      <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : m.trades}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       ${opts.inRun ? '' : `<td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>`}
@@ -2927,7 +2942,10 @@
   // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
   // above $200000 by Jan 1…? · Above $200000" repeated the title. A contract the feed sends untitled is named
   // as a position is (contractName: its market's words, else "Kalshi contract"), never by its raw ticker.
-  const mktLabel = (m) => { const t = (m.ti || '').trim(), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
+  // A multi-game combo's title is Kalshi's legs run together ("yes Denver,yes Boston,no Over 220.5 points scored"): each
+  // leg gets its space after the comma and the line starts with a capital, as every other title does. Any other title as sent.
+  const comboTitle = (t) => /^(?:yes|no) [^,]+(?:,\s*(?:yes|no) [^,]+)+$/i.test(t) ? t.split(/,\s*/).join(', ').replace(/^./, (c) => c.toUpperCase()) : t;
+  const mktLabel = (m) => { const t = comboTitle((m.ti || '').trim()), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
   const compactCondition = label => label.replace(/^(\$[\d,]+(?:\.\d+)?) or above$/i, '≥ $1').replace(/^(\$[\d,]+(?:\.\d+)?) or below$/i, '≤ $1').replace(/^Above (\$[\d,]+(?:\.\d+)?)$/i, '> $1').replace(/^Below (\$[\d,]+(?:\.\d+)?)$/i, '< $1');
   const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
   const kfmt = (n) => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)); };
@@ -3242,7 +3260,7 @@
       const rows = d.markets.map((m) => {
         const mid = midOf(m);
         const label = mktLabel(m);
-        const title = (m.ti || '').trim(), condition = (m.su || '').trim();
+        const title = comboTitle((m.ti || '').trim()), condition = (m.su || '').trim();
         const separateCondition = condition && title && condition !== title ? condition : '';
         const conditionDisplay = compactCondition(separateCondition);
         const titleParts = title.split(' · ');
@@ -4074,7 +4092,7 @@
   const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? `<span>Closes ${esc(settleAt(m.ct))}</span>` : ''}${vsHtml(m)}</span>` : '');
   const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
   function hotRowHtml(m) {
-    const compactName = contractShort(m.t) || (m.ti || '').trim() || contractName(m.t);
+    const compactName = contractShort(m.t) || comboTitle((m.ti || '').trim()) || contractName(m.t);
     const when = (m.ct ? `${SEP}Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? `${SEP}${vsLab(m)} ${vsText(m.vs, m)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';

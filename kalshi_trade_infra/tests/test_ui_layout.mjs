@@ -69,6 +69,20 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.equal(decl(all, '.t-strat td.num .sub-fig', 'margin-left', DESKTOP), 'auto');  // right-aligned under its figure
   });
 
+  test(`${bundle}: a phone's Strategies card reads the Backtest P&L line's short form, and the full one stays for a screen reader`, () => {
+    // At 390px the full line ("later-period P&L over 9 days after the split date, which picked it: not held out") ran
+    // about five lines in its third of the card, saying "P&L" again under "BACKTEST P&L" (walked 2026-10-28).
+    assert.equal(decl(all, '.bt-sub .bt-short', 'display'), 'none');  // desktop keeps the full sentence
+    assert.equal(decl(all, '.t-strat.stack tbody td.num .bt-short', 'display', PHONE), 'inline');
+    // Hidden only visually on a phone (as .vh is), never display:none, so the sentence is still what is read out.
+    const long = '.t-strat.stack tbody td.num .bt-long';
+    assert.equal(decl(all, long, 'display', PHONE), undefined);
+    assert.equal(decl(all, long, 'position', PHONE), 'absolute');
+    assert.equal(decl(all, long, 'clip', PHONE), 'rect(0 0 0 0)');
+    assert.equal(decl(all, long, 'width', PHONE), '1px'); assert.equal(decl(all, long, 'overflow', PHONE), 'hidden');
+    assert.equal(decl(all, '.bt-sub .bt-long', 'display'), undefined);
+  });
+
   test(`${bundle}: the Deploy board's Strategy column holds its width and the short cells wrap first`, () => {
     if (bundle === 'Tau') {
       const min = decl(all, '.t-dep td.name', 'min-width', DESKTOP);
