@@ -583,7 +583,10 @@
     : !status ? 'Can’t reach Tau. Check your connection.'
     : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
     : status >= 500 ? 'Tau is having trouble right now. Try again in a moment.'
-    // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code.
+    // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code. A read
+    // names no code either (it put "Tau couldn't do that (403)" over a section that hadn't loaded); a write's
+    // line is unchanged.
+    : !write ? 'Tau couldn’t load this. Reload the page and try again.'
     : `Tau couldn't do that (${status}). Reload the page and try again.`;
   // A failure the page shows as an error goes to the operator's readout on /admin (boot.js sends it).
   // An API call that broke: no reply (not our own timeout), the server's 5xx, or a reply that isn't
