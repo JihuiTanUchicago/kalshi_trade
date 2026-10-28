@@ -93,6 +93,18 @@ def curly(text: Optional[str]) -> Optional[str]:
 NO_ANSWER = "The agent hit an error and didn’t answer."
 NO_ANSWER_LINE = NO_ANSWER + " Send your message again, or try in a minute."
 
+# The autopilot's line for an action it has no handler for (the research agent's act() fall-through). Until
+# 2026-10-28 it named the action's raw kind in brackets ("I tried an action I’m not allowed to take (research)."),
+# a word from the model's action format; the journal keeps the kind. An older stored line reads as the new one
+# (chat_rows).
+UNKNOWN_ACTION_LINE = "I tried an action I’m not allowed to take, so nothing changed."
+_UNKNOWN_ACTION = re.compile(r"^I tried an action I[’']m not allowed to take \([^)]*\)\.$")
+
+
+def unknown_action_line(text: Optional[str]) -> Optional[str]:
+    """An older "I tried an action I’m not allowed to take (<kind>)." line as it reads now, else ``text``."""
+    return UNKNOWN_ACTION_LINE if text and _UNKNOWN_ACTION.match(str(text).strip()) else text
+
 
 def display_name(name: Optional[str], fallback: str) -> str:
     """A person's name as other people see it: their name, or ``fallback`` when there is none or it
@@ -184,7 +196,7 @@ def chat_rows(messages: List[Dict], paused: Optional[Dict[int, Dict]] = None,
             dep = stop_sold_id(text)
             if dep is not None:
                 text = stop_sold_line(text, (paused or {}).get(dep))
-            m["content"] = plain_controls(clean(focus_set_line(unmarked(text), focus_words), CHAT_FALLBACK))
+            m["content"] = plain_controls(clean(unknown_action_line(focus_set_line(unmarked(text), focus_words)), CHAT_FALLBACK))
     return messages
 
 
