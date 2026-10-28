@@ -263,7 +263,7 @@ window.TauPage('community', (T) => {
             el.hidden = !hit || (!q && i < items.length - limit);  // keep the newest `limit`
             if (hit) matched++;
           });
-          if (count) count.textContent = q ? `${matched} of ${items.length}` : '';
+          if (count) count.textContent = q ? `${num(matched)} of ${num(items.length)}` : '';
           if (moreBtn) {
             const rest = items.length - limit;
             moreBtn.hidden = !!q || rest <= 0;

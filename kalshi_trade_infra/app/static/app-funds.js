@@ -4,7 +4,7 @@
 window.TauPage('funds', (T) => {
   'use strict';
   const {
-    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, openCost, pageAssets, PAPER_NET,
+    api, armed, BEHIND, boardTitle, busy, cashFig, cashNow, cashRead, contractName, DEMO_BOOK, DEMO_WHAT, demoKeyless, demoSpan, esc, fig, flash, holdFocus, ICON, inBalance, kalshiRef, liveOpen, loading, num, openCost, pageAssets, PAPER_NET,
     paint, painted, poll, refreshed, root, S, SEP, settleAt, shell, tone, usd, when
   } = T;
 
@@ -69,10 +69,10 @@ window.TauPage('funds', (T) => {
   // `held` says where that money sits. Tau's demo book is its capital plus closed demo trades (server demo_equity), so an
   // open demo position's whole cost is still inside it (DEMO_HELD): "1 open ($2.93 at cost + fees)" didn't say where.
   // Each book says its own; none is added to another's.
-  const openAt = (b, held) => b.open_positions ? `${b.open_positions} open (${openCost(b)}${held ? ', ' + held : ''})${SEP}` : '';
+  const openAt = (b, held) => b.open_positions ? `${num(b.open_positions)} open (${openCost(b)}${held ? ', ' + held : ''})${SEP}` : '';
   const DEMO_HELD = `all of it in ${DEMO_BOOK}`;
   const openLeft = (b, mode) => b.open_positions == null ? 'Open positions not included'
-    : b.open_positions ? `${b.open_positions} open ${mode} position${b.open_positions === 1 ? '' : 's'} (${openCost(b)}) not included` : `No open ${mode} positions`;
+    : b.open_positions ? `${num(b.open_positions)} open ${mode} position${b.open_positions === 1 ? '' : 's'} (${openCost(b)}) not included` : `No open ${mode} positions`;
   // What each book has made: its realized P&L from closed trades, the figure the dashboard, Deploy and the
   // track record show, never added to another book's. Before a book's first close it says when one shows.
   // An API without the figure says nothing. Demo's is since its last reload, as on the dashboard.

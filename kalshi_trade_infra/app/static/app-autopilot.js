@@ -6,7 +6,7 @@ window.TauPage('autopilot', (T) => {
   const {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
-    apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite,
+    apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
     liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, refreshAutopilot, S, SEP, settleAt, sinceMin, slipEst, usd, waitNote, waitSpan,
     wakers
   } = T;
@@ -241,7 +241,7 @@ window.TauPage('autopilot', (T) => {
     if (names.length) return picked.length ? 'Researching ' + picked.join(SEP) : 'Picking a market to research';
     if (d.reviewing) return 'Reviewing the markets';
     // Between reviews with strategies on paper is not idle: they trade on their own between its moves.
-    return d.paper_running ? `Between reviews${SEP}${d.paper_running} on paper` : 'Idle';
+    return d.paper_running ? `Between reviews${SEP}${num(d.paper_running)} on paper` : 'Idle';
   }
   // The open panel is a full-screen sheet under this width (app.css: `.apf.open { inset: 0 }`), which is
   // not phone(): between the two it still sits beside the page.
@@ -494,8 +494,8 @@ window.TauPage('autopilot', (T) => {
     // A live one while live trading is closed places no orders, and says so, as Deploy's Money figure does.
     const runParts = [
       d.live_running ? (liveOpen() ? `<span class="apf-live">${d.live_running} live</span>` : liveIdleShort(d.live_running)) : '',
-      d.demo_running ? `${d.demo_running}\u00a0demo` : '',
-      d.paper_running ? `${d.paper_running}\u00a0paper` : '',
+      d.demo_running ? `${num(d.demo_running)}\u00a0demo` : '',
+      d.paper_running ? `${num(d.paper_running)}\u00a0paper` : '',
     ].filter(Boolean);
     const runTotal = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
     // The figures sit above the story so "is it making money?" reads first, and the Research row only

@@ -69,7 +69,7 @@ window.TauPage('research', (T) => {
       ? `<p class="loop-trend">${tr.better ? 'Getting better.' : 'Not better yet.'} The newer ${num(tr.after.runs)} session${tr.after.runs === 1 ? '' : 's'} took ${loopRate(tr.after.gate_reach_rate)} of ${num(tr.after.explored)} ideas to the statistical gate, against ${loopRate(tr.before.gate_reach_rate)} of ${num(tr.before.explored)} before.</p>`
       : `<p class="loop-trend">Each session’s ideas are counted from first draft to final verdict. A before/after trend appears once there are 16 ideas to compare.</p>`;
     const maxIdeas = Math.max(1, ...(b.days || []).map((d) => d.explored));
-    const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${d.explored} ideas, ${d.gated} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
+    const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${num(d.explored)} ideas, ${num(d.gated)} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
     const pt = b.paper && b.paper.total, byPb = (b.paper && b.paper.by_playbook) || {};
     const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper at the market’s real prices: ${num(pt.strategies)} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${num(pt.trading)} trading, ${num(pt.round_trips)} closed trade${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? `${SEP}${num(pt.live_ready)} ready for live` : ''}.</p>` : '';
     const fams = {};
@@ -379,7 +379,7 @@ window.TauPage('research', (T) => {
       const fell = d.totals ? +d.totals.not_cleared || 0 : d.runs.reduce((a, r) => a + runPassed(r).fell, 0);
       // A paused session holds one of the two session slots but isn't running: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
-      paint(root.querySelector('#research-status'), fig('Running', running) + (paused ? fig('Paused', paused) : '') + fig('Queued', queued));
+      paint(root.querySelector('#research-status'), fig('Running', num(running)) + (paused ? fig('Paused', num(paused)) : '') + fig('Queued', num(queued)));
       const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested, all time` : 'No strategies tested';
       // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
       // each says its window.
@@ -1218,7 +1218,7 @@ window.TauPage('research', (T) => {
       const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
       artifacts.hidden = !strategies.length;
-      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${num(strategies.length)}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: laterMissed(s) || heldBack(s) ? laterLines(s) : s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${strategies.length}</button>` : ''}` : '';
+      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${num(strategies.length)}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: laterMissed(s) || heldBack(s) ? laterLines(s) : s.status === 'passed' ? null : whyBySid.get(s.id) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${num(strategies.length)}</button>` : ''}` : '';
       // Compared with what was last written, not with innerHTML: the browser's serialization never matched
       // the template (&nbsp;, quoting), so the table was rebuilt every 2s.
       paint(artifacts, artifactHtml);

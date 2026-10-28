@@ -229,7 +229,7 @@ runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend, stripe: () => ({stripe: STRIPE_STUB})});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Tau', frontend, detailStrategy});
-countFormatCases({name: 'Tau', frontend, detailStrategy, strategyFrontend});
+countFormatCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => emptyDashboard()});
 explorePageCases({name: 'Tau', frontend});
 trackRecordTrustCases({name: 'Tau', frontend, Element, dashboard: () => emptyDashboard()});
 researchFormCases({name: 'Tau', frontend});
@@ -903,6 +903,21 @@ test('an empty Deployed box names its next step "research an idea yourself", as 
     assert.match(deps, own_sessions ? /on paper first\. Or research an idea yourself\.<\/p>/ : /<p>Turn on autopilot above, or research an idea yourself\.<\/p>/);
     assert.doesNotMatch(deps, /start a session/);
   }
+});
+
+test('the empty Deployed box\'s button says what its sentence says, "Research an idea", as Meridian\'s does', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), since: {own_sessions: true}});
+    if (path === '/api/autopilot/status') return response({...apOn, autopilot: false, mode: 'off'});
+    if (path.startsWith('/api/')) return response({});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); f.clearTimers();
+  const box = f.root.querySelector('#deps-empty');
+  // "Or research an idea yourself." sat over a "New session" button: the sentence and the button named two things.
+  assert.match(box.innerHTML, /Or research an idea yourself\.<\/p><a class="btn" href="\/research">Research an idea<\/a>/);
+  assert.doesNotMatch(box.innerHTML, /New session/);
 });
 
 test('the autopilot pill goes by the saved switch until its first status read lands', async () => {
@@ -3916,7 +3931,7 @@ test('the backtest luck line reads its trade bar from the server and names it as
   };
   const lines = await flags({sample_caution: {min_trades: 30, gate_min_oos_trades: 10}});
   assert.equal(lines.length, 2);  // in-sample and out-of-sample, 6 trades each
-  for (const line of lines) assert.match(line, /n=6 — under 30 trades, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
+  for (const line of lines) assert.match(line, /Only 6 trades — under 30, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
   assert.deepEqual(await flags({sample_caution: {min_trades: 5, gate_min_oos_trades: 10}}), []);
   assert.deepEqual(await flags({}), []);  // no bar from the server, no line: never a guessed constant
 });

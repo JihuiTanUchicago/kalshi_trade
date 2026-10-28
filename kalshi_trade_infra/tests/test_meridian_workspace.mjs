@@ -261,7 +261,7 @@ runPageCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async () => STRIPE_STUB})});
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
-countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend});
+countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => dashboardData()});
 explorePageCases({name: 'Meridian', frontend});
 trackRecordTrustCases({name: 'Meridian', frontend, Element, dashboard: () => dashboardData()});
 researchFormCases({name: 'Meridian', frontend});
@@ -738,6 +738,21 @@ test('Meridian: the empty Deployed box names its next step "research an idea you
   }
 });
 
+test('Meridian: the empty Deployed box\'s button says what its sentence says, "Research an idea", as Tau\'s does', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData({since: {own_sessions: true}}));
+    if (path === '/api/autopilot/status') return response({...apStatus, autopilot: false, mode: 'off'});
+    if (path.startsWith('/api/')) return response({});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); f.clearTimers();
+  const box = f.root.querySelector('#deps-empty');
+  // "Or research an idea yourself." sat over a "New session" button: the sentence and the button named two things.
+  assert.match(box.innerHTML, /Or research an idea yourself\.<\/p><a class="btn" href="\/research\?new=1">Research an idea<\/a>/);
+  assert.doesNotMatch(box.innerHTML, /New session/);
+});
+
 test('Overview offers each mode its own trades CSV only when that mode has closed trades', async () => {
   for (const [counts, connected, deployments] of [[{paper: 0, demo: 0, live: 0}, false, []], [{paper: 4, demo: 0, live: 0}, false, []],
     [{paper: 1, demo: 2, live: 3}, true, [dashboardDeployment('live')]], [{paper: 0, demo: 0, live: 3}, false, []]]) {
@@ -1078,7 +1093,7 @@ test('Overview polling shares paper-running context only for a nonempty uniform 
     const createLinks = section.querySelectorAll('a[href="/research?new=1"]');
     assert.equal(createLinks.length, 1);
     const create = createLinks[0];
-    assert.equal(create.textContent, frame.deployments.length ? 'New research' : 'New session');
+    assert.equal(create.textContent, frame.deployments.length ? 'New research' : 'Research an idea');
     assert.equal(create.getAttribute('href'), '/research?new=1');
     if (!frame.deployments.length) {
       assert.equal(section.querySelector('.empty h3').textContent, 'Nothing deployed yet');
@@ -4917,7 +4932,7 @@ test('the backtest luck line reads its trade bar from the server and names it as
   };
   const lines = await flags({sample_caution: {min_trades: 30, gate_min_oos_trades: 10}});
   assert.equal(lines.length, 2);  // in-sample and out-of-sample, 6 trades each
-  for (const line of lines) assert.match(line, /n=6 — under 30 trades, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
+  for (const line of lines) assert.match(line, /Only 6 trades — under 30, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
   assert.deepEqual(await flags({sample_caution: {min_trades: 5, gate_min_oos_trades: 10}}), []);
   assert.deepEqual(await flags({}), []);  // no bar from the server, no line: never a guessed constant
 });
@@ -5990,6 +6005,26 @@ test('Meridian: a brand-new account\'s empty Strategies, Deploy and Research say
   f.location.pathname = '/research';
   await f.viewResearch(); await flush(); await flush(); f.clearTimers();
   assert.match(f.root.querySelector('.research-page').innerHTML, /<h1 class="page">Research<\/h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw\. The ones that pass can trade on paper\.<\/p>/);
+});
+
+test('Meridian: Strategies says under its name what the page is for, in Tau\'s words, and Research results stays beside the name', async () => {
+  const text = 'Every strategy your agents researched. Passed strategies on deployable markets can be deployed; void ones stay here so you can see what didn’t work.';
+  const tauSource = readFileSync(new URL('../app/static/app-strategies.js', import.meta.url), 'utf8');
+  assert.ok(tauSource.includes(`boardTitle('Strategies', '${text}')`));
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 0, passed: 0, failed: 0, rejected: 0}}) : response({}))});
+  await f.viewStrategies(); await flush(); await flush();
+  const head = f.root.querySelector('.strategy-heading').innerHTML;
+  // The name, then the summary beside it, then the line on a row of its own.
+  assert.match(head, /^<h1 class="page">Strategies<\/h1><details class="strategy-summary">[^]*?<\/details><p class="lede page-lede">([^<]*)<\/p>$/);
+  assert.equal(f.root.querySelector('.strategy-heading .page-lede').textContent, text);
+  f.clearTimers();
+  // At 390px the name keeps its width and a long "N% pass rate, of the 1,201 strategies here" wraps beside it;
+  // the line spans both columns underneath.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.strategy-heading \{ display: grid; grid-template-columns: max-content minmax\(0, 1fr\);/);
+  assert.match(css, /\.strategy-heading > \.strategy-summary \{ justify-self: end; \}/);
+  assert.match(css, /\.strategy-heading > \.page-lede \{ grid-column: 1 \/ -1; margin: 0; \}/);
 });
 
 test('Meridian: Deploy, Explore, Settings and Community each say under their name what the page is for, in Tau\'s words', async () => {
