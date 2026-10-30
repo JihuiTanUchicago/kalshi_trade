@@ -16,7 +16,8 @@ const firstDep = (o = {}) => ({id: 1, strategy_id: 11, title: 'Momentum after sh
 
 export function newUserCases({name, frontend, detailStrategy, strategyFrontend, dashboard, billingPage, cardedBilling, apStatus}) {
   const meridian = name === 'Meridian';
-  const pageFile = (page) => readFileSync(new URL(`../app/static/${meridian ? 'app.meridian-' : 'app-'}${page}.js`, import.meta.url), 'utf8');
+  // Research is one file for both themes (page-research.js); the others are each theme's own.
+  const pageFile = (page) => readFileSync(new URL(`../app/static/${page === 'research' ? 'page-' : meridian ? 'app.meridian-' : 'app-'}${page}.js`, import.meta.url), 'utf8');
 
   const session = (o) => ({id: 9, status: 'running', market: 'btc15m', direction: 'momentum', example: false, prompt: 'Momentum after sharp Bitcoin moves',
     hypotheses_tried: 0, strategies_passed: 0, spent_usd: 0, error: null, created_at: '2026-10-27T22:03:00Z', started_at: '2026-10-27T22:03:00Z',

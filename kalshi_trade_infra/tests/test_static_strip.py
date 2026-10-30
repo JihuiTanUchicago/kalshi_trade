@@ -74,7 +74,7 @@ def test_only_the_named_files_change_and_each_version_is_worked_out_once():
     assert static_strip.served("boot.js", body, "aaaaaaaaaa") == body
     out = static_strip.served("app.js", body, "bbbbbbbbbb")
     assert out == b"\nvar x;\n" and static_strip.served("app.js", b"changed", "bbbbbbbbbb") is out
-    assert set(static_strip.NAMES) >= {"app.js", "app.meridian.js", "app.css", "app.meridian.css", "app-research.js"}
+    assert set(static_strip.NAMES) >= {"app.js", "app.meridian.js", "app.css", "app.meridian.css", "page-research.js"}
 
 
 @pytest.mark.parametrize("name", CSS)
@@ -139,7 +139,7 @@ def _get(port, path):
     return r, gzip.decompress(raw) if r.getheader("Content-Encoding") == "gzip" else raw
 
 
-@pytest.mark.parametrize("name", ["app.js", "app.meridian.js", "app-research.js", "app.css", "app.meridian.css"])
+@pytest.mark.parametrize("name", ["app.js", "app.meridian.js", "page-research.js", "app.css", "app.meridian.css"])
 def test_served_without_comments_at_the_source_files_version(web, name):
     src = (STATIC / name).read_bytes()
     v = server._static_versions()[name]

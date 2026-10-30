@@ -935,6 +935,9 @@
     }
     return `No word from the agent for ${t}. A session this quiet is normally interrupted and resumed from its last checkpoint.`;
   }
+  // A session's number among the user's own (the server's `seq`: 1 is their first), never the global run
+  // id, which read "Session 8" on someone's first session. The example and an answer without it get none.
+  const sessionNo = (r) => r && +r.seq > 0 ? `Session ${num(+r.seq)}` : '';
 
   // ---------- the dashboard's since-your-last-visit strip ----------
   // Demo P&L restarts at a reload (before_reload holds what came before), unlike the track record.
@@ -1111,6 +1114,7 @@
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS,
     shortReason, sinceRunsState, sinceSplit, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
-    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode
+    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode,
+    sessionNo
   });
 })();

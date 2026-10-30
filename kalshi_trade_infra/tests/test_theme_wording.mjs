@@ -9,7 +9,7 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 
 const read = (f) => readFileSync(new URL('../app/' + f, import.meta.url), 'utf8');
-const BUNDLES = {tau: ['static/app.js', 'static/app-research.js'], meridian: ['static/app.meridian.js', 'static/app.meridian-research.js']};
+const BUNDLES = {tau: ['static/app.js', 'static/page-research.js'], meridian: ['static/app.meridian.js', 'static/page-research.js']};
 
 const stages = (file) => {
   const m = read(file).match(/const RSI_STAGES = (\[[^;]+\]);/);
@@ -18,14 +18,13 @@ const stages = (file) => {
 };
 
 test('both themes name the research loop’s steps in the same plain words', () => {
-  const tau = stages(BUNDLES.tau[1]), meridian = stages(BUNDLES.meridian[1]);
-  assert.deepEqual(meridian, tau);
-  assert.deepEqual(tau.map(([, label]) => label), ['Explore', 'Backtest', 'Check', 'Improve']);
-  for (const [, file] of Object.values(BUNDLES)) {
-    const src = read(file);
-    assert.match(src, /aria-label="[^"]*explore, backtest, check, improve/, file);
-    assert.doesNotMatch(src, /'Validate'|'Refine'|validate, refine/, file);
-  }
+  // One list for both themes, in their one Research file (page-research.js).
+  const src = read('static/page-research.js');
+  assert.equal(src.match(/const RSI_STAGES = /g).length, 1);
+  assert.deepEqual(stages('static/page-research.js').map(([, label]) => label), ['Explore', 'Backtest', 'Check', 'Improve']);
+  // Each theme's loop names them so in its own markup: Tau's station line and Meridian's list.
+  assert.equal((src.match(/aria-label="[^"]*explore, backtest, check, improve/g) || []).length, 2);
+  assert.doesNotMatch(src, /'Validate'|'Refine'|validate, refine/);
 });
 
 test('the autopilot panel’s live gate says “Live trading isn’t open yet.”, as its summary and Deploy do', () => {

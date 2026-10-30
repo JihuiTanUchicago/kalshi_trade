@@ -23,7 +23,7 @@
     waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS, shortReason, sinceRunsState, sinceSplit,
     sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER, apPillLabel, apAgo, apEvery, FOCUS_WORDS,
     creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount, exitWord, AP_FOCUS, KIND_LABEL, runwayLabel,
-    paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode
+    paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode, sessionNo
   } = window.TauCore;
 
   const root = document.getElementById('app');
@@ -1325,7 +1325,7 @@
     return true;
   }
   // Signing out leaves nothing of the reader's own words on the device: the research idea not yet started
-  // (app-research.js, this tab) and the autopilot message not yet sent (page-autopilot.js, kept per account).
+  // (page-research.js, this tab) and the autopilot message not yet sent (page-autopilot.js, kept per account).
   // A session that ended by itself keeps them, so signing back in finds them where they were.
   function forgetDrafts() {
     try { sessionStorage.removeItem('tau_research_draft'); } catch (e) { /* private mode */ }
@@ -2071,7 +2071,7 @@
   }
 
   // ---------- research ----------
-  // In app-research.js, fetched on first use (page files, at the end of this file).
+  // In page-research.js (one for both themes), fetched on first use (page files, at the end of this file).
   function viewResearch() { return pageView('research', 'viewResearch', '/research', []); }
   function viewRun(id) { return pageView('research', 'viewRun', '/research', [id]); }
 
@@ -3680,7 +3680,7 @@
   }
   // The page files both themes load (page-<name>.js, page_modules.SHARED): what this theme draws its own way in
   // them comes from shared() (theme).
-  const PAGE_SHARED = ['autopilot', 'admin', 'community'];
+  const PAGE_SHARED = ['autopilot', 'admin', 'community', 'research'];
   // Without a version (an older shell) the file is still found, revalidated instead of cached for good.
   const pageSrc = (name, v = pageVersions()[name]) => '/static/' + (PAGE_SHARED.includes(name) ? 'page-' : 'app-') + name + '.js' + (v ? '?v=' + v : '');
   // A page's own scripts and stylesheets beside its file (#tau-boot data-page-assets, page_modules.ASSETS):
@@ -3734,7 +3734,7 @@
     notice, num, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
     paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipEstGl, slipTip, PAPER_COUNT_WHY, PNL_WINDOW, pnlWin, repaintKeep, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
-    runTag, runWaitLine, runwayLabel, S, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark,
+    runTag, runWaitLine, runwayLabel, S, sessionNo, sessionTitle, settleAt, keepZone, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark,
     strategySlip, strategyTable, stripeFail, syncMeBilling, theme: 'tau', tone, topupCharge, tradePrice, trDay, tzName,
     usd, waitNote, waitSpan, wakers, WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
   }, { get: (all, k) => { if (!(k in all)) throw new Error('A page file asks for ' + String(k) + ', which this build does not share.'); return all[k]; } }));
