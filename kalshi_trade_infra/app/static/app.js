@@ -397,15 +397,26 @@
     const today = d.toDateString() === new Date().toDateString();
     return dateFmt(d, today ? CLOCK_ZONE : LOG_STAMP);
   };  // fits the 40px log rail; '10:31 AM' wrapped to 'AM'
-  // An open position's mark time for its "as of": settleAt's time and zone, and its age once the mark is older than
-  // the engine's mark-staleness gate (MARK_MAX_AGE_SECONDS, 90s: marks refresh every ~15s tick, so an older one means
-  // marking has stalled), in sinceMin's words ("as of 05:31 UTC, 3h ago"). A mark hours old read as fresh as this
-  // minute's. Display only: the figure is the same either way.
-  const MARK_STALE_S = 90;
-  const markedAt = (iso) => {
-    const at = settleAt(iso), ms = Date.parse(iso || '');
-    return Number.isFinite(ms) && (Date.now() - ms) / 1000 > MARK_STALE_S ? `${at}, ${sinceMin(iso)}` : at;
+  // An open position's mark (the last price the engine read for it) is old past MARK_OLD_S. The engine stamps every
+  // open position's mark on each pass over the markets, and each pass ends with a 15s sleep (TICK_SECONDS), so a mark
+  // is normally under 20s old; one slow Kalshi read (20s timeout, 429 backoff) can stretch a pass toward a minute.
+  // The engine stops trusting a mark for its risk triggers at 90s (MARK_MAX_AGE_SECONDS), and the chat calls the
+  // engine stopped at 5 minutes (ENGINE_STALE_SECONDS). Three minutes is twice the engine's gate and several slow
+  // passes, so a running feed never trips it (a minute of this device's clock running fast included), while a stopped
+  // engine or a contract that lost its bid trips it three minutes on, at the page's next poll. Display only: the
+  // figure is the same either way.
+  const MARK_OLD_S = 180;
+  const markOld = (iso) => { const ms = Date.parse(iso || ''); return Number.isFinite(ms) && (Date.now() - ms) / 1000 > MARK_OLD_S; };
+  // A mark's "as of" (HTML): a fresh one gives its time and zone (settleAt). An old one says its age in words ("as of
+  // 14 min ago", short enough for a phone's stacked card), and its time and what an old mark means ride in a title
+  // and in text a screen reader reads. "as of 05:31 UTC, 3h ago" beside an undimmed figure still read as current.
+  const markedAt = (iso, lead = 'as of') => {
+    if (!markOld(iso)) return `${lead} ${esc(settleAt(iso))}`;
+    const why = `Last marked ${settleAt(iso)}. No newer price has come in, so this figure may be out of date.`;
+    return `<span class="mark-age" title="${esc(why)}">${lead} ${apAgo(iso)}<span class="vh"> (${esc(why)})</span></span>`;
   };
+  // A figure an old mark priced, dimmed (.mark-old): undimmed, an hours-old figure read as this minute's.
+  const markFig = (iso, html) => (markOld(iso) ? `<span class="mark-old">${html}</span>` : html);
   // A time with its zone on one line: the market page's "Closes Oct 28, 02:45" left "UTC" alone on the next.
   const keepZone = (t) => String(t).replace(/ (?=\S+$)/, '\u00a0');
   const fmtCount = new Intl.NumberFormat('en-US');  // what Number#toLocaleString('en-US') builds on every call
@@ -2110,7 +2121,7 @@
     const pace = exp && +exp.trades > 0 ? (+exp.pnl || 0) / +exp.trades : null;
     const live = d.mode === 'live', idle = depIdle(d);
     // No Unrealized figure says why, as Meridian's monitor row does: nothing open, or open with no price yet.
-    // A bare "—" said neither.
+    // A bare "—" said neither. A figure from an old mark is dimmed and says how old its oldest mark is (withMarkAge).
     // A paused row names its book too: "Paused" alone didn't say whether real money had stopped.
     const modeTag = live ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">DEMO</span>' : '<span class="mk">PAPER</span>';
     const actions = controls ? `<td class="act" data-lab="">
@@ -2123,7 +2134,7 @@
       <td data-lab="Market"><span class="tick">${esc(marketFull(d.market))}</span></td>
       <td data-lab="Status">${idle ? `<span class="mk quiet">${idle.tag}</span> ${modeTag}` : d.status === 'running' ? modeTag : `${mark(d.status, live)} ${modeTag}`}</td>
       <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
-      <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? NOT_MARKED : 'None open'}</span>` : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
+      <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? NOT_MARKED : 'None open'}</span>` : markFig(d.oldest_mark_ts, money(d.unrealized_pnl))}${d.unrealized_pnl != null && d.open_positions ? `<div class="sub-fig">est.${markOld(d.oldest_mark_ts) ? ' ' + markedAt(d.oldest_mark_ts) : ''}</div>` : ''}</td>
       <td class="num" data-lab="Trades">${num(d.closed_trades)}${d.open_positions ? `<div class="sub-fig">+${num(d.open_positions)} open</div>` : ''}</td>
       <td class="num" data-lab="Backtest estimate" title="${d.void_no_record ? PACE_TIP_VOID : d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${num(d.closed_trades)} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig bt-per-trade"><span class="amt">${usd(pace, true)}</span> a trade, on average</span>`}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
@@ -2526,7 +2537,7 @@
     const load = async (cfg, filled, afterDemo) => {
       const q = [visitAt ? 'since=' + visitAt : '', kept && kept.v ? 'v=' + encodeURIComponent(kept.v) : ''].filter(Boolean).join('&');
       const got = filled || await api('/api/dashboard' + (q ? '?' + q : ''), undefined, cfg);
-      const d = followLive(pollAnswer(kept, got));
+      const d = withMarkAge(followLive(pollAnswer(kept, got)));
       if (!got.same) kept = got;
       setVisit(visitAt, Math.floor(Date.now() / 1000));  // still here: this visit's last-seen moves on
       S.dashNoSessions = !!(d.since && d.since.own_sessions === false);
@@ -2599,12 +2610,12 @@
       // An open position says what it would sell for now and the gain in it ("+$0.48" alone read as
       // banked), or its cost with its fee (Deploy's "Cost + fee") until the engine's first price.
       // Its worth says when its mark was read (the engine's mark_ts), as Deploy's Unrealized does: with the engine
-      // stopped, a mark hours old read as this minute's.
+      // stopped, a mark hours old read as this minute's. An old mark's worth is dimmed and says how old (markFig).
       const depMarket = (r) => (d.deployments.find((x) => x.id === r.deployment_id) || {}).market;
       const stubs = (rows, closed) => rows.length
         ? rows.map((r) => `<div class="stub"><b>${esc(r.side.toUpperCase())} ${esc(r.qty)} × ${cents(+r.entry_price)}</b>
-            <span>${closed ? money(+r.pnl) : (r.unrealized != null ? (r.value != null ? `worth ${usd(r.value)} (${money(r.unrealized)})` : money(r.unrealized)) : openCost({ open_cost: r.cost, open_at_cost: r.at_cost != null ? r.at_cost : r.qty * r.entry_price }))}</span>
-            <small>${esc(r.title)}\u00a0· <span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : `\u00a0· ${liveClose(r.market_close_time, 'settles')}`}\u00a0· ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'}\u00a0· ${when(closed ? r.closed_at : r.opened_at)}${!closed && r.unrealized != null && r.mark_ts ? `\u00a0· worth as of ${markedAt(r.mark_ts)}` : ''}</small>${r.why ? `<small class="stub-why">${sepLine(r.why)}</small>` : ''}</div>`).join('')
+            <span>${closed ? money(+r.pnl) : (r.unrealized != null ? markFig(r.mark_ts, r.value != null ? `worth ${usd(r.value)} (${money(r.unrealized)})` : money(r.unrealized)) : openCost({ open_cost: r.cost, open_at_cost: r.at_cost != null ? r.at_cost : r.qty * r.entry_price }))}</span>
+            <small>${esc(r.title)}\u00a0· <span class="pos-name">${contractLink(r.ticker, depMarket(r))}</span>${closed ? '' : `\u00a0· ${liveClose(r.market_close_time, 'settles')}`}\u00a0· ${r.mode === 'live' ? 'LIVE' : r.mode === 'demo' ? 'DEMO' : 'PAPER'}\u00a0· ${when(closed ? r.closed_at : r.opened_at)}${!closed && r.unrealized != null && r.mark_ts ? `\u00a0· ${markedAt(r.mark_ts, 'worth as of')}` : ''}</small>${r.why ? `<small class="stub-why">${sepLine(r.why)}</small>` : ''}</div>`).join('')
         : `<p class="hint">${closed ? 'No settled trades yet.' : 'No open positions.'}</p>`;
       const main = `<div class="dash-wrap"><div class="dash">
           <div>
@@ -2688,7 +2699,7 @@
     // pending then waits for the poll (one re-read, never a loop).
     const loadBoard = async (cfg, afterDemo) => {
       const got = await api('/api/deployments' + (kept && kept.v ? '?v=' + encodeURIComponent(kept.v) : ''));
-      const d = withUnrealized(followLive(pollAnswer(kept, got)));
+      const d = withMarkAge(withUnrealized(followLive(pollAnswer(kept, got))));
       if (!got.same) kept = got;
       if (!d.deployments.length && !askedPassed) {
         askedPassed = true;
@@ -2764,10 +2775,11 @@
       const posBook = (p) => p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>';
       // Each Unrealized figure says when its mark was read (the engine's mark_ts, the time with its zone, as Settles is):
       // the column had no "as of" time. A figure the answer gives no time for is still its last mark's, and says so.
-      const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? 'as of ' + markedAt(p.mark_ts) : 'at the last mark'}</div>`;
+      const posMarked = (p) => `<div class="sub-fig">${p.mark_ts ? markedAt(p.mark_ts) : 'at the last mark'}</div>`;
       // The figure and its time are one block: a phone's stacked card set the time on a row of its own under the
-      // card's labels, one more row a position; it sits under its figure, in the Unrealized cell.
-      const posUnreal = (p) => `<div class="pos-unreal">${money(p.unrealized)}${posMarked(p)}</div>`;
+      // card's labels, one more row a position; it sits under its figure, in the Unrealized cell. An old mark's figure
+      // is dimmed and its time says how old (markFig, markedAt).
+      const posUnreal = (p) => `<div class="pos-unreal">${markFig(p.mark_ts, money(p.unrealized))}${posMarked(p)}</div>`;
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unrealized</th><th class="num">Settles</th></tr></thead><tbody>
         ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? NO_MARK : posUnreal(p)}</td><td class="num"${closeData(p.market_close_time, 'settleTime')} data-lab="Settles">${esc(closeWords(p.market_close_time, 'settleTime'))}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
@@ -3043,9 +3055,12 @@
       const op = xs.filter((p) => p.status === 'open'), cl = xs.filter((p) => p.status !== 'open');
       const marked = op.filter((p) => p.unrealized != null);
       const lastMark = marked.map((p) => p.mark_ts).filter(Boolean).sort().pop();
-      const sum = [op.length ? `${num(op.length)} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}${NOT_MARKED.toLowerCase()}`}` : '',
+      // The sum is as old as its oldest mark: once that is old the figure is dimmed and says how old (markFig), and
+      // so is each old row's figure.
+      const oldest = marked.map((p) => p.mark_ts).filter((t) => Number.isFinite(Date.parse(t))).sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+      const sum = [op.length ? `${num(op.length)} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${markFig(oldest, money(marked.reduce((a, p) => a + p.unrealized, 0)))} (est. at the current bid${markOld(oldest) ? ', ' + markedAt(oldest, 'marked') : lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}${NOT_MARKED.toLowerCase()}`}` : '',
         cl.length ? `${num(cl.length)} closed${SEP}realized ${money(sum4(cl.map((p) => p.pnl)))}` : ''].filter(Boolean).join(SEP);
-      const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? NO_MARK : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? liveClose(p.market_close_time, 'pos') : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
+      const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? NO_MARK : markFig(p.mark_ts, money(p.unrealized)) + (markOld(p.mark_ts) ? `<div class="sub-fig">${markedAt(p.mark_ts)}</div>` : '')) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? liveClose(p.market_close_time, 'pos') : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
   }
@@ -4137,6 +4152,17 @@
     for (const x of d.deployments || []) if (x.unrealized_pnl == null && by[x.id] != null) x.unrealized_pnl = by[x.id];
     return d;
   }
+  // A deployment's Unrealized sums its open positions' marks, so it is as old as the oldest of them. Each deployment
+  // gets that mark's time (oldest_mark_ts) from the open positions the answer already carries, for its row to dim the
+  // figure and say how old once that mark is (markFig, markedAt). Display only: no figure changes.
+  function withMarkAge(d) {
+    const oldest = {};
+    for (const p of d.open_positions || []) {
+      const ms = Date.parse(p.mark_ts || '');
+      if (p.unrealized != null && p.deployment_id != null && Number.isFinite(ms) && !(Date.parse(oldest[p.deployment_id]) <= ms)) oldest[p.deployment_id] = p.mark_ts;
+    }
+    return { ...d, deployments: (d.deployments || []).map((x) => (oldest[x.id] ? { ...x, oldest_mark_ts: oldest[x.id] } : x)) };
+  }
   // Paper trades toward the target: "12 of 30 paper trades", and once past it "67 paper trades (30 needed)".
   // Why "realistic" counts fewer trades than the paper book beside it: the track record's words. "0 of 30 realistic
   // paper trades" sat next to "Paper +$8.72 on 12 trades" with no reason given.
@@ -4675,7 +4701,7 @@
     notice, num, overDays, paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows,
     paperAgain, PAPER_NET, NOT_MARKED, paperCount, paperShown, paperSince, slipEst, slipTip, PAPER_COUNT_WHY, pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot,
     refreshed, registry, render, researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind,
-    runTag, runWaitLine, runwayLabel, S, sessionTitle, settleAt, markedAt, shell, sinceMin, smooth, statusMark,
+    runTag, runWaitLine, runwayLabel, S, sessionTitle, settleAt, markedAt, markFig, markOld, shell, sinceMin, smooth, statusMark,
     strategySlip, strategyTable, stripeFail, syncMeBilling, tone, topupCharge, tradePrice, trDay, tzName,
     usd, waitNote, waitSpan, wakers, WEEKDAY_DAY, when, whyFailedHtml, wireMarketPicker
   }, { get: (all, k) => { if (!(k in all)) throw new Error('A page file asks for ' + String(k) + ', which this build does not share.'); return all[k]; } }));

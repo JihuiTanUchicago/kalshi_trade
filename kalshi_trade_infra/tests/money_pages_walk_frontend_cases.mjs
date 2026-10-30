@@ -7,8 +7,9 @@
 //   says "as of 05:31 UTC": with the engine stopped, a mark hours old read as this minute's. Each says when its mark
 //   was read, and a position with no mark yet says so with no time.
 // - A mark hours old still read as fresh as one from a minute ago beside its "as of" time. Once a mark is older than
-//   the engine's mark-staleness gate (90s; marks refresh every ~15s tick) its time says how long ago, in sinceMin's
-//   words ("as of 05:31 UTC, 3h ago"), on the strategy page, the dashboard and Deploy. A fresh mark says no age.
+//   three minutes (MARK_OLD_S: the engine marks every ~15-20s pass) its figure is dimmed and its "as of" says how long
+//   ago in words ("as of 3 hours ago"), on the strategy page, the dashboard and Deploy; its time is in a title and in
+//   text a screen reader reads. A fresh mark gives its time and is not dimmed (stale_mark_frontend_cases.mjs has more).
 // - The Closed P&L chart's date axis read "Oct 29, Oct 30, Oct 30" with two days of data: its middle tick fell on the
 //   second day's midnight. Each date is on an axis once, and a curve inside one day labels it once.
 import assert from './assert_text.mjs';
@@ -21,7 +22,7 @@ const MARKETS = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down 
 // Today's time alone, or another day's date with it, always with a zone (settleAt).
 const AT = '(?:[A-Z][a-z]{2} \\d{1,2}, )?\\d\\d:\\d\\d \\S+';
 const pos = (extra) => ({title: 'Fade', ticker: 'KXBTC15M-26OCT301815-15', side: 'yes', qty: 12, entry_price: .41, entry_fee: .17, cost: 5.09,
-  at_cost: 4.92, mark: .47, value: 5.64, unrealized: .55, mark_ts: new Date(Date.now() - 3 * 3600e3).toISOString(), mode: 'paper', deployment_id: 1,
+  at_cost: 4.92, mark: .47, value: 5.64, unrealized: .55, mark_ts: new Date(Date.now() - 150e3).toISOString(), mode: 'paper', deployment_id: 1,
   opened_at: '2026-10-30T05:20:00Z', market_close_time: new Date(Date.now() + 9 * 60e3).toISOString(), ...extra});
 const markClock = (iso) => { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 
@@ -55,7 +56,7 @@ export function moneyPagesWalkCases({name, frontend, strategyFrontend, detailStr
     assert.equal(lines.length, 3);
     assert.match(lines[0], new RegExp('Unrealized \\+\\$0\\.13 as of ' + AT));
     assert.match(lines[1], new RegExp('Unrealized \\+\\$0\\.55 as of ' + AT));
-    assert.ok(lines[1].includes(markClock(marked.mark_ts) + ' '), 'the mark three hours ago gives its own time, not now');
+    assert.ok(lines[1].includes(markClock(marked.mark_ts) + ' '), 'the mark two and a half minutes ago gives its own time, not now');
     assert.match(lines[2], /Unrealized not marked yet/);
     assert.doesNotMatch(lines[2], /as of/);
     if (f.clearTimers) f.clearTimers();
@@ -87,14 +88,14 @@ export function moneyPagesWalkCases({name, frontend, strategyFrontend, detailStr
     assert.doesNotMatch(texts[1], /as of/);
     if (f.clearTimers) f.clearTimers();
   });
-  test(`${name}: an old mark says how long ago it was read beside its time, and a fresh one gives no age`, async () => {
-    const old = pos({id: 1}), fresh = pos({id: 2, mode: 'demo', qty: 5, cost: 2.17, unrealized: .13, mark_ts: new Date(Date.now() - 50e3).toISOString()});
+  test(`${name}: an old mark says how long ago it was read in words, and a fresh one gives its time and no age`, async () => {
+    const old = pos({id: 1, mark_ts: new Date(Date.now() - 3 * 3600e3).toISOString()}), fresh = pos({id: 2, mode: 'demo', qty: 5, cost: 2.17, unrealized: .13, mark_ts: new Date(Date.now() - 50e3).toISOString()});
     const sf = strategyFrontend(detailStrategy({holdings: [fresh, old]}), () => response({})); sf.S.me.markets = MARKETS;
     await sf.viewStrategy(42); await settle();
     const lines = sf.root.querySelectorAll('.holdlist .holdlist-figs').map((el) => el.textContent.replace(/\s+/g, ' '));
     assert.match(lines[0], new RegExp('Unrealized \\+\\$0\\.13 as of ' + AT));
     assert.doesNotMatch(lines[0], /ago/);
-    assert.match(lines[1], new RegExp('Unrealized \\+\\$0\\.55 as of ' + AT + ', 3h ago'));
+    assert.match(lines[1], /Unrealized \+\$0\.55 as of 3 hours ago/);
     if (sf.clearTimers) sf.clearTimers();
 
     const data = {...dashboard(), open_positions: [old, {...fresh, ticker: 'KXBTC15M-26OCT301830-30'}], recent_closed: []};
@@ -108,10 +109,10 @@ export function moneyPagesWalkCases({name, frontend, strategyFrontend, detailStr
     const stubs = f.root.querySelectorAll('#dash-open .stub');
     const texts = (stubs.length ? stubs : f.root.querySelectorAll('tr.open-position')).map((el) => el.textContent.replace(/\s+/g, ' '));
     assert.equal(texts.length, 2);
-    assert.match(texts[0], new RegExp('as of ' + AT + ', 3h ago'));
+    assert.match(texts[0], /as of 3 hours ago/);
     // Its "opened 39m ago" is the position's age, not its mark's: the mark's time stands alone.
     assert.match(texts[1], new RegExp('as of ' + AT));
-    assert.doesNotMatch(texts[1], new RegExp('as of ' + AT + ', \\S+ ago'));
+    assert.doesNotMatch(texts[1], /as of \d+ \w+ ago/);
     if (f.clearTimers) f.clearTimers();
 
     const dep = {id: 1, strategy_id: 3, title: 'Fade', market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
@@ -123,7 +124,7 @@ export function moneyPagesWalkCases({name, frontend, strategyFrontend, detailStr
     await d.viewDeploy(); await settle(); if (d.clearTimers) d.clearTimers();
     const cells = d.root.querySelectorAll('.pos-unreal').map((el) => el.textContent.replace(/\s+/g, ' '));
     assert.equal(cells.length, 2);
-    assert.match(cells[0], new RegExp('as of ' + AT + ', 3h ago'));
+    assert.match(cells[0], /as of 3 hours ago/);
     assert.match(cells[1], new RegExp('as of ' + AT + '$'));
   });
 
@@ -154,5 +155,51 @@ export function moneyPagesWalkCases({name, frontend, strategyFrontend, detailStr
     // Days apart, both ends are named.
     const apart = axis(f.equityChart([[noon('2026-10-20'), 0], [noon('2026-10-30'), 2]], null, null, {width: 760}), 236);
     assert.equal(apart.length, 2); unique(apart);
+  });
+
+  // The Closed P&L chart's middle date sat at the span's midpoint: with two days that was the second day's midnight
+  // ("Oct 29, Oct 30, Oct 30"), with four a midnight between two points. Its dates are its own days, each once, ends
+  // in place, none running into the next, at a phone's width and a desktop's. Tau has no Closed P&L chart: its
+  // equityChart names the two ends, and passes the same checks.
+  test(`${name}: the Closed P&L chart's dates are its own days, each once, for a day, two days, a week and months`, () => {
+    const f = frontend();
+    const DAY = 86400, noonOf = (d) => Date.parse(d + 'T12:00:00Z') / 1000;
+    const daily = (from, n, step = 1) => Array.from({length: n}, (_, i) => [noonOf(from) + i * step * DAY, i % 3 - 1]);
+    const named = (t) => [{}, {year: 'numeric'}].map((y) => new Date(t * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric', ...y, timeZone: 'UTC'}));
+    const ticks = (curve, width) => {
+      f.root.innerHTML = f.equityChart(curve, null, null, {paper: true, width, height: 180, endLabel: false});
+      // The date axis: y is the chart's height less 6 (Meridian takes the height asked for, Tau draws 236 high).
+      return f.root.querySelectorAll('svg.chart text').filter((t) => ['174', '230'].includes(t.getAttribute('y')))
+        .map((t) => ({label: t.textContent, x: +t.getAttribute('x'), anchor: t.getAttribute('text-anchor') || 'start'}));
+    };
+    const reach = ({label, x, anchor}) => { const w = label.length * 6; return anchor === 'end' ? [x - w, x] : anchor === 'middle' ? [x - w / 2, x + w / 2] : [x, x + w]; };
+    const cases = [['two days', daily('2026-10-29', 2)], ['a week', daily('2026-10-24', 7)], ['a month', daily('2026-10-01', 30)],
+      ['three months, a close every third day', daily('2026-08-02', 30, 3)], ['across a new year', daily('2025-12-20', 30)]];
+    const counts = {};
+    for (const width of [280, 358, 760]) {
+      for (const [what, curve] of cases) {
+        const got = ticks(curve, width), labels = got.map((t) => t.label), where = `${what} at ${width}: ${labels.join(', ')}`;
+        assert.equal(new Set(labels).size, labels.length, where);
+        assert.ok(labels.length >= 2, where);
+        // Every date is one of the curve's days, the first and last at the ends.
+        const days = curve.map(([t]) => named(t));
+        assert.ok(labels.every((l) => days.some((d) => d.includes(l))), where);
+        assert.ok(named(curve[0][0]).includes(labels[0]) && named(curve[curve.length - 1][0]).includes(labels[labels.length - 1]), where);
+        // Left to right, no label runs into the next.
+        for (let i = 1; i < got.length; i++) assert.ok(reach(got[i - 1])[1] <= reach(got[i])[0], where);
+        counts[`${what} ${width}`] = labels.length;
+      }
+    }
+    // One day: a curve inside a day names it once.
+    assert.equal(ticks([[noonOf('2026-10-30'), 0], [noonOf('2026-10-30') + 3600, 1]], 760).length, 1);
+    if (name === 'Meridian') {
+      // A wide chart spreads dates between its ends; a phone's keeps at least the ends.
+      assert.equal(counts['two days 760'], 2);
+      assert.ok(counts['a week 760'] >= 4, JSON.stringify(counts));
+      assert.equal(counts['a month 760'], 5, JSON.stringify(counts));
+      assert.ok(counts['a month 358'] >= 3, JSON.stringify(counts));
+      // Across a new year each date names its year.
+      assert.ok(ticks(daily('2025-12-20', 30), 760).every((t) => /20(25|26)/.test(t.label)));
+    }
   });
 }

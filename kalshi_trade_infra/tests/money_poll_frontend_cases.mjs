@@ -132,9 +132,9 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
     const at = (iso) => { const d = new Date(iso), today = d.toDateString() === new Date().toDateString();
       return new Intl.DateTimeFormat(undefined, today ? {hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}
         : {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}).format(d); };
-    // A mark older than the engine's 90s staleness gate also says how long ago (sinceMin's words): these are days old.
-    const aged = (iso) => { const s = (Date.now() - Date.parse(iso)) / 1000;
-      return `${at(iso)}, ${s < 5400 ? Math.round(s / 60) + 'm' : s < 172800 ? Math.round(s / 3600) + 'h' : Math.round(s / 86400) + 'd'} ago`; };
+    // These marks are days old, past the page's three minutes (MARK_OLD_S): each says how long ago in words, and its
+    // time and what that means are in text a screen reader reads (the cell's text here) and in a title.
+    const aged = (iso) => `${Math.round((Date.now() - Date.parse(iso)) / 86400e3)} days ago (Last marked ${at(iso)}. No newer price has come in, so this figure may be out of date.)`;
     const unmarked = pos({id: 12, mark_price: null, mark: null, value: null, unrealized: null, mark_ts: null});
     let answer = {deployments: [dep({open_positions: 2})], open_positions: [pos(), unmarked], recent_closed: [], demo_health: null, v: 'b1'};
     const f = frontend({fetchImpl: (path) => {
@@ -151,14 +151,15 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
     // The time is tucked under its figure in one block of the Unrealized cell: as a child of the cell itself, a
     // phone's stacked card set it on a row of its own under the card's labels, one more row a position.
     const tucked = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1]);
-    assert.match(tucked()[0], /^<div class="pos-unreal"><span class="[^"]*">\+\$0\.13<\/span><div class="sub-fig">as of [^<]+<\/div><\/div>$/);
+    // An old mark's figure is dimmed (.mark-old).
+    assert.match(tucked()[0], /^<div class="pos-unreal"><span class="mark-old"><span class="[^"]*">\+\$0\.13<\/span><\/span><div class="sub-fig"><span class="mark-age" title="Last marked [^"]+">as of \d+ days ago<span class="vh">[^<]+<\/span><\/span><\/div><\/div>$/);
     assert.doesNotMatch(tucked()[1], /pos-unreal|as of|last mark/);
 
     // Marked again: the figure and its time move together.
     answer = {v: 'b1', same: true, marks: marks(.52, '2026-10-26T12:05:15Z'), unrealized: {1: null}};
     await pollOf(f, '/api/deployments');
     assert.deepEqual(cells(), [`+$0.41 as of ${aged('2026-10-26T12:05:15Z')}`, 'Not marked yet']);
-    assert.match(tucked()[0], /^<div class="pos-unreal"><span class="[^"]*">\+\$0\.41<\/span><div class="sub-fig">as of [^<]+<\/div><\/div>$/);
+    assert.match(tucked()[0], /^<div class="pos-unreal"><span class="mark-old"><span class="[^"]*">\+\$0\.41<\/span><\/span><div class="sub-fig"><span class="mark-age" title="Last marked [^"]+">as of \d+ days ago<span class="vh">[^<]+<\/span><\/span><\/div><\/div>$/);
     f.clearTimers();
 
     // An answer that gives the figure without its time: it is still the last mark's, and says only that.

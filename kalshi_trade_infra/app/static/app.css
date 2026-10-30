@@ -349,6 +349,11 @@ h1.page { font-size: clamp(23px, 3vw, 30px); font-weight: 600; letter-spacing: -
 /* An open position's Unrealized before its first mark (app.js NO_MARK): muted like a .sub-fig, but inline, so a
    phone's stacked card reads "UNREALIZED Unavailable" on one line, as Cost + fee does, not the word alone under it. */
 .no-mark { font-size: 12px; color: var(--ink-3); }
+/* An open position's figure from an old mark (app.js markFig, MARK_OLD_S): muted, a gain or loss too, so an hours-old
+   figure doesn't read as this minute's. Its "as of 14 min ago" (markedAt) is underlined dotted: its title gives the
+   mark's time. */
+span.mark-old, span.mark-old .gain, span.mark-old .loss { color: var(--ink-3); }
+.mark-age { text-decoration: underline dotted; text-underline-offset: 2px; }
 /* The track record's By strategy titles wrap: on one line a long title pushed Trades, Net P&L and the rest
    out of view behind a sideways scroll at every desktop width. */
 .trpanel td.name { white-space: normal; overflow-wrap: anywhere; min-width: 14em; }
