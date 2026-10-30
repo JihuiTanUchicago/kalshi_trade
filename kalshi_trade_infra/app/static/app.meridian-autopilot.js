@@ -265,7 +265,7 @@ window.TauPage('autopilot', (T) => {
   }
   function apBuildShell(box) {
     box.dataset.shell = 'expanded'; box.apPill = '';
-    box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Autopilot');
+    box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Autopilot panel');
     // Esc closes the open panel, and focus goes back to the pill. As a full-screen sheet the panel
     // covers the page, so Tab stays inside it instead of walking controls nobody can see.
     box.onkeydown = (e) => {

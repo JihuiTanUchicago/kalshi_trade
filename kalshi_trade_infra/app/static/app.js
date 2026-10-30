@@ -3444,7 +3444,7 @@
       });
       const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot, d.markets);
       keepFocus(body, () => {
-        paint(body, '<div id="xnote"></div><div class="sheet"><table class="stack t-explore"><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open interest</th><th class="num" aria-label="Link"></th></tr></thead><tbody id="xrows"></tbody></table></div><div id="xpager"></div>');
+        paint(body, '<div id="xnote"></div><div class="sheet"><table class="stack t-explore"><thead><tr><th>Market</th><th class="num">Yes price</th><th class="num">24h volume</th><th class="num">Open interest</th><th class="num"><span class="vh">Link</span></th></tr></thead><tbody id="xrows"></tbody></table></div><div id="xpager"></div>');
         paint(body.querySelector('#xnote'), note ? `<p class="hint xspot-note${d.spot && !d.spot.stale && !d.spot.failed ? '' : ' behind'}">${esc(note)}</p>` : '');
         paintRows(body.querySelector('#xrows'), rows);
         paint(body.querySelector('#xpager'), pages > 1 ? `<div class="xpage">${f.page > 0 ? `<button class="btn sm" data-pg="${f.page - 1}">${ICON.up ? '' : ''}← Prev</button>` : '<span></span>'}<span class="lab">Page ${f.page + 1} of ${num(pages)}</span>${f.page + 1 < pages ? `<button class="btn sm" data-pg="${f.page + 1}">Next →</button>` : '<span></span>'}</div>` : '');
@@ -4253,7 +4253,7 @@
     const m = (S.ap && AP_MODE[S.ap.mode]) || AP_MODE.off;
     box.dataset.shell = 'loading'; box.apPill = '';
     box.className = 'apf open' + (m.cls ? ' ' + m.cls : '');
-    box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Autopilot');
+    box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Autopilot panel');
     box.innerHTML = `<div class="apf-head"><span class="apf-dot" aria-hidden="true"></span><b id="apf-label">${esc(m.label)}</b>
       <button type="button" class="apf-x" data-ap="toggle" aria-label="Collapse autopilot">${ICON.cross || '×'}</button></div>
       <div class="apf-top">${loading(320)}</div>`;

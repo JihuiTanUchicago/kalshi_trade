@@ -465,6 +465,9 @@ input, select, textarea, button { font-family: inherit; font-size: 13px; color: 
 textarea.input { min-height: 84px; resize: vertical; line-height: 1.45; }
 .input:hover, select:hover { border-color: var(--ink-3); }
 .input:focus, select:focus, input:focus { border-color: var(--ink); outline: none; background: var(--stock); }
+/* A placeholder (the Funds amount's "500", a key's format, a search's hint) is text: the browser's own grey
+   (#757575) was 4.1:1 on a field and 3.8:1 on a focused one, under AA. The muted text token keeps it lighter than typed text. */
+input::placeholder, textarea::placeholder { color: var(--ink-3); opacity: 1; }
 /* Research model picker: flat ink caret, no native chrome, to match the Kursbuch form controls. */
 select#rmodel { appearance: none; -webkit-appearance: none; padding-right: 28px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23191B16' stroke-width='1.3'/%3E%3C/svg%3E");
@@ -1759,8 +1762,10 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .hot-foot .mk { font-size: 10px; letter-spacing: .05em; padding: 1px 5px 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hot-vol { font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); flex: none; white-space: nowrap; }
 .hot-ft { padding: 10px 15px; border-top: 1px solid var(--rule); font-family: var(--f-nar); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
-.hot-ft a { color: var(--ink); text-decoration: none; }
-.hot-ft a:hover { text-decoration: underline; }
+/* The link sits in the line "Updated just now · See all markets", and --ink on --ink-3 is 2.9:1, under the 3:1 a
+   link told apart by colour alone needs: it is underlined, as a link in running text is. */
+.hot-ft a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+.hot-ft a:hover { text-decoration-thickness: 2px; }
 .hot-empty { padding: 20px 15px; color: var(--ink-3); font-size: 13px; }
 /* A hot market's close and, for a Bitcoin contract, spot against its strike; the rail's line when spot is old. */
 .hot-when { display: flex; flex-wrap: wrap; gap: 0 10px; margin-top: 4px; font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); }
