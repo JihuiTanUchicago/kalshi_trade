@@ -93,3 +93,98 @@ def test_the_session_page_flags_a_pass_with_no_record_from_its_own_reads(monkeyp
     flagged = {c["id"]: c.get("no_gatekeeper_record", False) for c in out}
     assert flagged == {1: False, 2: False, 3: True, 4: True, 5: False, 6: False}
     assert calls == [("newest", [2, 3]), ("later", [11, 22, 44, 55])]  # the same two reads as before
+
+
+# -- A void strategy with no gatekeeper record ------------------------------------------------------------------
+# The first version's simple backtest path stored strategies as "failed" with no gatekeeper record; today a void is
+# the gatekeeper's inconclusive verdict, so it always has one. Those old void rows said "unseen data" and counted
+# under "Void on unseen data". They are flagged by the rule a pass is (NO_EXPERIMENT_SQL), in the list's and the
+# counts' own statements. Display only.
+
+
+def _row(**over):
+    return dict({"id": 1, "run_id": 9, "parent_id": None, "market": "btc15m", "direction": "momentum", "title": "t",
+                 "thesis": "x", "status": "failed", "created_at": None, "spec": {"side": "yes"}, "result": {}}, **over)
+
+
+def test_the_void_rule_is_the_pass_rule():
+    from app.adapters.db import deployment_repository as deps
+    from app.adapters.db import strategy_repository as strat
+
+    assert strat.VOID_NO_RECORD_SQL == "(s.status='failed' AND " + strat.NO_EXPERIMENT_SQL + ")"
+    assert deps.NO_RECORD_SQL == "(s.status='passed' AND " + strat.NO_EXPERIMENT_SQL + ") AS no_gatekeeper_record"
+
+
+def test_a_void_card_with_no_record_is_flagged_from_the_list_read():
+    # MySQL hands the column back as 1/0 (NULL for none); only a void row's counts.
+    assert strategy_routes._strategy_card(_row(void_no_record=1))["no_gatekeeper_record"] is True
+    for over in ({"void_no_record": 0}, {"void_no_record": None}, {}, {"status": "passed", "void_no_record": 1},
+                 {"status": "rejected", "void_no_record": 1}):
+        assert "no_gatekeeper_record" not in strategy_routes._strategy_card(_row(**over)), over
+
+
+class _Cur:
+    def __init__(self, rows=()):
+        self.rows, self.sqls, self.params = list(rows), [], []
+
+    def execute(self, sql, params=()):
+        self.sqls.append(" ".join(sql.split()))
+        self.params.append(list(params))
+
+    def fetchall(self):
+        return self.rows
+
+
+def test_the_list_read_carries_the_void_flag_in_its_one_statement():
+    from app.adapters.db import strategy_repository as strat
+
+    cur = _Cur([dict(_row(), spec_json="{}", result_json="{}", void_no_record=1)])
+    out = strat.list_strategies(cur, 7)
+    assert len(cur.sqls) == 1 and strat.VOID_NO_RECORD_SQL + " AS void_no_record" in cur.sqls[0]
+    assert out[0]["void_no_record"] == 1
+
+
+def test_the_counts_say_how_many_voids_have_no_record_in_the_same_statement():
+    from app.adapters.db import strategy_repository as strat
+
+    cur = _Cur([{"status": "failed", "n": 5, "dep": 0, "ex": 1, "norec": 3},
+                {"status": "passed", "n": 2, "dep": 1, "ex": 0, "norec": 0}])
+    counts = strat.count_strategies(cur, 7)
+    assert len(cur.sqls) == 1 and "WHEN " + strat.VOID_NO_RECORD_SQL + " THEN 1" in cur.sqls[0]
+    # The seeded example's void rows are left out of it as out of every count (its direction is matched first).
+    assert "SUM(CASE WHEN s.direction=%s THEN 0 WHEN " in cur.sqls[0]
+    assert cur.params[0][:3] == [strat.DEMO_DIRECTION, strat.DEMO_DIRECTION, 7]
+    # Still under "failed" (the Void chip lists every void row); the summary takes the unrecorded ones off.
+    assert counts["failed"] == 4 and counts["failed_no_record"] == 3 and counts["total"] == 6
+    assert "failed_no_record" not in strat.count_strategies(_Cur([{"status": "failed", "n": 2, "norec": 0}]), 7)
+
+
+def test_the_strategies_list_sends_the_unrecorded_void_count_and_flags_its_rows(monkeypatch):
+    calls = []
+    _fake_reads(monkeypatch, calls)
+    monkeypatch.setattr(server.repo, "count_strategies",
+                        lambda *a, **k: {"passed": 4, "failed": 3, "failed_no_record": 2, "total": 7})
+    monkeypatch.setattr(server.repo, "passed_strategies", lambda *a, **k: _judged())
+    rows = [_row(id=20, void_no_record=1), _row(id=21, void_no_record=0, experiment_id=210)]
+    monkeypatch.setattr(server.repo, "list_strategies", lambda *a, **k: [dict(r) for r in rows])
+    out = server.list_strategies(ctx(query={"status": "failed"}))
+    assert out["counts"]["failed"] == 3 and out["counts"]["failed_no_record"] == 2
+    flagged = {c["id"]: c.get("no_gatekeeper_record", False) for c in out["strategies"]}
+    assert flagged == {20: True, 21: False}
+    assert len(calls) == 2  # no read of its own
+
+
+def test_the_deployment_reads_carry_the_void_flag_in_their_own_statements():
+    # Deploy and the Overview said "unseen data" on a row of a void strategy with no record. Its flag is a column of
+    # the two display reads (the full one and book_memo's kept one), never a read of its own, and never of the gates'.
+    from app.adapters.db import deployment_repository as deps
+    from app.adapters.db import strategy_repository as strat
+
+    assert deps.VOID_RECORD_COL == strat.VOID_NO_RECORD_SQL + " AS void_no_record"
+    for read in (deps.list_deployments_for_display, deps.deployment_rows_for_display):
+        cur = _Cur([])
+        read(cur, 7)
+        assert len(cur.sqls) == 1 and deps.VOID_RECORD_COL in cur.sqls[0] and deps.NO_RECORD_SQL in cur.sqls[0], read
+    cur = _Cur([])
+    deps.list_deployments(cur, 7)
+    assert all("void_no_record" not in q for q in cur.sqls)

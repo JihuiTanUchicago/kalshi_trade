@@ -58,6 +58,9 @@
     rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
     unseen: ['Later-period P&L (unseen data)', 'What the strategy made in the backtest after its split date, on a held-out slice of history the agent never looked at while searching, so the result can’t be curve-fit. This is the backtest figure that counts.'],
     laterperiod: ['Later-period P&L', 'What the strategy made in the backtest after its split date. That later stretch is what picked it, so unlike unseen data it wasn’t held out: a weaker test.'],
+    // A Void strategy's later stretch picked nothing: the first version's simple backtest judged it there, it failed, and
+    // nothing says the stretch was held out ("what picked it" was wrong for it). Its page's bubble says this instead.
+    latervoid: ['Later-period P&L', 'What the strategy made in the backtest after its split date, where it failed its checks. There’s no record that stretch was held out, so unlike unseen data it isn’t held-out evidence.'],
     insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
     gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
     pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade after its split date. For a strategy with a gatekeeper record, that data was held out: the agent never saw it. For one without (backtest only, or a pass from the old backtest gate), it is the later period that picked it, so not held out. Compare it with Realized: well below it means trading is falling short of the test.'],
@@ -270,14 +273,21 @@
   // plain() text (copyPlain), and CSV downloads come from the server.
   const WJ = '\u2060';
   const plain = (s) => String(s == null ? '' : s).replace(/\u2060/g, '');
+  // The sign is the shown amount's, rounded as shown: −0.002 read "−$0.00" (the track record's Avg trade for a
+  // strategy a fraction of a cent down), a sign on a figure that reads as no money either way.
   const usd = (v, signed = false) => {
     if (v == null || Number.isNaN(+v)) return '—';
-    const n = +v;
-    const s = '$' + (Math.abs(n) >= 100000 ? fmt0.format(Math.abs(n)) : fmt2.format(Math.abs(halfUp(n))));
+    const n = Math.abs(+v) >= 100000 ? Math.round(+v) : halfUp(+v);
+    const s = '$' + (Math.abs(n) >= 100000 ? fmt0.format(Math.abs(n)) : fmt2.format(Math.abs(n)));
     if (n < 0) return '−' + WJ + s;
     return signed && n > 0 ? '+' + WJ + s : s;
   };
-  const pct = (v, signed = true) => (v == null ? '—' : (v < 0 ? '−' : signed && v > 0 ? '+' : '') + Math.abs(v * 100).toFixed(1) + '%');
+  // A share to one decimal of a percent, its sign the shown figure's (−0.0001 read "−0.0%").
+  const pct = (v, signed = true) => {
+    if (v == null) return '—';
+    const n = halfUp(+v * 100, 1);
+    return (n < 0 ? '−' : signed && n > 0 ? '+' : '') + Math.abs(n).toFixed(1) + '%';
+  };
   // Kalshi quotes some markets in tenths of a cent: 0.1¢ read as 0¢ and a 99.9¢ bid as 100¢.
   const cents = (v) => (v == null ? '—' : Math.round(v * 1000) / 10 + '¢');
   const isPerpetual = (s) => s.kind === 'perpetual' || s.market === 'btc_perp' || s.key === 'btc_perp' || (s.spec && s.spec.market === 'btc_perp');
@@ -574,12 +584,16 @@
   // What a failed request says when Tau sent no words of its own (the edge's HTML error page, a cut-off
   // reply, no network): plain words, never the page itself. A write that Tau may have taken anyway (no
   // reply, or the edge's 5xx) says so, so nobody deploys or sends twice by trying again blind.
+  // A read's 5xx names no code: the reader can't act on "(500)", and the operator's readout (apiBroke) has it.
   const failText = (status, write) => write && (!status || status >= 500)
     ? "Tau didn't confirm this, so it may or may not have gone through. Reload the page to check before you try again."
     : !status ? 'Can’t reach Tau. Check your connection.'
     : status === 429 ? 'Tau is getting a lot of requests right now. Try again in a minute.'
-    : status >= 500 ? `Tau is having trouble right now (${status}). Try again in a moment.`
-    // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code.
+    : status >= 500 ? 'Tau is having trouble right now. Try again in a moment.'
+    // A 4xx with no words of Tau's own (an edge page in front of it): what to do, not just the code. A read
+    // names no code either (it put "Tau couldn't do that (403)" over a section that hadn't loaded); a write's
+    // line is unchanged.
+    : !write ? 'Tau couldn’t load this. Reload the page and try again.'
     : `Tau couldn't do that (${status}). Reload the page and try again.`;
   // A failure the page shows as an error goes to the operator's readout on /admin (boot.js sends it).
   // An API call that broke: no reply (not our own timeout), the server's 5xx, or a reply that isn't
@@ -756,13 +770,16 @@
   const staleAfter = (ms) => Math.max(2 * ms, 10000);
   const staleText = (at) => `Last updated ${age(Math.max(0, Math.round((Date.now() - at) / 1000)))} ago, retrying`;
   function paced(read, ms, note) {
-    let busy = false, fails = 0, wait = 0, okAt = Date.now();
+    let busy = false, fails = 0, wait = 0, okAt = Date.now(), wokeAt = 0;
     const mark = () => { if (note) note((busy || fails) && Date.now() - okAt > staleAfter(ms) ? okAt : null); };
     // wake (the browser came back online) skips what is left of the back-off.
     return (wake) => {
       if (wake === true && !busy) wait = 0;
+      // Back on the tab it read at once (wake): the interval's next tick, due within half an interval, would
+      // ask the same again a second or two later, so it sits that one out.
+      if (wake !== true && wokeAt && !busy && !fails && Date.now() - wokeAt < ms / 2) { wokeAt = 0; mark(); return null; }
       if (busy || wait > 0) { if (!busy) wait--; mark(); return null; }
-      busy = true;
+      busy = true; wokeAt = wake === true ? Date.now() : 0;
       // The read starts now, not a microtask later: a page left in between must not start it.
       let run; try { run = Promise.resolve(read(POLL_READ)); } catch (e) { run = Promise.reject(e); }
       return run.then(
@@ -863,6 +880,10 @@
     window.scrollTo(0, 0);
     // On a phone the open autopilot panel fills the screen, so moving to a page closes it.
     if (phone()) { try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ } }
+    // The panel that switching autopilot on opened by itself (desktop) folds to its pill on the next page: left
+    // open, it covered half of that page, the nav links under it and the research form (walk 2026-10-28). A panel
+    // the reader opened stays open.
+    if (S.apAutoOpen && S.apAutoOpen !== location.pathname) { S.apAutoOpen = null; try { localStorage.setItem('tau_ap_open', '0'); } catch (e) { /* private mode */ } }
     const path = location.pathname;
     if (path === '/signin') { const f = document.getElementById('autopilot-float'); if (f) f.remove(); }
     const match = routes.map(([re, fn]) => [path.match(re), fn]).find(([m]) => m);
@@ -900,7 +921,7 @@
         // Offline, it isn't "something went wrong": the page loads by itself once the network is back
         // (the online handler presses Try again).
         const off = e.status === 0 && offline();
-        shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'Something went wrong'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
+        shell(sectionOf(path), boardTitle(off ? 'You’re offline' : 'This page didn’t load'), loadFail(off ? 'This page loads by itself once you’re back online.' : errText(e)));
         root.querySelector('[data-retry]').onclick = () => render();
       }
     }
@@ -1046,14 +1067,24 @@
   // they can see what a normal user sees. Default: admin view on.
   const isAdmin = () => !!(S.me && S.me.is_admin);
   const adminViewOn = () => isAdmin() && localStorage.getItem('tau_admin_off') !== '1';
-  let bellReq = null, bellReqAt = 0, bellFresh = null;
+  let bellReq = null, bellReqAt = 0, bellOkAt = 0, bellFresh = null, bellStale = null;
   // The autopilot panel's status read (every 20s, on every signed-in page) keeps the bell current too:
   // at most once a minute it re-reads the list, with no timer of its own.
   const BELL_EVERY_MS = 60000;
+  // Opening the bell reads the list again when the one it keeps is older than this (see trig.onclick).
+  const BELL_OPEN_FRESH_MS = 15000;
   function bellTick() {
     if (!bellFresh || Date.now() - bellReqAt < BELL_EVERY_MS) return;
-    bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now();
-    bellReq.then((d) => bellFresh && bellFresh(d)).catch(() => {});  // best-effort, like the first read
+    bellRead();
+    // best-effort, like the first read; one that fails says the list kept may be out of date (bellStale)
+    bellReq.then((d) => bellFresh && bellFresh(d), () => bellStale && bellStale()).catch(() => {});
+  }
+  // One read of the list; bellOkAt is when the newest one that came back was asked.
+  function bellRead() {
+    const at = bellReqAt = Date.now();
+    bellReq = api('/api/notifications', undefined, { keep: true });
+    bellReq.then(() => { bellOkAt = at; }, () => {});
+    return bellReq;
   }
   // A list that filled up while the user was away opens with what it holds, by kind (the server's
   // unread_kinds): a week back, seven "Autopilot put ... on paper" lines ran past the first screen
@@ -1077,7 +1108,7 @@
     if (!wrap) return;
     const trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
     const dot = wrap.querySelector('.bell-dot'), list = wrap.querySelector('#bell-list');
-    const head = wrap.querySelector('.bell-head');
+    const head = wrap.querySelector('.bell-head'), staleEl = wrap.querySelector('.bell-stale');
     // The new items stay marked while the list is open (they are read on the server as it opens), so
     // the reader can see what came in since last time; closing it clears the marks.
     const close = () => {
@@ -1102,7 +1133,17 @@
     };
     // A list that didn't load still opens, says so and offers Try again; the next read (bellTick) fills it
     // too. It used to leave the bell dead for the rest of the visit: a tap did nothing and no dot ever came.
-    let data = null;
+    let data = null, dataAt = 0;
+    // A refresh that failed with a list up kept the list and said nothing, so it read as current. One quiet
+    // line above the list says it may be out of date, only after a failed refresh, and the next read that
+    // comes back takes it away (walk 2026-10-28).
+    const ago = () => { const m = Math.max(1, Math.round((Date.now() - dataAt) / 60000)); if (m < 60) return `${m} min ago`; const h = Math.round(m / 60); return `${h} hour${h === 1 ? '' : 's'} ago`; };
+    const stale = (on) => {
+      if (!staleEl) return;
+      if (on && data) staleEl.innerHTML = `Couldn\u2019t refresh. Showing notifications from ${ago()}. <button type="button" class="bell-again" data-bell-retry>Try again</button>`;
+      else staleEl.innerHTML = '';
+      staleEl.hidden = !(on && data);
+    };
     const unloaded = () => { list.innerHTML = '<p class="bell-empty">Notifications didn\u2019t load just now. <button type="button" class="btn sm" data-bell-retry>Try again</button></p>'; };
     // Focus goes into the list (its first notice, or the list itself when it is empty), so Tab and a
     // screen reader carry on from what just opened; Esc brings it back to the bell.
@@ -1123,20 +1164,36 @@
     };
     const load = async () => {
       // The shell is often painted twice in a row (instant page switch, then content): one read serves both.
-      if (!bellReq || Date.now() - bellReqAt > 2000) { bellReq = api('/api/notifications', undefined, { keep: true }); bellReqAt = Date.now(); }
-      try { data = await bellReq; paint(data); return true; } catch (e) { if (!data) unloaded(); return false; }  // bell is best-effort
+      // A list that came back under a minute ago serves the next page's bell too, since the autopilot's read
+      // keeps it current within the minute (bellTick): every page change read it again. One that failed is read again.
+      const kept = bellReq && bellOkAt === bellReqAt ? BELL_EVERY_MS : 2000;
+      if (!bellReq || Date.now() - bellReqAt > kept) bellRead();
+      const at = bellReqAt;
+      try { data = await bellReq; dataAt = at; paint(data); stale(false); return true; } catch (e) { if (!data) unloaded(); else stale(true); return false; }  // bell is best-effort
     };
-    await load();
+    // The bell opens while its list is still reading (walk 2026-10-28: on a slow reply a tap did nothing until
+    // the read came back, up to READ_MS), so it says it is loading, and the list fills in where it stands.
+    if (!data && !list.children.length) list.innerHTML = '<p class="bell-empty">Loading notifications\u2026</p>';
+    load().then((ok) => { if (ok) seen(); });
     // Autopilot pauses or readies a strategy while the page sits open: the dot shows it within a minute,
     // without a reload (bellTick). An open list is left as the reader sees it, unless it never loaded.
-    bellFresh = (d) => { if (menu.hidden || !data) { data = d; paint(d); seen(); } };
+    bellFresh = (d) => { if (menu.hidden || !data) { data = d; dataAt = Date.now(); paint(d); stale(false); seen(); } };
+    bellStale = () => stale(true);
     trig.onclick = async (e) => {
       e.stopPropagation();
       if (!menu.hidden) { close(); return; }
       if (data && data.unread && !list.querySelector('.notif.unread')) paint(data);  // a mark that didn't save: new again
+      if (staleEl && !staleEl.hidden) stale(true);  // its "3 min ago" as of now
       menu.hidden = false; trig.setAttribute('aria-expanded', 'true'); document.addEventListener('click', onDoc, true);
-      focusIn();
+      // A list read a while ago is read again as it opens: the bell's own read comes at most once a minute, so a
+      // strategy the autopilot had just put on paper (the dashboard already said so) opened as “No notifications
+      // yet” (walk 2026-10-28). The kept list shows at once; focus waits on the list while it reads, as Try again's does.
+      const old = data && Date.now() - dataAt > BELL_OPEN_FRESH_MS;
+      if (old) menu.focus({ preventScroll: true }); else focusIn();
       seen();
+      if (!old) return;
+      bellReqAt = 0;
+      if (await load() && !menu.hidden) { focusIn(); seen(); }
     };
     // Focus waits on the list itself while it reads: the browser blurs a button that goes disabled or is
     // painted over, and focus leaving the bell closes the list.
@@ -1145,7 +1202,7 @@
       btn.dataset.busy = '1';
       menu.focus({ preventScroll: true });
       bellReqAt = 0;  // a fresh read, not the one that just failed
-      if (await load()) { focusIn(); seen(); } else { const b = list.querySelector('[data-bell-retry]'); if (b) b.focus({ preventScroll: true }); }
+      if (await load()) { focusIn(); seen(); } else { const b = menu.querySelector('[data-bell-retry]'); if (b) b.focus({ preventScroll: true }); }
     };
     // Esc closes the list and gives focus back to the bell.
     wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { close(); trig.focus(); } });
@@ -1157,6 +1214,7 @@
       const again = e.target.closest('[data-bell-retry]');
       if (again) retry(again); else if (e.target.closest('a.notif')) close();
     });
+    if (staleEl) staleEl.addEventListener('click', (e) => { const again = e.target.closest('[data-bell-retry]'); if (again) retry(again); });
   }
 
   function shell(active, board, main) {
@@ -1172,7 +1230,7 @@
     root.innerHTML = `
       <header class="masthead"><div class="masthead-in">
         <p class="wordmark"><a href="/">${ICON.mark}<span>Tau</span></a></p>
-        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
+        <span class="asof">${adminToggle}<span class="bell-wrap"><button class="bell-trig" data-action="bell" aria-controls="bell-menu" aria-expanded="false" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bell-dot" hidden></span></button><span class="bell-menu" id="bell-menu" role="region" aria-label="Notifications" tabindex="-1" hidden><div class="bell-head"><b>Notifications</b></div><p class="bell-stale" hidden></p><div class="bell-list" id="bell-list"></div></span></span><span class="profile"><button class="profile-trig" data-action="profile" aria-haspopup="true" aria-expanded="false">${esc(u.name || u.email)}<svg class="profile-chev" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button><span class="profile-menu" hidden><a href="/settings">Settings</a><a href="/billing">Billing</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><button class="profile-item" data-action="signout">Sign out</button></span></span></span>
       </div></header>
       <nav class="services" aria-label="Sections"><div class="services-in">${nav}</div></nav>
       <main class="wrap">
@@ -1379,7 +1437,9 @@
   const fundsLinked = (html) => String(html).replace(/\b(?:the )?Funds page\b/, '<a href="/funds#connect-kalshi">$&</a>');
   const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${fundsLinked(esc(msg))}</span></div>`;
   // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
-  const loadFail = (msg) => `<div class="load-fail">${notice(msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
+  // A section whose own read failed on a page that otherwise loaded names itself and says the rest is there
+  // (`what`): the dashboard's track record said only "Something went wrong on our side." (walk 2026-10-28).
+  const loadFail = (msg, what) => `<div class="load-fail">${notice(what ? `${what} didn\u2019t load. ${msg} Everything else on this page did.` : msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
   // A page's own bug (a TypeError on a reply it didn't expect) is not something to print to the user.
   // It is reported (reportBroken), so a page that breaks this way shows up on /admin.
   const errText = (e) => (e instanceof ApiError ? e.message : (reportBroken('view', e), 'Something went wrong on this page. Try again.'));
@@ -1731,7 +1791,11 @@
   // after passing on paper kept its "Void".
   const VERDICT = { missed_final: ['mk', 'Missed final test'], held_back: ['mk quiet', 'Held back'] };
   const statusMark = (s) => VERDICT[s.verdict] ? `<span class="${VERDICT[s.verdict][0]}">${VERDICT[s.verdict][1]}</span>` : mark(s.status);
-  const money = (v) => `<span class="${tone(v)}">${usd(v, true)}</span>`;
+  // Stored money (4 places: a position's pnl, fees, prices) summed exactly, as the server's SUM is, before usd()
+  // rounds it once, half up. Adding the floats drifted: −0.0036 + −0.1314 is −0.13499…, which read −$0.13 beside
+  // the track record's −$0.14 for the same two trades.
+  const sum4 = (xs) => xs.reduce((a, v) => a + Math.round((+v || 0) * 1e4), 0) / 1e4;
+  const money = (v) => `<span class="${tone(v == null ? v : halfUp(+v))}">${usd(v, true)}</span>`;
   // "Ideas tested": how many ideas the research session that found a strategy tested, it included. The column
   // read "Tried" over "1 of 18", which said neither what was tried nor where (Meridian calls it Ideas tested).
   const TRIED_TIP = 'Every idea the research session that found it tested, this one included';
@@ -1820,7 +1884,9 @@
     // And over how long: "+$6.20 on unseen data" beside "58% win" said neither period nor pace (its page says both).
     // A backtest-only strategy (the old loose gate) has no gatekeeper record: its out_of_sample is the backtest's
     // later slice, which that gate picked it on, so it is "later-period", never unseen (as its page says, #590). So is
-    // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's or the session page's own reads).
+    // a passed one the server found no gatekeeper record for (no_gatekeeper_record, from the list's or the session page's own reads),
+    // and a void one it found none for (the first version's simple backtest stored it as failed, never judged on held-out
+    // data): its later slice is "not held out" too, without "which picked it", since nothing picked it.
     // A held-out row's figure is the backtest after its split date too, so it says "later-period", as the sort
     // ("Later-period P&L") that orders it does: it read "on unseen data" under a sort named otherwise. Its last piece
     // says which kind, in the family's words ("later period · unseen data" / "· not held out", as the short form, the
@@ -1833,7 +1899,7 @@
     const verdictWord = missedFinal ? 'missed the final test' : noPass ? 'did not pass' : '';
     // The count and its unit hold together ("30 / days" broke across a phone's lines).
     const spanDays = (d) => !(+d > 0) ? '' : +d < 1 ? 'under a day' : `${num(Math.round(+d))}\u00a0day${Math.round(+d) === 1 ? '' : 's'}`;
-    const longSub = [...(m.pnl == null ? [] : later ? [`later-period P&amp;L${overDays(m.days)} after the split date, which picked it`, 'not\u00a0held\u00a0out']
+    const longSub = [...(m.pnl == null ? [] : later ? [`later-period P&amp;L${overDays(m.days)} after the split date${noPass ? '' : ', which picked it'}`, 'not\u00a0held\u00a0out']
       : oos ? [`later-period P&amp;L${overDays(m.days)} after the split date`, 'unseen\u00a0data'] : ['on the history it searched' + overDays(m.days)]), verdictWord].filter(Boolean).join(SEP);
     // Each short phrase holds together, so a narrow card breaks only at a separator ("unseen / data" split it).
     const shortSub = [...(m.pnl == null ? [] : [oos ? 'later\u00a0period' : 'history it searched', spanDays(m.days), later ? 'not\u00a0held\u00a0out' : oos ? 'unseen\u00a0data' : '']),
@@ -1860,6 +1926,9 @@
   const PACE_TIP = 'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· unseen data)';
   // A backtest-only strategy's row (the server's backtest_only): its backtest's later slice picked it, so not unseen.
   const PACE_TIP_LATER = 'What these same closed trades would have made at the backtest’s average per trade after its split date, which picked it (later period\u00a0· not held out)';
+  // A Void strategy with no gatekeeper record's row (the server's void_no_record): not held out either, but nothing
+  // picked it, so its hover leaves "which picked it" out, as its Strategies row and page do. It read "unseen data".
+  const PACE_TIP_VOID = 'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· not held out)';
   // The column's header covers both kinds of row, so it says which is which (its glossary marker says the same at
   // more length); it read "on unseen data" over rows whose figure is later-period.
   const PACE_HEAD_TIP = 'What these same closed trades would have made at the backtest’s average per trade after its split date: held out for a strategy with a gatekeeper record, later-period (the slice that picked it) for one without';
@@ -1943,7 +2012,7 @@
       <td class="num" data-lab="Realized">${realizedCell(d)}${spark(d.curve, regs && regs[d.mode], d.closed_trades)}</td>
       <td class="num" data-lab="Unrealized">${d.unrealized_pnl == null ? `<span class="sub-fig">${+d.open_positions ? 'Unavailable' : 'None open'}</span>` : money(d.unrealized_pnl)}${d.unrealized_pnl != null && d.open_positions ? '<div class="sub-fig">est.</div>' : ''}</td>
       <td class="num" data-lab="Trades">${num(d.closed_trades)}${d.open_positions ? `<div class="sub-fig">+${num(d.open_positions)} open</div>` : ''}</td>
-      <td class="num" data-lab="Backtest estimate" title="${d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${num(d.closed_trades)} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig">${live ? 'no live trades closed yet' : d.mode === 'demo' ? 'no demo trades closed yet' : 'no paper trades closed yet'}</span>`}</td>
+      <td class="num" data-lab="Backtest estimate" title="${d.void_no_record ? PACE_TIP_VOID : d.backtest_only ? PACE_TIP_LATER : PACE_TIP}">${pace == null ? '\u2014' : d.closed_trades ? `${usd(pace * d.closed_trades, true)}<div class="sub-fig">same ${num(d.closed_trades)} trade${d.closed_trades === 1 ? '' : 's'}</div>` : `<span class="sub-fig">${live ? 'no live trades closed yet' : d.mode === 'demo' ? 'no demo trades closed yet' : 'no paper trades closed yet'}</span>`}</td>
       <td data-lab="Since">${when(d.created_at)}</td>
       ${actions}
     </tr>`;
@@ -2381,11 +2450,11 @@
       const needs = stale || paused > 0;
       const said = [
         hasLive ? `${liveOpen() ? 'Live money on' : 'Live trading isn\u2019t open yet'}: ${usd(d.live.realized_pnl, true)} realized all time${liveOpen() ? '' : ' on live money'}` : hasDemo ? 'No real money: paper and demo' : 'Paper money only',
-        running ? `${running} strateg${running > 1 ? 'ies' : 'y'} running` : idle || paused ? '' : 'Nothing deployed',
+        running ? `${num(running)} strateg${running > 1 ? 'ies' : 'y'} running` : idle || paused ? '' : 'Nothing deployed',
         idle ? `${idle} placing no orders` : '',
         // Paused rows list first; with nothing else on, the count is the whole story and Deploy is where to act on it.
-        paused ? `<a class="needs-link" href="${running || idle ? '#dash-deps' : '/deploy'}"><em>${paused} paused, needs you</em></a>` : '',
-        agentsBusy ? `${agentsBusy} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
+        paused ? `<a class="needs-link" href="${running || idle ? '#dash-deps' : '/deploy'}"><em>${num(paused)} paused, needs you</em></a>` : '',
+        agentsBusy ? `${num(agentsBusy)} agent${agentsBusy > 1 ? 's' : ''} researching` : '',
         stale ? `<em>${d.freshness.btc == null ? 'No backtest history yet' : 'Backtest history stale ' + age(d.freshness.btc)}</em>` : '',
       ].filter(Boolean).join('<span class="sep">/</span>');
       // A live cash still being checked reads Checking\u2026 (or its last figure, with its age), never $0 (cashFig).
@@ -2400,7 +2469,7 @@
         <section id="dash-ap" class="apcard" aria-label="Autopilot"></section>${apFirst ? sinceStrip(d, '#dash-deps') : ''}
         <dl class="figures measure">
           ${fig('<span class="mk live">Real</span> Kalshi cash', lv.connected ? (liveCf ? liveCf[0] : lv.balance == null ? 'Unavailable' : usd(lv.balance)) : 'Not connected', { small: (lv.connected ? (liveCf ? [liveCf[1], mSub(lv, '')].filter(Boolean).join(SEP) : lv.balance == null ? ['Couldn\u2019t read your Kalshi balance just now', mSub(lv, '')].filter(Boolean).join(SEP) : [cashAt(lv), mSub(lv, LIVE_IDLE())].filter(Boolean).join(SEP)) : 'Connect your Kalshi account on <a href="/funds#connect-kalshi">Funds</a> to trade real money') + tradesCsv('live', lv) })}
-          ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${d.demo.open_positions} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}, after Kalshi fees` : `${usd(d.demo.capital)} capital${SEP}no demo strategies yet`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
+          ${(demoKeyless(d.demo) ? fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, 'No demo key', { small: DEMO_NO_KEY }) : fig(`<span class="mk dep">Demo</span> ${DEMO_BOOK}`, usd(d.demo.equity), { v: d.demo.realized_pnl, small: `${d.demo.health ? demoHealthLine(d.demo.health) + '<br>' : ''}${(d.demo.open_positions || d.demo.running || d.demo.realized_pnl) ? `${usd(d.demo.capital)} capital${SEP}${num(d.demo.open_positions)} open${SEP}${usd(d.demo.realized_pnl, true)} realized ${demoSpan(d.demo)}, after Kalshi fees` : `${usd(d.demo.capital)} capital${SEP}no demo strategies yet`}${SEP}${DEMO_WHAT}${tradesCsv('demo', d.demo)}` }))}
           ${fig('<span class="mk">Paper</span> Simulation', usd(p.equity), { v: p.realized_pnl, small: paperUsed ? `${usd(p.cash)} cash${hasOpen(p) ? `${SEP}${openCost(p)}${inBalance(p) ? ', ' + inBalance(p) : ''}` : ''}${SEP}${hasClosed(p) ? `<span class="amt">${usd(p.realized_pnl, true)}</span> realized all time, ${tradesCsv('paper', p, 'paperfills', PAPER_NET)}${slipEst(p.slippage_estimate)}` : PAPER_NO_CLOSE}` : `${usd(p.cash)} of practice money${SEP}no paper strategies yet` })}
         </dl><p class="stale-note" id="dash-stale" role="status"></p>${d.live.connected && d.live.open_positions ? `<p class="recon ${(d.reconcile && d.reconcile.length) ? 'warn' : 'ok'}">${(d.reconcile && d.reconcile.length) ? reconWarn(d.reconcile) : `${ICON.check} Live book reconciled with Kalshi`}</p>` : ''}`;
       const regs = curveRegs(d.deployments);
@@ -2552,12 +2621,12 @@
         (liveDeps.length
           ? fig(listedLab('Live realized', liveDeps), realizedFig('live', liveDeps, liveRealized), { v: liveRealized, small: `real money${removedNote('live')}${noneLine('live', liveDeps)}\u00a0· after Kalshi fees${paperDeps.length ? `\u00a0· ${paperSlip ? `<span class="slip-tip"${slipTip(paperSlip)}>${usd(paperRealized, true)}</span>` : usd(paperRealized, true)} on paper from the deployments listed, counted apart, ${gl(PAPER_NET, 'paperfills')}` : ''}` })
           : paperDeps.length || !demoDeps.length ? fig(listedLab('Realized', paperDeps), realizedFig('paper', paperDeps, paperRealized), { v: paperRealized, small: `paper money, not real${removedNote('paper')}${noneLine('paper', paperDeps)}\u00a0· ${gl(PAPER_NET, 'paperfills')}${slipEst(paperSlip)}` }) : '') +
-        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}${noneLine('demo', demoDeps)}\u00a0· after Kalshi fees` }) : '') +
+        (demoDeps.length ? fig(listedLab('Demo realized', demoDeps), realizedFig('demo', demoDeps, demoRealized), { v: demoRealized, small: `${DEMO_WHAT}${removedNote('demo')}${noneLine('demo', demoDeps)}\u00a0· after Kalshi fees${noneYet('demo', demoDeps) ? '' : DEMO_RELOAD_KEPT}` }) : '') +
         fig('Open positions', openSplit) +
         fig('Money', live.length ? '<span class="mk live">Live</span>' : runDemo ? `${runPaper ? '<span class="mk">Paper</span> ' : ''}<span class="mk dep">Demo</span>` : '<span class="mk">Paper</span>', { small: live.length ? `${live.length} on live money` : liveIdle ? liveIdleCount(liveIdle) : 'nothing on live money' }));
       const regs = curveRegs(d.deployments);
       paint(root.querySelector('#deps'), d.deployments.length ? deploymentTable(pausedFirst(d.deployments).map((x) => deploymentSlip(x, regs, true)).join(''), true)
-        : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.' : 'Open a passed strategy and post it to the board. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>'}</div>`);
+        : `<div class="empty"><h3>Nothing deployed</h3><p>${passedN === 0 ? 'Nothing has passed yet. A strategy goes on the board once it passes every test in a research session, paper first.' : 'Open a passed strategy and deploy it here. Paper first: it trades the live market with paper money.'}</p>${S.me && S.me.user && S.me.user.autopilot ? '<p>Autopilot is on: strategies that pass every research test deploy here on their own, on paper.</p>' : ''}${apNudge('Rather not pick strategies yourself?', 'and it deploys the ones that pass, on paper.')}${passedN === 0 ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>'}</div>`);
       paint(root.querySelector('#demo-health'), d.demo_health ? `<div class="notice bad" role="status">${ICON.warn}<span>${demoHealthLine(d.demo_health)}</span></div>` : '');
       // The board's read never waits on Kalshi: a demo check that needs the demo cash while the server's memo
       // isn't kept comes demo_health_pending (a line from a figure read under two minutes ago stands meanwhile).
@@ -2578,7 +2647,7 @@
       // card's labels, one more row a position; it sits under its figure, in the Unrealized cell.
       const posUnreal = (p) => `<div class="pos-unreal">${money(p.unrealized)}${posMarked(p)}</div>`;
       paint(root.querySelector('#openpos'), d.open_positions.length ? `<table class="table stack"><thead><tr><th>Strategy</th><th>Market</th><th>Side</th><th class="num">Cost + fee</th><th class="num">Unrealized</th><th class="num">Settles</th></tr></thead><tbody>
-        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? NO_MARK : posUnreal(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
+        ${d.open_positions.map((p) => `<tr><td class="name" data-lab="Strategy">${esc(p.title)} ${posBook(p)}</td><td class="pos-name" data-lab="Market">${contractLink(p.ticker, depMarket(p))}<div class="sub-fig">${kalshiRef(p.ticker)}</div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</td><td data-lab="Side">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost != null ? p.cost : p.qty * p.entry_price + +p.entry_fee)}</td><td class="num" data-lab="Unrealized">${p.unrealized == null ? NO_MARK : posUnreal(p)}</td><td class="num" data-lab="Settles">${settleAt(p.market_close_time)}</td></tr>`).join('')}</tbody></table>`
         : '<p class="hint">No open positions.</p>');
     };
     await loadBoard();
@@ -2657,7 +2726,7 @@
       // Nothing deployed yet: the dashboard's autopilot card above already offers the switch, so the
       // record doesn't offer it a second time.
       const go = apOn ? '<a class="btn" href="/research">See its research</a>'
-        : first ? (S.dashNoSessions ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies">See passed strategies</a>')
+        : first ? (S.dashNoSessions ? '<a class="btn" href="/research?new=1">Start a research session</a>' : '<a class="btn" href="/strategies?status=passed">See passed strategies</a>')
         : `<a class="btn" href="/deploy">${onPaper ? 'See it on Deploy' : 'Go to Deploy'}</a>`;
       // Instant-fill paper trades are closed but left out (caveat below): "No closed paper trades" denied
       // trades the user can see on Deploy, so the heading says none count yet instead.
@@ -2668,12 +2737,12 @@
     const good = s.level === 'solid' && s.edge === 'positive';
     const figs = `<dl class="figures measure tr-figs">
       ${fig(`${trBook(key)} net P&amp;L`, usd(m.net_pnl, true), { v: m.net_pnl, cls: 'lead', small: `${key === 'paper' ? (m.first_trade_at ? gloSep('paperfills', `${PAPER_NET} (${usd(m.fees)} in fees)`) : gl(`${PAPER_NET} (${usd(m.fees)} in fees)`, 'paperfills')) : `after ${usd(m.fees)} in fees${m.first_trade_at ? SEP : ''}`}${m.first_trade_at ? `since ${trDay(m.first_trade_at)}` : ''}${key === 'paper' ? slipEst(m.slippage_estimate) : ''}` })}
-      ${fig('Return', pct(m.return), { v: m.return, small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? `${SEP}${pct(m.annualized_return)} a year` : ''}` })}
+      ${fig('Return', pct(m.return), { v: m.return == null ? null : halfUp(m.return, 3), small: `on ${usd(m.capital)} capital required${trOver(m)}${m.annualized_return != null ? `${SEP}${pct(m.annualized_return)} a year` : ''}` })}
       ${fig('Max drawdown', m.max_drawdown ? usd(-m.max_drawdown) : usd(0), { small: m.max_drawdown_pct != null ? `${pct(m.max_drawdown_pct, false)} of capital` : '' })}
       ${fig('Sharpe', trFix(m.sharpe), { small: m.sharpe == null ? `shown after ${th.min_sharpe_days} days` : `PSR ${pct(m.psr, false)}${SEP}Sortino ${trFix(m.sortino)}` })}
       ${fig('Win rate', pct(m.win_rate, false), { small: trCi(m.win_rate_ci, (v) => pct(v, false)) })}
       ${fig('Trades', num(m.trades), { small: `${num(m.wins)} won${SEP}${num(m.losses)} lost` })}
-      ${fig('Avg trade', usd(m.avg_trade, true), { v: m.avg_trade, small: trCi(m.avg_trade_ci, (v) => usd(v, true)) })}
+      ${fig('Avg trade', usd(m.avg_trade, true), { v: m.avg_trade == null ? null : halfUp(m.avg_trade), small: trCi(m.avg_trade_ci, (v) => usd(v, true)) })}
       ${fig('Profit factor', trFix(m.profit_factor), { small: 'winning trades ÷ losing trades, after fees' })}
     </dl>`;
     const risk = `<dl class="kv tr-kv">
@@ -2756,7 +2825,7 @@
       const read = pending; pending = null;  // the view's own read once; a retry asks again
       try { await mountTrackRecord(host, last, read); } catch (e) {
         if (gen !== S.gen) return;
-        host.innerHTML = loadFail(errText(e));
+        host.innerHTML = loadFail(errText(e), 'Your track record');
         host.querySelector('[data-retry]').onclick = () => { host.innerHTML = loading(260); return first(); };
         return;
       }
@@ -2851,8 +2920,8 @@
       const marked = op.filter((p) => p.unrealized != null);
       const lastMark = marked.map((p) => p.mark_ts).filter(Boolean).sort().pop();
       const sum = [op.length ? `${num(op.length)} open at cost + fees ${usd(op.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(marked.reduce((a, p) => a + p.unrealized, 0))} (est. at the current bid${lastMark ? ', marked ' + when(lastMark) : ''})` : `${SEP}awaiting first mark`}` : '',
-        cl.length ? `${cl.length} closed${SEP}realized ${money(cl.reduce((a, p) => a + (+p.pnl || 0), 0))}` : ''].filter(Boolean).join(SEP);
-      const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? NO_MARK : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? `Open, settles ${settleAt(p.market_close_time)}` : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
+        cl.length ? `${num(cl.length)} closed${SEP}realized ${money(sum4(cl.map((p) => p.pnl)))}` : ''].filter(Boolean).join(SEP);
+      const rows = xs.map((p) => `<tr><td class="name" data-lab="Strategy">${p.strategy_id && p.title ? `<a href="/strategies/${+p.strategy_id}">${esc(p.title)}</a>` : esc(p.title || 'Deleted strategy')}</td><td data-lab="Position">${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(+p.entry_price)}</td><td class="num" data-lab="Cost + fee">${usd(p.cost)}</td><td class="num" data-lab="${p.status === 'open' ? 'Unrealized' : 'Realized'}">${p.status === 'open' ? (p.unrealized == null ? NO_MARK : money(p.unrealized)) : money(+p.pnl || 0)}</td><td data-lab="Status">${p.status === 'open' ? `Open, settles ${settleAt(p.market_close_time)}` : `Closed (${esc(exitWord(p.close_reason))}) @ ${cents(+p.exit_price)}`}</td></tr>`).join('');
       return `<div class="mk-book"><p class="mk-book-h">${BOOK[mode][0]} ${BOOK[mode][1]}</p><p class="hint">${sum}</p><div class="sheet"><table class="table stack"><thead><tr><th>Strategy</th><th>Position</th><th class="num">Cost + fee</th><th class="num">P&amp;L</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
   }
@@ -2935,7 +3004,9 @@
     const show = (s) => {
       const el = root.querySelector('#mk-spot-body');
       if (!el) return;
-      el.innerHTML = s.failed ? `<p class="hint">${esc(s.failed)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s, d);
+      // A failed read names what didn't load (it said only "Something went wrong on our side."), unless Tau's own words do.
+      const why = s.failed && (/didn\u2019t load/.test(s.failed) ? s.failed : `Bitcoin\u2019s latest stored price didn\u2019t load. ${s.failed}`) + ' Everything else on this page did.';
+      el.innerHTML = s.failed ? `<p class="hint">${esc(why)} <button class="btn sm" type="button" data-spot-retry>Try again</button></p>` : marketSpot(s, d);
       const b = el.querySelector('[data-spot-retry]');
       if (b) b.onclick = () => spotRead(ticker).then(show);
     };
@@ -3139,14 +3210,19 @@
   // ago, retrying"), where it kept them with no word.
   const HOT_POLL_MS = 30000;
   const hotStaleText = () => (S.hot && S.hotFail && S.hotAt && Date.now() - S.hotAt > staleAfter(HOT_POLL_MS) ? staleText(S.hotAt) : '');
-  // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page.
-  const hotOpen = () => !phone() && localStorage.getItem('tau_hotrail') !== '0';
+  // On a phone the rail is hidden (Explore covers it): an open rail would cover the whole page. Up to 1080px it
+  // opens over the page (app.css), not beside it: open on every load, it covered the left 306px of every page on a
+  // 768px tablet (walked 2026-10-28). There it opens only when you have opened it; wider, it is open unless closed.
+  const hotOver = () => !!(window.matchMedia && window.matchMedia('(max-width: 1080px)').matches);
+  const hotOpen = () => !phone() && (hotOver() ? localStorage.getItem('tau_hotrail') === '1' : localStorage.getItem('tau_hotrail') !== '0');
   const hotShown = () => !phone();  // app.css hides the rail under 761px, the width phone() asks
   let hotLoop = false, hotMoving = 0;
   let apLoop = false, apReq = null;
 
   // ---------- floating autopilot window ----------
   const apExpanded = () => localStorage.getItem('tau_ap_open') === '1';
+  // A status read under half the poll's interval ago: the poll's tick has nothing new to ask.
+  const apFresh = () => !!S.apAt && !S.apFailing && Date.now() - S.apAt < 10000;
   function mountAutopilot() {
     if (!S.me || !S.me.user) return;
     let box = document.getElementById('autopilot-float');
@@ -3158,7 +3234,9 @@
       // Background tabs don't poll (each status read is ~14 queries); coming back refreshes a stale one.
       apLoop = true;
       const tick = paced((cfg) => refreshAutopilot(document.getElementById('autopilot-float'), false, cfg).then((ok) => { if (!ok) throw new Error('Autopilot status read failed'); }), 20000, apPaintStale);
-      setInterval(() => { if (document.getElementById('autopilot-float') && !document.hidden) tick(); }, 20000);
+      // A page that mounts the panel reads a status over 18s old, just before this tick was due: the tick then
+      // skips (apFresh), where it read the status again a second or two later.
+      setInterval(() => { if (document.getElementById('autopilot-float') && !document.hidden && !apFresh()) tick(); }, 20000);
       wakers.add(() => { if (document.getElementById('autopilot-float') && !document.hidden) tick(true); });
       document.addEventListener('visibilitychange', () => {
         const b = document.getElementById('autopilot-float');
@@ -3189,7 +3267,12 @@
       renderAutopilot(box, S.ap); paintDashAp(); bellTick();
       if (S.ap.idle_pending && !afterDemo) demoCashRead().then(() => refreshAutopilot(document.getElementById('autopilot-float'), false, undefined, true));
     }
-    catch (e) { S.apFailing = true; apPaintStale(); return false; }  // best-effort: never block the app
+    catch (e) {
+      S.apFailing = true; apPaintStale();
+      // Never read: an open panel says the status didn't load (apUpdate), and its Try again is given back.
+      if (!S.ap && box && apExpanded()) renderAutopilot(box, null);
+      return false;
+    }  // best-effort: never block the app
     return true;
   }
   // The autopilot's figures (the panel's and the dashboard card's) say how old they are once its
@@ -3287,6 +3370,9 @@
       return `<div class="since-split" data-book="${m}">${books.length > 1 ? `<span class="since-sub">${label}:</span> ` : ''}${rows.slice(0, SINCE_SPLIT_SHOWN).map(item).join('<span class="sep">·</span>')}${more > 0 ? `<span class="sep">·</span><span class="since-sub">${num(more)} more</span>` : ''}</div>`;
     }).join('');
   }
+  // Two or more links in a row ("A, B, C, 1 more"): to a thumb they stack one under another (.since-links, app.css),
+  // each its own 44px, where on a line they reached into one another.
+  const sinceLinks = (links) => (links.length > 1 ? `<span class="since-links">${links.join(', ')}</span>` : links.join(''));
   function sinceStrip(d, pausedHref) {
     const s = d.since;
     if (!s) return '';
@@ -3310,7 +3396,7 @@
       return `<a href="/strategies/${encodeURIComponent(sid)}">${esc(dep ? dep.title : 'Strategy ' + sid)}</a>`;
     };
     const fwd = (ms.passed || []).slice(0, 3).map(named);
-    const fwdText = `${fwd.join(', ')} passed ${fwd.length === 1 ? 'its' : 'their'} paper forward test: ${fwd.length === 1 ? 'a candidate' : 'candidates'} for live`;
+    const fwdText = `${sinceLinks(fwd)} passed ${fwd.length === 1 ? 'its' : 'their'} paper forward test: ${fwd.length === 1 ? 'a candidate' : 'candidates'} for live`;
     // A pass a later check left uncleared (the server's not_cleared: its one-time holdout then failed, or
     // the diversification check held it back) is named apart, as its page and the lists stamp it: the
     // strip counted it among "2 strategies passed".
@@ -3320,7 +3406,7 @@
     const fellText = fell.length ? ` Not cleared to trade: ${fell.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a> (${NOT_CLEARED[x.verdict] || 'held back'})`).join(', ')}${pass.not_cleared_n > fell.length ? `, ${num(pass.not_cleared_n - fell.length)}${atLeast} more` : ''}.` : '';
     // A brand-new account has nothing of its own to report yet: point at the finished example, up top.
     const found = s.own_sessions === false && !pass.n && !fwd.length ? `No sessions of your own yet. <a href="/example" data-example>See an example session first</a>` : ((pass.n
-      ? `${num(pass.n)}${atLeast} ${pass.n === 1 && !atLeast ? 'strategy' : 'strategies'} passed: ${pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`).join(', ')}${pass.n > pass.items.length || atLeast ? `, <a href="/strategies">${num(pass.n - pass.items.length)}${atLeast} more</a>` : ''}`
+      ? `${num(pass.n)}${atLeast} ${pass.n === 1 && !atLeast ? 'strategy' : 'strategies'} passed: ${sinceLinks([...pass.items.map((x) => `<a href="/strategies/${encodeURIComponent(x.id)}">${esc(x.title)}</a>`), ...(pass.n > pass.items.length || atLeast ? [`<a href="/strategies">${num(pass.n - pass.items.length)}${atLeast} more</a>`] : [])])}`
       : fwd.length ? fwdText : 'Nothing new passed') + (started ? `<span class="since-sub">${SEP}${plural(started, 'research session', 'research sessions')} started, ${sinceRunsState(runs, started, !pass.n)}</span>` : '') + '.' + (pass.n && fwd.length ? ` ${fwdText}.` : '') + fellText);
     const ap = s.autopilot || {}, apOn = !!(S.me && S.me.user && S.me.user.autopilot);
     const known = new Set(AP_DID.map(([k]) => k));
@@ -3395,6 +3481,10 @@
   }
   // What demo is, for a reader who has never used it: real exchange fills, pretend money.
   const DEMO_WHAT = 'real fills on Kalshi’s sandbox, not real money';
+  // Deploy's demo realized sums every closed trade of the demo deployments listed, as their rows, the strategy page
+  // and the track record do; the dashboard's and Funds' demo book counts from the last reload. Beside a
+  // dashboard reading "+$1.24 realized since reload" it read +$1.00 and didn't say why the two differ.
+  const DEMO_RELOAD_KEPT = '\u00a0· a demo reload doesn’t reset it, so it can differ from the demo book’s P&amp;L since reload';
   // The demo figure's one name, on every page that shows it (the dashboard, Funds): Tau's own book, never a balance
   // at Kalshi. The dashboard called it "Demo Sandbox" (Meridian: "Demo balance") beside Funds' "Tau's demo book".
   const DEMO_BOOK = 'Tau\u2019s demo book';
@@ -3478,13 +3568,13 @@
       ['Strategies running', `${running || 'None yet'}${liveIdle ? ` <small>${liveIdleCount(liveIdle)}</small>` : ''}`],
       d.week ? null : ['Ideas this week', `${Number(r.tested_7d || 0).toLocaleString('en-US')} tested${SEP}${r.passed_7d || 0} passed${+r.not_cleared_7d ? `, ${num(r.not_cleared_7d)} not cleared` : ''}`],
       prog ? ['Furthest on paper', `<a href="/strategies/${Number(prog.strategy_id)}" title="${esc(prog.title || 'Paper strategy')}">${paperCount(prog)}</a> <small>${gl(PAPER_COUNT_WHY, 'instantfill')}</small>`]
-        : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) : 'Starting up'],
+        : ['Last check-in', d.reviewing ? 'Reviewing now' : d.last_review_at ? sinceMin(d.last_review_at) + apEvery(d) : 'Starting up'],
     ].filter(Boolean);
     const now = d.billing_blocked
       ? (d.billing_reason === 'card' ? 'Paused: <a href="/billing">add a payment method</a> so it can keep researching.' + apStillTrading(d)
         : apReloadFailed(d) ? `Paused: ${AP_CARD_FIX}${apStillTrading(d)}`
         : `Paused: ${apFloorText()} <a href="/billing">Add credits</a> and it picks up on its own.${apStillTrading(d)}`)
-      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"') + apMeanwhile(d) : esc(apStory(d)[0] || 'Autopilot is on.');
+      : d.idle ? apIdleHtml(d.idle, 'data-apcard="idle-focus"', d) + apMeanwhile(d) : esc(apStory(d)[0] || 'Autopilot is on.');
     host.className = 'apcard on' + (m.cls ? ' ' + m.cls : '') + (d.billing_blocked ? ' warn' : '');
     host.innerHTML = `<div class="apcard-main"><span class="apcard-kick"><span class="apf-dot" aria-hidden="true"></span>${esc(m.label)}</span>
         <p class="apcard-now">${now}</p>${apLastHtml(d.last_action)}${Array.isArray(d.focus) ? `
@@ -3571,7 +3661,7 @@
     if (d.billing_blocked) return 'paused';
     if (d.research && (d.research.active || []).length) return 'researching';
     if (d.reviewing) return 'reviewing';
-    return d.paper_running ? `${d.paper_running} on paper` : '';
+    return d.paper_running ? `${num(d.paper_running)} on paper` : '';
   }
   // The pill's label: in paper mode the word for what it is doing takes the place of "paper" (each one
   // is paper-only or no money at all); the live modes keep their label, so LIVE always shows.
@@ -3581,11 +3671,36 @@
   }
   // Why autopilot isn't trading right now (the server's d.idle): one plain line, plus the action to
   // take when there is one (a link, or the focus control). The card and the panel both lead with it.
-  function apIdleHtml(idle, focusAttr) {
+  // A strategy cleared for paper waits for the next review ("to_deploy"): the line says how often those come.
+  function apIdleHtml(idle, focusAttr, d = S.ap) {
     const a = idle.action;
     const act = !a ? '' : a.href ? actionLink(idle)
       : a.do === 'focus' ? ` <button type="button" ${focusAttr}>${esc(a.label)}</button>` : '';
-    return esc(idle.line) + act;
+    const when = idle.code === 'to_deploy' ? apCadence(d) : '';
+    return esc(idle.line) + (when ? ` <span class="ap-when">Check-ins: ${when}.</span>` : '') + act;
+  }
+  // "At its next check-in" said nothing of when. Its time can't be known: the worker's heartbeat runs on its
+  // own timer, skips a user it just reviewed, waits for a free worker and spaces idle users out, and a finished
+  // research session starts one at once. So the copy gives the status's usual cadence (checkin_every_min) and
+  // how long ago the last one ran (last_review_at), never a time; nothing while none is coming (off, a billing
+  // pause) or the status isn't read yet. The [data-ap-when] spans follow each status read (syncApCopy).
+  function apAgo(iso) {
+    const m = Math.max(0, (Date.now() - Date.parse(iso)) / 60000);
+    return !(m >= 0) ? '' : m < 1.5 ? 'just now' : m < 90 ? `${Math.round(m)} min ago`
+      : m < 2880 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`;
+  }
+  function apCadence(d = S.ap) {
+    if (!d || !d.autopilot || d.billing_blocked || !(+d.checkin_every_min > 0)) return '';
+    if (d.reviewing) return 'one is under way now';
+    if (d.review_wait && d.review_wait.state === 'queued') return 'one is waiting for a free worker';
+    const ago = d.last_review_at && !d.review_wait ? apAgo(d.last_review_at) : '';
+    return `usually every ${num(+d.checkin_every_min)} min${ago ? `; last one ${ago}` : ''}`;
+  }
+  function apWhen() { const c = apCadence(); return c ? ` (${c})` : ''; }
+  function apWhenSpan() { return `<span data-ap-when>${apWhen()}</span>`; }
+  // The usual cadence under a "Last check-in" figure (the card's and the panel's), or nothing.
+  function apEvery(d, cls = '') {
+    return d && +d.checkin_every_min > 0 && !d.reviewing ? ` <small${cls ? ` class="${cls}"` : ''}>usually every ${num(+d.checkin_every_min)} min</small>` : '';
   }
   // The market focus is binding on research, deploys and the picker, so it reads as a plain line on
   // the card and the panel, with a Change that opens the control (it lives in "Model and markets").
@@ -3721,6 +3836,7 @@
       : ' and pauses when they run out. Turn it off any time.'}</p>`;
   }
   function apOpen() {
+    S.apAutoOpen = null;  // opened by the reader: it stays open from page to page
     try { localStorage.setItem('tau_ap_open', '1'); } catch (e) { /* private mode */ }
     const box = document.getElementById('autopilot-float');
     if (box) renderAutopilot(box, S.ap);
@@ -3802,6 +3918,7 @@
     if (document.body) document.body.querySelectorAll('.research-ap').forEach((p) => { p.hidden = on; });
     if (document.body) document.body.querySelectorAll('[data-ap-next]').forEach((n) => { n.hidden = !on; });
     if (document.body) document.body.querySelectorAll('[data-ap-off]').forEach((n) => { n.hidden = on; });
+    if (document.body) document.body.querySelectorAll('[data-ap-when]').forEach((n) => { const t = apWhen(); if (n.textContent !== t) n.textContent = t; });
     if (document.body) document.body.querySelectorAll('[data-since-ap]').forEach((n) => { n.textContent = sinceApWord(on); });
     if (trAp && trAp.host.isConnected && trAp.on !== apSwitchOn()) trAp.repaint();
   }
@@ -3834,7 +3951,7 @@
     // that replaced it — the open panel's close button, else the card's Open autopilot.
     announce('Autopilot is on. It researches and trades on paper by itself; every move shows up in the autopilot panel.');
     // The open panel's file first (app-autopilot.js), so its Model and markets is there to open below.
-    if (!phone()) { await pageLoad('autopilot').catch(() => {}); apOpen(); }  // on a phone the open panel fills the screen; the card already says it's on
+    if (!phone()) { await pageLoad('autopilot').catch(() => {}); apOpen(); S.apAutoOpen = location.pathname; }  // on a phone the open panel fills the screen; the card already says it's on
     const box = document.getElementById('autopilot-float');
     if (box && apExpanded()) { const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true; }
     if (box) await refreshAutopilot(box);
@@ -4004,6 +4121,7 @@
   async function apAction(box, action, e) {
     if (action === 'toggle') {
       const opening = !apExpanded();
+      S.apAutoOpen = null;
       localStorage.setItem('tau_ap_open', opening ? '1' : '0'); renderAutopilot(box, S.ap);
       // Opened, focus goes into the panel (its close button comes first); closed, back to the pill.
       const to = opening && box.querySelector('.apf-x'); if (to && to.focus) to.focus({ preventScroll: true });
@@ -4043,7 +4161,7 @@
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener">
-      <span class="hot-title">${glueTarget(esc(mktLabel(m)))}</span>${hotWhen(m)}
+      <span class="hot-title" title="${esc(mktLabel(m))}">${glueTarget(esc(mktLabel(m)))}</span>${hotWhen(m)}
       <span class="hot-mid">${hotChart(h)}<span class="hot-price"><b class="fig">${mid == null ? '—' : cents(mid)}</b>${dCents ? `<span class="hot-delta ${dir}">${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢</span>` : ''}</span></span>
       <span class="hot-foot">${contractShort(m.t) ? `<span class="mk quiet">${esc(contractShort(m.t))}</span>` : ''}<span class="hot-vol">${kfmt(m.v24)} vol${SEP}24h</span>${ICON.ext}</span></a>`;
   }
@@ -4087,6 +4205,7 @@
   // The rail is read only while it shows (hotShown), on mounting, every HOT_POLL_MS (backing off while reads
   // fail), when it comes into view and on coming back to the tab. Hidden, nothing on the page uses the snapshot,
   // and it was one of every page's first reads on a phone.
+  const hotFresh = () => !!S.hotAt && !S.hotFail && Date.now() - S.hotAt < HOT_POLL_MS / 2;
   const hotSoon = () => { if (hotShown() && (!S.hot || !S.hotAt || Date.now() - S.hotAt > HOT_POLL_MS - 5000)) refreshHot(); };
   function mountHotRail() {
     if (!S.me || !S.me.user) return;
@@ -4096,7 +4215,9 @@
     hotSoon();
     if (!hotLoop) { hotLoop = true;
       const tick = paced(() => refreshHot().then((ok) => { if (!ok) throw new Error('hot markets'); }), HOT_POLL_MS, () => { const el = document.getElementById('hot-stale'); if (el) el.textContent = hotStaleText(); });
-      setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) tick(); }, HOT_POLL_MS);
+      // A page that mounts the rail reads a snapshot over 25s old, just before this tick was due: the tick then
+      // skips, where it read the same snapshot again a few seconds later.
+      setInterval(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown() && !hotFresh()) tick(); }, HOT_POLL_MS);
       wakers.add(() => { if (!document.hidden && document.getElementById('hotrail') && hotShown()) tick(true); });
       // A window widened past phone width shows the rail: it reads then.
       const wide = window.matchMedia && window.matchMedia('(max-width: 760px)');
@@ -4216,7 +4337,7 @@
   const shared = () => shareMap || (shareMap = new Proxy({
     actionLink, adminViewOn, alert0, announce, SEP, sepLine, gloSep, WJ, plain, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apSaid, depSaid, depWrite,
     apExpanded, apFlash, apFloorText, apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, fundsLinked,
-    apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn,
+    apMarketNames, apNudge, apReloadFailed, apShowFocus, apStale, apStillTrading, apStory, apSwitchOn, apEvery, apWhenSpan,
     apWeek, armed, attachMention, authorLine, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable,
     busy, cardFormFail, cashAt, cashFig, cashNow, cashRead, catOrder, cents, chartWidth, clearTimers, clock, CLOCK, CLOCK_ZONE,
     clipWords, CODE_RESEARCH_ONLY, compact, contractLink, contractMarket, contractName, depIdle, kalshiRef, liveIdleCount, liveIdleShort, liveOpen, liveWaitMark, dateFmt, DEMO_BOOK, DEMO_WHAT, demoCashRead, demoHealthLine, demoKeyless, inBalance, openBasis, openCost, openFig,

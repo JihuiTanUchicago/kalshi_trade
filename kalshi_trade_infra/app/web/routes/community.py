@@ -72,11 +72,14 @@ def _snapshot_out(snap, mine: bool, unrecorded: bool = False) -> Optional[Dict]:
     card links their own strategy page; anyone else's card is no link, so it needs none. A title reads
     as the app shows a person's text (no address, no internal model id). `unrecorded` (the feed read's
     no_gatekeeper_record, POST_NO_RECORD_SQL) flags a "passed" card stored before its snapshot carried
-    the flag, so it says later-period as its page does, not "on unseen data"."""
+    the flag, so it says later-period as its page does, not "on unseen data". It flags a "failed" (Void) card
+    too: a void strategy with no gatekeeper record is one the first version's simple backtest stored as failed,
+    never judged on held-out data (VOID_NO_RECORD_SQL, the rule its Strategies row is flagged by), so its card
+    says "not held out" as its page and row do. The same column of the feed's own read; display only."""
     if not isinstance(snap, dict) or snap.get("kind") not in SNAPSHOT_FIELDS:
         return None
     out = {k: snap[k] for k in SNAPSHOT_FIELDS[snap["kind"]] if k in snap}
-    if unrecorded and out["kind"] == "strategy" and out.get("status") == "passed" and not out.get("verdict"):
+    if unrecorded and out["kind"] == "strategy" and out.get("status") in ("passed", "failed") and not out.get("verdict"):
         out["no_gatekeeper_record"] = True
     if out.get("title"):
         out["title"] = customer_text.clean(out["title"], "A strategy")

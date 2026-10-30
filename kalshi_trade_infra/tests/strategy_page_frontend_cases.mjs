@@ -291,6 +291,49 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.equal(none.root.querySelector('#dev-pending'), null);
   });
 
+  // The server works a cold replay out off the request and answers {pending: true} at once (it took ~3s on the
+  // request, reading the market's history and the S3 books): the page keeps its pending line and asks again.
+  test(`${name}: a replay still being worked out keeps the pending line, asks again, then draws the line`, async () => {
+    const answers = [{dev_curve: null, pending: true, reason: 'Replaying…'}, {dev_curve: null, pending: true, reason: 'Replaying…'},
+      {dev_curve: [[200, 1], [300, 2]]}];
+    let asked = 0;
+    const f = frontend({fetchImpl: async (path) => {
+      if (path === '/api/strategies/42') return response(detailStrategy({status: 'passed'}));
+      if (path === '/api/strategies/42/dev-curve') return response(answers[Math.min(asked++, answers.length - 1)]);
+      return response({});
+    }});
+    await f.viewStrategy(42); await flush();
+    const pending = f.root.querySelector('#dev-pending');
+    for (let i = 0; i < 6; i++) await flush();
+    assert.equal(asked, 1);
+    assert.ok(pending && !pending.removed, 'pending line kept while the server replays');
+    assert.doesNotMatch(f.root.querySelector('#equity-wrap').innerHTML, /Dashed line/);
+    for (let round = 0; round < 2; round++) {
+      f.elapse(20000);
+      for (let i = 0; i < 6; i++) await flush();
+    }
+    assert.equal(asked, 3);
+    assert.equal(pending.removed, true);
+    assert.match(f.root.querySelector('#equity-wrap').innerHTML, /Dashed line: the unseen window replayed read-only against Kalshi’s demo environment/);
+    // Still pending after every retry: the page stops asking and drops the pending line, chart sim-only.
+    asked = 0;
+    answers.length = 1;
+    const g = frontend({fetchImpl: async (path) => {
+      if (path === '/api/strategies/42') return response(detailStrategy({status: 'passed'}));
+      if (path === '/api/strategies/42/dev-curve') { asked++; return response(answers[0]); }
+      return response({});
+    }});
+    await g.viewStrategy(42); await flush();
+    const line = g.root.querySelector('#dev-pending');
+    for (let round = 0; round < 12; round++) {
+      g.elapse(20000);
+      for (let i = 0; i < 6; i++) await flush();
+    }
+    assert.equal(asked, 9, "the first ask and eight more");
+    assert.equal(line.removed, true);
+    assert.doesNotMatch(g.root.querySelector('#equity-wrap').innerHTML, /Dashed line/);
+  });
+
   // A validation pass keeps the status "passed" when a later check fails; the server's why_failed names it.
   const val = {classification: 'statistically_supported', n_trades: 150, mean_net_return: 0.026};
   const holdoutMiss = [{gate: 'significance', label: 'The edge could be luck on the locked holdout', measured: 'p-value 0.480', needed: '0.050 or lower', next: 'Try a simpler version.'}];
@@ -363,10 +406,10 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const f = strategyFrontend(detailStrategy(detail), () => response({}));
     f.S.me.user.autopilot = true;
     await f.viewStrategy(42); await flush();
-    const said = /The autopilot is putting this on paper at its next check-in, so there is nothing for you to deploy\./;
+    const said = /The autopilot is putting this on paper at its next check-in<span data-ap-when><\/span>, so there is nothing for you to deploy\./;
     assert.match(f.root.querySelector('#strat-quick').innerHTML, said);
     assert.equal(f.root.querySelector('#dep-paper-quick').hidden, true); assert.equal(f.root.querySelector('#dep-paper').hidden, true);
-    assert.match(main(f), /Next rung, paper: <span data-ap-next>the autopilot puts it there at its next check-in\.<\/span><span data-ap-off hidden>/);
+    assert.match(main(f), /Next rung, paper: <span data-ap-next>the autopilot puts it there at its next check-in<span data-ap-when><\/span>\.<\/span><span data-ap-off hidden>/);
     // The switch flips off while the page is open: the buttons come back and the line hides.
     f.S.ap = {autopilot: false, mode: 'off'}; f.paintDashAp();
     assert.equal(f.root.querySelector('#dep-paper-quick').hidden, false); assert.equal(f.root.querySelector('#dep-paper').hidden, false);
@@ -561,6 +604,8 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     const body = () => f.root.querySelector('#road-live-body');
     assert.match(body().innerHTML, /Tau is busy\. Try again in a moment\./);
     assert.doesNotMatch(body().innerHTML, /unavailable/);
+    // It names what didn't load and says the rest of the page did (walk 2026-10-28).
+    assert.match(body().textContent, /^Road to live didn’t load\. Tau is busy\. Try again in a moment\. Everything else on this page did\./);
     await body().querySelector('[data-road-retry]').onclick(); await flush(); await flush();
     assert.equal(reads, 2);
     assert.match(body().innerHTML, /Realistic paper trades/);
@@ -607,6 +652,59 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(items(held)[0], /^Didn’t make money on unseen data/);
   });
 
+  // The first version's simple backtest stored strategies as Void (failed) with no gatekeeper record. Their page said
+  // "Later period (unseen data)" and "failed the unseen-data gate". The server flags them (no_gatekeeper_record, from
+  // the page's own experiment read), and the page says "not held out" wherever a pass with no record does, without
+  // "which picked it" (nothing picked a void one).
+  test(`${name}: a Void strategy with no gatekeeper record says not held out, never unseen data or the unseen-data gate`, async () => {
+    const oos = {pnl: -4, trades: 6, win_rate: .3, fees: 1, profit_factor: .6, max_drawdown: 9, sharpe: -.5, roi: -.04, days: 9};
+    const gates = [{name: 'Makes money on unseen data', threshold: '> $0', ok: false, value: -4},
+      {name: 'Enough unseen trades to judge', threshold: '≥ 10', ok: false, value: 6}];
+    const whyFailed = [
+      {gate: 'unseen_pnl', label: 'Didn’t make money on unseen data', measured: '−$4.00', needed: 'more than $0', next: 'Simplify the rule and test again.'},
+      {gate: 'unseen_trades', label: 'Too few trades on unseen data (6 of 10)', measured: '6 trades on unseen data', needed: 'at least 10 trades', next: 'Widen the entry.'},
+    ];
+    const base = {status: 'failed', experiment: null, no_gatekeeper_record: true, capital: 100, out_of_sample: oos, gates,
+      recent_trades: [], dataset: {out_of_sample_from: '1970-01-01T00:03:20Z'}};
+    const f = await open({...base, why_failed: whyFailed});
+    const figs = f.root.querySelector('#figs'), html = main(f);
+    // The figure up top, its note and the return on capital.
+    assert.equal(figs.querySelector('dt').textContent, 'Later-period P&L (not held out)');
+    // Its bubble says it failed there, never laterperiod's "what picked it" (nothing picked a void one).
+    assert.match(figs.querySelector('dt').innerHTML, /data-glo="latervoid"/);
+    assert.doesNotMatch(figs.innerHTML, /data-glo="laterperiod"/);
+    assert.match(figs.innerHTML, /6 trades over 9 days after the split date · not held out/);
+    assert.match(figs.innerHTML, /Later period over 9 days · not held out/);
+    assert.match(figs.innerHTML, /<span class="pnl-nopass">/);  // still muted, as a Void figure is
+    // The headings, the trades list, the chart's cut label and the data note.
+    assert.match(html, /<h4>Later period \(not held out\)<\/h4>/);
+    assert.match(html, /Most recent later-period trades \(not held out\)/); assert.match(html, /No later-period trades \(not held out\) to show\./);
+    assert.match(html, /LATER PERIOD · NOT HELD OUT →|Later period · not held out →/);
+    assert.match(html, /<dt>Split date<\/dt>/);
+    assert.match(html, /The rule was fit on data before the split date; there’s no record that the data after it was held out\./);
+    assert.match(html, /After the backtest’s split date it lost \$4\.00 over 6 trades\. There’s no record it was held out, so it isn’t held-out evidence\./);
+    // The gate list, its missed checks and the Deploy panel's notice say the split date, as a pass with no record's do.
+    assert.match(f.root.querySelector('#gates').textContent, /Makes money on data after the split date/);
+    const said = f.root.querySelectorAll('.why-failed li').map((li) => li.textContent);
+    assert.match(said[0], /^Didn’t make money on data after the split date/);
+    assert.match(said[1], /^Too few trades on data after the split date \(6 of 10\)/);
+    assert.match(html, /Void: didn’t make money on data after the split date, and 1 more check missed \(see Verdict\)\./);
+    // The verdict's words (Tau puts its Void chip before them; Meridian's stamp is up top).
+    assert.match(html, /<p>It failed its backtest checks on the data after the split date\. There’s no record of its held-out tests, so nothing on this page is held-out evidence, and it was not validated\.<\/p>/);
+    assert.doesNotMatch(html + figs.innerHTML, /unseen|UNSEEN|Unseen|never saw|never touched|picked it|picked the rule/);
+    // With no missed checks sent, the notice still never names an unseen-data gate.
+    const bare = await open(base);
+    assert.match(main(bare), /Void: it failed its backtest checks after the split date\./);
+    assert.doesNotMatch(main(bare), /unseen-data gate/);
+    // A Void with its record (the gatekeeper's inconclusive verdict) keeps its words, and so does one from a server
+    // that doesn't send the flag.
+    const held = await open({...base, no_gatekeeper_record: undefined, why_failed: undefined,
+      experiment: {classification: 'inconclusive', validation: {n_trades: 6}}});
+    assert.match(main(held), /Later period \(unseen data\)/);
+    const old = await open({...base, no_gatekeeper_record: undefined, why_failed: undefined});
+    assert.match(main(old), /Void: it failed the unseen-data gate\./);
+  });
+
   // The page's top figure read "+$42.17" in a green tint beside a Void stamp, though its Strategies row and Community card
   // mute the same figure (pnl-nopass): a Void, Rejected or missed-final strategy's P&L never reads as a result.
   test(`${name}: a Void, Rejected or missed-final strategy's figures up top are muted, never tinted green`, async () => {
@@ -647,6 +745,9 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(held.root.querySelector('#figs dt').innerHTML, /data-glo="unseen"/);
     assert.doesNotMatch(held.root.querySelector('#figs').innerHTML, /data-glo="laterperiod"/);
     assert.match(split.root.querySelector('#figs dt').innerHTML, /data-glo="laterperiod"/);
+    // A pass with no record keeps laterperiod's bubble (its later slice did pick it); only a Void one takes latervoid.
+    const loose = await open({status: 'passed', experiment: null, no_gatekeeper_record: true, recent_trades: []});
+    assert.match(loose.root.querySelector('#figs dt').innerHTML, /data-glo="laterperiod"/);
   });
 
   // Road to live's realization hint compares paper with the backtest's later slice (the server's out_of_sample). It read

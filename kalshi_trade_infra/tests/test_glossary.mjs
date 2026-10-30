@@ -51,6 +51,11 @@ test('the money words a customer meets are defined, plainly', () => {
   assert.equal(g.laterperiod[0], 'Later-period P&L');
   // Later-period P&L is the slice that picked the strategy; only unseen data is held out.
   assert.match(g.laterperiod[1], /wasn’t held out/);
+  // A Void strategy's later stretch picked nothing (the first version's simple backtest judged it there and it failed):
+  // its bubble says so, never laterperiod's "what picked it".
+  assert.equal(g.latervoid[0], 'Later-period P&L');
+  assert.match(g.latervoid[1], /after its split date, where it failed its checks\. There’s no record that stretch was held out/);
+  assert.doesNotMatch(g.latervoid[1], /picked/);
   assert.match(g.unseen[1], /held-out slice of history the agent never looked at/);
   assert.doesNotMatch(g.unseen[1], /wasn’t held out/);
   // "after typical live slippage" (slipEst, beside paper P&L) is said and sized in the paper fills bubble.
@@ -74,7 +79,7 @@ test('the Deploy table and the strategy page carry the new markers in both theme
   }
   for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) {
     const src = read(f);
-    for (const k of ['laterperiod', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L(?: \\([^)']+\\))?', '${k}'\\)`), `${f}: ${k}`);
+    for (const k of ['laterperiod', 'latervoid', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L(?: \\([^)']+\\))?', '${k}'\\)`), `${f}: ${k}`);
   }
 });
 

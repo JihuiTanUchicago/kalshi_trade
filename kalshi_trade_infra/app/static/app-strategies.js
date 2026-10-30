@@ -4,7 +4,7 @@
 window.TauPage('strategies', (T) => {
   'use strict';
   const {
-    actionLink, announce, api, ApiError, apNudge, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
+    actionLink, announce, api, ApiError, apNudge, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
@@ -24,6 +24,9 @@ window.TauPage('strategies', (T) => {
   // Under the equity chart while its demo-replay line loads (seconds on a cold server): the rest of the
   // page is already drawn, and this says the chart has one more line coming.
   const DEV_PENDING = (win = 'unseen') => `<p class="hint dev-pending" id="dev-pending"><span class="skeleton" aria-hidden="true"></span>Replaying the ${win} window against Kalshi’s demo book…</p>`;
+  // Waits (ms) before asking again while the server is still working the demo replay out ({pending: true}):
+  // it replays off the request, so the first ask on a cold server answers at once and the line follows.
+  const DEV_RETRY_MS = [1500, 2000, 3000, 5000, 8000, 10000, 15000, 15000];
   const rpProb = (v, d = 3) => (v == null ? '—' : Number(v).toFixed(d));
   const rpInt = (v) => (v == null ? '—' : num(v));
   const rpText = (v) => esc(v == null ? '' : String(v));
@@ -306,6 +309,9 @@ window.TauPage('strategies', (T) => {
     // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
     // Passed counts only true passes: one a later check left uncleared (Missed final test, Held back) keeps the
     // stored status "passed", and the server counts and lists it under Not cleared, a chip shown once one exists.
+    // "Void on unseen data" leaves out the void ones with no gatekeeper record (the server's failed_no_record, from its
+    // count): the first version's simple backtest stored them as failed, never judged on held-out data. Its note counts
+    // them, as Passed's counts the ones not cleared; the Void chip still lists every void row.
     const CLABEL = { passed: 'Passed', not_cleared: 'Not cleared', 'backtest-only': 'Backtest only', failed: 'Void', rejected: 'Rejected' };
     const slipsEl = root.querySelector('#slips');
     let sp = Math.max(0, (parseInt(q.get('page'), 10) || 1) - 1);
@@ -316,7 +322,7 @@ window.TauPage('strategies', (T) => {
       let d;
       try { d = await api('/api/strategies?' + p.toString()); } catch (e) {
         if (e.status === 401) throw e;
-        slipsEl.innerHTML = loadFail(errText(e));
+        slipsEl.innerHTML = loadFail(errText(e), 'Your strategies');
         slipsEl.querySelector('[data-retry]').onclick = () => load();
         return;
       }
@@ -326,7 +332,7 @@ window.TauPage('strategies', (T) => {
       // Under the Deployed toggle every counted strategy passed (only passed ones deploy), so its rate read
       // a meaningless 100%: it is left out there rather than shown.
       const rate = total && !f.deployed ? c('passed') / total : null;
-      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed'), { small: c('not_cleared') ? `${num(c('not_cleared'))} more passed but ${c('not_cleared') === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : '' }) + fig(gl('Void on unseen data', 'void'), c('failed')) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
+      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), c('passed'), { small: c('not_cleared') ? `${num(c('not_cleared'))} more passed but ${c('not_cleared') === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : '' }) + fig(gl('Void on unseen data', 'void'), c('failed') - c('failed_no_record'), { small: c('failed_no_record') ? `${num(c('failed_no_record'))} more ${c('failed_no_record') === 1 ? 'was' : 'were'} void on a backtest that wasn’t held out` : '' }) + fig(gl('Rejected in testing', 'rejected'), c('rejected')) +
         // Its denominator said: Research's rate is of every idea tested (most never become a strategy), so the
         // two pages read 8.6% and 12.0% for one account with nothing saying why. With nothing tested yet (a new
         // account, or a market with none) it says so, where it read a bare "—".
@@ -428,7 +434,7 @@ window.TauPage('strategies', (T) => {
       if (!m) return '';
       const exp = ds.reduce((a, d) => a + real(d) * per * ((+d.stake || stake) / stake), 0);
       // "later-period pace" plus whether it was held out, as the list's rows say it ("unseen-data pace" read otherwise).
-      return `<p class="sub-fig real-pace">At the backtest’s later-period pace (${!s.experiment && ['passed', 'backtest-only'].includes(s.status) ? 'not held out' : 'unseen data'}), ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? `${SEP}too few trades to judge yet` : ''}</p>`;
+      return `<p class="sub-fig real-pace">At the backtest’s later-period pace (${!s.experiment && (['passed', 'backtest-only'].includes(s.status) || s.no_gatekeeper_record) ? 'not held out' : 'unseen data'}), ${m} trade${m === 1 ? '' : 's'}${m < n ? ' on realistic fills' : ''} would have made ${usd(exp, true)}${m < 10 ? `${SEP}too few trades to judge yet` : ''}</p>`;
     };
     // A server that compares each book with the backtest sends backtest_checks; it replaces the pace line.
     const checks = Array.isArray(s.backtest_checks) ? s.backtest_checks : null;
@@ -516,7 +522,7 @@ window.TauPage('strategies', (T) => {
       const paused = (s.deployments || []).some((d) => d.mode === 'paper' && d.status === 'paused');
       const tpd = pace && pace.trades_per_day;
       if (pace && !pace.running) lines.push(`<p class="hint">${paused ? 'Its paper deployment is paused, so its record isn’t growing. <a href="/deploy">Resume it on Deploy</a>.'
-        : `It isn’t running on paper, so its record isn’t growing${+p.trades ? `. Its ${num(p.trades)} earlier paper trade${+p.trades === 1 ? '' : 's'} still count` : ''}. ${apPaper ? `<span data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>The autopilot puts it on paper at its next check-in.</span><span data-ap-off${S.me.user.autopilot ? ' hidden' : ''}>Deploy it on paper to add to it.</span>` : 'Deploy it on paper to add to it.'}`}</p>`);
+        : `It isn’t running on paper, so its record isn’t growing${+p.trades ? `. Its ${num(p.trades)} earlier paper trade${+p.trades === 1 ? '' : 's'} still count` : ''}. ${apPaper ? `<span data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>The autopilot puts it on paper at its next check-in${apWhenSpan()}.</span><span data-ap-off${S.me.user.autopilot ? ' hidden' : ''}>Deploy it on paper to add to it.</span>` : 'Deploy it on paper to add to it.'}`}</p>`);
       else if (pace && counts && pace.eta_days != null) lines.push(`<p class="hint road-eta">At its ${pace.rate_from === 'paper' ? 'paper' : 'backtest'} pace (${tpd >= 1 ? `about ${num(Math.round(tpd))} trade${Math.round(tpd) === 1 ? '' : 's'} a day` : 'under one trade a day'}), it could have the trades, events and hours in <b>${roadDays(pace.eta_days)}</b>. The P&amp;L, edge and demo checks are judged on that record, and it may not pass them.</p>`);
       else if (pace && counts) lines.push('<p class="hint road-eta">It hasn’t traded enough yet to estimate when it could have the trades, events and hours.</p>');
     }
@@ -559,7 +565,7 @@ window.TauPage('strategies', (T) => {
     else if (next[0] === 'paper') {
       // One the autopilot puts on paper itself says so while the switch is on (syncApCopy follows a flip).
       const on = !!(S.me && S.me.user && S.me.user.autopilot), hand = 'nothing needed. Deploy it on paper below.';
-      need = 'Next rung, paper: ' + (apPaper ? `<span data-ap-next${on ? '' : ' hidden'}>the autopilot puts it there at its next check-in.</span><span data-ap-off${on ? ' hidden' : ''}>${hand}</span>` : hand);
+      need = 'Next rung, paper: ' + (apPaper ? `<span data-ap-next${on ? '' : ' hidden'}>the autopilot puts it there at its next check-in${apWhenSpan()}.</span><span data-ap-off${on ? ' hidden' : ''}>${hand}</span>` : hand);
     }
     else if (next[0] === 'demo') need = (demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds#connect-kalshi">Funds page</a>.'
       : s.demo_health ? `Next rung, demo: needs ${esc(s.demo_health.need)}.${actionLink(s.demo_health)}`
@@ -633,7 +639,9 @@ window.TauPage('strategies', (T) => {
     // (its numbers also went back to the agent), so it is "after the split date", never "the agent never saw".
     // With none, its only figures are in-sample and the unseen-data figure is left out. Display only.
     const hasExp = !!s.experiment;
-    const splitOnly = !hasExp && ['passed', 'backtest-only'].includes(s.status);
+    // So does a void one the server found no gatekeeper record for (no_gatekeeper_record): the first version's simple
+    // backtest stored it as failed, never judged on held-out data. Nothing picked it, so its words drop "which picked it".
+    const splitOnly = !hasExp && (['passed', 'backtest-only'].includes(s.status) || !!s.no_gatekeeper_record);
     // The chart's cut label says it in the heading's words too (equityChart's own default says unseen data).
     const cutWords = splitOnly ? { cutLabel: [`LATER PERIOD${SEP}NOT HELD OUT →`, `LATER${SEP}NOT HELD OUT →`, 'LATER →'] } : {};
     // The later slice's heading, in the Strategies list's and Community card's words: "later period" plus whether it was
@@ -645,14 +653,16 @@ window.TauPage('strategies', (T) => {
     // heading broke "(not / held out)" and "(unseen / data)" (walked 2026-10-28).
     const laterQual = splitOnly ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data';
     // The qualifier keeps together with its marker: a phone broke it "(unseen / data)".
-    const topLabel = splitOnly ? gl('Later-period P&L (not\u00a0held\u00a0out)', 'laterperiod') : gl('Later-period P&L (unseen\u00a0data)', 'unseen');
+    // A void one's bubble (latervoid) says it failed there, never laterperiod's "what picked it": nothing picked it.
+    const topLabel = !splitOnly ? gl('Later-period P&L (unseen\u00a0data)', 'unseen') : s.status === 'failed'
+      ? gl('Later-period P&L (not\u00a0held\u00a0out)', 'latervoid') : gl('Later-period P&L (not\u00a0held\u00a0out)', 'laterperiod');
     // A Void, Rejected or missed-final strategy's P&L is muted, as its Strategies row (pnl-nopass) and Community card
     // mute it: a green "+$42.17" up top read as a result beside its Void stamp. Display only.
     const noPass = s.status === 'failed' || s.status === 'rejected' || s.verdict === 'missed_final';
     const toneV = (v) => (noPass ? undefined : v);
     const mute = (html) => (noPass ? `<span class="pnl-nopass">${html}</span>` : html);
     const splitFig = (r) => r.out_of_sample ? fig(topLabel, mute(usd(r.out_of_sample.pnl, true)), { v: toneV(r.out_of_sample.pnl),
-      small: `${num(r.out_of_sample.trades)} trades${overDays(r.out_of_sample.days)} after the split date, which picked it${SEP}not\u00a0held\u00a0out` }) : '';
+      small: `${num(r.out_of_sample.trades)} trades${overDays(r.out_of_sample.days)} after the split date${noPass ? '' : ', which picked it'}${SEP}not\u00a0held\u00a0out` }) : '';
     const heldFig = (h, label) => fig(label, mute(h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return)), { v: toneV(h.net_pnl != null ? h.net_pnl : h.mean_net_return),
       small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
     const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
@@ -697,7 +707,7 @@ window.TauPage('strategies', (T) => {
     const luckFlag = (m) => {
       if (!m) return '';
       const r = [];
-      if (m.trades != null && caution.min_trades != null && m.trades < caution.min_trades) r.push(`n=${m.trades} — under ${caution.min_trades} trades, too few to tell skill from luck${caution.gate_min_oos_trades != null ? ` (a caution, stricter than the gate’s floor of ${caution.gate_min_oos_trades})` : ''}`);
+      if (m.trades != null && caution.min_trades != null && m.trades < caution.min_trades) r.push(`Only ${num(m.trades)} trade${m.trades === 1 ? '' : 's'} — under ${num(caution.min_trades)}, too few to tell skill from luck${caution.gate_min_oos_trades != null ? ` (a caution, stricter than the gate’s floor of ${num(caution.gate_min_oos_trades)})` : ''}`);
       if (m.win_rate === 1) r.push('100% win rate — an overfit signature, not an edge');
       if (typeof m.profit_factor === 'number' && m.profit_factor >= 99) r.push('no losing trades in sample — profit factor is meaningless');
       if (typeof m.sharpe === 'number' && m.sharpe >= 3) r.push(`Sharpe ${m.sharpe} is implausibly high for a real net edge`);
@@ -716,7 +726,7 @@ window.TauPage('strategies', (T) => {
     const gateName = (n) => splitOnly ? String(n).replace(/\bunseen data\b/g, 'data after the split date').replace(/\bunseen trades\b/g, 'trades after the split date') : n;
     const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(gateName(g.name))}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
     const trades = (s.recent_trades || []).length ? `<div class="sheet"><table class="table stack t-unseen"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
-        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${t.qty}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
+        ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${num(t.qty)}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
       </tbody></table></div>` : `<p class="hint">No later-period trades (${laterQual}) to show.</p>`;
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     // Stopped deployments can still hold positions; the server refuses the delete until they close.
@@ -729,7 +739,7 @@ window.TauPage('strategies', (T) => {
     const rp = researchPaper(s.experiment);
     const filed = (() => { try { return new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } })();
     const abResult = splitOnly ? (oos
-      ? `After the backtest’s split date it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}. That later slice is what picked it, so it isn’t held-out evidence.`
+      ? `After the backtest’s split date it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}. ${noPass ? 'There’s no record it was held out, so it isn’t held-out evidence.' : 'That later slice is what picked it, so it isn’t held-out evidence.'}`
       : 'It has no held-out result: its only figures are from the history it searched.')
       : oos
       ? `On unseen data the agent never touched while iterating, it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}${s.hypotheses_tried ? (passedAll ? `, and cleared the gate as one of ${num(s.hypotheses_tried)} ideas tested this run` : `, one of ${num(s.hypotheses_tried)} ideas tested this run`) : ''}.`
@@ -742,7 +752,7 @@ window.TauPage('strategies', (T) => {
             <div><dt>History window</dt><dd>${esc((s.dataset.start || '').slice(0, 10)) || '—'} → ${esc((s.dataset.end || '').slice(0, 10)) || '—'}</dd></div>
             <div><dt>${splitOnly ? 'Split date' : 'Unseen (held out) from'}</dt><dd>${esc((s.dataset.out_of_sample_from || '').slice(0, 10)) || '—'}</dd></div>
           </dl>
-          <p class="rp-sub" style="margin-top:8px">${perpetual ? 'The agent only saw the research partition. ' + PERPS_SCENARIO : (splitOnly ? 'The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out. ' : 'The agent only ever saw data before the held-out date. ') + "Every simulated fill pays the ask or bid plus Kalshi’s taker fee — results are net of fees or they do not count."}</p></div>` : '';
+          <p class="rp-sub" style="margin-top:8px">${perpetual ? 'The agent only saw the research partition. ' + PERPS_SCENARIO : (splitOnly ? (noPass ? 'The rule was fit on data before the split date; there’s no record that the data after it was held out. ' : 'The rule was fit on data before the split date; the data after it picked the rule, so none of it is held out. ') : 'The agent only ever saw data before the held-out date. ') + "Every simulated fill pays the ask or bid plus Kalshi’s taker fee — results are net of fees or they do not count."}</p></div>` : '';
     // What it does, in plain words: the paper's first section. It sat inside the Methodology fold,
     // which a phone opens closed, under the pre-registration, so the rule took digging to find.
     const ruleBlock = `${(s.rules || []).length ? `<ul class="rules">${s.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
@@ -766,7 +776,8 @@ window.TauPage('strategies', (T) => {
         // validated 'passed' always has an experiment and takes the rich path above, not this one.
         passed: ['sig', 'armed', 'Not validated', 'It’s marked Passed, but there’s no record of its held-out tests (a test on data it hadn’t seen and the one-time final test), so nothing on this page is held-out evidence: ' + (oos ? 'its figures come from the history it searched and from the data after the split date, which picked it.' : 'its only figures are from the history it searched.') + ' Treat it as unvalidated.'],
         'backtest-only': btOnly,
-        failed: ['sig', 'armed', 'Void', 'It reached the unseen-data gate and failed it, so it was not validated.'],
+        // A void one with no gatekeeper record (splitOnly) never reached a held-out gate: it failed the old backtest's checks.
+        failed: ['sig', 'armed', 'Void', splitOnly ? 'It failed its backtest checks on the data after the split date. There’s no record of its held-out tests, so nothing on this page is held-out evidence, and it was not validated.' : 'It reached the unseen-data gate and failed it, so it was not validated.'],
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
       };
       const [vt, chip, label, words] = vmap[s.status] || ['quiet', 'quiet', rpHuman(s.status), 'Awaiting a recorded verdict.'];
@@ -787,7 +798,7 @@ window.TauPage('strategies', (T) => {
     const quickPaper = canDeploy && passedAll && hasExp && !onPaper;
     const apOn = !!(S.me && S.me.user && S.me.user.autopilot), apPaper = quickPaper && !!s.autopilot_paper;
     const apOff = apPaper ? ` data-ap-off${apOn ? ' hidden' : ''}` : '';
-    const apLine = apPaper ? `<p class="hint ap-paper" data-ap-next${apOn ? '' : ' hidden'}>The autopilot is putting this on paper at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows it once it’s there.</p>` : '';
+    const apLine = apPaper ? `<p class="hint ap-paper" data-ap-next${apOn ? '' : ' hidden'}>The autopilot is putting this on paper at its next check-in${apWhenSpan()}, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows it once it’s there.</p>` : '';
     const quickHtml = quickPaper ? `<div class="strat-quick" id="strat-quick">${apLine}<button class="btn primary" id="dep-paper-quick"${apOff}>Deploy on paper</button><p class="hint"${apOff}>Paper trades with pretend money against live prices, so nothing real is at risk. Demo and live are in Deploy, further down.</p><div id="depflash-quick"></div></div>` : '';
     const ladder = restricted ? '' : ladderLines(s, { canDeploy, demoWhy, apPaper });
     // Already on paper (running or paused): where to find it, beside the button and its second-copy warning.
@@ -810,7 +821,7 @@ window.TauPage('strategies', (T) => {
               <h3 class="paper-h">Abstract</h3>
               <p class="paper-ab">${mdLite(s.thesis)}</p>
               <p class="paper-ab-result">${abResult}</p>
-              ${verdictGlance(s, missed)}
+              ${verdictGlance(s, missedShown)}
             </section>
             ${restricted ? '' : realRecord(s)}
             <div class="paper-body">
@@ -830,20 +841,20 @@ window.TauPage('strategies', (T) => {
             const bookLine = (xs) => {
               const marked = xs.filter((p) => p.unrealized != null), unreal = marked.reduce((a, p) => a + p.unrealized, 0);
               const lead = books.length > 1 ? ({ live: 'Live', demo: 'Demo', paper: 'Paper' })[xs[0].mode || 'paper'] + ': ' : '';
-              return `${lead}${xs.length} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : `${SEP}awaiting first mark`}.`;
+              return `${lead}${num(xs.length)} open position${xs.length === 1 ? '' : 's'} at cost + fees ${usd(xs.reduce((a, p) => a + p.cost, 0))}${marked.length ? `${SEP}unrealized ${money(unreal)} (est., mark-to-market on the current bid)` : `${SEP}awaiting first mark`}.`;
             };
             // A list, not a five-column table: in the sidebar the table clipped everything after Position.
             // Beside a Live or Demo row a paper one says Paper too: untagged, it read as the real-money book.
             return `<section class="panel"><h3>Holding right now</h3>
             <ul class="holdlist">${s.holdings.map((p) => `<li><div class="pos-name">${contractLink(p.ticker, s.market)} ${p.mode === 'live' ? '<span class="mk live">Live</span>' : p.mode === 'demo' ? '<span class="mk dep">Demo</span>' : books.length > 1 ? '<span class="mk">Paper</span>' : ''}</div><div class="sub-fig">${kalshiRef(p.ticker)}</div>
-              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${p.qty} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unrealized ${p.unrealized == null ? 'not marked yet' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</li>`).join('')}</ul>
+              <div class="holdlist-figs"><b>${esc(p.side.toUpperCase())} ×${num(p.qty)} @ ${cents(p.entry_price)}</b><span>Cost + fee ${usd(p.cost)}</span><span>Unrealized ${p.unrealized == null ? 'not marked yet' : money(p.unrealized)}</span><span>Settles ${settleAt(p.market_close_time)}</span></div>${p.why ? `<div class="sub-fig pos-why">${sepLine(p.why)}</div>` : ''}</li>`).join('')}</ul>
             <p class="hint" style="margin-top:8px">${books.map(bookLine).join('<br>')}</p></section>`;
           })() : ''}
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${missed && s.verdict ? `<div class="notice bad">${ICON.warn}<span>${heldBack(s) ? 'Held back' : 'Missed the final test'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict). It wasn’t cleared to trade, so it can’t go live, and putting it on paper is your call.</span></div>` : ''}
-                ${s.status !== 'passed' && !(missed && s.verdict) ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? 'Void: it failed the unseen-data gate.' : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
+                ${s.status !== 'passed' && !(missed && s.verdict) ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missedShown[0].label.charAt(0).toLowerCase() + missedShown[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? (splitOnly ? 'Void: it failed its backtest checks after the split date.' : 'Void: it failed the unseen-data gate.') : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
                 ${apLine}<button class="btn" id="dep-paper"${apOff}>Deploy on paper</button>${paperAgain(activeDeps)}${paperHere}
                 ${fold('Demo &amp; live', `<div class="fold-body" style="display:grid;gap:10px">
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true"' : ''}>Deploy on demo (sandbox)</button>
@@ -889,16 +900,24 @@ window.TauPage('strategies', (T) => {
     // the Kalshi demo environment. Fetched after the page so a slow/absent demo
     // never blocks the view; absent -> the chart simply stays sim-only. Until it answers,
     // the chart carries its own pending line (DEV_PENDING), gone with or without a curve.
+    // A replay the server hasn't worked out yet answers {pending: true} at once: asked again after
+    // DEV_RETRY_MS while this page is still the one drawn (a redraw asks for itself).
     if (!perpetual && s.equity && oos) (async () => {
       const pending = root.querySelector('#dev-pending');
+      const drawn = root.querySelector('#equity-wrap');
       try {
-        const r = await api('/api/strategies/' + s.id + '/dev-curve');
+        let r = await api('/api/strategies/' + s.id + '/dev-curve');
+        for (let i = 0; r && r.pending && i < DEV_RETRY_MS.length; i++) {
+          await new Promise((resolve) => setTimeout(resolve, DEV_RETRY_MS[i]));
+          if (root.querySelector('#equity-wrap') !== drawn) return;
+          r = await api('/api/strategies/' + s.id + '/dev-curve');
+        }
         const wrap = root.querySelector('#equity-wrap');
         if (wrap && r && r.dev_curve && r.dev_curve.length > 1) {
           const sl = r.slippage, sc = (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + '¢';
           wrap.innerHTML = equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, r.dev_curve, { width: chartWidth(), ...cutWords })
             + `<p class="hint" style="margin-top:6px">Dashed line: the ${splitOnly ? 'later' : 'unseen'} window replayed read-only against Kalshi’s demo environment${r.capped ? ` (first ${r.contracts} contracts)` : ''} — real demo order-book prices, scored with the same fees. No orders are placed.</p>`
-            + (sl ? `<p class="hint" style="margin-top:4px;font-variant-numeric:tabular-nums">Real demo-book slippage: <b>${sc(sl.entry_cents)}</b> entry${sl.exit_cents != null ? ` / <b>${sc(sl.exit_cents)}</b> exit` : ''} over ${sl.n_trades} aligned trade${sl.n_trades === 1 ? '' : 's'} (positive means real fills were worse). <button type="button" class="btn sm" id="apply-slip">Apply to what-if</button></p>` : '');
+            + (sl ? `<p class="hint" style="margin-top:4px;font-variant-numeric:tabular-nums">Real demo-book slippage: <b>${sc(sl.entry_cents)}</b> entry${sl.exit_cents != null ? ` / <b>${sc(sl.exit_cents)}</b> exit` : ''} over ${num(sl.n_trades)} aligned trade${sl.n_trades === 1 ? '' : 's'} (positive means real fills were worse). <button type="button" class="btn sm" id="apply-slip">Apply to what-if</button></p>` : '');
           if (sl) {
             const perFill = Math.max(0, Math.min(5, sl.exit_cents != null ? (sl.entry_cents + sl.exit_cents) / 2 : sl.entry_cents));
             const ws = root.querySelector('#ws'), wso = root.querySelector('#wso'), ab = root.querySelector('#apply-slip');
@@ -944,7 +963,7 @@ window.TauPage('strategies', (T) => {
         // rest of the visit, and only a reload asked again.
         const body = root.querySelector('#road-live-body');
         if (!body) return;
-        const why = e instanceof ApiError ? e.message : 'Live readiness is unavailable right now.';
+        const why = 'Road to live didn\u2019t load. ' + (e instanceof ApiError ? e.message : 'Try again in a moment.') + ' Everything else on this page did.';
         body.innerHTML = `<p class="hint">${esc(why)} <button class="btn sm" type="button" data-road-retry>Try again</button></p>`;
         body.querySelector('[data-road-retry]').onclick = () => { body.innerHTML = '<p class="hint">Checking…</p>'; return roadRead(); };
       }

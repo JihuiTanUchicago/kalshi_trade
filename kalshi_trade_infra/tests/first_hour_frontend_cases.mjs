@@ -32,10 +32,10 @@ export function firstHourCases({name, frontend, billingPage, cardedBilling, dash
 
   test(`${name}: a passed strategy the autopilot is about to put on paper does not ask for a deploy by hand`, async () => {
     let next = await run([passed({autopilot_next: true})]);
-    assert.match(next, /Passed: <a href="\/strategies\/42">Momentum<\/a>\. The autopilot puts it on paper itself at its next check-in, so there is nothing for you to deploy\. <a href="\/deploy">Deploy<\/a> shows it once it is there\./);
+    assert.match(next, /Passed: <a href="\/strategies\/42">Momentum<\/a>\. The autopilot puts it on paper itself at its next check-in<span data-ap-when><\/span>, so there is nothing for you to deploy\. <a href="\/deploy">Deploy<\/a> shows it once it is there\./);
     assert.doesNotMatch(next, /Open it to deploy/);
     next = await run([passed({deployed: true}), passed({id: 44, title: 'Other', autopilot_next: true})]);
-    assert.match(next, /2 passed: .*\. 1 is already deployed; the autopilot puts the other on paper itself at its next check-in/);
+    assert.match(next, /2 passed: .*\. 1 is already deployed; the autopilot puts the other on paper itself at its next check-in<span data-ap-when><\/span>/);
     // One it will not take (outside the focus, say) still asks.
     next = await run([passed({autopilot_next: true}), passed({id: 44, title: 'Other'})]);
     assert.match(next, /2 passed: .*\. Open one to deploy it on paper\./);

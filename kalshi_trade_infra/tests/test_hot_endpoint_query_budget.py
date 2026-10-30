@@ -482,7 +482,7 @@ def test_the_autopilot_week_counts_only_cleared_passes_and_judges_them_once_per_
     out, reads, log = poll(3)
     assert (out["research"]["passed_7d"], out["research"]["not_cleared_7d"]) == (2, 1)
     assert (out["week"]["passed"], out["week"]["not_cleared"]) == (2, 1)
-    assert any("This week it tested 12 ideas and 2 passed, and 1 more passed but wasn’t cleared to trade." in s
+    assert any("This week your sessions and the autopilot’s tested 12 ideas and 2 passed, and 1 more passed but wasn’t cleared to trade." in s
                for s in out["story"])
     assert reads == [(7, "passed", datetime(2026, 10, 18))]  # the week's passes from research sessions
     assert sum("LEFT JOIN app_experiment_results r" in s for s, _ in log) == 1
@@ -536,7 +536,7 @@ def _book_rows():
         "FROM app_deployments d LEFT JOIN app_strategies s ON s.id=d.strategy_id WHERE d.id IN": [
             {"id": 5, "strategy_id": 9, "status": "running", "title": "Fade tails", "market": "btc15m"},
             {"id": 6, "strategy_id": 9, "status": "running", "title": "Fade tails", "market": "btc15m"}],
-        "AS ex FROM app_strategies s WHERE s.user_id=%s": [{"status": "passed", "n": 1, "dep": 1, "ex": 0}],
+        "AS norec FROM app_strategies s WHERE s.user_id=%s": [{"status": "passed", "n": 1, "dep": 1, "ex": 0, "norec": 0}],
     })
     rows["FROM app_strategies s LEFT JOIN app_agent_runs r"][0].update(active_deps=1, live_deps=0)
     return rows

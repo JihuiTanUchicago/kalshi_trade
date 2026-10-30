@@ -962,6 +962,7 @@ def main() -> None:
     threading.Thread(target=warm_shared, daemon=True).start()
     threading.Thread(target=warm_static, daemon=True).start()
     paper_checks.start()  # a lapsed paper check is read again in the background
+    kalshi_dev.start()  # the strategy page's demo replay is worked out off the request
     threading.Thread(target=warm_deploy_boards, name="warm-deploy-boards", daemon=True).start()
     print("Tau on http://%s:%d" % (HOST, PORT), flush=True)
     server.serve_forever()

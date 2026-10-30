@@ -3,6 +3,7 @@
 //   text, and moves focus into the list when it opens;
 // - the autopilot status read brings new notices to the bell within a minute, without a reload;
 // - a list that didn't load still opens and says so, with Try again, and the next read fills it;
+// - a refresh that failed with a list up keeps it and says quietly how old it is, with Try again (only then);
 // - marking the list read that didn't save puts the dot back, and only the next open tries once more;
 // - a bell link to a post opens the feed at that post with its replies, shows the feed from that post
 //   when it is older than the newest page, and says so when the post is gone.
@@ -110,6 +111,74 @@ export function bellCases({name, frontend}) {
     g.shiftClock(61e3); [...g.intervals.values()].forEach(tick => tick()); await settle();
     assert.equal(g.root.querySelector('.bell-dot').hidden, false);
     assert.equal(g.root.querySelector('.bell-trig').getAttribute('aria-label'), 'Notifications, 1 unread');
+    // A list that never loaded has no "couldn't refresh" line: it says it didn't load.
+    assert.equal(g.root.querySelector('.bell-stale').hidden, true);
+  });
+
+  // Walk 2026-10-28: a refresh that failed kept the last list and said nothing, so it read as current.
+  test(`${name}: a refresh that failed keeps the list and says quietly how old it is, with Try again; only then`, async () => {
+    const notes = {unread: 0, items: [{id: 3, kind: 'deploy', body: 'Edge made a trade.', link: '/deploy', created_at: ago(60e3), read: true, more: 0}]};
+    let failing = false;
+    const f = dashboard(() => (failing ? response({error: 'Something went wrong on our side.'}, 500) : response(structuredClone(notes))));
+    f.location.pathname = '/';
+    await f.render(); await settle();
+    const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
+    const line = wrap.querySelector('.bell-stale'), ticks = () => [...f.intervals.values()].forEach(tick => tick());
+    assert.equal(line.hidden, true, 'nothing after a read that came back');
+    f.shiftClock(61e3); ticks(); await settle();
+    assert.equal(notesRead(f), 2); assert.equal(line.hidden, true, 'nor after a refresh that came back');
+    failing = true;
+    f.shiftClock(3 * 60e3); ticks(); await settle();
+    assert.equal(notesRead(f), 3);
+    assert.equal(line.hidden, false);
+    assert.equal(line.textContent.trim(), 'Couldn’t refresh. Showing notifications from 3 min ago. Try again');
+    assert.equal(line.getAttribute('role'), null, 'quiet: not an alert');
+    assert.match(wrap.querySelector('a.notif').textContent, /Edge made a trade/, 'the list it had stays');
+    assert.doesNotMatch(line.textContent, /went wrong|\(500\)|undefined|NaN/);
+    // Opened later, it says how old the list is as of then. Opening reads it again (the list is minutes old,
+    // first_session_frontend_cases.mjs); that read failing too keeps the list and the line.
+    f.shiftClock(2 * 60e3);
+    await trig.onclick({stopPropagation() {}}); await settle();
+    assert.equal(menu.hidden, false);
+    assert.equal(notesRead(f), 4);
+    assert.match(line.textContent, /from 5 min ago\./);
+    assert.match(wrap.querySelector('a.notif').textContent, /Edge made a trade/);
+    // Try again that fails again keeps the line (and the list); one that comes back takes the line away.
+    const press = () => line.listeners.get('click')({target: line.querySelector('[data-bell-retry]')});
+    press(); await settle();
+    assert.equal(notesRead(f), 5); assert.equal(line.hidden, false);
+    assert.ok(wrap.querySelector('a.notif'));
+    failing = false;
+    notes.items.unshift({id: 4, kind: 'paused', body: '“Edge” was paused automatically.', link: '/strategies/7', created_at: ago(5e3), read: false, more: 0});
+    notes.unread = 1;
+    press(); await settle();
+    assert.equal(notesRead(f), 6);
+    assert.equal(line.hidden, true);
+    assert.equal(line.textContent, '');
+    assert.match(wrap.querySelector('#bell-list').textContent, /was paused automatically/);
+    // Nothing reads on its own because of the failure: no extra reads beyond the ones above.
+    assert.deepEqual(f.requests.filter(({path}) => path === '/api/notifications').length, 6);
+  });
+
+  // Walk 2026-10-28: with /api/notifications slow (8s), a tap on the bell did nothing until the read came back.
+  test(`${name}: the bell opens while its list is still reading, says so, and fills in where it stands`, async () => {
+    let answer;
+    const pending = new Promise((resolve) => { answer = resolve; });
+    const f = dashboard(() => pending);
+    f.location.pathname = '/';
+    await f.render(); await settle();
+    const wrap = f.root.querySelector('.bell-wrap'), trig = wrap.querySelector('.bell-trig'), menu = wrap.querySelector('.bell-menu');
+    const list = wrap.querySelector('#bell-list');
+    assert.equal(typeof trig.onclick, 'function', 'the bell answers a tap before its list has come back');
+    await trig.onclick({stopPropagation() {}});
+    assert.equal(menu.hidden, false);
+    assert.equal(list.textContent, 'Loading notifications…');
+    assert.equal(f.requests.filter(({path}) => path === '/api/notifications/read').length, 0, 'nothing to mark read yet');
+    answer(response({unread: 1, items: [{id: 3, kind: 'deploy', body: 'Edge made a trade.', link: '/deploy', created_at: ago(60e3), read: false, more: 0}]}));
+    await settle();
+    assert.match(list.querySelector('a.notif').textContent, /Edge made a trade/);
+    assert.equal(menu.hidden, false);
+    assert.equal(f.requests.filter(({path}) => path === '/api/notifications/read').length, 1, 'read as it shows, open');
   });
 
   test(`${name}: marking the list read that didn't save puts the dot back, and the next open tries once more`, async () => {

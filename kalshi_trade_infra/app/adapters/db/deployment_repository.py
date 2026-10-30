@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.db.sql import contract_fills_sql, now_utc
-from app.adapters.db.strategy_repository import DEMO_DIRECTION, NO_EXPERIMENT_SQL, _strategy_row
+from app.adapters.db.strategy_repository import DEMO_DIRECTION, NO_EXPERIMENT_SQL, VOID_NO_RECORD_SQL, _strategy_row
 
 _EPOCH = datetime(1970, 1, 1)  # naive UTC, as the DATETIME columns are read
 
@@ -66,6 +66,10 @@ def list_deployments_brief(cur, user_id: int) -> List[Dict]:
 # the experiment probe (idx_exp_user_market's user_id prefix) runs only for a passed row without experiment_id,
 # a legacy row; every other row stops at its status. Display only.
 NO_RECORD_SQL = "(s.status='passed' AND " + NO_EXPERIMENT_SQL + ") AS no_gatekeeper_record"
+# And a void one with none (VOID_NO_RECORD_SQL, the Strategies list's own column): the first version's simple backtest
+# stored it as failed, never judged on held-out data, so its rows say "not held out" as its page and list row do. The
+# same column of the same two reads; its probe runs only for a void row without experiment_id. Display only.
+VOID_RECORD_COL = VOID_NO_RECORD_SQL + " AS void_no_record"
 
 
 def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] = None) -> List[Dict]:
@@ -81,13 +85,14 @@ def list_deployments_for_display(cur, user_id: int, strategy_id: Optional[int] =
     `strategy_status` (its strategy's status, from the strategy row the same read joins) lets a row of a
     backtest-only strategy say its backtest figure is later-period, not unseen; display only. So does
     `no_gatekeeper_record` (NO_RECORD_SQL, in the same statement): a "passed" strategy with no linked
-    experiment either way, the kind relabel_backtest_only makes backtest-only, whose page says the same."""
+    experiment either way, the kind relabel_backtest_only makes backtest-only, whose page says the same. And
+    `void_no_record` (VOID_RECORD_COL, the same statement): a void strategy with no gatekeeper record either way."""
     one = (int(strategy_id),) if strategy_id is not None else ()
     only_pd, only_d = (" AND pd.strategy_id=%s", " AND d.strategy_id=%s") if one else ("", "")
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
                   d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json,
-                  """ + NO_RECORD_SQL + """, s.status AS strategy_status,
+                  """ + NO_RECORD_SQL + """, """ + VOID_RECORD_COL + """, s.status AS strategy_status,
                   COALESCE(t.realized_pnl,0) AS realized_pnl, COALESCE(t.closed_trades,0) AS closed_trades,
                   COALESCE(t.wins,0) AS wins, COALESCE(t.open_positions,0) AS open_positions,
                   COALESCE(t.contract_fills,0) AS contract_fills
@@ -126,7 +131,7 @@ def deployment_rows_for_display(cur, user_id: int, strategy_id: Optional[int] = 
     cur.execute(
         """SELECT d.id, d.user_id, d.strategy_id, d.market, d.mode, d.status, d.status_reason, d.last_decision_ts,
                   d.created_at, d.updated_at, d.last_scan_json, d.last_scan_at, s.title, s.direction, s.spec_json, s.result_json,
-                  """ + NO_RECORD_SQL + """, s.status AS strategy_status
+                  """ + NO_RECORD_SQL + """, """ + VOID_RECORD_COL + """, s.status AS strategy_status
            FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id
            WHERE d.user_id=%s AND d.status <> 'stopped'""" + (" AND d.strategy_id=%s" if one else "") + """ ORDER BY d.id DESC""",
         (user_id, *one),

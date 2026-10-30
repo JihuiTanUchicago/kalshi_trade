@@ -113,6 +113,7 @@ def test_a_shared_pass_with_no_gatekeeper_record_says_so_from_the_same_read(shar
 
 
 def test_a_shared_non_pass_or_example_never_claims_a_missing_record(monkeypatch, share):
+    # At share time only: the feed's own read flags a void card with no record (test_a_card_stored_before_...).
     share.unrecorded.add(4711)
     for over in ({"status": "failed"}, {"status": "backtest-only"}, {"direction": community.repo.DEMO_DIRECTION}):
         monkeypatch.setattr(community.repo, "get_strategy", lambda cur, uid, sid, o=over: dict(STRATEGY, **o))
@@ -121,8 +122,11 @@ def test_a_shared_non_pass_or_example_never_claims_a_missing_record(monkeypatch,
 
 def test_a_card_stored_before_the_flag_gets_it_from_the_feed_read(share):
     # A card shared before #598 has no no_gatekeeper_record; the feed's read says its strategy has no record
-    # (community_repository.POST_NO_RECORD_SQL), so a "passed" card says later-period as its page does. A card
-    # with a later verdict, or any other status, claims nothing; nor does a card the read didn't flag.
+    # (community_repository.POST_NO_RECORD_SQL), so a "passed" card says later-period as its page does. So does a
+    # "failed" (Void) one: a void with no gatekeeper record is one the first version's simple backtest stored as
+    # failed, never judged on held-out data, and its Strategies row and page say "not held out" (VOID_NO_RECORD_SQL);
+    # this case used to assert it claimed nothing, which left its card saying "unseen data". A card with a later
+    # verdict, or any other status, claims nothing; nor does a card the read didn't flag.
     snap = share("strategy", 4711)["snapshot"]
     assert "no_gatekeeper_record" not in snap
 
@@ -133,7 +137,10 @@ def test_a_card_stored_before_the_flag_gets_it_from_the_feed_read(share):
     assert read(snap, True)["no_gatekeeper_record"] is True
     assert "no_gatekeeper_record" not in read(snap, False)
     assert "no_gatekeeper_record" not in read(dict(snap, verdict="missed_final"), True)
-    assert "no_gatekeeper_record" not in read(dict(snap, status="failed"), True)
+    assert read(dict(snap, status="failed"), True)["no_gatekeeper_record"] is True
+    assert "no_gatekeeper_record" not in read(dict(snap, status="failed"), False)
+    for status in ("rejected", "backtest-only"):
+        assert "no_gatekeeper_record" not in read(dict(snap, status=status), True), status
     assert "no_gatekeeper_record" not in read({"kind": "deployment", "title": "x", "mode": "paper"}, True)
 
 

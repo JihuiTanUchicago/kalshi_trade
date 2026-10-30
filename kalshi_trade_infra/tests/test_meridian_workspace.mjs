@@ -11,6 +11,7 @@ import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {moneyDisplayCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
+import {moneyAgreementCases} from './money_agreement_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
@@ -22,6 +23,7 @@ import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
+import {loadPollCases} from './load_poll_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
@@ -36,15 +38,18 @@ import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
+import {spendTrustCases} from './spend_trust_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 import {newUserCases} from './new_user_frontend_cases.mjs';
+import {firstSessionCases} from './first_session_frontend_cases.mjs';
+import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
 // What the checks read from the bundle and its page files (bundle_source.mjs).
-const EXPOSE = ['S', 'api', 'PAGES', 'deploymentMonitor', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'render', 'viewExample', 'viewSettings', 'viewBilling', 'viewSystem', 'viewAdmin', 'routes', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'tabEdges', 'viewRun', 'viewResearch', 'viewFunds', 'viewDashboard', 'viewDeploy', 'viewCommunity', 'viewExplore', 'postSnapshot', 'replaceDeploymentContent', 'marketPicker', 'wireMarketPicker', 'hotOpen', 'renderHotRail', 'trackRecordPanel', 'paintDashAp', 'mountTrackRecord', 'apUpdate', 'paymentGate'];
+const EXPOSE = ['S', 'api', 'PAGES', 'deploymentMonitor', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'render', 'viewExample', 'viewSettings', 'viewBilling', 'viewSystem', 'viewAdmin', 'routes', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'tabEdges', 'viewRun', 'viewResearch', 'viewFunds', 'viewDashboard', 'viewDeploy', 'viewCommunity', 'viewExplore', 'postSnapshot', 'replaceDeploymentContent', 'marketPicker', 'wireMarketPicker', 'hotOpen', 'renderHotRail', 'trackRecordPanel', 'paintDashAp', 'mountTrackRecord', 'apUpdate', 'paymentGate', 'viewMarketDetail'];
 const source = bundleSource('app.meridian.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -261,14 +266,17 @@ runPageCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async () => STRIPE_STUB})});
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
-countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend});
+countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => dashboardData()});
 explorePageCases({name: 'Meridian', frontend});
 trackRecordTrustCases({name: 'Meridian', frontend, Element, dashboard: () => dashboardData()});
 researchFormCases({name: 'Meridian', frontend});
+spendTrustCases({name: 'Meridian', frontend});
 kalshiWaitCases({name: 'Meridian', frontend, detailStrategy});
 phoneSpeedCases({name: 'Meridian', frontend, source, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 exploreSpotListCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
 explorePollCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']], storageFor: m => m});
+loadPollCases({name: 'Meridian', frontend, railOpenWide: [['tau_hotrail', '1']],
+  storageFor: m => m});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
@@ -671,6 +679,7 @@ test('Overview empty paper track record follows the autopilot switch when a stat
   // Nothing deployed on this dashboard, so the button skips the empty Deploy board.
   assert.match(panel(), /See passed strategies/); assert.doesNotMatch(panel(), /Go to Deploy/);
   status = {autopilot: true, mode: 'paper', story: [], research: {}, live_running: 0, demo_running: 0, paper_running: 0};
+  f.shiftClock(20000);  // the next status poll, 20s on (a tick under 10s after a read asks nothing new)
   for (const tick of [...f.intervals.values()]) tick();
   await flush(); await flush();
   assert.equal(f.S.me.user.autopilot, true);
@@ -736,6 +745,21 @@ test('Meridian: the empty Deployed box names its next step "research an idea you
     assert.match(deps, own_sessions ? /on paper first\. Or research an idea yourself\.<\/p>/ : /<p>Turn on autopilot above, or research an idea yourself\.<\/p>/);
     assert.doesNotMatch(deps, /start a session/);
   }
+});
+
+test('Meridian: the empty Deployed box\'s button says what its sentence says, "Research an idea", as Tau\'s does', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response(dashboardData({since: {own_sessions: true}}));
+    if (path === '/api/autopilot/status') return response({...apStatus, autopilot: false, mode: 'off'});
+    if (path.startsWith('/api/')) return response({});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); f.clearTimers();
+  const box = f.root.querySelector('#deps-empty');
+  // "Or research an idea yourself." sat over a "New session" button: the sentence and the button named two things.
+  assert.match(box.innerHTML, /Or research an idea yourself\.<\/p><a class="btn" href="\/research\?new=1">Research an idea<\/a>/);
+  assert.doesNotMatch(box.innerHTML, /New session/);
 });
 
 test('Overview offers each mode its own trades CSV only when that mode has closed trades', async () => {
@@ -1078,7 +1102,7 @@ test('Overview polling shares paper-running context only for a nonempty uniform 
     const createLinks = section.querySelectorAll('a[href="/research?new=1"]');
     assert.equal(createLinks.length, 1);
     const create = createLinks[0];
-    assert.equal(create.textContent, frame.deployments.length ? 'New research' : 'New session');
+    assert.equal(create.textContent, frame.deployments.length ? 'New research' : 'Research an idea');
     assert.equal(create.getAttribute('href'), '/research?new=1');
     if (!frame.deployments.length) {
       assert.equal(section.querySelector('.empty h3').textContent, 'Nothing deployed yet');
@@ -3760,7 +3784,7 @@ test('the autopilot card keeps its figures when the status poll fails, notes the
   }});
   f.S.me.user.autopilot = true; f.S.ap = status; f.S.apAt = Date.now();
   await f.viewDashboard(); await flush(); await flush();
-  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden) tick()"));
+  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden && !apFresh()) tick()"));
   const note = () => f.root.querySelector('#dash-ap-stale').textContent;
   const card = () => f.root.querySelector('#dash-ap').innerHTML;
   const reads = () => f.requests.filter(r => r.path === '/api/autopilot/status').length;
@@ -3802,7 +3826,7 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.masthead \.bell-trig \{ min-width: 44px;/);
   assert.match(block, /\.market-control \.hot-tab \{ width: 44px; \}/);
-  assert.match(block, /\.info \{ width: 40px; height: 40px;/);
+  assert.match(block, /\.info \{ width: 44px; height: 44px; margin: -15px -15px -15px -10px; \}/);
   assert.match(css, /\.research-ap button \{[^}]*padding: 10px 4px; margin: -10px -4px;/);
   assert.match(css, /\.ap-focus button \{[^}]*padding: 10px 4px; margin: -10px -4px -10px 0;/);
   assert.match(css, /\.rsidisc \.pipechev \{ position: absolute; right: 14px;/);
@@ -3833,8 +3857,8 @@ test('Meridian phone polish: a glossary marker keeps its last word, one rule whe
   const touch = css.slice(css.lastIndexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.input, select, input\[type=text\][^{]*\.post-tools select, \.explore-filters \.input \{ min-height: 44px; \}/);
-  assert.match(block, /input\[type=range\], \.dial input\[type=range\] \{ height: 40px; \}/);
-  assert.match(block, /details > summary \{ padding-block: 11px; min-height: 40px; \}/);
+  assert.match(block, /input\[type=range\], \.dial input\[type=range\] \{ height: 44px; \}/);
+  assert.match(block, /details > summary \{ padding-block: 13px; min-height: 44px; \}/);
   assert.match(block, /\.wordmark a \{ padding: 3px 5px; margin: -3px -5px; \}/);
   assert.match(block, /\.legal-nav a, \.legal-foot a, \.lfoot-links a, \.linkish \{ padding: 10px 4px; margin: -10px -4px; \}/);
   assert.doesNotMatch(block, /#dep-(paper|demo|live)|\.go\b|strat-quick/);
@@ -4056,7 +4080,7 @@ test('a returning user reads what happened since the last visit at the top of th
   // Paper says what its figure is net of, as every paper P&L does; demo and live don't.
   assert.match(text, /<span class="nobr"><b>Paper<\/b> <span class="pos">\+\$2\.42<\/span><\/span> on 3 trades, after Kalshi fees and the spread<\/span>/);
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
-  assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
+  assert.match(text, /4 strategies passed: <span class="since-links"><a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a><\/span>/);
   assert.match(text, /3 research sessions started/);
   assert.match(text, /It put 1 on paper, paused 2, made 1 other change\./);
   assert.match(text, /<a href="#dash-paused">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);
@@ -4917,7 +4941,7 @@ test('the backtest luck line reads its trade bar from the server and names it as
   };
   const lines = await flags({sample_caution: {min_trades: 30, gate_min_oos_trades: 10}});
   assert.equal(lines.length, 2);  // in-sample and out-of-sample, 6 trades each
-  for (const line of lines) assert.match(line, /n=6 — under 30 trades, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
+  for (const line of lines) assert.match(line, /Only 6 trades — under 30, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
   assert.deepEqual(await flags({sample_caution: {min_trades: 5, gate_min_oos_trades: 10}}), []);
   assert.deepEqual(await flags({}), []);  // no bar from the server, no line: never a guessed constant
 });
@@ -5992,6 +6016,26 @@ test('Meridian: a brand-new account\'s empty Strategies, Deploy and Research say
   assert.match(f.root.querySelector('.research-page').innerHTML, /<h1 class="page">Research<\/h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw\. The ones that pass can trade on paper\.<\/p>/);
 });
 
+test('Meridian: Strategies says under its name what the page is for, in Tau\'s words, and Research results stays beside the name', async () => {
+  const text = 'Every strategy your agents researched. Passed strategies on deployable markets can be deployed; void ones stay here so you can see what didn’t work.';
+  const tauSource = readFileSync(new URL('../app/static/app-strategies.js', import.meta.url), 'utf8');
+  assert.ok(tauSource.includes(`boardTitle('Strategies', '${text}')`));
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 0, passed: 0, failed: 0, rejected: 0}}) : response({}))});
+  await f.viewStrategies(); await flush(); await flush();
+  const head = f.root.querySelector('.strategy-heading').innerHTML;
+  // The name, then the summary beside it, then the line on a row of its own.
+  assert.match(head, /^<h1 class="page">Strategies<\/h1><details class="strategy-summary">[^]*?<\/details><p class="lede page-lede">([^<]*)<\/p>$/);
+  assert.equal(f.root.querySelector('.strategy-heading .page-lede').textContent, text);
+  f.clearTimers();
+  // At 390px the name keeps its width and a long "N% pass rate, of the 1,201 strategies here" wraps beside it;
+  // the line spans both columns underneath.
+  const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
+  assert.match(css, /\.strategy-heading \{ display: grid; grid-template-columns: max-content minmax\(0, 1fr\);/);
+  assert.match(css, /\.strategy-heading > \.strategy-summary \{ justify-self: end; \}/);
+  assert.match(css, /\.strategy-heading > \.page-lede \{ grid-column: 1 \/ -1; margin: 0; \}/);
+});
+
 test('Meridian: Deploy, Explore, Settings and Community each say under their name what the page is for, in Tau\'s words', async () => {
   const tauSource = ['app.js', 'app-community.js'].map(file => readFileSync(new URL('../app/static/' + file, import.meta.url), 'utf8')).join('\n');
   const LEDES = {
@@ -6346,6 +6390,7 @@ liveHonestCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, d
 freshWalkCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unrealizedCellCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unmarkedPositionCases({name: 'Meridian', frontend});
+moneyAgreementCases({name: 'Meridian', frontend});
 moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, hotRail: (f, markets) => {
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
@@ -6462,6 +6507,19 @@ test('a backtest-only strategy’s Deploy row says "Later-period P&L · not held
   assert.doesNotMatch(html, /Unseen P&amp;L/);
 });
 
+test('a Void strategy with no gatekeeper record’s Deploy row says "not held out", without "which picked it"', async () => {
+  // The first version's simple backtest stored it as Void with no record: its details said "· unseen data". The server
+  // sends backtest_only and void_no_record; nothing picked a void one, as its Strategies row and page say.
+  const row = (o) => ({id: 11, strategy_id: 111, title: 'S', market: 'btc15m', mode: 'paper', status: 'running', stake: 5, max_positions: 2,
+    backtest: {out_of_sample: {pnl: 12, trades: 20}}, created_at: '2026-10-17T10:00:00Z', realized_pnl: 3, unrealized_pnl: null,
+    closed_trades: 2, open_positions: 0, curve: [], ...o});
+  const f = frontend({fetchImpl: () => response({deployments: [row({backtest_only: true, void_no_record: true})], open_positions: []})});
+  await f.viewDeploy();
+  const html = f.root.querySelector('#deps').innerHTML;
+  assert.match(html, /<span class="dep-fact" title="After its split date \(later period\u00a0· not held out\)">Later-period P&amp;L \+\$12\.00<\/span>\u00a0· not\u00a0held\u00a0out\u00a0· /);
+  assert.doesNotMatch(html, /unseen|picked it/i);
+});
+
 test('an Overview monitor’s details say "Later-period P&L · not held out" for a strategy whose page does, never unseen', async () => {
   // Walk 2026-10-27: a passed strategy with no gatekeeper record, whose page reads "Later-period P&L … after the split
   // date, which picked it: not held out", had "Unseen P&L +$0.90" in its Overview details. The server's backtest_only
@@ -6491,6 +6549,8 @@ test('a Deploy row’s details keep "Deployed" with its date and "Later-period P
   assert.match(html, /Backtest estimate \+\$1\.20 for the same 2 trades · <span class="dep-fact" title="After its split date \(later period\u00a0· unseen data\)">Later-period P&amp;L \+\$12\.00<\/span> · unseen data · <span class="dep-fact">Deployed [^<]+<\/span>/);
 });
 newUserCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, billingPage, cardedBilling, apStatus});
+firstSessionCases({name: 'Meridian', frontend, dashboard: dashboardData, apStatus, storageFor: m => m});
+checkinCadenceCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, dashboard: dashboardData});
 
 test('a Share my P&L card lines its Paper and Live labels up at the top', () => {
   // Walk 2026-10-27: Paper's figure carries "on 17 trades" under it, so with the row aligned to the bottom

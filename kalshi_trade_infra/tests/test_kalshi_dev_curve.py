@@ -320,3 +320,87 @@ def test_warm_replays_passed_strategies_once_in_the_background(monkeypatch):
     routes.warm_dev_curves(rows)
     time.sleep(0.05)
     assert started == [[31]]
+
+
+# -- the page read never works the replay out on the request -----------------------------------------
+# Measured 2026-10-28 on a seeded account (40 runs, 60 strategies, 6 paper deployments, 2,400 closed
+# trades): the first GET /api/strategies/<id>/dev-curve took ~2.9s, all of it backtest.dataset on the
+# request (the market's history from the DB, then the Deribit and Polymarket books listed and read from
+# S3), before any demo candlestick GET. With the web server's kalshi_dev.start(), the read answers at
+# once and one background worker replays.
+
+PENDING = {"dev_curve": None, "pending": True,
+           "reason": "Replaying the unseen window against Kalshi’s demo book; it shows here in a moment."}
+
+
+def _route_bytes(monkeypatch, sid, spec):
+    from app.web.routes import strategies as routes
+    owned = {"id": sid, "spec": spec, "market": "btc15m", "result": {"out_of_sample": {"trades": 31}}}
+    monkeypatch.setattr(routes, "_owned_strategy", lambda ctx: owned)
+    return _page_bytes(routes.strategy_dev_curve(None))
+
+
+def _join_worker():
+    worker = kalshi_dev._BACKGROUND["worker"]
+    if worker is not None:
+        worker.join(10)
+    assert kalshi_dev._BACKGROUND["worker"] is None and not kalshi_dev._queue
+
+
+def test_the_page_read_answers_at_once_and_then_the_same_bytes_as_before(monkeypatch):
+    import threading
+    import time
+    ds = _pinned_dataset()
+    _pinned_env(monkeypatch, ds)
+    specs = [specmod.validate(dict(raw)) for raw in PINNED_SPECS]
+    # Before: worked out in the request (background off, as in tests and scripts).
+    before = [_route_bytes(monkeypatch, -2000 - k, s) for k, s in enumerate(specs)]
+    assert all(b'"dev_curve":[[' in b for b in before)
+    with kalshi_dev._lock:
+        kalshi_dev._cache.clear()
+        kalshi_dev._candles.clear()
+    # After: the market's history is slow to load; the read neither waits for it nor loads it itself.
+    monkeypatch.setitem(kalshi_dev._BACKGROUND, "on", True)
+    gate, loaded_on = threading.Event(), []
+
+    def slow_dataset(market_key, history_days=None):
+        loaded_on.append(threading.current_thread().name)
+        gate.wait(10)
+        return ds
+    monkeypatch.setattr(kalshi_dev.backtest, "dataset", slow_dataset)
+    for k, s in enumerate(specs):
+        t = time.perf_counter()
+        assert _route_bytes(monkeypatch, -2000 - k, s) == _page_bytes(PENDING)
+        assert time.perf_counter() - t < 0.5
+    assert _route_bytes(monkeypatch, -2000, specs[0]) == _page_bytes(PENDING)  # asked again: still one replay
+    assert len(kalshi_dev._queued) == 2
+    gate.set()
+    _join_worker()
+    assert loaded_on and set(loaded_on) == {"dev-curve-replay"}
+    # Once worked out: the bytes the read always gave, for the same data.
+    assert [_route_bytes(monkeypatch, -2000 - k, s) for k, s in enumerate(specs)] == before
+
+
+def test_a_lapsed_replay_is_served_while_the_worker_replays_it(monkeypatch):
+    ds = _pinned_dataset()
+    _pinned_env(monkeypatch, ds)
+    s = specmod.validate(dict(PINNED_SPECS[0]))
+    before = _route_bytes(monkeypatch, 41, s)
+    monkeypatch.setitem(kalshi_dev._BACKGROUND, "on", True)
+    key = next(iter(kalshi_dev._cache))
+    kalshi_dev._cache[key] = (0.0,) + kalshi_dev._cache[key][1:]
+    computed = []
+    real = kalshi_dev._compute
+    monkeypatch.setattr(kalshi_dev, "_compute", lambda *a: computed.append(1) or real(*a))
+    assert _route_bytes(monkeypatch, 41, s) == before  # served as kept, not replayed in the request
+    _join_worker()
+    assert len(computed) == 1  # one contract errored on the demo host, so the worker replayed it
+    assert kalshi_dev._cache[key][0] > 0 and _route_bytes(monkeypatch, 41, s) == before
+
+
+def test_without_demo_replay_set_up_the_read_says_so_at_once(monkeypatch):
+    monkeypatch.setitem(kalshi_dev._BACKGROUND, "on", True)
+    monkeypatch.setattr(kalshi_dev, "KALSHI_DEV_API_BASE", "")
+    assert _route_bytes(monkeypatch, 43, specmod.validate(dict(PINNED_SPECS[0]))) == _page_bytes(
+        {"dev_curve": None, "reason": "Kalshi demo replay isn’t available on this server."})
+    assert kalshi_dev._BACKGROUND["worker"] is None and not kalshi_dev._queue

@@ -253,6 +253,35 @@ test('a queued or running review reads as in progress, not as a review that alre
   assert.doesNotMatch(source, /Working the operation/);
 });
 
+// "The next review puts it on paper" said nothing of when. The next check-in has no time to promise (the worker's
+// heartbeat skips, queues and spaces out), so the panel gives the status's usual cadence and the last one's age.
+test('the panel says how often the autopilot checks in, beside its last check-in and a strategy waiting for one', async () => {
+  const f = frontend(() => response(catalog)); f.apBuildShell(f.box); await flush();
+  const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+  const line = 'Nothing is on paper yet: Lean in cleared every check, and the next review puts it on paper.';
+  const idle = {code: 'to_deploy', line};
+  f.apUpdate(f.box, status({checkin_every_min: 10, last_review_at: ago(8), idle}));
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last check-in<\/dt><dd>8m ago <small class="apf-note">usually every 10 min<\/small><\/dd>/);
+  assert.match(f.box.querySelector('#apf-story').innerHTML,
+    /<p class="apf-idle">Nothing is on paper yet: Lean in cleared every check, and the next review puts it on paper\. <span class="ap-when">Check-ins: usually every 10 min; last one 8 min ago\.<\/span><\/p>/);
+  // Late: it says how late, and never "any moment now".
+  f.apUpdate(f.box, status({checkin_every_min: 30, last_review_at: ago(185), idle}));
+  assert.match(f.box.querySelector('#apf-story').innerHTML, /Check-ins: usually every 30 min; last one 3 hours ago\./);
+  // One under way, or one waiting for a worker, says that instead of a cadence.
+  f.apUpdate(f.box, status({checkin_every_min: 10, reviewing: true, last_review_at: ago(0), idle}));
+  assert.match(f.box.querySelector('#apf-story').innerHTML, /Check-ins: one is under way now\./);
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last check-in<\/dt><dd>Reviewing now<\/dd>/);
+  f.apUpdate(f.box, status({checkin_every_min: 10, review_wait: {state: 'queued', seconds: 400, overdue: true}, last_review_at: ago(7), idle}));
+  assert.match(f.box.querySelector('#apf-story').innerHTML, /Check-ins: one is waiting for a free worker\./);
+  // No cadence (an older server, autopilot off or paused by billing): nothing is said, and the figure is as before.
+  f.apUpdate(f.box, status({checkin_every_min: null, last_review_at: ago(8), idle}));
+  assert.match(f.box.querySelector('#apf-stats').innerHTML, /<dt>Last check-in<\/dt><dd>8m ago<\/dd>/);
+  assert.doesNotMatch(f.box.querySelector('#apf-story').innerHTML, /Check-ins|usually/);
+  // Another idle line has no check-in to wait for, so it carries none.
+  f.apUpdate(f.box, status({checkin_every_min: 10, last_review_at: ago(8), idle: {code: 'researching', line: 'Nothing is on paper yet.'}}));
+  assert.doesNotMatch(f.box.querySelector('#apf-story').innerHTML, /Check-ins/);
+});
+
 // Seen in Meridian right after turning autopilot off: "Last check-in 37m ago" stayed under "Off: it only suggests
 // ideas". Check-ins are the autopilot's own, so the figure follows the switch: gone while a flip to off saves, gone
 // once it lands (before the next status read), and gone in an off status read; back when it is on again.

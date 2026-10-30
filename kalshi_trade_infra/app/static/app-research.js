@@ -4,7 +4,7 @@
 window.TauPage('research', (T) => {
   'use strict';
   const {
-    alert0, announce, api, ApiError, apNudge, armed, boardTitle, busy, clearTimers, clipWords, esc, EXAMPLE_NOTE, exampleLine,
+    alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionTitle, shell, tzName, usd, waitSpan, when, whyFailedHtml, wireMarketPicker
@@ -39,13 +39,15 @@ window.TauPage('research', (T) => {
   const loopFamily = (f) => LOOP_FAMILY[f] || (f ? f.charAt(0).toUpperCase() + f.slice(1).replace(/-/g, ' ') : '');
   const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', spec_invalid: 'spec rejected', missing_context: 'needs data we lack', thin_sample: 'too few examples', no_signal: 'no signal', wrong_fit: 'wrong for this market', other: 'other' };
   const loopRate = (r) => (r == null ? '—' : Math.round(r * 100) + '%');
-  const rsiLoop = { board: null, at: 0, req: null };
+  // failed: what the last read said when it failed (cleared by the next read that comes back).
+  // okAt: when the board on hand came back, for the line a failed refresh puts above it.
+  const rsiLoop = { board: null, at: 0, okAt: 0, req: null, failed: null };
   // The board's read, at most once a minute and one at a time. The Research page starts it as it opens,
   // beside the session list: asked from the list's first paint, it waited a whole round trip for the list.
   function rsiLoopRead() {
     if (!rsiLoop.req && Date.now() - rsiLoop.at > 60000) {
       rsiLoop.req = api('/api/research/scoreboard?days=14', undefined, { keep: true })
-        .then((b) => { rsiLoop.board = b; }, () => { /* keep the last board; the old card still renders */ })
+        .then((b) => { rsiLoop.board = b; rsiLoop.okAt = Date.now(); rsiLoop.failed = null; }, (e) => { rsiLoop.failed = errText(e); /* a board read before is kept */ })
         .finally(() => { rsiLoop.at = Date.now(); rsiLoop.req = null; });
     }
     return rsiLoop.req;
@@ -55,7 +57,19 @@ window.TauPage('research', (T) => {
     const reading = rsiLoopRead();
     if (reading) await reading;
     const b = rsiLoop.board;
+    // A board that never came says so, with Try again: it fell back to the older "Self-improving research
+    // engine" card as if that were the current read, and said nothing (walk 2026-10-28).
+    if (!b && rsiLoop.failed) {
+      paint(host, loadFail(rsiLoop.failed, 'Your research results'));
+      const again = host.querySelector('[data-retry]');
+      if (again) again.onclick = () => { rsiLoop.at = 0; paint(host, loading(56)); renderResearchLoop(host, pol, tried); };
+      return;
+    }
     if (!b || !b.total || !b.total.runs) { renderRsiMomentum(host, pol, tried); return; }
+    // A refresh that failed with a board up kept it and said nothing, so it read as current. One quiet line above the
+    // card says so, as the bell's does, with Try again; the next read that comes back takes it away.
+    const loopAgo = () => { const m = Math.max(1, Math.round((Date.now() - rsiLoop.okAt) / 60000)); if (m < 60) return `${num(m)} min ago`; const h = Math.round(m / 60); return `${num(h)} hour${h === 1 ? '' : 's'} ago`; };
+    const staleLine = rsiLoop.failed && rsiLoop.okAt ? `<p class="stale-note loop-stale" role="status">Couldn’t refresh. Showing your research results from ${loopAgo()}. <button type="button" class="stale-again" data-loop-retry>Try again</button></p>` : '';
     const t = b.total, tr = b.trend;
     const delta = tr ? `<span class="rsi-score">${loopRate(tr.before.gate_reach_rate)} <span class="rsi-arrow">→</span> ${loopRate(tr.after.gate_reach_rate)}</span>` : '';
     const tag = tr ? (tr.better ? '<span class="rsi-tag">Improving</span>' : '<span class="rsi-tag quiet">Not improving yet</span>') : '<span class="rsi-tag quiet">Learning</span>';
@@ -65,7 +79,7 @@ window.TauPage('research', (T) => {
       ? `<p class="loop-trend">${tr.better ? 'Getting better.' : 'Not better yet.'} The newer ${num(tr.after.runs)} session${tr.after.runs === 1 ? '' : 's'} took ${loopRate(tr.after.gate_reach_rate)} of ${num(tr.after.explored)} ideas to the statistical gate, against ${loopRate(tr.before.gate_reach_rate)} of ${num(tr.before.explored)} before.</p>`
       : `<p class="loop-trend">Each session’s ideas are counted from first draft to final verdict. A before/after trend appears once there are 16 ideas to compare.</p>`;
     const maxIdeas = Math.max(1, ...(b.days || []).map((d) => d.explored));
-    const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${d.explored} ideas, ${d.gated} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
+    const days = (b.days || []).length > 1 ? `<div class="loop-days" role="img" aria-label="Ideas per day and how many reached the gate">${b.days.slice(-14).map((d) => `<span class="loop-day" title="${esc(d.day)}: ${num(d.explored)} ideas, ${num(d.gated)} reached the gate"><i class="all" style="height:${Math.max(4, Math.round(40 * d.explored / maxIdeas))}px"></i><i class="hit" style="height:${d.gated ? Math.max(3, Math.round(40 * d.gated / maxIdeas)) : 0}px"></i></span>`).join('')}</div><p class="loop-legend"><i class="all"></i>ideas per day <i class="hit"></i>reached the gate</p>` : '';
     const pt = b.paper && b.paper.total, byPb = (b.paper && b.paper.by_playbook) || {};
     const paperP = pt && pt.strategies ? `<p class="loop-trend">On paper at the market’s real prices: ${num(pt.strategies)} passed strateg${pt.strategies === 1 ? 'y' : 'ies'}, ${num(pt.trading)} trading, ${num(pt.round_trips)} closed trade${pt.round_trips === 1 ? '' : 's'}, net ${usd(pt.net_pnl, true)}${pt.realization == null ? '' : pt.realization < 0 ? ', losing money where the backtest expected a profit' : `, earning ${Math.round(pt.realization * 100)}% of what the backtest expected`}${pt.live_ready ? `${SEP}${num(pt.live_ready)} ready for live` : ''}.</p>` : '';
     const fams = {};
@@ -101,10 +115,12 @@ window.TauPage('research', (T) => {
     const focused = !!host.querySelector('details.rsidisc > summary:focus');
     const inner = [...host.querySelectorAll('details.loop-pb')].map((d) => d.open);
     // The 5s poll re-renders from the kept board: the card is rebuilt only when its markup changed.
-    paint(host, `<details class="rsidisc loop"${open ? ' open' : ''}>
+    paint(host, `${staleLine}<details class="rsidisc loop"${open ? ' open' : ''}>
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Is research getting better?</span>${tag}${delta ? `<span class="rsidisc-delta">${delta} reach the gate</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="rsidisc-body">${body}</div>
     </details>`);
+    const again = host.querySelector('[data-loop-retry]');
+    if (again) again.onclick = () => { rsiLoop.at = 0; return renderResearchLoop(host, pol, tried); };
     host.querySelectorAll('details.loop-pb').forEach((d, i) => { if (inner[i] && !d.open) d.open = true; });
     if (focused) host.querySelector('details.rsidisc > summary').focus({ preventScroll: true });
   }
@@ -166,6 +182,17 @@ window.TauPage('research', (T) => {
     return forever
       ? `Each round of ideas usually costs about ${usd(v)} (${basis}); it keeps starting new rounds until you stop it.`
       : `A session like this usually takes about ${usd(v)} from your credits (${basis}).`;
+  }
+  // A usual session (or round) that costs more than the credits on hand, said beside Start: research stops
+  // when the balance runs out, so it may stop short. Not said under the floor (the form's low-credit note says
+  // that) or while auto-reload tops the balance up; a declined reload card is the step instead (walk 2026-10-28:
+  // $1.40 of credits sat beside "usually costs about $4.05" with no word that it wouldn't cover it).
+  function shortOfCredits(v, forever, me) {
+    if (v == null || !me || !me.billing_enabled || me.needs_card || (me.auto_reload && !me.reload_failed)) return '';
+    const bal = +me.credit_balance || 0;
+    if (bal < (+me.min_run_balance || 0) || !(+v > bal)) return '';
+    return `That\u2019s more than the ${usd(bal)} you have, so it may stop ${forever ? 'in its first round' : 'short'} when your credits run out. ${me.reload_failed
+      ? 'Auto-reload couldn\u2019t charge your card: update it and add credits on Billing first.' : 'Add credits or turn on auto-reload on Billing first.'}`;
   }
   // Run-until-stopped has no natural size, so say its pace: about what an hour costs at recent rates
   // (/api/research/estimate per_hour, the user's own else the model's typical) and how long the
@@ -311,7 +338,7 @@ window.TauPage('research', (T) => {
     (() => {
       const rc = form.querySelector('#rcost'), msel = form.querySelector('#rmodel');
       if (!rc) return;
-      let est = null;
+      let est = null, estFailed = false;
       const sync = syncCost = () => {
         // The user's own figure for the model picked (yours_by_model): "yours" pooled every model, so a
         // history on the default model read beside the cheapest one too. An older server sends "yours" alone.
@@ -324,12 +351,13 @@ window.TauPage('research', (T) => {
         const pace = forever && (v != null || hourly != null) ? foreverRateLine(hourly == null ? null : +hourly, ownRate, me) : '';
         // No ledger figure for this model (or the read failed): with payments on, still say how it
         // is billed and that it can be stopped, rather than leaving the cost blank.
-        const none = v == null && !pace && me.billing_enabled ? 'No cost estimate for this model yet. It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
+        // A read that failed says so: "No cost estimate for this model yet" claimed there was none (walk 2026-10-28).
+        const none = v == null && !pace && me.billing_enabled ? (estFailed ? 'The cost estimate didn\u2019t load. ' : 'No cost estimate for this model yet. ') + 'It\u2019s charged to your credits as it runs, and you can stop it any time from its session page.' : '';
         rc.hidden = v == null && !pace && !none;
-        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), pace, none].filter(Boolean).join(' ');
+        rc.textContent = [v == null ? '' : sessionCostLine(+v, forever, own), shortOfCredits(v, forever, me), pace, none].filter(Boolean).join(' ');
       };
       if (msel) msel.addEventListener('change', sync);
-      api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; }).then(sync);
+      api('/api/research/estimate').then((d) => { est = d; }, () => { est = null; estFailed = true; }).then(sync);
     })();
     // A start Tau didn't confirm may have landed: the sessions on this page read every 5s, so the words
     // point there instead of at a reload (the typed idea is kept either way).
@@ -366,8 +394,9 @@ window.TauPage('research', (T) => {
       try {
         const c = await api('/api/research/context');
         (c.markets || []).forEach((m) => fillLiveRow(form, m));
+        // Only an answer says a row has no live quote: a read that failed said it of every market (walk 2026-10-28).
+        markQuietRows(form);
       } catch (e) { /* no feed yet -> the picker still works blind */ }
-      markQuietRows(form);
     })();
     // The poll sends back the version of its last full answer; while nothing the list shows has moved the
     // server answers {same: true} from two reads, and the page repaints from the answer it kept (its
@@ -388,12 +417,12 @@ window.TauPage('research', (T) => {
       // The live count and the all-time totals are two sentences: "1 agent researching now — all time, 13 ideas
       // tested" set "now" against "all time" in one breath.
       const said = running || paused
-        ? `${[running ? `<em>${running}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${paused}</em> paused` : '', queued ? `<em>${queued}</em> waiting` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
+        ? `${[running ? `<em>${num(running)}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${num(paused)}</em> paused` : '', queued ? `<em>${num(queued)}</em> waiting` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
         : tried
           ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${num(passed)}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
           : `<a href="#dispatch">Describe an idea</a> — the engine turns it into strategies and tests each on data it never saw.`;
       paint(root.querySelector('#rstatus .said'), said);
-      paint(root.querySelector('#rfigs'), fig('Researching now', running, { small: paused ? `${paused} paused` : '' }) + fig('Waiting', queued) +
+      paint(root.querySelector('#rfigs'), fig('Researching now', num(running), { small: paused ? `${num(paused)} paused` : '' }) + fig('Waiting', num(queued)) +
         // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
         // each says its window.
         fig('Ideas tested', num(tried), { small: ALL_TIME }) + fig(gl('Passed every gate', 'gate'), num(passed), { small: [ALL_TIME, tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }));
@@ -1070,20 +1099,33 @@ window.TauPage('research', (T) => {
   function runControls(host, id, status, reload) {
     if (host.dataset.st === status) return;
     host.dataset.st = status;
+    // A press here repaints the buttons (Pause becomes Resume; a cancelled session has none), and focus fell to the
+    // top of the page with the pressed one (walk 2026-10-28). It goes to the control that took its place, else the
+    // session's heading. A press that failed keeps its button, so it marks nothing.
+    const acted = host.dataset.acted === '1';
+    delete host.dataset.acted;
+    const act = (path) => async () => {
+      host.dataset.acted = '1';
+      await api(`/api/runs/${id}/${path}`, {}).catch((er) => { delete host.dataset.acted; alert0(er.message); });
+      await reload();
+    };
     if (status === 'paused') {
       host.innerHTML = '<span class="runact"><button class="btn small primary" id="resume">Resume</button>' + CANCEL_BTN + '</span>';
-      host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/resume`, {}).catch((er) => alert0(er.message)); await reload(); });
+      host.querySelector('#resume').onclick = (e) => busy(e.currentTarget, act('resume'));
     } else if (status === 'running') {
       host.innerHTML = '<span class="runact"><button class="btn small" id="pause" title="Holds the session where it is until you resume it.">Pause</button>' + CANCEL_BTN + '</span>';
-      host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, async () => { await api(`/api/runs/${id}/pause`, {}).catch((er) => alert0(er.message)); await reload(); });
+      host.querySelector('#pause').onclick = (e) => busy(e.currentTarget, act('pause'));
     } else if (status === 'queued') {
       host.innerHTML = '<span class="runact">' + CANCEL_BTN + '</span>';
     } else {
       host.innerHTML = status === 'succeeded' ? '<a class="btn small" href="/strategies">All strategies</a>' : '';
-      return;
     }
     const cancel = host.querySelector('#cancel');
-    cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, async () => { await api(`/api/runs/${id}/cancel`, {}).catch((er) => alert0(er.message)); await reload(); }));
+    if (cancel) cancel.onclick = () => armed(cancel, 'Confirm cancel', () => busy(cancel, act('cancel')));
+    if (!acted) return;
+    const h = root.querySelector('main h1'), to = host.querySelector('#resume, #pause, #cancel, a') || h;
+    if (to === h && h && h.getAttribute('tabindex') == null) h.setAttribute('tabindex', '-1');
+    if (to && to.focus) to.focus({ preventScroll: true });
   }
 
   // A session's time at work. The agent logs "paused" when it stops at a checkpoint and "resumed" when it
@@ -1176,7 +1218,7 @@ window.TauPage('research', (T) => {
       // by hand all the same. The server marks the ones it will put on paper itself (autopilot_next).
       const auto = passed.filter((s) => !s.deployed && s.autopilot_next).length;
       const way = deployed === passed.length ? ` ${passed.length === 1 ? 'It is' : 'They are'} already deployed. <a href="/deploy">See ${passed.length === 1 ? 'it' : 'them'} on Deploy</a>.`
-        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
+        : auto && deployed + auto === passed.length ? ` ${deployed ? `${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; the autopilot puts the ${auto === 1 ? 'other' : 'others'}` : `The autopilot puts ${auto === 1 ? 'it' : 'them'}`} on paper itself at its next check-in${apWhenSpan()}, so there is nothing for you to deploy. <a href="/deploy">Deploy</a> shows ${auto === 1 ? 'it' : 'them'} once ${auto === 1 ? 'it is' : 'they are'} there.`
         : deployed ? ` ${num(deployed)} ${deployed === 1 ? 'is' : 'are'} already deployed; open another to deploy it on paper.`
         : ` Open ${passed.length === 1 ? 'it' : 'one'} to deploy it on paper.`;
       return `<p class="run-next">${credits}${passed.length === 1 ? 'Passed' : passed.length + ' passed'}: ${links}${more}.${way}${fellLine ? ' ' + fellLine : ''}</p>`;
@@ -1223,7 +1265,7 @@ window.TauPage('research', (T) => {
       const said = laterMissed(s) ? `Passed validation, then missed the final test: ${esc(lcFirst(s.later_missed[0].label))}`
         : heldBack(s) ? `Held back after passing its tests: ${heldWhy(s)}`
         : s.status === 'passed' ? (s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
-        : s.autopilot_next ? 'The autopilot puts it on paper at its next check-in'
+        : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}`
         : `<a href="/strategies/${s.id}">Open it to deploy on paper</a>`)
         : why.length ? `${esc(why[0].label)}${why.length > 1 ? `${SEP}${why.length - 1} more check${why.length > 2 ? 's' : ''}` : ''}` : '';
       return `<li><span class="hx-stamp ${cls}">${label}</span><button type="button" class="ri-title" data-goto="${s.id}">${esc(s.title)}</button>${said ? `<span class="ri-why">${said}</span>` : ''}</li>`;
@@ -1242,7 +1284,7 @@ window.TauPage('research', (T) => {
       <section><div class="section-head"><h2>Agent log</h2></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it’s in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
-    let after = 0, tried = 0, outOfCredits = false;
+    let after = 0, tried = 0, runActive = true, outOfCredits = false;
     const pauses = { ms: 0, since: null, last: null };
     const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
     const ideasEl = root.querySelector('#runideas');
@@ -1256,10 +1298,25 @@ window.TauPage('research', (T) => {
     });
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
+    // A finished session's cost beside what the research form says sessions like it usually cost: the same
+    // /api/research/estimate read (your own figure for its model, else everyone's), asked once the session is
+    // done, for one that ran its set size (walk 2026-10-28: "Cost $3.43" and nothing showed the form's "about
+    // $2.43" to hold it against). A failed read leaves the cost as it was.
+    let usual = null, usualAsked = false, repaintFigs = () => {};
+    const askUsual = (r) => {
+      if (usualAsked || r.example || r.run_forever || r.stop_reason !== 'limit' || !r.model || r.spent_usd == null) return;
+      usualAsked = true;
+      api('/api/research/estimate').then((e) => {
+        const by = e && e.yours_by_model, mine = by ? by[r.model] : null;
+        const v = mine != null ? mine : ((e && e.typical) || {})[r.model];
+        if (v != null && +v > 0) { usual = +v; repaintFigs(); }
+      }).catch(() => { /* no estimate: the cost stands alone */ });
+    };
     const load = async (cfg) => {
       const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
+      runActive = active;
       d.events.forEach((ev) => {
         after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
         runPauses(pauses, ev);
@@ -1278,11 +1335,13 @@ window.TauPage('research', (T) => {
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
         : runDoneText(r);
-      paint(root.querySelector('#runfigs'),
+      repaintFigs = () => paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', worked == null ? (active ? 'Not started yet' : 'Never started') : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : usd(r.spent_usd), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' + (usual != null && !active ? `${SEP}sessions like it usually cost about ${usd(usual)}` : '') }) : '') +
         runCountFigs(r, active, tried, d.strategies));
+      repaintFigs();
+      if (!active) askUsual(r);
       const next = root.querySelector('#runnext');
       paint(next, active ? '' : runNext(r, d.strategies));
       // Painted only when it changes: a finished run still polls, and a repaint would undo the
@@ -1324,7 +1383,8 @@ window.TauPage('research', (T) => {
       if (!active) clearTimers();
     };
     await load();
-    poll(load, 2000, 'run-stale');
+    // A finished session never changes again: it is read once, where its poll read it once more 2s later.
+    if (runActive) poll(load, 2000, 'run-stale');
   }
   const DIR_BRIEF = (k) => ((S.me.directions.find((d) => d.key === k)) || { brief: '' }).brief;
 

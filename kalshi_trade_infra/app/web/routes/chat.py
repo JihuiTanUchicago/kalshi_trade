@@ -338,7 +338,10 @@ def _autopilot_story(d: Dict) -> List[str]:
         else:
             outcome = ("none has passed its tests yet. That’s normal: most ideas fail. Each session’s page names "
                        "the test each idea missed and what to try next")
-        lines.append("This week it tested %s%s and %s." % (
+        # The week's research is every session, the user's own and the autopilot's (the scorecard's note says
+        # so): "This week it tested 32 ideas for $17.40" put the user's own sessions' spend on the autopilot
+        # (walk 2026-10-28, an account whose every session was its own).
+        lines.append("This week your sessions and the autopilot’s tested %s%s and %s." % (
             _plural(tested, "idea"), " for ${:,.2f}".format(cost) if cost >= 0.01
             else " for under $0.01" if research.get("cost_7d_under_cent") else "", outcome))
     paper, prog = int(d.get("paper_running") or 0), d.get("paper_progress")
@@ -352,7 +355,7 @@ def _autopilot_story(d: Dict) -> List[str]:
         lines.append("%s on paper (pretend money). The furthest along has %d of the %d realistic paper trades live "
                      "needs and is %s on them %s, across all its paper runs." % (
             _plural(paper, "strategy is", "strategies are"), int(prog["trades"]), int(prog["trades_needed"]),
-            ("up $%.2f" % prog["net_pnl"]) if prog["net_pnl"] >= 0 else ("down $%.2f" % -prog["net_pnl"]),
+            _money(prog["net_pnl"]),
             customer_text.PAPER_NET_SHORT))
     elif int(d.get("paper_open") or 0):
         # Bought but not yet settled: "none has traded yet" told Todd nothing happened while his
@@ -486,7 +489,11 @@ def _waiting_lines(waiting: List[Dict]) -> List[str]:
 
 
 def _money(x: float) -> str:
-    return ("up $%.2f" % x) if x >= 0 else ("down $%.2f" % -x)
+    """"up $1.45" / "down $0.75": the amount rounded once, half up, as every page rounds it (money.cents).
+    "%.2f" rounded the float, so an exact -$0.7450 read "down $0.74" beside the strategy page's -$0.75, and
+    -$0.004 read "down $0.00"."""
+    v = cents(x)
+    return ("up $%.2f" % v) if v >= 0 else ("down $%.2f" % -v)
 
 
 def _tournament_summary(cur, uid: int, deps: List[Dict]) -> Optional[Dict]:
@@ -559,10 +566,26 @@ def _stop_line(exits: Dict[str, Dict]) -> str:
 
 
 COPILOT_REVIEW_MINUTES = int(os.getenv("APP_COPILOT_REVIEW_SECONDS", "600")) // 60
+IDLE_REVIEW_MINUTES = int(os.getenv("APP_IDLE_REVIEW_SECONDS", "1800")) // 60
 
 
 # The worker spaces idle reviews up to APP_IDLE_REVIEW_SECONDS apart, so only a gap well past that is late.
-QUIET_AFTER_MINUTES = max(COPILOT_REVIEW_MINUTES, int(os.getenv("APP_IDLE_REVIEW_SECONDS", "1800")) // 60) * 3 // 2
+QUIET_AFTER_MINUTES = max(COPILOT_REVIEW_MINUTES, IDLE_REVIEW_MINUTES) * 3 // 2
+
+
+def _checkin_every_min(due: bool, research_live: List[Dict], running: int) -> Optional[int]:
+    """How often the autopilot usually checks in, in whole minutes, for the pages' "at its next check-in"
+    (display only). The time of the next one can't be known: the worker's heartbeat (worker.autopilot_scheduler)
+    fires every APP_COPILOT_REVIEW_SECONDS from when the process started, skips a user who had a review in the
+    last half of that or with a review or chat still in flight, waits for a free worker, and spaces reviews out to
+    APP_IDLE_REVIEW_SECONDS when every research slot is busy and nothing runs (worker._idle_review_skip); a
+    finished research session starts one at once. So this is the cadence and never a time. `due`: autopilot on
+    and not paused by billing (otherwise no check-in is coming and this is None). From reads already made."""
+    if not due:
+        return None
+    idle = (IDLE_REVIEW_MINUTES > COPILOT_REVIEW_MINUTES and not running
+            and len(research_live or []) >= agent.MAX_ACTIVE_RESEARCH)
+    return max(1, IDLE_REVIEW_MINUTES if idle else COPILOT_REVIEW_MINUTES)
 
 
 def _span(mins: int) -> str:
@@ -859,6 +882,8 @@ def autopilot_status(ctx: Ctx):
         "loss_headroom": cents(max(0.0, limit + min(0.0, today_live))),  # how much loss budget is left today
         "last_action": _last_move(_last_action(cur, ctx.uid, pulse["chat"]), deps),
         "last_review_at": pulse["last_review_at"],  # liveness: a quiet review posts nothing, this still shows it ran
+        # How often it usually checks in (minutes), beside "at its next check-in"; None while none is coming.
+        "checkin_every_min": _checkin_every_min(on and not billing_blocked, pulse["research_live"], running),
         # A review queued or running now. Switching on queues the first one at once, and the panel said
         # "between research runs, checks in every 10 minutes" over a "Working" pulse while it waited.
         "reviewing": bool(review) and not review_wait["overdue"],

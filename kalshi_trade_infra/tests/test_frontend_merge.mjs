@@ -10,6 +10,7 @@ import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
 import {moneyDisplayCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
+import {moneyAgreementCases} from './money_agreement_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
@@ -21,6 +22,7 @@ import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
 import {explorePollCases} from './explore_poll_frontend_cases.mjs';
+import {loadPollCases} from './load_poll_frontend_cases.mjs';
 import {phoneSpeedCases} from './phone_speed_frontend_cases.mjs';
 import {kalshiWaitCases} from './kalshi_wait_frontend_cases.mjs';
 import {settingsCases} from './settings_frontend_cases.mjs';
@@ -35,15 +37,18 @@ import {deployErrorCases} from './deploy_errors_frontend_cases.mjs';
 import {liveHonestCases} from './live_honest_frontend_cases.mjs';
 import {freshWalkCases} from './fresh_walk_frontend_cases.mjs';
 import {researchFormCases} from './research_form_frontend_cases.mjs';
+import {spendTrustCases} from './spend_trust_frontend_cases.mjs';
 import {a11yCases} from './a11y_frontend_cases.mjs';
 import {trackRecordTrustCases} from './track_record_trust_frontend_cases.mjs';
 import {slippageEstimateCases} from './slippage_estimate_frontend_cases.mjs';
 import {newUserCases} from './new_user_frontend_cases.mjs';
+import {firstSessionCases} from './first_session_frontend_cases.mjs';
+import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
 // What the checks read from the bundle and its page files (bundle_source.mjs).
-const EXPOSE = ['S', 'api', 'PAGES', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater'];
+const EXPOSE = ['S', 'api', 'PAGES', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater', 'hotOpen'];
 const source = bundleSource('app.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -229,16 +234,19 @@ runPageCases({name: 'Tau', frontend});
 moneyPollCases({name: 'Tau', frontend, stripe: () => ({stripe: STRIPE_STUB})});
 strategyPageCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Tau', frontend, detailStrategy});
-countFormatCases({name: 'Tau', frontend, detailStrategy, strategyFrontend});
+countFormatCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => emptyDashboard()});
 explorePageCases({name: 'Tau', frontend});
 trackRecordTrustCases({name: 'Tau', frontend, Element, dashboard: () => emptyDashboard()});
 researchFormCases({name: 'Tau', frontend});
+spendTrustCases({name: 'Tau', frontend});
 kalshiWaitCases({name: 'Tau', frontend, detailStrategy});
 phoneSpeedCases({name: 'Tau', frontend, source, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 exploreSpotListCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 explorePollCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
+  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+loadPollCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 pageFileCases({name: 'Tau', frontend, prefix: 'app-', pagesKey: 'tauPages',
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
@@ -721,6 +729,26 @@ test('a backtest-only strategy’s Deploy row says its backtest estimate is late
     'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· unseen data)']);
 });
 
+test('a Void strategy with no gatekeeper record says not held out on its Deploy and Overview rows, without “which picked it”', async () => {
+  // The first version's simple backtest stored it as Void with no record: its row's hover said "(later period · unseen
+  // data)". The server sends backtest_only and void_no_record; nothing picked a void one, as its Strategies row says.
+  const dep = (id, o) => ({id, strategy_id: id, title: 'Dep ' + id, market: 'btc15m', mode: 'paper', status: 'running', status_reason: null,
+    realized_pnl: 1, closed_trades: 5, open_positions: 0, unrealized_pnl: null, created_at: '2026-10-24T08:00:00Z', curve: [], stake: 5, max_positions: 1,
+    backtest: {out_of_sample: {pnl: 12, trades: 6}}, ...o});
+  const rows = [dep(1, {backtest_only: true, void_no_record: true}), dep(2, {backtest_only: false})];
+  const tips = (html) => [...html.matchAll(/<td class="num" data-lab="Backtest estimate" title="([^"]*)">/g)].map((m) => m[1]);
+  const board = frontend({fetchImpl: (path) => path === '/api/deployments' ? response({deployments: rows, open_positions: []}) : response({})});
+  await board.viewDeploy(); await flush(); await flush();
+  const dash = frontend({fetchImpl: (path) => path === '/api/dashboard' ? response({...emptyDashboard(), deployments: rows})
+    : path === '/api/autopilot/status' ? response({autopilot: false, mode: 'off'}) : response({})});
+  await dash.viewDashboard(); await flush(); await flush();
+  for (const cells of [tips(board.root.querySelector('#deps').innerHTML), tips(dash.root.querySelector('#dash-deps').innerHTML)]) {
+    assert.deepEqual(cells, [
+      'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· not held out)',
+      'What these same closed trades would have made at the backtest’s average per trade after its split date (later period\u00a0· unseen data)']);
+  }
+});
+
 test('an Overview row’s backtest estimate says later-period for a strategy whose page does', async () => {
   // Walk 2026-10-27: the Overview's rows read their backtest pace "on unseen data" for a passed strategy with no
   // gatekeeper record, whose page says later-period. The server's backtest_only covers it; the Overview uses it as Deploy does.
@@ -905,6 +933,21 @@ test('an empty Deployed box names its next step "research an idea yourself", as 
   }
 });
 
+test('the empty Deployed box\'s button says what its sentence says, "Research an idea", as Meridian\'s does', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/dashboard') return response({...emptyDashboard(), since: {own_sessions: true}});
+    if (path === '/api/autopilot/status') return response({...apOn, autopilot: false, mode: 'off'});
+    if (path.startsWith('/api/')) return response({});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.user.autopilot = false;
+  await f.viewDashboard(); await flush(); f.clearTimers();
+  const box = f.root.querySelector('#deps-empty');
+  // "Or research an idea yourself." sat over a "New session" button: the sentence and the button named two things.
+  assert.match(box.innerHTML, /Or research an idea yourself\.<\/p><a class="btn" href="\/research">Research an idea<\/a>/);
+  assert.doesNotMatch(box.innerHTML, /New session/);
+});
+
 test('the autopilot pill goes by the saved switch until its first status read lands', async () => {
   for (const on of [true, false]) {
     const f = frontend({fetchImpl: path => {
@@ -959,6 +1002,7 @@ test('the empty paper track record follows the autopilot switch when a status re
   // Switched on elsewhere (another tab, the chat): the next status poll carries it. The record's own
   // poll skips an unchanged payload, so before this the panel kept "Go to Deploy".
   status = {autopilot: true, mode: 'paper', story: [], research: {}, live_running: 0, demo_running: 0, paper_running: 0};
+  f.shiftClock(20000);  // the next status poll, 20s on (a tick under 10s after a read asks nothing new)
   for (const tick of [...f.intervals.values()]) tick();
   await flush(); await flush();
   assert.equal(f.S.me.user.autopilot, true);
@@ -1421,6 +1465,18 @@ test('the floating autopilot pill hit-tests the page a frame after it renders, n
   frames.shift()();
   assert.ok(hits > 0);
   assert.equal(box.classes.has('yield'), true, 'the pill still steps aside, a frame later');
+});
+
+test('Tau: the hot-markets rail opens beside a desktop page by default, and over a tablet page only when you opened it', () => {
+  // Walk 2026-10-28 at 768px: up to 1080px the rail opens over the page (app.css), and open on every load it covered
+  // the left 306px of every page. A phone never shows it; a desktop keeps it open unless you closed it.
+  for (const [width, saved, expected] of [[1280, null, true], [1280, '0', false], [1280, '1', true], [1081, null, true],
+    [1080, null, false], [768, null, false], [768, '1', true], [768, '0', false], [760, '1', false], [390, null, false]]) {
+    const store = new Map(saved == null ? [] : [['tau_hotrail', saved]]);
+    const f = frontend({storage: {getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v)},
+      matchMedia: (q) => ({matches: width <= +/max-width: (\d+)px/.exec(q)[1]})});
+    assert.equal(f.hotOpen(), expected, `${width}px with saved preference ${saved}`);
+  }
 });
 
 test('the hot-markets rail slides only while you open or close it, never as a page loads', async () => {
@@ -2439,7 +2495,7 @@ test('the autopilot card keeps its figures when the status poll fails, notes the
   }});
   f.S.me.user.autopilot = true; f.S.ap = status; f.S.apAt = Date.now();
   await f.viewDashboard(); await flush(); await flush();
-  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden) tick()"));
+  const tick = [...f.intervals.values()].find(cb => String(cb).includes("getElementById('autopilot-float') && !document.hidden && !apFresh()) tick()"));
   const note = () => f.root.querySelector('#dash-ap-stale').textContent;
   const card = () => f.root.querySelector('#dash-ap').innerHTML;
   const reads = () => f.requests.filter(r => r.path === '/api/autopilot/status').length;
@@ -2480,9 +2536,9 @@ test('the dead "Dig deeper" win card is gone, and phone tap targets stay 40px or
   const touch = css.slice(css.indexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.bell-trig \{ min-width: 44px;/);
-  assert.match(block, /:root \{ --apf-h: 40px; \}\s*\.apf-pill \{ min-height: var\(--apf-h\); \}/);  // the height the page's bottom room counts
+  assert.match(block, /:root \{ --apf-h: 44px; \}\s*\.apf-pill \{ min-height: var\(--apf-h\); \}/);  // the height the page's bottom room counts
   assert.match(block, /\.t-explore \.xlink a \{ min-width: 44px; min-height: 44px;/);
-  assert.match(block, /\.info \{ width: 40px; height: 40px;/);
+  assert.match(block, /\.info \{ width: 44px; height: 44px; margin: -15px -15px -15px -10px; \}/);
   // Inline text buttons get a 41px tall hit area from padding that a matching negative margin cancels out.
   assert.match(css, /\.research-ap button \{[^}]*padding: 10px 4px; margin: -10px -4px;/);
   assert.match(css, /\.ap-focus button \{[^}]*padding: 10px 4px; margin: -10px -4px -10px 0;/);
@@ -2518,9 +2574,9 @@ test('Tau phone polish: a glossary marker keeps its last word, one rule where bo
   const touch = css.slice(css.lastIndexOf('@media (pointer: coarse)'));
   const block = touch.slice(0, touch.indexOf('\n}\n'));
   assert.match(block, /\.input, select, input\[type=text\][^{]*\{ min-height: 44px; \}/);
-  assert.match(block, /input\[type=range\] \{ height: 40px; \}/);
-  assert.match(block, /details > summary \{ padding-block: 11px; min-height: 40px; \}/);
-  assert.match(block, /td\.name > a:not\(\.btn\) \{ padding-block: 10px; margin-block: -10px; \}/);
+  assert.match(block, /input\[type=range\] \{ height: 44px; \}/);
+  assert.match(block, /details > summary \{ padding-block: 13px; min-height: 44px; \}/);
+  assert.match(block, /td\.name > a:not\(\.btn\) \{ padding-block: 12px; margin-block: -12px; \}/);
   assert.match(block, /\.legal-nav a, \.legal-foot a, \.lfoot-links a, \.linkish \{ padding: 10px 4px; margin: -10px -4px; \}/);
   // The onboarding controls (Deploy, Start session, the quick deploy) keep their own sizes.
   assert.doesNotMatch(block, /#dep-(paper|demo|live)|\.go\b|strat-quick/);
@@ -2962,7 +3018,7 @@ test('a returning user reads what happened since the last visit at the top of th
   // Paper says what its figure is net of, as every paper P&L does; demo and live don't.
   assert.match(text, /<span class="nobr"><b>Paper<\/b> <span class="pos">\+\$2\.42<\/span><\/span> on 3 trades, after Kalshi fees and the spread<\/span>/);
   assert.doesNotMatch(text, /<b>Live<\/b>|\$1\.32/);
-  assert.match(text, /4 strategies passed: <a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a>/);
+  assert.match(text, /4 strategies passed: <span class="since-links"><a href="\/strategies\/9">&lt;b&gt;Rain&lt;\/b&gt;<\/a>, <a href="\/strategies\/8">Fade<\/a>, <a href="\/strategies\/7">Tails<\/a>, <a href="\/strategies">1 more<\/a><\/span>/);
   assert.match(text, /3 research sessions started/);
   assert.match(text, /It put 1 on paper, paused 2, made 1 other change\./);
   assert.match(text, /<a href="#dash-deps">Paused one<\/a> is paused<span class="since-sub">: lost \$12\.00<\/span>/);
@@ -3597,7 +3653,7 @@ test('the open-positions why line and a long strategy name wrap, so Deploy never
   assert.match(css, /\.pos-why \{[^}]*white-space: normal;/);
   assert.match(css, /#openpos td\.name \{ white-space: normal;/);
   assert.match(css, /\.fold > summary\.fold-h \{[^}]*gap: 6px;/);
-  assert.match(css, /\.dispatch-go \.ex-run \{ min-height: 40px; \}/);
+  assert.match(css, /\.dispatch-go \.ex-run \{ min-height: 44px; \}/);
 });
 
 test('Deploy prices a deployment\'s open positions in its row, as the dashboard does, one deployment at a time', async () => {
@@ -3763,7 +3819,7 @@ test('Tau: a run lists each idea it tested with its outcome and first missed che
   const g = frontend({fetchImpl: path => path.startsWith('/api/runs/9') ? response({run, events, strategies: [strategies[0], {...strategies[1], autopilot_next: true}]}) : response({})});
   await g.viewRun(9); await flush();
   const auto = g.root.querySelector('#runideas').innerHTML;
-  assert.match(auto, /data-goto="42">Lean in<\/button><span class="ri-why">The autopilot puts it on paper at its next check-in<\/span>/);
+  assert.match(auto, /data-goto="42">Lean in<\/button><span class="ri-why">The autopilot puts it on paper at its next check-in<span data-ap-when><\/span><\/span>/);
   assert.doesNotMatch(auto, /Open it to deploy on paper/);
   g.clearTimers();
 });
@@ -3868,10 +3924,10 @@ test('Tau: a hot-markets row keeps "Target Price:" on one line with its amount',
   f.S.me.markets = [{key: 'btc15m', series: 'KXBTC15M', label: 'Bitcoin up or down in 15 minutes'}];
   const html = f.hotRowHtml({t: 'KXBTC15M-26OCT271830-30', s: 'KXBTC15M', ti: 'Bitcoin price up or down in next 15 mins?', su: 'Target Price: $113,512.08',
     bid: .54, ask: .56, v24: 1200, h: [.4, .5]});
-  assert.match(html, /<span class="hot-title">Bitcoin price up or down in next 15 mins\? · <span class="nobr">Target Price: \$113,512\.08<\/span><\/span>/);
+  assert.match(html, /<span class="hot-title" title="[^"<>]*">Bitcoin price up or down in next 15 mins\? · <span class="nobr">Target Price: \$113,512\.08<\/span><\/span>/);
   // Any other title is as before.
   assert.match(f.hotRowHtml({t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price?', su: '$113,000 or above', bid: .48, ask: .52, v24: 1, h: [.4, .5]}),
-    /<span class="hot-title">Bitcoin price\? · \$113,000 or above<\/span>/);
+    /<span class="hot-title" title="[^"<>]*">Bitcoin price\? · \$113,000 or above<\/span>/);
   assert.match(readFileSync(new URL('../app/static/app.css', import.meta.url), 'utf8'), /\n\.nobr \{ white-space: nowrap; \}/);
 });
 
@@ -3916,7 +3972,7 @@ test('the backtest luck line reads its trade bar from the server and names it as
   };
   const lines = await flags({sample_caution: {min_trades: 30, gate_min_oos_trades: 10}});
   assert.equal(lines.length, 2);  // in-sample and out-of-sample, 6 trades each
-  for (const line of lines) assert.match(line, /n=6 — under 30 trades, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
+  for (const line of lines) assert.match(line, /Only 6 trades — under 30, too few to tell skill from luck \(a caution, stricter than the gate’s floor of 10\)/);
   assert.deepEqual(await flags({sample_caution: {min_trades: 5, gate_min_oos_trades: 10}}), []);
   assert.deepEqual(await flags({}), []);  // no bar from the server, no line: never a guessed constant
 });
@@ -3932,7 +3988,7 @@ test('first-run funnel: an empty paper track record never sends a user with noth
   assert.doesNotMatch(paper(), /Turn on autopilot/);
   // Sessions but nothing deployed: the strategies that passed.
   f.S.dashNoSessions = false;
-  assert.match(paper(), /<a class="btn" href="\/strategies">See passed strategies<\/a>/);
+  assert.match(paper(), /<a class="btn" href="\/strategies\?status=passed">See passed strategies<\/a>/);
   // Something deployed, or no dashboard read yet: Deploy as before. Live and demo keep their own button.
   f.S.dashDeps = 2; assert.match(paper(), /Go to Deploy/); assert.match(paper(), /Turn on autopilot/);
   f.S.dashDeps = undefined; assert.match(paper(), /Go to Deploy/);
@@ -3940,7 +3996,7 @@ test('first-run funnel: an empty paper track record never sends a user with noth
 });
 
 test('first-run funnel: an empty Deploy board with nothing passed starts a session instead of opening an empty list', async () => {
-  for (const [passed, cta, href] of [[0, 'Start a research session', '/research?new=1'], [2, 'See passed strategies', '/strategies'], [null, 'See passed strategies', '/strategies']]) {
+  for (const [passed, cta, href] of [[0, 'Start a research session', '/research?new=1'], [2, 'See passed strategies', '/strategies?status=passed'], [null, 'See passed strategies', '/strategies?status=passed']]) {
     const seen = [];
     const f = frontend({fetchImpl: path => {
       seen.push(path);
@@ -4144,6 +4200,7 @@ test('the dashboard asks for the track record beside the board, once, and draws 
     await view; await flush(); await flush();
     const host = f.root.querySelector('#track-record');
     assert.match(host.innerHTML, /Tau is restarting\./);  // the early read failed: the record says so, with a retry
+    assert.match(host.textContent, /Your track record didn’t load\. Tau is restarting\. Everything else on this page did\./);
     failTrack = false;
     host.querySelector('[data-retry]').onclick(); await flush(); await flush();
     assert.match(host.innerHTML, /Track record/);
@@ -5514,6 +5571,7 @@ liveHonestCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashbo
 freshWalkCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unrealizedCellCases({name: 'Tau', frontend, dashboard: emptyDashboard});
 unmarkedPositionCases({name: 'Tau', frontend});
+moneyAgreementCases({name: 'Tau', frontend});
 moneyDisplayCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, hotRail: (f, markets) => markets.map(f.hotRowHtml).join('')});
 slippageEstimateCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard});
 
@@ -5544,6 +5602,9 @@ test('Tau phone: a folded paper section does not count, so the numbered sections
   assert.match(body, /<details class="fold"[^>]*><summary class="fold-h">Methodology<\/summary><section class="paper-sec">/);
 });
 newUserCases({name: 'Tau', frontend, strategyFrontend, detailStrategy, dashboard: emptyDashboard, billingPage, cardedBilling, apStatus: apOn});
+firstSessionCases({name: 'Tau', frontend, dashboard: emptyDashboard, apStatus: apOn,
+  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+checkinCadenceCases({name: 'Tau', frontend, detailStrategy, strategyFrontend, dashboard: emptyDashboard});
 
 test('Tau: the composer’s hint fits its one line at 390px, with a curly apostrophe, and the picker takes its own row', async () => {
   // Walk 2026-10-27 at 390px: "Share an idea, a strategy, or how it's going…" wrapped in the one-line box (cut

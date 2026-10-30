@@ -32,7 +32,9 @@ window.TauPage('community', (T) => {
       // "not / held out" at 360-390px (walked 2026-10-28).
       // A card with no later-period figure ("—") has no note on it, as a Strategies row with no figure has no line
       // under it: "(later period · unseen data)" beside a dash described a figure that wasn't there (walked 2026-10-28).
-      const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date, which picked it (later\u00a0period${SEP}not\u00a0held\u00a0out).`
+      // A Void card the server flags (no_gatekeeper_record on a failed one: the first version's simple backtest stored it
+      // as failed, never judged on held-out data) says "not held out" too, without "which picked it": nothing picked it.
+      const why = snap.pnl == null ? '' : later ? `Backtest${overDays(snap.days)} after the split date${snap.status === 'failed' ? '' : ', which picked it'} (later\u00a0period${SEP}not\u00a0held\u00a0out).`
         : `Backtest${overDays(snap.days)} after the split date (later\u00a0period${SEP}unseen\u00a0data).`;
       const head = `<div class="snap-head"><b>${esc(snap.title)}</b>${statusMark(snap)}${researchBadge(snap)}</div>
         <div class="snap-meta">${esc(marketShort(snap.market))}${SEP}later-period P&amp;L: ${snap.pnl == null ? '—' : usd(snap.pnl, true)}${snap.trades != null ? SEP + realTrades(snap.trades) : ''}${snap.win_rate != null ? SEP + pct(snap.win_rate, false) + ' win' : ''}</div>`;
@@ -156,7 +158,12 @@ window.TauPage('community', (T) => {
       d.strategies.filter((s) => s.status !== 'rejected' || s.title).slice(0, 50).forEach((s) => {
         const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.title} (${STATUS_WORD[s.verdict] || STATUS_WORD[s.status] || s.status})`; sel.appendChild(o);
       });
-    }).catch(() => {});
+    }).catch(() => {
+      // A list that didn't load says so in the picker: it read "Attach a strategy… (optional)" over no strategies
+      // (walk 2026-10-28). The post itself still works.
+      const first = root.querySelector('#post-strat option');
+      if (first) first.textContent = 'Your strategies didn\u2019t load. Reload the page to attach one.';
+    });
     const form = root.querySelector('#composer-post');
     // One post at a time: Post and Share my P&L both lock while either is sent (a second tap on Share
     // my P&L, which busy() didn't lock, posted it twice). A post that landed says so even when the feed
@@ -259,7 +266,7 @@ window.TauPage('community', (T) => {
             el.hidden = !hit || (!q && i < items.length - limit);  // keep the newest `limit`
             if (hit) matched++;
           });
-          if (count) count.textContent = q ? `${matched} of ${items.length}` : '';
+          if (count) count.textContent = q ? `${num(matched)} of ${num(items.length)}` : '';
           if (moreBtn) {
             const rest = items.length - limit;
             moreBtn.hidden = !!q || rest <= 0;

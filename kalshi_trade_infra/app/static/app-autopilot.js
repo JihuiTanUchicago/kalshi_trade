@@ -6,7 +6,7 @@ window.TauPage('autopilot', (T) => {
   const {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
-    apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite,
+    apEvery, apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
     liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, refreshAutopilot, S, SEP, settleAt, sinceMin, slipEst, usd, waitNote, waitSpan,
     wakers
   } = T;
@@ -162,7 +162,12 @@ window.TauPage('autopilot', (T) => {
     let d; try { d = await api('/api/chat?after=' + (full ? 0 : apChatLastId), undefined, { keep: true, ...cfg }); }
     catch (e) {
       // Nothing painted yet: say the feed didn't load rather than leave it blank. The poll retries.
-      if (!msgs.children.length) msgs.innerHTML = '<li class="ap-empty ap-fail">Couldn\u2019t load the autopilot\u2019s activity. Retrying.</li>';
+      // Try again reads now: the poll backs off while reads fail (walk 2026-10-28: still "Retrying." 5s after Tau was back).
+      if (!msgs.children.length) {
+        msgs.innerHTML = '<li class="ap-empty ap-fail">Couldn\u2019t load the autopilot\u2019s activity. Retrying. <button type="button" class="btn sm" data-ap-chat-retry>Try again</button></li>';
+        const again = msgs.querySelector('[data-ap-chat-retry]');
+        if (again) again.onclick = () => { again.disabled = true; apLoadChat(box, true); };
+      }
       return false;
     }
     msgs.querySelectorAll('.ap-fail').forEach((n) => n.remove());
@@ -230,6 +235,8 @@ window.TauPage('autopilot', (T) => {
     const d = S.ap, la = d && d.last_action;
     const last = la && la.at && !spoken ? `${SEP}last move ` + sinceMin(la.at) : '';
     if (!(d ? d.autopilot : apSwitchOn())) return 'Off: it acts only when you message it' + last;
+    // Its status not read (or the read failed): on, and no more. "Idle — reviews run on a schedule" was a guess.
+    if (!d) return 'On';
     const now = apNowWord(d);
     return now + last + (now === 'Idle' ? ' — reviews run on a schedule' : '');
   }
@@ -241,7 +248,7 @@ window.TauPage('autopilot', (T) => {
     if (names.length) return picked.length ? 'Researching ' + picked.join(SEP) : 'Picking a market to research';
     if (d.reviewing) return 'Reviewing the markets';
     // Between reviews with strategies on paper is not idle: they trade on their own between its moves.
-    return d.paper_running ? `Between reviews${SEP}${d.paper_running} on paper` : 'Idle';
+    return d.paper_running ? `Between reviews${SEP}${num(d.paper_running)} on paper` : 'Idle';
   }
   // The open panel is a full-screen sheet under this width (app.css: `.apf.open { inset: 0 }`), which is
   // not phone(): between the two it still sits beside the page.
@@ -455,10 +462,12 @@ window.TauPage('autopilot', (T) => {
     return (rest ? [rest] : []).concat(lines.slice(1));
   }
   function apUpdate(box, d) {
-    const m = (d && AP_MODE[d.mode]) || AP_MODE.off;
+    const on = d ? d.autopilot : (S.me.user && S.me.user.autopilot);
+    // Before its status has been read (or when that read failed), the head goes by the saved switch, as the pill
+    // does: it said "Autopilot off" over a switch that was on (walk 2026-10-28, status read failing).
+    const m = (d && AP_MODE[d.mode]) || (!d && on ? { label: 'Autopilot on', cls: 'paper' } : AP_MODE.off);
     box.className = 'apf open' + (m.cls ? ' ' + m.cls : '');
     const label = box.querySelector('#apf-label'); if (label) label.textContent = m.label;
-    const on = d ? d.autopilot : (S.me.user && S.me.user.autopilot);
     const ap = box.querySelector('#apf-ap'); if (ap) ap.classList.toggle('on', !!on);
     // A flip still waiting for Tau keeps the switch where it was flipped, locked, with its note: the
     // status read may have left before the write landed (and the panel may have been built again).
@@ -470,13 +479,22 @@ window.TauPage('autopilot', (T) => {
     if (copy) copy.innerHTML = on
       ? '<b>Autopilot</b>Researches, deploys and tunes paper strategies on its own, and adjusts your risk &amp; execution controls within safe bounds. It never touches live money without the step below.'
       : '<b>Autopilot</b>Off: it only suggests ideas and changes, and you approve each one. Flip the switch to let it research and trade on paper by itself.';
-    if (!d) return;
+    if (!d) {
+      // A status read that failed says so, with Try again, instead of a panel with no figures and nothing said.
+      const st = box.querySelector('#apf-story');
+      if (st) {
+        st.innerHTML = S.apFailing ? '<p class="apf-fail">The autopilot\u2019s status didn\u2019t load, so its figures are left out. The switch shows how you last set it. <button type="button" class="btn sm" data-ap-status-retry>Try again</button></p>' : '';
+        const again = st.querySelector('[data-ap-status-retry]');
+        if (again) again.onclick = () => { again.disabled = true; refreshAutopilot(box); };
+      }
+      return;
+    }
     // Plain-language summary from the server (what it's doing, why no trades yet, what live needs).
     const story = box.querySelector('#apf-story');
     if (story) {
       // The billing pause has its own line under the switch, so the idle line skips it.
       const idleShown = !!(d.idle && !d.billing_blocked);
-      story.innerHTML = (idleShown ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"')}</p>` : '')
+      story.innerHTML = (idleShown ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"', d)}</p>` : '')
         + apStoryUnderIdle(d, idleShown).map((line) => `<p>${esc(line)}</p>`).join('');
       const idleFocus = story.querySelector('[data-ap="idle-focus"]');
       if (idleFocus) idleFocus.onclick = () => apShowFocus(box);
@@ -494,8 +512,8 @@ window.TauPage('autopilot', (T) => {
     // A live one while live trading is closed places no orders, and says so, as Deploy's Money figure does.
     const runParts = [
       d.live_running ? (liveOpen() ? `<span class="apf-live">${d.live_running} live</span>` : liveIdleShort(d.live_running)) : '',
-      d.demo_running ? `${d.demo_running}\u00a0demo` : '',
-      d.paper_running ? `${d.paper_running}\u00a0paper` : '',
+      d.demo_running ? `${num(d.demo_running)}\u00a0demo` : '',
+      d.paper_running ? `${num(d.paper_running)}\u00a0paper` : '',
     ].filter(Boolean);
     const runTotal = (d.live_running || 0) + (d.demo_running || 0) + (d.paper_running || 0);
     // The figures sit above the story so "is it making money?" reads first, and the Research row only
@@ -513,7 +531,7 @@ window.TauPage('autopilot', (T) => {
       // Check-ins are the autopilot's own: with it off (or a flip to off still saving) the figure goes, as the switch
       // says. Right after turning it off the panel kept "Last check-in 37m ago" under "Off: it only suggests ideas".
       .concat(!(flip ? flip.on : on) ? [] : d.review_wait ? [`<dt>Check-in</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
-        : d.reviewing ? ['<dt>Last check-in</dt><dd>Reviewing now</dd>'] : d.last_review_at ? [`<dt>Last check-in</dt><dd>${sinceMin(d.last_review_at)}</dd>`] : []);
+        : d.reviewing ? ['<dt>Last check-in</dt><dd>Reviewing now</dd>'] : d.last_review_at ? [`<dt>Last check-in</dt><dd>${sinceMin(d.last_review_at)}${apEvery(d, 'apf-note')}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
       stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `

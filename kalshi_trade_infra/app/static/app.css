@@ -250,6 +250,10 @@ th .info { vertical-align: 0; }
 .bell-menu:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
 .bell-sum { margin: 0; padding: 8px 9px; font-size: 12.5px; line-height: 1.4; color: var(--ink-2); border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; white-space: normal; }
 .bell-empty { padding: 14px 9px; font-size: 12.5px; color: var(--ink-3); text-transform: none; letter-spacing: normal; white-space: normal; }
+/* A refresh that failed with a list up: one quiet line above the list, never an alert. */
+.bell-stale { margin: 0; padding: 6px 9px; font-size: 12px; line-height: 1.4; color: var(--ink-3); border-bottom: 1px solid var(--rule); text-transform: none; letter-spacing: normal; white-space: normal; }
+.bell-again, .stale-again { font: inherit; color: var(--ink-2); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.bell-again:hover, .stale-again:hover { color: var(--ink); }
 .mk.shared { display: inline-flex; align-items: center; gap: 4px; border-color: var(--rule-2); color: var(--ink-2); text-transform: none; letter-spacing: normal; }
 .mk.shared svg { width: 12px; height: 12px; }
 .shared-flag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-family: var(--f-nar); font-size: 11px; color: var(--ink-3); vertical-align: middle; }
@@ -382,6 +386,12 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .t-dep th, .t-dep td[data-lab="Backtest estimate"], .t-dep td[data-lab="Since"] { white-space: normal; }
     .t-dep td.name { min-width: 10em; }
     .t-dep .spark { width: 56px; }
+  }
+  /* A 768px tablet's board (708px) still ran 34px past its sheet: Resume and Remove were cut at the edge until you
+     scrolled the table sideways (walked 2026-10-28). Tighter cells and a narrower title column fit it. */
+  @container deployments (max-width: 760px) {
+    .t-dep th, .t-dep td { padding-left: 5px; padding-right: 5px; }
+    .t-dep td.name { min-width: 8em; }
   }
 }
 th, td { padding: 10px 12px 9px; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--rule); white-space: nowrap; }
@@ -624,6 +634,7 @@ details.mkt-group[open] > .mkt-group-h .mkt-chev { transform: rotate(180deg); }
 
 /* ---- Research cockpit ---- */
 #rsimo .rsi-card { margin: 16px 0 0; }
+#rsimo .load-fail { margin: 14px 0 16px; }  /* research results that didn't load: Try again stood flush against what follows */
 .dispatch > h2 { display: flex; align-items: center; gap: 8px; }
 .dispatch > h2 svg { width: 15px; height: 15px; color: var(--ink-2); }
 .dispatch-tune { display: flex; gap: 18px 24px; flex-wrap: wrap; align-items: flex-end; }
@@ -1108,6 +1119,10 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
    reads on one line (beside its chip it wrapped "BOOK" onto a second line at 390px). */
 @media (max-width: 480px) {
   .measure dt.lab > .mk:first-child { display: block; width: fit-content; margin: 0 0 5px; }
+  /* Walk 2026-10-28 at 360/390px: the Strategies figures' "VOID ON UNSEEN DATA" broke "DATA" onto a second line,
+     dropping its count below its neighbour's. A phone's labels there track tighter (the stacked tables' 10.5px), so
+     each reads on one line at 360 and up; narrower still, a long one breaks into even lines. */
+  #sfigs .lab { font-size: 10.5px; letter-spacing: .03em; text-wrap: balance; }
 }
 @media (max-width: 760px) {
   .measure { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1965,11 +1980,20 @@ body.landing-body .apf { display: none; }
   .btn, .btn.sm, .chip, .pill { min-height: 44px; }
   .admin-toggle, .bell-trig, .profile-trig { min-height: 44px; }
   .bell-trig { min-width: 44px; justify-content: center; }
-  :root { --apf-h: 40px; }
+  /* The account menu's items (31-34px) and the bell's "Try again" (a 17px text button at the end of its
+     "Couldn't refresh" line): 44px. The line keeps its height; its padding makes room for the grown button. */
+  .profile-menu a, .profile-item { display: flex; align-items: center; min-height: 44px; }
+  .bell-stale { padding-block: 14px; }
+  .bell-again { padding: 13.5px 6px; margin: -13.5px -6px; }
+  :root { --apf-h: 44px; }
   .apf-pill { min-height: var(--apf-h); }
   .t-explore .xlink a { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -14px -14px -14px 0; }
-  .info { width: 40px; height: 40px; margin: -13px -13px -13px -8px; }
+  /* A glossary marker's 14px icon sits where it did (5px after its word), in a 44px target the margins give back. */
+  .info { width: 44px; height: 44px; margin: -15px -15px -15px -10px; }
   .apf-x { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; margin: -12px -14px -12px auto; }
+  /* The autopilot sheet's message box (41px) and a short button such as Meridian's Send (42px wide). */
+  .apf-composer-row textarea { min-height: 44px; }
+  .btn { min-width: 44px; }
   .pick, #pick-all { width: 22px; height: 22px; }
 }
 @media (max-width: 600px) {
@@ -2072,6 +2096,9 @@ body.landing-body .apf { display: none; }
 .research-ap button { background: none; border: 0; padding: 10px 4px; margin: -10px -4px; font: inherit; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .research-ap button.busy { opacity: .6; }
 .run-next { margin: 14px 0 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+/* A strategy title with no spaces in it (80 characters of one word) ran 600px past a phone's edge and scrolled
+   the whole page sideways; it breaks at the column's edge now. */
+.run-next { overflow-wrap: anywhere; }
 .run-next .btn { display: table; margin: 10px 0 0; }
 /* Ideas tested (runIdeas): each idea's outcome and the first check it missed, above the log. */
 /* Its heading keeps a gap from the figures above: on a running session (no line between them) it sat
@@ -2128,6 +2155,9 @@ body.landing-body .apf { display: none; }
    nowrap had pushed the table past the window (page scrolled sideways at 1440px). */
 #openpos td.name { white-space: normal; overflow-wrap: anywhere; max-width: 30ch; }
 #openpos .pos-why { min-width: 24ch; max-width: 60ch; }
+/* Its market cell kept the name and "Kalshi contract KX…" on one line each: at a 768px tablet the table ran 24px past
+   the window (the page scrolled sideways) and the Strategy column was squeezed to 72px. They wrap now. */
+#openpos td.pos-name { white-space: normal; min-width: 14ch; }
 
 /* Failed load: the error plus a retry button, stacked. */
 .load-fail { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -2251,31 +2281,56 @@ body.landing-body .apf { display: none; }
   .pipecap { position: relative; padding-right: 44px; }
   .pipecap > .pipechev { position: absolute; right: 16px; top: 14px; }
 }
-/* Touch: every control at least 40px tall. Inline links grow with padding, which leaves the line
-   box alone; block links pair it with a negative margin so the layout does not move. */
+/* Touch: every control at least 44px tall (links set in a line of text stay 40px or more). Inline links
+   grow with padding, which leaves the line box alone; block links pair it with a negative margin so the
+   layout does not move. */
 @media (pointer: coarse) {
   .input, select, input[type=text], input[type=search], input[type=email], input[type=number], input[type=password] { min-height: 44px; }
-  input[type=range] { height: 40px; }
-  .key-file input[type=file] { padding-block: 10px; }
-  .switch { min-height: 44px; }
-  details > summary { padding-block: 11px; min-height: 40px; }
+  input[type=range] { height: 44px; }
+  .key-file input[type=file] { padding-block: 12px; }
+  .switch { min-height: 44px; min-width: 44px; }
+  details > summary { padding-block: 13px; min-height: 44px; }
   .wordmark a { padding-block: 12px; margin-block: -12px; }
   .sub-fig a, .said a, .hint a, .steps a, a.csv-link { padding: 13px 4px; margin-inline: -4px; }
-  td.name > a:not(.btn) { padding-block: 10px; margin-block: -10px; }
+  td.name > a:not(.btn) { padding-block: 12px; margin-block: -12px; }
   .stub-all { padding-bottom: 12px; margin-bottom: -12px; }
   .lbrand { padding-block: 7px; margin-block: -7px; }
   .legal-nav a, .legal-foot a, .lfoot-links a, .linkish { padding: 10px 4px; margin: -10px -4px; }
-  .demo-bar .replay { min-height: 40px; }
-  .dispatch-go .ex-run { min-height: 40px; }
+  .demo-bar .replay { min-height: 44px; }
+  .dispatch-go .ex-run { min-height: 44px; }
   /* Links set in a line of figures or text that a thumb still aims at (the "Since your last visit" strip,
-     the autopilot card's figures, a held contract's ticker): 40px tall, the line box left alone. */
-  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a, .ri-why a { padding-block: 12px; margin-block: -12px; }
-  a.apcard-alt { padding-block: 8px; margin-block: -8px; }
+     the autopilot card's figures, a held contract's ticker): 44px tall, the line box left alone. */
+  .since-row dd a, .apcard-figs dd a, .tick a, .pos-name a { padding-block: 15px; margin-block: -15px; }
+  /* The strip's links follow one another line after line ("4 strategies passed: A, B, C, 1 more", a paused
+     strategy over "Add it on the Funds page"), and 44px boxes set on a 21px line reached 26px into the next
+     line's link (walked 2026-10-28, 360-768px): a thumb on one title could open the next. Each link's 44px is
+     inside its own line now, so no two touch: a list of titles stacks one under another (its commas, the list's
+     only text, take no room) and a lone link is a box in its line. A long title still wraps inside its box. */
+  .since-row dd a { display: inline-block; max-width: 100%; padding-block: 12px; margin-block: 0; }
+  .since-links { display: flex; flex-direction: column; align-items: flex-start; font-size: 0; }
+  .since-links > a { font-size: 14.5px; }
+  /* A link right after a glossary (i) ("…and the spread (i) · Download trades (CSV)"): the (i)'s 44px reached 25px
+     into it on the next line. The link keeps its 44px and starts clear of the (i)'s. */
+  .nobr:has(> .info) + a.csv-link { display: inline-block; margin-top: 13px; }
+  /* The strategy page's "See them on the Deploy page" and "Open … on Kalshi" (two hint lines 12px apart, each link
+     44px) overlapped by 11px; a demo-key hint's "Funds page" reached 3px into the Deploy on demo button over it. */
+  p.hint:has(a) + p.hint:has(a) { padding-top: 14px; }
+  .btn + .hint:has(a) { margin-top: 6px; }
+  /* The track record's By strategy titles wrap to two lines, and two rows' 44px links met by 1px at 768px. */
+  .trpanel td.name { padding-block: 11px 10px; }
+  .ri-why a { padding-block: 14px; margin-block: -14px; }
+  a.apcard-alt { padding-block: 10px; margin-block: -10px; }
+  /* The autopilot line's "Change" (41px from its own padding). */
+  .ap-focus button { padding-block: 11.5px; margin-block: -11.5px; }
+  /* In the autopilot sheet it reached 2px into Model and markets under it (their margins collapse to 10px). */
+  .apf-top > .ap-focus { margin-bottom: 12px; }
   /* A research result's title (20px) and a community post's Reply, Edit and reactions (25-28px). */
-  .ri-title { padding-block: 10px; margin-block: -10px; }
+  .ri-title { padding-block: 12px; margin-block: -12px; }
   /* Room between the title and its Deploy link (and the next result), so the two grown targets don't overlap. */
-  .ri-list li { row-gap: 22px; padding-block: 12px; }
-  .post-actions .thread-link, .reactions .rx { min-height: 40px; }
+  .ri-list li { row-gap: 26px; padding-block: 14px; }
+  .post-actions .thread-link, .reactions .rx { min-height: 44px; }
+  .reactions .rx { min-width: 44px; justify-content: center; }
+  .composer-post textarea { min-height: 44px; }
 }
 
 /* Funds: Kalshi keys. The connected line is the proof it worked; the demo/live line says which key goes where. */
@@ -2313,7 +2368,21 @@ body.landing-body .apf { display: none; }
    also took it from the switches (Options: "Let it run until I stop it") and the What-if sliders,
    which have no border to change; and on the chosen market row the ink ring sat on the ink fill. */
 .switch input:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* A text field, a select and a message box showed focus only by their border going from --rule-2 to --ink, 1px:
+   too slight to find the caret's field at a glance (WCAG 2.4.7). They take the ring every button has, 2px of ink
+   2px outside, 3:1 or more on every surface a field sits on (1.4.11), and keep the darker border inside it. Not
+   the landing page's or the card form's fields, which show focus with their own soft halo. */
+:where(body:not(.landing-body)) :is(.input, select, textarea, input:is([type=text], [type=email], [type=number], [type=password], [type=search], [type=url], [type=tel], :not([type]))):not(.linput, .wl-ifield input):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .mktrow-r:checked:focus-visible + .mktrow-face { outline-color: var(--stock-raised); outline-offset: -4px; }
+/* A ring drawn outside its control was cut off where a box scrolls or clips its contents. A table's sheet
+   scrolls sideways and cut the ring off a first-column link's left side: on a desktop the sheet keeps 4px for
+   it (a phone's sheet already runs into the gutter). The markets rail's rows, the phone's sideways tab strip
+   and the theme picker's rounded box draw the ring just inside the control; on the ink-filled chosen theme it
+   is light. */
+@media (min-width: 761px) { .sheet { padding-inline: 4px; margin-inline: -4px; } }
+.hot-row:focus-visible, .svc-link:focus-visible { outline-offset: -2px; }
+.theme-opt:focus-visible { outline-offset: -4px; }
+.theme-opt.on:focus-visible { outline-color: #F1F3ED; }
 
 /* A trades CSV link stays whole: "Download" ended one line and "trades (CSV)" began the next (walked 2026-10-27). */
 a.csv-link { white-space: nowrap; }
