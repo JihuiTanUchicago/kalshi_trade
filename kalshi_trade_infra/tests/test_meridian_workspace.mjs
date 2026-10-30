@@ -10,7 +10,7 @@ import {perpsFrontendCases} from './kalshi_perps_frontend_cases.mjs';
 import {deployActionCases} from './deploy_actions_frontend_cases.mjs';
 import {stopReasonCases} from './stop_reason_frontend_cases.mjs';
 import {trustGlitchCases} from './trust_glitch_frontend_cases.mjs';
-import {moneyDisplayCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
+import {moneyDisplayCases, pastCloseCases, unmarkedPositionCases, unrealizedCellCases} from './money_display_frontend_cases.mjs';
 import {moneyAgreementCases} from './money_agreement_frontend_cases.mjs';
 import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
@@ -5030,7 +5030,7 @@ test('Meridian money pages: open positions name their market, settle with date a
     unrealized: null, mode: 'paper', opened_at: '2026-10-25T08:00:00Z', market_close_time: '2030-01-15T17:30:00Z', ...extra});
   const markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}];
   const f = frontend({fetchImpl: path => path === '/api/deployments'
-    ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date().toISOString()})]}) : response({})});
+    ? response({deployments: [], open_positions: [pos(), pos({ticker: 'KXOTHER-1', market_close_time: new Date(Math.min(Date.now() + 60e3, new Date().setHours(23, 59, 59, 0))).toISOString()})]}) : response({})});
   f.S.me.markets = markets;
   await f.viewDeploy(); await flush(); await flush();
   const html = f.root.querySelector('#openpos').innerHTML;
@@ -5042,7 +5042,7 @@ test('Meridian money pages: open positions name their market, settle with date a
   assert.match(html, /data-lab="Settles">\d\d:\d\d [^<\s]+<\/td>/);
   const s = strategyFrontend(detailStrategy({holdings: [pos()]})); s.S.me.markets = markets; await s.viewStrategy(42); await flush();
   const side = s.root.querySelector('#main').innerHTML;
-  assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span>Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
+  assert.match(side, /<span>Cost \+ fee \$9\.41<\/span>/); assert.match(side, /<span data-close="[^"]+" data-form="settles" data-cap="1">Settles Jan 1[56], \d\d:\d\d [^<\s]+<\/span>/);
   assert.match(side, /1 open position at cost \+ fees \$9\.41/);
   // The dashboard's expiry column names the zone too.
   const g = frontend({fetchImpl: () => response(dashboardData({open_positions: [dashboardPosition(1, {market_close_time: '2030-01-15T17:30:00Z'})]}))});
@@ -6417,6 +6417,7 @@ freshWalkCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unrealizedCellCases({name: 'Meridian', frontend, dashboard: dashboardData});
 unmarkedPositionCases({name: 'Meridian', frontend});
 moneyAgreementCases({name: 'Meridian', frontend});
+pastCloseCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData});
 moneyDisplayCases({name: 'Meridian', frontend, strategyFrontend, detailStrategy, dashboard: dashboardData, hotRail: (f, markets) => {
   f.root.innerHTML = '<aside id="hotrail"></aside>'; f.S.hot = {at: new Date().toISOString(), markets}; f.renderHotRail();
   return f.root.querySelector('#hotrail').innerHTML;
