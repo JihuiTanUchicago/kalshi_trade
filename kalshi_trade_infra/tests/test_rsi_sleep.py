@@ -6,6 +6,7 @@ import pytest
 
 from app.adapters.llm.llm import Usage
 from app.research import rsi_playbook, rsi_sleep as sl
+from app.research.rsi import MECHANISMS
 
 
 def _drop(run_id, market, title, why, day="2026-10-27"):
@@ -245,3 +246,30 @@ def test_sleep_round_trip_on_mysql():
     assert "lag theses die" in sl.prompt_block(cur, uid, fam, "btc15m")
     conn.rollback()
     conn.close()
+
+
+def test_a_market_is_exhausted_only_when_every_mechanism_is(monkeypatch):
+    names = list(dict.fromkeys(n for n, _ in MECHANISMS))
+    cell = lambda tested, gated=0: {"tested": tested, "gated": gated, "passed": 0, "tags": {}}
+    led = {"markets": {"btc15m": {n: cell(12) for n in names}, "btc_daily": {n: cell(12) for n in names[1:]}}}
+    led["markets"]["btc_daily"][names[0]] = cell(9)          # one bucket short of the bar
+    led["markets"]["btc15m_tick"] = {n: cell(12) for n in names}
+    led["markets"]["btc15m_tick"][names[2]] = cell(30, gated=1)   # something reached the gate
+    assert sl.market_exhausted(led, "btc15m")
+    assert not sl.market_exhausted(led, "btc_daily")
+    assert not sl.market_exhausted(led, "btc15m_tick")
+    assert not sl.market_exhausted(led, "eth15m")    # never researched
+
+    from app.research import agent
+    reads = []
+    monkeypatch.setattr(sl, "latest", lambda cur, uid, fam: reads.append(fam) or {"ledger": led})
+    assert agent.exhausted_markets(None, 1, ["btc15m", "btc_daily", "btc15m_tick"]) == ["btc15m"]
+    assert reads == ["crypto"]                                # one memory read per family
+    monkeypatch.setattr(agent, "AUTOPILOT_SKIP_EXHAUSTED", False)
+    assert agent.exhausted_markets(None, 1, ["btc15m"]) == []
+    monkeypatch.setattr(agent, "AUTOPILOT_SKIP_EXHAUSTED", True)
+    monkeypatch.setenv("TAU_RSI_SLEEP", "0")
+    assert agent.exhausted_markets(None, 1, ["btc15m"]) == []
+    monkeypatch.delenv("TAU_RSI_SLEEP")
+    monkeypatch.setattr(sl, "latest", lambda *a: (_ for _ in ()).throw(RuntimeError("no table")))
+    assert agent.exhausted_markets(None, 1, ["btc15m"]) == []  # no memory: nothing is exhausted

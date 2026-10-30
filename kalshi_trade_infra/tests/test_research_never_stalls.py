@@ -66,3 +66,58 @@ def test_the_worker_floor_starts_research_when_reviews_do_not(monkeypatch):
     monkeypatch.setattr(r, "count_runs", lambda *a, **k: 0)
     monkeypatch.setattr(worker.billing, "is_ready", lambda cur, uid: False)
     assert worker.start_research_floor(None) == []
+
+
+# -- the one intended exception: markets long-term memory marks exhausted (Todd, 2026-10-30) ---------
+
+RETEST = agent.rsi_repair.requeue_prompt({"kind": "micro", "need": "ob_imbalance", "idea_title": "Imbalance fade",
+                                          "idea_why": "ob_imbalance not populated"})
+
+
+def _exhausted(monkeypatch, keys):
+    monkeypatch.setattr(agent, "exhausted_markets", lambda cur, uid, ks: [k for k in ks if k in keys])
+
+
+def test_autopilot_starts_no_taker_research_when_every_market_is_exhausted(monkeypatch):
+    runs = _all_cooling(monkeypatch)
+    _exhausted(monkeypatch, {"btc15m", "btc_daily", "btc15m_tick"})
+    for market in ("btc15m", None, "eth15m"):
+        msg, _ = agent.act(None, USER, {"type": "research", "market": market,
+                                        "idea": "Order-flow imbalance on short-dated contracts."}, True)
+        assert msg.startswith("I didn’t start that: every kind of idea has been tried on")
+        assert "market making" in msg and "btc15m" not in msg   # customer labels, never keys
+    assert runs == []
+    line = agent._cooldown_line(None, 1)
+    assert "Do not propose research now" in line and "not a stall" in line and "WITHOUT a market" not in line
+    # a re-test on data collected for an idea is the new-data lane, and still starts (btc15m is cooling)
+    agent.act(None, USER, {"type": "research", "market": "btc15m", "idea": RETEST}, True)
+    assert runs == [("research", None)]
+    # research a person starts by hand is not limited
+    monkeypatch.setattr(agent.repo, "list_runs", lambda cur, uid, limit=30: [])
+    agent.act(None, USER, {"type": "research", "market": "btc15m", "idea": "Order-flow imbalance."}, False)
+    assert runs[-1] == ("research", "btc15m")
+
+
+def test_an_exhausted_market_reroutes_to_one_that_is_not(monkeypatch):
+    runs = _all_cooling(monkeypatch)
+    _exhausted(monkeypatch, {"btc15m"})
+    agent.act(None, USER, {"type": "research", "market": "btc15m",
+                           "idea": "Order-flow imbalance on short-dated contracts."}, True)
+    assert runs == [("research", None)]
+    line = agent._cooldown_line(None, 1)
+    assert "do NOT propose research on these: btc15m" in line
+
+
+def test_the_floor_stands_down_only_when_every_market_is_exhausted(monkeypatch):
+    r = worker.repo
+    old = [{"created_at": NOW - worker.timedelta(hours=2)}]
+    monkeypatch.setattr(r, "list_runs", lambda cur, uid, limit=1: old)
+    monkeypatch.setattr(r, "count_runs", lambda *a, **k: 0)
+    monkeypatch.setattr(r, "count_active_research", lambda cur: 0)
+    monkeypatch.setattr(worker.billing, "is_ready", lambda cur, uid: True)
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily", "btc15m_tick", "eth15m"])
+    monkeypatch.setattr(agent, "focus_keys", lambda cur, uid, keys: list(keys))
+    _exhausted(monkeypatch, {"btc15m", "btc_daily"})
+    assert worker.research_floor_due(None, 1)
+    _exhausted(monkeypatch, {"btc15m", "btc_daily", "btc15m_tick"})
+    assert not worker.research_floor_due(None, 1)

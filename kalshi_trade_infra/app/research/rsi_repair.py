@@ -241,13 +241,21 @@ def requeue_block(cur, user_id: int, market: str) -> Optional[str]:
     return None
 
 
+RETEST_MARK = " has been collected. It was dropped earlier because: "
+
+
+def is_retest(prompt: Optional[str]) -> bool:
+    """True for the angle requeue() writes: a re-test of an idea on data collected for it."""
+    return (prompt or "").startswith("Re-test ") and RETEST_MARK in (prompt or "")
+
+
 def requeue_prompt(req: Dict) -> str:
     what = {"history": "more settled history for this market",
             "micro": "the %s feature" % req["need"],
             "ticks": "per-second data" + (" (%s)" % req["need"] if req["need"] else "")}[req["kind"]]
     idea = req.get("idea_title") or "the idea"
-    return ("Re-test %s now that %s has been collected. It was dropped earlier because: %s. Build it on the "
-            "data that now exists; if it still fails, say what is missing." % (idea, what, (req.get("idea_why") or "")[:500]))[:1000]
+    return (("Re-test %s now that %s" + RETEST_MARK + "%s. Build it on the data that now exists; if it still "
+             "fails, say what is missing.") % (idea, what, (req.get("idea_why") or "")[:500]))[:1000]
 
 
 def requeue(cur, req: Dict) -> Optional[int]:
