@@ -2743,7 +2743,7 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
 });
 
 test('Explore says when a timed contract closes, and nothing for an event with no hour', async () => {
-  const markets = [{t: 'KXBTC15M-26OCT262345-45', s: 'KXBTC15M', ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,204.11', bid: .48, ask: .51, v24: 9, oi: 1, ct: '2026-10-27T03:45:00Z'},
+  const markets = [{t: 'KXBTC15M-26OCT262345-45', s: 'KXBTC15M', ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,204.11', bid: .48, ask: .51, v24: 9, oi: 1, ct: new Date(Date.now() + 5 * 3600e3).toISOString()},
     {t: 'KXNBAGAME-26OCT26MINDEN-MIN', s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota', bid: .41, ask: .42, v24: 8, oi: 1, ct: null}];
   const f = frontend({fetchImpl: () => response({at: new Date().toISOString(), markets, total: 2, shown: 2, matched: 2, per: 40})});
   await f.viewExplore();

@@ -3122,6 +3122,38 @@
   const spotAge = (s) => (s < 60 ? s + 's ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 172800 ? Math.round(s / 3600) + ' hr ago' : Math.round(s / 86400) + ' days ago');
   const spotOld = (s) => (s < 5400 ? Math.max(2, Math.round(s / 60)) + ' min' : s < 172800 ? Math.round(s / 3600) + ' hr' : Math.round(s / 86400) + ' days');
   const leftText = (s) => (s < 60 ? 'Under a minute' : s < 3600 ? Math.floor(s / 60) + ' min' : s < 172800 ? `${Math.floor(s / 3600)} hr ${Math.floor((s % 3600) / 60)} min` : Math.floor(s / 86400) + ' days');
+  // A contract's close as the page shows it, kept current while the page is open (closeClock), never only at load.
+  // Walked 2026-10-28 with a 15-minute window three minutes from its close: its Explore row and page said "closes
+  // 01:39 CDT" with no time left, and went on saying so after 01:39 had passed. A row says how long is left inside
+  // the last hour and "closed" once it has passed; the page's Closes figure counts down under the time. `skew` (s)
+  // lines the reader's clock up with the server's when it read (as_of, the spot read's secs_left).
+  // Whole seconds, so the milliseconds between the read and the draw never tip an exact minute over (a 4320 s
+  // read drawn 2 ms later read "1 hr 11 min").
+  const closeLeft = (iso, skew) => Math.round((Date.parse(iso || '') - Date.now()) / 1000 + (+skew || 0));
+  const soonText = (s) => (s < 60 ? 'under a minute' : leftText(s));
+  const CLOSE_FORM = {
+    chip: (iso, s) => (s > 0 ? `closes ${settleAt(iso)}${s < 3600 ? `${SEP}in ${soonText(s)}` : ''}` : `closed ${settleAt(iso)}`),
+    left: (iso, s) => (s > 0 ? leftText(s) : 'Closed'),
+    when: (iso, s) => `${s > 0 ? 'closes' : 'closed'} ${keepZone(settleAt(iso))}`,
+    in: (iso, s) => (s <= 0 ? 'Closed, result pending' : s < 172800 ? 'in ' + soonText(s) : ''),
+  };
+  const closeWords = (iso, form, skew, cap) => { const t = CLOSE_FORM[form](iso, closeLeft(iso, skew)); return cap ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
+  const liveClose = (iso, form, { skew = 0, cap = false, cls = '' } = {}) => `<span${cls ? ` class="${cls}"` : ''} data-close="${esc(iso)}" data-form="${form}"${skew ? ` data-skew="${Math.round(skew)}"` : ''}${cap ? ' data-cap="1"' : ''}>${esc(closeWords(iso, form, skew, cap))}</span>`;
+  // The market page's clock: every 5s it rewrites each close on the page and the hot rail. Explore's rows and the
+  // rail work theirs out afresh on each of their polls.
+  function closeClock() {
+    if (S.closeClock === S.gen) return;
+    const gen = S.closeClock = S.gen;
+    S.timers.push(setInterval(() => {
+      if (gen !== S.gen || document.hidden) return;
+      [root, document.getElementById('hotrail')].filter(Boolean).flatMap((box) => [...box.querySelectorAll('[data-close]')]).forEach((el) => {
+        const t = closeWords(el.getAttribute('data-close'), el.getAttribute('data-form'), el.getAttribute('data-skew'), el.getAttribute('data-cap'));
+        if (el.textContent !== t) el.textContent = t;
+      });
+    }, 5000));
+  }
+  // A distance under 0.01% read "0.00%" beside "−$5": it says so.
+  const pctText = (p, dp) => { const a = Math.abs(+p || 0); return a > 0 && a < 0.005 ? 'under 0.01%' : a.toFixed(dp) + '%'; };
   // A 15-minute window's start price is in the contract's own name ("Target Price: $113,512.08", the title line the
   // page heads with) before the collector stores its record: the section said "This window's start price isn't stored
   // yet" under that heading. With no stored strike it is read from there and says so; which side pays stays with
@@ -3163,8 +3195,10 @@
     const lab = (l) => (sp && sp.stale ? `${l}, ${spotAge(+sp.age_s || 0)}` : l);
     const vs = !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor${SEP}${usd(v.to_hi)} below its top${SEP}on the Yes side` })
       : v.side === 'at' ? fig(lab('Spot vs ' + line), 'At the ' + line, { small: yes })
-      : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line), usd(v.diff, true), { small: [`${Math.abs(+v.pct || 0).toFixed(2)}% ${where}`, yes].filter(Boolean).join(SEP) });
-    const left = s.secs_left == null ? fig('Time left', '—') : fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed', { small: s.close_time ? 'closes ' + keepZone(settleAt(s.close_time)) : '' });
+      : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line), usd(v.diff, true), { small: [`${pctText(v.pct, 2)} ${where}`, yes].filter(Boolean).join(SEP) });
+    const skew = s.close_time ? s.secs_left - (Date.parse(s.close_time) - Date.now()) / 1000 : 0;
+    const left = s.secs_left == null ? fig('Time left', '—') : !s.close_time ? fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed')
+      : fig('Time left', liveClose(s.close_time, 'left', { skew }), { small: liveClose(s.close_time, 'when', { skew }) });
     return `<dl class="figures measure">${now}${strike}${vs}${left}</dl><p class="hint mk-spot-note">Kalshi settles on the CF Benchmarks Bitcoin index averaged over the last minute before the close; Coinbase’s price usually sits within a few dollars of it.</p>`;
   }
   function mountSpot(ticker, first, d) {
@@ -3208,18 +3242,27 @@
     // The price says what it is (a Yes pays $1, so 42¢ is about a 42% chance), the book it comes from,
     // and when it was read; the Explore feed's snapshot (Kalshi unreachable) says how old it is.
     const bid = +d.yes_bid, ask = +d.yes_ask;
-    const priceSub = [mid == null ? '' : `≈\u00a0${Math.round(mid * 100)}% chance of Yes`, bid > 0 && ask > 0 ? `bid\u00a0${cents(bid)}\u00a0/ ask\u00a0${cents(ask)}` : '',
+    // A contract nobody has traded and nobody quotes both sides of read only "— as of 01:36": it says so, and shows
+    // the one side of the book there is.
+    const quote = bid > 0 && ask > 0 ? `bid\u00a0${cents(bid)}\u00a0/ ask\u00a0${cents(ask)}` : ask > 0 ? `no bid\u00a0/ ask\u00a0${cents(ask)}` : bid > 0 ? `bid\u00a0${cents(bid)}\u00a0/ no ask` : '';
+    const priceSub = [mid == null ? 'No trades yet' : `≈\u00a0${Math.round(mid * 100)}% chance of Yes`, quote,
       d.as_of ? (d.snapshot ? `Explore snapshot, ${sinceMin(d.as_of)}` : `as\u00a0of\u00a0${keepZone(settleAt(d.as_of))}`) : ''].filter(Boolean).join(SEP);
     const settled = d.result === 'yes' || d.result === 'no';
+    // The close, counting down from when Tau read the market (as_of; the feed's snapshot is older, so it counts from
+    // the reader's clock); a closed or settled market's figure reads "Closed", not "Closes" at a time already past.
+    const closeSkew = d.as_of && !d.snapshot ? (Date.now() - Date.parse(d.as_of)) / 1000 || 0 : 0;
+    const closedNow = settled || ['closed', 'determined', 'settled', 'finalized'].includes(d.status) || (d.close_time && closeLeft(d.close_time, closeSkew) <= 0);
+    const closesFig = !d.close_time ? fig('Closes', '—') : closedNow ? fig('Closed', keepZone(settleAt(d.close_time)))
+      : fig('Closes', keepZone(settleAt(d.close_time)), { small: liveClose(d.close_time, 'in', { skew: closeSkew }) });
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
     // The line under the name says what the code is, as a position does (kalshiRef): "Kalshi contract KX…", not a bare ticker.
     shell('/explore', boardTitle(label, esc([contractMarket(d.ticker), MKT_STATUS[d.status] || d.status || 'Market'].filter(Boolean).join(SEP)) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
-        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + fig('Closes', keepZone(settleAt(d.close_time))) + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? spotSect(d.ticker || ticker) : ''}
+        fig('Open interest', num(Math.round(+d.open_interest || 0)), { small: 'contracts held' }) + closesFig + '</dl>' + marketNext(d.ticker, d.my_markets), `${spotReq && !settled ? spotSect(d.ticker || ticker) : ''}
       <section class="sect"><div class="sect-head"><h2>Your positions here</h2><p>Each money book on its own</p></div>${marketMine(d)}</section>
-      <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
+      <section class="sect"><div class="sect-head"><h2>How it settles</h2><p>${settled ? `Settled${SEP}${d.result === 'yes' ? 'Yes' : 'No'}` : d.settles_at ? `Result expected ${settleAt(d.settles_at)}` : 'Kalshi’s rules'}</p></div>
         ${d.rules ? `<p class="mk-rules">${esc(rulesText(d.rules))}</p>${d.rules_more ? `<p class="hint mk-rules">${esc(rulesText(d.rules_more))}</p>` : ''}`
           : `<p class="hint mk-rules">Kalshi’s settlement rules didn’t come with this snapshot. <a href="${kalshiLink}" target="_blank" rel="noopener">Read them on Kalshi ↗</a></p>`}</section>
       <section class="sect"><div class="sect-head"><h2>Price history</h2><p>Yes price${d.history_unavailable ? '' : `${SEP}${GRAN_EACH[gran]}, from Kalshi`}</p></div>
@@ -3233,6 +3276,7 @@
         <a class="btn sm" href="${kalshiLink}" target="_blank" rel="noopener">View on Kalshi ↗</a></span></div>`);
     const retry = root.querySelector('#mk-retry');
     if (retry) retry.onclick = () => viewMarketDetail(ticker);
+    closeClock();
     if (spotReq && !settled) mountSpot(ticker, spotReq, d);
     const pts = d.points.slice().reverse();  // newest first
     const PER = 25; let pg = 0;
@@ -3266,7 +3310,7 @@
   // its market page says it): a stored one read "Spot vs strike" on Explore beside "Target price" on its page.
   const vsTarget = (m) => !!((m.vs && m.vs.from === 'title') || M15_CONTRACT.test(m.t || ''));
   const vsText = (v, m) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (vsTarget(m || { vs: v }) ? 'at the target price' : 'at the strike')
-    : `${+v.diff < 0 ? '−' : '+'}${WJ}$${num(Math.round(Math.abs(+v.diff)))}${SEP}${Math.abs(+v.pct || 0).toFixed(Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}%`);
+    : `${+v.diff < 0 ? '−' : '+'}${WJ}$${num(Math.round(Math.abs(+v.diff)))}${SEP}${pctText(v.pct, Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}`);
   const vsLab = (m) => (vsTarget(m) ? 'Spot vs target price' : /^KXBTC-.+-B[\d.]+$/.test(m.t) ? 'Spot vs bucket' : 'Spot vs strike');
   const vsHtml = (m) => (m.vs ? `<span class="xspot"${m.vs.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(m.vs, m)}</b></span>` : '');
   // The line names what the rows shown measure from: a list of 15-minute windows only said "Distances to the strike"
@@ -3363,8 +3407,8 @@
         // Under the name, the market as the app names it (contractShort: "BTC above $X at noon ET"), as Tau's
         // Explore chips it, then when the contract closes. The raw ticker (KXBTCD-26OCT2812-T112999.99) carries the
         // series key, so a row never prints it, as Tau's rows don't: the market page names it on its own line.
-        const chip = contractShort(m.t), closes = m.ct ? 'Closes ' + settleAt(m.ct) : '';
-        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc([label, chip, closes].filter(Boolean).join(SEP))}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? `<span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${closes ? `<span class="market-close">${esc(closes)}</span>` : ''}</a>${vsHtml(m)}`;
+        const chip = contractShort(m.t), closes = m.ct ? closeWords(m.ct, 'chip', 0, true) : '';
+        const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc([label, chip, closes].filter(Boolean).join(SEP))}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? `<span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${closes ? liveClose(m.ct, 'chip', { cap: true, cls: 'market-close' }) : ''}</a>${vsHtml(m)}`;
         return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(SEP))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
           <td class="num yes-price" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="Yes bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="Yes ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
@@ -3384,6 +3428,7 @@
     };
     let t; root.querySelector('#xq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); f.page = 0; sync(); load(); }, 220); });
     await load();
+    // The rows' closes ("in 3 min", "closed") are worked out afresh on each poll, so they count down with it.
     poll(load, EXPLORE_POLL_MS, 'xstale');
   }
 
@@ -4240,11 +4285,11 @@
   }
   // When a hot market closes (`ct`, as Explore's rows say it) and, for a Bitcoin contract, how far spot is
   // from its strike; a rail with no fresh spot says why above its rows, as the list does.
-  const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? `<span>Closes ${esc(settleAt(m.ct))}</span>` : ''}${vsHtml(m)}</span>` : '');
+  const hotWhen = (m) => (m.ct || m.vs ? `<span class="hot-when">${m.ct ? liveClose(m.ct, 'chip', { cap: true }) : ''}${vsHtml(m)}</span>` : '');
   const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
   function hotRowHtml(m) {
     const compactName = contractShort(m.t) || comboTitle((m.ti || '').trim()) || contractName(m.t);
-    const when = (m.ct ? `${SEP}Closes ${esc(settleAt(m.ct))}` : '') + (m.vs ? `${SEP}${vsLab(m)} ${vsText(m.vs, m)}` : '');
+    const when = (m.ct ? `${SEP}${esc(closeWords(m.ct, 'chip', 0, true))}` : '') + (m.vs ? `${SEP}${vsLab(m)} ${vsText(m.vs, m)}` : '');
     const mid = midOf(m), h = m.h || [], delta = h.length >= 2 ? h[h.length - 1] - h[0] : 0;
     const dCents = Math.round(delta * 100), dir = dCents > 0 ? 'pos' : dCents < 0 ? 'neg' : '';
     return `<a class="hot-row" href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="${esc([mktLabel(m), contractShort(m.t)].filter(Boolean).join(SEP))}${SEP}${mid == null ? 'Quote unavailable' : cents(mid)}${dCents ? `${SEP}${dCents > 0 ? '+' : '−'}${Math.abs(dCents)}¢ across available history` : ''}${SEP}${kfmt(m.v24)} volume over 24 hours${plain(when)}${SEP}Opens Kalshi in a new tab">
