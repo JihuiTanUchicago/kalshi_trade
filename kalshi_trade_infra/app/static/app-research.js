@@ -37,7 +37,7 @@ window.TauPage('research', (T) => {
   // most once a minute; the 5s page poll re-renders from the cached board.
   const LOOP_FAMILY = { 'weather-high': 'Daily high temps', 'weather-low': 'Daily low temps', crypto: 'Crypto' };
   const loopFamily = (f) => LOOP_FAMILY[f] || (f ? f.charAt(0).toUpperCase() + f.slice(1).replace(/-/g, ' ') : '');
-  const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', spec_invalid: 'spec rejected', missing_context: 'needs data we lack', thin_sample: 'too few examples', no_signal: 'no signal', wrong_fit: 'wrong for this market', other: 'other' };
+  const LOOP_TAG = { feature_unavailable: 'feature missing', no_data: 'no data', zero_trades: 'never traded', fee_floor: 'under the fee', loses: 'loses money', spec_invalid: 'spec rejected', missing_context: 'needs data we lack', thin_sample: 'too few examples', no_signal: 'no signal', wrong_fit: 'wrong for this market', known_dead: 'already ruled out', other: 'other' };
   const loopRate = (r) => (r == null ? '—' : Math.round(r * 100) + '%');
   // failed: what the last read said when it failed (cleared by the next read that comes back).
   // okAt: when the board on hand came back, for the line a failed refresh puts above it.

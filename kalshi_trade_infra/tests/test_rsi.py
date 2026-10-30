@@ -26,6 +26,23 @@ def test_drop_reasons_split_pipeline_failures_from_market_verdicts():
     assert rsi.classify_drop(None) == ("other", "other")
 
 
+def test_btc_drop_reasons_that_cite_the_playbook_or_the_research_fold_stats_are_classified():
+    # Prod 2026-10-27/28: ~20% of BTC drops were "other"; these are shortened real reasons.
+    for why, tag in (
+            ("Vol-mispricing is a documented dead end on this market (22+ prior failures, t-stats -0.82 to -7.86)",
+             "known_dead"),
+            ("This thesis occupies an exhaustively-mined region (side=yes, price 0.90-0.98)", "known_dead"),
+            ("t=0.34 with 86% of profit in 3 events shows no repeatable edge", "no_signal"),
+            ("Research t=0.62 is far below the ~3 threshold needed", "no_signal"),
+            ("With 462 updates/sec and 4ms median book_age, MMs reprice faster than any detectable window",
+             "no_signal"),
+            ("The thesis lacks a sound economic mechanism: vol_60m is publicly observable", "wrong_fit"),
+            ("The cross-strike mechanism requires multiple strikes, but this market has median 1 contract per event",
+             "wrong_fit"),
+            ("The spec doesn't actually test the divergence thesis (it only checks ETH>0)", "wrong_fit")):
+        assert rsi.classify_drop(why)[0] == tag, why
+
+
 def test_families_group_cities_and_categories():
     assert rsi.family("high_ny") == "weather-high"
     assert rsi.family("btc15m") == "crypto"
