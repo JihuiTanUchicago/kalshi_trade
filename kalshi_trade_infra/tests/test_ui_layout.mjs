@@ -171,7 +171,7 @@ test('Tau: with the markets rail open, every Deploy action fits on the board and
 
 test('Tau: the dashboard paper line keeps its all-time figure whole, and a clamped session title has a tooltip', () => {
   const js = read('app.js');
-  assert.match(js, /<span class="amt">\$\{usd\(p\.realized_pnl, true\)\}<\/span> realized all time/);
+  assert.match(js, /\$\{pnlWin\('all'\)\} <span class="amt">\$\{usd\(p\.realized_pnl, true\)\}<\/span> \$\{gl\('realized', 'realized'\)\}/);
   // The card shows the title cut at a whole word (clipWords, test_word_clip.mjs); the tooltip has it whole.
   assert.match(js, /const title = sessionTitle\(r\);/);
   assert.match(js, /<span class="run-title"><b title="\$\{esc\(title\)\}">\$\{esc\(clipWords\(title, RUN_TITLE_MAX\)\)\}<\/b>/);

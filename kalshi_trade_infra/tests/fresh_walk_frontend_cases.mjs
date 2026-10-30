@@ -61,15 +61,15 @@ export function freshWalkCases({name, frontend, dashboard}) {
       return html;
     };
     const fresh = await card({closed_trades: 0, realized_pnl: 0, total_pnl: 0, today_pnl: 0, open_positions: 0}, {...FRESH_ON, week});
-    assert.match(fresh, /<dt>Paper P&amp;L, realized all time<\/dt><dd>None yet <small>no paper trade has closed<\/small><\/dd>/);
-    assert.match(fresh, /<dt>Autopilot’s paper P&amp;L<\/dt><dd>None yet <small>none of its paper trades has closed<\/small><\/dd>/);
+    assert.match(fresh, /<dt><span class="pnl-win">Since you started:<\/span> paper P&amp;L, <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span><\/dt><dd>None yet <small>no paper trade has closed<\/small><\/dd>/);
+    assert.match(fresh, /<dt><span class="pnl-win">Last 7 days:<\/span> autopilot’s paper P&amp;L<\/dt><dd>None yet <small>none of its paper trades has closed<\/small><\/dd>/);
     assert.doesNotMatch(fresh, /\$0\.00/);
     const used = await card({closed_trades: 4, realized_pnl: 1.32, total_pnl: 1.32, today_pnl: 1.32, open_positions: 0},
       {...FRESH_ON, paper_running: 1, week: {...week, paper_started: 1, paper_trades: 4, paper_pnl: 1.32}});
-    assert.match(used, /<dt>Paper P&amp;L, realized all time<\/dt><dd><span class="gain">\+\$1\.32<\/span> <small>/);
-    assert.match(used, /<dt>Autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.32<\/span> <small>paper, not real money, [^<]*4 closed trades<\/small>/);
+    assert.match(used, /<dt><span class="pnl-win">Since you started:<\/span> paper P&amp;L, <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span><\/dt><dd><span class="gain">\+\$1\.32<\/span> <small>/);
+    assert.match(used, /<dt><span class="pnl-win">Last 7 days:<\/span> autopilot’s paper P&amp;L<\/dt><dd><span class="pos">\+\$1\.32<\/span> <small>paper, not real money, [^<]*4 closed trades<\/small>/);
 
-    const today = async (status) => /<dt>Paper realized today \(UTC\)<\/dt><dd[^>]*>(.*?)<\/dd>/.exec((await panel(status)).querySelector('#apf-stats').innerHTML)[1];
+    const today = async (status) => /<dt><span class="pnl-win">Today \(UTC\):<\/span> paper <span class="nobr">realized<button[^>]*data-glo="realized"[\s\S]*?<\/button><\/span><\/dt><dd[^>]*>(.*?)<\/dd>/.exec((await panel(status)).querySelector('#apf-stats').innerHTML)[1];
     assert.equal(await today(FRESH_ON), 'Nothing on paper');
     // A running paper strategy's day is a figure, and it says which money it is and that fees are in, as the dashboard
     // card's paper P&L does: a bare "$0.00" beside "Furthest on paper ... net on them" said neither.

@@ -7,7 +7,7 @@ window.TauPage('autopilot', (T) => {
     alert0, announce, AP_CARD_FIX, AP_FOCUS, AP_MODE, AP_PICKING, apAction, apExpanded, apSaid, apFlash, apFloorText,
     apFocusPaint, apFocusText, api, apIdleHtml, ApiError, apLastHtml, apLiveBlock, apLiveBlockHtml, apMarketNames, apReloadFailed, apShowFocus,
     apEvery, apStale, apStillTrading, apStory, apSwitchOn, apWeek, busy, clock, esc, failText, feedMd, gl, go, ICON, mdLite, num,
-    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, refreshAutopilot, S, SEP, settleAt, sinceMin, slipEst, usd, waitNote, waitSpan,
+    liveIdleCount, liveIdleShort, liveOpen, paced, paintDashAp, paperCount, PAPER_COUNT_WHY, PAPER_NET, pausesIn, pnlWin, refreshAutopilot, repaintKeep, S, SEP, settleAt, sinceMin, slipEstGl, usd, waitNote, waitSpan,
     wakers
   } = T;
 
@@ -526,7 +526,7 @@ window.TauPage('autopilot', (T) => {
       `<dt>Strategies running</dt><dd>${runTotal ? runParts.join(SEP) : 'None'}</dd>`,
       // With nothing on paper and nothing realized today, there is no day's P&L to show: "$0.00" read as a result.
       // The figure says which money it is and that fees are in, as the dashboard card and Deploy say it.
-      `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : `${usd(pnl, true)} <small class="apf-note">${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>${liveInPlay ? '' : slipEst(d.today_paper_slippage_estimate)}`}</dd>`,
+      `<dt>${liveInPlay ? 'Live realized today (UTC)' : `${pnlWin('today')} ${gl('paper realized', 'realized')}`}</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : `${usd(pnl, true)} <small class="apf-note">${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>${liveInPlay ? '' : slipEstGl(d.today_paper_slippage_estimate)}`}</dd>`,
     ].concat(budgetShown ? [`<dt>Loss budget left</dt><dd>${usd(d.loss_headroom)} / ${usd(d.daily_loss_limit)}</dd>`] : [])
       // A queued or running review is not a finished one: right after switching on, "Last reviewed just now" claimed a review that hadn't run.
       // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.
@@ -536,10 +536,10 @@ window.TauPage('autopilot', (T) => {
         : d.reviewing ? ['<dt>Last check-in</dt><dd>Reviewing now</dd>'] : d.last_review_at ? [`<dt>Last check-in</dt><dd>${sinceMin(d.last_review_at)}${apEvery(d, 'apf-note')}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
-      stats.innerHTML = short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
+      repaintKeep(stats, () => short.map((c, i) => `<div${short.length % 2 && i === short.length - 1 ? ' class="apf-tail"' : ''}>${c}</div>`).join('') + `
       ${budgetShown ? `<div class="apf-wide apf-budget"><dt>Loss budget</dt><dd>Counts live losses booked since 00:00 UTC. Live also stops if your Kalshi account falls ${usd(d.daily_loss_limit)} in a day, open positions included.</dd></div>` : ''}
       ${d.research && !(d.story || []).length ? `<div class="apf-wide"><dt>Research</dt><dd>${d.research.active.length ? 'Researching ' + esc(apMarketNames(d).join(SEP)) : 'Not researching right now'}${SEP}${Number(d.research.tested_7d).toLocaleString('en-US')} ideas tested this week, ${d.research.passed_7d} passed${+d.research.not_cleared_7d ? `, ${Number(d.research.not_cleared_7d).toLocaleString('en-US')} not cleared` : ''}${+d.research.cost_7d >= 0.005 ? ', ' + usd(d.research.cost_7d) + ' spent' : (+d.research.cost_7d > 0 || d.research.cost_7d_under_cent) ? ', under $0.01 spent' : ''}</dd></div>` : ''}
-      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a>${SEP}${paperCount(d.paper_progress)}${SEP}${usd(d.paper_progress.net_pnl, true)} net on them. <small>${gl(PAPER_COUNT_WHY_SAID, 'instantfill')}</small></dd></div>` : ''}`;
+      ${d.paper_progress ? `<div class="apf-wide"><dt>Furthest on paper</dt><dd><a href="/strategies/${d.paper_progress.strategy_id}">${esc(d.paper_progress.title || 'Paper strategy')}</a>${SEP}${paperCount(d.paper_progress)}${SEP}${usd(d.paper_progress.net_pnl, true)} net on them. <small>${gl(PAPER_COUNT_WHY_SAID, 'instantfill')}</small></dd></div>` : ''}`);
     }
     const staleEl = box.querySelector('#apf-stale'); if (staleEl) staleEl.textContent = apStale();
     // The feed's idle pulse reads the status too; repaint it now rather than on the next chat poll.
@@ -549,7 +549,7 @@ window.TauPage('autopilot', (T) => {
     const pulseEl = idleEl && box.querySelector('#apf-pulse'), idleSay = pulseEl && apIdleLine(box, true), sayEl = pulseEl && pulseEl.querySelector('.vh');
     if (sayEl && pulseEl.apSaid !== idleSay) { pulseEl.apSaid = idleSay; sayEl.textContent = idleSay; }
     const lastEl = box.querySelector('#apf-last'); if (lastEl) lastEl.innerHTML = d.autopilot ? apLastHtml(d.last_action) : '';
-    const week = box.querySelector('#apf-week'); if (week) week.innerHTML = d.autopilot ? apWeek(d.week, d) : '';
+    const week = box.querySelector('#apf-week'); if (week) repaintKeep(week, (open) => d.autopilot ? apWeek(d.week, d, open) : '');
     const msel = box.querySelector('#apf-model'); if (msel && msel.options.length && d.model && document.activeElement !== msel && !msel.disabled) msel.value = d.model;
     if (Array.isArray(d.focus)) apFocusPaint(box, d.focus);
     const fsel = box.querySelector('#apf-focus');
