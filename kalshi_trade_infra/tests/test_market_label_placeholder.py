@@ -3,8 +3,8 @@
 Walked 2026-10-30: a market page's main button read "Research BTC above $X at 5pm ET" and Explore's chips
 "BTC ABOVE $X AT 5PM ET": the 5pm ladders' family label ("Bitcoin above $X at 5pm ET") reached the page as
 written. The label keeps "$X" for the research model (its market list and the reply it matches); every
-customer surface reads ``customer_label`` ("Bitcoin above a set price at 5pm ET"), both bundles' chips say the
-same words, and a contract's page fills its own strike in for them.
+customer surface reads ``customer_label`` ("Bitcoin above a set price at 5pm ET"), both themes' chips say the
+same words (the shared core's MKT_SHORT, core.js), and a contract's page fills its own strike in for them.
 """
 import re
 from pathlib import Path
@@ -20,8 +20,8 @@ PLACEHOLDER = re.compile(r"\$[A-Z]\b")
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
 
 
-def _short_labels(bundle: str):
-    src = (STATIC / bundle).read_text()
+def _short_labels():
+    src = (STATIC / "core.js").read_text()
     block = src[src.index("const MKT_SHORT = {"):]
     return src, dict(re.findall(r"(\w+): '([^']*)'", block[:block.index("};")]))
 
@@ -58,16 +58,15 @@ def test_the_market_list_the_pages_read_has_no_placeholder(fake_cursor):
     assert {r["key"]: r["label"] for r in rows}["btc_daily"] == "Bitcoin above a set price at 5pm ET"
 
 
-@pytest.mark.parametrize("bundle", ["app.js", "app.meridian.js"])
-def test_no_chip_reads_a_placeholder_in_either_theme(bundle):
-    src, short = _short_labels(bundle)
+def test_no_chip_reads_a_placeholder_in_either_theme():
+    src, short = _short_labels()
     assert short and not {k: v for k, v in short.items() if PLACEHOLDER.search(v)}, \
-        "%s: a market chip carries a strike placeholder like $X" % bundle
-    # A contract fills its own strike in for the family's words (strikeIn): the bundle's pattern takes both the
+        "a market chip carries a strike placeholder like $X"
+    # A contract fills its own strike in for the family's words (strikeIn): the core's pattern takes both the
     # server's words and the chip's, so a market page never falls back to the family words.
     words = re.search(r"const LADDER_WORDS = /([^/]+)/;", src).group(1)
     for text in (MARKETS["btc_daily"].customer_label, short["btc_daily"], short["xrp_daily"]):
-        assert re.search(words, text), (bundle, text)
+        assert re.search(words, text), text
 
 
 def test_an_older_research_log_line_reads_in_words():

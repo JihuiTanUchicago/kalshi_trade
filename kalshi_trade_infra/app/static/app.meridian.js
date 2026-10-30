@@ -3,112 +3,33 @@
 (() => {
   'use strict';
 
-  // The pure helpers both themes share (escaping, money, counts, dates and times, markdown) are in the shared core,
-  // core.js, which the page runs before this bundle. Each keeps its name here, so the code below calls it as before.
+  // The pure helpers both themes share (escaping, money, counts, dates and times, markdown, icons, the glossary's
+  // words, P&L lines, the track record's, Explore's and the autopilot's words) are in the shared core, core.js, which
+  // the page runs before this bundle. Each keeps its name here, so the code below calls it as before.
   const {
-    esc, SEP, sepLine, mdLite, feedMd, authorLine, fmt2, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
-    researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, WEEKDAY_DAY, YEAR_DAY, UTC_MONTH,
-    clock, tzName, logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt,
-    sinceMin, PAPER_NET, NOT_MARKED, slipText, slipEst, slipTip
+    esc, SEP, sepLine, mdLite, feedMd, authorLine, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
+    researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, WEEKDAY_DAY, clock, tzName,
+    logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age, sum4, money, kfmt, sinceMin,
+    PAPER_NET, NOT_MARKED, slipEst, slipTip, ICON, GLOSSARY, PNL_WINDOW, pnlWin, slipEstGl, glo, gloSep, gl,
+    LIVE_CLOSED, LIVE_WAITING, LIVE_NO_ORDERS, liveIdleCount, liveIdleShort, tradePrice, markedAt, MKT_SHORT,
+    catOrder, NO_MARKET, contractHour, hourET, strikeIn, SERIES_SHORT, kalshiRef, boardTitle, emailState, fig,
+    fundsLinked, notice, loadFail, loading, bootSplash, BEHIND, registry, curveRegs, spark, rpUnderwater, mark,
+    statusMark, PAPER_TIP, realTrades, overDays, bookName, EXAMPLE_NOTE, EXAMPLE_TAG, AP_STRAT_TAG, runTag, bookLive,
+    paperShown, paperSince, paperCell, statusReal, statusPast, pausedFirst, btCheckLine, roadDays, roadLine,
+    depInstant, demoRowLine, TR_MODES, trBook, trFix, trDay, trMonth, trCi, TR_STATUS, TR_EDGE, trCurve, trCurveCap,
+    trLeftGap, trRowLeft, trOver, midOf, comboTitle, kalshiUrl, marketHref, rulesText, MKT_STATUS, BTC_CONTRACT,
+    spotSect, closeLeft, closeWords, closeData, liveClose, TARGET_IN, glueTarget, marketSpot, MKT_GONE, vsText, vsLab,
+    rowVs, vsHtml, spotListNote, EXPLORE_WAIT, exploreNoFeed, EXPLORE_NO_FEED, exploreEmpty, exploreShowChips,
+    exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS,
+    shortReason, sinceRunsState, sinceSplit, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
+    apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
+    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays
   } = window.TauCore;
 
   const root = document.getElementById('app');
   const S = { me: null, timers: [], gen: 0, perps: null };
 
-  // ---------- brand mark ----------
-  const TAU_MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#15161A"/><path d="M18 24h28M32 24v22" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="48" r="3.5" fill="#F05A28"/></svg>';
-
-  // ---------- icons (one stroke, one weight) ----------
-  const I = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
-  const ICON = {
-    mark: TAU_MARK,
-    dashboard: I('<rect x="3" y="4" width="18" height="7" rx="1"/><path d="M3 15h7v5H3zM14 15h7v5h-7z"/>'),
-    research: I('<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 6 6M8 10.5h5M10.5 8v5"/>'),
-    search: I('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'),
-    strategies: I('<path d="M5 3h14v18l-2.3-1.6L14.3 21 12 19.4 9.7 21l-2.4-1.6L5 21z"/><path d="M9 8h6M9 12h6"/>'),
-    deploy: I('<rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4M7 12l3-3 2 2 4-4"/>'),
-    funds: I('<path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 7l12-3v3M16 13.5h2"/>'),
-    up: I('<path d="M12 19V5M6 11l6-6 6 6"/>'),
-    down: I('<path d="M12 5v14M6 13l6 6 6-6"/>'),
-    check: I('<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.7L16 9.8"/>'),
-    cross: I('<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/>'),
-    warn: I('<path d="M12 3 2 21h20z"/><path d="M12 10v5M12 18v.01"/>'),
-    send: I('<path d="M4 12 20 4l-6 16-3-7z"/>'),
-    plus: I('<path d="M12 5v14M5 12h14"/>'),
-    ext: I('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
-    cube: TAU_MARK,
-    heart: I('<path d="M12 20s-7-4.35-9.5-8.5C.5 7.5 3 4.5 6.2 4.5c2 0 3.2 1.2 3.8 2.3.6-1.1 1.8-2.3 3.8-2.3 3.2 0 5.7 3 3.7 7C19 15.65 12 20 12 20z"/>'),
-    comment: I('<path d="M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12z"/>'),
-    share: I('<path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13"/>'),
-    community: I('<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0-2-5.2M16.5 20a6 6 0 0 0-1.6-4"/>'),
-    spark2: I('<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'),
-    gate: I('<path d="M5 21V8l7-4 7 4v13M9 21v-6h6v6"/>'),
-    paper2: I('<path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3M9 12h6M9 16h6"/>'),
-    key: I('<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2M16 7l2 2"/>'),
-    mail: I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>'),
-    pencil: I('<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
-    image: I('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5L5 21"/>'),
-    card: I('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>'),
-    credits: I('<circle cx="12" cy="12" r="9"/><path d="M14.5 9.5a3 3 0 1 0 0 5M12 7v10"/>'),
-    admin: I('<path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>'),
-    info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.7v.3"/>'),
-    react: I('<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4 4 0 0 0 7 0"/><path d="M9 9.5v.01M15 9.5v.01"/>'),
-    chev: I('<path d="m6 9 6 6 6-6"/>'),
-    at: I('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
-    google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
-  };
-
-  // ---------- glossary (info bubbles) ----------
-  // Plain-language definitions for the jargon the agent produces. Keep each to a
-  // sentence or two; "plain language first, numbers second".
-  const GLOSSARY = {
-    passed: ['Passed', 'Cleared every gate on data the agent never saw while searching. Only passed strategies can be deployed.'],
-    void: ['Void', 'The strategy was good enough in-sample to be tested on unseen data — but it failed at least one gate there. A real candidate that didn’t hold up.'],
-    rejected: ['Rejected', 'Cut during the in-sample search, before the unseen-data test ever ran. The agent didn’t spend an out-of-sample test on it.'],
-    unseen: ['Later-period P&L (unseen data)', 'What the strategy made in the backtest after its split date, on a held-out slice of history the agent never looked at while searching, so the result can’t be curve-fit. This is the backtest figure that counts.'],
-    laterperiod: ['Later-period P&L', 'What the strategy made in the backtest after its split date. That later stretch is what picked it, so unlike unseen data it wasn’t held out: a weaker test.'],
-    // A Void strategy's later stretch picked nothing: the first version's simple backtest judged it there, it failed, and
-    // nothing says the stretch was held out ("what picked it" was wrong for it). Its page's bubble says this instead.
-    latervoid: ['Later-period P&L', 'What the strategy made in the backtest after its split date, where it failed its checks. There’s no record that stretch was held out, so unlike unseen data it isn’t held-out evidence.'],
-    insample: ['In-sample', 'The history the agent iterates on. Strong in-sample numbers are easy to overfit, so they only shortlist a strategy — they never pass it.'],
-    gate: ['Gates', 'The pass/fail checks a strategy must clear on unseen data: it makes money, trades often enough to judge, and its wins outweigh losses after fees.'],
-    pace: ['Backtest estimate', 'What these same closed trades would have made if each had earned the strategy’s backtest average per trade after its split date. For a strategy with a gatekeeper record, that data was held out: the agent never saw it. For one without (backtest only, or a pass from the old backtest gate), it is the later period that picked it, so not held out. Compare it with Realized: well below it means trading is falling short of the test.'],
-    // A research verdict's figures, each named in plain words with its term of art after it (statGrid).
-    pvalue: ['Chance it’s luck (p-value)', 'How likely a strategy with no edge after fees would have done this well on this data by chance. Lower is better.'],
-    dsr: ['Edge after correcting for many tries (DSR)', 'The deflated Sharpe ratio: how likely the edge is real once every idea tried is counted, since trying many ideas makes one look good by luck. Closer to 1 is better.'],
-    sharpe: ['Steadiness per trade (Sharpe)', 'The average return per trade after fees divided by how much trade returns swing. Higher means steadier gains.'],
-    range90: ['Likely average per trade (90% range)', 'Where the true average return per trade after fees most likely sits, 9 times in 10. A range wholly above 0% is what a real edge shows.'],
-    placebo: ['Same test on shuffled outcomes (placebo)', 'The same test run on outcomes redrawn at random, so they hold no signal: how often they did at least as well. Lower means the signal, not luck, did the work.'],
-    drawdown: ['Worst drop (max drawdown)', 'The biggest fall in P&amp;L from a high point to a later low during the test.'],
-    realized: ['Realized', 'Profit or loss on trades that have closed, sold or settled when the market resolved, after the fees they paid. A closed trade’s figure doesn’t change.'],
-    unrealized: ['Unrealized', 'What the positions still open would gain or lose if sold now, at the price Kalshi’s order book offers, after what they cost including fees. An estimate: it moves with the market until they close.'],
-    instantfill: ['Instant fill', 'An early kind of paper trade that filled the whole order at the quoted price, without checking how many contracts Kalshi’s order book offered there. Too easy to count as evidence, so the track record and the count toward live leave it out.'],
-    paperfills: ['Paper fills', 'Paper trades against Kalshi’s live order book: it buys at the ask and sells at the bid, pays Kalshi’s trading fee on every fill, and fills only the contracts offered at that price. A contract held to the end settles at $1 or $0. It doesn’t model the price moving in the second or two before a real order lands. Where a page shows an estimate after typical live slippage, it takes 0.5¢ a contract off each time an order fills to allow for that.'],
-    // The estimate beside a paper figure on the dashboard (slipEstGl): "≈ after typical live slippage" said nothing of
-    // what slippage is to a new account. Its meaning is the owner's: an estimate beside paper P&L, never in its place.
-    slippage: ['After typical live slippage', 'A real order can fill at a worse price than the one quoted, because the price moves in the second or two before it lands. Paper trades don’t pay for that, so this estimate takes a little off each fill (the amount it names) to show roughly what live trading might have made. It is only an estimate: the paper P&amp;L beside it is the figure, and the checks toward live use that figure.'],
-    stake: ['Stake', 'How much a strategy spends on each trade it opens. “Stake not set” means the deployment’s saved rules carry no trade size, so there is no amount to show.'],
-  };
-  // The stretch of time each paper P&L figure on the dashboard counts, said first and in these words in both themes: the
-  // strip's Money row, the money band, the autopilot card, its week and its panel's day. A new account met three paper
-  // figures on one screen (the last 24 hours, all time, and today in UTC) with nothing saying why they differed.
-  // Display only: every figure is the server's, as before.
-  const PNL_WINDOW = { day: 'Last 24 hours', visit: 'Since your last visit', week: 'Last 7 days', today: 'Today (UTC)', all: 'Since you started' };
-  const pnlWin = (k) => `<span class="pnl-win">${PNL_WINDOW[k]}:</span>`;
-  // On the dashboard (its money band, the autopilot card, its week and its panel's day) the estimate carries the
-  // slippage bubble (slipText from the core), glued to its last word. The other pages keep slipEst as it was.
-  const slipEstGl = (e) => (slipText(e) ? `<span class="slip-est">${gl(slipText(e), 'slippage')}</span>` : '');
-  // One drawn marker; a single top-layer popover serves them all (no clipping in tables).
-  const glo = (key) => `<button type="button" class="info" data-glo="${key}" aria-label="What does “${GLOSSARY[key][0]}” mean?">${ICON.info}</button>`;
-  // Text, its glossary button, then a separator (SEP's "·" and space). Chrome breaks a line after an inline button
-  // even before a no-break space, so "· since Oct 20" and "· 1 open" began lines, and before the button, which then
-  // began one: the text's last word, the button and its "·" stay together (.nobr), and the line still ends on "·".
-  const gloSep = (key, before = '') => {
-    const i = before.lastIndexOf(' ') + 1;
-    return `${before.slice(0, i)}<span class="nobr">${before.slice(i)}${glo(key)}\u00a0\u00b7</span> `;
-  };
-  // A label with its marker: the last word and the marker never break apart, so the marker can't wrap onto a line of its own.
-  const gl = (label, key) => { const i = label.lastIndexOf(' '); return `${label.slice(0, i + 1)}<span class="nobr">${label.slice(i + 1)}${glo(key)}</span>`; };
+  // ---------- glossary (info bubbles; the words are in core.js) ----------
   function setupGlossary() {
     const pop = document.createElement('div');
     pop.className = 'glossary-pop'; pop.setAttribute('role', 'tooltip'); pop.id = 'glossary-pop'; pop.hidden = true;
@@ -192,7 +113,6 @@
   // and didn't say why (live trading closed) or by what. Display only: the live switch is the server's.
   const LIVE_IDLE = () => liveOpen() ? 'Your real money at Kalshi: Tau hasn\u2019t placed a live trade yet'
     : 'Your real money at Kalshi: live trading isn\u2019t open yet, so Tau places no trades there';
-  const LIVE_CLOSED = 'Live trading isn’t open yet.';
   // A deployment marked running that places no orders, in plain words ({tag, state, why}), or null: a live one
   // while live trading is closed, or a Bitcoin perpetual one (research-only: the engine trades none in any
   // book). Its row, the board's counts and the dashboard say so, never "Running" or "on live money".
@@ -203,16 +123,6 @@
     const n = +d.open_positions || 0;
     const held = n ? `, and Tau can’t sell ${n === 1 ? 'its open position, which stays open until its market settles' : `its ${n} open positions, which stay open until their markets settle`}` : '';
     return { tag: 'Waiting', state: LIVE_WAITING, why: `${LIVE_NO_ORDERS}${held}. Tau pauses it the next time it checks the market.` };
-  };
-  const LIVE_WAITING = 'Waiting: live trading isn’t open yet', LIVE_NO_ORDERS = 'Live trading isn’t open yet, so this places no orders';
-  // Live deployments counted running that place no orders, as Deploy's Money figure counts them.
-  const liveIdleCount = (n) => `${n} live, placing no orders: live trading isn’t open yet`;
-  // The autopilot panel's Running figure shares a row with another figure (two to a row on a phone), where
-  // the count above wrapped to four lines: there it reads "1 live (waiting)", the reason in its hover and
-  // screen-reader text (the panel's story says it in full on its own line).
-  const liveIdleShort = (n) => {
-    const why = `live trading isn’t open yet, so ${n === 1 ? 'it places' : 'they place'} no orders`;
-    return `<span class="apf-live-wait" title="${why.charAt(0).toUpperCase() + why.slice(1)}.">${n} live (waiting)<span class="vh">: ${why}</span></span>`;
   };
   // A "Live" badge on a list or card while live trading is closed (a strategy's books, a shared deployment):
   // the badge waits beside it, in depIdle's words, and a line under it says why on a phone too ('' while open).
@@ -228,80 +138,18 @@
   // A strategy written as code (the server's kind "code") runs only in the research sandbox: the server
   // refuses to deploy it in any mode, so its page offers no deploy button and says what to do instead.
   const CODE_RESEARCH_ONLY = 'Strategies written as code run only in the research sandbox, even after passing every check: paper, demo and live trading run rule-based strategies only. To trade this idea, ask for a rule-based version in a new research session.';
-  const perpsPrice = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 6});
-  const tradePrice = (v, perpetual) => perpetual ? (!['number', 'string'].includes(typeof v) || String(v).trim() === '' || !Number.isFinite(Number(v)) ? '—' : perpsPrice.format(Number(v))) : cents(v);
   const PERPS_SCENARIO = 'Research scenario: at most 1× capital, fixed 12 bps taker fees and 5 bps adverse slippage per fill, plus settled funding. These are uncalibrated cost assumptions; fills use the next bar’s open. No margin or liquidation model. Short losses can exceed capital.';
-  // A mark's "as of" (HTML): a fresh one gives its time and zone (settleAt). An old one says its age in words ("as of
-  // 14 min ago", short enough for a phone's stacked card), and its time and what an old mark means ride in a title
-  // and in text a screen reader reads. "as of 05:31 UTC, 3h ago" beside an undimmed figure still read as current.
-  const markedAt = (iso, lead = 'as of') => {
-    if (!markOld(iso)) return `${lead} ${esc(settleAt(iso))}`;
-    const why = `Last marked ${settleAt(iso)}. No newer price has come in, so this figure may be out of date.`;
-    return `<span class="mark-age" title="${esc(why)}">${lead} ${apAgo(iso)}<span class="vh"> (${esc(why)})</span></span>`;
-  };
   // A market by the catalog's label. A key the catalog no longer lists (a retired market) reads "Unlisted market",
   // never the raw key, as the autopilot card says one (apMarketName).
   const marketLabel = (k) => { const m = S.me && (S.me.markets || []).find((x) => x.key === k); return m && m.label ? m.label : 'Unlisted market'; };
-  // Short, consistent chip labels for every market; unknown keys fall back to the
-  // server's full label, never the raw key (keeps the market chips uniform).
-  const MKT_SHORT = {
-    // Each coin says the contract and its close, not just the coin and an hour ("BTC 5pm" was every kind),
-    // with no " · " inside: lists and chips join labels with it, and "BTC above $X · 5pm ET" read as two.
-    // A 5pm ladder says its strike in words, as the server's customer_label does ("a set price"; a chip drops the "a"
-    // to fit a phone row's 30 characters), never "$X": walked 2026-10-30, Explore's chips read "BTC ABOVE $X AT 5PM ET".
-    // A contract fills its own strike in (strikeIn).
-    btc15m: 'BTC 15-min up/down', btc15m_tick: 'BTC 15-min up/down, per second', btc_perp: 'BTC perpetual, no expiry',
-    btc_daily: 'BTC above set price at 5pm ET', eth15m: 'ETH 15-min up/down', eth_daily: 'ETH above set price at 5pm ET',
-    sol15m: 'SOL 15-min up/down', sol_daily: 'SOL above set price at 5pm ET', xrp15m: 'XRP 15-min up/down', xrp_daily: 'XRP above set price at 5pm ET',
-    doge15m: 'DOGE 15-min up/down', near15m: 'NEAR 15-min up/down', zec15m: 'ZEC 15-min up/down', hype15m: 'HYPE 15-min up/down',
-    nba_game: 'NBA winner', nfl_game: 'NFL winner', nhl_game: 'NHL winner',
-    ncaaf_game: 'NCAAF winner', mlb_game: 'MLB winner', epl_game: 'EPL result',
-    high_ny: 'NYC high temp',
-    tao_sn64: 'SN64 Chutes', tao_sn19: 'SN19 Nineteen', tao_sn8: 'SN8 PTN',
-    tao_sn4: 'SN4 Targon', tao_sn56: 'SN56 Gradients',
-  };
-  // Order the research picker groups by how often they're used; unknown categories fall to the end.
-  const MKT_CATS = ['Crypto', 'Sports', 'Economics', 'Commodities', 'Science and Technology', 'Climate and Weather', 'Weather', 'Bittensor'];
-  // Category sort shared by the research picker and the strategies market filter.
-  const catOrder = (a, b) => { const ia = MKT_CATS.indexOf(a), ib = MKT_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); };
-  // No market picked: the agent chooses. Said as a market ("Any market (agent’s choice)"), since a header or
-  // row shows it beside other labels ("Agent’s choice · Session" didn’t say it was the market). Display only:
-  // the stored market stays empty and the research model is sent nothing new.
-  const NO_MARKET = 'Any market (agent’s choice)';
   const marketShort = (k) => (!k ? NO_MARKET : MKT_SHORT[k] || marketLabel(k));
   // A market named on its own, in a sentence or as a row's market ("Bitcoin up or down in 15 minutes"), by its full
   // label, as Billing's lines and every position name it; the short one stays for chips and meta lines joined by
   // " · ". The autopilot said "Researching BTC 15-min up/down" and Deploy's rows "BTC 15-min up/down" above
   // positions in "Bitcoin up or down in 15 minutes". A key the catalog doesn't list reads as marketShort does.
   const marketFull = (k) => { const m = k && ((S.me && S.me.markets) || []).find((x) => x.key === k); return m && m.label ? m.label : marketShort(k); };
-  // The readable market a contract ticker belongs to, by its series prefix (KXBTCD-26OCT2617-T68499.99 is
-  // "Bitcoin $68,500 or above at 5pm ET", as Kalshi names it), so an open position never shows only the raw ticker. Unknown: ''.
-  // A market kept to one close hour (close_hour_et: the 5pm close of the KXBTCD ladder) owns only the
-  // contracts whose event closes then: KXBTCD-26OCT2700 is the midnight contract, which no strategy trades.
-  const contractHour = (ticker) => { const m = /^[^-]+-\d{2}[A-Z]{3}\d{2}(\d{2})(?:-|$)/.exec(String(ticker || '')); return m ? +m[1] : null; };
-  // An ET hour as a close says it: "noon", "midnight", "9am", "5pm".
-  const hourET = (h) => (h === 12 ? 'noon' : h === 0 ? 'midnight' : `${h % 12}${h < 12 ? 'am' : 'pm'}`);
   const contractMkt = (ticker) => ((S.me && S.me.markets) || []).find((x) => x.series && String(ticker || '').startsWith(x.series + '-')
     && (x.close_hour_et == null || contractHour(ticker) === x.close_hour_et));
-  // A ladder market's label says "a set price" for the strike; one contract says its own (-T68499.99), as its rules
-  // do, to its last decimal: an XRP strike runs to four (-T2.4599), and num() rounds past three.
-  const LADDER_WORDS = /above (?:a )?set price/;
-  const strikeIn = (label, ticker) => {
-    const k = /-T(\d+)(\.\d+)?$/.exec(String(ticker || ''));
-    if (!k) return label;
-    // A KXBTCD -T contract is Yes when Bitcoin ends above its strike (services/btc_spot.py contract_strike), and
-    // Kalshi names one whose strike is a cent under a whole dollar by that dollar: -T112999.99 is "$113,000 or
-    // above", the market page's heading. Walked 2026-10-30: the line under that heading said "Bitcoin above
-    // $112,999.99 at 5pm ET", two prices for one line. Display only: the ticker and the stored strike are unchanged.
-    // Any other strike, and a KXBTC -T end (the ticker doesn't say which way it points), keeps its exact figure.
-    if (/^KXBTCD-/.test(String(ticker)) && k[2] === '.99' && LADDER_WORDS.test(label)) return label.replace(LADDER_WORDS, `$${num(+k[1] + 1)} or above`);
-    return label.replace(LADDER_WORDS, 'above $' + num(k[1]) + (k[2] || ''));
-  };
-  // Bitcoin series the app shows (Explore, the hot rail, a market page, a position held at Kalshi) that no
-  // market here covers: KXBTC's hourly price ranges. Each still says its contract and close as the markets above
-  // do, [chip, name], never the raw series or another market's label. Every series of services/btc_spot.py's
-  // BTC_SERIES is a market's or here (test_every_bitcoin_series_the_app_shows_has_a_label).
-  const SERIES_SHORT = { KXBTC: ['BTC range at {h} ET', 'Bitcoin range at {h} ET'] };
   // Another hour of a ladder a market here keeps to one close (KXBTCD-26OCT2612, the noon "Bitcoin above a set price"
   // contract, beside btc_daily's 5pm): never that market's label, which names the wrong close, but the same
   // words at its own hour read from the ticker, [chip, name] as SERIES_SHORT: "BTC above set price at noon ET".
@@ -335,7 +183,6 @@
   const contractName = (ticker, key) => contractMarket(ticker) || (key ? strikeIn(marketFull(key), ticker) : 'Kalshi contract');
   // A contract, by its plain name, that opens its market page (price, settlement rules, your positions in it).
   const contractLink = (ticker, key) => `<a href="/explore?m=${encodeURIComponent(ticker)}">${esc(contractName(ticker, key))}</a>`;
-  const kalshiRef = (ticker) => `<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${esc(ticker)}</span></span>`;
   // A contract (a hot-markets row's `t`) as the app names its market ("BTC 15-min"), or its SERIES_SHORT or
   // other-hour chip ("BTC range at 5pm ET", "BTC above set price at noon ET"); '' for any other, so a chip is left off
   // rather than the raw series or another hour's market.
@@ -1113,7 +960,6 @@
     mountHotRail();
     mountAutopilot();
   }
-  const boardTitle = (title, sub = '') => `<div class="board-title"><h1 class="page">${esc(title)}</h1>${sub ? `<p class="deck">${sub}</p>` : ''}</div>`;
   // What a page is for, in one line under its name, in Tau's words and Research's lede style. Deploy and Settings
   // opened on their figures or a form with no word on what the page holds.
   const pageLede = (text) => `<p class="lede page-lede">${text}</p>`;
@@ -1155,12 +1001,6 @@
   const themeName = (key) => (THEMES.find((t) => t.key === key) || THEMES[0]).name;
   // Set for the one reload after a saved switch, so the new theme's Settings says the switch took.
   const THEME_SAVED = 'tau_theme_saved';
-  // Settings' email switch. It writes app_users.email_opt_out, the field the unsubscribe link in
-  // community emails also sets; the server checks it before every optional email. Perps safety
-  // alerts and the failed auto-reload email never read it, and the copy says so.
-  const emailState = (off) => off
-    ? 'Off. Tau doesn’t email you about replies to your posts, mentions of your @name, new community posts, or a paper strategy that’s ready for live trading. The bell in Tau still shows replies, mentions and ready-for-live notices.'
-    : 'On. Tau emails you about replies to your posts, mentions of your @name, new community posts (at most one email every 4 hours), and a paper strategy that’s ready for live trading.';
   function emailSettings() {
     const u = (S.me && S.me.user) || {};
     const off = !!u.email_opt_out;
@@ -1251,12 +1091,6 @@
     try { saved = sessionStorage.getItem(THEME_SAVED); sessionStorage.removeItem(THEME_SAVED); } catch (e) { /* private mode */ }
     if (saved === current) flash('#theme-flash', `Theme set to ${themeName(current)}. It’s saved to your account, so it applies wherever you sign in.`, 'good');
   }
-  // One measured cell. Money direction rides a tint field behind the figure
-  // (opts.v), never a colour on the digits and never the reserved signal red.
-  // Its sub-line ("paper money, not real") is a second <dd> of the same term: as a bare <div> in the <dl>
-  // it fell outside the list, and a screen reader read the figure without what kind of money it is.
-  const fig = (label, value, opts = {}) =>
-    `<div class="m ${opts.cls || ''}"><dt class="lab">${label}</dt><dd><span class="fig ${opts.v > 0 ? 'tint pos' : opts.v < 0 ? 'tint neg' : ''}">${value}</span></dd>${opts.small ? `<dd class="sub-fig">${opts.small}</dd>` : ''}</div>`;
   // A Kalshi cash figure a shell's first read couldn't name without waiting on Kalshi (shell_reads.py) comes
   // pending: it reads Checking\u2026, never $0, and a figure the server read earlier shows only with its age.
   // `failed` is the follow-up read for it not coming back: plain words, never the error. Funds and the
@@ -1290,25 +1124,9 @@
   let demoAsk = null;
   const demoCashRead = () => demoAsk || (demoAsk = api('/api/funds/cash?book=demo', undefined, { keep: true })
     .catch(() => {}).then(() => { demoAsk = null; }));
-  const dirTag = () => '';
-  // quiet: the words go out through announce(), so the notice leaves off its own live role (read once).
-  // Tau's words that send someone to Funds ("... on the Funds page ...": an engine pause reason, a deploy
-  // or live-autopilot refusal) name it as a link to Funds' Connect Kalshi; it was plain text, with nothing to
-  // press. Takes text already escaped (esc), so only these fixed words become markup and whatever else the
-  // server said stays escaped.
-  const fundsLinked = (html) => String(html).replace(/\b(?:the )?Funds page\b/, '<a href="/funds#connect-kalshi">$&</a>');
-  const notice = (msg, kind = '', quiet) => `<div class="notice ${kind}"${quiet ? '' : ` role="${kind === 'bad' ? 'alert' : 'status'}"`}>${kind === 'good' ? ICON.check : ICON.warn}<span>${fundsLinked(esc(msg))}</span></div>`;
-  // A failed load says so and offers a retry, instead of leaving a skeleton up for good.
-  // A section whose own read failed on a page that otherwise loaded names itself and says the rest is there
-  // (`what`): the dashboard's track record said only "Something went wrong on our side." (walk 2026-10-28).
-  const loadFail = (msg, what) => `<div class="load-fail">${notice(what ? `${what} didn\u2019t load. ${msg} Everything else on this page did.` : msg, 'bad')}<button type="button" class="btn sm" data-retry>Try again</button></div>`;
   // A page's own bug (a TypeError on a reply it didn't expect) is not something to print to the user.
   // It is reported (reportBroken), so a page that breaks this way shows up on /admin.
   const errText = (e) => (e instanceof ApiError ? e.message : (reportBroken('view', e), 'Something went wrong on this page. Try again.'));
-  const loading = (h = 160) => `<div class="skeleton" style="height:${h}px" aria-label="Loading"></div>`;
-  // Boot screens: shown only while /api/me is in flight (splash) or after it timed out or failed for a
-  // reason other than being signed out (fail).
-  const bootSplash = () => `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div><div class="lspin" aria-label="Loading Tau"></div></div>`;
   function bootFail() {
     root.innerHTML = `<div class="boot"><div class="lbrand">${ICON.mark}<span>Tau</span></div>
       <p class="boot-msg">Tau is taking longer than usual to load. It may be briefly busy.</p>
@@ -1405,7 +1223,6 @@
   // as the write's error, a top-up that went through read as one that didn't, and invited buying twice.
   // refreshed() says whether the re-read came back; a write that landed says so either way, plus BEHIND.
   const refreshed = (p) => Promise.resolve(p).then(() => true, () => false);
-  const BEHIND = ' The page didn’t refresh, so reload to see it.';
   // A write on Funds (add, withdraw, reset, reload, a key) repaints the whole page, and keyboard focus
   // fell to the top with the control that had it, though the result was announced. Note that control
   // first (its form and field name or button kind, or its id), then put focus on its repainted twin, or
@@ -1535,35 +1352,6 @@
   }
 
   // ---------- charts ----------
-  // Registered scale: every sparkline in a set shares one dollar axis, so
-  // slips compare at a glance instead of each filling its own box.
-  function registry(curves) {
-    let lo = 0, hi = 0;
-    curves.forEach((c) => (c || []).forEach(([, v]) => { lo = Math.min(lo, v); hi = Math.max(hi, v); }));
-    if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
-    return { lo, hi };
-  }
-  // Each mode's deployments share one axis, so paper's dollars never squash live's or demo's.
-  function curveRegs(deps) {
-    const by = {};
-    deps.forEach((d) => (by[d.mode] = by[d.mode] || []).push(d.curve));
-    return Object.fromEntries(Object.entries(by).map(([mode, curves]) => [mode, registry(curves)]));
-  }
-  // A deployment's cumulative realized P&L, oldest trade first: a zero baseline and a line coloured
-  // by where it ends. `trades` is the closed-trade count for the label: a long curve arrives cut down
-  // to 120 points that keep its ends and every dip and peak. Nothing under two points.
-  function spark(curve, reg, trades) {
-    if (!curve || curve.length < 2) return '';
-    const W = 80, H = 24;
-    reg = reg || registry([curve]);
-    const t0 = curve[0][0], t1 = curve[curve.length - 1][0];
-    const x = t1 > t0 ? (p) => ((p[0] - t0) / (t1 - t0)) * W : (p, i) => (i / (curve.length - 1)) * W;
-    const y = (v) => H - 2 - ((v - reg.lo) / (reg.hi - reg.lo)) * (H - 4);
-    const pts = curve.map((p, i) => `${x(p, i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
-    const last = curve[curve.length - 1][1], n = trades == null ? curve.length : +trades;
-    const label = `Cumulative P&L, ${usd(last, true)} over ${num(n)} trade${n === 1 ? '' : 's'}`;
-    return `<svg class="spark ${last > 0 ? 'up' : last < 0 ? 'down' : 'flat'}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" role="img" aria-label="${esc(plain(label))}"><line class="spark-zero" x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" vector-effect="non-scaling-stroke"/><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg>`;
-  }
   // devCurve (optional): a second, realized series replayed read-only against
   // the Kalshi demo environment. Drawn dashed in the accent colour with a legend
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
@@ -1685,109 +1473,20 @@
     </svg>`;
   }
 
-  // The underwater drawdown plot: the research paper's third figure, and the track record's.
-  // `drawn`: a drawdown series the server already built from every trade (the track record sends
-  // one, since its equity curve is thinned and could have lost the peak a drop started from).
-  // `fmt` labels the worst drop: dollars for the track record, stakes for a research phase.
-  function rpUnderwater(curve, drawn, fmt = usd) {
-    const src = drawn || curve;
-    if (!src || src.length < 2) return `<div class="rp-empty">No equity curve to derive drawdown from.</div>`;
-    let peak = -Infinity; const dd = drawn || curve.map(([t, v]) => { peak = Math.max(peak, v); return [t, v - peak]; });
-    const W = 340, H = 180, L = 54, R = 10, T = 14, B = 32;  // B leaves the date labels their own line
-    // The same time span and date labels as the equity curve drawn above it, so the two line up.
-    const span = curve && curve.length > 1 ? curve : src;
-    const t0 = Math.min(span[0][0], src[0][0]), t1 = Math.max(span[span.length - 1][0], src[src.length - 1][0]);
-    const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const minDd = Math.min(0, ...dd.map((p) => p[1])), lo = minDd < 0 ? minDd : -0.5;
-    const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
-    const y = (v) => T + (1 - (v - lo) / (0 - lo)) * (H - T - B);
-    const curvePts = dd.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const area = `${curvePts} ${x(dd[dd.length - 1][0]).toFixed(1)},${y(0).toFixed(1)} ${x(dd[0][0]).toFixed(1)},${y(0).toFixed(1)}`;
-    const maxDd = fmt(minDd);
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Underwater drawdown plot from ${day(t0)} to ${day(t1)}; worst drawdown ${plain(maxDd)}">
-      <polygon points="${area}" fill="var(--signal-wash)" stroke="none"/>
-      <polyline points="${curvePts}" fill="none" stroke="var(--signal)" stroke-width="1.6"/>
-      <line x1="${L}" x2="${W - R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--rule-2)"/>
-      <text x="${L - 8}" y="${(y(0) + 4).toFixed(1)}" text-anchor="end">0</text>
-      <text x="${L - 8}" y="${(y(minDd) + 4).toFixed(1)}" text-anchor="end">${maxDd}</text>
-      <text x="${L}" y="${H - 6}">${day(t0)}</text>${day(t1) === day(t0) ? '' : `<text x="${W - R}" y="${H - 6}" text-anchor="end">${day(t1)}</text>`}
-    </svg>`;
-  }
-
   // ---------- timetable rows ----------
-  // State is a word in a mark, never colour alone. Signal red appears only on
-  // states that need the user: a paused deployment and live money.
-  const MARK = {
-    passed: ['on', 'Passed'], failed: ['', 'Void'], rejected: ['quiet', 'Rejected'], queued: ['quiet', 'Testing'],
-    paused: ['armed', 'Paused'], stopped: ['quiet', 'Stopped'], 'backtest-only': ['armed', 'Backtest only'],
-  };
-  const mark = (key, live) => {
-    if (key === 'running') return live ? '<span class="mk live">Live</span>' : '<span class="mk">Paper</span>';
-    const [cls, label] = MARK[key] || ['', key];
-    return `<span class="mk ${cls}">${esc(label)}</span>`;
-  };
-  // A strategy's stamp: its status, unless a later check its status leaves out says otherwise (the server's
-  // `verdict`, as its page shows it). A validation pass whose one-time locked holdout failed, or that the
-  // diversification check after it held back, kept "Passed" on the lists; a probation strategy held back
-  // after passing on paper kept its "Void".
-  const VERDICT = { missed_final: ['mk', 'Missed final test'], held_back: ['mk quiet', 'Held back'] };
-  const statusMark = (s) => VERDICT[s.verdict] ? `<span class="${VERDICT[s.verdict][0]}">${VERDICT[s.verdict][1]}</span>` : mark(s.status);
   // `inRun`: the table sits on its own session's page, where every row's "Ideas tested" was that session's
   // count again (a running session's counter, behind the Tested figure above it), so the column is left out.
-  // The Paper P&L column (paperCell, below), only on a list with a row that has a paper book now or had one.
-  const PAPER_TIP = 'What it has made on paper (pretend money) since you deployed it, after Kalshi fees and the spread. Never added to its demo or live money.';
   const STRAT_HEAD = (pick, inRun, paper) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Backtest P&amp;L</th><th class="num">Trades</th><th class="num">Win</th>${paper ? `<th class="num" title="${PAPER_TIP}">Paper P&amp;L</th>` : ''}${inRun ? '' : '<th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th>'}<th>Status</th></tr></thead>`;
   const strategyTable = (rows, pick, inRun, paper) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick, inRun, paper)}<tbody>${rows}</tbody></table></div>`;
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
   // would start a second deployment of the same rules and double its positions. A pass a later check
   // left uncleared (`verdict`: Missed final test, Held back) is left out too; its own page says why.
   const bulkDeployable = (s) => s.status === 'passed' && !s.verdict && !researchOnly(s) && !s.deployed;
-  // What a deployed strategy has actually done, beside its backtest columns.
-  // The server sends one book (live, else paper, else demo) and a paper strategy's demo book beside it
-  // under r.demo, so sandbox dollars are never added to paper ones.
-  const realTrades = (n) => `${num(n)} trade${n === 1 ? '' : 's'}`;
-  // How long a backtest window ran (its metrics' `days`), so a P&L or return says over what span.
-  const overDays = (d) => !(+d > 0) ? '' : +d < 1 ? ' in under a day' : ` over ${num(Math.round(+d))} day${Math.round(+d) === 1 ? '' : 's'}`;
-  // A deployment as a customer knows it: by its book and state, never by its row id.
-  const BOOK_NAME = { live: 'Live', demo: 'Demo', paper: 'Paper' };
-  const bookName = (d) => BOOK_NAME[d.mode] || esc(d.mode);
   // Under "Deploy on paper" while a paper deployment of it is still on (running or paused).
   const paperAgain = (deps) => deps.some((d) => d.mode === 'paper' && d.status !== 'stopped')
     ? '<p class="hint paper-again">It already runs on paper. Deploying it again starts a second copy of the same rules, which doubles its paper positions.</p>' : '';
-  // The example session (and its strategies) every account is seeded with: the server flags it
-  // `example`, leaves it out of every headline count, and the lists say the app ran it for free.
-  const EXAMPLE_NOTE = 'An example Tau ran for you when you signed up. It cost you nothing.';
-  const EXAMPLE_TAG = `<span class="mk quiet example-tag" title="${EXAMPLE_NOTE}">Example</span>`;
-  // A session the autopilot started (the server's by_autopilot: a brief run, Billing's "Autopilot research").
-  // Unmarked, a new user found sessions on Research they never started and could not tell they were
-  // the autopilot at work.
-  const AP_RUN_NOTE = 'The autopilot started this session.';
-  const AP_RUN_TAG = `<span class="mk quiet ap-run-tag" title="${AP_RUN_NOTE}">Autopilot</span>`;
-  // A strategy the autopilot found (the server's by_autopilot: from a session it started), so a user who
-  // runs both can tell its finds from their own on the list.
-  const AP_STRAT_TAG = `<span class="mk quiet ap-run-tag" title="Found in a research session the autopilot started.">Autopilot</span>`;
-  const runTag = (r) => r.example ? ' ' + EXAMPLE_TAG : +r.by_autopilot ? ' ' + AP_RUN_TAG : '';
   // The run page's kind of session: its direction, and who started it when the autopilot did.
   const runKind = (r) => +r.by_autopilot && !r.example ? (r.direction ? dirLabel(r.direction) + SEP : '') + 'Started by autopilot' : dirLabel(r.direction);
-  // What each figure is net of, as the dashboard and Deploy say it: "+$1.00 on paper since deploying" left out that
-  // Kalshi's fees (and, on paper, the spread) were already taken off.
-  const realNet = (mode) => (mode === 'paper' ? PAPER_NET : 'after Kalshi fees');
-  // A paper book whose closed trades were all instant fills (the server's `instant_only`, counted as the track record
-  // counts them) says so: the track record leaves those trades out and names the strategy on a row saying so, while
-  // "+$3.80 on paper since deploying \u00b7 2 trades" here read as a record.
-  const realInstant = (r) => `${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record\u00a0· ${money(r.pnl)} on paper\u00a0· ${realNet('paper')}`;
-  // Some of them instant fills (the server's `instant_fills`, the same split): the count says how many, so "2 trades"
-  // no longer reads as the record beside a track record that counts 1 and says 1 instant fill was left out.
-  const realSome = (r) => (r.mode === 'paper' && +r.instant_fills > 0 && +r.instant_fills < r.trades
-    ? `, ${num(+r.instant_fills)} of them ${+r.instant_fills === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record` : '');
-  // A paper card's book also says it after typical live slippage (the server's slippage_estimate), on a line of
-  // its own under the figure; a live card shows live money and a demo line beside paper is never estimated.
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.mode === 'paper' && r.trades && slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}${realDemo(r)}` : '';
-  // A paper book's demo book beside it (the server's real.demo): its own line, never added in.
-  const realDemo = (r) => r && r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}</div>` : '';
-  // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
-  // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
-  const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));
   const bookBadge = (s) => {
     const books = Array.isArray(s.books) ? s.books : [], live = bookLive(s);
     const rest = books.filter((m) => m === 'paper' || m === 'demo');
@@ -1795,55 +1494,6 @@
     // A live book while live trading is closed places no orders: the badge says it waits (liveWaitMark), unless
     // its row already says Paused.
     return `<span class="mk ${live ? 'live' : 'dep'}">${text}</span>${live && !(s.real && s.real.paused) ? liveWaitMark() : ''}`;
-  };
-  // What its removed deployments made, one line per book (the server's `past`), never added to the
-  // book it runs in now: a removed strategy read as if it had never traded.
-  // Its removed paper trades that were instant fills (the server's `instant_fills`, the track record's split): the
-  // track record leaves them out, while "Removed from paper: +$0.75 \u00b7 2 trades" read as its count.
-  const pastInstant = (m, p, n) => {
-    const k = +p.instant_fills || 0;
-    if (m !== 'paper' || !(k > 0) || !(n > 0)) return '';
-    return k >= n ? `, ${n === 1 ? 'an instant fill' : 'all instant fills'}, left out of the track record`
-      : `, ${num(k)} of them ${k === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record`;
-  };
-  const pastFig = (past) => past && typeof past === 'object' ? ['live', 'paper', 'demo'].filter((m) => past[m]).map((m) => {
-    const p = past[m], n = +p.trades || 0;
-    return `<div class="sub-fig real-fig past-fig">Removed from ${m}: ${n ? `${money(+p.pnl || 0)}\u00a0· ${realTrades(n)}${pastInstant(m, p, n)}` : 'no closed trades'}</div>`;
-  }).join('') : '';
-  // Paper money since deploying, beside the backtest (walk 2026-10-30, "is the autopilot making money?"): the list's
-  // rows led with the backtest figure and kept the paper result at the far end of the Status cell, and a strategy page
-  // led with green backtest figures over its "Since deploying" record further down. A row whose shown book is paper
-  // (the server's `real` in paper mode), or that was removed from paper (`past.paper`), shows that paper money in a
-  // Paper P&L column of its own; its demo and live books keep their lines in Status, never added in. A live row's
-  // server record is its live book alone, so its paper book is on its page.
-  const paperBook = (s) => (!researchOnly(s) && s.deployed && s.real && s.real.mode === 'paper' ? s.real : null);
-  const paperBeside = (s) => !researchOnly(s) && !!s.deployed && !!s.real && s.real.mode === 'live' && Array.isArray(s.books) && s.books.includes('paper');
-  const pastPaper = (s) => (!researchOnly(s) && s.past && typeof s.past === 'object' && s.past.paper ? s.past.paper : null);
-  // Whether a list needs the column: a row with a paper book now or one removed from paper.
-  const paperShown = (s) => !!(paperBook(s) || paperBeside(s) || pastPaper(s));
-  // One paper book in a line ({pnl, trades, instant_fills}, as the server's book totals send it), for the strategy page's
-  // head and a finished session's "Already deployed": paper money net of Kalshi fees and the spread, with its instant
-  // fills counted as the track record leaves them out. Never demo or live money.
-  const paperSince = (r) => `<b>Paper since deploying:</b> ${+r.trades ? `${money(+r.pnl || 0)}\u00a0· ${realTrades(+r.trades)}${pastInstant('paper', r, +r.trades)}\u00a0· ${PAPER_NET}` : 'no closed paper trades yet'}`;
-  // The column's cell: the paper figure first, as the Backtest P&L cell leads with its own, then what it covers. On a phone
-  // the stacked card names it (data-lab) under the backtest's figures.
-  const paperCell = (s) => {
-    const r = paperBook(s), p = pastPaper(s);
-    const now = !r ? '' : !r.trades ? '<div class="sub-fig real-fig">No closed paper trades yet</div>'
-      : r.instant_only ? `${money(r.pnl)}<div class="sub-fig real-fig">${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record\u00a0· ${PAPER_NET}</div>`
-      : `${money(r.pnl)}<div class="sub-fig real-fig">since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${PAPER_NET}</div>${slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}`;
-    const beside = !r && paperBeside(s) ? `<div class="sub-fig real-fig"><a href="/strategies/${s.id}">Its paper book is on its page</a></div>` : '';
-    const body = now + beside + (p ? pastFig({ paper: p }) : '');
-    return `<td class="num paper-col${body ? '' : ' nil'}" data-lab="Paper since deploying">${body || '\u2014'}</td>`;
-  };
-  // The Status cell's own record beside a Paper P&L column: everything but the paper book the column shows. A session's
-  // row whose next line already says its paper record (opts.paperNext, "Already deployed · Paper since deploying") keeps
-  // only its demo line here, so the paper figure isn't said twice.
-  const statusReal = (s, col) => (col && paperBook(s) ? realDemo(s.real) : realFig(s.real));
-  const statusPast = (s, col) => {
-    if (!col || !pastPaper(s)) return pastFig(s.past);
-    const { paper, ...rest } = s.past;
-    return pastFig(rest);
   };
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
@@ -1898,8 +1548,6 @@
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">${gl('Realized P&amp;L', 'realized')}</th><th class="num">${gl('Unrealized', 'unrealized')}</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
-  // Paused deployments need the user ("Resume or remove it on Deploy" sends them here), so they lead.
-  const pausedFirst = (ds) => [...ds].sort((a, b) => (b.status === 'paused') - (a.status === 'paused'));
   const deploymentTable = (rows, controls) => `<div class="sheet"><table class="stack t-dep">${DEP_HEAD(controls)}<tbody>${rows}</tbody></table></div>`;
   const deploymentMode = (d) => d.mode === 'live' ? '<span class="mk live">LIVE</span>' : d.mode === 'demo' ? '<span class="mk dep">Demo</span>' : '<span class="mk">Paper</span>';
   const deploymentRemove = (d) => `<button class="btn sm danger" data-dep="${esc(d.id)}" data-act="stop" data-open="${+d.open_positions || 0}">Remove<span class="vh"> ${esc(d.title)}</span></button>`;
@@ -1932,36 +1580,6 @@
   // but nothing picked it, so its hover leaves that out, as its Strategies row and page do. It read "unseen data".
   const DEP_FACT_TIP_VOID = 'After its split date (later period\u00a0· not held out)';
   const deploymentEvidence = (d, manage = false) => `<details class="dep-evidence" data-deployment="${esc(d.id)}"><summary aria-label="Backtest and deployment details">Details</summary><div>${backtestPace(d)}${d.backtest && d.backtest.out_of_sample ? `<span class="dep-fact" title="${d.void_no_record ? DEP_FACT_TIP_VOID : d.backtest_only ? DEP_FACT_TIP_LATER : DEP_FACT_TIP}">Later-period P&amp;L ${usd(d.backtest.out_of_sample.pnl, true)}</span>${SEP}<span class="nobr">${d.backtest_only ? 'not\u00a0held\u00a0out' : 'unseen\u00a0data'}${glo(d.void_no_record ? 'latervoid' : d.backtest_only ? 'laterperiod' : 'unseen')}</span>${SEP}` : ''}<span class="dep-fact">Deployed ${when(d.created_at)}</span>${manage ? `<div class="deployment-actions">${deploymentRemove(d)}</div>` : ''}</div></details>`;
-  // One plain line on how a book is doing against its backtest, written by the server
-  // (services/backtest_check.py): that book's realized per-trade P&L and win rate against the
-  // backtest's, "too early to tell" under 10 trades. One book per line; books are never added up.
-  // Each signed amount stays on one line (a phone would otherwise break between the minus and the $).
-  const btCheckLine = (c, tag = 'div') => c && c.line ? `<${tag} class="sub-fig bt-check bt-${esc(c.verdict)}">${esc(c.line).replace(/[+\u2212]\$[\d,]+\.\d\d/g, (m) => `<span class="amt">${m}</span>`)}</${tag}>` : '';
-  // A paper row's strategy record toward the live check (the server's `road`: all its paper
-  // deployments, counted as the strategy page's Road to live counts them) and when the trades, events
-  // and hours could be in at its pace; once they are, which checks still refuse it (`failing`).
-  const ROAD_FAILING = { candidate: 'clearance to trade', legacy_trades: 'trade count', legacy_pnl: 'P&amp;L', net_pnl: 'P&amp;L', edge: 'edge', recent: 'recent form', demo: 'demo record' };
-  // What an event is, on the record's "0/20 separate events": the events check's own reason (research.agent).
-  const ROAD_EVENTS_TIP = 'Trades on strikes of one event count as one bet, so the record needs trades from 20+ separate events';
-  // When, in words (also the strategy page's Road to live).
-  const roadDays = (d) => d < 1 ? 'under a day' : d < 1.5 ? 'about a day' : `about ${Math.round(d)} days`;
-  const roadLine = (d) => {
-    const r = d.road;
-    if (!r) return '';
-    const parts = [[r.trades, r.trades_needed, 'trades'], [r.events, r.events_needed, 'separate\u00a0events'], [Math.floor(r.span_hours), r.span_needed_hours, 'hours']]
-      .filter(([have, need]) => have < need).map(([have, need, unit]) => `<span class="nobr"${unit === 'separate\u00a0events' ? ` title="${ROAD_EVENTS_TIP}"` : ''}>${num(have)}/${num(need)}\u00a0${unit}</span>`);
-    // Each "9/30 trades" piece stays whole (.nobr) and each "·" ends its line (a no-break space before it, a
-    // plain one after): at 390px a line began "· 9/20 events".
-    let text;
-    if (parts.length) text = parts.join('\u00a0· ') + (!r.running ? '\u00a0· paused, so not growing' : r.eta_days != null ? `\u00a0· enough in ${roadDays(r.eta_days)} at its pace` : '');
-    else if (!r.failing) text = 'trades, events and hours are in';
-    else if (!r.failing.length) text = 'every check cleared. Live money only if you deploy it there';
-    else {
-      const names = [...new Set(r.failing.map((k) => ROAD_FAILING[k] || esc(k.replace(/_/g, ' '))))];
-      text = `trades, events and hours are in; ${names.length} check${names.length === 1 ? '' : 's'} left: ${names.join(', ')}`;
-    }
-    return `<div class="sub-fig road-line">Its paper record toward live: ${text}</div>`;
-  };
   // A demo row says what it is: Kalshi's sandbox with play money, a copy of its paper run when it has
   // one, there to prove the order path before live. Its fills differ from paper's because the demo
   // book is thin, which is also why its P&L is no evidence of the edge (paper keeps that job).
@@ -1969,19 +1587,6 @@
   // max_positions as null: it says the stake is not set and leaves out the cap, instead of "$ / trade".
   const depStake = (d) => d.stake != null ? `$${esc(d.stake)} / trade` : gl('Stake not set', 'stake');
   const depCap = (d) => d.max_positions != null ? `Max ${esc(d.max_positions)} open` : '';
-  // A paper row's closed trades that were instant fills (the server's `instant_fills`: its closed trades less those
-  // filled through the simulated order book, the track record's split). "2 closed" sat beside "0/30 trades" toward
-  // live with no word why: the track record leaves those trades out, and so does the count of realistic paper trades
-  // toward live (paper_evidence). Display only: what counts toward live is the server's alone. The term carries its
-  // bubble, glued to the note's last word, as the track record's and the autopilot card's instant-fill notes do.
-  const depInstant = (d) => {
-    const k = +d.instant_fills || 0, n = +d.closed_trades || 0;
-    if (d.mode !== 'paper' || !(k > 0) || !(n > 0)) return '';
-    const lead = k >= n ? (n === 1 ? 'Its 1 closed trade was an instant fill' : `All ${num(n)} of its closed trades were instant fills`)
-      : `${num(k)} of its ${num(n)} closed trades ${k === 1 ? 'was an instant fill' : 'were instant fills'}`;
-    return `<div class="sub-fig dep-instant">${gl(`${lead}, left out of the track record and of the count of realistic paper trades toward live.`, 'instantfill')}</div>`;
-  };
-  const demoRowLine = (d) => d.mode !== 'demo' ? '' : `<div class="sub-fig demo-row">${d.demo_copy ? 'Demo copy of its paper run: the same rules on Kalshi’s sandbox, with play money' : 'On Kalshi’s sandbox, with play money'}. It proves orders place, fill and book before live money; the demo book is thin, so fills differ from paper’s.</div>`;
   // A running deployment's state: "Running", or what it is waiting on when it places no orders (depIdle).
   const depState = (d, live) => d.status !== 'running' ? mark(d.status, live)
     : depIdle(d) ? `<span class="deployment-state idle">${esc(depIdle(d).state)}</span>` : '<span class="deployment-state">Running</span>';
@@ -2794,47 +2399,6 @@
   }
 
   // ---------- track record ----------
-  // What an allocator would check: realized results from closed trades only, one money bucket at a
-  // time (live, demo and paper never mix), every figure next to the sample it rests on. All math is
-  // server-side (app/trading/track_record.py); this only lays it out.
-  const TR_MODES = [['live', 'Live'], ['demo', 'Demo'], ['paper', 'Paper']];
-  // The headline names its book and its window: scrolled past the tabs, "+$5.61" alone could be any book's.
-  const trBook = (key) => (TR_MODES.find(([k]) => k === key) || [key, key])[1];
-  const trFix = (v, dp = 2) => (v == null ? '—' : (+v).toFixed(dp).replace('-', '\u2212'));  // a true minus, as usd() prints
-  const trDay = (ts) => (ts ? dateFmt(new Date(ts * 1000), YEAR_DAY) : '—');
-  const trMonth = (k) => { const [y, m] = k.split('-'); return dateFmt(new Date(Date.UTC(+y, +m - 1, 15)), UTC_MONTH); };
-  const trCi = (ci, f) => (ci ? `95%: ${f(ci[0])} to ${f(ci[1])}` : 'needs 2+ trades for a range');
-  // A deployment the user removed is "Removed from paper" here, as on Deploy (its Remove button) and on the
-  // Strategies list: the table called the same thing "Stopped".
-  const TR_STATUS = { paused: () => 'Paused', stopped: (key) => `Removed from ${key}` };
-  const TR_EDGE = { positive: ['Edge', 'on'], negative: ['Losing', 'live'], unclear: ['Unproven', ''], thin: ['Too few', 'quiet'] };
-  // A first batch of trades often settles in the same second (one 15-minute close), which drew the
-  // whole record as a vertical line. When every close falls within a minute, space the points one
-  // per trade instead; the date labels stay true.
-  const trCurve = (c) => (c && c.length > 1 && c[c.length - 1][0] - c[0][0] < 60) ? c.map(([t, v], i) => [c[0][0] + i, v]) : c;
-  // Above 400 trades the server draws each stretch's lowest and highest point (track_record.thin_min_max), so
-  // the caption stops claiming one point per trade; the figures beside it still count every trade.
-  const trCurveCap = (m) => (m.curve || []).length < (m.trades || 0)
-    ? `Cumulative net P&amp;L over all ${num(m.trades)} trades, drawn from each stretch’s lowest and highest point so no dip is skipped.`
-    : 'Cumulative net P&amp;L, one point per closed trade.';
-  // What the left-out instant fills made, and which way it moves the realized P&L the dashboard, Funds and Deploy show
-  // (they count every closed trade): the record read −$24.72 under a −$19.90 "realized all time" for the same paper
-  // book, with nothing saying the gap was one instant fill's +$4.82.
-  const trLeftGap = (m) => {
-    const v = +m.excluded_instant_pnl || 0, n = m.excluded_instant_fills;
-    return !v ? '.' : `: ${usd(v, true)}. The realized P&L on the Dashboard, Funds and Deploy counts ${n === 1 ? 'it' : 'them'}, so it reads ${usd(Math.abs(v))} ${v > 0 ? 'higher' : 'lower'} than this record.`;
-  };
-  // A strategy row's share of them, so its figures meet its Strategies list line ("+$74.33 · 27 trades" beside 26 here).
-  // A strategy whose only trades were instant fills (the server's `instant_only`) has a row of its own, last, so it is
-  // named beside what they made instead of only in the book's caveat: none of its figures is in the record's totals.
-  const trInstantOnly = (r) => {
-    const n = +r.excluded_instant_fills || 0;
-    return `<div class="sub-fig">${gl(`${n === 1 ? 'Its only trade was an instant fill' : `All ${num(n)} of its trades were instant fills`}, left out of this record (${usd(+r.excluded_instant_pnl || 0, true)})`, 'instantfill')}</div>`;
-  };
-  const trRowLeft = (r) => (r.instant_only ? trInstantOnly(r) : r.excluded_instant_fills ? `<div class="sub-fig">${gl(`${num(r.excluded_instant_fills)} instant fill${r.excluded_instant_fills === 1 ? '' : 's'} left out${+r.excluded_instant_pnl ? ` (${usd(+r.excluded_instant_pnl, true)})` : ''}`, 'instantfill')}</div>` : '');
-  // The span a return is over, as the sample line counts it (track_record.sample_read): a return with no period read
-  // the same for a week as for a year once the headline's "since" had scrolled away.
-  const trOver = (m) => (m.span_days == null ? '' : (() => { const d = Math.max(1, Math.round(+m.span_days)); return ` over ${num(d)} day${d === 1 ? '' : 's'}`; })());
   function trackRecordPanel(m, key, th) {
     const caveats = [];
     if (m.excluded_instant_fills) caveats.push({html: `${gl(`${num(m.excluded_instant_fills)} instant-fill paper trade${m.excluded_instant_fills === 1 ? '' : 's'} left out (${INSTANT_WHY})`, 'instantfill')}${esc(trLeftGap(m))}`});
@@ -2994,31 +2558,8 @@
     });
   }
   // -- Explore + Hot Markets --------------------------------------------------
-  const midOf = (m) => { const b = +m.bid, a = +m.ask; if (b > 0 && a > 0) return (b + a) / 2; const l = +m.last; return l > 0 ? l : null; };
-  // Many markets share one event title (every strike of "Bitcoin price on Oct 14?"), so the
-  // strike sub-title is what tells them apart.
-  // The yes subtitle only when it adds something: "Minnesota wins · Minnesota" and "Will Bitcoin be
-  // above $200000 by Jan 1…? · Above $200000" repeated the title. A contract the feed sends untitled is named
-  // as a position is (contractName: its market's words, else "Kalshi contract"), never by its raw ticker.
-  // A multi-game combo's title is Kalshi's legs run together ("yes Denver,yes Boston,no Over 220.5 points scored"): each
-  // leg gets its space after the comma and the line starts with a capital, as every other title does. Any other title as sent.
-  const comboTitle = (t) => /^(?:yes|no) [^,]+(?:,\s*(?:yes|no) [^,]+)+$/i.test(t) ? t.split(/,\s*/).join(', ').replace(/^./, (c) => c.toUpperCase()) : t;
   const mktLabel = (m) => { const t = comboTitle((m.ti || '').trim()), s = (m.su || '').trim(); return s && !t.toLowerCase().includes(s.toLowerCase()) ? (t ? `${t}${SEP}${s}` : s) : (t || contractName(m.t)); };
   const compactCondition = label => label.replace(/^(\$[\d,]+(?:\.\d+)?) or above$/i, '≥ $1').replace(/^(\$[\d,]+(?:\.\d+)?) or below$/i, '≤ $1').replace(/^Above (\$[\d,]+(?:\.\d+)?)$/i, '> $1').replace(/^Below (\$[\d,]+(?:\.\d+)?)$/i, '< $1');
-  const kalshiUrl = (m) => `https://kalshi.com/markets/${encodeURIComponent((m.s || '').toLowerCase())}`;
-  const marketHref = (ticker) => `/explore?m=${encodeURIComponent(ticker || '')}`;
-
-  // A run past the reaper's limit (the server's run.wait / agent_wait / review_wait, timed on the
-  // server so a reload doesn't restart the count) is said plainly instead of under a spinner.
-  const waitSpan = (s) => { const m = Math.max(1, Math.floor((+s || 0) / 60)); return m < 90 ? m + ' min' : Math.round(m / 60) + ' hr'; };
-  function runWaitLine(w) {
-    const t = waitSpan(w.seconds);
-    if (w.state === 'queued') {
-      const ahead = +w.ahead || 0;
-      return `Still waiting for a free research worker (${t}). ${ahead ? `${ahead === 1 ? '1 session is' : num(ahead) + ' sessions are'} ahead of it; it starts` : 'It’s next in line and starts'} when one frees up.`;
-    }
-    return `No word from the agent for ${t}. A session this quiet is normally interrupted and resumed from its last checkpoint.`;
-  }
 
   function priceChart(points) {
     if (!points || points.length < 2) return '<div class="empty"><h3>Not enough price history</h3></div>';
@@ -3038,13 +2579,6 @@
     const zone = tzName();
     return `<svg class="pchart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Yes price history, ${esc(fmt(t0))} to ${esc(fmt(t1))}${zone ? ' ' + esc(zone) : ''}">${grid}<polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><text x="${pl}" y="${H - 6}" class="pc-xlab">${fmt(t0)}</text><text x="${W - pr}" y="${H - 6}" class="pc-xlab" text-anchor="end">${fmt(t1)}${zone ? ' ' + esc(zone) : ''}</text></svg>`;
   }
-  // Kalshi's market status in words: "active" read as jargon, and "finalized" never said it had settled.
-  // Kalshi's settlement rules, shown as Kalshi wrote them but typeset: an apostrophe after a letter is curly
-  // ("CF Benchmarks' index" read with a straight one), and a clock time keeps its AM/PM and zone ("before 5" ended
-  // a line and "PM EDT" began the next). Words and figures are untouched.
-  const rulesText = (t) => String(t || '').replace(/(\w)'/g, '$1\u2019').replace(/(\d) ([AP]M)\b/g, '$1\u00a0$2')
-    .replace(/\b([AP]M) (E[SD]T|ET|C[SD]T|UTC)\b/g, '$1\u00a0$2');
-  const MKT_STATUS = { initialized: 'Not open yet', unopened: 'Not open yet', active: 'Open for trading', open: 'Open for trading', paused: 'Trading paused', closed: 'Closed, result pending', determined: 'Result in, paying out', settled: 'Settled', finalized: 'Settled' };
   // The reader's own positions in this contract, one block per money book: paper, demo and live
   // money are never added into one figure. Each strategy links to its page.
   function marketMine(d) {
@@ -3084,58 +2618,6 @@
     // ("Research BTC $113,000 or above at 5pm ET"), not the family's words; the session it starts researches the market.
     return `<p class="mk-next"><a class="btn sm primary" href="/research?new=1&amp;market=${k}">Research ${esc(strikeIn(marketShort(m.key), ticker))}</a>${own}</p>`;
   }
-  // A Bitcoin contract's page says where Bitcoin is against its strike, from the price the collectors
-  // stored (/api/explore/spot). It is its own read, started with the market's, and fills its own section,
-  // so a slow one never holds the page. An old price stays up and says how old it is.
-  const BTC_CONTRACT = /^KXBTC(?:15M|D)?-./;
-  // Spot and strikes to the cent: usd() rounds six figures to the dollar, which drew a $112,999.99 strike
-  // as $113,000 beside a distance to it in cents.
-  const btcUsd = (v) => '$' + fmt2.format(+v);
-  // A 15-minute window's line is what Kalshi's own name for it calls it ("Target Price: $X"): its section, figure and
-  // placeholder say "target price"; every other Bitcoin contract keeps "strike".
-  const M15_CONTRACT = /^KXBTC15M-/;
-  const spotSect = (ticker) => '<section class="sect" id="mk-spot"><div class="sect-head"><h2>Bitcoin vs the ' + (M15_CONTRACT.test(ticker || '') ? 'target price' : 'strike') + '</h2><p>Latest stored price, refreshed every 15s</p></div><div id="mk-spot-body"><p class="hint">Reading Bitcoin’s latest stored price…</p></div><p class="stale-note" id="mk-spot-stale" role="status"></p></section>';
-  const spotAge = (s) => (s < 60 ? s + 's ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 172800 ? Math.round(s / 3600) + ' hr ago' : Math.round(s / 86400) + ' days ago');
-  const spotOld = (s) => (s < 5400 ? Math.max(2, Math.round(s / 60)) + ' min' : s < 172800 ? Math.round(s / 3600) + ' hr' : Math.round(s / 86400) + ' days');
-  const leftText = (s) => (s < 60 ? 'Under a minute' : s < 3600 ? Math.floor(s / 60) + ' min' : s < 172800 ? `${Math.floor(s / 3600)} hr ${Math.floor((s % 3600) / 60)} min` : Math.floor(s / 86400) + ' days');
-  // A contract's close as the page shows it, kept current while the page is open (closeClock), never only at load.
-  // Walked 2026-10-28 with a 15-minute window three minutes from its close: its Explore row and page said "closes
-  // 01:39 CDT" with no time left, and went on saying so after 01:39 had passed. A row says how long is left inside
-  // the last hour and "closed" once it has passed; the page's Closes figure counts down under the time. `skew` (s)
-  // lines the reader's clock up with the server's when it read (as_of, the spot read's secs_left).
-  // Whole seconds, so the milliseconds between the read and the draw never tip an exact minute over (a 4320 s
-  // read drawn 2 ms later read "1 hr 11 min").
-  const closeLeft = (iso, skew) => Math.round((Date.parse(iso || '') - Date.now()) / 1000 + (+skew || 0));
-  // A countdown's number keeps its unit (a no-break space): Meridian's hot rail at 1280px ended a line on "in 58"
-  // with "min" on the next.
-  const soonText = (s) => (s < 60 ? 'under a minute' : leftText(s).replace(/(\d) /g, '$1\u00a0'));
-  const CLOSE_FORM = {
-    // The time keeps its zone (keepZone): the hot rail and a row's chip ended a line on "05:00" with "UTC" on the next.
-    chip: (iso, s) => (s > 0 ? `closes ${keepZone(settleAt(iso))}${s < 3600 ? `${SEP}in ${soonText(s)}` : ''}` : `closed ${keepZone(settleAt(iso))}`),
-    left: (iso, s) => (s > 0 ? leftText(s) : 'Closed'),
-    when: (iso, s) => `${s > 0 ? 'closes' : 'closed'} ${keepZone(settleAt(iso))}`,
-    // The market page's close figure's own label: walked 2026-10-30, a page left open past the close read "Closes 04:35 EDT"
-    // over "Closed, result pending" until a reload. It turns to "Closed" with the line under it, as a page opened after the
-    // close (or a settled market) already reads.
-    lab: (iso, s) => (s > 0 ? 'Closes' : 'Closed'),
-    in: (iso, s) => (s <= 0 ? 'Closed, result pending' : s < 172800 ? 'in ' + soonText(s) : ''),
-    // The status line under a market page's name: an open market's "Open for trading" read on after its close until a
-    // reload, beside a Closes figure already saying "Closed, result pending". Only an open status follows the clock.
-    status: (iso, s) => (s > 0 ? MKT_STATUS.open : MKT_STATUS.closed),
-    // An open position's settle line (a row still held, not yet settled). Walked 2026-10-30, a 15-minute contract past
-    // its close read "Open, settles 04:15 UTC" on its market page and "Settles 04:15 UTC" on its strategy, a time
-    // already gone: once the close passes it says the market has closed and the result is pending, in the status
-    // line's words. Only the words change: the position, its book and its figures are the server's. A row with no
-    // close time (NaN) keeps its "—". `pos` is the market page's Status cell, `settles` the strategy page's holding
-    // (capped) and the dashboard's position line, `settleTime` Deploy's Settles column.
-    pos: (iso, s) => (s > 0 || Number.isNaN(s) ? `Open, settles ${settleAt(iso)}` : MKT_STATUS.closed),
-    settles: (iso, s) => (s > 0 || Number.isNaN(s) ? `settles ${settleAt(iso)}` : 'closed, result pending'),
-    settleTime: (iso, s) => (s > 0 || Number.isNaN(s) ? settleAt(iso) : MKT_STATUS.closed),
-  };
-  const closeWords = (iso, form, skew, cap) => { const t = CLOSE_FORM[form](iso, closeLeft(iso, skew)); return cap ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
-  // The clock's attributes on an element of the caller's own (Deploy's Settles cell is the cell itself).
-  const closeData = (iso, form, skew = 0, cap = false) => ` data-close="${esc(iso || '')}" data-form="${form}"${skew ? ` data-skew="${Math.round(skew)}"` : ''}${cap ? ' data-cap="1"' : ''}`;
-  const liveClose = (iso, form, { skew = 0, cap = false, cls = '' } = {}) => `<span${cls ? ` class="${cls}"` : ''}${closeData(iso, form, skew, cap)}>${esc(closeWords(iso, form, skew, cap))}</span>`;
   // The market page's clock: every 5s it rewrites each close on the page and the hot rail. Explore's rows and the
   // rail work theirs out afresh on each of their polls.
   function closeClock() {
@@ -3148,84 +2630,6 @@
         if (el.textContent !== t) el.textContent = t;
       });
     }, 5000));
-  }
-  // A distance under 0.01% read "0.00%" beside "−$5": it says so.
-  const pctText = (p, dp) => { const a = Math.abs(+p || 0); return a > 0 && a < 0.005 ? 'under 0.01%' : a.toFixed(dp) + '%'; };
-  // A 15-minute window's start price is in the contract's own name ("Target Price: $113,512.08", the title line the
-  // page heads with) before the collector stores its record: the section said "This window's start price isn't stored
-  // yet" under that heading. With no stored strike it is read from there and says so; which side pays stays with
-  // the rules, as for any strike read without its record. Spot is measured against it as the server measures a line.
-  const TARGET_IN = /\btarget price:?\s*\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?/i;
-  // A contract name's "Target Price: $113,512.08" stays on one line, label and amount together: the hot rail's
-  // narrow column at 1280px ended a line on "Target Price:" with its amount on the next (or cut it off).
-  // Takes escaped HTML and returns it with the phrase in a .nobr span, its space a no-break one.
-  const glueTarget = (html) => String(html).replace(/\b(target price:?)\s+(\$\s*[\d,]+(?:\.\d+)?)/gi, '<span class="nobr">$1\u00a0$2</span>');
-  function titleStrike(d) {
-    const t = [d && d.sub, d && d.title].map((x) => TARGET_IN.exec(String(x || ''))).find(Boolean);
-    const value = t ? +(t[1].replace(/,/g, '') + (t[2] || '')) : NaN;
-    return value > 0 ? { kind: 'line', value, lo: null, hi: null, inclusive: false, from: 'title' } : null;
-  }
-  const lineVs = (price, value) => {
-    const diff = Math.round((price - value) * 100) / 100;
-    return { side: diff > 0 ? 'above' : diff < 0 ? 'below' : 'at', diff, pct: Math.round(diff / value * 1e5) / 1e3, yes: null };
-  };
-  // Kalshi names an above/below Bitcoin contract by its threshold ("$113,000 or above", the heading of its page and
-  // its row's name), while the strike it stores is the cent under it (112,999.99, Yes when Bitcoin ends above it).
-  // Walked 2026-10-30: a page headed "$113,000 or above" said "Strike $112,999.99" under it, two prices for one line.
-  // Where the name's threshold is the strike's (the same, or a cent past it on the side that pays) the strike and the
-  // distance read in the name's terms: measured from $113,000, spot at $113,000.00 is "at" it, on the Yes side, and
-  // $112,999.99 a cent below it, on the No side, as against the stored strike. `inclusive` null takes either.
-  const HEAD_LINE = /\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s+or\s+(above|below)\b/i;
-  function headLine(texts, value, kind, inclusive) {
-    const h = texts.map((x) => HEAD_LINE.exec(String(x || ''))).find(Boolean);
-    if (!h || !(+value > 0)) return null;
-    const dir = h[3].toLowerCase(), at = +(h[1].replace(/,/g, '') + (h[2] || ''));
-    if (kind !== 'line' && kind !== dir) return null;
-    const gap = Math.round((at - value) * 100), past = dir === 'above' ? 1 : -1;
-    if (!(inclusive === true ? gap === 0 : inclusive === false ? gap === past : gap === 0 || gap === past)) return null;
-    return { value: at, dir, shift: gap / 100, text: '$' + (h[2] ? fmt2 : fmt0).format(at) };
-  }
-  // Spot against the strike (the server's `vs`) restated against the name's threshold: the same price, a cent apart.
-  const vsFromHead = (v, hl) => {
-    if (!hl || !v || !['above', 'below', 'at'].includes(v.side)) return v;
-    const diff = Math.round((+v.diff - hl.shift) * 100) / 100;
-    return { ...v, side: diff > 0 ? 'above' : diff < 0 ? 'below' : 'at', diff: diff || 0, pct: diff / hl.value * 100 || 0 };
-  };
-  function marketSpot(s, d) {
-    const sp = s.spot && s.spot.price != null ? s.spot : null, stored = s.strike && s.strike.value != null ? s.strike : null;
-    const k = stored || titleStrike(d);
-    const m15 = M15_CONTRACT.test((d && d.ticker) || s.ticker || '');
-    // A target read from the contract's title is named as the title and Explore's list name it: "target price".
-    const line = m15 || (k && k.from === 'title') ? 'target price' : 'strike', Line = line[0].toUpperCase() + line.slice(1);
-    const hl = stored && ['above', 'below', 'line'].includes(k.kind) ? headLine([d && d.sub, d && d.title], k.value, k.kind, k.kind === 'line' ? null : !!k.inclusive) : null;
-    const v = vsFromHead(stored ? (s.vs && s.vs.side ? s.vs : null) : k && sp ? lineVs(+sp.price, k.value) : null, hl);
-    const bucket = k && k.kind === 'range', edges = bucket && k.lo != null && k.hi != null;
-    const now = sp ? fig('Bitcoin now', btcUsd(sp.price), sp.stale ? { small: `Spot feed is ${spotOld(+sp.age_s || 0)} old`, cls: 'fig-behind' } : { small: `Coinbase${SEP}${spotAge(+sp.age_s || 0)}` })
-      : fig('Bitcoin now', '—', { small: 'No stored price in the last day' });
-    const strike = !k ? fig(Line, '—', { small: m15 ? 'This window’s start price isn’t stored yet' : 'Not stored for this contract' })
-      : edges ? fig('Bucket', `${btcUsd(k.lo)} to ${btcUsd(k.hi)}`, { small: 'Yes if Bitcoin settles inside it' })
-      : bucket ? fig('Bucket centre', btcUsd(k.value), { small: 'its edges aren’t stored' })
-      : k.from === 'title' ? fig(Line, btcUsd(k.value), { small: 'Read from the contract’s title' })
-      : hl ? fig(Line, hl.text, { small: `Yes at ${hl.text} or\u00a0${hl.dir}` })
-      : fig(Line, btcUsd(k.value), { small: k.kind === 'above' || k.kind === 'below' ? `Yes if Bitcoin settles ${k.inclusive ? 'at or ' : ''}${k.kind}\u00a0it` : 'Kalshi’s rules say which side pays' });
-    // Which side of the strike (or the bucket's edge it is outside of) spot is on, by how much, and which
-    // side of the contract that is when the strike says.
-    const where = !v ? '' : edges ? (v.side === 'below' ? 'below its floor' : 'above its top') : bucket ? v.side + ' its centre' : `${v.side} the ${line}`;
-    const yes = v && v.yes === true ? 'on the Yes side' : v && v.yes === false ? 'on the No side' : '';
-    // Measured from an old price, the label says so beside the figure, not only under Bitcoin's.
-    const lab = (l) => (sp && sp.stale ? `${l}, ${spotAge(+sp.age_s || 0)}` : l);
-    const skew = s.close_time ? s.secs_left - (Date.parse(s.close_time) - Date.now()) / 1000 : 0;
-    // Once the close has passed, Bitcoin's price no longer decides the contract (Kalshi settles on the index before the
-    // close): walked 2026-10-30, a closed 15-minute window's page went on saying "+$71.87 · on the Yes side" from spot
-    // a minute after its close, read as the result. It says so instead of measuring spot against the line.
-    const closed = s.secs_left === 0 || (!!s.close_time && closeLeft(s.close_time, skew) <= 0);
-    const vs = closed ? fig(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line, '—', { small: 'Closed: Bitcoin’s price since the close doesn’t change the result' })
-      : !v ? '' : v.side === 'inside' ? fig(lab('Spot vs bucket'), 'Inside', { small: `${usd(v.to_lo)} above its floor${SEP}${usd(v.to_hi)} below its top${SEP}on the Yes side` })
-      : v.side === 'at' ? fig(lab('Spot vs ' + line), 'At the ' + line, { small: yes })
-      : fig(lab(edges ? 'Spot vs bucket' : bucket ? 'Spot vs centre' : 'Spot vs ' + line), usd(v.diff, true), { small: [`${pctText(v.pct, 2)} ${where}`, yes].filter(Boolean).join(SEP) });
-    const left = s.secs_left == null ? fig('Time left', '—') : !s.close_time ? fig('Time left', s.secs_left > 0 ? leftText(s.secs_left) : 'Closed')
-      : fig('Time left', liveClose(s.close_time, 'left', { skew }), { small: liveClose(s.close_time, 'when', { skew }) });
-    return `<dl class="figures measure">${now}${strike}${vs}${left}</dl><p class="hint mk-spot-note">Kalshi settles on the CF Benchmarks Bitcoin index averaged over the last minute before the close; Coinbase’s price usually sits within a few dollars of it.</p>`;
   }
   function mountSpot(ticker, first, d) {
     const path = '/api/explore/spot?ticker=' + encodeURIComponent(ticker);
@@ -3245,7 +2649,6 @@
     if (S.spotPoll !== S.gen) { S.spotPoll = S.gen; poll((cfg) => api(path, undefined, cfg).then(show), 15000, 'mk-spot-stale'); }
   }
   const spotRead = (ticker) => api('/api/explore/spot?ticker=' + encodeURIComponent(ticker)).catch((e) => ({ failed: errText(e) }));
-  const MKT_GONE = 'Kalshi has no market at this link. It may have been taken down, or the link is incomplete. Find it again on Explore.';
   async function viewMarketDetail(ticker) {
     shell('/explore', boardTitle('Market'), loading(300));
     const spotReq = BTC_CONTRACT.test(ticker || '') ? spotRead(ticker) : null;
@@ -3331,62 +2734,10 @@
     };
   }
 
-  // Explore's rows and the hot rail say how far stored Bitcoin is from a contract's strike (the server's `vs`,
-  // from one shared spot read): "+$420 · 0.4%" is spot $420 (0.4%) above it, a bucket's is to its nearer
-  // edge, and a bucket spot sits in reads "in range". Without a fresh spot no row carries one, and the line
-  // above the list says why (spotListNote).
-  // A 15-minute window's row measures from the target price in its own name, the one its market page shows
-  // (titleStrike) until a strike is stored; the server says so (`vs.from`), and the row names it the same way.
-  const VS_TITLE = 'Target price from the contract’s title, as on its market page';
-  // A 15-minute window's line is its target price whether it was read from the title or stored (M15_CONTRACT, as
-  // its market page says it): a stored one read "Spot vs strike" on Explore beside "Target price" on its page.
-  const vsTarget = (m) => !!((m.vs && m.vs.from === 'title') || M15_CONTRACT.test(m.t || ''));
-  const vsText = (v, m) => (v.side === 'inside' ? 'in range' : v.side === 'at' ? (vsTarget(m || { vs: v }) ? 'at the target price' : 'at the strike')
-    : `${+v.diff < 0 ? '−' : '+'}${WJ}$${num(Math.round(Math.abs(+v.diff)))}${SEP}${pctText(v.pct, Math.abs(+v.pct || 0) < 0.1 ? 2 : 1)}`);
-  const vsLab = (m) => (vsTarget(m) ? 'Spot vs target price' : /^KXBTC-.+-B[\d.]+$/.test(m.t) ? 'Spot vs bucket' : 'Spot vs strike');
-  // A row whose close has passed shows no distance: Bitcoin's price after the close doesn't decide the contract (Kalshi
-  // settles on the index before it). Walked 2026-10-30, a closed 15-minute row said "Closed 04:15 UTC · Spot vs target
-  // price +$72", read as its result. Worked out at each draw, as the row's close is.
-  // Measured as its market page measures it: from the threshold in the row's name ("$113,000 or above") where that is
-  // the ticker's strike or a cent past it (headLine), so a row and its page agree at the line.
-  const rowHead = (m) => { const t = /^KXBTCD?-[A-Z0-9]+-T(\d+(?:\.\d+)?)$/.exec(m.t || ''); return t && m.vs.from !== 'title' ? headLine([m.su, m.ti], +t[1], 'line', null) : null; };
-  const rowVs = (m) => (m.vs && !(m.ct && closeLeft(m.ct) <= 0) ? vsFromHead(m.vs, rowHead(m)) : null);
-  const vsHtml = (m) => { const v = rowVs(m); return v ? `<span class="xspot"${v.from === 'title' ? ` title="${VS_TITLE}"` : ''}>${vsLab(m)} <b>${vsText(v, m)}</b></span>` : ''; };
-  // The line names what the rows shown measure from: a list of 15-minute windows only said "Distances to the strike"
-  // over rows that each said "target price". Both kinds on one list name both. The rows with a figure count; with
-  // no figure to show (an old or missing spot), the Bitcoin rows that would have one: a 15-minute window's only with
-  // the target in its name (TARGET_IN), as the server reads it when no strike is stored.
-  const spotFrom = (ms) => {
-    const all = ms || [], vs = all.filter((m) => m.vs);
-    const btc = vs.length ? vs : all.filter((m) => BTC_CONTRACT.test(m.t || '') && (!M15_CONTRACT.test(m.t) || TARGET_IN.test(`${m.su || ''} ${m.ti || ''}`)));
-    const m15 = btc.filter(vsTarget).length;
-    return !m15 ? 'the strike' : m15 === btc.length ? 'the target price' : 'the strike or target price';
-  };
-  const spotListNote = (s, ms) => {
-    if (s === undefined) return '';
-    const to = 'distances to ' + spotFrom(ms);
-    return s && s.failed ? `Bitcoin’s latest stored price didn’t load, so ${to} are left out.`
-      : !s ? `No Bitcoin price stored in the last day, so ${to} are left out.`
-      : s.stale ? `Bitcoin’s spot feed is ${spotOld(+s.age_s || 0)} old, so ${to} are left out until it catches up.`
-      : `${to.charAt(0).toUpperCase() + to.slice(1)} are from Bitcoin at ${btcUsd(s.price)} (Coinbase, ${spotAge(+s.age_s || 0)}).`;
-  };
-
-  // Explore's empty and failed states: what happened, and a way to ask again. Each sits directly under the
-  // page's h1, so its heading is an h2 (styled as the other empty states' h3).
-  const EXPLORE_WAIT = 'The market list refreshes about once a minute and hasn’t come in yet. Try again shortly.';
   // Explore's list polls every 15s. The feed itself moves about once a minute; the 15s is for the Bitcoin rows'
   // distance to spot, which the collector stores every 20s. The server answers from its cached feed and one spot
   // read shared by every reader for 5s (about 2ms a call, never a Kalshi call), as fast as the market page's spot.
   const EXPLORE_POLL_MS = 15000;
-  // Before the server's first copy of the market feed there is no list and no time: "Available markets 0" and "Time unavailable" read
-  // as Kalshi having no markets. The figures say the feed hasn't come in yet instead.
-  const exploreNoFeed = (d) => !d.at && !+d.total;
-  const EXPLORE_NO_FEED = fig('Market feed', 'Not in yet', { small: 'the market list arrives about once a minute' });
-  const exploreEmpty = (title, text) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
-  // Explore's Bitcoin filter (?show=bitcoin, kept with the search and sort): the server keeps the contracts of the
-  // Bitcoin series it reads spot for (btc_spot.BTC_SERIES, as BTC_CONTRACT), so the list pages over Bitcoin alone.
-  const EXPLORE_SHOW = [['all', 'All markets'], ['bitcoin', 'Bitcoin']];
-  const exploreShowChips = (btc) => `<div class="chips xshow" role="group" aria-label="Show">${EXPLORE_SHOW.map(([v, l]) => `<button class="chip" type="button" data-show="${v}" aria-pressed="${btc === (v === 'bitcoin')}">${l}</button>`).join('')}</div>`;
   const exploreParams = (f) => new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page), ...(f.btc ? { show: 'bitcoin' } : {}) });
   // Where a market page's "Back to Explore" goes: the Explore list this tab last showed, with its search, sort, page and
   // Bitcoin choice. It went to /explore, which dropped them: a reader who picked Bitcoin came back to every market. Kept
@@ -3399,8 +2750,6 @@
     if (!h) try { h = sessionStorage.getItem(XBACK) || ''; } catch (e) { /* private mode */ }
     return /^\/explore\?/.test(h) && !new URLSearchParams(h.slice(9)).has('m') ? h : '/explore';
   };
-  // A Bitcoin list with nothing in it says so in plain words, with the way back to every market.
-  const exploreNoBtc = (q) => `<div class="empty"><h2>${q ? `No Bitcoin markets match “${esc(q)}”` : 'No Bitcoin markets are open right now'}</h2><p>${q ? 'Try a broader search, or clear it to see every open Bitcoin market.' : 'Kalshi opens new Bitcoin markets through the day, and they show here within about a minute.'}</p><p>${q ? '' : '<button class="btn sm" type="button" data-xretry>Try again</button> '}<button class="btn sm" type="button" data-xall>Show all markets</button></p></div>`;
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
     if (q.get('m')) return viewMarketDetail(q.get('m'));
@@ -3573,16 +2922,7 @@
     const text = apStale();
     ['apf-stale', 'dash-ap-stale'].forEach((id) => { const el = document.getElementById(id); if (el) el.textContent = text; });
   }
-  // Demo P&L restarts at a reload (before_reload holds what came before), unlike the track record.
-  function demoSpan(dm) { return dm && dm.before_reload ? 'since reload' : 'all time'; }
 
-  // An action as a link: the server's {label, href}. One off the site opens in a new tab and says so.
-  function actionLink(h) {
-    const a = h && h.action;
-    if (!a || !a.href) return '';
-    const ext = /^https?:\/\//.test(a.href);
-    return ` <a href="${esc(a.href)}"${ext ? ' target="_blank" rel="noopener"' : ''}>${esc(a.label)}${ext ? ' \u2197' : ''}</a>`;
-  }
   // Why the demo book can't trade (the server's demo health: no demo key, or a Kalshi demo account too
   // empty for one order), as one plain line and the one thing to do. A running demo book with capital
   // and a P&L looks healthy while Kalshi refuses every order it sends, so this goes where demo shows.
@@ -3603,16 +2943,6 @@
     setVisit(at, now);
     return at;
   }
-  // The strip itself, from /api/dashboard's `since` block and the page's own deployments: each book's
-  // realized P&L (never added together), what passed, what the autopilot changed, and what needs the
-  // user, linking to it. `pausedHref` is where this page lists its paused deployments.
-  const AP_DID = [['deploy', 'put %s on paper'], ['pause', 'paused %s'], ['resume', 'resumed %s'], ['stop', 'removed %s'], ['adjust', 'adjusted %s'], ['research', 'started %s']];
-  const CREDITS_WARN_DAYS = 3;  // the strip warns when credits last fewer days than this (server: CREDIT_RUNWAY_WARN_DAYS)
-  // A deployment's pause reason, short: no "Autopilot:" prefix, no closing period, cut at a word.
-  const shortReason = (r) => {
-    const s = String(r).replace(/^Autopilot:\s*/, '').replace(/\.\s*$/, '');
-    return clipWords(s, 110);
-  };
   // The strip's Autopilot row when it made no moves: just the switch, which syncApCopy keeps current.
   // Its newest move being the switch itself (the status read's last_action) means it was switched on and
   // has made no move yet: "On. It made no changes." read as a dud the moment the switch was pressed.
@@ -3622,48 +2952,6 @@
     return la && la.at && apMoveText(la) === 'Autopilot switched on'
       ? `Switched on ${sinceMin(la.at)}. Its moves show up here as it makes them.` : 'On. It made no changes.';
   };
-  // Where the sessions counted in "N research sessions started" are now (the server sends {status: n}),
-  // so a session still queued isn't offered as if its ideas had been judged: "still queued", "all
-  // running", "1 running, 2 finished". `point` (nothing passed) adds the link: what each idea missed
-  // once any finished, else where to follow them.
-  const SINCE_RUN_STATES = [['queued', 'queued'], ['running', 'running'], ['paused', 'paused'], ['succeeded', 'finished'], ['failed', 'failed'], ['stopped', 'stopped']];
-  function sinceRunsState(runs, started, point) {
-    const n = (k) => k === 'stopped' ? (runs.stopped || 0) + (runs.cancelled || 0) : runs[k] || 0;
-    const known = SINCE_RUN_STATES.reduce((a, [k]) => a + n(k), 0);
-    const parts = SINCE_RUN_STATES.filter(([k]) => n(k)).map(([k, w]) => [n(k), w]);
-    if (started > known) parts.push([started - known, 'finished']);  // a status this list doesn't know has ended
-    const solo = parts.length === 1 && parts[0][1];
-    const state = solo ? (started === 1 ? (['queued', 'running'].includes(solo) ? 'still ' + solo : solo) : 'all ' + solo)
-      : parts.map(([c, w]) => `${num(c)} ${w}`).join(', ');
-    if (!point) return state;
-    return state + (n('succeeded') ? ', <a href="/research">see what each idea missed</a>'
-      : n('queued') || n('running') || n('paused') ? `, <a href="/research">follow ${started === 1 ? 'it' : 'them'} on Research</a>` : '');
-  }
-  // Each book's since-visit figure split by the strategy that traded it (the server's by_deployment, the
-  // same rows, best first), shown for a book where two or more traded: "Paper −$24.19" alone hid that the
-  // running strategy made money and the paused one lost it. Each share stays inside its own book.
-  const SINCE_SPLIT_SHOWN = 3;
-  function sinceSplit(d, books) {
-    const by = (d.since && d.since.by_deployment) || {};
-    return books.map(([m, label]) => {
-      const rows = Array.isArray(by[m]) ? by[m] : [];
-      if (rows.length < 2) return '';
-      const item = (r) => {
-        const dep = (d.deployments || []).find((x) => +x.id === +r.deployment_id);
-        // A removed deployment isn't listed: the server names its strategy (title null once that was deleted too).
-        const name = dep ? `<a href="/strategies/${encodeURIComponent(dep.strategy_id)}">${esc(dep.title)}</a>`
-          : r.removed && r.title ? `<a href="/strategies/${encodeURIComponent(r.strategy_id)}">${esc(r.title)}</a> <span class="since-sub">(removed deployment)</span>`
-          : r.removed ? 'a deleted strategy' : 'a removed strategy';
-        const p = +r.pnl || 0;
-        return `${name} <span class="nobr"><span class="${p < 0 ? 'neg' : p > 0 ? 'pos' : ''}">${usd(p, true)}</span> on ${num(r.trades)}</span>`;
-      };
-      const more = rows.length - SINCE_SPLIT_SHOWN;
-      return `<div class="since-split" data-book="${m}">${books.length > 1 ? `<span class="since-sub">${label}:</span> ` : ''}${rows.slice(0, SINCE_SPLIT_SHOWN).map(item).join('<span class="sep">·</span>')}${more > 0 ? `<span class="sep">·</span><span class="since-sub">${num(more)} more</span>` : ''}</div>`;
-    }).join('');
-  }
-  // Two or more links in a row ("A, B, C, 1 more"): to a thumb they stack one under another (.since-links, app.css),
-  // each its own 44px, where on a line they reached into one another.
-  const sinceLinks = (links) => (links.length > 1 ? `<span class="since-links">${links.join(', ')}</span>` : links.join(''));
   function sinceStrip(d, pausedHref) {
     const s = d.since;
     if (!s) return '';
@@ -3756,22 +3044,12 @@
       <h2 class="since-h">${s.first ? PNL_WINDOW.day : `${PNL_WINDOW.visit} <span class="since-at">${esc(when(s.at))}</span>`}</h2>
       <dl class="since-list">${row('Money', `${pnlWin(win)} ${money}`)}${cost ? row('Cost', cost) : ''}${row('New results', found)}${row('Autopilot', auto)}${row('Needs you', needs.length ? needs.join('<br>') : 'Nothing.', needs.length ? 'needs' : '')}</dl></section>`;
   }
-  function demoHealthLine(h) { return h ? `<span class="demo-health">${esc(h.line)}${actionLink(h)}</span>` : ''; }
   // The reconciler found live positions Tau's book and Kalshi disagree on. Tau has no portfolio page:
   // name the contracts and point at the two lists to compare, Tau's open positions and Kalshi's own.
   function reconWarn(rows) {
     const ticks = [...new Set(rows.map((r) => r.ticker))];
     const named = ticks.slice(0, 3).map(esc).join(', ') + (ticks.length > 3 ? ` and ${ticks.length - 3} more` : '');
     return `\u26a0 <span>${rows.length} live position${rows.length === 1 ? '' : 's'} disagree${rows.length === 1 ? 's' : ''} with Kalshi (${named}). Compare <a href="#dash-open">Tau\u2019s open positions</a> with the positions in your Kalshi account.</span>`;
-  }
-  // One mode's closed trades as a CSV, offered only where that mode has some, so the reader can
-  // check its P&L line by line. The server never mixes modes in one file.
-  // `before`, the text ahead of it, and `info`, the key of a glossary button after that text: the button comes first,
-  // glued to its last word and the separator (gloSep).
-  function tradesCsv(mode, b, info = '', before = '') {
-    const has = b && b.closed_trades > 0, link = has ? `<a class="csv-link" href="/api/trades.csv?mode=${mode}" download>Download trades (CSV)</a>` : '';
-    if (info) return (has ? gloSep(info, before) : before + glo(info)) + link;
-    return before + (has ? SEP : '') + link;
   }
   // What demo is, for a reader who has never used it: real exchange fills, pretend money.
   const DEMO_WHAT = 'real fills on Kalshi’s sandbox, not real money';
@@ -3944,14 +3222,6 @@
     if (!text || !la.at) return '';
     return `<p class="ap-last">Last move <time datetime="${esc(la.at)}" title="${esc(settleAt(la.at))}">${sinceMin(la.at)}</time>: ${esc(text)}.</p>`;
   }
-  // What it is doing right now in a word or two, for the pill on every page: "researching",
-  // "reviewing", "2 on paper", or "paused" while billing stops it. '' when there's nothing to add.
-  // A market the autopilot names (the status read's research list, and its story, which quotes that
-  // list): the app's own label. The server sends a market's label, or the run's raw key when the
-  // catalog no longer lists it ("btc15m", a series like "KXBTCD"); a listed market, key or series, reads
-  // as its full label (marketFull, as Billing's research lines say it), a key only the app knows as its
-  // short label, and a key nothing knows as "an unlisted market", never the raw key.
-  const AP_PICKING = "a market it’s still picking";
   function apMarketName(n) {
     const s = String(n || '');
     const m = ((S.me && S.me.markets) || []).find((x) => x.key === s || x.label === s || (x.series && x.series.toUpperCase() === s.toUpperCase()));
@@ -3962,10 +3232,6 @@
     return contractMarket(s) || 'an unlisted market';
   }
   const apMarketNames = (d) => [...new Set(((d && d.research && d.research.active) || []).map((n) => n === AP_PICKING ? n : apMarketName(n)))];
-  // The card leads with why its paper strategies hold nothing (d.idle). The autopilot keeps working
-  // meanwhile, and the card never said so: someone back after a day read "Nothing open right now" and
-  // not that a research session was running. Paper-waiting lines only (the others already say it).
-  const AP_IDLE_PAPER = new Set(['flat', 'starting', 'waiting', 'market_closed']);
   function apMeanwhile(d) {
     if (!d || !d.idle || !AP_IDLE_PAPER.has(d.idle.code)) return '';
     const all = apMarketNames(d), names = all.filter((n) => n !== AP_PICKING);
@@ -3980,19 +3246,6 @@
     return ((d && d.story) || []).map((line) => raw.reduce((t, n) =>
       t.replace(new RegExp('(^|[^\\w-])' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])', 'g'), (all, pre) => pre + apMarketName(n)), String(line)));
   }
-  function apDoing(d) {
-    if (!d || !d.autopilot) return '';
-    if (d.billing_blocked) return 'paused';
-    if (d.research && (d.research.active || []).length) return 'researching';
-    if (d.reviewing) return 'reviewing';
-    return d.paper_running ? `${num(d.paper_running)} on paper` : '';
-  }
-  // The pill's label: in paper mode the word for what it is doing takes the place of "paper" (each one
-  // is paper-only or no money at all); the live modes keep their label, so LIVE always shows.
-  function apPillLabel(d, m) {
-    const doing = d && d.mode === 'paper' ? apDoing(d) : '';
-    return doing ? `Autopilot${SEP}` + doing : m.label;
-  }
   // Why autopilot isn't trading right now (the server's d.idle): one plain line, plus the action to
   // take when there is one (a link, or the focus control). The card and the panel both lead with it.
   // A strategy cleared for paper waits for the next review ("to_deploy"): the line says how often those come.
@@ -4003,16 +3256,6 @@
     const when = idle.code === 'to_deploy' ? apCadence(d) : '';
     return esc(idle.line) + (when ? ` <span class="ap-when">Check-ins: ${when}.</span>` : '') + act;
   }
-  // "At its next check-in" said nothing of when. Its time can't be known: the worker's heartbeat runs on its
-  // own timer, skips a user it just reviewed, waits for a free worker and spaces idle users out, and a finished
-  // research session starts one at once. So the copy gives the status's usual cadence (checkin_every_min) and
-  // how long ago the last one ran (last_review_at), never a time; nothing while none is coming (off, a billing
-  // pause) or the status isn't read yet. The [data-ap-when] spans follow each status read (syncApCopy).
-  function apAgo(iso) {
-    const m = Math.max(0, (Date.now() - Date.parse(iso)) / 60000);
-    return !(m >= 0) ? '' : m < 1.5 ? 'just now' : m < 90 ? `${Math.round(m)} min ago`
-      : m < 2880 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`;
-  }
   function apCadence(d = S.ap) {
     if (!d || !d.autopilot || d.billing_blocked || !(+d.checkin_every_min > 0)) return '';
     if (d.reviewing) return 'one is under way now';
@@ -4022,10 +3265,6 @@
   }
   function apWhen() { const c = apCadence(); return c ? ` (${c})` : ''; }
   function apWhenSpan() { return `<span data-ap-when>${apWhen()}</span>`; }
-  // The usual cadence under a "Last check-in" figure (the card's and the panel's), or nothing.
-  function apEvery(d, cls = '') {
-    return d && +d.checkin_every_min > 0 && !d.reviewing ? ` <small${cls ? ` class="${cls}"` : ''}>usually every ${num(+d.checkin_every_min)} min</small>` : '';
-  }
   // The market focus is binding on research, deploys and the picker, so it reads as a plain line on
   // the card and the panel, with a Change that opens the control (it lives in "Model and markets").
   function apFocusText(focus) {
@@ -4036,9 +3275,6 @@
     const keys = new Set(((S.me && S.me.markets) || []).map((m) => m.key));
     return f.map((t) => FOCUS_WORDS[t] || (keys.has(t) ? marketShort(t) : t.charAt(0).toUpperCase() + t.slice(1).replace(/[-_]/g, ' '))).join(', ');
   }
-  // A coin or family in words, as the server's chat lines say it (agent.FOCUS_WORDS): "Focus: Btc, eth" read the raw tokens.
-  const FOCUS_WORDS = { btc: 'Bitcoin', eth: 'Ethereum', sol: 'Solana', xrp: 'XRP', doge: 'Dogecoin', hype: 'Hyperliquid', near: 'NEAR',
-    zec: 'Zcash', tao: 'Bittensor', 'crypto-perpetuals': 'Crypto perpetuals', 'weather-high': 'Daily high temperatures' };
   const apFocusLine = (focus, attr) => `Focus: ${esc(apFocusText(focus))} <button type="button" ${attr}>Change</button>`;
   function apBindFocus(host) {
     const b = host.querySelector('[data-apcard="focus"]');
@@ -4057,25 +3293,6 @@
     if (!PAGES.autopilot) { pageLoad('autopilot').then(() => apShowFocus(box), () => {}); return; }
     const prefs = box.querySelector('.apf-prefs'); if (prefs) prefs.open = true;
     const sel = box.querySelector('#apf-focus'); if (sel && sel.focus) sel.focus();
-  }
-  // The autopilot's last 7 days (d.week). Credits are spend and paper P&L is not, so they are two
-  // labelled figures, never added together. Research counts every session; paper counts only the
-  // strategies the autopilot put on paper itself (the server attributes them by their deploy record).
-  // What spent credits were, beside a spend: real money only once the payload says a card was ever charged
-  // for credits (the server's card_charged true), free ones while it says none was (false). The autopilot's
-  // week said "real money" under a new user's first cents while the strip above it said the card hadn't been
-  // charged; and with payments off Billing sends no card_charged at all, and the week still said "real money"
-  // under free-credit research spend. Unknown claims nothing ('' here): each caller says what it was spent on.
-  const creditsPaid = (charged) => charged === true ? 'real money' : charged === false ? 'free credits so far: your card hasn’t been charged' : '';
-  // The week's "Credits spent on research" figure. Its heading already says what it was spent on, so the figure is
-  // just the amount ("$0.84"), and "None yet" while nothing was ("$0.00 research spend" said it twice). Beside it:
-  // who paid (creditsPaid: real money only once card_charged is true) and the check-ins.
-  function apWeekSpent(w, spend, checkins) {
-    const researched = +w.research_credits >= 0.005 || !!w.research_under_cent;
-    const ci = checkins ? `${spend(w.checkin_credits, w.checkin_under_cent)} on its check-ins` : '';
-    const paid = researched || checkins ? creditsPaid(w.card_charged) : '';
-    const note = (researched ? [paid, ci && `plus ${ci}`] : [ci && `but ${ci}`, paid]).filter(Boolean).join(SEP);
-    return `${researched ? spend(w.research_credits, w.research_under_cent) : 'None yet'}${note ? ` <small>${note}</small>` : ''}`;
   }
   function apWeek(w, d, open = false) {
     if (!w) return '';
@@ -4211,15 +3428,6 @@
     }
     return { ...d, deployments: (d.deployments || []).map((x) => (oldest[x.id] ? { ...x, oldest_mark_ts: oldest[x.id] } : x)) };
   }
-  // Paper trades toward the target: "12 of 30 paper trades", and once past it "67 paper trades (30 needed)".
-  // Why "realistic" counts fewer trades than the paper book beside it: the track record's words. "0 of 30 realistic
-  // paper trades" sat next to "Paper +$8.72 on 12 trades" with no reason given.
-  const INSTANT_WHY = 'fills real execution would not get';
-  const PAPER_COUNT_WHY = `instant-fill paper trades left out (${INSTANT_WHY})`;
-  const paperCount = (p) => +p.trades >= +p.trades_needed ? `${num(+p.trades)} realistic paper trades (${num(+p.trades_needed)} needed)` : `${num(+p.trades)} of ${num(+p.trades_needed)} realistic paper trades`;
-  // A backtest trade's exit, in words (backtest.py / spec.exit_signal reasons); an unknown one loses its underscores.
-  const EXIT_WORD = { settled: 'settled', take_profit: 'take-profit', stop_loss: 'stop-loss', stop: 'stop', edge_gone: 'edge gone', signal: 'signal', exit: 'signal', mark: 'marked at end' };
-  const exitWord = (r) => r == null ? '' : EXIT_WORD[r] || String(r).replace(/_/g, ' ');
   // On a phone, a secondary section (method, raw lists, what-if, share, remove) folds behind its
   // title, closed; wider screens render it as before. Money figures and verdicts never fold.
   const fold = (title, html) => html ? `<details class="fold"${phone() ? '' : ' open'}><summary class="fold-h">${title}</summary>${html}</details>` : '';
@@ -4367,7 +3575,6 @@
     if (box.dataset.shell !== 'expanded') apBuildShell(box);
     apUpdate(box, d);
   }
-  const AP_FOCUS = [['', 'Any market'], ['crypto', 'Crypto only'], ['btc', 'Bitcoin only'], ['sports', 'Sports only']];
   // Why live autopilot can't be enabled yet (ordered), or '' when all gates pass.
   function apLiveBlock(d) {
     if (!d) return '';
@@ -4420,10 +3627,6 @@
     const pts = h.map((v, i) => `${(i / (h.length - 1) * (W - p * 2) + p).toFixed(1)},${(H - p - (v - lo) / rng * (H - p * 2)).toFixed(1)}`);
     return `<svg class="hot-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
   }
-  // When a hot market closes (`ct`, as Explore's rows say it) and, for a Bitcoin contract, how far spot is
-  // from its strike; a rail with no fresh spot says why above its rows, as the list does.
-  const hotWhen = (m) => (m.ct || rowVs(m) ? `<span class="hot-when">${m.ct ? liveClose(m.ct, 'chip', { cap: true }) : ''}${vsHtml(m)}</span>` : '');
-  const hotSpotNote = (d) => (d && d.spot !== undefined && (!d.spot || d.spot.stale || d.spot.failed) ? `<p class="hot-note">${esc(spotListNote(d.spot, d.markets))}</p>` : '');
   // A condition too wide for the rail's ~80px name column beside the volume takes a row of its own (.hot-cond-wide):
   // a 15-minute window's "Target Price: $113,512.08", and a range bucket's "$113,000 to 113,499.99", which was cut to
   // "$113,000 to 1…", so the rail's buckets of one ladder read alike with their tops gone.
@@ -4509,7 +3712,6 @@
       if (wide && wide.addEventListener) wide.addEventListener('change', () => { if (document.getElementById('hotrail')) hotSoon(); }); }
   }
 
-  const KIND_LABEL = { bonus: 'Welcome credits', topup: 'Added credits', autoreload: 'Auto-reload', usage: 'Agent usage', admin_grant: 'Credits from Tau support' };
   // /api/me is read once per page load, and the since-strip, the research form and the autopilot card
   // read its balance and card: after a top-up they kept saying "Credits are at $0.40" until a reload.
   // Each Billing read copies its own figures over (the same reads /api/me makes), and a moved balance
@@ -4535,13 +3737,6 @@
   // min_run_balance), which autopilot users need more than the one-time welcome credit.
   // The low-credit warning (the dashboard's Needs you, the autopilot panel): days until research pauses.
   const pausesIn = (days) => `Research pauses ${days < 1 ? 'within a day' : inDays(days)} at this week’s pace, when credits fall under ${usd(S.me && S.me.min_run_balance != null ? S.me.min_run_balance : 0)}.`;
-  const runwayLabel = (days) => days < 1 ? 'Under a day' : days > 90 ? 'Over 3 months' : `About ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
-  // The spend a runway is read at. The server's pace_days is how many days the week's spend covers: the
-  // account's age, at most 7. Under a day there is no pace yet (a first session's minutes, divided by
-  // 7, read "over 3 months"); under a week it is per day so far. An older server sends none: the week.
-  const paceTooSoon = (days, spent) => days != null && days < 1 && +spent > 0;
-  const paceDay = (spent, days) => +spent > 0 && !(days != null && days < 1) ? +spent / (days != null ? Math.min(7, days) : 7) : null;
-  const paceWords = (spent, days) => days != null && days < 7 ? `${usd(paceDay(spent, days))} a day so far` : `${usd(spent)} a week`;
   // What the card pays for `credits` plus the purchase fee, to the cent as the server charges it
   // (billing.topup_charge_cents: exact decimal, half up), worked in whole cents: $19 x 1.055 as a float
   // read $20.04 before the press while the card paid $20.05.
@@ -4549,8 +3744,6 @@
     const c = Math.round(+credits * 100), bp = Math.round(+feePct * 100);  // cents; the fee in hundredths of a percent
     return Math.floor((c * (10000 + bp) + 5000) / 10000) / 100;
   };
-  // A days figure as when something happens: "in about 2 days", "in under a day".
-  const inDays = (days) => 'in ' + runwayLabel(days).toLowerCase();
   // In app.meridian-billing.js, fetched on first use (page files, at the end of this file).
   function viewBilling() { return pageView('billing', 'viewBilling', '/billing', []); }
 

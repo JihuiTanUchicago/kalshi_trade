@@ -49,12 +49,15 @@ test('the autopilot panel’s live gate says “Live trading isn’t open yet.�
 });
 
 test('a session with no picked market is named as a market in both themes, display only', () => {
+  // One label, in the shared core (core.js), that each theme's marketShort draws.
+  const m = read('static/core.js').match(/const NO_MARKET = '([^']*)';\n/);
+  assert.ok(m);
+  assert.equal(m[1], 'Any market (agent’s choice)');
   for (const [bundle] of Object.values(BUNDLES)) {
     const src = read(bundle);
-    const m = src.match(/const NO_MARKET = '([^']*)';\n {2}const marketShort = \(k\) => \(!k \? NO_MARKET : /);
-    assert.ok(m, bundle);
-    assert.equal(m[1], 'Any market (agent’s choice)', bundle);
-    assert.doesNotMatch(src, /\? 'Agent’s choice' :/, bundle);
+    assert.match(src, /\n {4}[^\n]*\bNO_MARKET\b[^}]*\} = window\.TauCore;/, bundle);
+    assert.match(src, /\n {2}const marketShort = \(k\) => \(!k \? NO_MARKET : /, bundle);
+    assert.doesNotMatch(src, /\? 'Agent’s choice' :|const NO_MARKET = /, bundle);
   }
   // What the research model is sent is not this label: the "open" angle keeps its own words.
   assert.match(read('research/agent.py'), /"open": \{"label": "Agent's choice"/);

@@ -529,21 +529,20 @@ def test_me_exposes_perps_live_available(monkeypatch):
     assert server.me(context())['perps_live_available'] is True
 
 
-@pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
-def test_every_market_has_a_short_label(bundle):
+def test_every_market_has_a_short_label():
     # A market missing from MKT_SHORT falls back to its long label, which reads oddly in
-    # filters and cards next to the short ones ("Bitcoin 15-minute, per-second data").
+    # filters and cards next to the short ones ("Bitcoin 15-minute, per-second data"). Both themes take
+    # MKT_SHORT and SERIES_SHORT from the shared core (core.js).
     import re
     from pathlib import Path
     from app.trading import markets
-    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / bundle).read_text()
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / 'core.js').read_text()
     block = src[src.index('const MKT_SHORT = {'):]
     keys = set(re.findall(r'(\w+):', block[:block.index('};')]))
     assert set(markets.MARKETS) - keys == set()
 
 
-@pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
-def test_every_bitcoin_series_the_app_shows_has_a_label(bundle):
+def test_every_bitcoin_series_the_app_shows_has_a_label():
     # test_every_market_has_a_short_label walks markets.MARKETS, and KXBTC's hourly price ranges are in no market
     # (Tau doesn't research them), yet Explore, the hot rail, a market page and a position held at Kalshi show
     # them: they slipped through with no chip and took another market's name. Every Bitcoin series the app reads
@@ -552,7 +551,7 @@ def test_every_bitcoin_series_the_app_shows_has_a_label(bundle):
     from pathlib import Path
     from app.services import btc_spot
     from app.trading import markets
-    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / bundle).read_text()
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / 'core.js').read_text()
     block = src[src.index('const MKT_SHORT = {'):]
     short = dict(re.findall(r"(\w+): '([^']*)'", block[:block.index('};')]))
     table = src[src.index('const SERIES_SHORT = {'):]
@@ -565,15 +564,14 @@ def test_every_bitcoin_series_the_app_shows_has_a_label(bundle):
     assert own == {"KXBTC": "BTC range at {h} ET"}
 
 
-@pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
-def test_bitcoin_labels_say_the_contract_and_its_close(bundle):
+def test_bitcoin_labels_say_the_contract_and_its_close():
     # "BTC 5pm" named the coin and an hour, not whether the contract pays above a price, on a range or on
     # up/down. Every Bitcoin market's short and long label says which, short enough for a phone row, with
     # no " · " inside (chips and lists join labels with it). Labels only: keys and series stay as stored.
     import re
     from pathlib import Path
     from app.trading import markets
-    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / bundle).read_text()
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / 'core.js').read_text()
     block = src[src.index('const MKT_SHORT = {'):]
     short = dict(re.findall(r"(\w+): '([^']*)'", block[:block.index('};')]))
     btc = {k: m for k, m in markets.MARKETS.items() if m.underlying == "BTC-USD"}
@@ -596,15 +594,14 @@ def test_bitcoin_labels_say_the_contract_and_its_close(bundle):
         assert len(short[k]) <= 30 and "\u00b7" not in short[k] and "\\u00a0" not in short[k]
 
 
-@pytest.mark.parametrize('bundle', ['app.js', 'app.meridian.js'])
-def test_every_crypto_label_says_the_contract_and_its_close_as_bitcoins_do(bundle):
+def test_every_crypto_label_says_the_contract_and_its_close_as_bitcoins_do():
     # "ETH 5pm" and "SOL 15-min" sat beside "BTC above $X at 5pm ET" and "BTC 15-min up/down". Every crypto
     # market reads Bitcoin's way: a 5pm ladder pays above a strike the app fills in per contract (its words "a set
     # price" to a customer, never "$X"), a 15-minute one pays on up or down. Keys and series stay as stored.
     import re
     from pathlib import Path
     from app.trading import markets
-    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / bundle).read_text()
+    src = (Path(__file__).resolve().parents[1] / 'app' / 'static' / 'core.js').read_text()
     block = src[src.index('const MKT_SHORT = {'):]
     short = dict(re.findall(r"(\w+): '([^']*)'", block[:block.index('};')]))
     coins = {"BTC-USD": ("Bitcoin", "BTC"), "ETH-USD": ("Ethereum", "ETH"), "SOL-USD": ("Solana", "SOL"), "XRP-USD": ("XRP", "XRP"),

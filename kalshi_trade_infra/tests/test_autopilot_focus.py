@@ -106,13 +106,13 @@ def test_the_panel_names_the_focus_in_words_never_its_token():
     assert idle["code"] == "focus" and "your focus is Bitcoin," in idle["line"] and "btc" not in idle["line"]
 
 
-@pytest.mark.parametrize("bundle", ["app.js", "app.meridian.js"])
-def test_the_bundles_focus_words_match_the_servers(bundle):
-    # The card's "Focus:" line and the focus select say a focus in the bundle's copy of agent.FOCUS_WORDS, so the
-    # panel says what the chat says. A coin added on one side only would show its raw token on the other.
+def test_the_bundles_focus_words_match_the_servers():
+    # The card's "Focus:" line and the focus select say a focus in the app's copy of agent.FOCUS_WORDS (the shared
+    # core's, core.js, which both themes take), so the panel says what the chat says. A coin added on one side only
+    # would show its raw token on the other.
     import re
     from pathlib import Path
-    src = (Path(__file__).resolve().parents[1] / "app" / "static" / bundle).read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parents[1] / "app" / "static" / "core.js").read_text(encoding="utf-8")
     body = re.search(r"const FOCUS_WORDS = \{(.*?)\};", src, re.S).group(1)
     pairs = dict(re.findall(r"'?([\w-]+)'?: '([^']*)'", body))
     # The bundle starts a line with it, so a family's name is capitalised there; the words are otherwise the same.
