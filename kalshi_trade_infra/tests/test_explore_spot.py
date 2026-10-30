@@ -27,13 +27,31 @@ def fresh_caches():
     explore_routes._STRIKE_CACHE.clear()
 
 
+# The fixtures name contracts on fixed events (KXBTCD-26OCT2717 closes 5pm New York on Oct 27, 2026; the 15-minute
+# KXBTC15M-26OCT262345 at 11:45pm on Oct 26). A row past its close gets no distance, so once those dates went by every
+# fixture read as closed: the module's clock is held at FROZEN, before all of them close, so they stay open for good.
+# The 26OCT26 hourly events (KXBTCD-26OCT2617, 9pm UTC on the 26th) have closed by then.
+FROZEN = datetime(2026, 10, 27, 2, 0, tzinfo=timezone.utc)
+
+
+class _FrozenClock(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return FROZEN.astimezone(tz) if tz else FROZEN.replace(tzinfo=None)
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock(monkeypatch):
+    monkeypatch.setattr(explore_routes, "datetime", _FrozenClock)
+
+
 def _now():
-    return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+    return FROZEN.replace(tzinfo=None)
 
 
-def _event(minutes_ahead=90):
-    """An event code (26OCT2717) for an hour that closes about `minutes_ahead` from now, New York time."""
-    at = (datetime.now(timezone.utc) + timedelta(minutes=minutes_ahead)).astimezone(NEW_YORK)
+def _event(minutes_ahead=90, now=None):
+    """An event code (26OCT2717) for an hour that closes about `minutes_ahead` after `now` (FROZEN), New York time."""
+    at = ((now or FROZEN) + timedelta(minutes=minutes_ahead)).astimezone(NEW_YORK)
     return at.strftime("%y%b%d%H").upper(), at.replace(minute=0, second=0, microsecond=0)
 
 
@@ -206,10 +224,25 @@ def test_a_failed_strike_read_falls_back_to_the_ticker(monkeypatch, capsys):
     assert "lock wait timeout" in capsys.readouterr().out
 
 
-def test_a_closed_contract_has_no_time_left(monkeypatch):
+def test_a_closed_contract_has_no_time_left_and_no_distance(monkeypatch):
+    """Past the close the market page shows "Closed: Bitcoin's price since the close doesn't change the result" in place
+    of the distance (marketSpot's `closed`, secs_left 0), so the endpoint no longer sends one; spot and the strike stay."""
     _stub(monkeypatch, spot={"at": _now(), "price": 99000.0},
           record={"floor_strike": 98000.0, "strike_type": "greater", "close_time": _now() - timedelta(minutes=5)})
-    assert _get("KXBTCD-26OCT2717-T98000")["secs_left"] == 0
+    d = _get("KXBTCD-26OCT2717-T98000")
+    assert d["secs_left"] == 0 and d["vs"] is None
+    assert d["spot"]["price"] == 99000.0 and d["strike"]["value"] == 98000.0
+    explore_routes._STRIKE_CACHE.clear()
+    # Closed by its ticker alone (9pm UTC on the 26th), no record stored.
+    _stub(monkeypatch, spot={"at": _now(), "price": 99000.0}, record=None)
+    d = _get("KXBTCD-26OCT2617-T98000")
+    assert d["secs_left"] == 0 and d["vs"] is None and d["strike"]["from"] == "ticker"
+    # The same contract a minute before its close still has its distance.
+    explore_routes._STRIKE_CACHE.clear()
+    _stub(monkeypatch, spot={"at": _now(), "price": 99000.0},
+          record={"floor_strike": 98000.0, "strike_type": "greater", "close_time": _now() + timedelta(minutes=1)})
+    d = _get("KXBTCD-26OCT2717-T98000")
+    assert d["secs_left"] == 60 and d["vs"]["side"] == "above" and d["vs"]["diff"] == 1000.0
 
 
 # Explore's list and the hot rail: how far stored spot is from each Bitcoin contract's strike, from one
@@ -458,3 +491,45 @@ def test_a_market_page_bucket_takes_its_edges_from_its_ladder_as_its_row_does(mo
         d = _get("KXBTC-26OCT2717-B113250")
         assert (d["strike"]["lo"], d["strike"]["hi"]) == (None, None)
         assert (d["vs"]["side"], d["vs"]["diff"]) == ("above", 383.42)
+
+
+# Explore's rows past their close: the page hid their distance (rowVs's closed test) but the API still sent "Bitcoin is
+# $X above the strike" for a contract already closed. A closed row gets no `vs` from the server either, an open one on the
+# same page keeps it, still from one stored-strike read and one spot read; a page whose Bitcoin rows have all closed reads
+# no spot at all.
+def test_a_closed_row_gets_no_distance_while_an_open_one_does(monkeypatch):
+    reads = []
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0}, reads=reads,
+          records={"KXBTCD-26OCT2717-T114000": {"floor_strike": 114000.0, "strike_type": "greater", "close_time": _now() - timedelta(minutes=1)}})
+    closed, open_, stored_closed = "KXBTCD-26OCT2617-T112999.99", "KXBTCD-26OCT2717-T112999.99", "KXBTCD-26OCT2717-T114000"
+    d = _list(monkeypatch, _feed(closed, open_, stored_closed, "KXNBAGAME-26OCT26MINDEN-MIN"))
+    rows = {m["t"]: m for m in d["markets"]}
+    assert "vs" not in rows[closed], "closed by its ticker's close"
+    assert "vs" not in rows[stored_closed], "closed by the collector's stored close, as its market page reads it"
+    assert rows[open_]["vs"] == {"side": "above", "diff": 420.01, "pct": 0.372}
+    assert rows[closed]["ct"] == "2026-10-26T21:00:00Z", "the row itself is untouched"
+    assert d["spot"]["price"] == 113420.0
+    assert [r[0] for r in reads] == ["strikes", "spot"], "the same two reads for the page"
+    # The hot rail reads its rows the same way.
+    feed = _feed(closed, open_, hot=True)
+    monkeypatch.setattr(explore_routes, "_explore_feed", lambda: feed)
+    hot = server.explore_hot(server.Ctx(FakeConn(), {"id": 1}, (), {}, {}, None))
+    assert "vs" not in hot["markets"][0] and hot["markets"][1]["vs"]["diff"] == 420.01
+    # Every Bitcoin row closed: no distance to measure, so no spot read and no "spot" for the note under the list.
+    reads.clear()
+    explore_routes._SPOT_CACHE.update(at=0.0)
+    d = _list(monkeypatch, _feed(closed, "KXBTCD-26OCT2616-T98000", "KXNBAGAME-26OCT26MINDEN-MIN"))
+    assert all("vs" not in m for m in d["markets"]) and "spot" not in d
+    assert [r[0] for r in reads] == ["strikes"]
+
+
+def test_closed_and_open_rows_by_the_real_clock(monkeypatch):
+    """The same with the module's own clock, on events an hour and a half either side of now."""
+    monkeypatch.setattr(explore_routes, "datetime", datetime)
+    now = datetime.now(timezone.utc)
+    _stub(monkeypatch, spot={"at": now.replace(tzinfo=None, microsecond=0), "price": 113420.0})
+    past, ahead = _event(-90, now)[0], _event(90, now)[0]
+    d = _list(monkeypatch, _feed("KXBTCD-%s-T112999.99" % past, "KXBTCD-%s-T112999.99" % ahead))
+    assert "vs" not in d["markets"][0] and d["markets"][1]["vs"]["diff"] == 420.01
+    assert _get("KXBTCD-%s-T112999.99" % past)["vs"] is None
+    assert _get("KXBTCD-%s-T112999.99" % ahead)["vs"]["diff"] == 420.01

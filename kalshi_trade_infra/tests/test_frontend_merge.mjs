@@ -1506,6 +1506,43 @@ test('the floating autopilot pill steps aside from a Deploy row’s title and li
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
+test('the floating autopilot pill steps aside from a table’s column header (Deploy’s Settles), outside Explore', () => {
+  // Walk 2026-10-30 at 1280px: the pill sat on the "Settles" header of Deploy's open positions, the column's only label.
+  // A header cell (thead th) counts now; a plain body cell and a row header in the body still don't, and Explore's
+  // hold rule (only a button, a field or a link outside a row) is unchanged.
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><div id="openpos"><table class="table stack"><thead><tr><th>Strategy</th><th>Market</th>'
+    + '<th class="num">Settles</th></tr></thead><tbody><tr><th scope="row" class="rowhead">Late momentum</th><td class="plain">BTC</td>'
+    + '<td class="num" data-lab="Settles">17:00 EDT</td></tr></tbody></table></div></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const away = rect(0, 0, 0, 0), under = rect(1080, 740, 1240, 770);
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(1100, 736, 1256, 772);   // 1280x800 desktop
+  for (const el of [...f.root.querySelectorAll('*')]) el.getBoundingClientRect = away;
+  const q = (sel) => f.root.querySelector(sel);
+  const settles = f.root.querySelectorAll('thead th').find((el) => el.textContent === 'Settles');
+  f.location.pathname = '/deploy';
+  f.apYield(); assert.equal(box.classes.has('yield'), false);
+  settles.getBoundingClientRect = under;
+  f.apYield(); assert.equal(box.classes.has('yield'), true, 'steps aside for the Settles header');
+  settles.getBoundingClientRect = away;
+  f.apYield(); assert.equal(box.classes.has('yield'), false, 'comes back once it scrolls away');
+  for (const el of [q('th.rowhead'), q('td.plain')]) {
+    el.getBoundingClientRect = under;
+    f.apYield(); assert.equal(box.classes.has('yield'), false, el.className);
+    el.getBoundingClientRect = away;
+  }
+  // The strategy page's tables too; Explore and a market page keep holding over a header.
+  settles.getBoundingClientRect = under;
+  f.location.pathname = '/strategies/4';
+  f.apYield(); assert.equal(box.classes.has('yield'), true);
+  for (const path of ['/explore', '/explore/']) {
+    f.location.pathname = path;
+    f.apYield(); assert.equal(box.classes.has('yield'), false, path);
+  }
+});
+
 test('Tau: on Explore and a market page the pill holds its place over list rows, figures and headings, and steps aside only for a button or a link outside a row', () => {
   // Walk 2026-10-30 at 390px: every Explore row is a link with its figures at the right, so the pill stepped aside at
   // 178 of 181 scroll positions, and on a market page at about four in five: a reader browsing markets couldn't open

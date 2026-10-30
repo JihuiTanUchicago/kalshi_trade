@@ -4290,10 +4290,12 @@
   // history · Yes price · Kalshi hourly candles" as it opened. And a Deploy row's name block (its title and the lines
   // under it: sizing, why it waits, its record toward live) and a strategy page's "Since deploying" record: at 390px the
   // pill sat on the second Deploy row's title and lines as the board scrolled, and on "Since deploying" as the strategy
-  // page opened, the first thing it says about how the strategy is doing.
+  // page opened, the first thing it says about how the strategy is doing. And a table's column headers (thead th): at
+  // 1280px the pill sat on the "Settles" header of Deploy's open positions, the column's only label. A phone's stacked
+  // tables hide their thead (each cell carries its own label), so there it never counts.
   const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
     '.figures .m', '.fig', 'td.num', 'dd', '.mk', '#dash-ap', 'td[data-lab="Market"]', '.board-title', '.sect-head',
-    '.t-dep td.name', '.real-record'];
+    '.t-dep td.name', '.real-record', 'thead th'];
   const AP_UNDER_SEL = AP_UNDER.join(', ');
   // Explore and a market page (both /explore) are lists you scroll through, and stepping aside there hid the pill for
   // good: walked 2026-10-30 at 390px, every Explore row is a link and its figures sit at the right, so the pill was
