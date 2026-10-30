@@ -453,4 +453,73 @@ export function runPageCases({name, frontend}) {
     f = await open({prompt: 'Idea', direction: 'momentum', status: 'queued', by_autopilot: 1});
     assert.equal(deck(f), 'BTC 15-min up/down' + SEP + 'Momentum' + SEP + 'Started by autopilot');
   });
+
+  // A run-until-stopped session logs thousands of lines; its page read every one to paint its newest. The first read
+  // now sends the newest page and, from the older lines, what the page counts (`earlier`): the figures read as they
+  // did from every line, "Show earlier steps" reads the older lines on request, and the poll still appends new ones.
+  test(`${name}: a long session's page counts the lines it wasn't sent, shows earlier steps on request, and still appends live lines`, async () => {
+    const flush = () => new Promise((r) => setImmediate(r));
+    const run = {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: '2026-10-25T09:00:00Z', status: 'running',
+      run_forever: 1, hypotheses_tried: 5};
+    const missed = [{gate: 'significance', label: 'The edge could be luck', measured: 'p 0.21', needed: '0.05 or less', next: 'Try a simpler version.'}];
+    const strategies = [{id: 41, title: 'Old idea', status: 'failed', market: 'btc15m', direction: 'momentum'},
+      {id: 42, title: 'Older idea', status: 'failed', market: 'btc15m', direction: 'momentum'}];
+    // The newest page opens on the verdict of an idea whose own line is on the page before it.
+    const first = [ev(301, 'verdict', 'FAILED - Old idea: no edge', {title: 'Old idea', status: 'failed', strategy_id: 41}),
+      ev(302, 'step', 'Step 302'), ev(303, 'hypothesis', 'New idea', {thesis: 'T'})];
+    const earlier = {before: 301, hypotheses: 6, dropped: 2, why_failed: [[42, [...missed, {label: 'Too few trades'}]]],
+      pauses: [{kind: 'paused', created_at: '2026-10-25T09:10:00Z'}, {kind: 'resumed', created_at: '2026-10-25T09:40:00Z'}],
+      out_of_credits: false, dreamed: true, kinds: ['challenger', 'hypothesis', 'paused', 'resumed', 'verdict']};
+    const asked = [];
+    const f = frontend({fetchImpl: (path) => {
+      if (!path.startsWith('/api/runs/9')) return response({});
+      asked.push(path);
+      if (path.includes('before=301')) return response({events: [ev(299, 'hypothesis', 'Old idea', {thesis: 'T'}), ev(300, 'step', 'Step 300')], more: false});
+      if (path.includes('after=303')) return response({run, events: [ev(304, 'step', 'Step 304 live')], strategies});
+      if (path.endsWith('after=0')) return response({run, events: first, strategies, earlier});
+      return response({run, events: [], strategies});
+    }});
+    await f.viewRun(9);
+    assert.deepEqual(asked, ['/api/runs/9?after=0']);
+    const log = f.root.querySelector('#log'), rows = () => log.children.filter((li) => !li.removed);
+    // Tested counts every idea (six before the page, one on it), the list's gap says two of them were dropped, a
+    // strategy whose verdict came before the page still says the check it missed, and Time leaves the pause out.
+    assert.match(figs(f), /Tested\s*7/);
+    assert.match(list(f), /2 more (ideas )?dropped before testing/); assert.match(list(f), /3 (more )?still being tested/);
+    assert.match(list(f), /The edge could be luck/); assert.match(list(f), /1 more check/);
+    assert.match(figs(f), /not counting time paused/);
+    assert.equal(f.root.querySelector('#rsiobs .rsi-lab[data-stage="dream"]').classList.contains('is-done'), true);
+    const control = log.querySelector('.log-earlier');
+    assert.equal(control.querySelector('button').textContent, 'Show earlier steps');
+    assert.equal(rows().filter((li) => /Old idea/.test(li.innerHTML)).length, 1);  // the verdict, alone for now
+
+    // The poll asks for the lines after its last one and appends them, as before.
+    const poll = f.intervals.get(f.S.timers.at(-1));
+    poll(); await flush(); await flush();
+    assert.equal(asked.at(-1), '/api/runs/9?after=303');
+    assert.match(rows().at(-1).innerHTML, /Step 304 live/);
+    assert.match(figs(f), /Tested\s*7/);
+
+    // "Show earlier steps" reads the page before the first line it has; its idea takes back its verdict, and with
+    // nothing older the control goes. Nothing is counted twice.
+    control.querySelector('button').onclick({currentTarget: control.querySelector('button')});
+    await flush(); await flush();
+    assert.equal(asked.at(-1), '/api/runs/9?before=301');
+    assert.ok(rows().some((li) => /Step 300/.test(li.innerHTML)));
+    assert.equal(rows().filter((li) => /Old idea/.test(li.innerHTML)).length, 1);  // one card, its verdict on it
+    assert.equal(rows().filter((li) => li.className === 'log-earlier').length, 0);
+    poll(); await flush(); await flush();
+    assert.match(figs(f), /Tested\s*7/);
+    f.clearTimers();
+  });
+
+  test(`${name}: a long session that ran out of credits before its newest lines still says so`, async () => {
+    const earlier = {before: 50, hypotheses: 3, dropped: 0, why_failed: [], pauses: [], out_of_credits: true, dreamed: false, kinds: []};
+    const f = frontend({fetchImpl: (path) => path.startsWith('/api/runs/9')
+      ? response({run: {id: 9, prompt: 'Idea', market: 'btc15m', created_at: AT, started_at: AT, status: 'succeeded', run_forever: 1,
+        stop_reason: 'complete'}, events: [ev(50, 'done', 'Wrapped up.')], strategies: [], earlier})
+      : response({})});
+    await f.viewRun(9); f.clearTimers();
+    assert.match(figs(f), /Out of credits/); assert.equal(badge(f), 'Out of credits');
+  });
 }

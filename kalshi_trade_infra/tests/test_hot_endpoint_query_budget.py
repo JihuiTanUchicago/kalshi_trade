@@ -616,6 +616,40 @@ def test_the_presence_reads_answer_as_the_key_reads_did():
             assert not any(c in probe for c in KEY_COLUMNS)
 
 
+# The run page's first read of a long run-until-stopped session: the newest RUN_EVENTS_PAGE lines and, in the same
+# statement, the older lines its figures count (never their thinking). The same statements as any first read, one
+# of them on the event table, and the answer carries one page of lines however long the session is.
+def test_a_long_sessions_first_read_sends_one_page_inside_the_poll_budget(production):
+    from app.web.routes import research
+
+    page = research.RUN_EVENTS_PAGE
+    newest = [{"id": 5000 - i, "kind": "thinking", "message": "x" * 300, "data_json": '{"block": 1}',
+               "created_at": datetime(2026, 10, 25), "tally": 0} for i in range(page + 1)]
+    older = [{"id": 10 + i, "kind": "hypothesis" if i % 2 else "verdict", "message": None if i % 2 else "DROPPED \"Idea\"",
+              "data_json": None if i % 2 else json.dumps({"title": "Idea %d" % i, "status": "abandoned"}),
+              "created_at": datetime(2026, 10, 24), "tally": 1} for i in range(600)]
+    short = _call("get_run", 10.0, params=("41",), query={"after": "0"})  # a session with no lines
+    log = []
+    out = server.get_run(_ctx(log, 10.0, query={"after": "0"}, params=("41",),
+                              extra={"0 AS tally FROM app_agent_events": newest + older}))
+    events = [(s, p) for s, p in log if "app_agent_events" in s and "LIKE 'Dreaming:" not in s]
+    assert len(events) == 1, events
+    sql, args = events[0]
+    assert "FORCE INDEX (idx_events_run)" in sql and "ORDER BY id DESC LIMIT %s" in sql and "UNION ALL" in sql
+    assert "thinking" not in sql.split("UNION ALL")[1]  # the tally names the kinds it reads; thinking is never one
+    assert args[:2] == (41, page + 1) and args[-1] == page  # one line more than it sends; the tally below those it sends
+    assert len(out["events"]) == page and [e["id"] for e in out["events"]] == sorted(e["id"] for e in newest)[1:]
+    assert not any("tally" in e for e in out["events"])
+    assert out["earlier"]["before"] == out["events"][0]["id"]
+    assert out["earlier"]["hypotheses"] == 300 and out["earlier"]["dropped"] == 300
+    assert len(log) == len(short) <= BUDGET["get_run"]
+    # Bytes: the answer's lines are one page's, not the session's, and what it counted from 600 older lines is a few
+    # figures, not the lines.
+    size = lambda v: len(json.dumps(v, default=server._json_default))  # noqa: E731
+    assert size(out["events"]) <= (size(out["events"][0]) + 2) * page
+    assert size(out["earlier"]) < 300, out["earlier"]
+
+
 def _book_rows():
     """Three trades in two deployments (one still part-open), those deployments' strategy, and a
     deployed strategy card, so the track record and the Strategies page run every read they make."""

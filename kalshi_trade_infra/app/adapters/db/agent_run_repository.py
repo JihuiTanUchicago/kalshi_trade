@@ -397,14 +397,54 @@ def forward_verdict(cur, run_id: int, title: str) -> Optional[Dict]:
     return forward_verdicts(cur, run_id).get(title)
 
 
-def run_events(cur, run_id: int, after_id: int = 0) -> List[Dict]:
-    cur.execute(
-        "SELECT id, kind, message, data_json, created_at FROM app_agent_events WHERE run_id=%s AND id>%s ORDER BY id",
-        (run_id, after_id),
-    )
-    rows = cur.fetchall()
+# The steps the session page reads a flag from (it ran out of credits; the loop tuned its search): the only
+# steps run_events' tally reads.
+TALLY_STEPS = (OUT_OF_CREDITS_STEP + "%", "Dreaming:%", "Research policy evolved:%")
+
+
+def run_events(cur, run_id: int, after_id: int = 0, limit: int = 0, before_id: int = 0,
+               tally: bool = False) -> List[Dict]:
+    """The run's events with id > after_id, oldest first: every one (the session page's poll after its last
+    line, the agent's own reads). With `limit`, only the newest `limit` of them, and with `before_id` only
+    those older than it: one backward range read of idx_events_run (run_id, id) that stops at `limit` rows.
+    A run-until-stopped session logs thousands of lines, and its page loaded every one to show the latest.
+    The index is named: on a small table the planner walked the primary key down from `before_id` instead,
+    through every other run's lines below it.
+
+    `tally` (with `limit`, for the page's first read, which sends the newest limit-1 and reads one more to
+    know whether older ones remain) adds, in the same statement and marked `tally`, the lines older than
+    those limit-1 that the page counts or reads a flag from: each hypothesis (its id and kind alone), each
+    verdict (with its message and data), each skeptic's review, pause and resume, and the steps TALLY_STEPS
+    names; never the thinking lines, usually most of a long session. Through idx_events_run_kind, bounded
+    by an index-only read of the newest limit-1 ids."""
+    if not limit:
+        cur.execute(
+            "SELECT id, kind, message, data_json, created_at FROM app_agent_events WHERE run_id=%s AND id>%s ORDER BY id",
+            (run_id, after_id),
+        )
+        rows = cur.fetchall()
+    else:
+        bounds = [("id>%s", after_id), ("id<%s", before_id)]
+        page = ("SELECT id, kind, message, data_json, created_at, 0 AS tally FROM app_agent_events "
+                "FORCE INDEX (idx_events_run) WHERE run_id=%s" + "".join(" AND " + sql for sql, v in bounds if v)
+                + " ORDER BY id DESC LIMIT %s")
+        args = [run_id, *(v for _, v in bounds if v), limit]
+        if tally:
+            page = "(" + page + ") UNION ALL (" + (
+                "SELECT id, kind, CASE WHEN kind IN ('verdict','step') THEN message END, "
+                "CASE WHEN kind='verdict' THEN data_json END, created_at, 1 FROM app_agent_events "
+                "FORCE INDEX (idx_events_run_kind) WHERE run_id=%s "
+                "AND kind IN ('hypothesis','challenger','verdict','paused','resumed','step') "
+                "AND (kind<>'step' OR message LIKE %s OR message LIKE %s OR message LIKE %s) "
+                "AND id<(SELECT MIN(id) FROM (SELECT id FROM app_agent_events FORCE INDEX (idx_events_run) "
+                "WHERE run_id=%s ORDER BY id DESC LIMIT %s) AS newest))")
+            args += [run_id, *TALLY_STEPS, run_id, limit - 1]
+        cur.execute(page, tuple(args))
+        rows = sorted(cur.fetchall(), key=lambda r: r["id"])
     for r in rows:
         r["data"] = _loads(r.pop("data_json"))
+        if r.pop("tally", 0):
+            r["tally"] = True
     return rows
 
 
