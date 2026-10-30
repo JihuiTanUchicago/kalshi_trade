@@ -406,3 +406,32 @@ def run_events(cur, run_id: int, after_id: int = 0) -> List[Dict]:
     for r in rows:
         r["data"] = _loads(r.pop("data_json"))
     return rows
+
+
+def research_verdicts_after(cur, user_id: int, markets: List[str], after_run_id: int, include_run_id: int = 0,
+                            max_runs: int = 200) -> List[Dict]:
+    """Verdict events of this user's FINISHED research runs on `markets` with id > after_run_id (plus
+    include_run_id, the run that is finishing now), oldest run first, as {run_id, market, day, message,
+    data}. At most the newest max_runs runs; the rsi_sleep consolidation reads these. Each run's rows come
+    through idx_events_run_kind, never a scan of the event table."""
+    if not markets:
+        return []
+    cur.execute(
+        "SELECT id, market, created_at FROM app_agent_runs WHERE user_id=%%s AND kind='research' "
+        "AND market IN (%s) AND id>%%s AND (status NOT IN ('queued','running','paused') OR id=%%s) "
+        "ORDER BY id DESC LIMIT %%s" % ",".join(["%s"] * len(markets)),
+        (user_id, *markets, after_run_id, include_run_id, max_runs))
+    runs = {r["id"]: r for r in cur.fetchall()}
+    if not runs:
+        return []
+    cur.execute(
+        "SELECT id, run_id, message, data_json FROM app_agent_events WHERE run_id IN (%s) AND kind='verdict'"
+        % ",".join(["%s"] * len(runs)), tuple(runs))
+    out = []
+    for r in sorted(cur.fetchall(), key=lambda r: (r["run_id"], r.get("id") or 0)):
+        run = runs[r["run_id"]]
+        created = run.get("created_at")
+        out.append({"run_id": r["run_id"], "market": run["market"],
+                    "day": created.strftime("%Y-%m-%d") if hasattr(created, "strftime") else str(created or "")[:10],
+                    "message": r.get("message") or "", "data": _loads(r.get("data_json")) or {}})
+    return out

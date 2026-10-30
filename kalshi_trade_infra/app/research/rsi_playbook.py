@@ -4,7 +4,8 @@ and keeps only when the rewrite measurably helps.
     run starts ──► choose(): Thompson draw between the ACTIVE playbook and the CANDIDATE (if any)
                    └► the proposer and the develop turn read the drawn playbook
     run ends ───► score_run(): the run's ideas and how many reached the gate count for that playbook
-              ├─► decide(): promote the candidate when P(candidate beats active) >= 0.9, retire it
+              ├─► decide(): promote the candidate when P(candidate beats active) >= 0.9 and it has
+              │            MIN_REACHED gate reaches of its own, retire it
               │            at <= 0.1 or after MAX_IDEAS without a verdict; a promotion is held while
               │            the candidate's passes lose money on paper and the incumbent's don't
               └─► reflect(): with no candidate pending, the model rewrites the active playbook from
@@ -34,6 +35,11 @@ PROMOTE_P = 0.9
 RETIRE_P = 0.1
 MIN_IDEAS = 16      # a candidate needs this many scored ideas before any verdict
 MAX_IDEAS = 64      # undecided after this many: retire it and try a fresh rewrite
+# Gate reaches a candidate needs before it can be promoted. With none reaching the gate on either side,
+# p_better reads sample size, not quality: a 16-idea, 0-reach rewrite beat a 300-idea, 0-reach incumbent at
+# 0.945, so on BTC-only research (0 gated since 10-26) every one-run rewrite replaced the playbook within
+# ~2 runs. Long-term lessons now live in rsi_sleep, which needs no reward signal to keep them.
+MIN_REACHED = 3
 MAX_CHARS = 2400
 _SAMPLES = 4000
 
@@ -167,7 +173,7 @@ def decide(cur, user_id: int, family: str,
     act = active(cur, user_id, family)
     p = p_better(cand, act)
     now = _now()
-    if p >= PROMOTE_P:
+    if p >= PROMOTE_P and int(cand["reached"] or 0) >= MIN_REACHED:
         if paper_of is not None:
             try:
                 paper = paper_of() or {}
