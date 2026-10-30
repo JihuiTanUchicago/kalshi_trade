@@ -1727,8 +1727,6 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
    with an ellipsis; the row's Closes line keeps the hour), never the volume. */
 .hot-foot .mk { font-size: 10px; letter-spacing: .05em; padding: 1px 5px 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hot-vol { font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); flex: none; white-space: nowrap; }
-.hot-foot svg { width: 14px; height: 14px; margin-left: auto; color: var(--ink-3); }
-.hot-row:hover .hot-foot svg { color: var(--ink); }
 .hot-ft { padding: 10px 15px; border-top: 1px solid var(--rule); font-family: var(--f-nar); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .hot-ft a { color: var(--ink); text-decoration: none; }
 .hot-ft a:hover { text-decoration: underline; }

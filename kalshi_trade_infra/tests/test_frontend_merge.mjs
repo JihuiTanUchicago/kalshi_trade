@@ -48,7 +48,7 @@ import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
 // What the checks read from the bundle and its page files (bundle_source.mjs).
-const EXPOSE = ['S', 'api', 'PAGES', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater', 'hotOpen'];
+const EXPOSE = ['S', 'api', 'PAGES', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'routes', 'viewExample', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'postSnapshot', 'viewCommunity', 'viewRun', 'viewFunds', 'viewBilling', 'viewDashboard', 'viewDeploy', 'viewResearch', 'viewExplore', 'marketPicker', 'wireMarketPicker', 'paintDashAp', 'apUpdate', 'apYield', 'tabEdges', 'trCurve', 'trackRecordPanel', 'mountTrackRecord', 'viewMarketDetail', 'viewSystem', 'viewSettings', 'render', 'paymentGate', 'hotRowHtml', 'rpUnderwater', 'hotOpen', 'renderHotRail'];
 const source = bundleSource('app.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -146,6 +146,7 @@ class Element {
   insertBefore(child, ref) { const at = this.children.indexOf(ref); this.children.splice(at < 0 ? this.children.length : at, 0, child); child.parent = this; }
   insertAdjacentHTML(_position, html) { this.html = (this.html || '') + html; }
   getAttribute(key) { return this.attributes[key] ?? null; }
+  hasAttribute(key) { return key in this.attributes; }
   setAttribute(key, value) { this.attributes[key] = String(value); }
   // Records the focus a script hands it, so a check can say where a keyboard user was left.
   focus(options) { this.focusOptions = options; this.focused = true; }
@@ -1480,6 +1481,26 @@ test('Tau: the hot-markets rail opens beside a desktop page by default, and over
   }
 });
 
+test('Tau: picking a hot market over a tablet page closes the rail, so the market page it opens shows', () => {
+  // A row opens the market's page in Tau now, not Kalshi in a new tab: up to 1080px the open rail lies over the page,
+  // and it stayed over the page the row had just opened. Wider, the rail sits beside the page and stays open.
+  const row = {t: 'KXBTCD-26OCT2717-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above', bid: .48, ask: .52, v24: 900, h: [.4, .5]};
+  for (const [width, mods, stays] of [[768, {}, false], [1080, {}, false], [768, {metaKey: true}, true], [1280, {}, true]]) {
+    const store = new Map([['tau_hotrail', '1']]);
+    const f = frontend({storage: {getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v))},
+      matchMedia: (q) => ({matches: width <= +/max-width: (\d+)px/.exec(q)[1]})});
+    const rail = new Element('aside', {id: 'hotrail'}); f.document.body.appendChild(rail);
+    f.document.body.classList.add('hot-open');
+    f.S.hot = {at: new Date().toISOString(), markets: [row]}; f.renderHotRail();
+    const a = rail.querySelector('.hot-row');
+    assert.equal(a.getAttribute('href'), '/explore?m=KXBTCD-26OCT2717-T112999.99');
+    a.onclick({currentTarget: a, target: a, ...mods});
+    assert.equal(f.document.body.classList.contains('hot-open'), stays, `${width}px ${JSON.stringify(mods)}`);
+    assert.equal(store.get('tau_hotrail'), stays ? '1' : '0');
+    f.clearTimers();
+  }
+});
+
 test('the hot-markets rail slides only while you open or close it, never as a page loads', async () => {
   // The app opens it on every desktop load (body.hot-open); with the slide always on, the whole page slid
   // 268px sideways each time: a layout shift of 0.7-2.3 on every Tau page at 1280x900.
@@ -1626,14 +1647,16 @@ const MARKET_PAGE = {ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD', ti
     {mode: 'live', strategy_id: 4, title: 'Daily close drift', side: 'yes', qty: 2, entry_price: 0.52, cost: 1.06, unrealized: 0.04, mark_ts: '2026-10-26T10:59:00Z', status: 'open', market_close_time: '2026-10-26T21:00:00Z'},
     {mode: 'paper', strategy_id: 4, title: 'Daily close drift', side: 'no', qty: 10, entry_price: 0.44, cost: 4.5, unrealized: 0.8, mark_ts: '2026-10-26T10:59:00Z', status: 'open', market_close_time: '2026-10-26T21:00:00Z'}],
   closed: [{mode: 'paper', strategy_id: null, title: null, side: 'no', qty: 8, entry_price: 0.7, cost: 5.68, status: 'closed', pnl: 0.24, exit_price: 0.75, close_reason: 'take_profit', market_close_time: '2026-10-26T21:00:00Z'}]}};
-const readerZone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value;
+// Escaped for the patterns below: a zone with no short name reads "GMT+9" (Asia/Tokyo), and its "+" is a quantifier.
+const readerZone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value
+  .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test('a market page says what its price is, how it settles and when, and the reader’s positions by money book', async () => {
   const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}]);
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
   // Each piece holds together ("bid 58¢" ended a 390px line and "/ ask 61¢" began the next), breaking only at "·".
   assert.match(html, new RegExp('≈\u00a056% chance of Yes\u00a0· bid\u00a055¢\u00a0/ ask\u00a057¢\u00a0· as\u00a0of\u00a0[^<]*\u00a0' + readerZone));
@@ -3912,11 +3935,13 @@ test('Tau: a hot-markets row keeps its chip and volume on one line, the chip giv
   assert.match(rule('.hot-vol'), /flex: none;/); assert.match(rule('.hot-vol'), /white-space: nowrap;/);
   const chip = rule('.hot-foot .mk');
   for (const want of [/min-width: 0;/, /overflow: hidden;/, /text-overflow: ellipsis;/]) assert.match(chip, want);
-  // Still one row's markup: the chip, then the volume, then the Kalshi icon.
+  // Still one row's markup: the chip, then the volume. The row opens Tau's market page, so it no longer ends on
+  // the open-in-a-new-tab icon it carried when it linked to Kalshi.
   const f = frontend();
   f.S.me.markets = [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET', close_hour_et: 17}];
   const html = f.hotRowHtml({t: 'KXBTC-26OCT2700-B114750', s: 'KXBTC', ti: 'Bitcoin price range?', su: '$114,500 to $114,999.99', bid: .11, ask: .13, v24: 1234567, h: [.15, .12]});
-  assert.match(html, /<span class="hot-foot"><span class="mk quiet">BTC range at midnight ET<\/span><span class="hot-vol">1\.2M vol · 24h<\/span><svg/);
+  assert.match(html, /<span class="hot-foot"><span class="mk quiet">BTC range at midnight ET<\/span><span class="hot-vol">1\.2M vol · 24h<\/span><\/span><\/a>$/);
+  assert.doesNotMatch(html, /M14 4h6v6/, 'no external-link icon');
 });
 
 test('Tau: a hot-markets row keeps "Target Price:" on one line with its amount', () => {
