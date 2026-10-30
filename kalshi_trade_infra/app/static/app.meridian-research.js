@@ -774,15 +774,21 @@ window.TauPage('research', (T) => {
     const log = section.querySelector('.log');
     const jump = section.querySelector('.jumplatest');
     let unseen = 0, first = true, appended = 0, stateSeen = false;
-    const cards = new Map();   // hypothesis title -> card controller (most recent wins on a title clash)
-    const settled = new Map(); // title -> card whose verdict is in: its holdout / diversification checks land on it
-    let think = null;          // the currently-open thinking card, if any
+    // A stretch of the log: its idea cards (title -> card controller, most recent wins on a title clash), the
+    // ones whose verdict is in (their holdout / diversification checks land on them), its open thought, and its
+    // lines that name an idea it doesn't hold (`loose`). The live log is one; each page of earlier steps another.
+    const slice = (put) => ({ cards: new Map(), settled: new Map(), think: null, loose: [], put });
+    const live = slice((el) => { if (!first) el.classList.add('in'); log.appendChild(el); appended++; });
+    // A long session's page first reads only its newest lines; "Show earlier steps" reads the rest a page at a
+    // time (olderAt: the first line here and how to read before it). A verdict or skeptic's review whose idea
+    // sits on a page not read yet stands alone (strays) until that page is read, then moves onto its card.
+    let olderAt = null, strays = [], ended = false;
     const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
     const toLatest = () => { log.scrollTop = log.scrollHeight; unseen = 0; jump.hidden = true; };
     log.addEventListener('scroll', () => { if (atBottom()) { unseen = 0; jump.hidden = true; } });
     jump.onclick = toLatest;
-    const sealThink = () => { if (think) { think.seal(); think = null; } };
-    const add = (el) => { if (!first) el.classList.add('in'); log.appendChild(el); appended++; };
+    const seal = (sx) => { if (sx.think) { sx.think.seal(); sx.think = null; } };
+    const sealThink = () => seal(live);
     // A long session's first paint keeps only its latest rows in the page and holds the rest behind
     // "Show N earlier entries" at the top: laying out and painting 600 events took a phone ~1.5s.
     // Held rows are built (a late verdict still lands on its card); they just wait outside the page.
@@ -793,22 +799,66 @@ window.TauPage('research', (T) => {
       if (rows.length <= KEEP_ROWS + 20) return;
       earlier = rows.slice(0, rows.length - KEEP_ROWS);
       earlier.forEach((el) => el.remove());
-      const li = document.createElement('li');
-      li.className = 'log-earlier';
-      li.innerHTML = `<button type="button" class="btn small">Show ${num(earlier.length)} earlier entries</button>`;
-      li.querySelector('button').onclick = () => showEarlier(true);
-      log.insertBefore(li, log.firstChild);
+      paintTop();
+    }
+    // The one control at the top of the log: the held rows first, then the server's earlier steps.
+    function paintTop() {
+      let li = log.querySelector('.log-earlier');
+      const label = earlier ? `Show ${num(earlier.length)} earlier entries` : olderAt ? 'Show earlier steps' : '';
+      if (!label) { if (li) li.remove(); return; }
+      if (!li) { li = document.createElement('li'); li.className = 'log-earlier'; log.insertBefore(li, log.firstChild); }
+      li.innerHTML = `<button type="button" class="btn small">${label}</button>`;
+      li.querySelector('button').onclick = (e) => (earlier ? showEarlier(true) : showOlder(e.currentTarget));
     }
     // Puts the held rows back above what is on screen, which stays where it was.
     function showEarlier(focus) {
       if (!earlier) return;
-      const rows = earlier, btn = log.querySelector('.log-earlier'), ref = btn ? btn.nextSibling : log.firstChild;
+      const rows = earlier;
       earlier = null;
+      putAbove(rows, focus);
+    }
+    // Reads the page of steps before the first one here and puts it above them (a press of "Show earlier steps").
+    // Its lines were counted already (the server's `earlier` tally), so only the log changes.
+    async function showOlder(btn) {
+      if (!olderAt || olderAt.busy) return;
+      olderAt.busy = true;
+      btn.disabled = true; btn.textContent = 'Loading earlier steps…';
+      let d;
+      try { d = await olderAt.read(olderAt.before); } catch (e) {
+        olderAt.busy = false; btn.disabled = false; btn.textContent = 'Couldn’t load earlier steps. Try again';
+        return;
+      }
+      const events = (d && d.events) || [];
+      olderAt = d && d.more && events.length ? { before: events[0].id, read: olderAt.read } : null;
+      const rows = [], sx = slice((el) => rows.push(el));
+      events.forEach((ev) => { try { dispatch(ev, sx); } catch (e) { /* one bad event must not break the feed */ } });
+      seal(sx);
+      adopt(sx);
+      putAbove(rows, true);
+      if (ended) settlePending(log);
+    }
+    // A page of earlier steps takes back the verdicts and reviews of its ideas that stood alone below it, and
+    // its ideas still waiting on one are where a later line looks for them (the live log's own win a clash).
+    function adopt(sx) {
+      strays = strays.filter(({ ev, li }) => {
+        const d = ev.data || {}, card = sx.cards.get(d.title), done = sx.settled.get(d.title);
+        if (ev.kind === 'challenger' && card) card.challenger(ev);
+        else if (ev.kind === 'verdict' && /^(holdout|forward)$/.test(d.phase || '') && done) done.stage(ev);
+        else if (ev.kind === 'verdict' && card) settle(sx, card, ev);
+        else return true;
+        li.remove();
+        return false;
+      });
+      strays = sx.loose.concat(strays);
+      sx.cards.forEach((c, t) => { if (!live.cards.has(t) && !live.settled.has(t)) live.cards.set(t, c); });
+      sx.settled.forEach((c, t) => { if (!live.cards.has(t) && !live.settled.has(t)) live.settled.set(t, c); });
+    }
+    // Puts rows above what is on screen, which stays where it was.
+    function putAbove(rows, focus) {
+      const btn = log.querySelector('.log-earlier'), ref = btn ? btn.nextSibling : log.firstChild;
       const was = ref ? ref.offsetTop : 0, top = log.scrollTop;
-      const frag = document.createDocumentFragment();
-      rows.forEach((el) => frag.appendChild(el));
-      log.insertBefore(frag, ref);
-      if (btn) btn.remove();
+      rows.forEach((el) => log.insertBefore(el, ref));
+      paintTop();
       // Instantly, not with the log's smooth scrolling, and the same whether or not the browser
       // anchored the scroll itself.
       log.style.scrollBehavior = 'auto';
@@ -819,32 +869,38 @@ window.TauPage('research', (T) => {
       if (focus && last && last.focus) { last.setAttribute('tabindex', '-1'); last.focus({ preventScroll: true }); }
     }
 
-    function dispatch(ev) {
+    const settle = (sx, card, ev) => { card.verdict(ev); sx.cards.delete(card.title); sx.settled.set(card.title, card); };
+    function dispatch(ev, sx = live) {
       if (ev.kind === 'thinking') {
         const block = (ev.data || {}).block || 0;
-        if (think && think.block !== block) sealThink();
-        if ((ev.data || {}).end) { sealThink(); return; }
-        if (!think) { think = thinkController(block, ev.created_at); add(think.li); }
-        think.feed(ev.message);
+        if (sx.think && sx.think.block !== block) seal(sx);
+        if ((ev.data || {}).end) { seal(sx); return; }
+        if (!sx.think) { sx.think = thinkController(block, ev.created_at); sx.put(sx.think.li); }
+        sx.think.feed(ev.message);
         return;
       }
-      sealThink();  // any structured event ends the current train of thought
+      seal(sx);  // any structured event ends the current train of thought
+      const title = (ev.data || {}).title;
+      // A line about an idea this stretch doesn't hold stands alone, and is kept to move onto its card.
+      const alone = () => { const li = runEventEl(ev); sx.put(li); if (title != null) (sx === live ? strays : sx.loose).push({ ev, li }); };
       if (ev.kind === 'hypothesis') {
-        const card = hypothesisCard(ev); cards.set(card.title, card); add(card.li);
+        const card = hypothesisCard(ev); sx.cards.set(card.title, card); sx.put(card.li);
       } else if (ev.kind === 'challenger') {
-        const card = cards.get((ev.data || {}).title); card ? card.challenger(ev) : add(runEventEl(ev));
+        const card = sx.cards.get(title); card ? card.challenger(ev) : alone();
       } else if (ev.kind === 'verdict') {
-        const card = cards.get((ev.data || {}).title);
-        const later = /^(holdout|forward)$/.test((ev.data || {}).phase || '') && settled.get((ev.data || {}).title);
+        const card = sx.cards.get(title);
+        const later = /^(holdout|forward)$/.test((ev.data || {}).phase || '') && sx.settled.get(title);
         if (later) later.stage(ev);
-        else if (card) { card.verdict(ev); cards.delete(card.title); settled.set(card.title, card); } else add(runEventEl(ev));
+        else if (card) settle(sx, card, ev); else alone();
       } else {
-        add(runEventEl(ev));
+        sx.put(runEventEl(ev));
       }
     }
 
     return {
       reveal: () => showEarlier(false),  // a jump to an older card shows the held rows first
+      // The server holds steps before the first one sent (its `earlier`): "Show earlier steps" reads them, `read(before)`.
+      older(before, read) { olderAt = before ? { before, read } : null; paintTop(); },
       push(events) {
         if (!events || !events.length) return;
         const ph = log.querySelector('.log-empty'); if (ph) ph.remove();
@@ -857,6 +913,7 @@ window.TauPage('research', (T) => {
         first = false;
       },
       state(st) {
+        ended = st === 'done';
         // A saved completed run reads as a document. A live run keeps its
         // existing scroll viewport on completion so reading/jump state survives.
         if (!stateSeen) section.classList.toggle('is-complete', st === 'done');
@@ -1021,6 +1078,11 @@ window.TauPage('research', (T) => {
     }
 
     return {
+      // The loop stages a long session went through in the lines its page didn't read (the server's `earlier`).
+      seen(kinds, dreamed) {
+        (kinds || []).forEach((k) => { const ph = RSI_PHASE[k]; if (ph) fired.add(ph[0]); });
+        if (dreamed) fired.add('dream');
+      },
       push(events, state, run) {
         wait = (run && run.wait) || null; waitAt = Date.now();
         doneRun = run || doneRun;  // the badge of a finished run says why it stopped, as the Status figure does
@@ -1249,10 +1311,21 @@ window.TauPage('research', (T) => {
       }).catch(() => { /* no estimate: the cost stands alone */ });
     };
     const load = async (cfg) => {
+      const asked = after;
       const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
       const active = r.status === 'running' || r.status === 'queued' || r.status === 'paused';
       runActive = active;
+      // A long session's first read sends its newest lines and, from the rest, what this page counts (the server's
+      // `earlier`: ideas proposed and dropped, each strategy's missed checks, the pauses, running out of credits), so
+      // every figure reads as it did when every line was sent. "Show earlier steps" then only fills in the log.
+      const pre = !asked && d.earlier;
+      if (pre) {
+        tried += +pre.hypotheses || 0; dropped += +pre.dropped || 0;
+        (pre.pauses || []).forEach((ev) => runPauses(pauses, ev));
+        if (pre.out_of_credits) outOfCredits = true;
+        (pre.why_failed || []).forEach(([sid, why]) => whyBySid.set(sid, why));
+      }
       (d.events || []).forEach((ev) => {
         after = Math.max(after, ev.id); if (ev.kind === 'hypothesis') tried++;
         runPauses(pauses, ev);
@@ -1342,7 +1415,9 @@ window.TauPage('research', (T) => {
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
       stream.push(d.events);
+      if (pre) stream.older(pre.before, (before) => api(`/api/runs/${id}?before=${before}`));
       stream.state(active ? r.status : 'done');
+      if (pre) obs.seen(pre.kinds, pre.dreamed);
       obs.push(d.events, r.status, r);
       if (!active) clearTimers();
     };

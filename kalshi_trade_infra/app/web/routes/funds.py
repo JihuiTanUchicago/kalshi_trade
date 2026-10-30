@@ -41,10 +41,10 @@ def kalshi_cash(cur, uid: int, key: Any = _UNREAD) -> Dict[str, Any]:
     """The live key's cash at Kalshi as Funds and the dashboard show it: {"connected", "funding_url",
     "balance" (cents) [, "balance_at"]}. It never waits on Kalshi: the cash comes from its memo when kept,
     else is marked pending (_memo_cash), and the page asks /api/funds/cash?book=live for it. `key` is the
-    user's live key row (None: none) when the caller has read it; else it is read here, once."""
-    if key is _UNREAD:
-        key = repo.get_kalshi_key(cur, uid)
-    if key is None:
+    user's live key row (None: none) when the caller has read it; else whether one is saved is read here,
+    once (repo.has_kalshi_key: the dashboard's 15s poll never reads the key's id or encrypted bytes)."""
+    connected = repo.has_kalshi_key(cur, uid) if key is _UNREAD else key is not None
+    if not connected:
         return {"connected": False, "balance": None, "funding_url": kalshi_account.KALSHI_FUNDING_URL}
     return {"connected": True, "funding_url": kalshi_account.KALSHI_FUNDING_URL,
             **_memo_cash(kalshi_account.balance_memo(uid), kalshi_account.balance_kept(uid))}

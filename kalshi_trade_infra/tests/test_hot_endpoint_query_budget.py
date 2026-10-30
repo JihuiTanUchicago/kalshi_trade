@@ -574,6 +574,82 @@ def test_shared_billing_reads_answer_as_the_unshared_gate_does(monkeypatch):
         assert reads.customer() is cust and reads.balance() == bal
 
 
+# The dashboard polls every 15s and asked for both Kalshi key rows (the key's id and its encrypted bytes) only to
+# say whether each is saved. It asks whether each is saved, selecting a constant (repo.has_kalshi_key and
+# has_kalshi_dev_key): the same statements, none of them reading key material. Its demo deployment (id 6,
+# running) makes the demo check ask for the demo key, so both tables are probed.
+KEY_COLUMNS = ("private_key_enc", "key_id")
+
+
+@pytest.mark.parametrize("live_key,demo_key", [(True, True), (True, False), (False, True), (False, False)])
+def test_the_dashboard_poll_asks_whether_each_kalshi_key_is_saved_and_never_reads_one(production, live_key, demo_key):
+    rows = dict(_board_rows())
+    if live_key:
+        rows["FROM app_kalshi_keys WHERE user_id=%s"] = [{"present": 1}]
+    if demo_key:
+        rows["FROM app_kalshi_dev_keys WHERE user_id=%s"] = [{"present": 1}]
+    log = []
+    out = server.dashboard(_ctx(log, 10.0, extra=rows))
+    keys = [s for s, _ in log if "app_kalshi_keys" in s or "app_kalshi_dev_keys" in s]
+    assert sorted("app_kalshi_dev_keys" in s for s in keys) == [False, True], keys  # one probe of each table
+    assert all(s.startswith("SELECT 1 AS present FROM ") and s.endswith(" LIMIT 1") for s in keys), keys
+    assert not [s for s in keys if any(c in s for c in KEY_COLUMNS)], keys
+    assert not [s for s, _ in log if "private_key_enc" in s], log
+    # The answers say what the key rows said before: connected or not, and the demo key line when it is missing.
+    assert out["live"]["connected"] is live_key
+    health = out["demo"].get("health") or {}
+    assert (health.get("code") == "demo_key") is (not demo_key)
+
+
+def test_the_presence_reads_answer_as_the_key_reads_did():
+    """has_kalshi_key / has_kalshi_dev_key are True exactly when get_kalshi_key / get_kalshi_dev_key find a row,
+    and select a constant by the table's primary key, never a key column."""
+    for table, has, get in (("app_kalshi_keys", server.repo.has_kalshi_key, server.repo.get_kalshi_key),
+                            ("app_kalshi_dev_keys", server.repo.has_kalshi_dev_key, server.repo.get_kalshi_dev_key)):
+        for saved in (True, False):
+            log = []
+            row = {"key_id": "placeholder", "private_key_enc": b"\x00", "created_at": None, "present": 1}
+            cur = CountingCursor(log, {"FROM %s WHERE user_id=%%s" % table: [row] if saved else []})
+            assert has(cur, 7) is saved and (get(cur, 7) is not None) is saved
+            probe = log[0][0]
+            assert probe == "SELECT 1 AS present FROM %s WHERE user_id=%%s LIMIT 1" % table and log[0][1] == (7,)
+            assert not any(c in probe for c in KEY_COLUMNS)
+
+
+# The run page's first read of a long run-until-stopped session: the newest RUN_EVENTS_PAGE lines and, in the same
+# statement, the older lines its figures count (never their thinking). The same statements as any first read, one
+# of them on the event table, and the answer carries one page of lines however long the session is.
+def test_a_long_sessions_first_read_sends_one_page_inside_the_poll_budget(production):
+    from app.web.routes import research
+
+    page = research.RUN_EVENTS_PAGE
+    newest = [{"id": 5000 - i, "kind": "thinking", "message": "x" * 300, "data_json": '{"block": 1}',
+               "created_at": datetime(2026, 10, 25), "tally": 0} for i in range(page + 1)]
+    older = [{"id": 10 + i, "kind": "hypothesis" if i % 2 else "verdict", "message": None if i % 2 else "DROPPED \"Idea\"",
+              "data_json": None if i % 2 else json.dumps({"title": "Idea %d" % i, "status": "abandoned"}),
+              "created_at": datetime(2026, 10, 24), "tally": 1} for i in range(600)]
+    short = _call("get_run", 10.0, params=("41",), query={"after": "0"})  # a session with no lines
+    log = []
+    out = server.get_run(_ctx(log, 10.0, query={"after": "0"}, params=("41",),
+                              extra={"0 AS tally FROM app_agent_events": newest + older}))
+    events = [(s, p) for s, p in log if "app_agent_events" in s and "LIKE 'Dreaming:" not in s]
+    assert len(events) == 1, events
+    sql, args = events[0]
+    assert "FORCE INDEX (idx_events_run)" in sql and "ORDER BY id DESC LIMIT %s" in sql and "UNION ALL" in sql
+    assert "thinking" not in sql.split("UNION ALL")[1]  # the tally names the kinds it reads; thinking is never one
+    assert args[:2] == (41, page + 1) and args[-1] == page  # one line more than it sends; the tally below those it sends
+    assert len(out["events"]) == page and [e["id"] for e in out["events"]] == sorted(e["id"] for e in newest)[1:]
+    assert not any("tally" in e for e in out["events"])
+    assert out["earlier"]["before"] == out["events"][0]["id"]
+    assert out["earlier"]["hypotheses"] == 300 and out["earlier"]["dropped"] == 300
+    assert len(log) == len(short) <= BUDGET["get_run"]
+    # Bytes: the answer's lines are one page's, not the session's, and what it counted from 600 older lines is a few
+    # figures, not the lines.
+    size = lambda v: len(json.dumps(v, default=server._json_default))  # noqa: E731
+    assert size(out["events"]) <= (size(out["events"][0]) + 2) * page
+    assert size(out["earlier"]) < 300, out["earlier"]
+
+
 def _book_rows():
     """Three trades in two deployments (one still part-open), those deployments' strategy, and a
     deployed strategy card, so the track record and the Strategies page run every read they make."""

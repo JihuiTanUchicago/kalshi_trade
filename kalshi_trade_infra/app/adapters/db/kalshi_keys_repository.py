@@ -20,5 +20,12 @@ def get_kalshi_key(cur, user_id: int) -> Optional[Dict]:
     return cur.fetchone()
 
 
+def has_kalshi_key(cur, user_id: int) -> bool:
+    """Whether a live key is saved, for a page that only says so: one primary-key probe that selects a
+    constant, never the key's id or its encrypted bytes (get_kalshi_key, for the paths that use the key)."""
+    cur.execute("SELECT 1 AS present FROM app_kalshi_keys WHERE user_id=%s LIMIT 1", (user_id,))
+    return cur.fetchone() is not None
+
+
 def delete_kalshi_key(cur, user_id: int) -> None:
     cur.execute("DELETE FROM app_kalshi_keys WHERE user_id=%s", (user_id,))

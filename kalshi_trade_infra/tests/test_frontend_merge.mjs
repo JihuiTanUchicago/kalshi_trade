@@ -15,6 +15,7 @@ import {bellCases} from './bell_frontend_cases.mjs';
 import {communityCases} from './community_frontend_cases.mjs';
 import {researchPollCases} from './research_poll_frontend_cases.mjs';
 import {runPageCases} from './run_page_frontend_cases.mjs';
+import {olderStepsCases} from './run_feed_older_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
@@ -5777,6 +5778,7 @@ const longFeed = (f) => {
   return {stream: f.runFeed(section), log, jump};
 };
 const runEvent = (id, kind, message, data = {}) => ({id, kind, message, data, created_at: '2026-10-17T10:00:00Z'});
+olderStepsCases({name: 'Tau', frontend, longFeed, runEvent});
 
 test('Tau: a long research log paints its latest rows first and shows the earlier ones on request, in place', () => {
   const f = frontend(), {stream, log, jump} = longFeed(f);

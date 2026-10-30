@@ -185,10 +185,77 @@ def _last_dream(cur, uid: int) -> Optional[Dict]:
     return val
 
 
+# The session page's first read sends this many of its newest log lines; "Show earlier steps" reads this many
+# more each time. A run-until-stopped session logs thousands (most of them the model's streamed thinking, a
+# line per ~350 characters), and the page loaded every one to paint its latest 60 rows (runFeed's KEEP_ROWS).
+# Measured 2026-10-30 on a seeded 3,000-line session: its page's first read was 1.57MB; 200 lines are its last
+# 8 ideas (an idea is ~25 lines, thinking included; ~25 rows, several screens of the log's box) at 195KB, with
+# its figures unchanged. A short session (most) still gets every line at once.
+RUN_EVENTS_PAGE = 200
+
+
+def _run_events_page(cur, run_id: int, before: int = 0) -> Tuple[List[Dict], bool, List[Dict]]:
+    """(the newest RUN_EVENTS_PAGE lines older than `before`, or of all when 0, oldest first; whether older
+    ones remain; on a first read (no `before`), the older lines _run_tally counts): one statement, which reads
+    one line more than it sends, to know."""
+    rows = repo.run_events(cur, run_id, 0, RUN_EVENTS_PAGE + 1, before, not before)
+    page = [r for r in rows if not r.get("tally")]
+    return page[-RUN_EVENTS_PAGE:], len(page) > RUN_EVENTS_PAGE, [r for r in rows if r.get("tally")]
+
+
+def _run_tally(rows: List[Dict], before_id: int) -> Dict:
+    """What the session page counts from the lines older than its first page (id < before_id; `rows`, the
+    ones run_events' tally read), so its figures read as they did when it loaded every line: the ideas
+    proposed (Tested), the ones dropped before testing, each failed strategy's missed checks (its row in the
+    ideas list), the pauses (Time leaves them out), whether it ran out of credits, and the loop stages it has
+    been through. The checks are worked out as the log's own lines are (_with_gate_lines,
+    customer_text.event_rows); each strategy's first goes whole and the rest by name, all its row shows."""
+    rows = customer_text.event_rows(_with_gate_lines([r for r in rows if r["id"] < before_id]))
+    hypotheses = dropped = 0
+    why: Dict[int, List[Dict]] = {}
+    pauses: List[Dict] = []
+    kinds: set = set()
+    out_of_credits = dreamed = False
+    for ev in rows:
+        kind, data = ev["kind"], ev.get("data") if isinstance(ev.get("data"), dict) else {}
+        msg = ev.get("message") or ""
+        if kind == "hypothesis":
+            hypotheses += 1
+        elif kind == "verdict":
+            if data.get("status") == "abandoned":
+                dropped += 1
+            lines = [w for w in data.get("why_failed") or [] if isinstance(w, dict)]
+            if data.get("strategy_id") is not None and lines:
+                # The pages show a strategy's first missed check in full and count the rest by name.
+                why[data["strategy_id"]] = lines[:1] + [{"label": w.get("label")} for w in lines[1:]]
+            if not data.get("title"):
+                kind = "step"  # a note on the session, which the loop reads as a step (rsiObservatory)
+        elif kind in ("paused", "resumed"):
+            pauses.append({"kind": kind, "created_at": ev.get("created_at")})
+        elif kind == "step":
+            out_of_credits = out_of_credits or msg.startswith(repo.OUT_OF_CREDITS_STEP)
+            dreamed = dreamed or msg.startswith(("Dreaming:", "Research policy evolved:"))
+        kinds.add(kind)
+    return {"before": before_id, "hypotheses": hypotheses, "dropped": dropped,
+            "why_failed": [[sid, w] for sid, w in why.items()], "pauses": pauses,
+            "out_of_credits": out_of_credits, "dreamed": dreamed, "kinds": sorted(kinds)}
+
+
+def _earlier_run_events(ctx: Ctx, run: Dict, before: int) -> Dict:
+    """"Show earlier steps": the RUN_EVENTS_PAGE lines before `before`, as the first page sends its own, and
+    whether more remain. The page counted them already (_run_tally), so nothing else is sent."""
+    rows, more, _ = _run_events_page(ctx.cur, run["id"], before)
+    fell_at = uncleared_passes_at(ctx.cur, ctx.uid, run["id"]) if rows else []
+    return {"events": customer_text.event_rows(_with_gate_lines(rows, len(fell_at), fell_at)), "more": more}
+
+
 def get_run(ctx: Ctx):
     run = repo.get_run(ctx.cur, ctx.uid, _int_param(ctx))
     if run is None or run["kind"] != "research":
         raise ApiError(404, "No such research session.")
+    before = int(ctx.query.get("before") or 0)
+    if before > 0:
+        return _earlier_run_events(ctx, run, before)
     after = int(ctx.query.get("after") or 0)
     # This run's gated strategies, live — so the Hypotheses table fills as each chunk clears
     # the gate (a run_forever run never reaches "succeeded", so we can't wait for it).
@@ -225,12 +292,24 @@ def get_run(ctx: Ctx):
     # A deployed pass's paper record since deploying (`real`, as /api/strategies sends it), so its "Already
     # deployed" line says what it has made on paper. One read, only when the session has a deployed strategy.
     _attach_session_real_records(ctx.cur, ctx.uid, cards)
-    return {
+    # A poll (after=<its last line>) reads every line since, as it always has. The first read sends the newest
+    # RUN_EVENTS_PAGE lines, and what the page counts from the older ones (_run_tally) when there are more.
+    earlier: Optional[Dict] = None
+    if after > 0:
+        events = repo.run_events(ctx.cur, run["id"], after)
+    else:
+        events, more, older = _run_events_page(ctx.cur, run["id"])
+        if more:
+            earlier = _run_tally(older, events[0]["id"])
+    out = {
         "run": run,
-        "events": customer_text.event_rows(_with_gate_lines(repo.run_events(ctx.cur, run["id"], after), len(fell_at), fell_at)),
+        "events": customer_text.event_rows(_with_gate_lines(events, len(fell_at), fell_at)),
         "strategies": cards,
         "rsi": _rsi_block(pol, dream),
     }
+    if after <= 0:
+        out["earlier"] = earlier
+    return out
 
 
 def _fell_at(strategies: List[Dict], later: Dict[int, Dict]) -> List:
