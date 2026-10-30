@@ -250,6 +250,9 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
         spent = repo.credit_week(cur, uid, since)["research"]
     return {"active": [MARKETS[r["market"]].customer_label if r.get("market") in MARKETS else (r.get("market") or "a market it’s still picking")
                        for r in active],
+            # The newest of those sessions (research_live is newest first), so the card and the panel can
+            # link "It's researching Bitcoin" to the session itself: a new user found it two pages away.
+            "watch": active[0]["id"] if active and active[0].get("id") is not None else None,
             "tested_7d": pulse["tested_7d"],
             "passed_7d": pulse["passed_7d"] - not_cleared,
             "not_cleared_7d": not_cleared,
@@ -805,17 +808,27 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
                                      "check before paper (the holdout test). %s" % (
                                          inside[0]["title"] if len(inside) == 1 else "%d strategies" % len(inside),
                                          "it hasn’t" if len(inside) == 1 else "none has", doing))
-    code = ("researching" if (d.get("research") or {}).get("active") else "reviewing" if d.get("reviewing")
+    research = d.get("research") or {}
+    code = ("researching" if research.get("active") else "reviewing" if d.get("reviewing")
             else "review_wait" if d.get("review_wait") else "no_strategies")
+    # While it researches, the line ends on what to press to watch: the one session it names, or Research
+    # for several. "It's researching Bitcoin" was a dead end on the card and the panel.
+    one = len(research.get("active") or []) == 1
+    watch = None if code != "researching" else (
+        {"label": "Watch it research", "href": "/research/%d" % int(research["watch"])}
+        if one and research.get("watch") is not None
+        else {"label": "Watch %s on Research" % ("it" if one else "them"), "href": "/research"})
     if retired:
         return _idle(code, "Nothing is on paper: %s that passed %s stopped on paper, and no new one has passed since. %s" % (
             "the strategy" if len(retired) == 1 else "the %d strategies" % len(retired),
-            "was" if len(retired) == 1 else "were", doing))
-    if code == "no_strategies" and (d.get("research") or {}).get("researched", True) is False:
+            "was" if len(retired) == 1 else "were", doing), watch)
+    if research.get("researched", True) is False and code in ("no_strategies", "reviewing"):
         # Nothing has been researched, so nothing could pass its tests: say so, not "no strategy has passed".
-        return _idle(code, "Nothing is on paper yet: no research has run yet. Its first research session starts at "
-                           "its next check-in.")
-    return _idle(code, "Nothing is on paper yet: no strategy has passed its research tests. %s" % doing)
+        # The review that starts when autopilot is switched on said "no strategy has passed its research
+        # tests" in a new user's first minute, as if research had already failed.
+        return _idle(code, "Nothing is on paper yet: no research has run yet. %s" % (
+            doing if code == "reviewing" else "Its first research session starts at its next check-in."))
+    return _idle(code, "Nothing is on paper yet: no strategy has passed its research tests. %s" % doing, watch)
 
 
 def autopilot_status(ctx: Ctx):

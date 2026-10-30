@@ -804,18 +804,31 @@ def _passed(title='Rain tails', market='kxrainnyc', in_focus=True, candidate=Fal
     (_idle_d(), [], [], None, [_passed()], 'no_candidate',
      "Nothing is on paper yet: Rain tails passed the research tests, but it hasn’t cleared the last check before paper "
      "(the holdout test). It’s between research runs.", None),
+    # While it researches, the line links the session it names (the newest active one), or Research for several.
+    (_idle_d(research={'active': ['BTC 15m'], 'watch': 41}), [], [], None, [], 'researching',
+     "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m.",
+     {'label': 'Watch it research', 'href': '/research/41'}),
     (_idle_d(research={'active': ['BTC 15m']}), [], [], None, [], 'researching',
-     "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m.", None),
+     "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m.",
+     {'label': 'Watch it on Research', 'href': '/research'}),
+    (_idle_d(research={'active': ['BTC 15m', 'NBA winner'], 'watch': 42}), [], [], None, [], 'researching',
+     "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m and NBA winner.",
+     {'label': 'Watch them on Research', 'href': '/research'}),
     (_idle_d(reviewing=True), [], [], None, [], 'reviewing',
      "Nothing is on paper yet: no strategy has passed its research tests. It’s reviewing the markets to pick its next move.", None),
+    # The review autopilot starts the moment it is switched on, before any research: nothing has been tested, so
+    # nothing has failed its tests either.
+    (_idle_d(reviewing=True, research={'active': [], 'researched': False}), [], [], None, [], 'reviewing',
+     "Nothing is on paper yet: no research has run yet. It’s reviewing the markets to pick its next move.", None),
     (_idle_d(), [], [], None, [_passed(retired=True)], 'no_strategies',
      "Nothing is on paper: the strategy that passed was stopped on paper, and no new one has passed since. It’s "
      "between research runs.", None),
     # Never researched (the seeded example aside): nothing could have passed, and it isn't "between research runs".
     (_idle_d(research={'active': [], 'researched': False}), [], [], None, [], 'no_strategies',
      "Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.", None),
-    (_idle_d(research={'active': ['BTC 15m'], 'researched': False}), [], [], None, [], 'researching',
-     "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m.", None),
+    (_idle_d(research={'active': ['BTC 15m'], 'researched': False, 'watch': 7}), [], [], None, [], 'researching',
+     "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m.",
+     {'label': 'Watch it research', 'href': '/research/7'}),
 ])
 def test_idle_reason_names_why_nothing_trades(d, paper_run, paused, age, passed, code, line, action):
     idle = server._idle_reason(d, paper_run, paused, age, passed)
