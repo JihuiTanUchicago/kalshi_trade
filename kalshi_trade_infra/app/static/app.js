@@ -3653,7 +3653,7 @@
   function viewBilling() { return pageView('billing', 'viewBilling', '/billing', []); }
 
   // ---------- admin ----------
-  // In app-admin.js, fetched on first use (page files, at the end of this file).
+  // In page-admin.js (one for both themes), fetched on first use (page files, at the end of this file).
   function viewAdmin() { return pageView('admin', 'viewAdmin', '/admin', []); }
   function viewSystem() { return pageView('admin', 'viewSystem', '/system', []); }
 
@@ -3680,7 +3680,7 @@
   }
   // The page files both themes load (page-<name>.js, page_modules.SHARED): what this theme draws its own way in
   // them comes from shared() (theme).
-  const PAGE_SHARED = ['autopilot'];
+  const PAGE_SHARED = ['autopilot', 'admin'];
   // Without a version (an older shell) the file is still found, revalidated instead of cached for good.
   const pageSrc = (name, v = pageVersions()[name]) => '/static/' + (PAGE_SHARED.includes(name) ? 'page-' : 'app-') + name + '.js' + (v ? '?v=' + v : '');
   // A page's own scripts and stylesheets beside its file (#tau-boot data-page-assets, page_modules.ASSETS):

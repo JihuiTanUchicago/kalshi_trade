@@ -55,7 +55,7 @@ ASSETS: Dict[str, Tuple[str, ...]] = {
 }
 PREFIX = {"tau": "app-", "meridian": "app.meridian-"}
 # Page files both themes load, page-<name>.js: each bundle's pageSrc names them too.
-SHARED = ("autopilot",)
+SHARED = ("autopilot", "admin")
 SHARED_PREFIX = "page-"
 BUNDLE = {"tau": "app.js", "meridian": "app.meridian.js"}
 # The shared core: the pure helpers (escaping, money, counts, dates) both themes' bundles take from it as they

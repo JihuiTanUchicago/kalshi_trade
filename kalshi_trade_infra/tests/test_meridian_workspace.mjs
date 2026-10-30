@@ -3202,6 +3202,27 @@ test('Billing swaps the welcome credit for a credit runway once there is usage t
   assert.match(figs, /Welcome credit/); assert.doesNotMatch(figs, /Credits last/);
 });
 
+// What only one theme's Admin draws stays its own in the shared file (page-admin.js): Meridian's waitlist, and none of
+// Tau's lines under the titles or its DB box's largest tables (test_frontend_merge.mjs).
+test('Meridian: Admin has the waitlist and no title line, and the System map no table breakdown', async () => {
+  const f = frontend({fetchImpl: path => {
+    if (path === '/api/admin') return response({users: [], waitlist: [{email: 'waiting@example.invalid', note: '', created_at: '2026-10-25T10:00:00Z', status: 'requested'}]});
+    if (path === '/api/admin/kill-switch') return response({on: false, reason: '', by: '', env_on: false});
+    if (path === '/api/admin/system') return response({...systemData(), nodes: {db: {size_mb: 2048, rows: 5000, top_tables: [{table: 'markets', mb: 12}]}}});
+    throw new Error('Unexpected offline request: ' + path);
+  }});
+  f.S.me.is_admin = true;
+  await f.viewAdmin(); await flush();
+  assert.match(f.root.querySelector('#waitlist').innerHTML, /waiting@example\.invalid/);
+  assert.doesNotMatch(f.root.innerHTML, /class="deck"|Operator tools/);
+  await f.viewSystem(); await flush();
+  assert.doesNotMatch(f.root.innerHTML, /class="deck"|A live map/);
+  assert.equal(f.root.querySelector('#sys-detail').innerHTML, '<h2>Select a component</h2>');
+  f.root.querySelector('.sys-node[data-id="db"]').dispatchEvent({type: 'click'});
+  assert.doesNotMatch(f.root.querySelector('#sys-detail').innerHTML, /sys-tables|Largest tables|markets/);
+  f.clearTimers();
+});
+
 test('System reports a current read failure and clears the notice after a successful poll', async () => {
   let reads = 0;
   const f = frontend({fetchImpl: path => {

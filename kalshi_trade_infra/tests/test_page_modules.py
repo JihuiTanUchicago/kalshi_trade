@@ -80,6 +80,7 @@ def test_a_page_file_is_served_like_a_bundle_immutable_at_its_version_and_compre
     ("meridian", "/research", "app.meridian-research.js"), ("meridian", "/strategies/3", "app.meridian-strategies.js"),
     ("meridian", "/settings/billing", "app.meridian-billing.js"), ("meridian", "/settings/account", "app.meridian-funds.js"),
     ("tau", "/terms", "app-legal.js"), ("meridian", "/privacy", "app-legal.js"),  # the legal pages are always Tau's
+    ("tau", "/admin", "page-admin.js"), ("meridian", "/settings/system", "page-admin.js"),  # one file for both themes
     ("tau", "/", None), ("meridian", "/deploy", None), ("tau", "/signin", None),
 ])
 def test_a_signed_in_shell_preloads_the_page_file_its_page_needs(web, theme, path, want):
@@ -173,7 +174,7 @@ def test_a_deploy_that_changes_only_a_page_file_changes_the_build_the_page_check
     assert page_modules.build_version("tau", dict(versions, **{"app.meridian-billing.js": "e" * 10})) == before
     # The shared core and a shared page file are both themes' build.
     for theme in ("tau", "meridian"):
-        for shared in ("core.js", "page-autopilot.js"):
+        for shared in ("core.js", "page-autopilot.js", "page-admin.js"):
             assert page_modules.build_version(theme, dict(versions, **{shared: "d" * 10})) != page_modules.build_version(theme, versions)
 
 
@@ -244,21 +245,23 @@ def test_the_autopilot_panel_is_in_its_own_file_and_the_bundle_only_forwards_to_
 # serves, preloads and counts in its build as it does its own page files. Each bundle fetches it by that name
 # (pageSrc's PAGE_SHARED), and what a theme draws its own way in it comes from the bundle's shared() list (theme).
 def test_both_themes_load_the_one_shared_page_file_and_their_bundles_name_it():
-    assert page_modules.SHARED == ("autopilot",)
-    assert not list(STATIC.glob("app-autopilot.js")) and not list(STATIC.glob("app.meridian-autopilot.js"))
-    assert page_modules.FILES.count("page-autopilot.js") == 1 and (STATIC / "page-autopilot.js").is_file()
+    assert page_modules.SHARED == ("autopilot", "admin")
     versions = server._static_versions()
-    v = versions["page-autopilot.js"]
+    for name in page_modules.SHARED:
+        f = "page-%s.js" % name
+        assert not list(STATIC.glob("app-%s.js" % name)) and not list(STATIC.glob("app.meridian-%s.js" % name))
+        assert page_modules.FILES.count(f) == 1 and (STATIC / f).is_file()
+        for theme in page_modules.BUNDLE:
+            assert page_modules.file_name(theme, name) == f
+            assert "%s:%s" % (name, versions[f]) in page_modules.versions_attr(theme, versions).split(",")
+        # Comment-stripped and warmed like the other page files.
+        assert f in server._STATIC_NAMES and f in static_strip.NAMES
     for theme, bundle_name in page_modules.BUNDLE.items():
-        assert page_modules.file_name(theme, "autopilot") == "page-autopilot.js"
-        assert "autopilot:%s" % v in page_modules.versions_attr(theme, versions).split(",")
         bundle = (STATIC / bundle_name).read_text()
         assert "\n  const PAGE_SHARED = [%s];\n" % ", ".join("'%s'" % n for n in page_modules.SHARED) in bundle
         assert "'/static/' + (PAGE_SHARED.includes(name) ? 'page-' : '%s') + name + '.js'" % page_modules.PREFIX[theme] in bundle
         share = re.search(r"const shared = \(\) => shareMap \|\| \(shareMap = new Proxy\(\{(.*?)\}", bundle, re.S).group(1)
         assert re.findall(r"\btheme: '(\w+)'", share) == [theme]
-    # Comment-stripped and warmed like the other page files.
-    assert "page-autopilot.js" in server._STATIC_NAMES and "page-autopilot.js" in static_strip.NAMES
 
 
 @pytest.mark.parametrize("theme", ["tau", "meridian"])
@@ -287,14 +290,32 @@ def test_the_shared_page_file_is_served_versioned_and_named_in_each_themes_shell
 
 
 @pytest.mark.parametrize("theme", ["tau", "meridian"])
-def test_a_shared_page_files_page_is_preloaded_by_its_one_name_in_each_theme(monkeypatch, theme):
+def test_a_shared_page_files_page_is_preloaded_by_its_one_name_in_each_theme(theme):
     # A page (not a panel) whose file both themes load: each theme's signed-in shell preloads page-<name>.js.
-    monkeypatch.setattr(page_modules, "SHARED", ("autopilot", "admin"))
     versions = dict(server._static_versions(), **{"page-admin.js": "a1b2c3d4e5"})
     assert page_modules.file_name(theme, "admin") == "page-admin.js"
-    assert page_modules.preload(theme, "/admin", versions) == '\n<link rel="preload" href="/static/page-admin.js?v=a1b2c3d4e5" as="script">'
-    assert page_modules.preload(theme, "/admin", versions, signed_in=False) == ""
+    for path in ("/admin", "/system", "/settings/system"):
+        assert page_modules.preload(theme, path, versions) == '\n<link rel="preload" href="/static/page-admin.js?v=a1b2c3d4e5" as="script">'
+        assert page_modules.preload(theme, path, versions, signed_in=False) == ""
     assert "admin:a1b2c3d4e5" in page_modules.versions_attr(theme, versions).split(",")
+    assert page_modules.build_version(theme, versions) != page_modules.build_version(theme, server._static_versions())
+
+
+@pytest.mark.parametrize("theme", ["tau", "meridian"])
+def test_the_shared_admin_file_is_served_once_for_both_themes(web, theme):
+    # The operator pages (Admin, the System map) are one file: either theme's shell preloads it by its one version.
+    port, account = web
+    account["ui_theme"] = theme
+    v = server._static_versions()["page-admin.js"]
+    src = (STATIC / "page-admin.js").read_text()
+    r, body = _get(port, "/static/page-admin.js?v=" + v, cookie="rsid=abc", accept_encoding="gzip")
+    assert r.status == 200 and r.getheader("Cache-Control") == webperf.IMMUTABLE and r.getheader("Content-Encoding") == "gzip"
+    r, body = _get(port, "/static/page-admin.js?v=" + v)
+    assert body.count(b"\n") == src.count("\n") and b"window.TauPage('admin', (T) => {" in body
+    assert b"// ---------- system map ----------" not in body and "// ---------- system map ----------" in src
+    for path in ("/admin", "/system"):
+        _, body = _get(port, path, cookie="rsid=abc")
+        assert _preloads(body.decode()) == [("page-admin.js", v)], path
 
 
 # Funds' own files: the perps, broker and Alpaca paper scripts and stylesheets. They were linked by every
