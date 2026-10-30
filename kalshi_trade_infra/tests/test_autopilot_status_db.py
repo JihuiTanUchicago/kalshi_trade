@@ -385,3 +385,44 @@ def test_every_figure_the_panel_shows_moves_on_the_next_poll_and_a_kept_answer_i
         _status(counting, uid)  # keep again for the next write
         before = kept
     assert billing_mod.configured()
+
+
+def test_the_engines_real_loss_guard_pause_is_the_last_move_after_an_older_deploy(conn, frozen):
+    """A walk saw "Last move 19h ago: Deployed ..." although a loss-guard pause of that deployment came
+    later. Its seeded pause only changed the deployment's status. The engine's real pause
+    (engine.loss_guard, and the drawdown force-close beside it) also posts its "Paused deployment #N
+    automatically." chat line, and that line is what the panel's last move reads: driven through the
+    real guard, the pause, newer than the deploy, is the last move on the next poll, kept read or not,
+    by the strategy's name and with no row number."""
+    from app import repository as repo
+    from app.trading import engine
+    from app.trading import spec as specmod
+
+    cur = conn.cursor()
+    _engine_beats(cur)
+    uid = _account(conn, "guard", busy=False)["uid"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": 5.0, "max_positions": 4}})
+    sid = repo.insert_strategy(cur, uid, None, None, "btc15m", "momentum", "Guarded fade", "t", spec, "passed",
+                               {"capital": 20.0, "out_of_sample": {"trades": 30, "pnl": 3.0}})
+    did = repo.create_deployment(cur, uid, sid, "btc15m", "paper")
+    deployed = repo.add_chat(cur, uid, "system", "Autopilot deployed Guarded fade on paper.")
+    cur.execute("UPDATE app_chat_messages SET created_at=%s WHERE id=%s", (NOW - timedelta(hours=7), deployed))
+    counting = Counting(conn)
+    before, _ = _status(counting, uid)
+    assert before["last_action"]["text"] == "Autopilot deployed Guarded fade on paper."
+
+    pid = repo.insert_position(cur, did, uid, "paper", "KXBTC15M-26OCT2612-T97", "yes", 10, 0.5, 0.1,
+                               NOW - timedelta(hours=1), order_ref="sim:guard-loss")
+    repo.close_position(cur, pid, 0.0, 0.0, -12.0, "settled")
+    dep = next(d for d in repo.running_deployments(cur, "btc15m") if d["id"] == did)
+    assert engine.loss_guard(cur, dep) is True  # the production pause path, as the engine runs it
+    assert repo.get_deployment(cur, uid, did)["status"] == "paused"
+
+    kept, _ = _status(counting, uid)  # the last move, kept against the chat's version, moves with the pause
+    fresh, _ = _fresh(counting, uid)
+    assert kept == fresh
+    last = kept["last_action"]
+    assert last["text"] == ("Paused your paper strategy Guarded fade automatically: it lost $12.00, more than its "
+                            "$10.00 loss guard.")
+    assert "#" not in last["text"] and "deployment" not in last["text"].lower()
+    assert last["at"] > before["last_action"]["at"]
