@@ -521,9 +521,11 @@ window.TauPage('research', (T) => {
     // The example's note sits under its title: in the narrow Market column it was cut to "An example Tau ran f…".
     // An untitled session's title leaves its market to the Market column beside it (stacked under it on a phone),
     // as Tau's card leaves it to the title: the row said the market twice.
-    const title = sessionTitle(r, false);
+    // With no idea and no angle either, that left a bare "Session" over "Session 2": its number is the title then.
+    const bare = !r.title && !(r.prompt && r.prompt.trim()) && !r.direction && sessionNo(r);
+    const title = bare || sessionTitle(r, false);
     const card = `<a class="run-card ${band}" href="/research/${r.id}">
-      <span class="run-identity"><span class="run-title" title="${esc(title)}"><b>${esc(title)}</b>${runTag(r)}${r.example ? `<span class="run-note">${EXAMPLE_NOTE}</span>` : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${!r.example && r.spent_usd != null ? `<span class="run-cost"><span class="run-sep">${SEP}</span>${runSpent(r)}</span>` : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+      <span class="run-identity"><span class="run-title" title="${esc(title)}"><b>${esc(title)}</b>${runTag(r)}${r.example ? `<span class="run-note">${EXAMPLE_NOTE}</span>` : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) && !bare ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${!r.example && r.spent_usd != null ? `<span class="run-cost"><span class="run-sep">${SEP}</span>${runSpent(r)}</span>` : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
   }
 
@@ -1276,10 +1278,11 @@ window.TauPage('research', (T) => {
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching'
         : runDoneText(r);
+      // A finished session that spent nothing reads "Cost None", without "from your credits" under it: none came from them.
       repaintFigs = () => paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', worked == null ? (active ? 'Not started yet' : 'Never started') : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : r.example ? usd(r.spent_usd) : spentSoFar(r.spent_usd, 'None'), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' + (usual != null && !active ? `${SEP}sessions like it usually cost about ${usd(usual)}` : '') }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : r.example ? usd(r.spent_usd) : spentSoFar(r.spent_usd, 'None'), { small: r.example ? 'free: Tau ran it for you' : [active || +r.spent_usd > 0 ? 'from your credits' : '', usual != null && !active ? `sessions like it usually cost about ${usd(usual)}` : ''].filter(Boolean).join(SEP) }) : '') +
         runCountFigs(r, active, tried, d.strategies));
       repaintFigs();
       if (!active) askUsual(r);

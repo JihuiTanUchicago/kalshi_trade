@@ -103,8 +103,9 @@ export function newUserCases({name, frontend, detailStrategy, strategyFrontend, 
     };
     const figs = await page(done({spent_usd: 0}));
     assert.match(figs, /Cost\s*None/);
+    assert.doesNotMatch(figs, /from your credits/, 'none came from the credits');
     assert.doesNotMatch(figs, /Cost\s*\$0\.00/);
-    assert.match(await page(done({spent_usd: 0.83})), /Cost\s*\$0\.83/);
+    assert.match(await page(done({spent_usd: 0.83})), /Cost\s*\$0\.83\s*from your credits/);
   });
 
   // Autopilot's first session running: Last 24 hours said "It started 1 research session" while the card's week said

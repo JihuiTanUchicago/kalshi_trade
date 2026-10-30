@@ -6496,6 +6496,14 @@ test('Meridian: an untitled session row leaves its market to the Market column, 
   // A typed idea is its own title, the market still in its column.
   assert.equal(row(8).querySelector('.run-title b').textContent, 'Idea 8');
   assert.match(row(8).querySelector('.run-meta').textContent, /BTC 15-min up\/down/);
+  // No idea and no angle: its number is the title, said once, not a bare "Session" over "Session 21".
+  const bare = {...researchRun(11, 'succeeded'), prompt: '', title: null, direction: null};
+  const g = researchFrontend([bare]); await g.viewResearch(); await flush();
+  const only = g.root.querySelector('#runs').children.find((el) => el.getAttribute('href') === '/research/11');
+  assert.equal(only.querySelector('.run-title b').textContent, 'Session 21');
+  assert.equal(only.querySelector('.run-id'), null);
+  assert.match(only.querySelector('.run-meta').textContent, /BTC 15-min up\/down/);
+  g.clearTimers();
   f.clearTimers();
 });
 

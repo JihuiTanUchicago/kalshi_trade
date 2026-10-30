@@ -1378,10 +1378,11 @@ window.TauPage('research', (T) => {
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
         : runDoneText(r);
+      // A finished session that spent nothing reads "Cost None", without "from your credits" under it: none came from them.
       repaintFigs = () => paint(root.querySelector('#runfigs'),
         fig('Status', statusText) +
         fig('Time', worked == null ? (active ? 'Not started yet' : 'Never started') : waitSpan(worked), { small: pauses.ms || pauses.since != null ? 'not counting time paused' : '' }) +
-        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : r.example ? usd(r.spent_usd) : spentSoFar(r.spent_usd, 'None'), { small: r.example ? 'free: Tau ran it for you' : 'from your credits' + (usual != null && !active ? `${SEP}sessions like it usually cost about ${usd(usual)}` : '') }) : '') +
+        (r.spent_usd != null ? fig(active ? 'Spent so far' : 'Cost', active ? spentSoFar(r.spent_usd) : r.example ? usd(r.spent_usd) : spentSoFar(r.spent_usd, 'None'), { small: r.example ? 'free: Tau ran it for you' : [active || +r.spent_usd > 0 ? 'from your credits' : '', usual != null && !active ? `sessions like it usually cost about ${usd(usual)}` : ''].filter(Boolean).join(SEP) }) : '') +
         runCountFigs(r, active, tried, d.strategies));
       repaintFigs();
       if (!active) askUsual(r);
