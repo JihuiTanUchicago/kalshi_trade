@@ -2021,7 +2021,7 @@ test('Meridian: a Pause that keeps failing replaces its error notice instead of 
   f.clearTimers();
 });
 
-test('a Research run queued or silent past the reaper limit says how long instead of Queued', async () => {
+test('a Research run queued or silent past the reaper limit says how long, a queued one in the word Queued', async () => {
   const at = (wait, status = 'queued') => {
     const run = {id: 9, prompt: 'Idea', status, market: 'btc15m', created_at: '2026-10-17T10:00:00Z', wait};
     return frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/9')); return response({run, events: []}); }});
@@ -2029,13 +2029,18 @@ test('a Research run queued or silent past the reaper limit says how long instea
   let f = at({state: 'queued', seconds: 90, overdue: false});
   await f.viewRun(9);
   assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Queued');
+  // Status says the badge's word: it said "Waiting" beside the badge's "Queued" (walk 2026-10-30).
+  assert.match(f.root.querySelector('#runfigs').textContent, /Status\s*Queued/);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').textContent, /Waiting/);
   assert.equal(f.root.querySelector('#rsiobs [data-wait]').hidden, true);
   assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, false);
   f.clearTimers();
   f = at({state: 'queued', seconds: 540, overdue: true, ahead: 1});
   await f.viewRun(9);
-  assert.match(f.root.querySelector('#runfigs').innerHTML, /Waiting 9 min/);
-  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Waiting 9 min');
+  // One word for the state, overdue or not: Status said "Waiting 9 min" where the badge said "Queued" a minute before.
+  assert.match(f.root.querySelector('#runfigs').innerHTML, /Queued 9 min/);
+  assert.doesNotMatch(f.root.querySelector('#runfigs').innerHTML, /Waiting/);
+  assert.equal(f.root.querySelector('#rsiobs [data-livetext]').textContent, 'Queued 9 min');
   const wait = f.root.querySelector('#rsiobs [data-wait]');
   assert.equal(wait.hidden, false);
   assert.equal(f.root.querySelector('#rsiobs [data-phase]').hidden, true);  // no "Waiting for the agent to start." above it

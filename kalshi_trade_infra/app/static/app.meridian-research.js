@@ -464,12 +464,14 @@ window.TauPage('research', (T) => {
       : r.max_hypotheses ? `Up to ${num(r.max_hypotheses)} strateg${+r.max_hypotheses === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(SEP);
   // What a session still going has spent. Before its first model call is billed that is nothing, not a $0.00 figure
   // (a first autopilot session read "Spent so far: $0.00" on its row and its page); a sliver says "under $0.01".
+  // One phrase for nothing spent, on the card ("Spent so far: none yet"), the session page and Billing ("Spent so
+  // far / None yet"): the card said "nothing yet" where the page said "None yet".
   const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
   // It names the credits it came from, as the session page does ("from your credits"): a bare "Cost: $3.12" sat
   // in a list a reader could take for a loss.
   // The unit is its own span, so the 120px Market column breaks before it and keeps "Cost: $3.12" whole (.run-cred).
   const CRED = '<span class="run-cred"> in\u00a0credits</span>';
-  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'nothing yet')}${+r.spent_usd > 0 ? CRED : ''}` : `Cost: ${usd(r.spent_usd)}${CRED}`;
+  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'none yet')}${+r.spent_usd > 0 ? CRED : ''}` : `Cost: ${usd(r.spent_usd)}${CRED}`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
   // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
@@ -479,7 +481,9 @@ window.TauPage('research', (T) => {
     if (w.got == null) w.got = Date.now();
     return { ...w, seconds: (+w.seconds || 0) + Math.round((Date.now() - w.got) / 1000) };
   };
-  const lateLabel = (w) => (w.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(w.seconds);
+  // A queued session is "Queued" in every place it shows (row, Status, loop badge), overdue or not: its Status
+  // said "Waiting" beside a badge that said "Queued".
+  const lateLabel = (w) => (w.state === 'queued' ? 'Queued ' : 'Silent ') + waitSpan(w.seconds);
   // Why a finished session stopped, from the server (services.run_stop). A run-until-stopped session
   // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
   // one said "Cancelled" or "Failed" without who or what stopped it.
@@ -506,7 +510,7 @@ window.TauPage('research', (T) => {
     // green ratio: "0/2 passed, 1 not" broke before "cleared" and read as if nothing had passed.
     const late = runLate(r);
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching'
-      : r.status === 'queued' ? 'Waiting'
+      : r.status === 'queued' ? 'Queued'
       : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${ok ? 'gain' : ''}"><span class="run-ratio" aria-label="${num(ok)} of ${num(r.hypotheses_tried)}"><b class="run-passed">${num(ok)}</b><span aria-hidden="true">/</span><b class="run-tested">${num(r.hypotheses_tried)}</b></span> <span class="run-denominator">passed</span></span>${fell ? `<span class="run-denominator run-fell">+${num(fell)} passed, not cleared</span>` : ''}${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : ''}`
       : r.status === 'paused' ? 'Paused'
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
@@ -973,7 +977,7 @@ window.TauPage('research', (T) => {
       // agent to start." said, and more; a silent one's last phase ("Working") sat over "No word from the agent".
       if (late) { phaseEl.hidden = true; waitHidPhase = true; }
       else if (waitHidPhase) { waitHidPhase = false; phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState) || phaseStep; }
-      if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Waiting ' + waitSpan(w.seconds); return; }
+      if (late && runState === 'queued') { liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = lateLabel(w); return; }
       if (late) { host.classList.add('is-quiet'); liveWrap.className = 'rsiobs-live is-stall'; liveText.textContent = 'Silent ' + waitSpan(w.seconds); return; }
       if (runState === 'paused') { liveWrap.className = 'rsiobs-live is-paused'; liveText.textContent = 'Paused'; return; }
       if (runState === 'queued') { liveWrap.className = 'rsiobs-live is-wait'; liveText.textContent = 'Queued'; return; }
@@ -1262,8 +1266,8 @@ window.TauPage('research', (T) => {
       paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), deck));
       const worked = runWorked(r, pauses);
       const late = r.wait && r.wait.overdue ? r.wait : null;
-      const statusText = late ? (late.state === 'queued' ? 'Waiting ' : 'Silent ') + waitSpan(late.seconds)
-        : r.status === 'queued' ? 'Waiting'
+      const statusText = late ? lateLabel(late)
+        : r.status === 'queued' ? 'Queued'
         : r.status === 'paused' ? 'Paused'
         : r.status === 'running' ? 'Researching'
         : runDoneText(r);

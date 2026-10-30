@@ -567,7 +567,12 @@ window.TauPage('autopilot', (T) => {
         gates.classList.add('warn');
       } else {
         // The gate's "the Funds page" is a link (apLiveBlockHtml); the armed note stays plain words.
-        gates.innerHTML = apLiveBlock(d) ? apLiveBlockHtml(d) : esc(apLiveArmed(d));
+        // While the server's live switch is closed the summary above (the server's) already says "Live trading isn’t
+        // open yet" and the gate line said it again under it: said once, in the summary. Without a summary that says
+        // it (none, or its read failed) the gate line still does.
+        const block = apLiveBlock(d), saidAbove = !!(d.autopilot && !d.live_enabled)
+          && apStoryUnderIdle(d, !!(d.idle && !d.billing_blocked)).some((line) => /live trading isn’t open yet/i.test(line));
+        gates.innerHTML = saidAbove ? '' : block ? apLiveBlockHtml(d) : esc(apLiveArmed(d));
         gates.classList.remove('warn');
       }
     }
