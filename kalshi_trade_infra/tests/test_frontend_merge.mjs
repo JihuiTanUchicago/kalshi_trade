@@ -1450,6 +1450,49 @@ test('the floating autopilot pill steps aside from a card’s Market line and fr
   f.apYield(); assert.equal(box.classes.has('yield'), false);
 });
 
+test('Tau: on Explore and a market page the pill holds its place over list rows, figures and headings, and steps aside only for a button or a link outside a row', () => {
+  // Walk 2026-10-30 at 390px: every Explore row is a link with its figures at the right, so the pill stepped aside at
+  // 178 of 181 scroll positions, and on a market page at about four in five: a reader browsing markets couldn't open
+  // the chat. There a row, a figure or a heading scrolls out from under it (the body's bottom room lets the last row
+  // clear it); a button, a field or a link outside a row (the pager, Back to Explore) still sends it aside.
+  const f = frontend(), body = f.root.parent;
+  f.root.innerHTML = '<main id="main"><div class="board-title"><h1 class="page">Market</h1></div><dl class="figures"><div class="m"><dt class="lab">Closes</dt><dd><span class="fig">05:00 EDT</span></dd></div></dl>'
+    + '<section class="sect"><div class="sect-head"><h2>Raw data</h2></div><table class="stack t-explore"><tbody><tr><td class="name"><a href="/explore?m=KXA">Row</a> <span class="mk quiet">closes 17:00 EDT</span></td>'
+    + '<td class="num" data-lab="Yes price">48¢</td><td class="num xlink" data-lab="Kalshi"><a href="https://kalshi.com/x" aria-label="Open on Kalshi">↗</a></td></tr></tbody></table></section>'
+    + '<div class="xpage"><button class="btn sm" id="next">Next →</button><a class="btn sm" id="back" href="/explore">← Back to Explore</a></div></main>';
+  const box = new Element('div', {id: 'autopilot-float', class: 'apf'}); body.appendChild(box);
+  box.innerHTML = '<button type="button" class="apf-pill" data-ap="toggle">Autopilot off</button>';
+  const rect = (l, t, r, b) => () => ({left: l, top: t, right: r, bottom: b, width: r - l, height: b - t});
+  const away = rect(0, 0, 0, 0), under = rect(16, 800, 374, 830);
+  box.querySelector('.apf-pill').getBoundingClientRect = rect(245, 798, 380, 834);   // 390x844 phone
+  const q = (sel) => f.root.querySelector(sel);
+  const scrolled = [q('.board-title'), q('.figures .m'), q('.fig'), q('dd'), q('.sect-head'), q('td.name a'), q('.mk'), q('td.num'), q('td.xlink a')];
+  const pressed = [q('#next'), q('#back')];
+  for (const el of [...f.root.querySelectorAll('*')]) el.getBoundingClientRect = away;
+  for (const path of ['/explore', '/explore/']) {
+    f.location.pathname = path;
+    for (const el of scrolled) {
+      el.getBoundingClientRect = under;
+      f.apYield(); assert.equal(box.classes.has('yield'), false, `${path}: holds over ${el.tag}.${[...el.classes].join('.')}`);
+      el.getBoundingClientRect = away;
+    }
+    for (const el of pressed) {
+      el.getBoundingClientRect = under;
+      f.apYield(); assert.equal(box.classes.has('yield'), true, `${path}: steps aside for #${el.getAttribute('id')}`);
+      el.getBoundingClientRect = away;
+      f.apYield(); assert.equal(box.classes.has('yield'), false);
+    }
+  }
+  // Every other page keeps stepping aside for a row's link, a figure and a heading.
+  f.location.pathname = '/strategies';
+  for (const el of [q('td.name a'), q('.figures .m'), q('.sect-head')]) {
+    el.getBoundingClientRect = under;
+    f.apYield(); assert.equal(box.classes.has('yield'), true, el.tag);
+    el.getBoundingClientRect = away;
+    f.apYield(); assert.equal(box.classes.has('yield'), false);
+  }
+});
+
 test('the floating autopilot pill hit-tests the page a frame after it renders, never inside a page render', () => {
   // elementsFromPoint lays out and pre-paints the page on the spot: run from the pill's render, inside
   // Research's first render, it fixed the form where it stood before the session list moved above it on
@@ -1667,7 +1710,7 @@ test('a market page says what its price is, how it settles and when, and the rea
   assert.match(html, new RegExp('≈\u00a056% chance of Yes\u00a0· bid\u00a055¢\u00a0/ ask\u00a057¢\u00a0· as\u00a0of\u00a0[^<]*\u00a0' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
   // The zone stays on the time's line ("Closes Oct 28, 02:45" left "UTC" alone on the next at 390px).
-  assert.match(html, new RegExp('Closes</dt><dd><span class="fig ">[^<]*\u00a0' + readerZone + '<'));
+  assert.match(html, new RegExp('Closes(?:</span>)?</dt><dd><span class="fig ">[^<]*\u00a0' + readerZone + '<'));
   assert.match(html, new RegExp('Result expected [^<]*' + readerZone)); assert.match(f.root.querySelector('#rawsect').innerHTML, new RegExp('Time \\(' + readerZone + '\\)'));
   assert.match(html, new RegExp('class="pc-xlab" text-anchor="end">[^<]*' + readerZone));
   // Kalshi's words as written, with "5 PM EDT" kept on one line.
@@ -5487,7 +5530,7 @@ test('Tau: the pill does not hit-test log rows its scrolling log has clipped out
   log.getBoundingClientRect = rect(16, 200, 374, 810);   // the log reaches the pill: the row shows there
   f.apYield(); assert.equal(box.classes.has('yield'), true); assert.ok(hits > 0);
   // One pass over the page for every kind of thing it steps aside from.
-  assert.match(source, /for \(const el of document\.body\.querySelectorAll\(AP_UNDER_SEL\)\)/);
+  assert.match(source, /for \(const el of document\.body\.querySelectorAll\(hold \? AP_PRESS_SEL : AP_UNDER_SEL\)\)/);
 });
 
 test('Tau: a long run log stays cheap to animate on a phone', () => {

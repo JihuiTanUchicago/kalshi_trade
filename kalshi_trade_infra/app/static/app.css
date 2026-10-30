@@ -1794,6 +1794,10 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
 .m.fig-behind .sub-fig { color: var(--loss-ink); }
 .mk-spot-note { max-width: 72ch; margin-top: 10px; }
 .mk-rules { max-width: 72ch; margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+/* A market page's way back to the list, at the top as well as the foot; a phone's thumb gets a 32px-tall target. */
+.mk-back { margin: 0 0 4px; font-size: 13px; }
+.mk-back a { display: inline-block; padding: 7px 0; color: var(--ink-2); }
+.mk-back + .board-title { padding-top: 6px; }
 
 /* ---------- Floating autopilot window (bottom-right) ---------- */
 /* The pill's offset from the screen's corner and its height (one line, never more: .apf-pill's nowrap), the

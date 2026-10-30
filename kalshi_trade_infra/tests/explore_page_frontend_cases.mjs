@@ -362,7 +362,7 @@ export function explorePageCases({name, frontend}) {
     const raw = f.root.querySelector('#rawsect').innerHTML;
     assert.match(raw, /None to show: Kalshi didn’t send this market’s price history just now\. Try again under Price history\./);
     assert.doesNotMatch(raw, /Waiting/);
-    const closes = /<dt class="lab">Closes<\/dt><dd><span class="fig[^"]*">(.*?)<\/span>/.exec(f.root.innerHTML);
+    const closes = /<dt class="lab">(?:<span[^>]*>)?Closes(?:<\/span>)?<\/dt><dd><span class="fig[^"]*">(.*?)<\/span>/.exec(f.root.innerHTML);
     const hhmm = String(closeAt.getHours()).padStart(2, '0') + ':' + String(closeAt.getMinutes()).padStart(2, '0');
     assert.ok(closes && closes[1].includes(hhmm) && !/—/.test(closes[1]), closes && closes[1]);
   });
@@ -374,12 +374,17 @@ export function explorePageCases({name, frontend}) {
     const f = await open(page({ticker: 'KXBTCD-26OCT2803-T112999.99', as_of: now.toISOString(), close_time: new Date(now.getTime() + 190e3).toISOString()}));
     const closes = () => f.root.querySelectorAll('.figures .m').find((m) => /^Clos/.test(m.querySelector('dt').textContent));
     assert.equal(closes().querySelector('dt').textContent, 'Closes');
+    assert.equal(closes().querySelector('dt [data-close]').getAttribute('data-form'), 'lab', 'the label is on the clock too');
     assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'in 3\u00a0min', 'the number keeps its unit');
     const tick = async () => { for (const run of [...f.intervals.values()]) await run(); await settle(); };
     f.shiftClock(65000); await tick();
     assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'in 2\u00a0min');
     f.shiftClock(130000); await tick();
     assert.equal(closes().querySelector('.sub-fig [data-close]').textContent, 'Closed, result pending');
+    // Walked 2026-10-30: the figure's own label still said "Closes 04:35 EDT" over that line. It turns with it, to
+    // "Closed 04:35 EDT", as a page opened after the close reads; the time itself stays.
+    assert.equal(closes().querySelector('dt [data-close]').textContent, 'Closed');
+    assert.match(closes().querySelector('dd .fig').textContent, /^\d\d:\d\d/);
     // A market read after its close (Kalshi's "closed", the result not in) is headed "Closed" from the start.
     const g = await open(page({status: 'closed', close_time: new Date(now.getTime() - 60e3).toISOString()}));
     assert.ok(g.root.querySelectorAll('.figures dt').some((dt) => dt.textContent === 'Closed'));
@@ -533,6 +538,6 @@ export function explorePageCases({name, frontend}) {
     const html = f.root.innerHTML;
     assert.match(html, /bid 55¢ \/ ask 57¢/);
     assert.match(html, /as of [^<·]* (?:[A-Z]{2,5}|GMT[+-]\d{1,2}(?::\d\d)?)<\/dd>/, 'the read time keeps its zone');
-    assert.match(html, /Closes<\/dt><dd><span class="fig ">[^<]*\d (?:[A-Z]{2,5}|GMT[+-]\d{1,2}(?::\d\d)?)<\/span>/, 'the close keeps its zone');
+    assert.match(html, /Closes(?:<\/span>)?<\/dt><dd><span class="fig ">[^<]*\d (?:[A-Z]{2,5}|GMT[+-]\d{1,2}(?::\d\d)?)<\/span>/, 'the close keeps its zone');
   });
 }

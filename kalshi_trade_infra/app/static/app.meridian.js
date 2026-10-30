@@ -3253,6 +3253,10 @@
     chip: (iso, s) => (s > 0 ? `closes ${keepZone(settleAt(iso))}${s < 3600 ? `${SEP}in ${soonText(s)}` : ''}` : `closed ${keepZone(settleAt(iso))}`),
     left: (iso, s) => (s > 0 ? leftText(s) : 'Closed'),
     when: (iso, s) => `${s > 0 ? 'closes' : 'closed'} ${keepZone(settleAt(iso))}`,
+    // The market page's close figure's own label: walked 2026-10-30, a page left open past the close read "Closes 04:35 EDT"
+    // over "Closed, result pending" until a reload. It turns to "Closed" with the line under it, as a page opened after the
+    // close (or a settled market) already reads.
+    lab: (iso, s) => (s > 0 ? 'Closes' : 'Closed'),
     in: (iso, s) => (s <= 0 ? 'Closed, result pending' : s < 172800 ? 'in ' + soonText(s) : ''),
     // The status line under a market page's name: an open market's "Open for trading" read on after its close until a
     // reload, beside a Closes figure already saying "Closed, result pending". Only an open status follows the clock.
@@ -3414,14 +3418,16 @@
     const closeSkew = d.as_of && !d.snapshot ? (Date.now() - Date.parse(d.as_of)) / 1000 || 0 : 0;
     const closedNow = settled || ['closed', 'determined', 'settled', 'finalized'].includes(d.status) || (d.close_time && closeLeft(d.close_time, closeSkew) <= 0);
     const closesFig = !d.close_time ? fig('Closes', '—') : closedNow ? fig('Closed', keepZone(settleAt(d.close_time)))
-      : fig('Closes', keepZone(settleAt(d.close_time)), { small: liveClose(d.close_time, 'in', { skew: closeSkew }) });
+      : fig(liveClose(d.close_time, 'lab', { skew: closeSkew }), keepZone(settleAt(d.close_time)), { small: liveClose(d.close_time, 'in', { skew: closeSkew }) });
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
     // The line under the name says what the code is, as a position does (kalshiRef): "Kalshi contract KX…", not a bare ticker.
     // An open market's status follows the same clock as its Closes figure (closeClock), flipping to "Closed, result
     // pending" once the close passes; Kalshi's own closed and settled statuses stay as Kalshi sent them.
     const statusLine = d.close_time && (d.status === 'active' || d.status === 'open') ? liveClose(d.close_time, 'status', { skew: closeSkew })
       : esc(MKT_STATUS[d.status] || d.status || 'Market');
-    shell('/explore', boardTitle(label, [esc(contractMarket(d.ticker)), statusLine].filter(Boolean).join(SEP) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
+    // The way back sits at the top as well as the foot: on a 390px phone the foot's "Back to Explore" was about three
+    // screens down. Both go to the list this tab last showed, its filter kept (exploreBackHref).
+    shell('/explore', `<p class="mk-back"><a href="${esc(exploreBackHref())}">← Back to Explore</a></p>` + boardTitle(label, [esc(contractMarket(d.ticker)), statusLine].filter(Boolean).join(SEP) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +

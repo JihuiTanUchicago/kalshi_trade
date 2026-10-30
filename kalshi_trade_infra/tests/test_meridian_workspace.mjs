@@ -5809,7 +5809,7 @@ test('a market page says what its price is, how it settles and when, and the rea
   assert.match(html, new RegExp('≈\u00a056% chance of Yes\u00a0· bid\u00a055¢\u00a0/ ask\u00a057¢\u00a0· as\u00a0of\u00a0[^<]*\u00a0' + readerZone));
   // Every clock names its zone: Closes, the expected result, the raw table, the chart's axis.
   // The zone stays on the time's line ("Closes Oct 28, 02:45" left "UTC" alone on the next at 390px).
-  assert.match(html, new RegExp('Closes</dt><dd><span class="fig ">[^<]*\u00a0' + readerZone + '<'));
+  assert.match(html, new RegExp('Closes(?:</span>)?</dt><dd><span class="fig ">[^<]*\u00a0' + readerZone + '<'));
   assert.match(html, new RegExp('Result expected [^<]*' + readerZone)); assert.match(f.root.querySelector('#rawsect').innerHTML, new RegExp('Time \\(' + readerZone + '\\)'));
   assert.match(html, new RegExp('class="pc-xlab" text-anchor="end">[^<]*' + readerZone));
   assert.match(html, /If the BRTI average before 5\u00a0PM\u00a0EDT is above 113499\.99/);
