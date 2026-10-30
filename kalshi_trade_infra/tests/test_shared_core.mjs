@@ -151,8 +151,26 @@ for (const bundle of BUNDLES) {
     const sharedNames = list[1].split(',').map((n) => n.trim()).filter(Boolean);
     for (const n of taken(src).filter((k) => sharedNames.includes(k))) assert.equal(probe[n], context.TauCore[n], n);
     for (const f of pageFiles(bundle)) vm.runInContext(read(f), context);
+    // A page file both themes load (page-<name>.js) draws this theme's way by the theme this bundle shares.
+    assert.equal(probe.theme, bundle === 'app.js' ? 'tau' : 'meridian');
   });
 }
+
+test('a page file both themes load takes its theme from the bundle that runs it, never from the page', () => {
+  const both = pageFiles('app.js').filter((f) => pageFiles('app.meridian.js').includes(f));
+  assert.deepEqual(both, ['page-autopilot.js']);
+  for (const f of both) {
+    const src = read(f);
+    assert.match(src, /\n {4}[^\n]*\btheme\b[^}]*\n {2}\} = T;\n/, f);
+    // Its code and its words, comments out: no theme read off the page (the shell's attributes, the stylesheet, the
+    // html element, the theme cookie or the stored choice), and a theme named only as what the bundle shares is.
+    const code = src.replace(/^\/\*[\s\S]*?\*\/\n/, '').split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n');
+    const compared = code.match(/\btheme === '(?:tau|meridian)'/g) || [];
+    assert.ok(compared.length, f);
+    assert.equal(code.match(/\btheme\b/g).length, compared.length + 1, `${f} reads theme only to compare it`);
+    assert.doesNotMatch(code.replace(/\btheme === '(?:tau|meridian)'/g, ''), /__TAU_UI__|tau_ui|tau-boot|documentElement|styleSheets|\.css\b|meridian/i, f);
+  }
+});
 
 test('the check finds a name used and not taken, and one taken and not used', () => {
   assert.ok(reads(own('\n  const {\n    esc\n  } = window.TauCore;\n  x(usd(1));\n'), 'usd'));

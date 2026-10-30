@@ -53,8 +53,8 @@ jobs:
       - name: Check both frontend themes
         working-directory: kalshi_trade_infra
         run: |
-          # Both bundles and their page files (app-<name>.js, app.meridian-<name>.js).
-          for f in app/static/app*.js; do node --check "$f"; done
+          # Both bundles, their page files (app-<name>.js, app.meridian-<name>.js, page-<name>.js in both) and the core.
+          for f in app/static/app*.js app/static/page-*.js app/static/core.js; do node --check "$f"; done
           node --test tests/*.mjs
           TAU_TEST_THEME=meridian node --test tests/test_production_ui_reconciliation.mjs
 

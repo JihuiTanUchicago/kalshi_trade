@@ -14,10 +14,11 @@ const glossary = () => {
   const body = src.slice(at + 'const GLOSSARY = '.length, src.indexOf('\n  };', at) + 4);
   return new Function(`return ${body};`)();
 };
-// Each theme's files: the core (what both themes draw with) and the theme's bundle and page files.
+// Each theme's files: the core and the shared page files (what both themes draw with), the theme's bundle and page files.
+const both = (f) => f === 'core.js' || (f.startsWith('page-') && f.endsWith('.js'));
 const THEMES = {
-  tau: ['app.js', (f) => f === 'core.js' || f === 'app.js' || (f.startsWith('app-') && f.endsWith('.js'))],
-  meridian: ['app.meridian.js', (f) => f === 'core.js' || (f.startsWith('app.meridian') && f.endsWith('.js'))],
+  tau: ['app.js', (f) => both(f) || f === 'app.js' || (f.startsWith('app-') && f.endsWith('.js'))],
+  meridian: ['app.meridian.js', (f) => both(f) || (f.startsWith('app.meridian') && f.endsWith('.js'))],
 };
 const files = readdirSync(DIR);
 // The keys a theme's pages draw a marker for: glo('k'), gloSep('k', ...) and gl(label, 'k').
@@ -95,9 +96,8 @@ test('the autopilot card and panel give the instant-fill note its bubble in both
   for (const f of ['app.js', 'app.meridian.js']) {
     assert.match(read(f), /\$\{paperCount\(prog\)\}<\/a> <small>\$\{gl\(PAPER_COUNT_WHY, 'instantfill'\)\}<\/small>/, f);
   }
-  for (const f of ['app-autopilot.js', 'app.meridian-autopilot.js']) {
-    assert.match(read(f), /net on them\. <small>\$\{gl\(PAPER_COUNT_WHY_SAID, 'instantfill'\)\}<\/small>/, f);
-  }
+  // The panel is one file both themes load (page-autopilot.js).
+  assert.match(read('page-autopilot.js'), /net on them\. <small>\$\{gl\(PAPER_COUNT_WHY_SAID, 'instantfill'\)\}<\/small>/);
 });
 
 // A new account's walk (2026-10-30): "≈ after typical live slippage" and "Stake not set" had no bubble, a focused
