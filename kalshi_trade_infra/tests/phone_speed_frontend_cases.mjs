@@ -511,4 +511,99 @@ export function phoneSpeedCases({name, frontend, storageFor, railOpenWide, sourc
     assert.match(f.root.querySelector('#boardbody').innerHTML + f.root.querySelector('#main').innerHTML, /\$1,001\.60/);
     f.clearTimers();
   });
+
+  // Every signed-in shell carries the bell's list (/api/notifications), and the dashboard's the autopilot status too
+  // (app/web/shell_reads.py): the first render draws them from there, as it draws a list it read, and asks for
+  // neither; the polls after it run as they always have.
+  const twoDays = new Date(Date.now() - 2 * 86400e3).toISOString();
+  const bellList = () => ({unread: 2, unread_kinds: {paused: 2}, items: [
+    {id: 12, kind: 'paused', body: 'Fade tails was paused: it hit its loss guard.', link: '/strategies/9', created_at: twoDays, read: false, more: 1},
+    {id: 10, kind: 'deployed', body: 'Autopilot put Fade tails on paper.', link: '/deploy', created_at: twoDays, read: true, more: 0}]});
+  const dashAnswer = () => ({paper: {equity: 1001.6, cash: 1000, open_at_cost: 1.6, total_pnl: 1.6, closed_trades: 8, open_positions: 0,
+    realized_pnl: 3.5, today_pnl: 0, running: 0, daily: []}, live: {connected: false, closed_trades: 0, open_positions: 0, realized_pnl: 0},
+  demo: {equity: 1000, capital: 1000, realized_pnl: 0, closed_trades: 0, open_positions: 0}, deployments: [], open_positions: [],
+  recent_closed: [], reconcile: [], freshness: {btc: 30, engine: 4}, agents: {research_running: 0, research_queued: 0}, v: 'd1'});
+  const statusAnswer = () => ({autopilot: false, mode: 'off'});
+  const pageTransport = (path) => {
+    if (path.startsWith('/api/dashboard')) return response(dashAnswer());
+    if (path.startsWith('/api/track-record')) return response({modes: {}});
+    if (path.startsWith('/api/deployments')) return response({deployments: [], v: 'b1'});
+    return researchTransport()(path);
+  };
+  const shellPages = [['dashboard', '/', '/api/dashboard'], ['Deploy', '/deploy', '/api/deployments'], ['Research', '/research', '/api/runs']];
+  const bellState = (f) => {
+    const wrap = f.root.querySelector('.bell-wrap');
+    return {dot: wrap.querySelector('.bell-dot').hidden, label: wrap.querySelector('.bell-trig').getAttribute('aria-label'),
+      head: wrap.querySelector('.bell-head').innerHTML, list: wrap.querySelector('#bell-list').innerHTML};
+  };
+  const open = async (path, carried, notifications = bellList()) => {
+    const f = frontend({fetchImpl: pageTransport, notifications});
+    f.S.me.user.autopilot = false;
+    f.S.ap = null; f.S.apAt = 0;
+    f.location.pathname = path;
+    f.window.__TAU_FIRST__ = carried;
+    await f.render(); await settle();
+    return f;
+  };
+
+  for (const [page, path, own] of shellPages) {
+    test(`${name}: ${page}'s first render takes the bell from the shell, draws it as a read one, and the bell polls on as before`, async () => {
+      // As before: the page asks for the bell (and the status) after it paints.
+      const asked0 = await open(path, null);
+      assert.equal(asked(asked0, '/api/notifications'), 1);
+      assert.equal(asked(asked0, '/api/autopilot/status'), 1);
+      const fetched = bellState(asked0);
+      asked0.clearTimers();
+
+      // The shell carried it: no round trip for it, and the bell reads exactly as it did from the request.
+      const carried = [{url: '/api/notifications', body: bellList()}];
+      if (path === '/') carried.unshift({url: '/api/dashboard', body: dashAnswer()}, {url: '/api/autopilot/status', body: statusAnswer()});
+      const f = await open(path, carried);
+      assert.equal(asked(f, '/api/notifications'), 0, 'no round trip for the bell the shell carried');
+      assert.deepEqual(bellState(f), fetched);
+      assert.equal(bellState(f).dot, false);
+      assert.equal(bellState(f).label, 'Notifications, 2 unread');
+      // The status: carried on the dashboard alone; every other page still reads it as it paints.
+      assert.equal(asked(f, '/api/autopilot/status'), path === '/' ? 0 : 1);
+      if (path === '/') assert.equal(asked(f, own), 0);
+      assert.deepEqual(f.window.__TAU_FIRST__, [], 'each carried read taken once');
+
+      // Same cadence after paint: the status poll every 20s, the bell at most once a minute off it.
+      const ticks = () => [...f.intervals.values()].forEach((tick) => tick());
+      const status0 = asked(f, '/api/autopilot/status');
+      f.shiftClock(21e3); ticks(); await settle();
+      assert.equal(asked(f, '/api/autopilot/status'), status0 + 1, 'the status polls on');
+      assert.equal(asked(f, '/api/notifications'), 0, 'the bell waits out its minute from the first render');
+      f.shiftClock(40e3); ticks(); await settle();
+      assert.equal(asked(f, '/api/notifications'), 1, 'and then reads the list again');
+      f.clearTimers();
+    });
+  }
+
+  test(`${name}: a shell that carried no bell (its read failed) leaves the bell to ask and show what it gets, as before`, async () => {
+    const f = await open('/deploy', [{url: '/api/deployments', body: {deployments: [], v: 'b1'}}],
+      () => response({error: 'Something went wrong on our side.'}, 500));
+    assert.equal(asked(f, '/api/notifications'), 1);
+    assert.match(f.root.querySelector('#bell-list').textContent, /didn.t load just now/);
+    f.clearTimers();
+  });
+
+  test(`${name}: the carried status is only where the switch's copy starts: the next status read moves it`, async () => {
+    // Switched on from another tab after the shell was read: the next poll says so, and the copy that follows the
+    // switch follows it.
+    const on = {autopilot: true, mode: 'paper', paper_running: 0, demo_running: 0, live_running: 0};
+    const g = frontend({fetchImpl: (path) => path === '/api/autopilot/status' ? response(on) : pageTransport(path), notifications: bellList()});
+    g.S.me.user.autopilot = false; g.S.ap = null; g.S.apAt = 0;
+    g.location.pathname = '/';
+    g.window.__TAU_FIRST__ = [{url: '/api/dashboard', body: dashAnswer()}, {url: '/api/autopilot/status', body: statusAnswer()},
+      {url: '/api/notifications', body: bellList()}];
+    await g.render(); await settle();
+    assert.equal(g.S.me.user.autopilot, false, 'drawn from the shell');
+    assert.equal(asked(g, '/api/autopilot/status'), 0);
+    g.shiftClock(21e3); [...g.intervals.values()].forEach((tick) => tick()); await settle();
+    assert.equal(asked(g, '/api/autopilot/status'), 1);
+    assert.equal(g.S.me.user.autopilot, true, 'the status read is the switch’s truth');
+    assert.equal(g.S.ap.mode, 'paper');
+    g.clearTimers();
+  });
 }

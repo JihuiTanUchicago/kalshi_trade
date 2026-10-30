@@ -20,7 +20,10 @@ from app.web.http import ApiError, _json_default
 USER = {"id": 7, "email": "trader@example.invalid", "name": "Sample", "picture_url": None, "autopilot": 0, "ui_theme": "tau"}
 ACCOUNT = {"user": {"id": 7, "ui_theme": "tau"}}
 ROUTES = ("dashboard", "autopilot_status", "list_runs", "get_run", "list_strategies", "list_deployments", "billing_state",
-          "research_scoreboard", "funds")
+          "research_scoreboard", "funds", "notifications")
+# The bell's list (/api/notifications), which every signed-in shell carries after its page's own reads.
+BELL = {"unread": 1, "items": [{"id": 9, "kind": "paused", "body": "</script>Edge was paused.", "link": "/strategies/4",
+                                "created_at": datetime(2026, 10, 26, 8, 2), "read": False, "more": 0}], "unread_kinds": {"paused": 1}}
 
 
 @pytest.fixture
@@ -29,6 +32,7 @@ def web(monkeypatch):
     monkeypatch.setattr(server, "get_db_conn", lambda: connection)
     monkeypatch.setattr(server.repo, "session_user", lambda cur, token: dict(USER))
     monkeypatch.setattr(server, "me", lambda ctx: ACCOUNT)
+    monkeypatch.setattr(shell_reads, "notifications", lambda ctx: BELL)
     rows = list(webperf._ROWS)
     http = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
     thread = Thread(target=http.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
@@ -50,10 +54,17 @@ def _shell(port, path, cookie="rsid=abc"):
     return r, html
 
 
-def _first(html):
+def _carried(html):
     found = re.findall(r'<script type="application/json" id="tau-first">(.*?)</script>', html, re.S)
     assert len(found) <= 1
     return json.loads(found[0]) if found else []
+
+
+def _first(html):
+    """The page's own carried reads, once the bell's list has been checked: carried last, as /api/notifications answers."""
+    reads = _carried(html)
+    assert reads and reads[-1] == {"url": "/api/notifications", "body": _wire(BELL)}, reads
+    return reads[:-1]
 
 
 def _wire(value):
@@ -123,10 +134,27 @@ def test_an_app_page_shell_carries_its_first_read_under_the_url_the_page_asks(we
     ("/funds?tab=keys", "rsid=abc"),
     ("/strategies?status=passed", "rsid=abc"),  # a filtered list: the page's URL says more
     ("/research?new=1", "rsid=abc"),
-    ("/signin", "rsid=abc"),
-    ("/", None),                          # signed out
+    ("/explore", "rsid=abc"),
+    ("/community", "rsid=abc"),
+    ("/settings", "rsid=abc"),
 ])
-def test_shells_with_no_read_they_can_name_carry_none(web, monkeypatch, path, cookie):
+def test_shells_with_no_read_they_can_name_carry_only_the_bell(web, monkeypatch, path, cookie):
+    # The masthead's bell is on every signed-in page, whatever its query: its list is carried all the same.
+    for name in ROUTES:
+        _record(monkeypatch, name, AssertionError("not asked"))
+    bell = _record(monkeypatch, "notifications", BELL)
+    r, html = _shell(web, path, cookie)
+    assert r.status == 200 and _first(html) == [] and bell == [((), {}, 7)]
+
+
+@pytest.mark.parametrize("path,cookie", [
+    ("/signin", "rsid=abc"),
+    ("/terms", "rsid=abc"),
+    ("/track-record", "rsid=abc"),        # only sends the reader on to the dashboard, which drops what was carried
+    ("/", None),                          # signed out
+    ("/deploy", None),
+])
+def test_shells_that_draw_no_signed_in_page_carry_nothing(web, monkeypatch, path, cookie):
     for name in ROUTES:
         _record(monkeypatch, name, AssertionError("not asked"))
     r, html = _shell(web, path, cookie)
