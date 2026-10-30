@@ -1255,7 +1255,14 @@ window.TauPage('research', (T) => {
     missed_final: ['rej', 'Missed final test'], held_back: ['rej', 'Held back'] };
   // An idea the agent dropped while building it never becomes a strategy, and one still being tested has
   // none yet: the Tested figure counted them and this list didn't ("Tested 5" over "4"), so the gap is said.
-  const ideasGap = (n, listed, active) => n > listed ? `${SEP}${num(n - listed)} more ${active ? 'still being tested' : 'dropped before testing'}` : '';
+  // A running session's gap is not all in testing: an idea it already dropped (its log's DROPPED verdict) said
+  // "still being tested" until the session ended (walk 2026-10-30: "3 more still being tested" over a log that
+  // dropped all three).
+  const ideasGap = (n, listed, active, dropped = 0) => {
+    const gap = n - listed, drop = active ? Math.min(dropped, Math.max(gap, 0)) : gap, testing = gap - drop;
+    if (gap <= 0) return '';
+    return (drop ? `${SEP}${num(drop)} more dropped before testing` : '') + (testing ? `${SEP}${num(testing)} ${drop ? '' : 'more '}still being tested` : '');
+  };
   function runIdeas(strategies, whyBySid, open, gap = '') {
     const list = (strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
     if (!list.length) return '';
@@ -1284,7 +1291,7 @@ window.TauPage('research', (T) => {
       <section><div class="section-head"><h2>Agent log</h2></div>
         <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it’s in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
-    let after = 0, tried = 0, runActive = true, outOfCredits = false;
+    let after = 0, tried = 0, dropped = 0, runActive = true, outOfCredits = false;
     const pauses = { ms: 0, since: null, last: null };
     const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
     const ideasEl = root.querySelector('#runideas');
@@ -1322,6 +1329,7 @@ window.TauPage('research', (T) => {
         runPauses(pauses, ev);
         if (runOutOfCredits(ev)) outOfCredits = true;
         const dd = ev.data || {};
+        if (ev.kind === 'verdict' && dd.status === 'abandoned') dropped++;
         if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
       });
       r.out_of_credits = outOfCredits && !active;
@@ -1374,7 +1382,7 @@ window.TauPage('research', (T) => {
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
       // Painted only when it changes, so a poll never closes "Show all" or drops a focused title.
-      const gap = ideasGap(Math.max(+r.hypotheses_tried || 0, tried), (d.strategies || []).length, active);
+      const gap = ideasGap(Math.max(+r.hypotheses_tried || 0, tried), (d.strategies || []).length, active, dropped);
       const ideasKey = runIdeas(d.strategies, whyBySid, false, gap);
       if (ideasEl.dataset.h !== ideasKey) { ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]'), gap); }
       stream.push(d.events);

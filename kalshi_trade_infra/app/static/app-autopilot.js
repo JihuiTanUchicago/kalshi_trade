@@ -521,7 +521,9 @@ window.TauPage('autopilot', (T) => {
     // Short figures share a row (as many columns as there are figures, two on a phone, the odd
     // one out spanning); the sentence-length ones get full-width rows, so no cell sits empty.
     const short = [
-      `<dt>Running</dt><dd>${runTotal ? runParts.join(SEP) : 'None'}</dd>`,
+      // "Strategies running", as the dashboard's autopilot card names it: a bare "Running None" sat over "a research
+      // session is running" in the same panel (walk 2026-10-30), and research isn't what it counts.
+      `<dt>Strategies running</dt><dd>${runTotal ? runParts.join(SEP) : 'None'}</dd>`,
       // With nothing on paper and nothing realized today, there is no day's P&L to show: "$0.00" read as a result.
       // The figure says which money it is and that fees are in, as the dashboard card and Deploy say it.
       `<dt>${liveInPlay ? 'Live' : 'Paper'} realized today (UTC)</dt><dd class="${pnl < 0 ? 'neg' : (pnl > 0 ? 'pos' : '')}">${!liveInPlay && !pnl && !+d.paper_running ? 'Nothing on paper' : `${usd(pnl, true)} <small class="apf-note">${liveInPlay ? 'real money, after Kalshi fees' : 'paper, ' + PAPER_NET}</small>${liveInPlay ? '' : slipEst(d.today_paper_slippage_estimate)}`}</dd>`,

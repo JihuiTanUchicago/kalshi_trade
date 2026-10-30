@@ -564,7 +564,10 @@ window.TauPage('strategies', (T) => {
     else if (!canDeploy) need = '';
     else if (next[0] === 'paper') {
       // One the autopilot puts on paper itself says so while the switch is on (syncApCopy follows a flip).
-      const on = !!(S.me && S.me.user && S.me.user.autopilot), hand = 'nothing needed. Deploy it on paper below.';
+      // A void or rejected one isn't "nothing needed": the Deploy panel under it warns that deploying it is the
+      // reader's call and risk (walk 2026-10-30: the two sat side by side on a rejected strategy).
+      const on = !!(S.me && S.me.user && S.me.user.autopilot), hand = s.status === 'passed' ? 'nothing needed. Deploy it on paper below.'
+        : 'it didn\u2019t pass its tests, so putting it there is your call. Deploy it on paper below.';
       need = 'Next rung, paper: ' + (apPaper ? `<span data-ap-next${on ? '' : ' hidden'}>the autopilot puts it there at its next check-in${apWhenSpan()}.</span><span data-ap-off${on ? ' hidden' : ''}>${hand}</span>` : hand);
     }
     else if (next[0] === 'demo') need = (demoWhy ? 'Next rung, demo: needs your Kalshi demo (sandbox) key on the <a href="/funds#connect-kalshi">Funds page</a>.'

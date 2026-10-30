@@ -1205,7 +1205,7 @@ window.TauPage('research', (T) => {
       <div id="rsiobs" class="rsiobs"></div>
       <details class="run-history" id="run-history" open><summary class="section-head"><h2>Agent log</h2>${ICON.chev}</summary>${tzName() ? `<p class="hint" style="margin:0 0 8px">Times are ${esc(tzName())}.</p>` : ''}
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div><div id="runend-log"></div></details>`);
-    let after = 0, tried = 0, runActive = true, loaded = false, outOfCredits = false;
+    let after = 0, tried = 0, dropped = 0, runActive = true, loaded = false, outOfCredits = false;
     const pauses = { ms: 0, since: null, last: null };
     // A long session's strategy cards (40+, a screen each on a phone) buried the agent log under
     // them: the first few show, the rest behind "Show all". On a phone eight cards were still ~2,000px
@@ -1240,6 +1240,7 @@ window.TauPage('research', (T) => {
         runPauses(pauses, ev);
         if (runOutOfCredits(ev)) outOfCredits = true;
         const dd = ev.data || {};
+        if (ev.kind === 'verdict' && dd.status === 'abandoned') dropped++;
         if (ev.kind === 'verdict' && dd.strategy_id != null && Array.isArray(dd.why_failed) && dd.why_failed.length) whyBySid.set(dd.strategy_id, dd.why_failed);
       });
       r.out_of_credits = outOfCredits && !active;
@@ -1271,8 +1272,12 @@ window.TauPage('research', (T) => {
       // Passed ideas lead the list: a long session's one pass sat mid-way down 40 cards on a phone.
       // An idea dropped while it was built never becomes a strategy, and one still being tested has none yet:
       // "Tested 5" sat over "Strategies 4" with nothing to say why.
+      // A running session's gap is not all in testing: an idea it already dropped (its log's DROPPED verdict) said
+      // "still being tested" until the session ended (walk 2026-10-30).
       const gapN = Math.max(+r.hypotheses_tried || 0, tried) - (d.strategies || []).length;
-      const gap = gapN > 0 ? `${num(gapN)} more idea${gapN === 1 ? '' : 's'} ${active ? 'still being tested' : 'dropped before testing'}.` : '';
+      const dropN = active ? Math.min(dropped, Math.max(gapN, 0)) : gapN, testN = gapN - dropN;
+      const gap = gapN <= 0 ? '' : dropN ? `${num(dropN)} more idea${dropN === 1 ? '' : 's'} dropped before testing${testN ? `, ${num(testN)} still being tested` : ''}.`
+        : `${num(gapN)} more idea${gapN === 1 ? '' : 's'} still being tested.`;
       // A passed one says what happens next, as Tau's Ideas tested rows do: a running session's passed card said
       // only “Passed”, with no word on whether to deploy it or wait for the autopilot (walk 2026-10-28).
       const passedNext = (s) => s.status !== 'passed' ? '' : s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'

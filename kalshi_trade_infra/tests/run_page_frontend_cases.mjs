@@ -66,6 +66,26 @@ export function runPageCases({name, frontend}) {
     assert.doesNotMatch(list(f), /dropped before testing|still being tested/);
   });
 
+  // Walk 2026-10-30: a running session whose log had dropped three ideas said "3 more still being tested".
+  test(`${name}: a running session counts the ideas its log already dropped as dropped, not still being tested`, async () => {
+    const hyp = (id) => ev(id, 'hypothesis', 'Idea ' + id);
+    const drop = (id) => ev(id, 'verdict', 'DROPPED "Idea" (no candidate) — it lost money on the research data after fees',
+      {title: 'Idea', status: 'abandoned', why: 'it lost money on the research data after fees'});
+    const rows = [{id: 42, title: 'Late', status: 'rejected', market: 'btc15m', direction: 'momentum'}];
+    // Four tried, one listed, two dropped: the third is still being tested.
+    let f = await open({status: 'running', run_forever: 1, hypotheses_tried: 4}, [hyp(1), hyp(2), drop(3), hyp(4), drop(5), hyp(6)], rows);
+    assert.match(list(f), /2 more (ideas )?dropped before testing/);
+    assert.match(list(f), /1 (more )?still being tested/);
+    assert.doesNotMatch(list(f), /3 more (ideas )?still being tested/);
+    // All of the gap dropped: nothing is said to be in testing.
+    f = await open({status: 'running', run_forever: 1, hypotheses_tried: 3}, [hyp(1), hyp(2), drop(3), hyp(4), drop(5)], rows);
+    assert.match(list(f), /2 more (ideas )?dropped before testing/);
+    assert.doesNotMatch(list(f), /still being tested/);
+    // A finished one still says its whole gap was dropped, whatever its log holds.
+    f = await open({status: 'succeeded', hypotheses_tried: 3}, [hyp(1), hyp(2), hyp(3)], rows);
+    assert.match(list(f), /2 more (ideas )?dropped before testing/);
+  });
+
   test(`${name}: a session the server titles is named by that title, not its prompt to the agent`, async () => {
     const floor = 'Research floor: no research started for a while, so pick the most promising angle.';
     let f = await open({status: 'succeeded', brief: 1, by_autopilot: 1, prompt: floor, title: 'New idea picked by the autopilot for Bitcoin 15-minute'});
