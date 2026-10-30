@@ -26,10 +26,19 @@ PREFIX = "research-watch/maker/runs/"
 STATUS = "research-watch/maker/status/"   # <UTC time>_<series>.json: started, then done or failed
 PRIOR_RUNS = 3
 ROTATION = ("KXBTCD", "KXBTC15M", "KXBTC")
+# (rounds, policies per round) per series, sized to finish inside the 4-hour slot: a KXBTCD hour
+# replays in 20-40s, so it stays at 3x4 (~2h20m); KXBTC (~10s/hour) and KXBTC15M search wider.
+# Todd moved taker research spend to the maker lane on 2026-10-30.
+SEARCH = {"KXBTCD": (3, 4), "KXBTC15M": (4, 5), "KXBTC": (5, 6)}
 
 
 def auto_series(now: datetime) -> str:
     return ROTATION[(now.hour // 4) % len(ROTATION)]
+
+
+def search_size(series: str, rounds: Optional[int] = None, per_round: Optional[int] = None):
+    r, n = SEARCH.get(series, (3, 4))
+    return (r if rounds is None else rounds), (n if per_round is None else per_round)
 
 
 def prior_lines(s3, bucket: str, series: str, n: int = PRIOR_RUNS) -> List[str]:
@@ -51,8 +60,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
     ap.add_argument("--hours", type=int, default=24)
     ap.add_argument("--holdout", type=int, default=12)
     ap.add_argument("--end", default=None, help="exclusive end hour (default: the last archived hour)")
-    ap.add_argument("--rounds", type=int, default=3)
-    ap.add_argument("--per-round", type=int, default=4)
+    ap.add_argument("--rounds", type=int, default=None, help="default: SEARCH[series]")
+    ap.add_argument("--per-round", type=int, default=None, help="default: SEARCH[series]")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--model", default=None, help="models_catalog key (default: the catalog default)")
     ap.add_argument("--out", default=None)
@@ -65,6 +74,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
         datetime.now(timezone.utc) - timedelta(minutes=30)
     research, holdout = split(end, a.hours, a.holdout)
     series = auto_series(datetime.now(timezone.utc)) if a.series == "auto" else a.series
+    rounds, per_round = search_size(series, a.rounds, a.per_round)
     choice = catalog.resolve(a.model)
     model = lambda system, messages, on_delta=None: claude(system, messages, choice.model_id)  # noqa: E731
     s3 = boto3.client("s3")
@@ -75,13 +85,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:  # pragma: no cover - thi
 
     def status(state: str, **extra) -> None:
         doc = dict(state=state, series=series, started=started.isoformat(), at=datetime.now(timezone.utc).isoformat(),
-                   workers=a.workers, **extra)
+                   workers=a.workers, rounds=rounds, per_round=per_round, **extra)
         s3.put_object(Bucket=BUCKET, Key=status_key, Body=json.dumps(doc, default=str).encode())
 
     status("started")
     try:
-        out = run_lab(series, research, holdout, model, Usage(), S3Ledger(s3, BUCKET), evaluate, a.rounds,
-                      a.per_round, a.workers, prior=prior_lines(s3, BUCKET, series))
+        out = run_lab(series, research, holdout, model, Usage(), S3Ledger(s3, BUCKET), evaluate, rounds,
+                      per_round, a.workers, prior=prior_lines(s3, BUCKET, series))
     except Exception:
         status("failed", error=traceback.format_exc()[-4000:])
         raise

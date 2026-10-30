@@ -123,3 +123,10 @@ def test_a_worker_killed_out_of_memory_finishes_the_hours_in_process(monkeypatch
     hours = [H0 + timedelta(hours=k) for k in range(3)]
     rows = maker_eval.evaluate({"series": "KXBTCD"}, hours, workers=2)
     assert [r["hour"] for r in rows] == [int(h.timestamp()) for h in hours]
+
+
+def test_the_fast_series_search_wider_inside_the_slot():
+    from app.maker_lab_run import search_size
+    assert search_size("KXBTCD") == (3, 4)                        # ~2h20m already; stays
+    assert search_size("KXBTC") == (5, 6) and search_size("KXBTC15M") == (4, 5)
+    assert search_size("KXBTC", rounds=1, per_round=2) == (1, 2)   # the CLI still overrides
