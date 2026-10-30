@@ -2271,9 +2271,10 @@
   function viewRun(id) { return pageView('research', 'viewRun', '/research', [id]); }
 
   // ---------- strategies ----------
-  // In app.meridian-strategies.js with the research paper, fetched on first use (page files, at the end of this file).
+  // The list is in page-strategies.js (one for both themes); one strategy's page, with its research paper and its
+  // Deploy panel, in app.meridian-strategy.js. Each fetched on first use (page files, at the end of this file).
   function viewStrategies() { return pageView('strategies', 'viewStrategies', '/strategies', []); }
-  function viewStrategy(id) { return pageView('strategies', 'viewStrategy', '/strategies', [id]); }
+  function viewStrategy(id) { return pageView('strategy', 'viewStrategy', '/strategies', [id]); }
 
   // ---------- deploy + chat ----------
   const deployedNote = (n) => `Deployed on ${n.mode}: ${n.title}. It trades only when its rule fires, ${n.mode === 'demo' ? 'on Kalshi’s demo exchange with no real money' : 'against live prices with paper money'}, so the first trade can take a while. Its trades show up here and on the Dashboard.`;
@@ -3769,7 +3770,7 @@
   }
   // The page files both themes load (page-<name>.js, page_modules.SHARED): what this theme draws its own way in
   // them comes from shared() (theme).
-  const PAGE_SHARED = ['autopilot', 'admin', 'community', 'research'];
+  const PAGE_SHARED = ['autopilot', 'admin', 'community', 'research', 'strategies'];
   // Without a version (an older shell) the file is still found, revalidated instead of cached for good.
   const pageSrc = (name, v = pageVersions()[name]) => '/static/' + (PAGE_SHARED.includes(name) ? 'page-' : 'app.meridian-') + name + '.js' + (v ? '?v=' + v : '');
   // A page's own scripts and stylesheets beside its file (#tau-boot data-page-assets, page_modules.ASSETS):

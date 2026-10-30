@@ -20,6 +20,7 @@ import {olderStepsCases} from './run_feed_older_cases.mjs';
 import {moneyPollCases} from './money_poll_frontend_cases.mjs';
 import {strategyPageCases} from './strategy_page_frontend_cases.mjs';
 import {strategyListCases} from './strategy_list_frontend_cases.mjs';
+import {strategyListParityCases} from './strategy_list_parity_frontend_cases.mjs';
 import {countFormatCases} from './count_format_frontend_cases.mjs';
 import {explorePageCases} from './explore_page_frontend_cases.mjs';
 import {exploreSpotListCases} from './explore_spot_list_frontend_cases.mjs';
@@ -273,6 +274,7 @@ runPageCases({name: 'Meridian', frontend});
 moneyPollCases({name: 'Meridian', frontend, stripe: () => ({stripeLoader: async () => STRIPE_STUB})});
 strategyPageCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, postRequests});
 strategyListCases({name: 'Meridian', frontend, detailStrategy});
+strategyListParityCases({name: 'Meridian', frontend, detailStrategy});
 countFormatCases({name: 'Meridian', frontend, detailStrategy, strategyFrontend, fundsData: () => funds(), dashboard: () => dashboardData()});
 explorePageCases({name: 'Meridian', frontend});
 trackRecordTrustCases({name: 'Meridian', frontend, Element, dashboard: () => dashboardData()});
@@ -6193,8 +6195,10 @@ test('Meridian: a brand-new account\'s empty Strategies, Deploy and Research say
 
 test('Meridian: Strategies says under its name what the page is for, in Tau\'s words, and Research results stays beside the name', async () => {
   const text = 'Every strategy your agents researched. Passed strategies on deployable markets can be deployed; void ones stay here so you can see what didn’t work.';
-  const tauSource = readFileSync(new URL('../app/static/app-strategies.js', import.meta.url), 'utf8');
+  // The list is one file for both themes (page-strategies.js): Tau's head and Meridian's say the one line.
+  const tauSource = readFileSync(new URL('../app/static/page-strategies.js', import.meta.url), 'utf8');
   assert.ok(tauSource.includes(`boardTitle('Strategies', '${text}')`));
+  assert.ok(tauSource.includes("${pageLede('" + text + "')}"));
   const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
     ? response({strategies: [], counts: {total: 0, passed: 0, failed: 0, rejected: 0}}) : response({}))});
   await f.viewStrategies(); await flush(); await flush();

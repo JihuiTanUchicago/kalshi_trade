@@ -1,25 +1,20 @@
-/* Tau's strategy pages: the list, and one strategy with its research paper.
-   Fetched on first use (pageLoad in app.js), which hands this function what the
+/* Meridian's strategy page: one strategy with its research paper and its Deploy panel. The Strategies list is
+   both themes' one file (page-strategies.js).
+   Fetched on first use (pageLoad in app.meridian.js), which hands this function what the
    bundle shares with its page files (shared()); the router calls the views it returns. */
-window.TauPage('strategies', (T) => {
+window.TauPage('strategy', (T) => {
   'use strict';
   const {
-    actionLink, announce, api, ApiError, closeClock, liveClose, apNudge, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, bulkDeployable, busy,
-    catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
-    depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
-    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
-    money, notice, num, overDays, paperShown, paperSince, paperAgain, PAPER_NET, NOT_MARKED, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
-    researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
+    actionLink, announce, api, ApiError, closeClock, liveClose, apWhenSpan, armed, BEHIND, boardTitle, bookName, btCheckLine, busy,
+    cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
+    depActed, depSaid, depWrite, dirLabel, equityChart, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
+    gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
+    money, notice, num, overDays, paperSince, paperAgain, PAPER_NET, NOT_MARKED, pct, PERPS_SCENARIO, refreshed, render, researchBadge,
+    researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, markFig, markOld, shell, slipEst, statusMark,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
 
   // ---------- strategy research paper (RESEARCH_PIPELINE_DESIGN.md §D) ----------
-  // Under the Deploy panel, where it is deployed, in words: "Deployed on paper (running) and demo (paused)." Under the
-  // phone's closed "Demo & live" it read "Already deployed: Paper (running)", like a label for the fold above it.
-  const deployedOn = (deps) => {
-    const each = deps.map((d) => `${bookName(d).toLowerCase()} (${esc(depIdle(d) ? depIdle(d).state.toLowerCase() : d.status)})`);
-    return `Deployed on ${each.length > 1 ? `${each.slice(0, -1).join(', ')} and ${each[each.length - 1]}` : each[0]}.`;
-  };
   // Charts are inline SVG built here (CSP is script-src 'self'; no inline <script>).
   // Phase colours reuse Kursbuch tokens: in-sample = muted ink, validation = ink,
   // holdout = signal red (the one decisive, one-time forward test). Every colour is
@@ -282,135 +277,6 @@ window.TauPage('strategies', (T) => {
     return parts;
   }
 
-  // ---------- strategies ----------
-  async function viewStrategies() {
-    const q = new URLSearchParams(location.search);
-    const f = { status: q.has('status') ? q.get('status') : '', market: q.get('market') || '', q: q.get('q') || '', deployed: q.get('deployed') === '1' ? '1' : '', sort: q.get('sort') === 'best' ? 'best' : '' };
-    shell('/strategies', boardTitle('Strategies', 'Every strategy your agents researched. Passed strategies on deployable markets can be deployed; void ones stay here so you can see what didn’t work.') +
-      '<dl class="figures measure" id="sfigs" style="margin-top:14px"></dl>', `
-      <div class="section-head filters stratfilters">
-        <div class="chips" role="group" aria-label="Status">${[['', 'Kept'], ['passed', 'Passed'], ['not_cleared', 'Not cleared'], ['backtest-only', 'Backtest only'], ['failed', 'Void'], ['rejected', 'Rejected']].map(([v, l]) => `<button class="chip" data-f="status" data-v="${v}"${v === 'not_cleared' && f.status !== v ? ' hidden' : ''} aria-pressed="${f.status === v}">${l}</button>`).join('')}
-          <button class="chip" data-toggle="deployed" aria-pressed="${f.deployed === '1'}">Deployed</button></div>
-        ${(() => { const by = {}; S.me.markets.forEach((m) => (by[m.category] || (by[m.category] = [])).push(m)); const cs = Object.keys(by).sort(catOrder); return `<label class="vh" for="strat-market">Market</label><select class="input strat-mkt" id="strat-market" aria-label="Filter by market"><option value="">All markets</option>${cs.map((c) => `<optgroup label="${esc(c)}">${by[c].map((m) => `<option value="${esc(m.key)}"${f.market === m.key ? ' selected' : ''}>${esc(marketShort(m.key))}</option>`).join('')}</optgroup>`).join('')}</select>`; })()}
-        <label class="vh" for="strat-sort">Sort</label><select class="input strat-mkt strat-sort" id="strat-sort" aria-label="Sort strategies">${[['', 'Newest first'], ['best', 'Later-period P&amp;L']].map(([v, l]) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
-        <div class="searchwrap"><input class="input" id="strat-q" type="search" placeholder="Search name or thesis…" value="${esc(f.q)}" aria-label="Search strategies"></div>
-      </div>
-      <div id="bulkbar" class="bulkbar" hidden></div>
-      <div id="slips" style="margin-top:16px">${loading(240)}</div>`);
-    const applyFilters = () => {
-      const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== '' || false));
-      if (!f.status) p.set('status', '');
-      go('/strategies?' + p.toString(), true);
-    };
-    root.querySelectorAll('[data-f]').forEach((b) => { b.onclick = () => { f[b.dataset.f] = b.dataset.v; applyFilters(); }; });
-    const marketSel = root.querySelector('#strat-market');
-    if (marketSel) marketSel.onchange = () => { f.market = marketSel.value; applyFilters(); };
-    // "Later-period P&L" (highest first: the backtest P&L after the split date, the Backtest P&L column's figure)
-    // orders the whole list server-side (it is paged), and rides in the URL like the filters, so a reload or a
-    // shared link keeps it. Not "P&L on data it never saw": it sorts a later-period row (passed with no gatekeeper
-    // record, or backtest only) by the same figure, and that slice picked it. Held-out data is after the split too.
-    const sortSel = root.querySelector('#strat-sort');
-    if (sortSel) sortSel.onchange = () => { f.sort = sortSel.value === 'best' ? 'best' : ''; applyFilters(); };
-    const depToggle = root.querySelector('[data-toggle="deployed"]');
-    if (depToggle) depToggle.onclick = () => { f.deployed = f.deployed === '1' ? '' : '1'; applyFilters(); };
-    const sq = root.querySelector('#strat-q');
-    if (sq) sq.onchange = () => { const v = sq.value.trim(); if (v !== f.q) { f.q = v; applyFilters(); } };
-    // Paginate server-side at 50/page — a run_forever session can produce far more than the old
-    // 500-row cap, and the figures/chip counts come from a real COUNT(*), not the fetched page.
-    // Passed counts only true passes: one a later check left uncleared (Missed final test, Held back) keeps the
-    // stored status "passed", and the server counts and lists it under Not cleared, a chip shown once one exists.
-    // "Void on unseen data" leaves out the void ones with no gatekeeper record (the server's failed_no_record, from its
-    // count): the first version's simple backtest stored them as failed, never judged on held-out data. Its note counts
-    // them, as Passed's counts the ones not cleared; the Void chip still lists every void row.
-    const CLABEL = { passed: 'Passed', not_cleared: 'Not cleared', 'backtest-only': 'Backtest only', failed: 'Void', rejected: 'Rejected' };
-    const slipsEl = root.querySelector('#slips');
-    let sp = Math.max(0, (parseInt(q.get('page'), 10) || 1) - 1);
-    const load = async () => {
-      slipsEl.innerHTML = loading(240);
-      const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== ''));
-      p.set('page', sp);
-      let d;
-      try { d = await api('/api/strategies?' + p.toString()); } catch (e) {
-        if (e.status === 401) throw e;
-        slipsEl.innerHTML = loadFail(errText(e), 'Your strategies');
-        slipsEl.querySelector('[data-retry]').onclick = () => load();
-        return;
-      }
-      // A remembered page past the end (the list shrank since) starts again at the first.
-      if (sp > 0 && d.matched && !(d.strategies || []).length) { sp = 0; history.replaceState(null, '', location.pathname + location.search.replace(/([?&])page=\d+&?/, '$1').replace(/[?&]$/, '')); return load(); }
-      const counts = d.counts || {}, total = counts.total || 0, c = (st) => counts[st] || 0;
-      // Under the Deployed toggle every counted strategy passed (only passed ones deploy), so its rate read
-      // a meaningless 100%: it is left out there rather than shown.
-      const rate = total && !f.deployed ? c('passed') / total : null;
-      root.querySelector('#sfigs').innerHTML = fig(gl('Passed', 'passed'), num(c('passed')), { small: c('not_cleared') ? `${num(c('not_cleared'))} more passed but ${c('not_cleared') === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : '' }) + fig(gl('Void on unseen data', 'void'), num(c('failed') - c('failed_no_record')), { small: c('failed_no_record') ? `${num(c('failed_no_record'))} more ${c('failed_no_record') === 1 ? 'was' : 'were'} void on a backtest that wasn’t held out` : '' }) + fig(gl('Rejected in testing', 'rejected'), num(c('rejected'))) +
-        // Its denominator said: Research's rate is of every idea tested (most never become a strategy), so the
-        // two pages read 8.6% and 12.0% for one account with nothing saying why. With nothing tested yet (a new
-        // account, or a market with none) it says so, where it read a bare "—".
-        fig('Pass rate', rate != null ? pct(rate, false) : f.deployed ? '—' : 'None yet', { small: f.deployed ? 'not with Deployed on: only passed strategies deploy' : rate != null ? `of the ${num(total)} strateg${total === 1 ? 'y' : 'ies'} here` : 'shows once a strategy here is tested' });
-      const kept = total - c('failed') - c('rejected');
-      root.querySelectorAll('[data-f="status"]').forEach((b) => { const v = b.dataset.v; b.textContent = v ? `${CLABEL[v]} (${c(v)})` : `Kept (${kept})`; if (v === 'not_cleared') b.hidden = !c(v) && f.status !== v; });
-      const depChip = root.querySelector('[data-toggle="deployed"]');
-      if (depChip && counts.deployed != null) depChip.textContent = `Deployed (${counts.deployed})`;
-      if (!d.matched) {
-        // A new user's default view, not a filter miss. The Passed filter with nothing passed is that view too: the
-        // dashboard's "See passed strategies" lands there after a first session where every idea failed, and
-        // "Try another filter" left it with no next step.
-        const noneKept = total && !f.q && !f.market && !f.deployed && (f.status ? f.status === 'passed' && !c('passed') : !kept);
-        // With autopilot on, the empty list says it is on instead of asking for a session (not "researching":
-        // the autopilot panel may be reporting a stale check-in or a billing pause).
-        const apOn = !!(S.me && S.me.user && S.me.user.autopilot);
-        slipsEl.innerHTML = `<div class="empty"><h3>Nothing here yet</h3><p>${noneKept ? 'None of your strategies has passed its tests yet. Most ideas fail; the ones that pass land here.' : total ? 'Try another filter.' : apOn ? 'Autopilot is on. The strategies it finds will land here.' : 'Start a research session and the strategies it finds will land here.'}${noneKept && apOn ? ' Autopilot keeps researching on its own.' : ''}</p>${total && !noneKept ? '' : `${apNudge('Rather not write ideas yourself?', 'and it researches on its own, on paper.')}<a class="btn" href="/research">${apOn ? 'See its research' : 'Go to Research'}</a>`}</div>`;
-        return;
-      }
-      const list = d.strategies, reg = registry(list.map((s) => s.equity));
-      const anyPassed = list.some(bulkDeployable);
-      // A Paper P&L column beside the backtest's, when a row on this page has a paper book now or had one.
-      const paperCol = list.some(paperShown);
-      slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed, paper: paperCol })).join(''), anyPassed, paperCol)
-        + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)}${SEP}${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
-      slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => {
-        sp = +b.dataset.sp;
-        const u = new URLSearchParams(location.search);
-        if (sp) u.set('page', sp + 1); else u.delete('page');
-        history.replaceState(null, '', '/strategies' + (u.toString() ? '?' + u.toString() : ''));
-        load(); window.scrollTo({ top: 0, behavior: smooth() });
-      });
-      wireBulk();
-    };
-    // Multi-select deploy (paper only; live stays per-strategy behind the typed-LIVE gate).
-    // Selection is per page — ponytail: cross-page selection is YAGNI for a 50-row page.
-    const bar = root.querySelector('#bulkbar');
-    const picks = () => Array.from(slipsEl.querySelectorAll('.pick'));
-    const selected = () => picks().filter((c) => c.checked).map((c) => +c.dataset.id);
-    const bulkDeploy = async () => {
-      const ids = selected();
-      if (!ids.length) return;
-      let ok = 0; const errs = [];
-      for (const id of ids) {
-        try { await depWrite('/api/deployments', { strategy_id: id, mode: 'paper' }); ok++; } catch (e) { errs.push(depSaid(e, 'deploy')); }
-      }
-      if (ok && !errs.length) { go('/deploy'); return; }
-      flash('#bulkflash', `${ok} deployed${errs.length ? `${SEP}${errs.length} failed: ${errs[0]}` : ''}`, errs.length ? 'bad' : 'good');
-      if (ok) load();
-    };
-    const syncBar = () => {
-      const pickAll = root.querySelector('#pick-all');
-      const n = selected().length;
-      if (!n) { bar.hidden = true; bar.innerHTML = ''; return; }
-      bar.hidden = false;
-      bar.innerHTML = `<span class="lab">${n} selected</span><button class="btn sm" id="bulk-dep">Deploy ${n} on paper</button><button class="btn sm ghost" id="bulk-clear">Clear</button><span id="bulkflash"></span>`;
-      root.querySelector('#bulk-dep').onclick = (e) => busy(e.target, bulkDeploy);
-      root.querySelector('#bulk-clear').onclick = () => { picks().forEach((c) => c.checked = false); if (pickAll) pickAll.checked = false; syncBar(); };
-    };
-    const wireBulk = () => {
-      const pickAll = root.querySelector('#pick-all');
-      if (pickAll) pickAll.onclick = () => { picks().forEach((c) => c.checked = pickAll.checked); syncBar(); };
-      picks().forEach((c) => c.onchange = () => { if (pickAll && !c.checked) pickAll.checked = false; syncBar(); });
-      syncBar();
-    };
-    load();
-  }
-
   // One book's listed deployments summed: the server's exact total (book_totals, the strategies list's
   // own figure) when it sends one. Adding the rows' rounded figures here could read a cent off the list.
   function bookTotal(s, mode, ds) {
@@ -504,7 +370,7 @@ window.TauPage('strategies', (T) => {
     // Deployed and removed the same day read "Oct 27–Oct 27" (walked 2026-10-27): one date says it.
     const daySpan = (from, to) => (day(from) === day(to) ? day(from) : `${day(from)}\u2013${day(to)}`);
     const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `<span class="nobr">${label[p.mode] || esc(p.mode)} ${daySpan(p.created_at, p.removed_at)}</span>, ${pastFig(p)}`).join(SEP)}${past.length > 3 ? `${SEP}${num(past.length - 3)} earlier` : ''}</p>` : '';
-    return lines || pastLine ? `<section class="real-record" id="since-deploying" aria-label="Since deploying"><h3 class="paper-h">Since deploying</h3>${lines}${pastLine}</section>` : '';
+    return lines || pastLine ? `<section class="real-record" id="since-deploying" aria-label="Since deploying"><h2 class="paper-h">Since deploying</h2>${lines}${pastLine}</section>` : '';
   }
   // Road to live in words, from the checks the server sends (live-readiness): what is left, each with
   // what it has and what it needs, and when the trades, events and hours could be in at the pace it
@@ -651,12 +517,13 @@ window.TauPage('strategies', (T) => {
   }
 
   async function viewStrategy(id) {
-    shell('/strategies', boardTitle('Strategy') + '<div id="paper-top"></div><dl class="figures measure" id="figs" style="margin-top:14px"></dl>', loading(420));
+    shell('/strategies', boardTitle('Strategy'), loading(420));
     const s = await api('/api/strategies/' + id);
     const perpetual = isPerpetual(s), restricted = researchOnly(s);
     const missed = Array.isArray(s.why_failed) && s.why_failed.length ? s.why_failed : null;
     s.verdict = laterVerdict(s, missed);
     const passedAll = s.status === 'passed' && !missed;
+    const filed = (() => { try { return new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } })();
     const ins = s.in_sample || {}, oos = s.out_of_sample;
     // A research session's strategy is judged by the gatekeeper on its validation window (the experiment's
     // record): that is its unseen-data result. Only an older backtest carries out_of_sample, so the figure
@@ -671,7 +538,7 @@ window.TauPage('strategies', (T) => {
     // backtest stored it as failed, never judged on held-out data. Nothing picked it, so its words drop "which picked it".
     const splitOnly = !hasExp && (['passed', 'backtest-only'].includes(s.status) || !!s.no_gatekeeper_record);
     // The chart's cut label says it in the heading's words too (equityChart's own default says unseen data).
-    const cutWords = splitOnly ? { cutLabel: [`LATER PERIOD${SEP}NOT HELD OUT →`, `LATER${SEP}NOT HELD OUT →`, 'LATER →'] } : {};
+    const cutWords = splitOnly ? { cutLabel: [`Later period${SEP}not held out →`, `Later${SEP}not held out →`, 'Later →'] } : {};
     // The later slice's heading, in the Strategies list's and Community card's words: "later period" plus whether it was
     // held out. "Never seen (out-of-sample)" stood beside a list that called the same figure "later period · unseen data".
     const oosHead = splitOnly ? 'Later period (not held out)' : 'Later period (unseen data)';
@@ -694,6 +561,8 @@ window.TauPage('strategies', (T) => {
     const heldFig = (h, label) => fig(label, mute(h.net_pnl != null ? usd(h.net_pnl, true) : rpRet(h.mean_net_return)), { v: toneV(h.net_pnl != null ? h.net_pnl : h.mean_net_return),
       small: `${h.net_pnl != null ? '' : 'per trade, '}after fees, over ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} the agent never saw` });
     const heldWords = (h) => `On ${num(h.n_trades)} trade${h.n_trades === 1 ? '' : 's'} of data the agent never saw while iterating, it ${h.net_pnl != null ? `${+h.net_pnl >= 0 ? 'made ' + usd(h.net_pnl) : 'lost ' + usd(Math.abs(h.net_pnl))} after fees${h.mean_net_return != null ? ` (${rpRet(h.mean_net_return)} of the stake per trade)` : ''}` : `averaged ${rpRet(h.mean_net_return)} of the stake per trade after fees`}${s.hypotheses_tried ? `, one of ${num(s.hypotheses_tried)} ideas tested this run` : ''}.`;
+    // In Tau's words and the rest of Meridian's (the glossary's "Unseen data", the Strategies list's "P&L on data it
+    // never saw", a row's "on unseen data"): this page alone said "Out-of-sample P&L" (walked 2026-10-27).
     const figsFor = (r) => (splitOnly ? splitFig(r) : held && !r.out_of_sample ? heldFig(held, topLabel) : fig(topLabel, r.out_of_sample ? mute(usd(r.out_of_sample.pnl, true)) : '—', { v: toneV(r.out_of_sample && r.out_of_sample.pnl), small: r.out_of_sample ? `${num(r.out_of_sample.trades)} trades${overDays(r.out_of_sample.days)} the agent never saw` : 'Rejected before the unseen test' })) +
       fig(gl('In-sample P&L', 'insample'), r.in_sample ? mute(usd(r.in_sample.pnl, true)) : '—', { v: toneV(r.in_sample && r.in_sample.pnl), small: r.in_sample ? `${num(r.in_sample.trades)} trades on the history it searched` : 'No in-sample result recorded' }) +
       // Return on capital is the backtest's later slice over its capital. A research session's strategy has none (its
@@ -702,15 +571,14 @@ window.TauPage('strategies', (T) => {
       // Strategies list's short form does ("later period · 9 days · unseen data"): it read "Unseen data over 9 days", or
       // "After the split date over 9 days", in neither's words. The qualifier keeps together, as the label's does.
       (r.out_of_sample ? fig('Return on capital', pct(r.out_of_sample.roi), { small: [`Later period${overDays(r.out_of_sample.days)}`, laterQual, r.capital ? `$${fmt0.format(r.capital)} at risk at most` : ''].filter(Boolean).join(SEP) }) : '') +
-      // "Ideas tested", the session's count, as Meridian and the strategy lists say it: "Hypotheses tested 1 of 18"
-      // said neither word the other pages use nor what the 1 was.
       fig('Ideas tested', s.hypotheses_tried != null ? num(s.hypotheses_tried) : '—', { small: s.hypotheses_tried == null ? 'Count unavailable.' : `in the session that found it${passedAll ? '; this is the one that passed' : ''}. More ideas tried, more chance one passes by luck (multiple testing).` });
+    // How many figures the row holds (fig() opens each with <div class="m">): a research session's strategy has no
+    // Return on capital, and its three figures sat in a four-column grid with an empty slot at the end. The grid
+    // takes the count (.detail #figs[data-cols]), on first paint and after a what-if redraw.
+    const figCols = (html) => (html.match(/<div class="m[ "]/g) || []).length;
+    const paintFigs = (el, r) => { const html = figsFor(r); el.innerHTML = html; el.setAttribute('data-cols', figCols(html)); };
     // A strategy from the seeded example session says so here too, as the lists and its run page do.
-    // Its title is the heading: a customer never sees its internal id (the zero-padded "No. 00002" it led with).
-    root.querySelector('.board-title').outerHTML = boardTitle(s.title,
-      `${s.example ? EXAMPLE_TAG + ' ' : ''}${esc(marketShort(s.market))}${SEP}${esc(dirLabel(s.direction))}${s.example ? SEP + EXAMPLE_NOTE : ''}`);
-    root.querySelector('#figs').innerHTML = figsFor(s);
-    root.querySelector('#paper-top').innerHTML = paperTop(s);
+    root.querySelector('.board-title').outerHTML = `<div class="board-title strategy-pagehead"><h1 class="page">${esc(s.title)}</h1><p class="deck"><span>${esc(marketShort(s.market))}${SEP}${esc(dirLabel(s.direction))}</span>${filed ? `<span>Filed ${esc(filed)}</span>` : ''}${statusMark(s)}${researchBadge(s)}${s.example ? `${EXAMPLE_TAG}<span class="example-note">${EXAMPLE_NOTE}</span>` : ''}</p></div>`;
     const canDeploy = !restricted && ['passed', 'failed', 'rejected'].includes(s.status);
     // Why a strategy was rejected (never reached the unseen-data gate) — stated honestly: a
     // profitable idea with too few trades is rejected on sample size, not for "losing money".
@@ -754,9 +622,9 @@ window.TauPage('strategies', (T) => {
     // split date, which these gates picked it on (display only: the stored names are unchanged).
     const gateName = (n) => splitOnly ? String(n).replace(/\bunseen data\b/g, 'data after the split date').replace(/\bunseen trades\b/g, 'trades after the split date') : n;
     const gatesHtml = (gs) => gs && gs.length ? `<ul class="gates">${gs.map((g) => `<li class="${g.ok ? 'ok' : 'no'}">${g.ok ? ICON.check : ICON.cross}<span>${esc(gateName(g.name))}<small>needs ${esc(g.threshold)}</small></span><span class="v">${typeof g.value === 'number' && /\$|drawdown|money/i.test(g.name + g.threshold) ? usd(g.value) : esc(g.value == null ? '—' : g.value)}</span></li>`).join('')}</ul>` : '<p class="hint">No gate results recorded for this strategy. Gates only run for finalists that made money in testing.</p>';
-    const trades = (s.recent_trades || []).length ? `<div class="sheet"><table class="table stack t-unseen"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
+    const trades = (s.recent_trades || []).length ? `<table class="table stack"><thead><tr><th>Opened</th><th>Market</th><th>Side</th><th class="num">Entry${perpetual ? ' (USD)' : ''}</th><th class="num">Exit${perpetual ? ' (USD)' : ''}</th><th class="num">P&amp;L</th></tr></thead><tbody>
         ${s.recent_trades.map((t) => `<tr><td data-lab="Opened">${t.opened ? esc(new Date(t.opened.replace('Z', ':00Z')).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })) : '—'}</td><td class="pos-name" data-lab="Market">${esc(contractName(t.ticker, s.market))}<div class="sub-fig">${kalshiRef(t.ticker)}</div></td><td data-lab="Side">${t.side ? esc(t.side.toUpperCase()) : '—'} ×${num(t.qty)}</td><td class="num" data-lab="Entry">${tradePrice(t.entry, perpetual)}</td><td class="num" data-lab="Exit">${tradePrice(t.exit, perpetual)} <small class="hint">${esc(exitWord(t.reason))}</small></td><td class="num ${tone(t.pnl)}" data-lab="P&amp;L">${usd(t.pnl, true)}</td></tr>`).join('')}
-      </tbody></table></div>` : `<p class="hint">No later-period trades (${laterQual}) to show.</p>`;
+      </tbody></table>` : `<p class="hint">No later-period trades (${laterQual}) to show.</p>`;
     const activeDeps = restricted ? [] : s.deployments.filter((d) => d.status !== 'stopped');
     // Stopped deployments can still hold positions; the server refuses the delete until they close.
     const delBlock = restricted ? null : (s.delete_block || null);
@@ -766,7 +634,6 @@ window.TauPage('strategies', (T) => {
     // methodology → results → verdict). Each section renders only when it has content, so a
     // pre-pipeline strategy with no ledger row falls back to its rule + backtest + plain verdict.
     const rp = researchPaper(s.experiment);
-    const filed = (() => { try { return new Date(s.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } })();
     const abResult = splitOnly ? (oos
       ? `After the backtest’s split date it ${+oos.pnl >= 0 ? 'returned ' + usd(oos.pnl) : 'lost ' + usd(Math.abs(oos.pnl))} over ${num(oos.trades)} trade${oos.trades === 1 ? '' : 's'}. ${noPass ? 'There’s no record it was held out, so it isn’t held-out evidence.' : 'That later slice is what picked it, so it isn’t held-out evidence.'}`
       : 'It has no held-out result: its only figures are from the history it searched.')
@@ -788,7 +655,7 @@ window.TauPage('strategies', (T) => {
           <details class="raw"><summary>Exact machine spec (JSON)</summary><pre>${esc(JSON.stringify(s.spec, null, 2))}</pre></details>`;
     const methodologyBody = rp.methodology + dataBlock + (perpetual && !s.dataset ? `<p class="hint">${PERPS_SCENARIO}</p>` : '');
     const resultsBody = rp.results
-      + `<div class="paper-sub"><h4 class="paper-h">${perpetual ? 'Perpetual research scenario' : hasExp ? 'Backtest &amp; Kalshi demo replay' : 'Backtest'}</h4>
+      + `<div class="paper-sub">${perpetual ? '<h4 class="paper-h">Perpetual research scenario</h4>' : hasExp ? '<h4 class="paper-h">Backtest &amp; Kalshi demo replay</h4>' : ''}
           ${hasExp ? '<p class="rp-sub" style="margin-top:0">These are the agent’s own in-sample/replay numbers. The in-sample column is optimistically biased — the rule was fit on exactly this data — so trust the held-out validation-window evidence above, not the column below.</p>' : ''}
           <div id="sheet-results">
             <div id="equity-wrap">${s.equity ? equityChart(s.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth(), ...cutWords }) : ''}${!perpetual && s.equity && oos ? DEV_PENDING(splitOnly ? 'later' : 'unseen') : ''}</div>
@@ -810,7 +677,11 @@ window.TauPage('strategies', (T) => {
         rejected: ['quiet', 'quiet', 'Rejected', 'Rejected — ' + rejectReason(s)],
       };
       const [vt, chip, label, words] = vmap[s.status] || ['quiet', 'quiet', rpHuman(s.status), 'Awaiting a recorded verdict.'];
-      verdictBody = `<div class="rp-verdict ${vt}"><span class="mk ${chip}">${esc(label)}</span><p>${esc(words)}</p></div>`;
+      // The page head already stamps its status (statusMark): a Void strategy read "Void" there and "Void" again as
+      // this verdict's heading, right under it. The verdict keeps its own label only when it says something else
+      // ("Not validated" under Passed).
+      const said = String(statusMark(s)).replace(/<[^>]*>/g, '').trim();
+      verdictBody = `<div class="rp-verdict ${vt}">${label === said ? '' : `<span class="mk ${chip}">${esc(label)}</span>`}<p>${esc(words)}</p></div>`;
     }
     // Its missed checks are the same backtest gates, in the server's words ("Didn’t make money on unseen data"): on a
     // page with no gatekeeper record they say the split date as the gate list above them does. A backtest-only page
@@ -834,33 +705,30 @@ window.TauPage('strategies', (T) => {
     // gets no line here: "It runs on paper. See it on Deploy." repeated the warning's "It already runs on paper" right
     // above it, and the panel already links to Deploy.
     const paperHere = onPaper && onPaper.status === 'paused' ? '<p class="hint on-paper">Its paper deployment is paused. <a href="/deploy">Resume it on Deploy</a>.</p>' : '';
-    // The page heading above the paper says its title, market and direction (boardTitle), so the paper's header
-    // says only when it was filed, under a heading a screen reader's outline keeps; it said the title twice.
     const paperSec = (title, body) => body ? `<section class="paper-sec"><h3 class="paper-sec-t">${title}</h3><div class="paper-sec-body">${body}</div></section>` : '';
     root.querySelector('#main').innerHTML = `
       <div id="flash"></div>
       <div class="detail">
         <div>
           <article class="sheet-doc paper">
-            <header class="paper-head">
-              ${filed ? `<div class="paper-cite"><span>Filed ${esc(filed)}</span></div>` : ''}
-              <h2 class="vh">The research</h2>
-              <div class="paper-byline">${statusMark(s)}${researchBadge(s)}${s.shared_from ? ` <span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span>` : ''}</div>
-            </header>
+            ${!hasExp ? `<div class="legacy-verdict">${verdictBody}</div>` : ''}
             ${quickHtml}
-            <section class="paper-abstract">
-              <h3 class="paper-h">Abstract</h3>
-              <p class="paper-ab">${mdLite(s.thesis)}</p>
-              <p class="paper-ab-result">${abResult}</p>
-              ${verdictGlance(s, missedShown)}
-            </section>
+            ${paperTop(s)}
+            <dl class="figures measure" id="figs" data-cols="${figCols(figsFor(s))}">${figsFor(s)}</dl>
             ${restricted ? '' : realRecord(s)}
+            ${s.shared_from ? `<div class="paper-byline"><span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span></div>` : ''}
+            <h2 class="vh">The research</h2>
+            <section class="paper-abstract" aria-label="Strategy hypothesis">
+              <p class="paper-ab">${mdLite(s.thesis)}</p>
+              ${hasExp ? verdictGlance(s, missed) : ''}
+              <details class="saved-result"><summary>Saved result</summary><p class="paper-ab-result">${abResult}</p></details>
+            </section>
             <div class="paper-body">
               ${paperSec('What it does, in plain words', ruleBlock)}
               ${paperSec('Mechanism &amp; hypothesis', rp.mechanism)}
+              ${paperSec(hasExp ? 'Results' : 'Backtest results', resultsBody)}
               ${fold('Methodology', paperSec('Methodology', methodologyBody))}
-              ${paperSec('Results', resultsBody)}
-              ${paperSec('Verdict', verdictBody)}
+              ${hasExp ? paperSec('Verdict', verdictBody) : ''}
             </div>
           </article>
         </div>
@@ -887,11 +755,12 @@ window.TauPage('strategies', (T) => {
           })() : ''}
           ${ladder ? `<section class="panel" id="ladder"><h3>Paper → demo → live</h3><div class="rung-books" id="ladder-body">${ladder}</div></section>` : ''}
           <section class="panel"><h3>${restricted ? 'Research only' : 'Deploy'}</h3>
+            ${!restricted && s.deployments.length ? `<div class="strategy-deployments"><p class="hint">${s.deployments.map((d) => `${bookName(d)}${SEP}${esc(depIdle(d) ? depIdle(d).state.toLowerCase() : d.status)}`).join('<br>')}</p><a class="btn${activeDeps.length ? ' primary' : ''}" href="/deploy">View deployments</a></div>` : ''}
             ${canDeploy ? `<div style="display:grid;gap:10px">
                 ${missed && s.verdict ? `<div class="notice bad">${ICON.warn}<span>${heldBack(s) ? 'Held back' : 'Missed the final test'}: ${esc(missed[0].label.charAt(0).toLowerCase() + missed[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict). It wasn’t cleared to trade, so it can’t go live, and putting it on paper is your call.</span></div>` : ''}
                 ${s.status !== 'passed' && !(missed && s.verdict) ? `<div class="notice bad">${ICON.warn}<span>${missed ? `${s.status === 'failed' ? 'Void' : 'Rejected'}: ${esc(missedShown[0].label.charAt(0).toLowerCase() + missedShown[0].label.slice(1))}${missed.length > 1 ? `, and ${missed.length - 1} more check${missed.length > 2 ? 's' : ''} missed` : ''} (see Verdict).` : s.status === 'failed' ? (splitOnly ? 'Void: it failed its backtest checks after the split date.' : 'Void: it failed the unseen-data gate.') : `Rejected: ${esc(rejectReason(s))}`} It wasn’t validated, so deploying it — on paper or live — is your call and your risk.</span></div>` : ''}
-                ${apLine}<button class="btn" id="dep-paper"${apOff}>Deploy on paper</button>${paperAgain(activeDeps)}${paperHere}
-                ${fold('Demo &amp; live', `<div class="fold-body" style="display:grid;gap:10px">
+                ${apLine}<button class="btn${activeDeps.length || !passedAll ? '' : ' primary'}" id="dep-paper"${apOff}>Deploy on paper</button>${paperAgain(activeDeps)}${paperHere}
+                <details class="deployment-environments"><summary>Demo &amp; live</summary><div class="deployment-environments-body">
                 <button class="btn ghost" id="dep-demo" ${demoWhy ? 'aria-disabled="true" ' : ''}aria-describedby="dep-demo-why">Deploy on demo (sandbox)</button>
                 ${demoWhy ? `<p class="hint" id="dep-demo-why">${demoWhy}</p>` : '<p class="hint" id="dep-demo-why">Trades Kalshi’s demo exchange with your own demo key — real order-book fills, no real money.</p>'}
                 <button class="btn ghost" id="dep-live" ${liveWhy ? 'aria-disabled="true" aria-describedby="dep-live-why"' : ''}>Deploy with live money</button>
@@ -900,35 +769,37 @@ window.TauPage('strategies', (T) => {
                   <p class="hint">This trades real money in your Kalshi account. Type <b>LIVE</b> to confirm.</p>
                   <input class="input" name="confirm" autocomplete="off" aria-label="Type LIVE to confirm">
                   <button class="btn" type="submit">Confirm live deployment</button>
-                </form></div>`)}
+                </form>
+                </div></details>
                 <div id="depflash"></div>
               </div>` : restricted ? `<p class="hint">${perpetual ? 'Perpetual strategies stay in research, including after passing the statistical gates. Paper, demo and live deployment are unavailable.' : CODE_RESEARCH_ONLY}</p>` : `<p class="hint">${s.status === 'backtest-only' ? 'A strategy tested only on a backtest can’t be deployed: it never went through the held-out checks. To test this idea properly, ask for it in a new research session.' : 'This strategy isn’t ready to deploy yet.'}</p>`}
-            ${!restricted && s.deployments.length ? `<p class="hint" style="margin-top:12px">${deployedOn(s.deployments)} <a href="/deploy">See ${s.deployments.length === 1 ? 'it' : 'them'} on the Deploy page</a></p>` : ''}
             ${kUrl ? `<p class="hint" style="margin-top:12px"><a href="${kUrl}" target="_blank" rel="noopener">Open this market on Kalshi ↗</a></p>` : ''}
           </section>
           ${!restricted && passedAll ? `<section class="panel" id="road-live"><h3>Road to live</h3><div id="road-live-body"><p class="hint">Checking…</p></div></section>` : ''}
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
-          ${!perpetual && s.status !== 'rejected' ? fold('What if…', `<section class="panel" id="whatif"><h3>What if…</h3>
-            <p class="hint" style="margin-bottom:6px">Move a dial and the whole sheet re-runs.</p>
+          ${!perpetual && s.status !== 'rejected' ? fold('Sensitivity', `<section class="panel" id="whatif"><h3>Sensitivity</h3>
+
             <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1" aria-valuetext="${DIAL_SAY.wf(1)}"></div>
             <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0" aria-valuetext="${DIAL_SAY.ws(0)}"></div>
             ${s.stake != null ? `<div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}" aria-valuetext="${esc(DIAL_SAY.wk(Math.min(200, s.stake)))}"></div>` : ''}
             <div id="wflash" aria-live="polite"></div>
           </section>`) : ''}
-          ${fold('Share', `<section class="panel"><h3>Share</h3>
-            <p class="hint" style="margin-bottom:8px">${restricted ? 'Share a research-only copy using their Tau sign-in email. It keeps the same simulation limits and cannot be deployed.' : 'Send a copy to a friend by the email they sign in with. They can deploy it like their own — sharing can’t be undone.'}</p>
-            <form id="share-form" style="display:grid;gap:8px">
-              <input class="input" id="share-email" type="email" autocomplete="off" placeholder="friend@email.com" aria-label="Friend’s email">
-              <button class="btn sm" type="submit">Share strategy</button>
-            </form><div id="shareflash"></div>
-          </section>`)}
-          ${fold('Remove', `<section class="panel"><h3>Remove</h3>
-            <p class="hint" style="margin-bottom:8px" id="del-why">Delete this strategy from your inventory. ${activeDeps.length ? 'Stop its deployment first — you can do it right here.' : delBlock ? esc(delBlock) : 'This can’t be undone.'}</p>
+          <details class="strategy-management"><summary>Manage strategy</summary>
+          <section class="panel"><h3>Remove</h3>
+            <p class="hint" style="margin-bottom:8px" id="del-why">${activeDeps.length ? 'Stop its deployments before deleting.' : delBlock ? esc(delBlock) : 'Permanently deletes this strategy.'}</p>
             <div style="display:grid;gap:8px">
               ${activeDeps.length ? `<button class="btn sm danger" id="stop-dep">Stop deployment${activeDeps.length > 1 ? 's' : ''} (${activeDeps.map((d) => bookName(d).toLowerCase()).join(', ')})</button>` : ''}
               <button class="btn sm danger" id="del-strat" ${activeDeps.length || delBlock ? 'aria-disabled="true" aria-describedby="del-why"' : ''}>Delete strategy</button>
             </div><div id="delflash"></div>
-          </section>`)}
+          </section>
+          <section class="panel"><h3>Share</h3>
+            <p class="hint" style="margin-bottom:8px">${restricted ? 'Share a research-only copy using their Tau sign-in email. It keeps the same simulation limits and cannot be deployed.' : 'Use their Tau sign-in email. They keep a permanent copy.'}</p>
+            <form id="share-form" style="display:grid;gap:8px">
+              <input class="input" id="share-email" type="email" autocomplete="off" placeholder="friend@email.com" aria-label="Friend’s email">
+              <button class="btn sm" type="submit">Share strategy</button>
+            </form><div id="shareflash"></div>
+          </section>
+          </details>
         </aside>
       </div>`;
     // A holding past its close reads "Closed, result pending" (not "Settles" a time gone) without a reload.
@@ -1093,7 +964,7 @@ window.TauPage('strategies', (T) => {
             root.querySelector('#sheet-results').innerHTML = equityChart(r.equity, s.dataset && s.dataset.out_of_sample_from, null, { width: chartWidth(), ...cutWords }) +
               `<div class="split"><div><h4>Tested on (in-sample)</h4>${metricRows(r.in_sample)}</div><div><h4>${oosHead}</h4>${metricRows(r.out_of_sample)}</div></div>`;
             root.querySelector('#gates').innerHTML = gatesHtml(r.gates);
-            root.querySelector('#figs').innerHTML = figsFor({ ...r });
+            paintFigs(root.querySelector('#figs'), { ...r });
             wi.querySelector('#wflash').innerHTML = (fee === 1 && slip === 0 && stake === s.stake) ? '' : notice(r.passed ? 'Still passes every gate under these conditions.' : 'Would fail at least one gate under these conditions.', r.passed ? 'good' : 'bad');
           } catch (e) { wi.querySelector('#wflash').innerHTML = notice(e.message, 'bad'); }
           root.querySelector('#sheet-results').style.opacity = '';
@@ -1103,5 +974,5 @@ window.TauPage('strategies', (T) => {
     }
   }
 
-  return {viewStrategies, viewStrategy};
+  return {viewStrategy};
 });

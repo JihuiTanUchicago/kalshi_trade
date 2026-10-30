@@ -54,7 +54,7 @@ def test_the_customer_modules_are_found():
     names = {p.name for p in CUSTOMER_PY}
     assert {"billing.py", "chat.py", "strategies.py", "customer_text.py", "notify.py", "devlog.py"} <= names
     assert "admin.py" not in names
-    assert {"app.js", "app.meridian.js", "app-strategies.js", "page-autopilot.js"} <= {p.name for p in CUSTOMER_JS}
+    assert {"app.js", "app.meridian.js", "app-strategy.js", "page-strategies.js", "page-autopilot.js"} <= {p.name for p in CUSTOMER_JS}
 
 
 def test_no_customer_module_formats_a_zero_padded_id():

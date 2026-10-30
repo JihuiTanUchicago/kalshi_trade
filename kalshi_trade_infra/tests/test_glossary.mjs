@@ -84,7 +84,7 @@ test('the Deploy table and the strategy page carry the new markers in both theme
   assert.match(core, /left out of this record \(\$\{usd\(\+r\.excluded_instant_pnl \|\| 0, true\)\}\)`, 'instantfill'\)/);
   assert.match(core, /left out\$\{\+r\.excluded_instant_pnl \? ` \(\$\{usd\(\+r\.excluded_instant_pnl, true\)\}\)` : ''\}`, 'instantfill'\)\}<\/div>/);  // its per-strategy note
   assert.match(core, /of the count of realistic paper trades toward live\.`, 'instantfill'\)\}<\/div>/);  // a Deploy row's instant-fill note
-  for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) {
+  for (const f of ['app-strategy.js', 'app.meridian-strategy.js']) {  // one strategy's page, each theme's own
     const src = read(f);
     for (const k of ['laterperiod', 'latervoid', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L(?: \\([^)']+\\))?', '${k}'\\)`), `${f}: ${k}`);
   }
