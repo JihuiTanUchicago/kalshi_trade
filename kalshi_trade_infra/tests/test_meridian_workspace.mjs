@@ -50,7 +50,7 @@ import {checkinCadenceCases} from './checkin_cadence_frontend_cases.mjs';
 const require = createRequire(import.meta.url);
 const brokerConnections = require('../app/static/broker-connections.js');
 // What the checks read from the bundle and its page files (bundle_source.mjs).
-const EXPOSE = ['S', 'api', 'PAGES', 'deploymentMonitor', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'render', 'viewExample', 'viewSettings', 'viewBilling', 'viewSystem', 'viewAdmin', 'routes', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'tabEdges', 'viewRun', 'viewResearch', 'viewFunds', 'viewDashboard', 'viewDeploy', 'viewCommunity', 'viewExplore', 'postSnapshot', 'replaceDeploymentContent', 'marketPicker', 'wireMarketPicker', 'hotOpen', 'renderHotRail', 'trackRecordPanel', 'paintDashAp', 'mountTrackRecord', 'apUpdate', 'paymentGate', 'viewMarketDetail'];
+const EXPOSE = ['S', 'api', 'PAGES', 'deploymentMonitor', 'armed', 'apMoveText', 'apPillLabel', 'apIdleLine', 'sinceStrip', 'renderAutopilot', 'refreshAutopilot', 'apLoadChat', 'render', 'viewExample', 'viewSettings', 'viewBilling', 'viewSystem', 'viewAdmin', 'routes', 'equityChart', 'runControls', 'runFeed', 'clearTimers', 'runRow', 'feedMd', 'viewStrategy', 'viewStrategies', 'strategySlip', 'tabEdges', 'viewRun', 'viewResearch', 'viewFunds', 'viewDashboard', 'viewDeploy', 'viewCommunity', 'viewExplore', 'postSnapshot', 'replaceDeploymentContent', 'marketPicker', 'wireMarketPicker', 'hotOpen', 'renderHotRail', 'trackRecordPanel', 'paintDashAp', 'mountTrackRecord', 'apUpdate', 'paymentGate', 'viewMarketDetail', 'rpUnderwater'];
 const source = bundleSource('app.meridian.js', {expose: EXPOSE});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -1336,6 +1336,26 @@ test('Overview paper performance preserves disclosure and focus on polls and red
   f.clearTimers(); plot.clientWidth = 420; resize();
   assert.equal(plot.writes, writes); assert.equal(f.S.timers.length, 0);
   assert.equal(reads, 8); assert.equal(postRequests(f).length, 0);
+});
+
+// Money-pages walk 2026-10-30: with two days of closed P&L the Overview chart's date axis read "Oct 29, Oct 30, Oct 30"
+// (its middle tick fell on the second day's midnight). Each day is named once; three or more days keep the middle tick.
+test('Overview Closed P&L chart names each day once on its date axis', async () => {
+  const label = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString(undefined, {month: 'short', day: 'numeric', timeZone: 'UTC'});
+  let data;
+  const f = frontend({fetchImpl: () => response(data)});
+  const axis = () => f.root.querySelector('#paper-performance svg.chart').querySelectorAll('text')
+    .filter((t) => t.getAttribute('y') === '174').map((t) => t.textContent);
+  for (const [daily, expected] of [
+    [[{d: '2026-10-29', pnl: 1}, {d: '2026-10-30', pnl: 2}], ['2026-10-29', '2026-10-30']],
+    [[{d: '2026-10-28', pnl: 1}, {d: '2026-10-29', pnl: -1}, {d: '2026-10-30', pnl: 2}], ['2026-10-28', '2026-10-29', '2026-10-30']],
+    // Days apart: the middle tick (the 18th at 00:00 UTC) names a day neither end does, so it stays.
+    [[{d: '2026-10-16', pnl: -4}, {d: '2026-10-19', pnl: 2}], ['2026-10-16', '2026-10-18', '2026-10-19']],
+  ]) {
+    data = dashboardData({paper: {daily}});
+    await f.viewDashboard(); f.clearTimers();
+    assert.deepEqual(axis(), expected.map(label));
+  }
 });
 
 test('a late initial or polled Dashboard read cannot repaint the next page or restore chart work', async () => {

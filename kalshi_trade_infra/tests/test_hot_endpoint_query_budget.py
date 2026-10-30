@@ -53,6 +53,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
+import json
 import time
 
 import pytest
@@ -767,3 +768,34 @@ def test_an_unchanged_money_page_poll_says_same_inside_its_budget(production, pa
     assert again.get("same") and sum(LEDGER_SUM in s for s in sent) == 1
     moved, _ = poll(_ledger_rows(top=79, cash=978.9), first["v"])
     assert not moved.get("same") and moved["v"] != first["v"] and moved["paper"]["cash"] == 978.9
+
+
+def test_the_dashboard_sends_open_positions_without_their_owner_or_order_ref_inside_its_budget(production, page_caches):
+    """/api/dashboard's open positions carried user_id and order_ref, which neither bundle nor any page file reads or
+    shows. The answer leaves them out; id (the poll puts each mark back by it) and deployment_id (the page groups
+    positions by it and names their market) stay. Leaving them out reads nothing: the same statements as before."""
+    now = datetime(2026, 10, 25)
+    pos = {"id": 301, "deployment_id": 5, "user_id": 7, "order_ref": "sim:301", "mode": "paper",
+           "ticker": "KXBTC15M-26OCT251215-15", "side": "yes", "qty": 4, "entry_price": Decimal("0.4100"),
+           "entry_fee": Decimal("0.0700"), "market_close_time": now + timedelta(minutes=9), "opened_at": now - timedelta(minutes=4),
+           "status": "open", "exit_price": None, "exit_fee": None, "pnl": None, "close_reason": None, "closed_at": None,
+           "mark_price": Decimal("0.4700"), "mark_ts": now - timedelta(seconds=20), "title": "Fade tails"}
+    log = []
+    out = server.dashboard(_ctx(log, 10.0, extra=dict(_board_rows(), **{"SELECT p.*, s.title FROM app_positions p": [pos]})))
+    rows = out["open_positions"]
+    assert len(rows) == 1
+    for hidden in ("user_id", "order_ref"):
+        assert hidden not in rows[0], hidden
+    assert rows[0]["id"] == 301 and rows[0]["deployment_id"] == 5
+    assert rows[0]["ticker"] == pos["ticker"] and rows[0]["mark_ts"] == pos["mark_ts"] and rows[0]["unrealized"] == 0.17
+    from app.services import page_poll
+    assert set(page_poll.moving(out)["marks"]) == {"301"}  # the poll's marks still key on the position id
+    assert "sim:301" not in json.dumps(out, default=server._json_default)
+    repeats = sorted({s for s in log if log.count(s) > 1})
+    assert not repeats and len(log) <= KEPT_BUDGET["dashboard"][0], (len(log), log)
+    # The same statements as the answer without the position: dropping fields costs no read.
+    book_memo.clear()
+    server._TRACK_RECORD.clear(); server._BACKTEST_CHECKS.clear(); server._ROADS.clear(); server._FAILING.clear()
+    bare = []
+    server.dashboard(_ctx(bare, 10.0, extra=_board_rows()))
+    assert len(log) == len(bare), (len(log), len(bare))

@@ -132,6 +132,9 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
     const at = (iso) => { const d = new Date(iso), today = d.toDateString() === new Date().toDateString();
       return new Intl.DateTimeFormat(undefined, today ? {hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}
         : {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'}).format(d); };
+    // A mark older than the engine's 90s staleness gate also says how long ago (sinceMin's words): these are days old.
+    const aged = (iso) => { const s = (Date.now() - Date.parse(iso)) / 1000;
+      return `${at(iso)}, ${s < 5400 ? Math.round(s / 60) + 'm' : s < 172800 ? Math.round(s / 3600) + 'h' : Math.round(s / 86400) + 'd'} ago`; };
     const unmarked = pos({id: 12, mark_price: null, mark: null, value: null, unrealized: null, mark_ts: null});
     let answer = {deployments: [dep({open_positions: 2})], open_positions: [pos(), unmarked], recent_closed: [], demo_health: null, v: 'b1'};
     const f = frontend({fetchImpl: (path) => {
@@ -144,7 +147,7 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
     const open = f.root.querySelector('#openpos');
     // What a reader hears: Meridian's dash for an unmarked position is aria-hidden, its word read out.
     const cells = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1].replace(/<span aria-hidden="true">[^<]*<\/span>/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
-    assert.deepEqual(cells(), [`+$0.13 as of ${at('2026-10-26T12:00:00Z')}`, 'Unavailable']);
+    assert.deepEqual(cells(), [`+$0.13 as of ${aged('2026-10-26T12:00:00Z')}`, 'Unavailable']);
     // The time is tucked under its figure in one block of the Unrealized cell: as a child of the cell itself, a
     // phone's stacked card set it on a row of its own under the card's labels, one more row a position.
     const tucked = () => [...open.innerHTML.matchAll(/data-lab="Unrealized">(.*?)<\/td>/g)].map((m) => m[1]);
@@ -154,7 +157,7 @@ export function moneyPollCases({name, frontend, stripe = () => ({})}) {
     // Marked again: the figure and its time move together.
     answer = {v: 'b1', same: true, marks: marks(.52, '2026-10-26T12:05:15Z'), unrealized: {1: null}};
     await pollOf(f, '/api/deployments');
-    assert.deepEqual(cells(), [`+$0.41 as of ${at('2026-10-26T12:05:15Z')}`, 'Unavailable']);
+    assert.deepEqual(cells(), [`+$0.41 as of ${aged('2026-10-26T12:05:15Z')}`, 'Unavailable']);
     assert.match(tucked()[0], /^<div class="pos-unreal"><span class="[^"]*">\+\$0\.41<\/span><div class="sub-fig">as of [^<]+<\/div><\/div>$/);
     f.clearTimers();
 
