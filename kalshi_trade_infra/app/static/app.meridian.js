@@ -3383,14 +3383,22 @@
   const exploreNoFeed = (d) => !d.at && !+d.total;
   const EXPLORE_NO_FEED = fig('Market feed', 'Not in yet', { small: 'the market list arrives about once a minute' });
   const exploreEmpty = (title, text) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p><button class="btn sm" type="button" data-xretry>Try again</button></div>`;
+  // Explore's Bitcoin filter (?show=bitcoin, kept with the search and sort): the server keeps the contracts of the
+  // Bitcoin series it reads spot for (btc_spot.BTC_SERIES, as BTC_CONTRACT), so the list pages over Bitcoin alone.
+  const EXPLORE_SHOW = [['all', 'All markets'], ['bitcoin', 'Bitcoin']];
+  const exploreShowChips = (btc) => `<div class="chips xshow" role="group" aria-label="Show">${EXPLORE_SHOW.map(([v, l]) => `<button class="chip" type="button" data-show="${v}" aria-pressed="${btc === (v === 'bitcoin')}">${l}</button>`).join('')}</div>`;
+  const exploreParams = (f) => new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page), ...(f.btc ? { show: 'bitcoin' } : {}) });
+  // A Bitcoin list with nothing in it says so in plain words, with the way back to every market.
+  const exploreNoBtc = (q) => `<div class="empty"><h2>${q ? `No Bitcoin markets match “${esc(q)}”` : 'No Bitcoin markets are open right now'}</h2><p>${q ? 'Try a broader search, or clear it to see every open Bitcoin market.' : 'Kalshi opens new Bitcoin markets through the day, and they show here within about a minute.'}</p><p>${q ? '' : '<button class="btn sm" type="button" data-xretry>Try again</button> '}<button class="btn sm" type="button" data-xall>Show all markets</button></p></div>`;
   async function viewExplore() {
     const q = new URLSearchParams(location.search);
     if (q.get('m')) return viewMarketDetail(q.get('m'));
-    const f = { q: q.get('q') || '', sort: ['v24', 'oi', 'last'].includes(q.get('sort')) ? q.get('sort') : 'v24', page: Math.max(0, +(q.get('page') || 0)) };
+    const f = { q: q.get('q') || '', sort: ['v24', 'oi', 'last'].includes(q.get('sort')) ? q.get('sort') : 'v24', page: Math.max(0, +(q.get('page') || 0)), btc: q.get('show') === 'bitcoin' };
     shell('/explore', `<div class="board-title explore-heading"><h1 class="page">Explore</h1>${pageLede('Every market Tau is tracking right now, across crypto, politics, sports, weather and more, hottest first. Prices refresh each minute.')}
       <div class="section-head filters explore-filters">
         <label class="field xsearch" style="margin:0"><span class="vh">Search markets</span>
           <input class="input" id="xq" type="search" placeholder="Search markets" value="${esc(f.q)}" autocomplete="off"></label>
+        ${exploreShowChips(f.btc)}
         <div class="figures measure" id="xfigs"></div>
       </div></div>`, `<p class="stale-note" id="xstale" role="status"></p><div id="xbody">${loading(240)}</div>`);
     const body = root.querySelector('#xbody'), figs = root.querySelector('#xfigs'), gen = S.gen;
@@ -3399,14 +3407,14 @@
       if (typeof value === 'string' && !value.trim()) return '—';
       return Number.isFinite(+value) ? cents(+value) : '—';
     };
-    const sync = () => history.replaceState(null, '', '/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }));
+    const sync = () => history.replaceState(null, '', '/explore?' + exploreParams(f));
     // How old the prices are, as Tau says it ("Prices updated 2m ago"); past three minutes it says the list is behind.
     // The snapshot's own time is the age's hover: "6m ago" beside a raw "2026-10-28 00:12:19 UTC" said it twice.
     const paintFigs = (d) => {
       if (exploreNoFeed(d)) { paint(figs, '<dl class="explore-counts">' + EXPLORE_NO_FEED + '</dl>'); return; }
       const snapshotAt = d.at ? Date.parse(d.at) : NaN;
       const snapshotOld = !Number.isFinite(snapshotAt) || Date.now() - snapshotAt > 180000;
-      paint(figs, '<dl class="explore-counts">' + fig('In this list', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig('Prices updated', Number.isFinite(snapshotAt) ? `<time class="snapshot-age" datetime="${esc(d.at)}" title="${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}">${sinceMin(d.at)}</time>${snapshotOld ? '<span class="snapshot-behind">Behind: prices normally refresh each minute</span>' : ''}` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>');
+      paint(figs, '<dl class="explore-counts">' + fig('In this list', num(d.shown)) + (d.total !== d.shown ? fig('Tracked', num(d.total)) : '') + (f.btc && !f.q ? fig('Bitcoin markets', num(d.matched)) : f.q || d.matched !== d.shown ? fig('Matching', num(d.matched)) : '') + '</dl><dl class="explore-freshness">' + fig('Prices updated', Number.isFinite(snapshotAt) ? `<time class="snapshot-age" datetime="${esc(d.at)}" title="${esc(new Date(snapshotAt).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'))}">${sinceMin(d.at)}</time>${snapshotOld ? '<span class="snapshot-behind">Behind: prices normally refresh each minute</span>' : ''}` : 'Time unavailable', { cls: 'snapshot-time' + (Number.isFinite(snapshotAt) ? (snapshotOld ? ' snapshot-old' : '') : ' snapshot-unknown') }) + '</dl>');
       figs.querySelector('.snapshot-time').setAttribute('title', Number.isFinite(snapshotAt) ? 'Source snapshot: ' + d.at : 'Source snapshot time unavailable');
     };
     // The list stays current while it shows (EXPLORE_POLL_MS, paused while the tab is hidden, read at once on
@@ -3418,7 +3426,7 @@
     const load = async (cfg) => {
       const mine = ++seq;
       let d;
-      try { d = await api('/api/explore?' + new URLSearchParams({ q: f.q, sort: f.sort, page: String(f.page) }), undefined, cfg); }
+      try { d = await api('/api/explore?' + exploreParams(f), undefined, cfg); }
       catch (e) {
         if (mine !== seq || gen !== S.gen) return;
         if (cfg) { if (shown) paintFigs(shown); throw e; }
@@ -3427,9 +3435,15 @@
       if (mine !== seq || gen !== S.gen) return;
       paintFigs(d);
       if (!d.markets.length) {
-        // No search and no markets is the feed not having arrived yet, not a search that missed.
+        // No search and no markets is the feed not having arrived yet, not a search that missed. With the feed in,
+        // an empty Bitcoin list is no Bitcoin market open, and says so.
         shown = null;
-        if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2></div>`);
+        if (f.btc && !exploreNoFeed(d)) {
+          paint(body, exploreNoBtc(f.q));
+          const again = body.querySelector('[data-xretry]');
+          if (again) again.onclick = () => load();
+          body.querySelector('[data-xall]').onclick = () => setShow(false);
+        } else if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2></div>`);
         else { paint(body, exploreEmpty('No markets to show yet', EXPLORE_WAIT)); body.querySelector('[data-xretry]').onclick = () => load(); }
         return;
       }
@@ -3466,6 +3480,8 @@
       if (sortFocused) Array.from(body.querySelectorAll('[data-sort]')).find(b => b.dataset.sort === sortFocused)?.focus({ preventScroll: true });
     };
     let t; root.querySelector('#xq').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { f.q = e.target.value.trim(); f.page = 0; sync(); load(); }, 220); });
+    const setShow = (btc) => { f.btc = btc; f.page = 0; root.querySelectorAll('[data-show]').forEach((o) => o.setAttribute('aria-pressed', String(btc === (o.dataset.show === 'bitcoin')))); sync(); load(); };
+    root.querySelectorAll('[data-show]').forEach((b) => b.onclick = () => setShow(b.dataset.show === 'bitcoin'));
     await load();
     // The rows' closes ("in 3 min", "closed") are worked out afresh on each poll, so they count down with it.
     poll(load, EXPLORE_POLL_MS, 'xstale');

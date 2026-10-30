@@ -285,6 +285,34 @@ def test_a_list_without_bitcoin_strikes_reads_nothing_and_is_untouched(monkeypat
     assert reads == []
 
 
+def test_explores_bitcoin_filter_keeps_the_bitcoin_series_alone_and_pages_over_them(monkeypatch):
+    """?show=bitcoin keeps the contracts of btc_spot.BTC_SERIES by ticker prefix (an ETH ladder, a game and a series
+    that only starts with KXBTC are left out), before the search and the page; anything else is every market. The
+    whole feed still gives a bucket ladder its width, and no Kalshi call is made (the feed and reads are stubbed)."""
+    _stub(monkeypatch, spot={"at": _now(), "price": 113420.0})
+    feed = _feed("KXNBAGAME-26OCT26MINDEN-MIN", *LADDER[:7], "KXETHD-26OCT2717-T4000", "KXBTCMAXY-26DEC31-T150000")
+    d = _list(monkeypatch, feed, show="bitcoin")
+    assert [m["t"] for m in d["markets"]] == list(LADDER[:7])
+    assert d["matched"] == 7 and d["show"] == "bitcoin"
+    assert d["total"] == 10, "the figures above the list still count every market tracked"
+    assert d["markets"][2]["vs"]["side"] == "inside", "a bucket keeps its ladder's width"
+    # With a search, only Bitcoin contracts that match it.
+    d = _list(monkeypatch, feed, show="bitcoin", q="kxbtc-")
+    assert [m["t"] for m in d["markets"]] == [t for t in LADDER[:7] if t.startswith("KXBTC-")]
+    assert _list(monkeypatch, feed, show="bitcoin", q="minden")["markets"] == []
+    # Every market without it, or with any other value.
+    for query in ({}, {"show": "all"}, {"show": "BITCOIN"}, {"show": "<script>"}):
+        d = _list(monkeypatch, feed, **query)
+        assert d["matched"] == 10 and d["show"] == "all", query
+    # Past the last page of Bitcoin, an empty page, never another market.
+    feed = _feed(*["KXBTCD-26OCT2717-T%d" % (100000 + i) for i in range(45)], "KXNBAGAME-26OCT26MINDEN-MIN")
+    d = _list(monkeypatch, feed, show="bitcoin", page="1")
+    assert d["matched"] == 45 and len(d["markets"]) == 5 and all(m["t"].startswith("KXBTCD-") for m in d["markets"])
+    # With no Bitcoin market in the feed, an empty list for the page to say so.
+    d = _list(monkeypatch, _feed("KXNBAGAME-26OCT26MINDEN-MIN"), show="bitcoin")
+    assert d["markets"] == [] and d["matched"] == 0 and d["total"] == 1
+
+
 def test_a_bucket_alone_in_the_feed_gets_no_distance_and_a_gap_in_its_ladder_doesnt_widen_it(monkeypatch):
     _stub(monkeypatch, spot={"at": _now(), "price": 113420.0})
     assert "vs" not in _list(monkeypatch, _feed("KXBTC-26OCT2717-B113250"))["markets"][0], "its edges aren't known"

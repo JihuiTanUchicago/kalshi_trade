@@ -120,6 +120,11 @@ def explore_list(ctx: Ctx):
         page = 0
     per = 40
     markets = data.get("markets") or []
+    # Explore's Bitcoin filter: the contracts of the Bitcoin series the app reads spot for (btc_spot.BTC_SERIES),
+    # by ticker prefix, before the search narrows them, so it pages over Bitcoin alone.
+    btc = ctx.query.get("show") == "bitcoin"
+    if btc:
+        markets = [m for m in markets if btc_spot.is_btc_contract(m.get("t") or "")]
     if q:
         markets = [m for m in markets
                    if q in " ".join((m.get("ti") or "", m.get("t") or "", m.get("s") or "", _SERIES_NAMES.get(m.get("s") or "", ""))).lower()]
@@ -131,7 +136,7 @@ def explore_list(ctx: Ctx):
     rows, spot = _strike_distances(ctx, [{**{k: v for k, v in m.items() if k != "h"}, "ct": _ticker_close(m.get("t"))}
                                          for m in markets[page * per:(page + 1) * per]], data.get("markets") or [])
     return {"at": data.get("at"), "total": data.get("total"), "shown": data.get("shown"),
-            "matched": matched, "page": page, "per": per, "sort": sort, "markets": rows, **spot}
+            "matched": matched, "page": page, "per": per, "sort": sort, "show": "bitcoin" if btc else "all", "markets": rows, **spot}
 
 
 def explore_hot(ctx: Ctx):

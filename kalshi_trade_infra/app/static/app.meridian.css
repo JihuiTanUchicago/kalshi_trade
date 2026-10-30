@@ -2455,6 +2455,11 @@ body.landing-body .apf { display: none; }
 .explore-filters .input { min-height: 36px; padding: 7px 10px; border-color: var(--rule-2); background: var(--stock-raised); font-size: 14px; }
 /* Its border outranked `.input:focus`, so the search box looked the same tabbed to: it takes the field's focus border. */
 .explore-filters .input:focus { border-color: var(--ink); background: var(--stock); }
+/* All markets / Bitcoin: its own row over the list, drawn as the feed's filter tabs (sentence case, underlined). */
+.explore-filters .xshow { grid-column: 1 / -1; grid-row: 4; gap: 20px; min-width: 0; }
+.explore-filters .xshow .chip { min-height: 32px; padding: 6px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--ink-2); font-family: var(--f-ui); font-size: 13px; line-height: 18px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.explore-filters .xshow .chip:hover { color: var(--ink); border-bottom-color: var(--rule-2); }
+.explore-filters .xshow .chip[aria-pressed="true"] { border-bottom-color: var(--ink); color: var(--ink); }
 .explore-counts { display: flex; grid-column: 2; grid-row: 1; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin: 0; }
 #xfigs .explore-counts > .m { display: flex; align-items: baseline; gap: 6px; margin: 0; padding: 0; border: 0; }
 #xfigs .lab { margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); }
@@ -2604,6 +2609,7 @@ body.landing-body .apf { display: none; }
   .explore-counts { justify-content: flex-end; }
   .explore-filters .xsearch { grid-column: 1 / -1; grid-row: 3; }
   .explore-freshness { grid-column: 1 / -1; grid-row: 4; }
+  .explore-filters .xshow { grid-row: 5; }
 }
 @container explore-register (max-width: 759px) {
   .t-explore, .t-explore tbody { display: block; }
@@ -2645,7 +2651,7 @@ body.landing-body .apf { display: none; }
 }
 @media (hover: none), (pointer: coarse) {
   .other-accounts > summary, .position-details > summary, .recent-settlements > summary, .overview-performance > summary, .monitor-heading > .btn,
-  .dep-monitor .deployment-actions .btn, .dep-monitor .dep-evidence > summary, .feed-filter .chip, .community-compose > summary,
+  .dep-monitor .deployment-actions .btn, .dep-monitor .dep-evidence > summary, .feed-filter .chip, .explore-filters .xshow .chip, .community-compose > summary,
   .post-footer .rx, .post-footer .rx:not(.add), .post-footer .rx.add, .post-footer .thread-link, .active-open, .research-page .research-create > summary, .t-explore th button, .t-explore .xlink a,
   .strategy-summary > summary { min-height: 44px; }
   .t-explore .xlink a { min-width: 44px; opacity: 1; }
