@@ -613,8 +613,8 @@ for (const [bundle, file, js] of [['Tau', 'app.css', 'app.js'], ['Meridian', 'ap
   test(`${bundle}: a deploy hint's link keeps clear of the button or fold next to it, and Research's totals of the first session`, () => {
     assert.ok(px(decl(all, '.btn + .hint:has(a)', 'margin-top', COARSE)) >= 4, 'Deploy on demo over a demo-key hint’s "Funds page"');
     if (bundle === 'Tau') {
-      // "See them on the Deploy page" over "Open … on Kalshi ↗": two hint lines 12px apart (an inline margin), 11px overlap.
-      assert.match(read('app-strategies.js'), /<p class="hint" style="margin-top:12px">Already deployed: /);
+      // "See them on the Deploy page" over "Open this market on Kalshi ↗": two hint lines 12px apart (an inline margin), 11px overlap.
+      assert.match(read('app-strategies.js'), /<p class="hint" style="margin-top:12px">\$\{deployedOn\(s\.deployments\)\} <a href="\/deploy">/);
       assert.ok(12 + px(decl(all, 'p.hint:has(a) + p.hint:has(a)', 'padding-top', COARSE)) >= 26);
     } else {
       assert.ok(px(decl(all, '.hint.on-paper + .deployment-environments', 'margin-top', COARSE)) >= 4, '"See it on Deploy" over Demo & live');

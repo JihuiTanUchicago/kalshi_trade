@@ -37,12 +37,12 @@ export function moneyPagesWalkCases({name, frontend, strategyFrontend, detailStr
       return f.root.querySelector('#dfigs').innerHTML.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
     };
     const both = await figs([dep(1, 'paper', 5.08), dep(2, 'demo', 2.14)]);
-    assert.match(both, /Paper realized, deployments listed below \+\$5\.08 paper money, not real/);
-    assert.match(both, /Demo realized, deployments listed below \+\$2\.14/);
+    assert.match(both, /Paper realized, listed below \+\$5\.08 paper money, not real/);
+    assert.match(both, /Demo realized, listed below \+\$2\.14/);
     // Never one figure across the two books.
     assert.doesNotMatch(both, /\$7\.22/);
     const paper = await figs([dep(1, 'paper', 5.08)]);
-    assert.match(paper, /Realized, deployments listed below \+\$5\.08 paper money, not real/);
+    assert.match(paper, /Realized, listed below \+\$5\.08 paper money, not real/);
     assert.doesNotMatch(paper, /Paper realized/);
   });
 

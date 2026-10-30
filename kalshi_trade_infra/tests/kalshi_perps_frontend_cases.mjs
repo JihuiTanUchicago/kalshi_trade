@@ -546,10 +546,13 @@ export function perpsFrontendCases({name, frontend, detailStrategy, strategyFron
     assert.equal(lines.length, 5, 'paper rows only');
     // Walk 2026-10-27 at 390px: a line began "· 10/20 events". Each "12/30 trades" piece is one unbreakable span
     // and each "·" ends its line: a no-break space before it, a plain space after it.
-    assert.ok(html.includes('Its paper record toward live: <span class="nobr">12/30\u00a0trades</span>\u00a0· <span class="nobr">10/20\u00a0events</span>\u00a0· enough in about 2 days at its pace'), html.join('\n'));
+    // Walk 2026-10-30: "0/20 events" said nothing of what an event is. It reads "separate events", and its hover says why
+    // they count (the events check's own reason): strikes of one event are one bet. The thresholds are the server's.
+    const tip = 'Trades on strikes of one event count as one bet, so the record needs trades from 20+ separate events';
+    assert.ok(html.includes(`Its paper record toward live: <span class="nobr">12/30\u00a0trades</span>\u00a0· <span class="nobr" title="${tip}">10/20\u00a0separate\u00a0events</span>\u00a0· enough in about 2 days at its pace`), html.join('\n'));
     assert.ok(html.every((h) => !/ ·/.test(h)), html.join('\n'));
-    assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · enough in about 2 days at its pace'), lines.join('\n'));
-    assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 events · paused, so not growing'));
+    assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 separate events · enough in about 2 days at its pace'), lines.join('\n'));
+    assert.ok(lines.includes('Its paper record toward live: 12/30 trades · 10/20 separate events · paused, so not growing'));
     assert.ok(lines.includes('Its paper record toward live: trades, events and hours are in; 2 checks left: edge, demo record'));
     assert.ok(lines.includes('Its paper record toward live: every check cleared. Live money only if you deploy it there'));
     // The research clearance in the words the Strategies list uses ("cleared to trade"), never the internal "gatekeeper".

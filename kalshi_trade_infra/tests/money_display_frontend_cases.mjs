@@ -103,7 +103,7 @@ export function moneyDisplayCases({name, frontend, strategyFrontend, detailStrat
 // "Unavailable" in Meridian and a bare "—" in Tau, which said neither. Both now say which: nothing is open, or
 // something is open and has no price to mark it at yet.
 export function unrealizedCellCases({name, frontend, dashboard}) {
-  test(`${name}: an Overview deployment with no unrealized figure says "None open" or "Unavailable", never a bare dash`, async () => {
+  test(`${name}: an Overview deployment with no unrealized figure says "None open" or "Not marked yet", never a bare dash`, async () => {
     const dep = (id, open) => ({id, strategy_id: id, title: 'Book ' + id, market: 'btc15m', mode: 'paper', status: 'running',
       stake: 5, max_positions: 2, realized_pnl: 1, unrealized_pnl: null, closed_trades: 3, open_positions: open, curve: [],
       created_at: '2026-10-25T08:00:00Z'});
@@ -117,15 +117,16 @@ export function unrealizedCellCases({name, frontend, dashboard}) {
     const html = ['#boardbody', '#main', '#deps'].map((sel) => f.root.querySelector(sel)).filter(Boolean).map((el) => el.innerHTML).join('');
     const cells = [...html.matchAll(/(?:data-lab="Unrealized">|class="monitor-unrealized"><dt>[^<]*<\/dt><dd>)([\s\S]*?)<\/(?:td|dd)>/g)]
       .map((m) => m[1].replace(/<[^>]*>/g, '').trim());
-    assert.deepEqual(cells, ['None open', 'Unavailable']);
+    assert.deepEqual(cells, ['None open', 'Not marked yet']);
     if (f.clearTimers) f.clearTimers();
   });
 }
 
 // Deploy's open positions and a market page's "Your positions here" read a bare "—" for Unrealized on a position
 // the engine hadn't priced yet (a phone walk, 2026-10-27): nothing said why, and a screen reader said "dash".
-// Each says Unavailable, as a deployment row and Meridian's dashboard positions do: Tau shows the word (its stacked
-// card has room at 390px), Meridian keeps its dash with the word for screen readers.
+// Each says Not marked yet (walk 2026-10-30: one phrase on every page, where it read "Unavailable", "—", "not marked yet"
+// and "awaiting first mark"), as a deployment row and Meridian's dashboard positions do: Tau shows the words (its stacked
+// card has room at 390px), Meridian keeps its dash with the words for screen readers and on hover.
 export function unmarkedPositionCases({name, frontend}) {
   const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
   const spoken = (h) => h.replace(/<span aria-hidden="true">[^<]*<\/span>/g, '').replace(/<[^>]*>/g, '').trim();
@@ -133,7 +134,7 @@ export function unmarkedPositionCases({name, frontend}) {
   const unmarked = pos({id: 7, deployment_id: 1, mode: 'paper', ticker: 'KXBTC15M-26OCT271615-15', market: 'btc15m'});
   const marked = {...unmarked, id: 8, unrealized: .14, mark_ts: '2026-10-27T15:00:00Z'};
 
-  test(`${name}: Deploy's open position with no mark yet says Unavailable, never a bare dash, and so does its deployment's row`, async () => {
+  test(`${name}: Deploy's open position with no mark yet says Not marked yet, never a bare dash, and so does its deployment's row`, async () => {
     // Meridian's deployment row read "—" too, where Tau's and Meridian's dashboard monitor say why.
     const dep = (id, open, unrealized) => ({id, strategy_id: id, title: 'Drift ' + id, market: 'btc15m', mode: 'paper', status: 'running',
       realized_pnl: 0, closed_trades: 0, open_positions: open, unrealized_pnl: unrealized, created_at: '2026-10-24T08:00:00Z', curve: [],
@@ -144,16 +145,17 @@ export function unmarkedPositionCases({name, frontend}) {
     await f.viewDeploy(); await settle();
     const got = cells(f.root.querySelector('#openpos').innerHTML);
     assert.equal(got.length, 2);
-    assert.equal(spoken(got[0]), 'Unavailable');
+    assert.equal(spoken(got[0]), 'Not marked yet');
+    assert.doesNotMatch(got[0], /Unavailable/);
     assert.match(spoken(got[1]), /^\+\$0\.14/);
     const rows = cells(f.root.querySelector('#deps').innerHTML).map(spoken).sort();
     assert.equal(rows.length, 3);
-    assert.deepEqual(rows.slice(1), ['None open', 'Unavailable']);
+    assert.deepEqual(rows.slice(1), ['None open', 'Not marked yet']);
     assert.match(rows[0], /^\+\$0\.14/);  // '+' sorts first
     if (f.clearTimers) f.clearTimers();
   });
 
-  test(`${name}: a market page's own open position with no mark yet says Unavailable, never a bare dash`, async () => {
+  test(`${name}: a market page's own open position with no mark yet says Not marked yet, never a bare dash`, async () => {
     const page = {ticker: unmarked.ticker, series: 'KXBTC15M', title: 'BTC up or down?', sub: '', status: 'active', yes_bid: '0.55',
       yes_ask: '0.57', last: '0.55', volume_24h: '10', open_interest: '10', close_time: '2026-10-27T16:15:00Z', as_of: '2026-10-27T16:00:00Z',
       rules: 'Resolves Yes if up.', period_min: 1, points: [], mine: {open: [{...unmarked, status: 'open', strategy_id: 1}], closed: []}};
@@ -162,8 +164,9 @@ export function unmarkedPositionCases({name, frontend}) {
     await f.viewExplore(); await settle();
     const got = cells(f.root.innerHTML);
     assert.equal(got.length, 1);
-    assert.equal(spoken(got[0]), 'Unavailable');
-    assert.match(f.root.innerHTML, /awaiting first mark/);
+    assert.equal(spoken(got[0]), 'Not marked yet');
+    assert.match(f.root.innerHTML, /· not marked yet/);
+    assert.doesNotMatch(f.root.innerHTML, /awaiting first mark|Unavailable/);
     if (f.clearTimers) f.clearTimers();
   });
 }

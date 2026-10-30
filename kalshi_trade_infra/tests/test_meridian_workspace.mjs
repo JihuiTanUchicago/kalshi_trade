@@ -984,8 +984,8 @@ test('every trade says why it was entered and why it exited: Overview rows, Depl
 
 test('Deploy realized says it counts only the strategies listed, never summing live with paper', async () => {
   const dep = (id, mode, pnl) => ({...dashboardDeployment(mode), id, strategy_id: id, realized_pnl: pnl});
-  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, deployments listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/],
-    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, deployments listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/]]) {
+  for (const [deployments, re] of [[[dep(1, 'paper', 2)], /Realized, listed below[\s\S]*\+\$2\.00[\s\S]*paper money, not real · after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/],
+    [[dep(1, 'paper', 2), dep(2, 'live', 5)], /Live realized, listed below[\s\S]*\+\$5\.00[\s\S]*real money\u00a0· after Kalshi fees\u00a0· \+\$2\.00 on paper from the deployments listed, counted apart, after Kalshi fees and the <span class="nobr">spread<button[^>]*data-glo="paperfills"[\s\S]*?<\/button><\/span>/]]) {
     const f = frontend({fetchImpl: path => { assert.equal(path, '/api/deployments'); return response({deployments, open_positions: []}); }});
     await f.viewDeploy(); await flush();
     const figs = f.root.querySelector('#dfigs').innerHTML;
@@ -1066,7 +1066,7 @@ test('Overview deployment monitors preserve every mode, status, risk field and u
     assert.ok(monitor.querySelector('.monitor-limits').textContent.startsWith('\u00a0· Max 4 open'), 'a space before the separator, so it never reads "trade· Max"');
     assert.equal(monitor.querySelector('.monitor-limits').textContent.includes('Risk &lt;cap&gt; reached'), d.status !== 'running');
     assert.equal(field('Realized').textContent, d.status === 'running' ? '—' : d.status === 'paused' ? '$0.00' : '−$3.25');
-    assert.equal(field('Unrealized').textContent.trim(), d.status === 'running' ? 'Unavailable' : d.status === 'paused' ? '$0.00' : '−$2.50');
+    assert.equal(field('Unrealized').textContent.trim(), d.status === 'running' ? 'Not marked yet' : d.status === 'paused' ? '$0.00' : '−$2.50');
     assert.equal(monitor.querySelectorAll('.monitor-metrics dt')[1].textContent.includes('(est.)'), d.unrealized_pnl != null && d.open_positions > 0);
     assert.equal(field('Closed').textContent, `${d.closed_trades} / ${d.open_positions}`);
     assert.equal(field('Closed').getAttribute('aria-label'), `${d.closed_trades} closed trades, ${d.open_positions} open positions`);
@@ -1715,7 +1715,7 @@ test('Overview separates open cost and unrealized marks from collapsed realized 
   await f.viewDashboard();
   const history = f.root.querySelector('#recent-settlements'), rows = f.root.querySelectorAll('.open-position');
   assert.equal(history.tag, 'details'); assert.equal(history.open, false); assert.equal(rows.length, 3);
-  const costs = ['$3.50', '$1.00', '$1.50'], marks = ['+$2.50', '—Unavailable', '$0.00'], modes = ['LIVE', 'Demo', 'Paper'];
+  const costs = ['$3.50', '$1.00', '$1.50'], marks = ['+$2.50', '—Not marked yet', '$0.00'], modes = ['LIVE', 'Demo', 'Paper'];
   rows.forEach((row, index) => {
     const cells = row.querySelectorAll('td');
     assert.equal(cells.length, 6);
@@ -1733,9 +1733,11 @@ test('Overview separates open cost and unrealized marks from collapsed realized 
   assert.equal(rows[1].querySelector('.position-side').textContent, 'NO');
   assert.equal(rows[1].querySelector('.position-quantity').textContent, 'Quantity 4');
   assert.equal(rows[1].querySelector('.position-entry').textContent, '25¢');
-  assert.equal(rows[1].querySelector('.unavailable .vh').textContent, 'Unavailable');
-  assert.equal(rows[1].querySelector('.unavailable').getAttribute('title'), 'Unrealized P&amp;L unavailable');
-  assert.equal(rows[1].querySelector('.position-mark-note').textContent, 'Unrealized P&amp;L unavailable');
+  // Walk 2026-10-30: one phrase for a position with no mark yet on every page; the dash keeps the cell compact, its
+  // spoken word and hover say "Not marked yet".
+  assert.equal(rows[1].querySelector('.unavailable .vh').textContent, 'Not marked yet');
+  assert.equal(rows[1].querySelector('.unavailable').getAttribute('title'), 'Not marked yet');
+  assert.equal(rows[1].querySelector('.position-mark-note').textContent, 'Unrealized: not marked yet');
   assert.doesNotMatch(rows[1].innerHTML, /\$199\.00/);
   const closedRow = history.querySelector('.settled-position'), cells = closedRow.querySelectorAll('td');
   assert.equal(cells.length, 5);
@@ -4106,12 +4108,16 @@ test('a passed strategy not yet on paper puts Deploy on paper up top as well, th
     await g.viewStrategy(42); await flush();
     assert.equal(g.root.querySelector('#dep-paper-quick'), null); assert.ok(g.root.querySelector('#dep-paper'));
   }
-  // Already on paper: only the panel's own button, with its second-copy warning and a link to the copy it has.
+  // Already on paper: only the panel's own button, with its second-copy warning, under the panel's View deployments.
+  // Walk 2026-10-30: "It already runs on paper. Deploying it again…" was followed by "It runs on paper. See it on Deploy."
   const on = strategyFrontend(detailStrategy({deployments: [{id: 3, mode: 'paper', status: 'running'}]}), () => response({deployments: [], open_positions: []}));
   await on.viewStrategy(42); await flush();
   assert.equal(on.root.querySelector('#dep-paper-quick'), null); assert.ok(on.root.querySelector('#dep-paper'));
-  assert.match(on.root.querySelector('#main').innerHTML, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
-  assert.match(on.root.querySelector('#main').innerHTML, /<p class="hint on-paper">It runs on paper\. <a href="\/deploy">See it on Deploy<\/a>\.<\/p>/);
+  const onHtml = on.root.querySelector('#main').innerHTML;
+  assert.match(onHtml, /class="hint paper-again">It already runs on paper\. Deploying it again starts a second copy/);
+  assert.doesNotMatch(onHtml, /on-paper|It runs on paper/);
+  assert.equal(onHtml.match(/runs on paper/g).length, 1);
+  assert.match(onHtml, /<a class="btn primary" href="\/deploy">View deployments<\/a>/);
 });
 
 test('strategy page: out-of-sample figures say their span, deployments go by book not row id, and a second paper copy is flagged', async () => {
@@ -4794,7 +4800,7 @@ test('the example Kalshi Key ID never breaks across lines', async () => {
   assert.doesNotMatch(source, /Key ID<\/b> \(like a952bcbe/);
 });
 
-test('a deployed book with nothing open says so instead of "Unavailable"', async () => {
+test('a deployed book with nothing open says so instead of "Not marked yet"', async () => {
   const dep = (id, open) => ({id, strategy_id: id, title: 'Book ' + id, market: 'btc15m', mode: 'paper', status: 'running',
     stake: 5, max_positions: 2, realized_pnl: 1, unrealized_pnl: null, closed_trades: 3, open_positions: open, curve: [], created_at: '2026-10-25T08:00:00Z'});
   const f = frontend({fetchImpl: path => {
@@ -4806,7 +4812,7 @@ test('a deployed book with nothing open says so instead of "Unavailable"', async
   const cells = f.root.querySelectorAll('.monitor-unrealized').map((c) => c.innerHTML);
   assert.equal(cells.length, 2);
   assert.match(cells[0], /<span class="unavailable">None open<\/span>/);
-  assert.match(cells[1], /<span class="unavailable">Unavailable<\/span>/);
+  assert.match(cells[1], /<span class="unavailable">Not marked yet<\/span>/);
 });
 
 test('Meridian CSS: open-positions why line wraps, "Not connected" keeps its small size on phones, ledger notes wrap', () => {

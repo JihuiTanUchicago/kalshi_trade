@@ -132,9 +132,10 @@ export function liveHonestCases({name, frontend, strategyFrontend, detailStrateg
     assert.ok(html.includes(NAME), 'holding and trade name the market');
     assert.ok(html.includes(`<span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">${TICKER}</span></span>`));
     assert.ok(!named(html).includes(TICKER), 'the ticker is never the headline');
-    // The deploy panel's list of its deployments says the same, never "Live (running)".
-    assert.match(html, /Live[^<]{0,4}(\(|\u00a0· )waiting: live trading isn’t open yet/);
-    assert.doesNotMatch(html, /Live[^<]{0,4}(\(|\u00a0· )running/);
+    // The deploy panel's list of its deployments says the same, never "Live (running)" (Tau's line reads "Deployed on
+    // live (waiting: …)").
+    assert.match(html, /[Ll]ive[^<]{0,4}(\(|\u00a0· )waiting: live trading isn’t open yet/);
+    assert.doesNotMatch(html, /[Ll]ive[^<]{0,4}(\(|\u00a0· )running/);
     const ladder = s.root.querySelector('#ladder-body').innerHTML;
     assert.match(ladder, /<span class="mk live">Live<\/span> waiting: live trading isn’t open yet, so it places no orders/);
     assert.doesNotMatch(ladder, /Live<\/span> running|it trades live money/);
