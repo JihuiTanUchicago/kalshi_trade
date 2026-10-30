@@ -315,6 +315,14 @@ def _plural(n: int, one: str, many: str = "") -> str:
     return "{:,} {}".format(n, one if n == 1 else (many or one + "s"))
 
 
+def _road_days(days: float) -> str:
+    """Days until a paper record could be enough for the live check, in the words Deploy's road line
+    uses for the same estimate (roadDays in core.js): halves round up, as JavaScript's Math.round does.
+    Python's round() rounds a half to even, so an estimate of 22.5 days read "about 22 days" here and
+    "about 23 days" on Deploy (walk 2026-10-30)."""
+    return "under a day" if days < 1 else "about a day" if days < 1.5 else "about %d days" % int(days + 0.5)
+
+
 def _autopilot_story(d: Dict) -> List[str]:
     """The autopilot panel's plain-language summary: what it's doing now, why there may be no
     trades yet, and what has to happen before real money. Built only from the status payload
@@ -379,9 +387,8 @@ def _autopilot_story(d: Dict) -> List[str]:
         # "When could this make real money?" is the question behind the panel; answer it with the
         # pace each one actually trades at, and say it only counts if the record is up by then.
         days = float(prog["soonest_days"])
-        when = "about a day" if days < 1.5 else "about %d days" % round(days)
         lines.append("At the pace they trade, the soonest one could have enough for the live check is %s "
-                     "(%s), and only if it’s up by then." % (when, _short_title(prog.get("soonest_title"))))
+                     "(%s), and only if it’s up by then." % (_road_days(days), _short_title(prog.get("soonest_title"))))
     t_line = _tournament_line(d.get("tournament"))
     if t_line:
         lines.append(t_line)
