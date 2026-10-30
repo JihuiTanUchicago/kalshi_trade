@@ -96,7 +96,30 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
     assert.ok(off.includes('[tabindex="-1"]:focus'));
     assert.deepEqual(off.filter((sel) => /focus-visible|button|\.btn|a:focus|summary/.test(sel)), []);
   });
+
+  test(`${bundle}: a field's placeholder meets 4.5:1 on the field, focused or not`, () => {
+    // Placeholders (Funds' amount "500", a key's format, the searches) are text. The browser's own grey,
+    // #757575, was 4.1:1 on Tau's field and under 4.5:1 on either theme's focused field (--stock).
+    const m = css.match(/^input::placeholder, textarea::placeholder \{ color: (var\(--[\w-]+\)|#[0-9A-Fa-f]{6}); opacity: 1; \}$/m);
+    assert.ok(m, 'the placeholder rule sets its own colour at full opacity');
+    const fg = m[1].startsWith('var(') ? m[1].slice(4, -1) : m[1];
+    const field = css.match(/^\.input, input\[type=number\][^{]*\{\s*background: var\((--[\w-]+)\)/m)[1];
+    const focused = css.match(/^\.input:focus, select:focus, input:focus \{[^}]*background: var\((--[\w-]+)\)/m)[1];
+    const low = [field, focused].map((bg) => [bg, ratio(color(fg), color(bg))]).filter(([, r]) => r < 4.5);
+    assert.deepEqual(low.map(([bg, r]) => `${fg} on ${bg} ${r.toFixed(2)}`), []);
+    assert.ok(ratio('#757575', color(focused)) < 4.5, 'the browser default it replaces did fail here');
+  });
 }
+
+test('Tau: the hot rail\'s "See all markets" link, in the line "Updated … · See all markets", is underlined', () => {
+  // --ink on the line's --ink-3 is under the 3:1 a link told apart by colour alone needs (axe link-in-text-block).
+  const tau = read('app.css'), t = tokens(tau);
+  assert.ok(ratio(t['--ink'], t['--ink-3']) < 3);
+  assert.match(tau, /^\.hot-ft a \{[^}]*text-decoration: underline;/m);
+  assert.match(read('app.js'), /<div class="hot-ft">\$\{d && d\.at \? 'Updated '/);
+  // Meridian's footer is the link alone, with no text round it to tell it from.
+  assert.match(read('app.meridian.js'), /<div class="hot-ft"><a href="\/explore">See all markets →<\/a><\/div>/);
+});
 
 test('Meridian: a light chosen agent\'s-choice row keeps the ink ring', () => {
   const css = read('app.meridian.css');

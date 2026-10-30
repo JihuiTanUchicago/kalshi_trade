@@ -21,6 +21,10 @@ window.TauPage('strategies', (T) => {
   // A per-trade net return (net P&L over what the trade cost) as a percent of its stake: the unit the
   // gatekeeper judges and the "What it missed" lines use. It read as cents ("+3.10¢"), which it isn't.
   const rpRet = (v) => (v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(2) + '%');
+  // What if…'s dials say their value in words (aria-valuetext): a screen reader read the stake dial as "5", the
+  // slippage dial as "0" and the fees dial as "1", with no unit, where the page shows "$5", "0.0¢" and "1.0×".
+  const DIAL_SAY = { wf: (v) => `${(+v).toFixed(2).replace(/0$/, '')} times the fees`, ws: (v) => `${(+v).toFixed(1)} cents per fill`, wk: (v) => `$${v} per trade` };
+  const dialSay = (input) => { if (input && DIAL_SAY[input.id]) input.setAttribute('aria-valuetext', DIAL_SAY[input.id](input.value)); };
   // Under the equity chart while its demo-replay line loads (seconds on a cold server): the rest of the
   // page is already drawn, and this says the chart has one more line coming.
   const DEV_PENDING = (win = 'unseen') => `<p class="hint dev-pending" id="dev-pending"><span class="skeleton" aria-hidden="true"></span>Replaying the ${win} window against Kalshi’s demo book…</p>`;
@@ -900,9 +904,9 @@ window.TauPage('strategies', (T) => {
           <section class="panel"><h3>Gates</h3><div id="gates">${gatesHtml(s.gates)}</div></section>
           ${!perpetual && s.status !== 'rejected' ? fold('Sensitivity', `<section class="panel" id="whatif"><h3>Sensitivity</h3>
 
-            <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1"></div>
-            <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0"></div>
-            ${s.stake != null ? `<div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}"></div>` : ''}
+            <div class="dial"><div class="top"><label class="label" for="wf">Fees</label><output id="wfo">1.0×</output></div><input type="range" id="wf" min="0" max="3" step="0.25" value="1" aria-valuetext="${DIAL_SAY.wf(1)}"></div>
+            <div class="dial"><div class="top"><label class="label" for="ws">Slippage per fill</label><output id="wso">0.0¢</output></div><input type="range" id="ws" min="0" max="5" step="0.1" value="0" aria-valuetext="${DIAL_SAY.ws(0)}"></div>
+            ${s.stake != null ? `<div class="dial"><div class="top"><label class="label" for="wk">Stake per trade</label><output id="wko">$${esc(s.stake)}</output></div><input type="range" id="wk" min="1" max="200" step="1" value="${Math.min(200, s.stake)}" aria-valuetext="${esc(DIAL_SAY.wk(Math.min(200, s.stake)))}"></div>` : ''}
             <div id="wflash" aria-live="polite"></div>
           </section>`) : ''}
           <details class="strategy-management"><summary>Manage strategy</summary>
@@ -950,7 +954,7 @@ window.TauPage('strategies', (T) => {
           if (sl) {
             const perFill = Math.max(0, Math.min(5, sl.exit_cents != null ? (sl.entry_cents + sl.exit_cents) / 2 : sl.entry_cents));
             const ws = root.querySelector('#ws'), wso = root.querySelector('#wso'), ab = root.querySelector('#apply-slip');
-            if (ws) { ws.value = perFill; if (wso) wso.textContent = perFill.toFixed(1) + '¢'; }   // pre-fill the knob with the measured number
+            if (ws) { ws.value = perFill; dialSay(ws); if (wso) wso.textContent = perFill.toFixed(1) + '¢'; }   // pre-fill the knob with the measured number
             if (ab && ws) ab.onclick = () => { ws.value = perFill; ws.dispatchEvent(new Event('input')); };
           }
         }
@@ -1074,6 +1078,7 @@ window.TauPage('strategies', (T) => {
         wi.querySelector('#wfo').textContent = fee.toFixed(2).replace(/0$/, '') + '×';
         wi.querySelector('#wso').textContent = slip.toFixed(1) + '¢';
         if (wk) wi.querySelector('#wko').textContent = '$' + stake;
+        ['#wf', '#ws', '#wk'].forEach((sel) => dialSay(wi.querySelector(sel)));
         clearTimeout(t);
         t = setTimeout(async () => {
           const mine = ++seq;

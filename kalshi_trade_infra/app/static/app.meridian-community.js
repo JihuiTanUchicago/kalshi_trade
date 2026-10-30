@@ -70,7 +70,7 @@ window.TauPage('community', (T) => {
   // Existing reactions and an explicit action to open the palette.
   function reactionChips(list) {
     const chips = (list || []).map(rxChip).join('');
-    return chips + `<button class="rx add" data-react-add aria-label="Add a reaction" title="Add a reaction">React</button>`;
+    return chips + `<button class="rx add" data-react-add title="Add a reaction">React</button>`;
   }
   const GROUP_WINDOW = 5 * 60 * 1000;  // consecutive posts by one author within 5 min collapse the header
   // A Slack-style message row: avatar gutter + name/@handle/time header, body, attachments,

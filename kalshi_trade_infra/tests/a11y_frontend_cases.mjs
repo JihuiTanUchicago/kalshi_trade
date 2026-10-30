@@ -18,6 +18,16 @@
 // - The pulse's idle line ends "last move 3m ago", and the chat poll rewrote it each minute, so the live
 //   region said the whole line again once a minute. The minutes tick in a shown line hidden from the
 //   reader; the live words leave them out and change only with the status.
+// A second pass (axe-core 4.11 in Playwright, both themes, 390px and 1280px, every signed-in page plus the
+// autopilot panel and the bell open, 2026-10-30):
+// - Explore's last column (the "Open on Kalshi" links) had an empty <th> named only by aria-label, which a
+//   screen reader's table navigation skips (axe empty-table-header): it holds visually hidden text.
+// - With the panel open on the Dashboard, the panel's region and the Dashboard's autopilot card were both
+//   "Autopilot" (axe landmark-unique): the panel is "Autopilot panel".
+// - What if…'s dials were read as bare numbers ("5", "0", "1") where the page shows "$5", "0.0¢" and "1.0×":
+//   each dial says its value with its unit (aria-valuetext), and again as it moves.
+// - Meridian's "React" button was named "Add a reaction", so a speech user saying "click React" missed it
+//   (axe label-content-name-mismatch): the word it shows is its name, its title the description.
 import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
@@ -263,5 +273,85 @@ export function a11yCases({name, frontend, storageFor, billingPage, cardedBillin
     const msgs = box.querySelector('#apf-messages');
     assert.equal(msgs.tag, 'ol'); assert.equal(msgs.getAttribute('role'), null);
     assert.equal(msgs.getAttribute('aria-live'), 'polite'); assert.equal(msgs.getAttribute('aria-label'), 'Autopilot activity');
+  });
+
+  test(`${name}: every column of Explore's market table has a header a screen reader says, the Kalshi link column too`, async () => {
+    const row = (t, mid) => ({t, s: t.split('-')[0], ti: `Game ${t} winner?`, su: 'Home', bid: +(mid - .01).toFixed(2), ask: +(mid + .01).toFixed(2), v24: 900, oi: 50});
+    const markets = [row('KXA-1', .4), row('KXB-1', .6)];
+    const explore = frontend({fetchImpl: (path) => path.startsWith('/api/explore?')
+      ? response({markets, total: 2, shown: 2, matched: 2, page: 0, per: 40, at: new Date().toISOString()}) : response({})});
+    explore.location.pathname = '/explore'; explore.location.search = '';
+    await explore.viewExplore(); for (let i = 0; i < 6; i++) await flush();
+    const heads = explore.root.querySelectorAll('#xbody thead th');
+    assert.ok(heads.length >= 5, 'the market table is drawn');
+    assert.deepEqual(heads.filter((th) => !th.textContent.trim()).map((th) => th.outerHTML || th.innerHTML), [], 'no header without words');
+    const link = heads.filter((th) => th.querySelector('.vh') && th.querySelector('.vh').textContent === 'Link');
+    assert.equal(link.length, 1, 'the link column says what it holds, off screen');
+    assert.equal(link[0].getAttribute('aria-label'), null);
+    assert.equal(link[0].textContent.trim(), 'Link', 'and shows nothing else');
+    assert.ok(explore.root.querySelector('#xrows a[aria-label="Open on Kalshi"]'), 'its cells are the Open on Kalshi links');
+    explore.clearTimers();
+  });
+
+  test(`${name}: the open autopilot panel's region is named apart from the Dashboard's autopilot card`, async () => {
+    const store = new Map([['tau_ap_open', '1']]);
+    const f = frontend({storage: storageFor(store), fetchImpl: (path) => {
+      if (path.startsWith('/api/dashboard')) return response(dashboard());
+      if (path.startsWith('/api/chat?')) return response({messages: [], agent_busy: false});
+      if (path === '/api/models') return response({models: [], default: ''});
+      return response({});
+    }});
+    f.S.me = {...f.S.me, user: {...(f.S.me && f.S.me.user), id: 7}};
+    await f.viewDashboard(); await flush();
+    const card = f.root.querySelector('#dash-ap');
+    assert.equal(card.getAttribute('aria-label'), 'Autopilot');
+    const box = f.document.createElement('div'); box.id = 'autopilot-float'; f.document.body.appendChild(box);
+    f.renderAutopilot(box, null); await flush(); await flush();
+    assert.equal(box.getAttribute('role'), 'region');
+    assert.equal(box.getAttribute('aria-label'), 'Autopilot panel');
+    assert.notEqual(box.getAttribute('aria-label'), card.getAttribute('aria-label'));
+    assert.doesNotMatch(source, /box\.setAttribute\('aria-label', 'Autopilot'\)/, 'no copy of the panel keeps the card\'s name');
+    f.clearTimers();
+  });
+
+  test(`${name}: What if…'s dials say their value with its unit, and again as they move`, async () => {
+    const s = strategyFrontend(detailStrategy(), () => response({in_sample: {}, out_of_sample: {}, equity: [], gates: [], passed: true}));
+    await s.viewStrategy(42); await flush();
+    const wi = s.root.querySelector('#whatif');
+    const say = (id) => wi.querySelector(id).getAttribute('aria-valuetext');
+    assert.equal(say('#wf'), '1.0 times the fees');
+    assert.equal(say('#ws'), '0.0 cents per fill');
+    assert.equal(say('#wk'), '$5 per trade');
+    wi.querySelector('#wf').value = '1.25'; wi.querySelector('#ws').value = '0.5'; wi.querySelector('#wk').value = '40';
+    wi.querySelector('#wk').oninput();
+    assert.equal(say('#wf'), '1.25 times the fees');
+    assert.equal(say('#ws'), '0.5 cents per fill');
+    assert.equal(say('#wk'), '$40 per trade');
+    // The shown figures are unchanged.
+    assert.equal(wi.querySelector('#wfo').textContent, '1.25×');
+    assert.equal(wi.querySelector('#wso').textContent, '0.5¢');
+    assert.equal(wi.querySelector('#wko').textContent, '$40');
+    s.clearTimers();
+  });
+
+  test(`${name}: Community's add-a-reaction button is named by the words it shows`, async () => {
+    const post = {id: 12, body: 'Post 12', author: 'Bob', username: 'bob', created_at: '2026-10-17T10:00:00Z', mine: false, comments: 1, reactions: []};
+    const f = frontend({fetchImpl: (path) => {
+      if (path === '/api/strategies') return response({strategies: []});
+      if (path.startsWith('/api/community')) return response({posts: [post]});
+      return response({});
+    }});
+    f.location.pathname = '/community';
+    await f.viewCommunity(); for (let i = 0; i < 4; i++) await flush();
+    const add = f.root.querySelector('[data-react-add]');
+    assert.ok(add, 'the post has its add-a-reaction button');
+    const label = add.getAttribute('aria-label'), shown = add.textContent.replace(/\+/g, '').trim();
+    // Meridian shows the word "React"; Tau shows an icon with "+", named by its aria-label.
+    // As words: "Add a reaction" holds the letters of "React" but not the word a speech user says.
+    const word = new RegExp(`(^|\\W)${shown.replace(/[^\w ]/g, '')}(\\W|$)`, 'i');
+    if (shown) assert.ok(label == null || word.test(label), `the name "${label}" holds the shown word "${shown}"`);
+    else assert.equal(label, 'Add a reaction');
+    if (shown) assert.equal(add.getAttribute('title'), 'Add a reaction', 'what it does is its description');
+    f.clearTimers();
   });
 }
