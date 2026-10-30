@@ -123,7 +123,7 @@ export function pageFileCases({name, frontend, prefix, pagesKey, storageFor}) {
     assert.equal(head.length, 0, 'nothing before the page is idle');
     f.elapse(3000);
     assert.deepEqual(head.map((l) => [l.tag, l.rel, l.href]), [
-      ['link', 'prefetch', `/static/${prefix}research.js?v=111aaa`], ['link', 'prefetch', `/static/${prefix}funds.js?v=333ccc`]]);
+      ['link', 'prefetch', '/static/page-research.js?v=111aaa'], ['link', 'prefetch', `/static/${prefix}funds.js?v=333ccc`]]);  // research: both themes' one file
     await f.render(); await settle(); f.elapse(3000);
     assert.equal(head.length, 2, 'once a load');
   });

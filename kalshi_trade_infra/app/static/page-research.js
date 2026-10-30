@@ -1,15 +1,21 @@
-/* Meridian's Research pages: the session list and a session's page.
-   Fetched on first use (pageLoad in app.meridian.js), which hands this function what the
-   bundle shares with its page files (shared()); the router calls the views it returns. */
+/* The Research pages, the session list and a session's page, in both themes.
+   Fetched on first use (pageLoad in app.js or app.meridian.js), which hands this function what the
+   bundle shares with its page files (shared()); the router calls the views it returns.
+   What one theme draws and the other doesn't goes by the bundle's theme (shared(): theme). */
 window.TauPage('research', (T) => {
   'use strict';
   const {
-    alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, esc, EXAMPLE_NOTE, exampleLine,
+    alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
     markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
-    runWaitLine, S, SEP, sessionNo, sessionTitle, shell, strategySlip, strategyTable, tzName, usd, waitSpan, when,
+    runWaitLine, S, SEP, sessionNo, sessionTitle, shell, strategySlip, strategyTable, theme, tzName, usd, waitSpan, when,
     whyFailedHtml, wireMarketPicker
   } = T;
+  // Each theme lays the pages out its own way. Tau's list is cards under the form, a line of words and figures over
+  // them; its session page lists the ideas tested above the log, which ends on a live foot. Meridian's list leads
+  // with the session at work and a table of the rest, the form folded under New session; its session page lists the
+  // strategies as table rows and folds the log and the research progress once the session is done.
+  const tau = theme === 'tau';
 
   // ---------- research ----------
   // The RSI loop made legible on the index: the engine rewrites its own search policy and keeps
@@ -25,10 +31,12 @@ window.TauPage('research', (T) => {
       ? `<p>The engine <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
          ${pol.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(pol.summary)}</p>` : ''}
          <p class="rsi-last">Generalization score ${delta}${pol.evolved_at ? `${SEP}adopted ` + when(pol.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can’t overfit)</span></p>`
+      : tau ? `<p>After each cycle the engine <b>tries new ways of choosing which ideas to test</b> and keeps one only if it would have found more real winners in your own history — scored over shuffled orderings, so it can’t overfit. It gets better the more you run it.</p>`
       : `<p>New search policies are scored against the current policy over shuffled history. Only an improvement is adopted.</p>`;
-    // Demoted to a compact, collapsible line so the research page leads with the form, not panels.
-    const expanded = !!host.querySelector('details[open]');
-    const focused = !!host.querySelector('details > summary:focus');
+    // Demoted to a compact, collapsible line so the research page leads with the form, not panels. Meridian's keeps
+    // a reader's open or close, and the focus on it, through a repaint; Tau's repaints only when the policy changes.
+    const expanded = !tau && !!host.querySelector('details[open]');
+    const focused = !tau && !!host.querySelector('details > summary:focus');
     paint(host, `<details class="rsidisc"${expanded ? ' open' : ''}>
       <summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">Self-improving research engine</span>${tag}${pol.evolved && delta ? `<span class="rsidisc-delta">${delta}</span>` : ''}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
       <div class="rsidisc-body">${body}</div>
@@ -146,7 +154,8 @@ window.TauPage('research', (T) => {
   function pipelineFigure() {
     const gates = ['Bootstrap CI', 'PSR', `DSR${SEP}deflated by trial count`, 'Placebo / null', 'LORD++ FDR budget', 'Purged walk-forward', 'Benjamini–Hochberg'];
     return `<details class="pipefig">
-      <summary class="pipecap"><span class="pipecap-t">Research process</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>
+      ${tau ? `<summary class="pipecap"><b>Figure 1</b> <span class="pipecap-t">The Tau research pipeline</span><span class="pipecap-hint">how your idea becomes a deployable, evidence-backed strategy</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>`
+        : `<summary class="pipecap"><span class="pipecap-t">Research process</span><span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary>`}
       <div class="flow">
         ${fstage('Propose', [
           fnode('Idea', 'Your hypothesis, in a sentence.', { cls: 'node-in' }),
@@ -254,9 +263,9 @@ window.TauPage('research', (T) => {
     // "(access pending)", four greyed-out rows above the default.
     const modelOpts = (mdl.models || []).filter((m) => m.available !== false).concat((mdl.models || []).filter((m) => m.available === false))
       .map((m) => `<option value="${esc(m.key)}"${m.key === mdl.default ? ' selected' : ''}${m.available === false ? ' disabled' : ''}>${esc(m.label)}${m.available === false ? ' (coming soon)' : ''}</option>`).join('');
-    shell('/research', '', `
-      <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}${S.me.user ? `<p class="research-ap-on" data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>Autopilot is on: the sessions it starts are listed below with an Autopilot tag. You can still start a session of your own.</p>` : ''}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose"><form class="panel dispatch" id="dispatch">
-
+    // The form is one in both themes but for Tau's heading over it, the demo link's words and Start's icon.
+    const dispatchHtml = `<form class="panel dispatch" id="dispatch">
+${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         ${me.needs_card ? `<div class="notice" role="status">${ICON.warn}<span>Add a payment method to start researching. Your $${me.free_bonus} in free credits unlock the moment a card is on file — you won’t be charged until they run out. <a href="/billing">Add a card →</a></span></div>` : ''}
         ${(!me.needs_card && me.billing_enabled && me.credit_balance < me.min_run_balance) ? lowNote('') : ''}
         <label class="field"><span>Describe your idea</span>
@@ -275,16 +284,36 @@ window.TauPage('research', (T) => {
         </fieldset>
         </div></details>
         <div class="dispatch-go">
-          <a class="chip ex" href="/example" data-ex-open title="Opens the finished example session; nothing runs">See the demo session</a>
+          <a class="chip ex" href="/example" data-ex-open title="Opens the finished example session; nothing runs">${tau ? "See the demo — Todd's random walk" : 'See the demo session'}</a>
           <button type="button" class="linkish ex-run" data-ex="${esc(DEMO_PROMPT)}">or run it yourself</button>
-          <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>Start session</button>
+          <button class="btn primary go" type="submit" ${me.needs_card ? 'aria-disabled="true"' : ''}>${tau ? ICON.spark2 : ''}Start session</button>
         </div>
         <p class="hint ex-cost" id="ex-cost" hidden></p>
         <p class="hint go-cost" id="rcost" hidden></p>
         <div id="dflash"></div>
         <p class="hint" id="rf-hint">A session takes a few minutes and keeps running if you leave this page.</p>
-      </form>${pipelineFigure()}</div></details><section class="research-history sect"><div class="sect-head research-archive-heading"><h2>Recent sessions <span id="rcount"></span></h2><div class="rengine" id="rengine"><section class="research-total" aria-label="All sessions, including active"><h3>All sessions</h3><dl class="figures measure" id="rfigs"></dl><dl class="figures measure research-status" id="research-status"></dl><p class="stale-note" id="runs-stale" role="status"></p></section></div></div>
+      </form>`;
+    const apLines = `${S.me.user && !S.me.user.autopilot ? `<p class="research-ap">Rather not write ideas yourself? <button type="button" data-research-ap>Turn on autopilot</button> and it picks ideas and researches them on its own, on paper.</p>` : ''}${S.me.user ? `<p class="research-ap-on" data-ap-next${S.me.user.autopilot ? '' : ' hidden'}>Autopilot is on: the sessions it starts are listed below with an Autopilot tag. You can still start a session of your own.</p>` : ''}`;
+    // Tau's page opens on the form, its figures and the sessions under it; Meridian's on the session at work, the
+    // form folded under New session (open from ?new=1) and a table of the rest.
+    if (tau) {
+      shell('/research', boardTitle('Research', 'A self-improving research engine for Kalshi markets \u2014 describe an idea, it writes strategies and tests each on data it never saw.'), `
+      ${apLines}
+      <div id="rexample"></div>
+      ${dispatchHtml}
+      <div class="rengine" id="rengine">
+        <div class="statusline" id="rstatus"><p class="said"></p></div>
+        <dl class="figures measure" id="rfigs"></dl><p class="stale-note" id="runs-stale" role="status"></p>
+        <div id="rsimo"></div>
+      </div>
+      ${pipelineFigure()}
+      <section class="sect"><div class="sect-head"><h2>Your sessions</h2><p id="rcount"></p></div>
+        <div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section>`);
+    } else {
+      shell('/research', '', `
+      <div class="research-page"><h1 class="page">Research</h1><p class="lede research-lede">Describe an idea and a session turns it into strategies, then tests each on data it never saw. The ones that pass can trade on paper.</p>${apLines}<div id="rexample"></div><div class="research-work"><div id="active-research"></div><div id="rsimo"></div></div><details class="research-create" id="research-create"${new URLSearchParams(location.search).get('new') === '1' ? ' open' : ''}><summary class="btn primary">New session</summary><div class="research-compose">${dispatchHtml}${pipelineFigure()}</div></details><section class="research-history sect"><div class="sect-head research-archive-heading"><h2>Recent sessions <span id="rcount"></span></h2><div class="rengine" id="rengine"><section class="research-total" aria-label="All sessions, including active"><h3>All sessions</h3><dl class="figures measure" id="rfigs"></dl><dl class="figures measure research-status" id="research-status"></dl><p class="stale-note" id="runs-stale" role="status"></p></section></div></div>
         <div class="run-columns" aria-hidden="true"><span>Hypothesis / session</span><span>Market</span><span>Created</span><span>Outcome</span></div><div id="flash"></div><div class="runs" id="runs">${loading(70)}${loading(70)}</div></section></div>`);
+    }
     const form = root.querySelector('#dispatch');
     wireMarketPicker(form);
     const pickMkt = wantRow && [...form.querySelectorAll('input[name=market]')].find((r) => r.value === wantMkt);
@@ -413,26 +442,46 @@ window.TauPage('research', (T) => {
       // Held back) is counted apart (`not_cleared`), as each session row and the Strategies list count it.
       const passed = d.totals ? d.totals.passed : d.runs.reduce((a, r) => a + runPassed(r).ok, 0);
       const fell = d.totals ? +d.totals.not_cleared || 0 : d.runs.reduce((a, r) => a + runPassed(r).fell, 0);
-      // A paused session holds one of the two session slots but isn't running: it says paused.
+      const fellWords = `more passed but ${fell === 1 ? 'wasn’t' : 'weren’t'} cleared to trade`;
+      // A paused session holds one of the two session slots but isn't researching: it says paused.
       const running = d.counts.research_running, queued = d.counts.research_queued, paused = d.counts.research_paused || 0;
-      paint(root.querySelector('#research-status'), fig('Running', num(running)) + (paused ? fig('Paused', num(paused)) : '') + fig('Queued', num(queued)));
-      const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested, all time` : 'No strategies tested';
-      // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
-      // each says its window.
-      paint(rfigs, fig(gl('Passed', 'gate'), num(passed), { small: [ALL_TIME, fell ? `${num(fell)} more passed but ${fell === 1 ? 'wasn’t' : 'weren’t'} cleared to trade` : ''].filter(Boolean).join(SEP) }) + fig('Tested', num(tried), { small: ALL_TIME }));
-      if (rfigs.getAttribute('title') !== rtitle) rfigs.setAttribute('title', rtitle);
+      // Tau says the counts in a line of words over its figures; Meridian sets out all time and now as two rows of figures.
+      if (tau) {
+        // The live count and the all-time totals are two sentences: "1 agent researching now — all time, 13 ideas
+        // tested" set "now" against "all time" in one breath.
+        const said = running || paused
+          ? `${[running ? `<em>${num(running)}</em> agent${running > 1 ? 's' : ''} researching now` : '', paused ? `<em>${num(paused)}</em> paused` : '', queued ? `<em>${num(queued)}</em> queued` : ''].filter(Boolean).join(SEP)}. All time: <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} tested${SEP}<em>${num(passed)}</em> through every gate${fell ? `${SEP}<em>${num(fell)}</em> not cleared` : ''}.`
+          : tried
+            ? `Your engine has tested <em>${num(tried)}</em> idea${+tried === 1 ? '' : 's'} and kept <em>${num(passed)}</em> that beat every gate${fell ? ` (<em>${num(fell)}</em> ${fellWords})` : ''}. ${S.me.user && S.me.user.autopilot ? 'Autopilot starts its next run on its own; <a href="#dispatch">add an idea</a> to steer it.' : '<a href="#dispatch">Seed another idea</a> to keep hunting.'}`
+            // Nothing tested yet: it repeated the page's subtitle word for word ("describe an idea, it writes strategies
+            // and tests each on data it never saw"), under a form that already asks for the idea.
+            : `Nothing tested yet. <a href="#dispatch">Describe an idea</a> to start your first session.`;
+        paint(root.querySelector('#rstatus .said'), said);
+        paint(root.querySelector('#rfigs'), fig('Researching now', num(running), { small: paused ? `${num(paused)} paused` : '' }) + fig('Queued', num(queued)) +
+          // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
+          // each says its window.
+          fig('Ideas tested', num(tried), { small: ALL_TIME }) + fig(gl('Passed every gate', 'gate'), num(passed), { small: [ALL_TIME, tried ? `${pct(passed / tried, false)} of ideas tested` : '', fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }));
+      } else {
+        paint(root.querySelector('#research-status'), fig('Running', num(running)) + (paused ? fig('Paused', num(paused)) : '') + fig('Queued', num(queued)));
+        const rfigs = root.querySelector('#rfigs'), rtitle = tried ? `${pct(passed / tried, false)} of ${num(tried)} tested, all time` : 'No strategies tested';
+        // All time, every session (the server's totals), while the autopilot panel's figures are its last 7 days:
+        // each says its window.
+        paint(rfigs, fig(gl('Passed', 'gate'), num(passed), { small: [ALL_TIME, fell ? `${num(fell)} ${fellWords}` : ''].filter(Boolean).join(SEP) }) + fig('Tested', num(tried), { small: ALL_TIME }));
+        if (rfigs.getAttribute('title') !== rtitle) rfigs.setAttribute('title', rtitle);
+      }
       renderResearchLoop(root.querySelector('#rsimo'), d.policy, tried);
       // The card's "Spent so far" names its credits, as the session rows and the session page do, and keeps the
       // amount whole: a bare "$1.84" in this row of counts read as a result.
-      const active = d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused');
-      paint(root.querySelector('#active-research'), active ? `<section class="active-research active-${esc(active.status)}">
+      const active = !tau && (d.runs.find((r) => r.status === 'running') || d.runs.find((r) => r.status === 'queued') || d.runs.find((r) => r.status === 'paused'));
+      if (!tau) paint(root.querySelector('#active-research'), active ? `<section class="active-research active-${esc(active.status)}">
         <div class="active-head"><h2 class="active-prompt" title="${esc(sessionTitle(active))}">${esc(sessionTitle(active))}</h2></div>
         <div class="active-meta"><div class="active-session"><span class="active-state">${runLate(active) ? lateLabel(runLate(active)) : active.status === 'paused' ? 'Paused' : active.status === 'queued' ? 'Queued' : 'Researching'}</span>${sessionNo(active) ? `<b>${sessionNo(active)}</b>` : ''}${runTag(active)}</div><span>${esc(marketShort(active.market))}</span>${active.started_at ? `<span>Started ${when(active.started_at)}</span>` : ''}</div>
         <aside class="active-aside" aria-label="Session progress"><a class="active-open btn primary" href="/research/${active.id}">Open session <span aria-hidden="true">→</span></a><dl class="active-foot"><div><dt>Tested</dt><dd>${num(active.hypotheses_tried || 0)}</dd></div><div><dt>Passed</dt><dd>${num(runPassed(active).ok)}</dd></div>${runPassed(active).fell ? `<div><dt>Not cleared</dt><dd>${num(runPassed(active).fell)}</dd></div>` : ''}${active.spent_usd != null ? `<div><dt>Spent so far</dt><dd>${+active.spent_usd > 0 ? `<span class="nobr">${spentSoFar(active.spent_usd)}</span>${CRED}` : spentSoFar(active.spent_usd)}</dd></div>` : ''}</dl></aside>
       </section>` : '');
+      // Meridian lists every session but that one; Tau lists them all.
       const history = active ? d.runs.filter((r) => r.id !== active.id) : d.runs;
       // The seeded example is listed but isn't the user's: it doesn't count as a session of theirs.
-      const own = history.filter((r) => !r.example).length;
+      const own = history.filter((r) => !r.example).length, examples = history.length - own;
       const rex = root.querySelector('#rexample'), exHtml = exampleLine(d.runs);
       if (rex && rex.dataset.h !== exHtml) { rex.dataset.h = exHtml; rex.innerHTML = exHtml; }
       const exRun = d.runs.find((r) => r.example), exOpen = root.querySelector('[data-ex-open]');
@@ -441,14 +490,20 @@ window.TauPage('research', (T) => {
       // line is up top) it stood alone beside Start and read as a fragment.
       const exRunBtn = root.querySelector('button[data-ex]');
       if (exRunBtn) { const t = exOpen && !exOpen.hidden ? 'or run it yourself' : 'Run the demo idea yourself'; if (exRunBtn.textContent !== t) exRunBtn.textContent = t; }
-      // The heading counts what it lists: "Recent sessions 1" sat over two rows, the example one of them. The user's
-      // own count stays bare and the example is named apart ("1 · 1 example"), as Tau's "1 session · 1 example".
-      const examples = history.length - own;
-      paint(root.querySelector('#rcount'), [own ? String(own) : '', examples ? `${examples} example${examples > 1 ? 's' : ''}` : ''].filter(Boolean).join(SEP));
-      // The newest of all (the active one when one runs: then no older row offers Add credits).
+      if (tau) {
+        // Phones: progress before the form, unless they came here to start one ("Try another idea", ?new=1).
+        const mainEl = root.querySelector('#main'); if (mainEl) mainEl.classList.toggle('runs-first', own > 0 && !/[?&]new=1\b/.test(location.search));
+        paint(root.querySelector('#rcount'), esc([own ? `${own} session${own > 1 ? 's' : ''}` : '', examples ? `${examples} example` : ''].filter(Boolean).join(SEP)));
+      } else {
+        // The heading counts what it lists: "Recent sessions 1" sat over two rows, the example one of them. The user's
+        // own count stays bare and the example is named apart ("1 · 1 example"), as Tau's "1 session · 1 example".
+        paint(root.querySelector('#rcount'), [own ? String(own) : '', examples ? `${examples} example${examples > 1 ? 's' : ''}` : ''].filter(Boolean).join(SEP));
+      }
+      // The newest of all (on Meridian, the one at work when one runs: then no older row offers Add credits).
       const newest = d.runs.find((r) => !r.example);
-      paintRows(root.querySelector('#runs'), history.map((r) => [r.id, runRow(r, r === newest)]),
-        `<div class="empty"><h3>${active ? 'No earlier sessions' : 'No sessions yet'}</h3></div>`);
+      paintRows(root.querySelector('#runs'), history.map((r) => [r.id, runRow(r, r === newest)]), tau
+        ? `<div class="empty"><h3>No sessions yet</h3><p>Describe an idea above. The agent will turn it into several strategies, test each one on data it never saw, and mark each Passed or Void.</p></div>`
+        : `<div class="empty"><h3>${active ? 'No earlier sessions' : 'No sessions yet'}</h3></div>`);
     };
     await load();
     poll(load, 5000, 'runs-stale');
@@ -469,11 +524,13 @@ window.TauPage('research', (T) => {
   const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
   // It names the credits it came from, as the session page does ("from your credits"): a bare "Cost: $3.12" sat
   // in a list a reader could take for a loss.
-  // The unit is its own span, so the 120px Market column breaks before it and keeps "Cost: $3.12" whole (.run-cred).
-  const CRED = '<span class="run-cred"> in\u00a0credits</span>';
+  // On Meridian the unit is its own span, so the 120px Market column breaks before it and keeps "Cost: $3.12" whole
+  // (.run-cred).
+  const CRED = '<span class="run-cred"> in credits</span>';
+  const runCred = tau ? ' in credits' : CRED;
   // A finished session that spent nothing says "Cost: none" (final, so not "none yet"), in the words a live one
   // uses ("Spent so far: none yet"): "Cost: $0.00 in credits" read as a charge. Display only.
-  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'none yet')}${+r.spent_usd > 0 ? CRED : ''}` : `Cost: ${spentSoFar(r.spent_usd, 'none')}${+r.spent_usd > 0 ? CRED : ''}`;
+  const runSpent = (r) => r.spent_usd == null ? '' : runLive(r) ? `Spent so far: ${spentSoFar(r.spent_usd, 'none yet')}${+r.spent_usd > 0 ? runCred : ''}` : `Cost: ${spentSoFar(r.spent_usd, 'none')}${+r.spent_usd > 0 ? runCred : ''}`;
   // A queued or running session past the reaper's limit (the server's run.wait), its seconds moved on by
   // the time since that answer: the list counts a silent session out of "Running", so its row says
   // "Silent 25 min" as the run page does, not "Researching" beside "Running 0".
@@ -483,8 +540,8 @@ window.TauPage('research', (T) => {
     if (w.got == null) w.got = Date.now();
     return { ...w, seconds: (+w.seconds || 0) + Math.round((Date.now() - w.got) / 1000) };
   };
-  // A queued session is "Queued" in every place it shows (row, Status, loop badge), overdue or not: its Status
-  // said "Waiting" beside a badge that said "Queued".
+  // A queued session is "Queued" in every place it shows (card or row, Status, loop badge, Tau's log foot), overdue
+  // or not: its Status said "Waiting" beside a badge and a foot that said "Queued".
   const lateLabel = (w) => (w.state === 'queued' ? 'Queued ' : 'Silent ') + waitSpan(w.seconds);
   // Why a finished session stopped, from the server (services.run_stop). A run-until-stopped session
   // that used up the credits ends "succeeded" and read like one that finished; a cancelled or failed
@@ -500,38 +557,77 @@ window.TauPage('research', (T) => {
     const all = +r.strategies_passed || 0, fell = Math.min(all, +r.not_cleared || 0);
     return { ok: all - fell, fell };
   };
-  // `newest`: the user's newest session. When it ran out of credits its row offers Add credits, under
-  // the row (a link can't sit inside the row's own link); older ones only say so.
+  // The most of a session's title its card shows: three lines of the 15px title at the card's narrowest.
+  const RUN_TITLE_MAX = 80;
+  // Tau's session is a card: its title (cut at a word's end), a line of its market, cost or error, and its state
+  // and age at its foot. `late`: runLate(r).
+  function runCard(r, band, late) {
+    const why = RUN_STOP[r.stop_reason] || '', { ok, fell } = runPassed(r);
+    // Its own item in the state's wrapping row: a bare ", 1 not cleared" became a line of its own that
+    // began with the comma, and "0 of 2 passed, 1 not cleared" read as if nothing had passed. It says the
+    // uncleared ones passed too, as the headline's "2 more passed but weren't cleared to trade" does, in
+    // words short enough for one line of a card beside the hot rail ("1 more passed but not cleared" took two).
+    // The "·" before it ends the item ahead (kept whole with it): when the item wrapped, its line began "· +1 passed".
+    const unclear = (ahead) => fell ? `<span class="nobr">${ahead}\u00a0\u00b7</span><span class="run-fell">+${num(fell)} passed, not cleared</span>` : ahead;
+    const explored = `Explored ${num(r.hypotheses_tried)} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}`;
+    const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
+      : r.status === 'queued' ? 'Queued<span class="working" aria-label="in process"></span>'
+      : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${num(ok)} of ${num(r.hypotheses_tried)} passed</span>`)}`
+      : r.status === 'stopped' ? (ok ? `${explored}${SEP}${unclear(`<span class="gain">${num(ok)} passed</span>`)}` : unclear(explored))
+      : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
+      : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
+    // A long idea is cut at a word's end (clipWords), short enough for the card's three lines at its narrowest
+    // (about 240px a line): the line clamp alone cut it mid-word ("when the spot pri…"). Hover shows it whole.
+    const title = sessionTitle(r);
+    // The line under the title names the market only when the title doesn't: a session with no idea is titled
+    // by its angle and market ("Session · BTC 15-min up/down", sessionTitle), and the line repeated the market
+    // under it, as the session page's line did.
+    const named = r.title || (r.prompt && r.prompt.trim());
+    const meta = [named ? esc(marketShort(r.market)) : '', r.example ? EXAMPLE_NOTE : r.spent_usd != null ? runSpent(r) : '',
+      r.error ? esc(r.error) : ''].filter(Boolean).join(SEP);
+    return `<a class="run-card ${band}" href="/research/${r.id}">
+      <span class="run-title"><b title="${esc(title)}">${esc(clipWords(title, RUN_TITLE_MAX))}</b>${runTag(r)}</span>
+      <span class="run-meta">${meta}</span>
+      <span class="run-foot"><span class="run-state">${state}</span><span class="run-when">${when(r.created_at)}</span></span></a>`;
+  }
+  // Meridian's session is a row of the table under Recent sessions: its title, number, market and cost, created,
+  // and outcome, each in its column.
   // Its market, then what it cost: in the desktop Market column the cost takes its own line, whole ("Cost:" ended
   // one line and "$0.06" began the next), and the example's note sits under its title, where a session's number
   // goes, instead of cut to "An example Tau ran f…" in that 120px column.
-  function runRow(r, newest) {
+  function runTableRow(r, band, late) {
     const why = RUN_STOP[r.stop_reason] || '', { ok, fell } = runPassed(r);
     // A `stopped` session (interrupted, or a market with nothing to research yet) reads like a
     // finished one: it fell through to a red "Failed". The uncleared passes are their own line, outside the
     // green ratio: "0/2 passed, 1 not" broke before "cleared" and read as if nothing had passed.
-    const late = runLate(r);
     const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching'
       : r.status === 'queued' ? 'Queued'
       : r.status === 'succeeded' || r.status === 'stopped' ? `<span class="${ok ? 'gain' : ''}"><span class="run-ratio" aria-label="${num(ok)} of ${num(r.hypotheses_tried)}"><b class="run-passed">${num(ok)}</b><span aria-hidden="true">/</span><b class="run-tested">${num(r.hypotheses_tried)}</b></span> <span class="run-denominator">passed</span></span>${fell ? `<span class="run-denominator run-fell">+${num(fell)} passed, not cleared</span>` : ''}${r.status === 'succeeded' && why ? `<span class="run-why">${why}</span>` : ''}`
       : r.status === 'paused' ? 'Paused'
       : r.status === 'cancelled' ? (why || 'Cancelled') : `<span class="loss">${why || 'Failed'}</span>`;
-    // status band: a thin color rule so passed/void/failed reads at a glance; only a real error is `fail`
-    const band = r.status === 'succeeded' ? (ok ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
     // The example's note sits under its title: in the narrow Market column it was cut to "An example Tau ran f…".
     // An untitled session's title leaves its market to the Market column beside it (stacked under it on a phone),
     // as Tau's card leaves it to the title: the row said the market twice.
     // With no idea and no angle either, that left a bare "Session" over "Session 2": its number is the title then.
     const bare = !r.title && !(r.prompt && r.prompt.trim()) && !r.direction && sessionNo(r);
     const title = bare || sessionTitle(r, false);
-    const card = `<a class="run-card ${band}" href="/research/${r.id}">
+    return `<a class="run-card ${band}" href="/research/${r.id}">
       <span class="run-identity"><span class="run-title" title="${esc(title)}"><b>${esc(title)}</b>${runTag(r)}${r.example ? `<span class="run-note">${EXAMPLE_NOTE}</span>` : ''}${r.error ? `<span class="run-error">${esc(r.error)}</span>` : ''}</span><span class="run-meta-group">${sessionNo(r) && !bare ? `<span class="run-id">${sessionNo(r)}</span>` : ''}<span class="run-meta"><span class="vh">Market </span>${esc(marketShort(r.market))}${!r.example && r.spent_usd != null ? `<span class="run-cost"><span class="run-sep">${SEP}</span>${runSpent(r)}</span>` : ''}</span><span class="run-when"><span class="vh">Created </span>${when(r.created_at)}</span></span></span><span class="run-state"><span class="vh">Outcome </span>${state}</span></a>`;
+  }
+  // `newest`: the user's newest session. When it ran out of credits its card or row offers Add credits, beside
+  // the card or under the row (a link can't sit inside its own link); older ones only say so.
+  function runRow(r, newest) {
+    const { ok } = runPassed(r);
+    // status band: a thin color rule so passed/void/failed reads at a glance. A `stopped` run (frozen,
+    // interrupted, or capped) is neutral (void), NOT red — only a real error is `fail`.
+    const band = r.status === 'succeeded' ? (ok ? 'ok' : 'void') : r.status === 'failed' ? 'fail' : (r.status === 'cancelled' || r.status === 'stopped') ? 'void' : 'live';
+    const card = (tau ? runCard : runTableRow)(r, band, runLate(r));
     return newest === true && r.stop_reason === 'credits' ? `<div class="run-cell">${card}<a class="run-add" href="/billing">Add credits<span class="vh"> to keep researching</span></a></div>` : card;
   }
 
   // ======================================================================
   // Live research feed — a Claude-Code-style streaming agent log.
-  // Shared, BYTE-IDENTICAL across both themes (app.js / app.meridian.js). A running session
+  // One for both themes, but for what each draws its own way (tau). A running session
   // streams its reasoning here as it happens: each thought, each hypothesis + thesis, each
   // backtest result, the challenger's verdict and the gatekeeper's classification land as nodes
   // on a timetable rail. Newest at the bottom like a terminal; the view sticks to the latest
@@ -665,9 +761,10 @@ window.TauPage('research', (T) => {
       d.falsification ? `<p class="hx-fine"><b>Falsified if</b> ${esc(d.falsification)}</p>` : '',
       d.negative_control ? `<p class="hx-fine"><b>Placebo that should fail</b> ${esc(d.negative_control)}</p>` : ''].filter(Boolean).join('');
     li.innerHTML = `${logTime(ev.created_at)}<span class="node" aria-hidden="true"></span><div class="say">
-      <div class="hx-head"><b class="say-title">${esc(title)}</b><span class="hx-stamp pending" data-stamp>Testing</span></div>
+      ${tau ? `<div class="hx-head"><span class="say-kind">Hypothesis</span><b class="say-title">${esc(title)}</b><span class="hx-stamp pending" data-stamp>Testing<span class="working" aria-hidden="true"></span></span></div>`
+        : `<div class="hx-head"><b class="say-title">${esc(title)}</b><span class="hx-stamp pending" data-stamp>Testing</span></div>`}
       ${d.thesis ? `<span class="say-sub">${esc(d.thesis)}</span>` : ''}${stat}
-      ${home ? `<details class="hx-more"><summary>Method &amp; specification</summary><div class="hx-body">${home}</div></details>` : ''}
+      ${home ? `<details class="hx-more"><summary>${tau ? 'Show the homework' : 'Method &amp; specification'}</summary><div class="hx-body">${home}</div></details>` : ''}
       <div class="hx-review" data-review hidden></div></div>`;
     const stampEl = li.querySelector('[data-stamp]');
     const reviewEl = li.querySelector('[data-review]');
@@ -686,13 +783,17 @@ window.TauPage('research', (T) => {
       verdict(e2) {
         const dd = e2.data || {};
         const cls = dd.status === 'passed' ? 'pass' : (dd.status === 'rejected' || dd.status === 'abandoned') ? 'rej' : 'void';
-        const label = dd.status === 'passed' ? 'Passed' : dd.status === 'rejected' ? 'Rejected' : dd.status === 'abandoned' ? 'Dropped' : 'Void';
+        // Tau stamps the verdict in capitals, Meridian in its words' own case.
+        const label = tau ? (dd.status === 'passed' ? 'PASSED' : dd.status === 'rejected' ? 'REJECTED' : dd.status === 'abandoned' ? 'DROPPED' : 'VOID')
+          : dd.status === 'passed' ? 'Passed' : dd.status === 'rejected' ? 'Rejected' : dd.status === 'abandoned' ? 'Dropped' : 'Void';
         li.classList.remove('lane-action'); li.classList.add('lane-' + cls);
         stampEl.className = 'hx-stamp ' + cls;
-        // A passed hypothesis opens its strategy through the title. The verdict is
-        // status text; one destination does not need three repeated links.
+        // A PASSED hypothesis has a strategy page: Tau links its title, its stamp and an explicit "View
+        // strategy →" in the verdict row; Meridian only its title, the verdict being status text (one destination
+        // needs no three links). VOID/REJECTED have no page, so stay unlinked.
         const href = cls === 'pass' && dd.strategy_id ? `/strategies/${dd.strategy_id}` : '';
-        stampEl.textContent = label;
+        if (tau) stampEl.innerHTML = href ? `<a href="${href}">${label}</a>` : label;
+        else stampEl.textContent = label;
         if (href) {
           const t = li.querySelector('.say-title');
           if (t) t.innerHTML = `<a class="hx-titlelink" href="${href}">${esc(title)}</a>`;
@@ -703,8 +804,12 @@ window.TauPage('research', (T) => {
         // The server's plain sentence stands in for a message written for the ledger ("validation
         // verdict is gatekeeper-held (classification=...)"); a dropped idea says why it was dropped.
         const said = upper1(dd.note || (dd.status === 'abandoned' && dd.why) || tail);
+        if (tau && dd.strategy_id != null) li.dataset.sid = dd.strategy_id;  // Tau's "Ideas tested" jumps here
         reviewEl.hidden = false;
-        reviewEl.insertAdjacentHTML('beforeend', `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}</div>`);
+        // A space before "View strategy →": it ran into the sentence ("…it never saw.VIEW STRATEGY →"), and a
+        // space, unlike a margin, collapses when the link wraps to a line of its own.
+        reviewEl.insertAdjacentHTML('beforeend', tau ? `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict${SEP}${label.toLowerCase()}</span>${GLOSSARY[label.toLowerCase()] ? glo(label.toLowerCase()) : ''}${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}${href ? ` <a class="hx-viewstrat" href="${href}">View strategy →</a>` : ''}</div>`
+          : `<div class="hx-verdict"><span class="hx-tag ${cls}">Verdict</span>${why ? why : said ? `<span class="hx-vtext">${esc(said)}</span>` : ''}${statGrid(dd.stats)}</div>`);
       },
       // A passed idea's later checks (the one-time locked holdout, then whether it adds something new
       // to what the user runs) land on its own card; they were loose lines stamped VOID.
@@ -762,18 +867,21 @@ window.TauPage('research', (T) => {
     });
   }
 
-
   // Controller over a .runfeed section: streams the thinking card, grafts challenger/verdict onto
   // their hypothesis card, appends everything else newest-at-bottom with an enter animation, sticks
   // to the latest only when already at the foot, raises a "jump to latest" chip when scrolled up,
-  // Run state and source-event age are reported by the observatory above the log.
+  // and, on Tau, drives the live "researching… (Ns)" pulse at its foot so it never looks frozen between polls
+  // (Meridian's run state and the age of its last line are the research progress panel's, above the log).
   // The second model that reads each idea before its test, by what it does (the verdicts already say
   // "The skeptic's review didn't pass it"), and its call in words, not the agent's codes.
   const REVIEW_SAID = { approve: 'approved', revise: 'asked for changes', reject: 'turned it down' };
   function runFeed(section) {
     const log = section.querySelector('.log');
     const jump = section.querySelector('.jumplatest');
-    let unseen = 0, first = true, appended = 0, stateSeen = false;
+    const pulse = section.querySelector('.runpulse');  // Tau's foot
+    let unseen = 0, first = true, appended = 0, pulseSt = null, pulseKey = '', pulseKind = '', lastAt = Date.now(), queuedAt = null;
+    // Meridian's: whether the session's state has been said once.
+    let stateSeen = false;
     // A stretch of the log: its idea cards (title -> card controller, most recent wins on a title clash), the
     // ones whose verdict is in (their holdout / diversification checks land on them), its open thought, and its
     // lines that name an idea it doesn't hold (`loose`). The live log is one; each page of earlier steps another.
@@ -871,6 +979,7 @@ window.TauPage('research', (T) => {
 
     const settle = (sx, card, ev) => { card.verdict(ev); sx.cards.delete(card.title); sx.settled.set(card.title, card); };
     function dispatch(ev, sx = live) {
+      if (sx === live) lastAt = Date.now();
       if (ev.kind === 'thinking') {
         const block = (ev.data || {}).block || 0;
         if (sx.think && sx.think.block !== block) seal(sx);
@@ -897,6 +1006,18 @@ window.TauPage('research', (T) => {
       }
     }
 
+    // Count up the seconds since the last event every second (independent of the 2s poll) so a
+    // long call that isn't streaming still reads as working, not stuck.
+    if (tau) {
+      const ptick = setInterval(() => {
+        if (pulse.hidden || pulseSt === 'paused' || pulseSt === 'done' || pulse.classList.contains('late')) return;
+        const secs = Math.round((Date.now() - (pulseSt === 'queued' && queuedAt != null ? queuedAt : lastAt)) / 1000);
+        const lab = pulse.querySelector('[data-plabel]');
+        if (lab && secs >= 3) lab.textContent = `${pulseSt === 'queued' ? 'Queued' : 'Researching'}${SEP}${secs}s`;
+      }, 1000);
+      S.timers.push(ptick);
+    }
+
     return {
       reveal: () => showEarlier(false),  // a jump to an older card shows the held rows first
       // The server holds steps before the first one sent (its `earlier`): "Show earlier steps" reads them, `read(before)`.
@@ -912,13 +1033,44 @@ window.TauPage('research', (T) => {
         else if (appended) { unseen += appended; jump.hidden = false; jump.textContent = unseen + ' new ↓'; }
         first = false;
       },
-      state(st) {
+      state(st, wait) {  // 'queued' | 'running' | 'paused' | 'done'; wait = the server's run.wait
         ended = st === 'done';
-        // A saved completed run reads as a document. A live run keeps its
-        // existing scroll viewport on completion so reading/jump state survives.
-        if (!stateSeen) section.classList.toggle('is-complete', st === 'done');
-        stateSeen = true;
-        if (st === 'done') { sealThink(); settlePending(log); }
+        if (!tau) {
+          // A saved completed run reads as a document. A live run keeps its
+          // existing scroll viewport on completion so reading/jump state survives.
+          if (!stateSeen) section.classList.toggle('is-complete', st === 'done');
+          stateSeen = true;
+          if (st === 'done') { sealThink(); settlePending(log); }
+          return;
+        }
+        // A finished log sizes to what it holds (.runfeed.done); one still going keeps its fixed height.
+        section.classList.toggle('done', st === 'done');
+        if (st === 'done') { pulseSt = st; sealThink(); settlePending(log); pulse.hidden = true; return; }
+        const stick = atBottom();
+        pulse.hidden = false;
+        // Count the queue from the server's clock: "Queued · 19s" restarted on every reload.
+        queuedAt = st === 'queued' && wait && wait.state === 'queued' ? Date.now() - wait.seconds * 1000 : null;
+        // An overdue run's sentence ("No word from the agent for 25 min. …") is said once, in the loop panel
+        // above, as on Meridian: it sat there and again here. The log's foot says the state in the badge's words.
+        const late = st !== 'paused' && wait && wait.overdue ? lateLabel(wait) : '';
+        if (st + late !== pulseKey) {
+          pulseKey = st + late;
+          pulse.className = 'runpulse' + (st === 'paused' ? ' paused' : late ? ' late' : '');
+          pulse.innerHTML = st === 'paused'
+            ? '<span class="pulse-bar" aria-hidden="true"></span><span>Paused — resume and it picks up exactly where it left off.</span>'
+            : late ? `<span class="apf-idle-dot" aria-hidden="true"></span><span>${esc(late)}</span>`
+            : st === 'queued'
+              ? '<span class="working" aria-hidden="true"></span><span data-plabel>Queued — waiting for a free agent to pick this up…</span>'
+              : '<span class="working" aria-hidden="true"></span><span data-plabel>Researching<span class="ell" aria-hidden="true"></span></span>';
+          // The foot is not a live region: its seconds count ticks every second, and a screen reader read
+          // each tick ("Researching · 12s", "· 13s", ...). A change of state (queued, researching, paused,
+          // overdue) is said once instead; the first paint and a minute added to "Queued 6 min" are not.
+          const kind = st + (late ? ':late' : '');
+          if (pulseKind && kind !== pulseKind) announce(pulse.textContent.replace(/\s+/g, ' ').trim());
+          pulseKind = kind;
+        }
+        pulseSt = st;
+        if (stick) toLatest();
       },
     };
   }
@@ -993,6 +1145,7 @@ window.TauPage('research', (T) => {
   // A verdict is done when it is logged, so the line says the agent moved on; a verdict with no idea
   // (the data scan, the model tiering) is a note on the session, read as a step; and these say where it is.
   const RSI_SAID = { paused: 'Paused', resumed: 'Back at work', done: 'Wrapping up' };
+  const SX = { explore: 80, backtest: 240, gate: 400, dream: 560 };  // viewBox-x of each station (= flex-cell centres: 12.5/37.5/62.5/87.5% of 640)
   // The engine's own words for its self-tuning step ("Dreaming:", "Research policy evolved:"), said plainly.
   const plainDream = (m) => String(m || '').replace(/^Dreaming:/, 'Tuning how it searches:').replace(/^Research policy evolved:/, 'Search improved:');
   const prettyKind = (k) => String(k || '').replace(/[-_]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
@@ -1001,7 +1154,24 @@ window.TauPage('research', (T) => {
   const hypParent = (d) => d.parent_id != null ? d.parent_id : d.parent != null ? d.parent : d.parent_hyp_id != null ? d.parent_hyp_id : d.parent_title != null ? d.parent_title : null;
 
   function rsiObservatory(host) {
-    host.innerHTML = `
+    const station = ([s]) => `<g class="rsi-st" data-stage="${s}"><circle class="rsi-ring" cx="${SX[s]}" cy="50" r="17"></circle><circle class="rsi-dot" cx="${SX[s]}" cy="50" r="7.5"></circle></g>`;
+    const link = (a, b, into) => `<line class="rsi-link" data-into="${into}" x1="${SX[a] + 18}" y1="50" x2="${SX[b] - 18}" y2="50"></line>`;
+    // Tau draws the loop as a station line; Meridian lists its stages under a Research progress that folds once
+    // the session is done.
+    host.innerHTML = tau ? `
+      <div class="rsiobs-head"><h2>The research loop</h2>
+        <span class="rsiobs-live is-wait" data-live><span class="rsiobs-pdot"></span><span data-livetext>Spinning up…</span></span></div>
+      <div class="rsiobs-loop">
+        <svg class="rsi-rail" viewBox="0 0 640 72" role="img" aria-label="The research loop: explore, backtest, check, improve — and back again.">
+          <path class="rsi-arc" data-into="explore" d="M560 42 C 560 6, 80 6, 80 42"></path>
+          ${link('explore', 'backtest', 'backtest')}${link('backtest', 'gate', 'gate')}${link('gate', 'dream', 'dream')}
+          ${RSI_STAGES.map(station).join('')}</svg>
+        <div class="rsi-labels">${RSI_STAGES.map(([s, l]) => `<span class="rsi-lab" data-stage="${s}">${l}</span>`).join('')}</div></div>
+      <p class="rsiobs-phase" data-phase>Waiting for the agent to start.</p>
+      <p class="rsiobs-phase rsiobs-wait" data-wait hidden></p>
+      <figure class="rsiobs-tree" data-tree hidden><figcaption>Discovery tree <span>how each winner seeded the next</span></figcaption>
+        <div class="rsiobs-treewrap"><svg class="rsiobs-treesvg" data-treesvg></svg></div></figure>`
+      : `
       <details class="rsi-progress" open><summary class="rsiobs-head"><h2>Research progress</h2>
         <span class="rsiobs-live is-wait" data-live><span data-livetext>Spinning up…</span></span>${ICON.chev}</summary>
       <ol class="rsi-labels" aria-label="Research cycle: explore, backtest, check, improve, then repeat">${RSI_STAGES.map(([s, l]) => `<li class="rsi-lab" data-stage="${s}">${l}</li>`).join('')}</ol>
@@ -1012,12 +1182,15 @@ window.TauPage('research', (T) => {
 
     const liveWrap = host.querySelector('[data-live]'), liveText = host.querySelector('[data-livetext]');
     const phaseEl = host.querySelector('[data-phase]'), treeFig = host.querySelector('[data-tree]'), treeSvg = host.querySelector('[data-treesvg]');
+    // Meridian's fold.
     const progress = host.querySelector('.rsi-progress');
-    const labs = {};
-    RSI_STAGES.forEach(([s]) => { labs[s] = host.querySelector(`.rsi-lab[data-stage="${s}"]`); });
+    const groups = {}, labs = {};
+    RSI_STAGES.forEach(([s]) => { groups[s] = host.querySelector(`.rsi-st[data-stage="${s}"]`); labs[s] = host.querySelector(`.rsi-lab[data-stage="${s}"]`); });
+    const links = host.querySelectorAll('.rsi-link, .rsi-arc');
     const fired = new Set();
     let stage = null, lastAt = Date.now(), runState = 'queued', initialUpdate = true, wait = null, waitAt = 0;
     const waitEl = host.querySelector('[data-wait]');
+    // phaseStep: Meridian hides the phase line while the agent's last line is a step (the log says it).
     let waitHidPhase = false, phaseStep = false;
     let doneRun = null;
     const waitNow = () => (wait ? { ...wait, seconds: wait.seconds + Math.round((Date.now() - waitAt) / 1000) } : null);
@@ -1027,9 +1200,11 @@ window.TauPage('research', (T) => {
       const live = runState === 'running';
       RSI_STAGES.forEach(([s]) => {
         const on = live && s === stage, done = !on && fired.has(s);
+        if (tau) { groups[s].classList.toggle('is-active', on); groups[s].classList.toggle('is-done', done); }
         labs[s].classList.toggle('is-active', on); labs[s].classList.toggle('is-done', done);
-        if (on) labs[s].setAttribute('aria-current', 'step'); else labs[s].removeAttribute('aria-current');
+        if (!tau) { if (on) labs[s].setAttribute('aria-current', 'step'); else labs[s].removeAttribute('aria-current'); }
       });
+      links.forEach((l) => l.classList.toggle('is-flow', live && l.getAttribute('data-into') === stage));
     }
 
     function paintLive() {
@@ -1049,8 +1224,16 @@ window.TauPage('research', (T) => {
       const secs = Math.max(0, Math.round((Date.now() - lastAt) / 1000)), stalled = secs >= 75;
       host.classList.toggle('is-quiet', stalled);
       liveWrap.className = 'rsiobs-live' + (stalled ? ' is-stall' : '');
-      const age = secs < 60 ? `${secs}s` : secs < 3600 ? `${Math.floor(secs / 60)}m` : `${Math.floor(secs / 3600)}h`;
-      liveText.textContent = secs < 6 ? 'Just updated' : `Last event ${age} ago`;
+      // A backtest or a long model call can go minutes without a line while the server still hears from the
+      // worker (a silent one is caught above, from the server's own clock). Raw seconds read "quiet 13246s —
+      // likely a long model call" three hours on; the age reads in minutes and hours, in each theme's words.
+      if (!tau) {
+        const age = secs < 60 ? `${secs}s` : secs < 3600 ? `${Math.floor(secs / 60)}m` : `${Math.floor(secs / 3600)}h`;
+        liveText.textContent = secs < 6 ? 'Just updated' : `Last event ${age} ago`;
+        return;
+      }
+      const age = secs < 60 ? `${secs}s` : secs < 3600 ? `${Math.floor(secs / 60)} min` : `${Math.floor(secs / 3600)} hr`;
+      liveText.textContent = secs < 6 ? 'live' : stalled ? `Last step ${age} ago${SEP}still working` : `active ${age} ago`;
     }
     // 1s ticker keeps "Ns ago" honest between the 2s polls and flips to the quiet state on its own.
     S.timers.push(setInterval(paintLive, 1000));
@@ -1095,8 +1278,8 @@ window.TauPage('research', (T) => {
           const kind = ev.kind === 'verdict' && !d.title ? 'step' : ev.kind;
           let ph = RSI_PHASE[kind];
           if (!ph && /^(Dreaming:|Research policy evolved:)/.test(ev.message || '')) ph = ['dream', plainDream(ev.message).split(':')[0]];
-          if (ph) { stage = ph[0]; fired.add(stage); phaseEl.textContent = ph[1]; phaseEl.hidden = phaseStep = kind === 'step'; }
-          else if (kind) { phaseEl.textContent = RSI_SAID[kind] || prettyKind(kind); phaseEl.hidden = phaseStep = false; }  // unknown kind: keep stage lit, show a readable label
+          if (ph) { stage = ph[0]; fired.add(stage); phaseEl.textContent = ph[1]; if (!tau) phaseEl.hidden = phaseStep = kind === 'step'; }
+          else if (kind) { phaseEl.textContent = RSI_SAID[kind] || prettyKind(kind); if (!tau) phaseEl.hidden = phaseStep = false; }  // unknown kind: keep stage lit, show a readable label
           if (ev.kind === 'hypothesis') {
             const id = hypId(d), key = id != null ? id : ev.message;
             if (!byId.has(key)) { const n = { id: key, parent: hypParent(d), title: ev.message, depth: 0, status: null, _new: true }; nodes.push(n); byId.set(key, n); byTitle.set(ev.message, n); }
@@ -1111,7 +1294,10 @@ window.TauPage('research', (T) => {
             if (n) n.status = d.status === 'passed' ? 'pass' : d.status === 'rejected' ? 'rej' : 'void';
           }
         });
-        if (!['queued', 'running', 'paused'].includes(runState)) {
+        // A finished run's last phase ("Recording the verdict") read as still working; the live
+        // badge already says Finished / Cancelled / Stopped. Meridian folds a session done when it opened.
+        if (tau) phaseEl.hidden = !['queued', 'running', 'paused'].includes(runState);
+        else if (!['queued', 'running', 'paused'].includes(runState)) {
           phaseEl.hidden = true;
           if (firstUpdate) progress.open = false;
         }
@@ -1261,15 +1447,17 @@ window.TauPage('research', (T) => {
     // In the status figure's and the list's words ("Stopped by you"): it said "cancelled" right under it.
     if (r.status === 'cancelled') return `<p class="run-next">You stopped this session before it finished.${(strategies || []).length ? ' The ideas it tested are listed below.' : ''} <a href="/research?new=1">Try another idea</a></p>`;
     const none = !(strategies || []).length;
-    if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : `${fellLine ? fellLine + ' ' : ''}${nothing} before then; each strategy below says which check it missed.`}</p>`;
+    // Tau lists the ideas tested, Meridian the strategies.
+    if (credits) return `<p class="run-next">${credits}${none ? 'No strategy reached the checks before then.' : `${fellLine ? fellLine + ' ' : ''}${nothing} before then; each ${tau ? 'idea' : 'strategy'} below says which check it missed.`}</p>`;
     if (none && (r.status === 'succeeded' || r.status === 'stopped')) return `<p class="run-next">${runEmpty(r)}${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
-    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">${fellLine ? fellLine + ' ' : ''}${nothing} this time. Most ideas don’t. Each strategy below says which check it missed and what to try next.${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
+    if (r.status === 'succeeded' || r.status === 'stopped') return `<p class="run-next">${fellLine ? fellLine + ' ' : ''}${nothing} this time. Most ideas don’t. ${tau ? 'Each idea below says which check it missed; tap one for what to try next.' : 'Each strategy below says which check it missed and what to try next.'}${apNext(r)} <a href="/research?new=1">Try another idea</a></p>`;
     return '';
   }
-  // The foot of a finished session. The way on sat only above the list and the log: the example's
-  // log ended on its last line saying to describe a real idea, and a session where nothing passed
-  // ended on its last missed idea. The example's goes under the log's last line, the others under
-  // the last strategy card. Plain buttons: the line above keeps the page's one primary action.
+  // The foot of a finished session, under the log's last line (on Meridian the example's; the others' under the
+  // last strategy row). The way on sat only above the log, a phone's length of scrolling back up: the example's
+  // last line said to describe a real idea, and a session where nothing passed ended on its last missed idea.
+  // Plain buttons: the line above keeps the page's one primary action. One that ran out of credits ends on adding
+  // them (autopilot would wait on credits too).
   function runEnd(r, strategies) {
     if (r.example) return `<p class="run-end"><a class="btn" href="/research?new=1">Describe your own idea</a></p>`;
     if (r.status !== 'succeeded' && r.status !== 'stopped') return '';
@@ -1277,25 +1465,84 @@ window.TauPage('research', (T) => {
     if ((strategies || []).some(cleared)) return '';
     return `<div class="run-end"><a class="btn" href="/research?new=1">Try another idea</a>${apNudge('Rather not write ideas yourself?', 'and it picks ideas and researches them on its own, on paper.')}</div>`;
   }
+  // Tau's: what the session tried, one row per idea: its outcome and, for a miss, the first check it missed
+  // in plain words. Each idea's outcome sat only in the log, a scroll box that held 200+ lines on a
+  // long session; a title jumps to its card there. Passed ideas lead; past six, the rest fold. A later
+  // check its status leaves out (`verdict`) stamps it instead, as its strategy page does.
+  const IDEA_STAMP = { passed: ['pass', 'Passed'], failed: ['void', 'Void'], rejected: ['rej', 'Rejected'], 'backtest-only': ['rej', 'Backtest only'],
+    missed_final: ['rej', 'Missed final test'], held_back: ['rej', 'Held back'] };
+  // An idea the agent dropped while building it never becomes a strategy, and one still being tested has
+  // none yet: the Tested figure counted them and this list didn't ("Tested 5" over "4"), so the gap is said.
+  // A running session's gap is not all in testing: an idea it already dropped (its log's DROPPED verdict) said
+  // "still being tested" until the session ended (walk 2026-10-30: "3 more still being tested" over a log that
+  // dropped all three).
+  const ideasGap = (n, listed, active, dropped = 0) => {
+    const gap = n - listed, drop = active ? Math.min(dropped, Math.max(gap, 0)) : gap, testing = gap - drop;
+    if (gap <= 0) return '';
+    return (drop ? `${SEP}${num(drop)} more dropped before testing` : '') + (testing ? `${SEP}${num(testing)} ${drop ? '' : 'more '}still being tested` : '');
+  };
+  // A deployed pass's line, with its paper record since deploying when the session's data carries one (a card's `real`
+  // in paper mode, as the Strategies list has it): "Already deployed" alone sent a reader to Deploy to learn whether it
+  // made anything. Paper money only; a demo or live book is never added in. Display only.
+  const deployedNext = (s) => `<a href="/deploy">Already deployed: see it on Deploy</a>${s.real && s.real.mode === 'paper' ? `<span class="ri-paper">${SEP}${paperSince(s.real)}</span>` : ''}`;
+  function runIdeas(strategies, whyBySid, open, gap = '') {
+    const list = (strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
+    if (!list.length) return '';
+    const row = (s) => {
+      const [cls, label] = IDEA_STAMP[laterMissed(s) || heldBack(s) ? s.verdict : s.status] || ['', 'Testing'];
+      const why = whyBySid.get(s.id) || [];
+      const said = laterMissed(s) ? `Passed validation, then missed the final test: ${esc(lcFirst(s.later_missed[0].label))}`
+        : heldBack(s) ? `Held back after passing its tests: ${heldWhy(s)}`
+        : s.status === 'passed' ? (s.deployed ? deployedNext(s)
+        : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}`
+        : `<a href="/strategies/${s.id}">Open it to deploy on paper</a>`)
+        : why.length ? `${esc(why[0].label)}${why.length > 1 ? `${SEP}${why.length - 1} more check${why.length > 2 ? 's' : ''}` : ''}` : '';
+      return `<li><span class="hx-stamp ${cls}">${label}</span><button type="button" class="ri-title" data-goto="${s.id}">${esc(s.title)}</button>${said ? `<span class="ri-why">${said}</span>` : ''}</li>`;
+    };
+    const SHOW = 6;
+    return `<section class="run-ideas"><div class="section-head"><h2>Ideas tested</h2><p>${num(list.length)} listed${gap}${SEP}tap one for its story</p></div>
+      <ol class="ri-list">${list.slice(0, SHOW).map(row).join('')}</ol>${list.length > SHOW
+        ? `<details class="ri-rest"${open ? ' open' : ''}><summary>Show all ${num(list.length)}</summary><ol class="ri-list">${list.slice(SHOW).map(row).join('')}</ol></details>` : ''}</section>`;
+  }
   async function viewRun(id) {
-    shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><p class="stale-note" id="run-stale" role="status"></p>', `
+    // Pause and Cancel (and their error notice) sit beside the title, as on Meridian: at the Agent log
+    // heading they were a screen below the spend figure on a phone.
+    if (tau) {
+      shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><div id="flash"></div><dl class="figures measure run-figs" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><div id="runideas"></div><p class="stale-note" id="run-stale" role="status"></p>', `
+      <div id="rsibox"></div>
+      <div id="rsiobs" class="rsiobs"></div>
+      <section><div class="section-head"><h2>Agent log</h2></div>
+        <p class="hint" style="margin:2px 0 10px">Watch the agent reason in real time — each hypothesis, backtest and verdict as it happens. Every strategy links to its full result once its outcome is in; see them all on the <a href="/strategies">Strategies</a> page.${tzName() ? ` Times are ${esc(tzName())}.` : ''}</p>
+        <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event — the agent is spinning up. The loop above shows the phase it’s in.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button><div class="runpulse" id="runpulse" hidden></div></div><div id="runend"></div></section>`);
+    } else {
+      shell('/research', '<div class="run-header"><div id="runboard">' + boardTitle('Research run') + '</div><span id="runact"></span></div><dl class="figures measure" id="runfigs" style="margin-top:14px"></dl><div id="runnext"></div><p class="stale-note" id="run-stale" role="status"></p>', `
       <div id="flash"></div>
       <section class="run-artifacts" id="run-artifacts" hidden></section><div id="runend"></div>
       <div id="rsibox"></div>
       <div id="rsiobs" class="rsiobs"></div>
       <details class="run-history" id="run-history" open><summary class="section-head"><h2>Agent log</h2>${ICON.chev}</summary>${tzName() ? `<p class="hint" style="margin:0 0 8px">Times are ${esc(tzName())}.</p>` : ''}
         <div class="runfeed" id="runfeed"><ol class="log stream" id="log" aria-live="polite" aria-label="Agent reasoning log"><li class="log-empty" data-empty>Waiting for the first event.</li></ol><button class="jumplatest" id="jumplatest" type="button" hidden>new ↓</button></div><div id="runend-log"></div></details>`);
+    }
     let after = 0, tried = 0, dropped = 0, runActive = true, loaded = false, outOfCredits = false;
     const pauses = { ms: 0, since: null, last: null };
-    // A long session's strategy cards (40+, a screen each on a phone) buried the agent log under
+    const whyBySid = new Map();  // strategy id -> the checks its verdict missed, kept across polls
+    // Meridian's: a long session's strategy cards (40+, a screen each on a phone) buried the agent log under
     // them: the first few show, the rest behind "Show all". On a phone eight cards were still ~2,000px
     // (a run-until-stopped session's "Research progress" and log sat four screens down), so it shows four.
     const STRAT_SHOW = phone() ? 4 : 8;
     let showAllStrats = false;
-    const whyBySid = new Map();  // strategy id -> the gates its verdict missed, kept across polls
+    const ideasEl = root.querySelector('#runideas');  // Tau's
+    if (tau) ideasEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-goto]');
+      if (!b) return;
+      const find = () => root.querySelector(`#log li[data-sid="${b.dataset.goto}"]`);
+      let card = find();
+      if (!card) { stream.reveal(); card = find(); }  // its card may be among the held earlier rows
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }); else go('/strategies/' + b.dataset.goto);
+    });
     const stream = runFeed(root.querySelector('#runfeed'));
     const obs = rsiObservatory(root.querySelector('#rsiobs'));
-    root.querySelector('#run-artifacts').addEventListener('click', (e) => { if (e.target.closest('[data-allstrats]')) { showAllStrats = true; load(); } });
+    if (!tau) root.querySelector('#run-artifacts').addEventListener('click', (e) => { if (e.target.closest('[data-allstrats]')) { showAllStrats = true; load(); } });
     // A finished session's cost beside what the research form says sessions like it usually cost: the same
     // /api/research/estimate read (your own figure for its model, else everyone's), asked once the session is
     // done, for one that ran its set size (walk 2026-10-28: "Cost $3.43" and nothing showed the form's "about
@@ -1346,10 +1593,12 @@ window.TauPage('research', (T) => {
       paint(root.querySelector('#runboard'), boardTitle(sessionTitle(r), deck));
       const worked = runWorked(r, pauses);
       const late = r.wait && r.wait.overdue ? r.wait : null;
+      // Tau's status works on beside its word; Meridian's research progress below says so.
+      const working = tau ? '<span class="working" aria-label="in process"></span>' : '';
       const statusText = late ? lateLabel(late)
-        : r.status === 'queued' ? 'Queued'
+        : r.status === 'queued' ? 'Queued' + working
         : r.status === 'paused' ? 'Paused'
-        : r.status === 'running' ? 'Researching'
+        : r.status === 'running' ? 'Researching' + working
         : runDoneText(r);
       // A finished session that spent nothing reads "Cost None", without "from your credits" under it: none came from them.
       repaintFigs = () => paint(root.querySelector('#runfigs'),
@@ -1361,67 +1610,87 @@ window.TauPage('research', (T) => {
       if (!active) askUsual(r);
       const next = root.querySelector('#runnext');
       paint(next, active ? '' : runNext(r, d.strategies));
-      // Painted only when it changes, so a repaint never undoes the autopilot line's "on" note.
+      // Painted only when it changes: a finished run still polls, and a repaint would undo the
+      // autopilot line's "on" note or a press in flight. Tau's foot is under the log; Meridian's under the
+      // strategy rows, but the example's, which lists none, under its log.
       const endHtml = active ? '' : runEnd(r, d.strategies);
-      [['#runend', r.example ? '' : endHtml], ['#runend-log', r.example ? endHtml : '']].forEach(([sel, html]) => {
+      (tau ? [['#runend', endHtml]] : [['#runend', r.example ? '' : endHtml], ['#runend-log', r.example ? endHtml : '']]).forEach(([sel, html]) => {
         const el = root.querySelector(sel);
         if (el && el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
       });
-      // Passed ideas lead the list: a long session's one pass sat mid-way down 40 cards on a phone.
-      // An idea dropped while it was built never becomes a strategy, and one still being tested has none yet:
-      // "Tested 5" sat over "Strategies 4" with nothing to say why.
-      // A running session's gap is not all in testing: an idea it already dropped (its log's DROPPED verdict) said
-      // "still being tested" until the session ended (walk 2026-10-30).
-      const gapN = Math.max(+r.hypotheses_tried || 0, tried) - (d.strategies || []).length;
-      const dropN = active ? Math.min(dropped, Math.max(gapN, 0)) : gapN, testN = gapN - dropN;
-      const gap = gapN <= 0 ? '' : dropN ? `${num(dropN)} more idea${dropN === 1 ? '' : 's'} dropped before testing${testN ? `, ${num(testN)} still being tested` : ''}.`
-        : `${num(gapN)} more idea${gapN === 1 ? '' : 's'} still being tested.`;
-      // A passed one says what happens next, as Tau's Ideas tested rows do: a running session's passed card said
-      // only “Passed”, with no word on whether to deploy it or wait for the autopilot (walk 2026-10-28).
-      // A deployed one adds its paper record since deploying when the session's data carries one (a card's `real` in
-      // paper mode, as the Strategies list has it). Paper money only, never added to a demo or live book. Display only.
-      // Its Status cell then leaves that paper figure out (paperNext), keeping the demo line beside it.
-      const paperNext = (s) => s.status === 'passed' && !!s.deployed && !!s.real && s.real.mode === 'paper' && !laterMissed(s) && !heldBack(s);
-      const passedNext = (s) => s.status !== 'passed' ? '' : s.deployed ? `<a href="/deploy">Already deployed: see it on Deploy</a>${s.real && s.real.mode === 'paper' ? `<span class="ri-paper">${SEP}${paperSince(s.real)}</span>` : ''}`
-        : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}` : 'Open it to deploy on paper';  // its title above is the link
-      const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
-      const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
-      artifacts.hidden = !strategies.length;
-      const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${num(strategies.length)}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: laterMissed(s) || heldBack(s) ? laterLines(s) : s.status === 'passed' ? null : whyBySid.get(s.id), next: laterMissed(s) || heldBack(s) ? '' : passedNext(s), paperNext: paperNext(s) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${num(strategies.length)}</button>` : ''}` : '';
-      // Compared with what was last written, not with innerHTML: the browser's serialization never matched
-      // the template (&nbsp;, quoting), so the table was rebuilt every 2s.
-      paint(artifacts, artifactHtml);
-      if (focusedArtifact) Array.from(artifacts.querySelectorAll('a')).find(a => a.getAttribute('href') === focusedArtifact)?.focus({ preventScroll: true });
-      if (!loaded && !active) root.querySelector('#run-history').open = false;
-      loaded = true;
+      if (!tau) {
+        // Passed ideas lead the list: a long session's one pass sat mid-way down 40 cards on a phone.
+        // An idea dropped while it was built never becomes a strategy, and one still being tested has none yet:
+        // "Tested 5" sat over "Strategies 4" with nothing to say why.
+        // A running session's gap is not all in testing: an idea it already dropped (its log's DROPPED verdict) said
+        // "still being tested" until the session ended (walk 2026-10-30).
+        const gapN = Math.max(+r.hypotheses_tried || 0, tried) - (d.strategies || []).length;
+        const dropN = active ? Math.min(dropped, Math.max(gapN, 0)) : gapN, testN = gapN - dropN;
+        const gap = gapN <= 0 ? '' : dropN ? `${num(dropN)} more idea${dropN === 1 ? '' : 's'} dropped before testing${testN ? `, ${num(testN)} still being tested` : ''}.`
+          : `${num(gapN)} more idea${gapN === 1 ? '' : 's'} still being tested.`;
+        // A passed one says what happens next, as Tau's Ideas tested rows do: a running session's passed card said
+        // only “Passed”, with no word on whether to deploy it or wait for the autopilot (walk 2026-10-28).
+        // A deployed one adds its paper record since deploying when the session's data carries one (a card's `real` in
+        // paper mode, as the Strategies list has it). Paper money only, never added to a demo or live book. Display only.
+        // Its Status cell then leaves that paper figure out (paperNext), keeping the demo line beside it.
+        const paperNext = (s) => s.status === 'passed' && !!s.deployed && !!s.real && s.real.mode === 'paper' && !laterMissed(s) && !heldBack(s);
+        const passedNext = (s) => s.status !== 'passed' ? '' : s.deployed ? `<a href="/deploy">Already deployed: see it on Deploy</a>${s.real && s.real.mode === 'paper' ? `<span class="ri-paper">${SEP}${paperSince(s.real)}</span>` : ''}`
+          : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}` : 'Open it to deploy on paper';  // its title above is the link
+        const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
+        const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');
+        artifacts.hidden = !strategies.length;
+        const artifactHtml = strategies.length ? `<div class="sect-head"><h2>Strategies <span class="section-count">${num(strategies.length)}</span></h2>${gap ? `<p class="hint">${gap}</p>` : ''}</div>${strategyTable(strategies.slice(0, showAllStrats ? undefined : STRAT_SHOW).map(s => strategySlip(s, undefined, { inRun: true, missed: laterMissed(s) || heldBack(s) ? laterLines(s) : s.status === 'passed' ? null : whyBySid.get(s.id), next: laterMissed(s) || heldBack(s) ? '' : passedNext(s), paperNext: paperNext(s) })).join(''), false, true)}${!showAllStrats && strategies.length > STRAT_SHOW ? `<button type="button" class="btn small" data-allstrats style="margin-top:12px">Show all ${num(strategies.length)}</button>` : ''}` : '';
+        // Compared with what was last written, not with innerHTML: the browser's serialization never matched
+        // the template (&nbsp;, quoting), so the table was rebuilt every 2s.
+        paint(artifacts, artifactHtml);
+        if (focusedArtifact) Array.from(artifacts.querySelectorAll('a')).find(a => a.getAttribute('href') === focusedArtifact)?.focus({ preventScroll: true });
+        if (!loaded && !active) root.querySelector('#run-history').open = false;
+        loaded = true;
+      }
       const rsibox = root.querySelector('#rsibox');
       if (rsibox && d.rsi) {
-        const expanded = !!rsibox.querySelector('details[open]');
-        const focused = !!rsibox.querySelector('details > summary:focus');
         const delta = (d.rsi.base_score != null && d.rsi.score != null)
           ? `<span class="rsi-score">${d.rsi.base_score} <span class="rsi-arrow">→</span> ${d.rsi.score}</span>` : '';
         // The adopted policy is arbitrary agent-evolved Python with no structured decision record
         // behind it, so a raw-source dump isn't inspection — the human "What it changed" summary
         // and the generalization-score delta below are the faithful, readable account.
-        paint(rsibox, `<details class="rsidisc"${expanded ? ' open' : ''}><summary class="rsidisc-cap">How research works ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">
+        // "How it searches: Self-tuning" sat among this session's figures and the explainer open under its
+        // ideas on every session, though both describe the research system, not the session: they are one
+        // folded "How research works" line (closed on every screen), its tag saying whether the search has
+        // improved. A reader's open or close holds across the 2s repaint.
+        const prev = rsibox.querySelector('details.rsidisc');
+        const expanded = tau ? (prev ? prev.open : false) : !!rsibox.querySelector('details[open]');
+        const focused = !!rsibox.querySelector(tau ? 'details.rsidisc > summary:focus' : 'details > summary:focus');
+        const rsiHead = tau ? `<details class="rsidisc rsi-run"${expanded ? ' open' : ''}><summary class="rsidisc-cap"><b class="rsi-badge">RSI</b><span class="rsidisc-t">How research works</span>${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">`
+          : `<details class="rsidisc"${expanded ? ' open' : ''}><summary class="rsidisc-cap">How research works ${d.rsi.evolved ? '<span class="rsi-tag">Evolved</span>' : '<span class="rsi-tag quiet">Self-tuning</span>'}<span class="pipechev" aria-hidden="true">${ICON.chev}</span></summary><div class="rsidisc-body">`;
+        const rsiHtml = `${rsiHead}
           ${d.rsi.evolved
             ? `<p>This agent <b>rewrote its own search policy</b> from your history — and it beats the default.</p>
                ${d.rsi.summary ? `<p class="rsi-what"><b>What it changed:</b> ${esc(d.rsi.summary)}</p>` : ''}
                <p class="rsi-last">Generalization score ${delta}${d.rsi.evolved_at ? `${SEP}adopted ` + when(d.rsi.evolved_at) : ''} <span class="rsi-note">(higher = catches more real out-of-sample winners, scored over shuffled orderings so it can’t overfit)</span></p>`
             : `<p>The agent is <b>self-tuning</b>: after each research cycle it tries new ways of choosing which ideas to test, and keeps one only if it would have found more real winners in your own history (scored over shuffled orderings, so it can’t overfit).</p>
                ${d.rsi.last_dream ? `<p class="rsi-last"><b>Last check${d.rsi.last_dream_at ? SEP + when(d.rsi.last_dream_at) : ''}:</b> ${esc(d.rsi.last_dream)}</p>` : `<p class="rsi-last">No check yet. The first one runs at the end of a session, once at least ${d.rsi.min_history || 12} ideas have been tested.</p>`}`}
-          </div></details>`);
+          </div></details>`;
+        if (!tau) paint(rsibox, rsiHtml);
+        else if (rsibox.dataset.h !== rsiHtml) { rsibox.dataset.h = rsiHtml; rsibox.innerHTML = rsiHtml; }
         if (focused) rsibox.querySelector('summary').focus({ preventScroll: true });
       }
       runControls(root.querySelector('#runact'), id, r.status, load);
+      if (tau) {
+        // Painted only when it changes, so a poll never closes "Show all" or drops a focused title.
+        const gap = ideasGap(Math.max(+r.hypotheses_tried || 0, tried), (d.strategies || []).length, active, dropped);
+        const ideasKey = runIdeas(d.strategies, whyBySid, false, gap);
+        if (ideasEl.dataset.h !== ideasKey) { ideasEl.dataset.h = ideasKey; ideasEl.innerHTML = runIdeas(d.strategies, whyBySid, !!ideasEl.querySelector('details[open]'), gap); }
+      }
       stream.push(d.events);
       if (pre) stream.older(pre.before, (before) => api(`/api/runs/${id}?before=${before}`));
-      stream.state(active ? r.status : 'done');
+      stream.state(active ? r.status : 'done', r.wait);
       if (pre) obs.seen(pre.kinds, pre.dreamed);
       obs.push(d.events, r.status, r);
       if (!active) clearTimers();
     };
     await load();
+    // A finished session never changes again: it is read once, where its poll read it once more 2s later.
     if (runActive) poll(load, 2000, 'run-stale');
   }
   const DIR_BRIEF = (k) => ((S.me.directions.find((d) => d.key === k)) || { brief: '' }).brief;

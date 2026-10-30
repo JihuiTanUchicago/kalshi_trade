@@ -60,24 +60,24 @@ def test_every_page_file_is_in_the_repo_versioned_and_warmed_like_the_bundles():
     versions = server._static_versions()
     for f in page_modules.FILES:
         assert f in server._STATIC_NAMES and re.fullmatch(r"[0-9a-f]{10}", versions[f])
-    assert page_modules.versions_attr("tau", versions).split(",")[0] == "research:" + versions["app-research.js"]
+    assert page_modules.versions_attr("tau", versions).split(",")[0] == "research:" + versions["page-research.js"]
 
 
 def test_a_page_file_is_served_like_a_bundle_immutable_at_its_version_and_compressed(web):
     port, _ = web
-    v = server._static_versions()["app.meridian-research.js"]
-    r, body = _get(port, "/static/app.meridian-research.js?v=" + v, accept_encoding="gzip")
+    v = server._static_versions()["app.meridian-strategies.js"]
+    r, body = _get(port, "/static/app.meridian-strategies.js?v=" + v, accept_encoding="gzip")
     assert r.status == 200 and r.getheader("Content-Type") == "text/javascript; charset=utf-8"
     assert r.getheader("Cache-Control") == webperf.IMMUTABLE and r.getheader("Content-Encoding") == "gzip"
     # Another build's version (an old page asking after a deploy) gets the current file, revalidated.
-    r, _ = _get(port, "/static/app.meridian-research.js?v=0000000000")
+    r, _ = _get(port, "/static/app.meridian-strategies.js?v=0000000000")
     assert r.status == 200 and r.getheader("Cache-Control") == webperf.REVALIDATE
 
 
 @pytest.mark.parametrize("theme,path,want", [
-    ("tau", "/research/12", "app-research.js"), ("tau", "/example", "app-research.js"),
+    ("tau", "/research/12", "page-research.js"), ("tau", "/example", "page-research.js"),  # one file for both themes
     ("tau", "/strategies", "app-strategies.js"), ("tau", "/billing", "app-billing.js"),
-    ("meridian", "/research", "app.meridian-research.js"), ("meridian", "/strategies/3", "app.meridian-strategies.js"),
+    ("meridian", "/research", "page-research.js"), ("meridian", "/strategies/3", "app.meridian-strategies.js"),
     ("meridian", "/settings/billing", "app.meridian-billing.js"), ("meridian", "/settings/account", "app.meridian-funds.js"),
     ("tau", "/terms", "app-legal.js"), ("meridian", "/privacy", "app-legal.js"),  # the legal pages are always Tau's
     ("tau", "/admin", "page-admin.js"), ("meridian", "/settings/system", "page-admin.js"),  # one file for both themes
@@ -175,7 +175,7 @@ def test_a_deploy_that_changes_only_a_page_file_changes_the_build_the_page_check
     assert page_modules.build_version("tau", dict(versions, **{"app.meridian-billing.js": "e" * 10})) == before
     # The shared core and a shared page file are both themes' build.
     for theme in ("tau", "meridian"):
-        for shared in ("core.js", "page-autopilot.js", "page-admin.js", "page-community.js"):
+        for shared in ("core.js", "page-autopilot.js", "page-admin.js", "page-community.js", "page-research.js"):
             assert page_modules.build_version(theme, dict(versions, **{shared: "d" * 10})) != page_modules.build_version(theme, versions)
 
 
@@ -246,7 +246,7 @@ def test_the_autopilot_panel_is_in_its_own_file_and_the_bundle_only_forwards_to_
 # serves, preloads and counts in its build as it does its own page files. Each bundle fetches it by that name
 # (pageSrc's PAGE_SHARED), and what a theme draws its own way in it comes from the bundle's shared() list (theme).
 def test_both_themes_load_the_one_shared_page_file_and_their_bundles_name_it():
-    assert page_modules.SHARED == ("autopilot", "admin", "community")
+    assert page_modules.SHARED == ("autopilot", "admin", "community", "research")
     versions = server._static_versions()
     for name in page_modules.SHARED:
         f = "page-%s.js" % name
@@ -306,10 +306,11 @@ def test_a_shared_page_files_page_is_preloaded_by_its_one_name_in_each_theme(the
 @pytest.mark.parametrize("name,paths,comment", [
     ("admin", ("/admin", "/system"), "// ---------- system map ----------"),
     ("community", ("/community",), "// ---------- community ----------"),
+    ("research", ("/research", "/research/12", "/example"), "// ---------- research ----------"),
 ])
 def test_a_shared_page_file_is_served_once_for_both_themes(web, theme, name, paths, comment):
-    # The operator pages (Admin, the System map) are one file, and so is Community: either theme's shell preloads it by
-    # its one version.
+    # The operator pages (Admin, the System map) are one file, and so are Community and Research: either theme's shell
+    # preloads it by its one version.
     port, account = web
     account["ui_theme"] = theme
     f = "page-%s.js" % name

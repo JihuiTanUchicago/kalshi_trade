@@ -2717,9 +2717,9 @@ test('a research session row names the credits its cost came from, and the idea 
   // card said "nothing yet" (walk 2026-10-30).
   const none = f.runRow({...base, status: 'running', spent_usd: 0});
   assert.match(none, /Spent so far: none yet/); assert.doesNotMatch(none, /none yet in credits|nothing yet/);
-  const src = readFileSync(new URL('../app/static/app-research.js', import.meta.url), 'utf8')
-    + readFileSync(new URL('../app/static/app.meridian-research.js', import.meta.url), 'utf8');
-  assert.equal((src.match(/placeholder="Write your own — e\.g\. “Sell overpriced tails in the last hour before the 5pm close\.”"/g) || []).length, 2);
+  // The form is one for both themes (page-research.js).
+  const src = readFileSync(new URL('../app/static/page-research.js', import.meta.url), 'utf8');
+  assert.equal((src.match(/placeholder="Write your own — e\.g\. “Sell overpriced tails in the last hour before the 5pm close\.”"/g) || []).length, 1);
   assert.doesNotMatch(src, /e\.g\. &quot;Sell overpriced/);
 });
 

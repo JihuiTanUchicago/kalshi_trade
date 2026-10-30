@@ -23,7 +23,8 @@
     exploreNoBtc, hotWhen, hotSpotNote, waitSpan, runWaitLine, demoSpan, actionLink, AP_DID, CREDITS_WARN_DAYS,
     shortReason, sinceRunsState, sinceSplit, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
-    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode
+    exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode,
+    sessionNo
   } = window.TauCore;
 
   const root = document.getElementById('app');
@@ -195,9 +196,6 @@
   // `market` false leaves the market out of an untitled session's title, for a row whose own Market column names
   // it: the research list read "Session · BTC 15-min up/down" beside a Market column saying "BTC 15-min up/down".
   const sessionTitle = (r, market = true) => r.title ? r.title : (r.prompt && r.prompt.trim()) ? r.prompt.trim() : (dirLabel(r.direction) + (market ? SEP + marketShort(r.market) : ''));
-  // A session's number among the user's own (the server's `seq`: 1 is their first), never the global run
-  // id, which read "Session 8" on someone's first session. The example and an answer without it get none.
-  const sessionNo = (r) => r && +r.seq > 0 ? `Session ${num(+r.seq)}` : '';
 
   // The research market picker: ONE list in the live-row style (name \u00b7 sparkline \u00b7 mid \u00b7
   // 24h volume), grouped by category, with Agent's choice leading as the default. Every row is
@@ -1308,7 +1306,7 @@
     return true;
   }
   // Signing out leaves nothing of the reader's own words on the device: the research idea not yet started
-  // (app-research.js, this tab) and the autopilot message not yet sent (page-autopilot.js, kept per account).
+  // (page-research.js, this tab) and the autopilot message not yet sent (page-autopilot.js, kept per account).
   // A session that ended by itself keeps them, so signing back in finds them where they were.
   function forgetDrafts() {
     try { sessionStorage.removeItem('tau_research_draft'); } catch (e) { /* private mode */ }
@@ -2268,7 +2266,7 @@
   }
 
   // ---------- research ----------
-  // In app.meridian-research.js, fetched on first use (page files, at the end of this file).
+  // In page-research.js (one for both themes), fetched on first use (page files, at the end of this file).
   function viewResearch() { return pageView('research', 'viewResearch', '/research', []); }
   function viewRun(id) { return pageView('research', 'viewRun', '/research', [id]); }
 
@@ -3771,7 +3769,7 @@
   }
   // The page files both themes load (page-<name>.js, page_modules.SHARED): what this theme draws its own way in
   // them comes from shared() (theme).
-  const PAGE_SHARED = ['autopilot', 'admin', 'community'];
+  const PAGE_SHARED = ['autopilot', 'admin', 'community', 'research'];
   // Without a version (an older shell) the file is still found, revalidated instead of cached for good.
   const pageSrc = (name, v = pageVersions()[name]) => '/static/' + (PAGE_SHARED.includes(name) ? 'page-' : 'app.meridian-') + name + '.js' + (v ? '?v=' + v : '');
   // A page's own scripts and stylesheets beside its file (#tau-boot data-page-assets, page_modules.ASSETS):
