@@ -486,6 +486,7 @@ window.TauPage('autopilot', (T) => {
       // A status read that failed says so, with Try again, instead of a panel with no figures and nothing said.
       const st = box.querySelector('#apf-story');
       if (st) {
+        st.apHtml = null;
         st.innerHTML = S.apFailing ? '<p class="apf-fail">The autopilot\u2019s status didn\u2019t load, so its figures are left out. The switch shows how you last set it. <button type="button" class="btn sm" data-ap-status-retry>Try again</button></p>' : '';
         const again = st.querySelector('[data-ap-status-retry]');
         if (again) again.onclick = () => { again.disabled = true; refreshAutopilot(box); };
@@ -497,10 +498,15 @@ window.TauPage('autopilot', (T) => {
     if (story) {
       // The billing pause has its own line under the switch, so the idle line skips it.
       const idleShown = !!(d.idle && !d.billing_blocked);
-      story.innerHTML = (idleShown ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"', d)}</p>` : '')
+      // The story is a live region, and each 20s status read wrote it again with the same words, so a screen reader
+      // read the whole story out again with the panel open: it is written only when its words change.
+      const html = (idleShown ? `<p class="apf-idle">${apIdleHtml(d.idle, 'data-ap="idle-focus"', d)}</p>` : '')
         + apStoryUnderIdle(d, idleShown).map((line) => `<p>${esc(line)}</p>`).join('');
-      const idleFocus = story.querySelector('[data-ap="idle-focus"]');
-      if (idleFocus) idleFocus.onclick = () => apShowFocus(box);
+      if (story.apHtml !== html) {
+        story.innerHTML = html; story.apHtml = html;
+        const idleFocus = story.querySelector('[data-ap="idle-focus"]');
+        if (idleFocus) idleFocus.onclick = () => apShowFocus(box);
+      }
     }
     // Live figures once real money is armed or running. A paper-only panel used to show "Live P&L
     // today $0.00" and a loss budget that can't apply to it, and nothing about the paper book it has.

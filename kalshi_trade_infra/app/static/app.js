@@ -547,17 +547,30 @@
   // full page load would: a screen reader says where it landed, and Tab starts from the page instead of
   // from the link the repaint removed. The first page of a visit and a repaint of the same page leave
   // focus alone, and so does a page that already put focus somewhere (a field it opened).
-  let shownPath = null;
-  function pageArrived(path) {
+  // A control that draws its page again in the same place (a Strategies filter chip, its market or sort select)
+  // gets focus back on its new copy: the repaint dropped a keyboard user at the top of the page, Tab going from
+  // the first link. Another view of one page (Explore's list to a market and back, /explore?m=) is a new page,
+  // and its heading takes focus, as a page change does. `was`: the control that had focus, by its id or data-*.
+  let shownPath = null, shownAt = null;
+  function focusKey(el) {
+    if (!el || el === document.body || !el.getAttribute || (root.contains && !root.contains(el)) || (el.closest && el.closest('#autopilot-float'))) return null;
+    if (el.id) return /^[A-Za-z][\w-]*$/.test(el.id) ? '#' + el.id : null;
+    const data = Object.keys(el.dataset || {}).map((k) => `[data-${k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}="${String(el.dataset[k]).replace(/["\\\]]/g, '')}"]`).join('');
+    return data ? el.tagName.toLowerCase() + data : null;
+  }
+  function pageArrived(path, was) {
     const h = root.querySelector('h1'), tab = root.querySelector('.services [aria-current="page"]');
     // The signed-out landing keeps the plain product name; its headline is not a page name.
     // plain(): the tab title is read and copied as text, so it carries no word joiner (usd()).
     const name = root.querySelector('.services') ? plain((h && h.textContent) || (tab && tab.textContent) || '').replace(/\s+/g, ' ').trim() : '';
     document.title = name ? `${clipWords(name, 59)}${SEP}Tau` : 'Tau';
-    const moved = shownPath !== null && shownPath !== path;
-    shownPath = path;
+    const at = path + location.search, again = shownPath === path, moved = shownAt !== null && shownAt !== at;
+    shownPath = path; shownAt = at;
     const a = document.activeElement, top = pageStart();
-    if (moved && top && top.focus && (!a || a === document.body)) top.focus({ preventScroll: true });
+    if (!again && !moved || (a && a !== document.body && a.isConnected !== false)) return;
+    const back = again && was ? root.querySelector(was) : null;
+    const to = back && back.focus && !back.disabled && !back.hidden ? back : moved ? top : null;
+    if (to && to.focus) to.focus({ preventScroll: true });
   }
   // Where a page's content starts: the h1 that opens <main>, above the page's money figures, made
   // focusable for a script. A page with no h1 in <main> (the landing) starts at #main.
@@ -568,6 +581,7 @@
     return h;
   }
   async function render() {
+    const was = focusKey(document.activeElement);
     clearTimers();
     checkVersion();
     const gen = ++S.gen;
@@ -629,7 +643,7 @@
     }
     if (gen !== S.gen) return;  // the user moved on while this page loaded
     root.setAttribute('aria-busy', 'false');
-    pageArrived(path);
+    pageArrived(path, was);
     pagePrefetch();
     paymentGate().catch(() => {});
   }
@@ -1488,7 +1502,7 @@
     const tried = s.hypotheses_tried ? num(s.hypotheses_tried) : s.parent_id ? 'Adjustment' : '\u2014';
     const name = opts.nolink ? esc(s.title) : `<a href="/strategies/${s.id}">${esc(s.title)}</a>`;
     const pickCell = opts.pick ? (bulkDeployable(s)
-      ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select for deployment"></td>`
+      ? `<td class="pickcol" data-lab="Deploy"><input type="checkbox" class="pick" data-id="${s.id}" aria-label="Select ${esc(s.title)} for deployment"></td>`
       : '<td class="pickcol" data-lab=""></td>') : '';
     return `<tr class="${opts.land ? 'washed' : ''}">${pickCell}
       <td class="name" data-lab="">${name}${s.shared_from ? ` <span class="shared-flag">${ICON.share}${esc(s.shared_from)}</span>` : ''}${s.example ? ' ' + EXAMPLE_TAG : s.by_autopilot ? ' ' + AP_STRAT_TAG : ''}<div class="sub-fig cellwrap">${mdInline(esc(s.thesis))}</div></td>

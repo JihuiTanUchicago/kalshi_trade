@@ -86,11 +86,11 @@ window.TauPage('billing', (T) => {
                 ${reloadFailNote(d)}
                 <div class="autorel-row">
                   <label class="switch"><input type="checkbox" id="autoreload" ${d.auto_reload ? 'checked' : ''}><span>Auto-reload</span></label>
-                  <button type="button" class="autorel-edit" id="autorel-edit" aria-expanded="false" aria-controls="autorel-config"><span id="autorel-sum">Reload $${d.autoreload_amount} at $${d.autoreload_threshold}</span><span class="chev">${ICON.chev}</span></button>
+                  <button type="button" class="autorel-edit" id="autorel-edit" aria-expanded="false" aria-controls="autorel-config"><span id="autorel-sum">Reload $${d.autoreload_amount} at $${d.autoreload_threshold}</span><span class="vh"> (change amounts)</span><span class="chev">${ICON.chev}</span></button>
                 </div>
                 <p class="hint autorel-when" id="autorel-when">${reloadWhen(d.auto_reload, d.autoreload_amount, d.autoreload_threshold)}</p>
                 <div class="autorel-config" id="autorel-config" hidden>
-                  <p class="autorel-line">Reload <input class="input xs" id="reload-amt" type="number" min="${d.min_reload_amount}" step="1" value="${d.autoreload_amount}"> dollars when my balance drops to <input class="input xs" id="reload-thr" type="number" min="${d.min_reload_threshold}" step="1" value="${d.autoreload_threshold}"> dollars.</p>
+                  <p class="autorel-line">Reload <input class="input xs" id="reload-amt" type="number" min="${d.min_reload_amount}" step="1" value="${d.autoreload_amount}" aria-label="Reload amount, in dollars" aria-describedby="autorel-flash"> dollars when my balance drops to <input class="input xs" id="reload-thr" type="number" min="${d.min_reload_threshold}" step="1" value="${d.autoreload_threshold}" aria-label="Reload when my balance drops to, in dollars" aria-describedby="autorel-flash"> dollars.</p>
                   <p class="hint" id="autorel-flash" style="margin-top:4px">Minimum $${d.min_reload_amount} reload, $${d.min_reload_threshold} trigger.</p>
                 </div>
               </section>

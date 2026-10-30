@@ -522,12 +522,19 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     if (olderHost) olderHost.addEventListener('click', async (e) => {
       const btn = e.target && e.target.closest && e.target.closest('button[data-older]');
       if (!btn) return;
+      // The list draws the button again (it names the new oldest session), or not at all past the last page, and
+      // focus fell to the top of the page with the pressed one. It goes to the first session just listed: a screen
+      // reader says which one, and Tab goes on down the older ones to the button.
+      const had = document.activeElement === btn;
       await busy(btn, async () => {
         try {
           const got = await api('/api/runs?before=' + encodeURIComponent(btn.getAttribute('data-older')));
           older = older.concat(got.runs || []);
           olderMore = !!got.more;
           await load();
+          const first = (got.runs || [])[0], a = document.activeElement;
+          const row = first && root.querySelector(`#runs a[href="/research/${first.id}"]`);
+          if (row && row.focus && (had || !a || a === document.body || !a.isConnected)) row.focus();
         } catch (err) {
           flash('#flash', errText(err), 'bad');
         }
@@ -598,8 +605,8 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     // The "·" before it ends the item ahead (kept whole with it): when the item wrapped, its line began "· +1 passed".
     const unclear = (ahead) => fell ? `<span class="nobr">${ahead}\u00a0\u00b7</span><span class="run-fell">+${num(fell)} passed, not cleared</span>` : ahead;
     const explored = `Explored ${num(r.hypotheses_tried)} hypothes${r.hypotheses_tried === 1 ? 'is' : 'es'}`;
-    const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-label="in process"></span>'
-      : r.status === 'queued' ? 'Queued<span class="working" aria-label="in process"></span>'
+    const state = late ? lateLabel(late) : r.status === 'running' ? 'Researching<span class="working" aria-hidden="true"></span>'
+      : r.status === 'queued' ? 'Queued<span class="working" aria-hidden="true"></span>'
       : r.status === 'succeeded' ? `${why ? why + SEP : ''}${unclear(`<span class="${ok ? 'gain' : ''}">${num(ok)} of ${num(r.hypotheses_tried)} passed</span>`)}`
       : r.status === 'stopped' ? (ok ? `${explored}${SEP}${unclear(`<span class="gain">${num(ok)} passed</span>`)}` : unclear(explored))
       : r.status === 'paused' ? 'Paused'  // fell through to a red "Failed" while it waited on Resume
@@ -908,6 +915,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
     const jump = section.querySelector('.jumplatest');
     const pulse = section.querySelector('.runpulse');  // Tau's foot
     let unseen = 0, first = true, appended = 0, pulseSt = null, pulseKey = '', pulseKind = '', lastAt = Date.now(), queuedAt = null;
+    const MER_SAID = { paused: 'Paused — resume and it picks up exactly where it left off.', running: 'Researching', queued: 'Queued — waiting for a free agent to pick this up…' };
     // Meridian's: whether the session's state has been said once.
     let stateSeen = false;
     // A stretch of the log: its idea cards (title -> card controller, most recent wins on a title clash), the
@@ -1069,6 +1077,10 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
           if (!stateSeen) section.classList.toggle('is-complete', st === 'done');
           stateSeen = true;
           if (st === 'done') { sealThink(); settlePending(log); }
+          // Meridian's log has no foot, and a press of Pause or Resume said nothing: only the buttons changed. A
+          // change of state is said once, in the words Tau's foot shows; not the first paint, nor the end.
+          if (pulseKind && st !== pulseKind && MER_SAID[st]) announce(MER_SAID[st]);
+          pulseKind = st;
           return;
         }
         // A finished log sizes to what it holds (.runfeed.done); one still going keeps its fixed height.
@@ -1628,7 +1640,7 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
       const worked = runWorked(r, pauses);
       const late = r.wait && r.wait.overdue ? r.wait : null;
       // Tau's status works on beside its word; Meridian's research progress below says so.
-      const working = tau ? '<span class="working" aria-label="in process"></span>' : '';
+      const working = tau ? '<span class="working" aria-hidden="true"></span>' : '';
       const statusText = late ? lateLabel(late)
         : r.status === 'queued' ? 'Queued' + working
         : r.status === 'paused' ? 'Paused'
