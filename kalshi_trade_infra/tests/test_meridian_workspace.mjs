@@ -2973,6 +2973,25 @@ test('Hot Markets keeps a 15-minute window’s "Target Price:" with its amount, 
   f.clearTimers();
 });
 
+test('Hot Markets keeps a range bucket’s top with its floor, on a row of its own', () => {
+  // Walk 2026-10-30 at 1280px: a KXBTC bucket's "$113,000 to 113,499.99" sat in the ~80px name column, cut to
+  // "$113,000 to 1…", so the rail's buckets of one ladder ("BTC range at 5pm ET") lost the edge that sets them apart.
+  const f = frontend({storage: new Map([['tau_hotrail', '1']])});
+  f.root.innerHTML = '<aside id="hotrail"></aside>';
+  f.S.hot = {at: new Date().toISOString(), markets: [
+    {t: 'KXBTC-26OCT3017-B113250', s: 'KXBTC', ti: 'Bitcoin price range on Oct 30, 2026?', su: '$113,000 to 113,499.99', bid: .21, ask: .24, v24: 10, h: [.2, .22]},
+    {t: 'KXBTC-26OCT3017-B112750', s: 'KXBTC', ti: 'Bitcoin price range on Oct 30, 2026?', su: '$112,500 to $112,999.99', bid: .18, ask: .2, v24: 10, h: [.2, .19]},
+    {t: 'KXBTCD-26OCT3017-T112999.99', s: 'KXBTCD', ti: 'Bitcoin price at 5pm EDT?', su: '$113,000 or above', bid: .5, ask: .52, v24: 10, h: [.4, .5]},
+    {t: 'KXHIGHNY-26OCT31-B58.5', s: 'KXHIGHNY', ti: 'Highest temperature in NYC tomorrow?', su: '58° to 59°', bid: .2, ask: .25, v24: 10, h: [.2, .25]}]};
+  f.renderHotRail();
+  const rows = f.root.querySelectorAll('.hot-row');
+  assert.match(rows[0].innerHTML, /<span class="hot-cond-wide">\$113,000 to 113,499\.99<\/span>/);
+  assert.match(rows[1].innerHTML, /<span class="hot-cond-wide">\$112,500 to \$112,999\.99<\/span>/);
+  assert.match(rows[2].innerHTML, /<span>≥ \$113,000<\/span>/);  // a strike keeps its place beside the volume
+  assert.match(rows[3].innerHTML, /<span>58° to 59°<\/span>/);  // a short non-price range does too
+  f.clearTimers();
+});
+
 test('Hot Markets preserves dated contract identity and escapes full accessible quote names', () => {
   const f = frontend({storage: new Map([['tau_hotrail', '1']])});
   f.root.innerHTML = '<aside id="hotrail"></aside>';
