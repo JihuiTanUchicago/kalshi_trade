@@ -6483,6 +6483,22 @@ test('Meridian: a paper card on the dashboard says "after Kalshi fees and the sp
   assert.doesNotMatch(f.deploymentMonitor(nullStakeDep({mode: 'live', status: 'running', stake: 5})), /paper-net/);
 });
 
+test('Meridian: an untitled session row leaves its market to the Market column, not the title too', async () => {
+  // Walk 2026-10-30: "Momentum · BTC 15-min up/down" in the title beside a Market column saying "BTC 15-min up/down".
+  const untitled = {...researchRun(7, 'succeeded'), prompt: '', title: null, direction: 'momentum'};
+  const titled = {...researchRun(8, 'succeeded')};
+  const f = researchFrontend([untitled, titled]); await f.viewResearch(); await flush();
+  const row = (id) => f.root.querySelector('#runs').children.find((el) => el.getAttribute('href') === `/research/${id}`);
+  const title = row(7).querySelector('.run-title b');
+  assert.equal(title.textContent, 'Momentum');
+  assert.doesNotMatch(row(7).querySelector('.run-title').innerHTML, /BTC 15-min/);
+  assert.match(row(7).querySelector('.run-meta').textContent, /BTC 15-min up\/down/);
+  // A typed idea is its own title, the market still in its column.
+  assert.equal(row(8).querySelector('.run-title b').textContent, 'Idea 8');
+  assert.match(row(8).querySelector('.run-meta').textContent, /BTC 15-min up\/down/);
+  f.clearTimers();
+});
+
 test('Meridian: a research session the autopilot started says so on the active card, the list and its page', async () => {
   const ap = {...researchRun(15, 'running'), by_autopilot: 1};
   const apDone = {...researchRun(14, 'succeeded'), by_autopilot: 1};

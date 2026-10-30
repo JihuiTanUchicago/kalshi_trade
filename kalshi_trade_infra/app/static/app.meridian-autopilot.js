@@ -209,7 +209,7 @@ window.TauPage('autopilot', (T) => {
       // made a screen reader say "Between reviews · 2 on paper" again each time. Only a change is written.
       // What it says leaves out the minutes that tick ("last move 4m ago", "for 6m"): the shown line, hidden
       // from the reader, keeps counting, and its words go out only when the status itself changes.
-      const waitWho = w && (w.state === 'queued' ? 'Waiting for a free worker' : 'No word from it');
+      const waitWho = w && (w.state === 'queued' ? 'Queued for a free worker' : 'No word from it');
       const idle = !w && !d.agent_busy ? apIdleLine(box) : null;
       const shown = w ? `${waitWho} for ${waitSpan(w.seconds)}, longer than usual` : idle;
       const say = w ? `${waitWho} for longer than usual` : d.agent_busy ? 'Working on its next move' : apIdleLine(box, true);
@@ -532,7 +532,7 @@ window.TauPage('autopilot', (T) => {
       // Named as on the dashboard's autopilot card ("Last check-in"): the panel said "Last reviewed" beside it.
       // Check-ins are the autopilot's own: with it off (or a flip to off still saving) the figure goes, as the switch
       // says. Right after turning it off the panel kept "Last check-in 37m ago" under "Off: it only suggests ideas".
-      .concat(!(flip ? flip.on : on) ? [] : d.review_wait ? [`<dt>Check-in</dt><dd>${d.review_wait.state === 'queued' ? 'Waiting' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
+      .concat(!(flip ? flip.on : on) ? [] : d.review_wait ? [`<dt>Check-in</dt><dd>${d.review_wait.state === 'queued' ? 'Queued' : 'Silent'} ${waitSpan(d.review_wait.seconds)}</dd>`]
         : d.reviewing ? ['<dt>Last check-in</dt><dd>Reviewing now</dd>'] : d.last_review_at ? [`<dt>Last check-in</dt><dd>${sinceMin(d.last_review_at)}${apEvery(d, 'apf-note')}</dd>`] : []);
     if (stats) {
       stats.dataset.cols = short.length;
