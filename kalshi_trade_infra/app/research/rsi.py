@@ -69,6 +69,20 @@ _DROP_RULES: Tuple[Tuple[str, str, str], ...] = (
      r"|misaligned|inverted|backwards|conflat|circular|tautolog|contradictory|internally|overfit|fundamentally"
      r"|not grounded|confuses|ambiguous|nonsensical|not a standard|fatal|does not support|functionally"
      r"|atomic|continuous(ly)? (observable|order|underlying)|facts kill"),
+    # Prod 2026-10-27/28 BTC: ~20% of drops were "other". Most re-proposed a mechanism the playbook
+    # already lists as dead, or cited #420's research-fold numbers (t far below ~3, profit from 3 events).
+    ("known_dead", "fit",             # a mechanism the playbook already rules out: a proposer miss
+     r"dead[- ](end|region)|documented (as )?(a )?(dead|failure)|prior (tests|failures)|\d+\+? (prior )?failures"
+     r"|\d+\s?[x×] (failures|dead)|exhaustively.?mined|failed \d+\+? times|tested \d+\+? times"),
+    ("wrong_fit", "fit",
+     r"(lacks|no) (an? )?(sound |viable |specific |clear )?(economic )?mechanism|mechanism (is )?(flawed|broken|invalid)"
+     r"|median 1 contracts? per event|does(n't| not) actually (test|express|filter)|mathematically wrong"
+     r"|redundan|not independent|by construction|does(n't| not) (translate|hold|exist on)|structural flaw"
+     r"|mechanism (failure|assumes)|breaks the core|suited to|different (pro|thing)|(multiple|across) strikes (within|in) the same"),
+    ("no_signal", "edge",
+     r"\bt\s?=\s?-?\d|~\s?3 threshold|top.?3 events|profit concentrat|luck|noise|anti.?(signal|predict)"
+     r"|already (prices|priced|incorporat|reflect)|well.?calibrated|near.?identity|recovers the market|t-stat"
+     r"|no exploitable|reprices? (faster|instantly|in \d)|too efficient|faster than|arbitraged within"),
 )
 _COMPILED = tuple((tag, kind, re.compile(pat, re.I)) for tag, kind, pat in _DROP_RULES)
 KINDS = ("pipeline", "spec", "edge", "fit", "other")
@@ -121,6 +135,41 @@ MECHANISMS = (
      r"|\bhour \d|\d+(am|pm)\b|\d+-\d+ et\b|calendar"),
     ("generic learned recalibration (logistic / multi-factor)",
      r"logistic|classifier|multi.?factor|ridge|xgboost|random forest|gradient.?boost|ensemble|bayesian|\bhmm\b"),
+)
+# Prod 2026-10-28..30 BTC: 305 of 1211 drop titles named no bucket again (new features, new phrasings),
+# so they were never rationed. These match only AFTER every bucket above, so no idea that already had
+# a bucket moves (its drop history keeps counting where it did); three new mechanisms join them.
+MECHANISMS += (
+    ("cross-venue basis (Polymarket vs Kalshi)", r"\bpm.?kalshi"),
+    ("options-implied fair value / IV vs Kalshi",
+     r"options? (lead|information|raw|at|in|data)|(adjusted|repriced|pure) options"),
+    ("settlement-average nowcast (p_settle / settle_z)",
+     r"p_settle|settle.?(z|sd)\b|settlement (average|averag|nowcast|lock|sd|uncertainty)|nowcast|averaging"),
+    ("favorite-longshot / calibration", r"fee.?(structure|effect|adjusted)"),
+    ("tick discreteness / rounding", r"tick (discret|quantiz)|rounding|1c (tick|grid)|between ticks"),
+    ("contract age / time-to-expiry band",
+     r"long.?horizon|long.?tte|extended tte|>\s?\d+h|\d+-\d+h\b|early.?life|late.?life|lifecycle|fresh contracts"
+     r"|tte (band|regime)|late.?stage"),
+    ("terminal pinning / convergence near expiry",
+     r"near.?settlement|late.?(window|contract)|time.?decay|(short|low) tte|sub.?minute"),
+    ("volatility mispricing (vol scale / regime / GARCH)",
+     r"\brv\b|\brv_\d+s|variance premium|vol(atility)?.(burst|cluster|persistence|floor|window|calming|collapse"
+     r"|trajectory|term structure|u.?curve)|two.?volatility|vol term|high recent vol"),
+    ("deep ITM / OTM near-certainty harvest (extreme prices)",
+     r"\bwings?\b|extreme.?(price|yes|no|tte|horizon)|price tail|far otm|confirmed winner|cheapshot"),
+    ("mean reversion after a move", r"overreact|contrarian|\breversion\b|snap.?back|exhausted moves? reverse"),
+    ("momentum / drift continuation",
+     r"return (sign|skew|accelerat|window|horizon|timeframe|magnitude|autocorrel)|ret_1s|multi.?timeframe"
+     r"|all horizons"),
+    ("cross-asset lead-lag / pairs", r"cross.?coin|funding|\bperp|coordinated crypto|yield.?curve|stress index"),
+    ("order-book / flow microstructure",
+     r"microprice|taker (volume|activity|flow|burst|size)|trades_60s|trade (absorption|activity|size)|bid size"
+     r"|bid.?ask bounce|ob_mid|flow_imb|book_updates|update velocity|market maker|\bmm\b"),
+    ("session / time-of-day filter", r"trading hours|off.?hours|\bcme\b|settlement hour|hour.?of.?day|intraday"),
+    ("moneyness / strike-distance band",
+     r"moneyness|near.?strike|\batm\b|strike (crossing|magnet)|z.?score|gamma|round.?number"),
+    ("generic learned recalibration (logistic / multi-factor)",
+     r"\brf\b|fitted|change detection|^code:|arima|adaptive|\bgbm\b"),
 )
 _MECH_RX = tuple((name, re.compile(rx, re.I)) for name, rx in MECHANISMS)
 

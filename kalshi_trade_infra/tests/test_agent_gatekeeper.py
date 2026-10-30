@@ -406,6 +406,19 @@ def test_mechanism_buckets_put_renamed_ideas_together():
     assert rsi.mechanism("XRP-SOL Cross-Market Lead-Lag Arbitrage") == "cross-asset lead-lag / pairs"
     assert rsi.mechanism("Logistic Multi-Factor ITM Scoring").startswith("generic learned")
     assert rsi.mechanism("Weekly options expiry hedge unwind") is None
+    # Prod 2026-10-28..30: titles on the newer features named no bucket; they now land in one, and
+    # an idea that already had a bucket keeps it (the fallbacks match only after every bucket).
+    for title, bucket in (("Settlement Nowcast Edge: p_settle vs Mid Divergence in Final Minutes", "settlement-average"),
+                          ("Tick Discreteness at Wings: 1c Tick Creates Systematic Rounding Bias", "tick discreteness"),
+                          ("Long-Horizon Fresh Contracts: >48h TTE Initial Mispricing", "contract age"),
+                          ("RV-Adjusted Options Lead 12-24h Window: Documented Signal", "options-implied"),
+                          ("Microprice-Mid Divergence: Size-Weighted Pressure Signal", "order-book"),
+                          ("RV Ratio Spike: Short-Term Vol Exceeds Long-Term", "volatility mispricing"),
+                          ("Z-Score Transition Band: Moderate Moneyness Has Highest Information Content", "moneyness"),
+                          ("Pooled Fee Structure Edge: Away-From-Mid Contracts", "favorite-longshot")):
+        assert (rsi.mechanism(title) or "").startswith(bucket), (title, rsi.mechanism(title))
+    assert rsi.mechanism("Fitted Terminal Convergence: Logistic on settle_z").startswith("terminal pinning")
+    assert rsi.mechanism("IV/RV Ratio Extremes at Wings: Options Overpricing").startswith("options-implied")
     # Prod 2026-10-26 btc15m titles that named no bucket and so were never rationed.
     opt, pm = "options-implied fair value / IV vs Kalshi", "cross-venue basis (Polymarket vs Kalshi)"
     for t in ("Options IV Compression \u2014 Underpriced Tail Risk", "Options Surface Staleness \u2014 Fresh Data Advantage",

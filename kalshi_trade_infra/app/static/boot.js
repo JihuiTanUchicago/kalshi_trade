@@ -139,7 +139,14 @@
       report('error', ev.error || ev.message, ev.filename, ev.lineno, ev.colno);
     } catch (e) { /* never */ }
   });
+  // A read that came back 401 is a session that ended, not a broken page: the app has already gone to sign-in
+  // and says why there. Pages rethrow it to stop drawing, so it lands here; reported, it filled /admin's page
+  // errors with "Please sign in." from every page a signed-out reader had open (walk 2026-10-30).
   window.addEventListener('unhandledrejection', function (ev) {
-    try { report('rejection', ev ? ev.reason : undefined); } catch (e) { /* never */ }
+    try {
+      var why = ev ? ev.reason : undefined;
+      if (why && typeof why === 'object' && why.status === 401 && typeof why.message === 'string') return;
+      report('rejection', why);
+    } catch (e) { /* never */ }
   });
 })();

@@ -1635,6 +1635,13 @@ a.snap:hover { border-color: var(--ink-3); }
 .email-pref .hint { margin: 0; line-height: 1.5; }
 .email-pref .email-always b { color: var(--ink-2); font-weight: 600; }
 .email-pref #email-flash:empty { display: none; }
+/* Settings’ Account section: who is signed in, and links to where the keys and the card are managed. */
+.acct-rows { display: grid; max-width: 560px; margin: 14px 0 0; }
+.acct-rows > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 2px 16px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.acct-rows dt { font-family: var(--f-ui); font-size: 13px; color: var(--ink-3); }
+.acct-rows dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.acct-hint { max-width: 560px; margin: 10px 0 0; line-height: 1.5; }
+@media (max-width: 560px) { .acct-rows > div { grid-template-columns: minmax(0, 1fr); } }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-err { display: grid; justify-items: start; gap: 8px; }
 /* A reply or an edit that didn't send says so under its own box. */
@@ -1720,8 +1727,6 @@ body.hot-open .hot-panel { display: flex; flex-direction: column; width: 306px; 
    with an ellipsis; the row's Closes line keeps the hour), never the volume. */
 .hot-foot .mk { font-size: 10px; letter-spacing: .05em; padding: 1px 5px 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hot-vol { font-family: var(--f-nar); font-size: 11px; letter-spacing: .04em; color: var(--ink-3); flex: none; white-space: nowrap; }
-.hot-foot svg { width: 14px; height: 14px; margin-left: auto; color: var(--ink-3); }
-.hot-row:hover .hot-foot svg { color: var(--ink); }
 .hot-ft { padding: 10px 15px; border-top: 1px solid var(--rule); font-family: var(--f-nar); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .hot-ft a { color: var(--ink); text-decoration: none; }
 .hot-ft a:hover { text-decoration: underline; }

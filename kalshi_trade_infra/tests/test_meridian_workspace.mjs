@@ -165,6 +165,7 @@ class Element {
   insertBefore(child, ref) { this.appendChild(child); const at = this.children.indexOf(ref); if (at >= 0) this.children.splice(at, 0, this.children.pop()); }
   insertAdjacentHTML(_position, html) { this.html = (this.html || '') + html; }
   getAttribute(key) { return this.attributes[key] ?? null; }
+  hasAttribute(key) { return key in this.attributes; }
   setAttribute(key, value) { this.attributes[key] = String(value); }
   removeAttribute(key) { delete this.attributes[key]; }
   focus(options) { this.focusOptions = options; if (this.ownerDocument) this.ownerDocument.activeElement = this; }
@@ -207,7 +208,8 @@ function frontend({fetchImpl, brokerMount, stripeLoader, search = '', matchMedia
     }, scrollTo() {}, matchMedia,
       ...(brokerMount ? {TauBrokerConnections: {mount: brokerMount}} : {}), ...win},
     addEventListener() {}, location, history: {pushState: navigate, replaceState: navigate},
-    localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value))},
+    localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: key => storage.delete(key), key: i => [...storage.keys()][i] ?? null, get length() { return storage.size; }},
     ...(session ? {sessionStorage: session} : {}),
     setInterval: callback => { intervals.set(++nextId, callback); return nextId; },
     clearInterval: id => intervals.delete(id),
@@ -2743,7 +2745,7 @@ test('Explore and Hot Markets compact conditions preserve strict versus inclusiv
 });
 
 test('Explore says when a timed contract closes, and nothing for an event with no hour', async () => {
-  const markets = [{t: 'KXBTC15M-26OCT262345-45', s: 'KXBTC15M', ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,204.11', bid: .48, ask: .51, v24: 9, oi: 1, ct: '2026-10-27T03:45:00Z'},
+  const markets = [{t: 'KXBTC15M-26OCT262345-45', s: 'KXBTC15M', ti: 'BTC price up in next 15 mins?', su: 'Target Price: $113,204.11', bid: .48, ask: .51, v24: 9, oi: 1, ct: new Date(Date.now() + 5 * 3600e3).toISOString()},
     {t: 'KXNBAGAME-26OCT26MINDEN-MIN', s: 'KXNBAGAME', ti: 'Minnesota at Denver Winner?', su: 'Minnesota', bid: .41, ask: .42, v24: 8, oi: 1, ct: null}];
   const f = frontend({fetchImpl: () => response({at: new Date().toISOString(), markets, total: 2, shown: 2, matched: 2, per: 40})});
   await f.viewExplore();
@@ -2942,7 +2944,8 @@ test('Hot Markets reports source snapshot age without changing quotes or perform
     assert.equal(rail.querySelector('.hot-delta').textContent, '+4¢');
     assert.equal(rail.querySelector('.hot-vol').textContent, '1.2k\u00a0· 24h');
     assert.equal(rail.querySelector('.hot-vol').getAttribute('title'), '24-hour volume');
-    assert.equal(rail.querySelector('.hot-row').getAttribute('href'), 'https://kalshi.com/markets/kxbtc15m');
+    // The row opens Tau's own market page, as Explore's rows do, not Kalshi in a new tab.
+    assert.equal(rail.querySelector('.hot-row').getAttribute('href'), '/explore?m=KXBTC15M-26OCT181230-00');
     assert.equal(f.S.hot, snapshot); assert.equal(JSON.stringify(snapshot), before);
   }
   assert.equal(f.S.hotAt, cachedAt); assert.equal(f.S.ap, autopilot);
@@ -2990,8 +2993,10 @@ test('Hot Markets preserves dated contract identity and escapes full accessible 
     assert.ok(rows[index].innerHTML.includes('>BTC 15-min up/down<') && !rows[index].innerHTML.includes('>KXBTC15M<'), 'no raw series chip, not even for screen readers');
     assert.ok(labels[index].includes(markets[index].ti)); assert.ok(!labels[index].includes(markets[index].t), 'the raw ticker is not read out as its name');
     assert.ok(labels[index].includes('BTC 15-min up/down'));
-    assert.match(labels[index], /At least \$105,000.*52¢.*\+4¢ across available history.*1\.2k volume over 24 hours.*Opens Kalshi in a new tab/);
-    assert.equal(rows[index].getAttribute('target'), '_blank'); assert.equal(rows[index].getAttribute('rel'), 'noopener');
+    assert.match(labels[index], /At least \$105,000.*52¢.*\+4¢ across available history.*1\.2k volume over 24 hours/);
+    // It opens Tau's market page in place, so it no longer says it opens Kalshi in a new tab.
+    assert.doesNotMatch(labels[index] + rows[index].textContent, /Opens Kalshi/);
+    assert.equal(rows[index].getAttribute('target'), null); assert.equal(rows[index].getAttribute('href'), '/explore?m=' + encodeURIComponent(markets[index].t));
   }
   assert.match(labels[2], /Price &quot;preview&quot; &lt;img/);
   assert.doesNotMatch(labels[2], /KXBTC15M-/);
@@ -5661,14 +5666,16 @@ const MARKET_PAGE = {ticker: 'KXBTCD-26OCT2617-T113499.99', series: 'KXBTCD', ti
     {mode: 'live', strategy_id: 4, title: 'Daily close drift', side: 'yes', qty: 2, entry_price: 0.52, cost: 1.06, unrealized: 0.04, mark_ts: '2026-10-26T10:59:00Z', status: 'open', market_close_time: '2026-10-26T21:00:00Z'},
     {mode: 'paper', strategy_id: 4, title: 'Daily close drift', side: 'no', qty: 10, entry_price: 0.44, cost: 4.5, unrealized: 0.8, mark_ts: '2026-10-26T10:59:00Z', status: 'open', market_close_time: '2026-10-26T21:00:00Z'}],
   closed: [{mode: 'paper', strategy_id: null, title: null, side: 'no', qty: 8, entry_price: 0.7, cost: 5.68, status: 'closed', pnl: 0.24, exit_price: 0.75, close_reason: 'take_profit', market_close_time: '2026-10-26T21:00:00Z'}]}};
-const readerZone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value;
+// Escaped for the patterns below: a zone with no short name reads "GMT+9" (Asia/Tokyo), and its "+" is a quantifier.
+const readerZone = new Intl.DateTimeFormat(undefined, {timeZoneName: 'short'}).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value
+  .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test('a market page says what its price is, how it settles and when, and the reader’s positions by money book', async () => {
   const f = OPEN_MARKET(MARKET_PAGE, [{key: 'btc_daily', series: 'KXBTCD', label: 'Bitcoin above $X at 5pm ET'}]);
   await f.ready;
   const html = f.root.innerHTML;
   // The market's readable name and status in words, not "KXBTCD · active".
-  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · Open for trading · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
+  assert.match(html, /Bitcoin above \$113,499\.99 at 5pm ET · <span data-close="[^"]+" data-form="status" data-skew="\d+">Open for trading<\/span> · <span class="kalshi-ref">Kalshi contract <span class="tick" translate="no">KXBTCD-26OCT2617-T113499\.99/); assert.doesNotMatch(html, /· active ·/);
   // The price: a chance, the book it comes from, and when it was read.
   // Each piece holds together ("bid 58¢" ended a 390px line and "/ ask 61¢" began the next), breaking only at "·".
   assert.match(html, new RegExp('≈\u00a056% chance of Yes\u00a0· bid\u00a055¢\u00a0/ ask\u00a057¢\u00a0· as\u00a0of\u00a0[^<]*\u00a0' + readerZone));
