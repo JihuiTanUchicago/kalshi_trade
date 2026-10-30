@@ -3448,13 +3448,15 @@ for (const build of [undefined, 'meridian-current', 'meridian-old']) {
 for (const [label, stored, blocked, expected] of [['default', null, false, 'tau'], ['saved Meridian', 'meridian', false, 'meridian'], ['saved Tau', 'tau', false, 'tau'], ['blocked storage', null, true, 'tau']]) {
   test(`unchanged bootstrap selects the correct isolated bundle: ${label}`, () => {
     const scripts = [], css = {href: '/static/app.css?v=tau-css'};
-    const dataset = {tauJs: '/static/app.js?v=tau-js', tauVer: 'tau-js', merJs: '/static/app.meridian.js?v=mer-js', merVer: 'mer-js', merCss: '/static/app.meridian.css?v=mer-css'};
+    const dataset = {coreJs: '/static/core.js?v=core-js', tauJs: '/static/app.js?v=tau-js', tauVer: 'tau-js', merJs: '/static/app.meridian.js?v=mer-js', merVer: 'mer-js', merCss: '/static/app.meridian.css?v=mer-css'};
     const context = {window: {}, localStorage: {getItem: () => { if (blocked) throw new Error('Synthetic blocked storage'); return stored; }},
       document: {getElementById: id => id === 'tau-boot' ? {dataset} : id === 'tau-css' ? css : null,
         createElement: tag => { assert.equal(tag, 'script'); return {}; }, body: {appendChild: script => scripts.push(script)}}};
     vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
-    assert.equal(context.window.__TAU_UI__, expected); assert.equal(scripts.length, 1);
-    assert.equal(scripts[0].src, expected === 'meridian' ? dataset.merJs : dataset.tauJs);
+    // The shared core, then the theme's bundle, in that order (async off: added scripts run in the order added).
+    assert.equal(context.window.__TAU_UI__, expected); assert.equal(scripts.length, 2);
+    assert.deepEqual(scripts.map((x) => x.src), [dataset.coreJs, expected === 'meridian' ? dataset.merJs : dataset.tauJs]);
+    assert.ok(scripts.every((x) => x.async === false));
     assert.equal(context.window.__BUILD__, expected === 'meridian' ? dataset.merVer : dataset.tauVer);
     assert.equal(css.href, expected === 'meridian' ? dataset.merCss : '/static/app.css?v=tau-css');
   });
@@ -3561,13 +3563,13 @@ test('a research session that does not exist links to the list instead of offeri
 test('the legal pages load in Tau even for a Meridian user, since only Tau has them', () => {
   for (const [pathname, expected] of [['/terms', 'tau'], ['/privacy', 'tau'], ['/settings', 'meridian']]) {
     const scripts = [], css = {href: '/static/app.css?v=tau-css'};
-    const dataset = {tauJs: '/static/app.js?v=tau-js', tauVer: 'tau-js', merJs: '/static/app.meridian.js?v=mer-js', merVer: 'mer-js', merCss: '/static/app.meridian.css?v=mer-css'};
+    const dataset = {coreJs: '/static/core.js?v=core-js', tauJs: '/static/app.js?v=tau-js', tauVer: 'tau-js', merJs: '/static/app.meridian.js?v=mer-js', merVer: 'mer-js', merCss: '/static/app.meridian.css?v=mer-css'};
     const context = {window: {}, location: {pathname}, localStorage: {getItem: () => 'meridian'},
       document: {getElementById: id => id === 'tau-boot' ? {dataset} : id === 'tau-css' ? css : null,
         createElement: () => ({}), body: {appendChild: script => scripts.push(script)}}};
     vm.runInNewContext(readFileSync(new URL('../app/static/boot.js', import.meta.url), 'utf8'), context);
     assert.equal(context.window.__TAU_UI__, expected, pathname);
-    assert.equal(scripts[0].src, expected === 'meridian' ? dataset.merJs : dataset.tauJs);
+    assert.deepEqual(scripts.map((x) => x.src), [dataset.coreJs, expected === 'meridian' ? dataset.merJs : dataset.tauJs]);
   }
 });
 

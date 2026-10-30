@@ -59,15 +59,18 @@ for (const bundle of ['app.js', 'app.meridian.js']) {
     assert.deepEqual(seen, []);
   });
 
-  // The source: every page file whole, and the bundle but for its signed-out landing page (its demo reel is
-  // left as it is) and the rail's kept marker.
+  // The source: the shared core and every page file whole, and the bundle but for its signed-out landing page
+  // (its demo reel is left as it is) and the rail's kept marker.
   test(`${bundle}: the bundle and its page files join pieces with SEP, never " ·\\u00a0"`, () => {
     const dir = new URL('../app/static/', import.meta.url);
     const own = readFileSync(new URL(bundle, dir), 'utf8');
     const land = own.indexOf('  // ---------- landing (pre-login) ----------'), dash = own.indexOf('  // ---------- dashboard ----------');
     assert.ok(land > 0 && dash > land, 'the landing section is where it was');
-    assert.match(own, /\n {2}const SEP = '\\u00a0\\u00b7 ';\n/);
-    const files = [[bundle, own.slice(0, land) + own.slice(dash)], ...pageFiles(bundle).map((f) => [f, readFileSync(new URL(f, dir), 'utf8')])];
+    // SEP is the shared core's (core.js), which the bundle takes by name.
+    const core = readFileSync(new URL('core.js', dir), 'utf8');
+    assert.match(core, /\n {2}const SEP = '\\u00a0\\u00b7 ';\n/);
+    assert.match(own, /\n {2}const \{\n {4}esc, SEP, sepLine, [^}]*\} = window\.TauCore;\n/);
+    const files = [['core.js', core], [bundle, own.slice(0, land) + own.slice(dash)], ...pageFiles(bundle).map((f) => [f, readFileSync(new URL(f, dir), 'utf8')])];
     const seen = files.flatMap(([f, src]) => src.replace(KEPT, '').split('\n').flatMap((line, i) => (
       LEADING.test(line) && !/^\s*(\/\/|\*)/.test(line) ? [`${f}:${i + 1}: ${line.trim().slice(0, 120)}`] : [])));
     assert.deepEqual(seen, []);
@@ -79,12 +82,13 @@ for (const bundle of ['app.js', 'app.meridian.js']) {
     const dir = new URL('../app/static/', import.meta.url);
     const own = readFileSync(new URL(bundle, dir), 'utf8');
     const land = own.indexOf('  // ---------- landing (pre-login) ----------'), dash = own.indexOf('  // ---------- dashboard ----------');
-    const files = [[bundle, own.slice(0, land) + own.slice(dash)], ...pageFiles(bundle).map((f) => [f, readFileSync(new URL(f, dir), 'utf8')])];
+    const core = readFileSync(new URL('core.js', dir), 'utf8');
+    const files = [['core.js', core], [bundle, own.slice(0, land) + own.slice(dash)], ...pageFiles(bundle).map((f) => [f, readFileSync(new URL(f, dir), 'utf8')])];
     const PLAIN = new RegExp(`[ \\t]${DOT} `);
     const seen = files.flatMap(([f, src]) => src.split('\n').flatMap((line, i) => (
       PLAIN.test(line.replace(/\s\/\/\s.*$/, '')) && !/^\s*(\/\/|\*)/.test(line) && !line.includes('.split(') ? [`${f}:${i + 1}: ${line.trim().slice(0, 120)}`] : [])));
     assert.deepEqual(seen, []);
-    assert.match(own, /\n {2}const sepLine = \(s\) => esc\(s\)\.split\(' \\u00b7 '\)\.join\(SEP\);\n/);
+    assert.match(core, /\n {2}const sepLine = \(s\) => esc\(s\)\.split\(' \\u00b7 '\)\.join\(SEP\);\n/);
   });
 }
 

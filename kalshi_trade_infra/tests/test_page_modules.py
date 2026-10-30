@@ -171,6 +171,9 @@ def test_a_deploy_that_changes_only_a_page_file_changes_the_build_the_page_check
     assert page_modules.build_version("tau", dict(versions, **{"app-billing.js": "f" * 10})) != before
     # The other theme's files are not this build.
     assert page_modules.build_version("tau", dict(versions, **{"app.meridian-billing.js": "e" * 10})) == before
+    # The shared core is both themes' build.
+    for theme in ("tau", "meridian"):
+        assert page_modules.build_version(theme, dict(versions, **{"core.js": "d" * 10})) != page_modules.build_version(theme, versions)
 
 
 def _router(bundle):
@@ -256,15 +259,15 @@ def test_no_shell_links_funds_own_files_ahead_of_the_first_figure_and_every_shel
         _, body = _get(port, path, cookie=cookie)
         html = body.decode()
         head = html.split("</head>")[0]
-        # The first figure waits on the theme's stylesheet, boot.js, the bundle and the page's own file
-        # (preloaded beside them) and nothing else: one render-blocking stylesheet, and the two deferred
-        # scripts, boot.js then the bundle, with nothing deferred ahead of them. Funds' paths too.
+        # The first figure waits on the theme's stylesheet, boot.js, the shared core, the bundle and the page's
+        # own file (preloaded beside them) and nothing else: one render-blocking stylesheet, and the deferred
+        # scripts, boot.js, the core then the bundle, with nothing deferred ahead of them. Funds' paths too.
         linked = re.findall(r'<link rel="stylesheet" href="/static/([a-z.-]+\.css)\?v=([0-9a-f]+)"', head)
         scripts = re.findall(r'<script src="/static/([a-z.-]+\.js)\?v=([0-9a-f]+)"[^>]*>', html)
         assert [f for f, _ in linked] in (["app.css"], ["app.meridian.css"]), path
-        assert [f for f, _ in scripts] in (["boot.js", "app.js"], ["boot.js", "app.meridian.js"], ["boot.js"]), path  # boot.js alone picks the theme
-        if cookie and page_modules.page_for(path) == "funds":  # signed in: the theme's own bundle, right after boot.js
-            own = ["app.meridian.css", "boot.js", "app.meridian.js"] if theme == "meridian" else ["app.css", "boot.js", "app.js"]
+        assert [f for f, _ in scripts] in (["boot.js", "core.js", "app.js"], ["boot.js", "core.js", "app.meridian.js"], ["boot.js"]), path  # boot.js alone picks the theme
+        if cookie and page_modules.page_for(path) == "funds":  # signed in: the core and the theme's own bundle, right after boot.js
+            own = ["app.meridian.css", "boot.js", "core.js", "app.meridian.js"] if theme == "meridian" else ["app.css", "boot.js", "core.js", "app.js"]
             assert [f for f, _ in linked + scripts] == own, path
         assert all(v == versions[f] for f, v in linked + scripts)
         assert not re.search(r'<(?:link|script)[^>]+/static/(?:%s)' % "|".join(re.escape(f) for f in FUNDS_FILES), html), path
@@ -272,3 +275,40 @@ def test_no_shell_links_funds_own_files_ahead_of_the_first_figure_and_every_shel
         # still finds the Alpaca paper files in the Funds shell, its script ahead of the broker one.
         assert 'data-page-assets="%s"' % " ".join("funds:/static/%s?v=%s" % (f, versions[f]) for f in FUNDS_FILES) in html
         assert "/static/alpaca-paper.css?v=" in html and html.index("/static/alpaca-paper.js?v=") < html.index("/static/broker-connections.js?v=")
+
+
+# The shared core (core.js): the pure helpers both themes' bundles take from window.TauCore as they start, so it
+# runs right before the bundle in every shell that links one, in both themes, signed in or out. A shell that
+# leaves the theme to boot.js names the core for it (data-core-js), and boot.js adds it ahead of the bundle.
+@pytest.mark.parametrize("theme", ["tau", "meridian"])
+@pytest.mark.parametrize("cookie", [None, "rsid=abc", "tau_ui=%s"])
+def test_every_shell_runs_the_shared_core_right_before_its_bundle(web, theme, cookie):
+    port, account = web
+    account["ui_theme"] = theme
+    versions = server._static_versions()
+    assert page_modules.CORE == "core.js" and "core.js" in server._STATIC_NAMES
+    for path in PATHS:
+        _, body = _get(port, path, cookie=cookie and cookie.replace("%s", theme))
+        html = body.decode()
+        scripts = re.findall(r'<script src="/static/([a-z.-]+\.js)\?v=([0-9a-f]+)" defer></script>', html)
+        assert all(v == versions[f] for f, v in scripts), path
+        assert 'data-core-js="/static/core.js?v=%s"' % versions["core.js"] in html, path
+        # Only Tau has the legal pages, so their shell knows the theme on any device.
+        known = "tau" if path in ("/terms", "/privacy") else theme if cookie else None
+        if known is None:  # boot.js picks the theme, and adds the core and the bundle itself
+            assert [f for f, _ in scripts] == ["boot.js"], path
+            continue
+        assert [f for f, _ in scripts] == ["boot.js", "core.js", page_modules.BUNDLE[known]], path
+
+
+def test_the_core_is_served_like_a_bundle_immutable_at_its_version_compressed_and_without_its_comments(web):
+    port, _ = web
+    v = server._static_versions()["core.js"]
+    r, body = _get(port, "/static/core.js?v=" + v)
+    assert r.status == 200 and r.getheader("Content-Type") == "text/javascript; charset=utf-8"
+    assert r.getheader("Cache-Control") == webperf.IMMUTABLE
+    src = (STATIC / "core.js").read_text()
+    assert body.count(b"\n") == src.count("\n") and b"window.TauCore = Object.freeze" in body
+    assert b"// The separator between pieces of one line" not in body and "// The separator between pieces of one line" in src
+    r, _ = _get(port, "/static/core.js?v=" + v, accept_encoding="gzip")
+    assert r.getheader("Content-Encoding") == "gzip"

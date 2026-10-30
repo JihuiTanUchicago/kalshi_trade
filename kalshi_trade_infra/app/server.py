@@ -493,7 +493,7 @@ ROUTES: List[Route] = [
 ]
 
 
-_STATIC_NAMES = ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "kalshi-perps-live.js", "kalshi-perps-live.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js") + page_modules.FILES
+_STATIC_NAMES = ("app.css", "app.js", "session-data.js", "session-chat.js", "research-artifacts.js", "alpaca-paper.js", "alpaca-paper.css", "kalshi-perps-live.js", "kalshi-perps-live.css", "broker-connections.js", "broker-connections.css", "icon.svg", "app.meridian.css", "app.meridian.js", "boot.js", page_modules.CORE) + page_modules.FILES
 _VERSIONS_CACHE: Dict[str, Any] = {"sig": None, "out": None}
 
 
@@ -729,8 +729,7 @@ class Handler(BaseHTTPRequestHandler):
                 webperf.embed_json(json.dumps(first, default=_json_default, separators=(",", ":"))))
             css = ("/static/app.meridian.css?v=" + versions["app.meridian.css"] if theme == "meridian"
                    else "/static/app.css?v=" + versions["app.css"])
-            bundle = ("" if theme is None else '\n<script src="/static/%s?v=%s" defer></script>' % (
-                ("app.meridian.js", versions["app.meridian.js"]) if theme == "meridian" else ("app.js", versions["app.js"])))
+            bundle = page_modules.bundle_scripts(theme, versions)
             html = (STATIC_DIR / "index.html").read_text("utf-8")
             html = (html.replace("{{ui_css}}", css).replace("{{ui}}", theme or "").replace("{{ui_bundle}}", bundle)
                     .replace("{{boot_me}}", boot_me).replace("{{boot_first}}", boot_first)
@@ -748,6 +747,7 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("{{icon_v}}", versions["icon.svg"])
                     .replace("{{meridian_css_v}}", versions["app.meridian.css"])
                     .replace("{{meridian_js_v}}", versions["app.meridian.js"])
+                    .replace("{{core_v}}", versions[page_modules.CORE])
                     .replace("{{boot_v}}", versions["boot.js"]))
             body = html.encode("utf-8")
             self._spa = True
