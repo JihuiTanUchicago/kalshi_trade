@@ -1,5 +1,5 @@
-// The info bubbles (GLOSSARY in app.js and app.meridian.js) say the same words in both themes, every marker a page
-// draws names a term its theme defines, and each definition is plain. Walk 2026-10-28: "Realized", "Unrealized",
+// The info bubbles (GLOSSARY, in the shared core both themes take it from: core.js) are one set of words for both
+// themes, every marker a page draws names a term the glossary defines, and each definition is plain. Walk 2026-10-28: "Realized", "Unrealized",
 // "Later-period P&L" and "instant fill" had no bubble at all, and "Unseen data" said "This is the P&L that counts"
 // beside a strategy whose later-period figure was not held out.
 import assert from './assert_text.mjs';
@@ -8,15 +8,16 @@ import {test} from 'node:test';
 
 const DIR = new URL('../app/static/', import.meta.url);
 const read = (f) => readFileSync(new URL(f, DIR), 'utf8');
-const glossary = (bundle) => {
-  const src = read(bundle), at = src.indexOf('const GLOSSARY = {');
-  assert.ok(at > 0, bundle);
+const glossary = () => {
+  const src = read('core.js'), at = src.indexOf('const GLOSSARY = {');
+  assert.ok(at > 0);
   const body = src.slice(at + 'const GLOSSARY = '.length, src.indexOf('\n  };', at) + 4);
   return new Function(`return ${body};`)();
 };
+// Each theme's files: the core (what both themes draw with) and the theme's bundle and page files.
 const THEMES = {
-  tau: ['app.js', (f) => f === 'app.js' || (f.startsWith('app-') && f.endsWith('.js'))],
-  meridian: ['app.meridian.js', (f) => f.startsWith('app.meridian') && f.endsWith('.js')],
+  tau: ['app.js', (f) => f === 'core.js' || f === 'app.js' || (f.startsWith('app-') && f.endsWith('.js'))],
+  meridian: ['app.meridian.js', (f) => f === 'core.js' || (f.startsWith('app.meridian') && f.endsWith('.js'))],
 };
 const files = readdirSync(DIR);
 // The keys a theme's pages draw a marker for: glo('k'), gloSep('k', ...) and gl(label, 'k').
@@ -30,22 +31,24 @@ const used = (pick) => {
   return keys;
 };
 
-test('both themes define the same terms in the same words', () => {
-  const tau = glossary('app.js'), mer = glossary('app.meridian.js');
-  assert.deepEqual(Object.keys(mer).sort(), Object.keys(tau).sort());
-  for (const k of Object.keys(tau)) assert.deepEqual(mer[k], tau[k], k);
+test('both themes say the same terms in the same words: one glossary, the core’s, that each takes', () => {
+  assert.ok(Object.keys(glossary()).length >= 20);
+  for (const [bundle, pick] of Object.values(THEMES)) {
+    assert.match(read(bundle), /\n {4}[^\n]*\bGLOSSARY\b[^}]*\} = window\.TauCore;/, bundle);
+    for (const f of files.filter(pick).filter((x) => x !== 'core.js')) assert.doesNotMatch(read(f), /\bconst GLOSSARY\b/, f);
+  }
 });
 
 test('every marker a page draws names a term its theme defines', () => {
   for (const [theme, [bundle, pick]] of Object.entries(THEMES)) {
-    const defined = glossary(bundle), keys = used(pick);
+    const defined = glossary(), keys = used(pick);
     assert.ok(keys.size >= 8, `${theme}: ${[...keys]}`);
     assert.deepEqual([...keys].filter((k) => !(k in defined)), [], theme);
   }
 });
 
 test('the money words a customer meets are defined, plainly', () => {
-  const g = glossary('app.js');
+  const g = glossary();
   for (const k of ['realized', 'unrealized', 'unseen', 'laterperiod', 'insample', 'instantfill', 'paperfills']) assert.ok(g[k], k);
   assert.equal(g.unseen[0], 'Later-period P&L (unseen data)');
   assert.equal(g.laterperiod[0], 'Later-period P&L');
@@ -72,11 +75,14 @@ test('the Deploy table and the strategy page carry the new markers in both theme
   for (const f of ['app.js', 'app.meridian.js']) {
     const src = read(f);
     assert.match(src, /<th class="num">\$\{gl\('Realized(?: P&amp;L)?', 'realized'\)\}<\/th><th class="num">\$\{gl\('Unrealized', 'unrealized'\)\}<\/th>/, f);
-    assert.match(src, /left out of this record \(\$\{usd\(\+r\.excluded_instant_pnl \|\| 0, true\)\}\)`, 'instantfill'\)/, f);
     assert.match(src, /left out \(\$\{INSTANT_WHY\}\)`, 'instantfill'\)\}\$\{esc\(trLeftGap\(m\)\)\}/, f);  // the track record's caveat
-    assert.match(src, /left out\$\{\+r\.excluded_instant_pnl \? ` \(\$\{usd\(\+r\.excluded_instant_pnl, true\)\}\)` : ''\}`, 'instantfill'\)\}<\/div>/, f);  // its per-strategy note
-    assert.match(src, /of the count of realistic paper trades toward live\.`, 'instantfill'\)\}<\/div>/, f);  // a Deploy row's instant-fill note
+    // The track record's per-strategy notes and a Deploy row's instant-fill note: drawn by the core for both themes.
+    for (const n of ['trRowLeft', 'depInstant']) assert.match(src, new RegExp(`\\n {4}[^\\n]*\\b${n}\\b[^}]*\\} = window\\.TauCore;`), `${f}: ${n}`);
   }
+  const core = read('core.js');
+  assert.match(core, /left out of this record \(\$\{usd\(\+r\.excluded_instant_pnl \|\| 0, true\)\}\)`, 'instantfill'\)/);
+  assert.match(core, /left out\$\{\+r\.excluded_instant_pnl \? ` \(\$\{usd\(\+r\.excluded_instant_pnl, true\)\}\)` : ''\}`, 'instantfill'\)\}<\/div>/);  // its per-strategy note
+  assert.match(core, /of the count of realistic paper trades toward live\.`, 'instantfill'\)\}<\/div>/);  // a Deploy row's instant-fill note
   for (const f of ['app-strategies.js', 'app.meridian-strategies.js']) {
     const src = read(f);
     for (const k of ['laterperiod', 'latervoid', 'unseen', 'insample']) assert.match(src, new RegExp(`gl\\('[^']+ P&L(?: \\([^)']+\\))?', '${k}'\\)`), `${f}: ${k}`);
@@ -97,7 +103,7 @@ test('the autopilot card and panel give the instant-fill note its bubble in both
 // A new account's walk (2026-10-30): "≈ after typical live slippage" and "Stake not set" had no bubble, a focused
 // bubble below the fold shut as Tab scrolled it into view, and three paper figures named their windows three ways.
 test('slippage and stake are defined plainly, and the estimate keeps its meaning', () => {
-  const g = glossary('app.js');
+  const g = glossary();
   assert.equal(g.slippage[0], 'After typical live slippage');
   // An estimate beside paper P&L, never in its place: paper P&L and the checks toward live stay the figure.
   assert.match(g.slippage[1], /It is only an estimate: the paper P&amp;L beside it is the figure, and the checks toward live use that figure\.$/);
@@ -106,15 +112,13 @@ test('slippage and stake are defined plainly, and the estimate keeps its meaning
 });
 
 test('both themes name the dashboard’s paper P&L windows in the same words, and a focused bubble outlives a scroll', () => {
-  const windows = (f) => {
-    const m = /const PNL_WINDOW = (\{[^\n]*\});/.exec(read(f));
-    assert.ok(m, f);
-    return new Function(`return ${m[1]};`)();
-  };
-  const tau = windows('app.js');
-  assert.deepEqual(windows('app.meridian.js'), tau);
-  assert.deepEqual(tau, {day: 'Last 24 hours', visit: 'Since your last visit', week: 'Last 7 days', today: 'Today (UTC)', all: 'Since you started'});
+  // One set of words, in the core, that each theme takes.
+  const m = /const PNL_WINDOW = (\{[^\n]*\});/.exec(read('core.js'));
+  assert.ok(m);
+  assert.deepEqual(new Function(`return ${m[1]};`)(), {day: 'Last 24 hours', visit: 'Since your last visit', week: 'Last 7 days', today: 'Today (UTC)', all: 'Since you started'});
   for (const f of ['app.js', 'app.meridian.js']) {
+    assert.match(read(f), /\n {4}[^\n]*\bPNL_WINDOW\b[^}]*\} = window\.TauCore;/, f);
+    assert.doesNotMatch(read(f), /const PNL_WINDOW\b/, f);
     assert.match(read(f), /addEventListener\('scroll', \(\) => \{ if \(current && document\.activeElement === current\) place\(current\); else hide\(\); \}, true\);/, f);
   }
   for (const f of ['app.css', 'app.meridian.css']) assert.match(read(f), /\n\.pnl-win \{ white-space: nowrap; \}/, f);

@@ -85,7 +85,8 @@ def test_both_themes_carry_the_same_words(bundle):
     assert "const PAPER_NET = '%s';" % customer_text.PAPER_NET in (STATIC / "core.js").read_text(encoding="utf-8")
     take = re.search(r"\n  const \{\n(.*?)\n  \} = window\.TauCore;\n", src, re.S).group(1)
     assert re.search(r"\bPAPER_NET\b", take) and "const PAPER_NET" not in src
-    assert "paperfills: ['Paper fills', '%s']," % customer_text.PAPER_FILLS in src
+    # So is the paper fills bubble (the glossary, core.js).
+    assert "paperfills: ['Paper fills', '%s']," % customer_text.PAPER_FILLS in (STATIC / "core.js").read_text(encoding="utf-8")
     share = re.search(r"const shared = \(\) => shareMap \|\| \(shareMap = new Proxy\(\{(.*?)\}", src, re.S).group(1)
     assert re.search(r"\bPAPER_NET\b", share)
     # Every paper headline: the dashboard's paper figure, Deploy's paper figure (or, on a board led by

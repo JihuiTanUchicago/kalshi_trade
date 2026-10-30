@@ -803,11 +803,10 @@ test('a contract’s ticker moves to the next line whole, in both themes', () =>
 test('the Backtest estimate glossary entry is true of both kinds of Deploy row, in both themes', () => {
   // Its marker sits on the Deploy header over strategies with a gatekeeper record (held out) and without one
   // (later-period, the slice that picked it): it said "on unseen data" for every row.
-  for (const file of ['app.js', 'app.meridian.js']) {
-    const entry = readFileSync(new URL(`../app/static/${file}`, import.meta.url), 'utf8').match(/\n {4}pace: \['Backtest estimate', '([^']*)'\]/)[1];
-    assert.match(entry, /after its split date\. For a strategy with a gatekeeper record, that data was held out: the agent never saw it\. For one without \(backtest only, or a pass from the old backtest gate\), it is the later period that picked it, so not held out\./, file);
-    assert.doesNotMatch(entry, /per trade on unseen data/, file);
-  }
+  // Both themes take the one glossary in the shared core (core.js).
+  const entry = readFileSync(new URL('../app/static/core.js', import.meta.url), 'utf8').match(/\n {4}pace: \['Backtest estimate', '([^']*)'\]/)[1];
+  assert.match(entry, /after its split date\. For a strategy with a gatekeeper record, that data was held out: the agent never saw it\. For one without \(backtest only, or a pass from the old backtest gate\), it is the later period that picked it, so not held out\./);
+  assert.doesNotMatch(entry, /per trade on unseen data/);
 });
 
 test('the Deploy board puts realized P&L beside the backtest pace for the same trades', async () => {

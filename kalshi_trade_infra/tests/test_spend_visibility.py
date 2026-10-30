@@ -264,13 +264,15 @@ def test_the_receipts_type_column_says_each_line_in_billings_words_never_the_led
     assert [r[1] for r in table] == ["Agent usage", "Auto-reload", "Added credits", "Credits from Tau support", "Welcome credits",
                                      "Promo credit"]
     assert not {"usage", "autoreload", "topup", "admin_grant", "bonus"} & {r[1] for r in table}
-    # The same words as Billing's statement in both bundles (their KIND_LABEL).
+    # The same words as Billing's statement in both themes (KIND_LABEL, in the shared core both take it from).
     static = Path(__file__).resolve().parents[1] / "app" / "static"
+    found = re.search(r"const KIND_LABEL = (\{[^}]*\});", (static / "core.js").read_text())
+    assert found
+    labels = json.loads(re.sub(r"(\w+):", r'"\1":', found.group(1)).replace("'", '"'))
+    assert labels == billing_routes.RECEIPT_TYPE
     for bundle in ("app.js", "app.meridian.js"):
-        found = re.search(r"const KIND_LABEL = (\{[^}]*\});", (static / bundle).read_text())
-        assert found, bundle
-        labels = json.loads(re.sub(r"(\w+):", r'"\1":', found.group(1)).replace("'", '"'))
-        assert labels == billing_routes.RECEIPT_TYPE, bundle
+        take = re.search(r"\n  const \{\n(.*?)\n  \} = window\.TauCore;\n", (static / bundle).read_text(), re.S).group(1)
+        assert re.search(r"\bKIND_LABEL\b", take), bundle
 
 
 def test_the_statement_of_an_account_younger_than_it_starts_when_the_account_joined(monkeypatch):

@@ -432,11 +432,11 @@ def test_title_strike_reads_the_target_as_the_market_page_does():
         "kind": "line", "value": 113512.08, "lo": None, "hi": None, "inclusive": False, "from": "title"}
     assert btc_spot.title_strike("", "BTC up? target price $98000")["value"] == 98000.0  # the title, when the subtitle has none
     assert btc_spot.title_strike(None, "") is None and btc_spot.title_strike("Target Price: $0.00") is None
-    # The very pattern the market page reads with, in both themes, so a row and its page can't disagree.
-    for bundle in ("app.js", "app.meridian.js"):
-        src = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / bundle).read_text()
-        js = re.search(r"const TARGET_IN = /(.+)/i;", src).group(1)
-        assert js == btc_spot._TARGET_IN.pattern and btc_spot._TARGET_IN.flags & re.I, bundle
+    # The very pattern the market page reads with, in both themes (the shared core's, core.js), so a row and its
+    # page can't disagree.
+    src = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "core.js").read_text()
+    js = re.search(r"const TARGET_IN = /(.+)/i;", src).group(1)
+    assert js == btc_spot._TARGET_IN.pattern and btc_spot._TARGET_IN.flags & re.I
 
 
 # A 15-minute window whose strike the collector has stored: its market page measures from that record (marketSpot's
