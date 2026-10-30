@@ -250,6 +250,22 @@ for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css
   });
 }
 
+// Walk 2026-10-30 (390px phone, Meridian): the open autopilot sheet is one scroll (app-autopilot.js scrolls the sheet to
+// a sent message and its answer), but Meridian's activity feed kept the research log's 52vh cap, so it was a 440px scroll
+// of its own inside the sheet: a long reply scrolled in that box while the sheet scrolled around it. On the phone sheet
+// neither bundle caps the feed; it takes its full height and the sheet scrolls it.
+for (const [bundle, file] of [['Tau', 'app.css'], ['Meridian', 'app.meridian.css']]) {
+  test(`${bundle}: on a phone the open autopilot sheet is the one scroll, its activity feed uncapped`, () => {
+    const all = rules(read(file));
+    assert.equal(decl(all, '.apf.open', 'overflow-y', SHEET), 'auto', 'the sheet scrolls');
+    assert.equal(decl(all, '.apf.open .apf-session', 'flex', SHEET), 'none', 'the session takes its own height');
+    const cap = decl(all, '.apf.open .log.stream.apf-log', 'max-height', SHEET) ?? decl(all, '.apf .log.stream.apf-log', 'max-height')
+      ?? decl(all, '.log.stream', 'max-height');
+    assert.ok(cap === undefined || cap === 'none', `the feed is capped at ${cap} inside the sheet`);
+    assert.equal(decl(all, '.apf .log.stream.apf-log', 'height'), 'auto', 'and sized by what it holds');
+  });
+}
+
 // Walk 2026-10-27 (390px phone): content sat under the floating autopilot pill (Billing's "Add another card" form,
 // a market page's settlement note). The room under every page is now worked out from the pill's own offset and
 // height, which the pill itself is placed and sized by, so the two can't drift apart; the pill keeps to one line
