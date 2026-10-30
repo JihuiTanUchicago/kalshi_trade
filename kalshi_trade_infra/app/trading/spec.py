@@ -1304,6 +1304,13 @@ def _plain_moneyness(op: str, value: float) -> str:
     return "Only when the spot price is no more than %s %s the strike." % (gap, "above" if below else "below")
 
 
+def _grouped(v) -> str:
+    """A spec number the way "%g" writes it, grouped in thousands ("1,500" minutes, a "$2,500" stake): the plain
+    reading said "1–1500 minutes before settlement" beside the page's "1,623 trades" (walked 2026-10-30)."""
+    v = float(v)
+    return "{:,}".format(int(v)) if v.is_integer() and abs(v) < 1e15 else "%g" % v
+
+
 def describe(spec: Dict) -> List[str]:
     """Plain-language reading of a spec, for people who do not read JSON. Display only: a stored spec
     older or thinner than this code (a seeded row with no `model`, a field stored as null) loses just
@@ -1321,7 +1328,7 @@ def describe(spec: Dict) -> List[str]:
 
     def stakes() -> str:
         s = spec["sizing"]
-        return "Stakes $%g per trade, at most %d open at once." % (s["stake"], s["max_positions"])
+        return "Stakes $%s per trade, at most %d open at once." % (_grouped(s["stake"]), s["max_positions"])
 
     if is_perpetual_spec(spec):
         say(lambda: "Bitcoin perpetual %s research, %s directions." % (spec["perpetual"]["signal"], spec["perpetual"]["side"]))
@@ -1360,8 +1367,8 @@ def describe(spec: Dict) -> List[str]:
         return view + "."
     say(fair_value)
     e = spec.get("entry") if isinstance(spec.get("entry"), dict) else {}
-    say(lambda: "Pays %d¢–%d¢ per contract, %g–%g minutes before settlement, spread at most %d¢." % (
-        round(e["min_price"] * 100), round(e["max_price"] * 100), e["min_tte_min"], e["max_tte_min"],
+    say(lambda: "Pays %d¢–%d¢ per contract, %s–%s minutes before settlement, spread at most %d¢." % (
+        round(e["min_price"] * 100), round(e["max_price"] * 100), _grouped(e["min_tte_min"]), _grouped(e["max_tte_min"]),
         round(e["max_spread"] * 100)))
     for flt in e.get("filters") or []:
         say(lambda: _plain_filter(flt))

@@ -261,8 +261,9 @@ OUT_OF_CREDITS_STEP = "Paused \u2014 out of credits"
 RUNS_LISTED = 50  # the newest research sessions the Research list shows
 
 
-def list_runs(cur, user_id: int, limit: int = RUNS_LISTED) -> List[Dict]:
-    """The user's newest research sessions. `by_autopilot` is 1 for a session the autopilot started
+def list_runs(cur, user_id: int, limit: int = RUNS_LISTED, before: Optional[int] = None) -> List[Dict]:
+    """The user's newest research sessions (with `before`, the newest older than that run id: the Research
+    list's "Show older sessions" page). `by_autopilot` is 1 for a session the autopilot started
     (a brief run, which Billing calls "Autopilot research"), so the list can say whose it is.
     `out_of_credits` is 1 for a run-until-stopped session that finished because the credits ran out
     (its log holds OUT_OF_CREDITS_STEP), so the list can say why it stopped (services.run_stop). Still one statement: the log is probed only for a finished
@@ -274,8 +275,9 @@ def list_runs(cur, user_id: int, limit: int = RUNS_LISTED) -> List[Dict]:
                   CASE WHEN r.status='succeeded' AND r.run_forever=1 THEN EXISTS(
                     SELECT 1 FROM app_agent_events e WHERE e.run_id=r.id AND e.kind='step' AND e.message LIKE %s)
                   ELSE 0 END AS out_of_credits
-           FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research' ORDER BY r.id DESC LIMIT %s""",
-        (OUT_OF_CREDITS_STEP + "%", user_id, limit),
+           FROM app_agent_runs r WHERE r.user_id=%s AND r.kind='research'""" + (" AND r.id<%s" if before else "") + """
+           ORDER BY r.id DESC LIMIT %s""",
+        (OUT_OF_CREDITS_STEP + "%", user_id, *((int(before),) if before else ()), int(limit)),
     )
     return cur.fetchall()
 
@@ -298,14 +300,15 @@ def list_runs_version(cur, user_id: int, limit: int = 50) -> List[Dict]:
     return cur.fetchall()
 
 
-def count_own_research(cur, user_id: int) -> int:
+def count_own_research(cur, user_id: int, before: Optional[int] = None) -> int:
     """How many research sessions the user has, the seeded example left out: the newest one's number in
     the Research list ("Session 3"), which counts the user's own sessions instead of showing the global
-    run id ("Session 8" on a first session). One count through idx_runs_user."""
+    run id ("Session 8" on a first session). With `before`, only those older than that run id (an older
+    page's newest number). One count through idx_runs_user."""
     cur.execute(
         "SELECT COUNT(*) AS n FROM app_agent_runs WHERE user_id=%s AND kind='research' "
-        "AND (direction IS NULL OR direction<>%s)",
-        (user_id, DEMO_DIRECTION),
+        "AND (direction IS NULL OR direction<>%s)" + (" AND id<%s" if before else ""),
+        (user_id, DEMO_DIRECTION, *((int(before),) if before else ())),
     )
     return int((cur.fetchone() or {}).get("n") or 0)
 

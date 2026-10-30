@@ -1371,8 +1371,13 @@
   // so "Simulated" and "Kalshi dev" read apart. Omitting it keeps the old chart.
   // Draw at the column's real width on a narrow screen: a 760-wide chart shrunk to a phone has 4px labels.
   const chartWidth = () => { const m = root.querySelector('#main'), w = m && m.clientWidth; return w > 0 && w < 760 ? Math.max(300, w) : 760; };
+  // The y-axis labels sit right-aligned in a 52-unit gutter left of the plot. A strategy page's chart over $1,000
+  // ("$1,584.53") ran past the chart's left edge and read ",584.53" (walked 2026-10-30, a six-month account). With
+  // `fit` the gutter widens to the widest label (~6.5 units a character at the chart's 11px); a chart whose labels
+  // already fit keeps 52.
+  const tickGutter = (labels, fit) => (fit ? Math.max(52, Math.ceil(12 + 6.5 * Math.max(0, ...labels.map((t) => t.length)))) : 52);
   function equityChart(curve, cutoffIso, devCurve, options = {}) {
-    const W = options.width || 760, H = 236, L = 52, R = 10, T = 30, B = 26;
+    const W = options.width || 760, H = 236, R = 10, T = 30, B = 26;
     if (!curve || curve.length < 2) return `<div class="empty"><p>Not enough trades to draw an equity curve.</p></div>`;
     const dev0 = devCurve && devCurve.length > 1 ? devCurve : null;
     // Anchor the real demo-replay to the simulated line at its first timestamp, so both read as
@@ -1391,12 +1396,13 @@
     const vals = all.map((p) => p[1]);
     let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
     if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
+    const LEVELS = [lo, (lo + hi) / 2, hi];
+    const L = tickGutter(LEVELS.map((v) => plain(usd(v))), options.fit);
     const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
     const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
     const cut = cutoffIso ? Date.parse(cutoffIso) / 1000 : null;
     const cx = cut && cut > t0 && cut < t1 ? x(cut) : null;
     const line = (c) => c.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const LEVELS = [lo, (lo + hi) / 2, hi];
     const ticks = LEVELS.map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${usd(v)}</text>`).join('');
     // The grey line across the plot is $0, break-even: unlabelled, a curve that dipped under it read against ticks
     // like −$24.72 and $26.69, with nothing saying where it had gained or lost. It gets its own label unless a

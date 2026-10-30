@@ -265,3 +265,15 @@ def test_scan_durations_read_in_hours_on_a_phone():
     assert specmod._duration(60) == "60 minutes" and specmod._duration(95) == "2 hours"
     assert specmod._duration(60 * 30) == "30 hours" and specmod._duration(60 * 72) == "3 days"
     assert specmod._window(300, 1200) == "5-20 hours" and specmod._window(1, 6) == "1-6 minutes"
+
+
+def test_describe_groups_large_numbers_in_thousands():
+    # Walked 2026-10-30 on a six-month account: the strategy page's plain reading said "1–1500 minutes before
+    # settlement" beside "1,623 trades". Spec numbers read as the page's other counts do.
+    spec = specmod.validate({"entry": {"min_tte_min": 1, "max_tte_min": 1500}})
+    spec["sizing"]["stake"] = 2500
+    lines = specmod.describe(spec)
+    assert any("1–1,500 minutes before settlement" in line for line in lines), lines
+    assert any(line.startswith("Stakes $2,500 per trade") for line in lines), lines
+    spec["sizing"]["stake"] = 2.5
+    assert any(line.startswith("Stakes $2.5 per trade") for line in specmod.describe(spec))

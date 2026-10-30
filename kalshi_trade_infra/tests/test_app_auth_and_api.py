@@ -1171,6 +1171,45 @@ def test_runs_list_marks_the_seeded_example_session(monkeypatch):
     assert runs[1]["example"] is True and runs[2]["example"] is False
 
 
+def test_runs_list_counts_every_session_and_pages_older_ones(monkeypatch):
+    # Walked 2026-10-30 on a six-month account (200 sessions): the list holds the newest RUNS_LISTED and said "50
+    # sessions", the other 150 in no list. Its answer now carries every own session's count (own_total, from the
+    # count its numbering already reads: no extra statement), and ?before=<id> answers the next older page.
+    full = [{"id": 400 - k, "direction": "momentum", "status": "succeeded"} for k in range(server.repo.RUNS_LISTED)]
+    asked, counted = [], []
+
+    def list_runs(cur, uid, limit=server.repo.RUNS_LISTED, before=None):
+        asked.append((limit, before))
+        if before is None:
+            return [dict(r) for r in full]
+        return [{"id": before - 1 - k, "direction": "momentum", "status": "succeeded"} for k in range(min(limit, before - 301))]
+
+    def count_own(cur, uid, before=None):
+        counted.append(before)
+        return 200 if before is None else 150 - (351 - before)
+
+    monkeypatch.setattr(server.repo, "get_policy", lambda cur, uid: None)
+    monkeypatch.setattr(server.repo, "list_runs", list_runs)
+    monkeypatch.setattr(server.repo, "count_own_research", count_own)
+    monkeypatch.setattr(server.repo, "runs_spent", lambda cur, uid, ids: {})
+    monkeypatch.setattr(server.repo, "active_run_counts", lambda cur, uid, **kw: {})
+    monkeypatch.setattr(server.repo, "list_runs_version", lambda cur, uid: [{"id": 400}])
+    monkeypatch.setattr(research_routes, "_research_totals", lambda cur, uid, judged=None: {"tried": 0, "passed": 0})
+    out = server.list_runs(ctx())
+    assert out["own_total"] == 200 and len(out["runs"]) == server.repo.RUNS_LISTED
+    assert out["runs"][0]["seq"] == 200 and out["runs"][-1]["seq"] == 151
+    assert asked == [(server.repo.RUNS_LISTED, None)] and counted == [None]  # one count, as before
+    asked.clear(); counted.clear()
+    older = server.list_runs(server.Ctx(FakeConn(), {"id": 1}, (), {"before": "351"}, {}, None))
+    assert asked == [(server.repo.RUNS_LISTED + 1, 351)] and counted == [351]
+    assert [r["id"] for r in older["runs"]] == list(range(350, 300, -1)) and older["more"] is False
+    assert older["runs"][0]["seq"] == 150 and older["runs"][-1]["seq"] == 101
+    assert set(older) == {"runs", "more"}  # an older page carries no counts, totals or version: it isn't polled
+    for bad in ("x", "0", "-4"):
+        with pytest.raises(server.ApiError):
+            server.list_runs(server.Ctx(FakeConn(), {"id": 1}, (), {"before": bad}, {}, None))
+
+
 def test_explore_price_sort_follows_the_price_the_list_shows(monkeypatch):
     # The Price column shows the bid/ask midpoint (else the last trade); sorting on the last trade alone
     # put a market quoted at 77/78 that hadn't traded below one at 31.
