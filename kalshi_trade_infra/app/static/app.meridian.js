@@ -3546,10 +3546,14 @@
         <div class="figures measure" id="xfigs"></div>
       </div></div>`, `<p class="stale-note" id="xstale" role="status"></p><div id="xbody">${loading(240)}</div>`);
     const body = root.querySelector('#xbody'), figs = root.querySelector('#xfigs'), gen = S.gen;
-    const quoteSide = value => {
+    // Kalshi sends 0 for a side nobody quotes (a closed contract, or no orders on that side): a closed row read
+    // "Bid 0¢ · Ask 0¢", a Yes on offer for nothing. A side at 0 reads "—" and says why, as the market page's
+    // "no bid / ask 5¢" does (its Yes price, the midpoint, already skips a 0 side).
+    const quoteSide = (value, none) => {
       if (typeof value !== 'number' && typeof value !== 'string') return '—';
       if (typeof value === 'string' && !value.trim()) return '—';
-      return Number.isFinite(+value) ? cents(+value) : '—';
+      if (!Number.isFinite(+value)) return '—';
+      return +value > 0 ? cents(+value) : `<span title="${none}"><span aria-hidden="true">—</span><span class="vh">${none}</span></span>`;
     };
     const sync = () => { exploreKeep(f); history.replaceState(null, '', '/explore?' + exploreParams(f)); };
     exploreKeep(f);
@@ -3588,7 +3592,7 @@
           const again = body.querySelector('[data-xretry]');
           if (again) again.onclick = () => load();
           body.querySelector('[data-xall]').onclick = () => setShow(false);
-        } else if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2></div>`);
+        } else if (f.q) paint(body, `<div class="empty"><h2>No markets match “${esc(f.q)}”</h2><p>Try a broader search, or clear it to see the hottest markets.</p></div>`);
         else { paint(body, exploreEmpty('No markets to show yet', EXPLORE_WAIT)); body.querySelector('[data-xretry]').onclick = () => load(); }
         return;
       }
@@ -3608,7 +3612,7 @@
         const chip = contractShort(m.t), closes = m.ct ? closeWords(m.ct, 'chip', 0, true) : '';
         const contractLink = `<a class="market-name single" href="/explore?m=${encodeURIComponent(m.t)}" aria-label="${esc([label, chip, closes].filter(Boolean).join(SEP))}">${separateCondition ? `<span class="market-identity-line"><span class="market-event" title="${esc(title)}">${eventDisplay}</span><strong>${esc(conditionDisplay)}</strong></span>` : `<strong>${esc(title || condition || label)}</strong>`}${chip ? `<span class="market-chip"><span class="mk quiet">${esc(chip)}</span></span>` : ''}${closes ? liveClose(m.ct, 'chip', { cap: true, cls: 'market-close' }) : ''}</a>${vsHtml(m)}`;
         return [m.t, `<tr>${separateCondition ? `<td class="name market-contract">${contractLink}</td><td class="market-context-cell" data-lab="Context">${titleParts.length > 1 ? `<span class="market-context" title="${esc(title)}">${esc(titleParts.slice(1).join(SEP))}</span>` : '<span class="unavailable" title="No separate context in source title"><span aria-hidden="true">—</span><span class="vh">No separate context</span></span>'}</td>` : `<td class="name" colspan="2">${contractLink}</td>`}
-          <td class="num yes-price" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="Yes bid">${quoteSide(m.bid)}</td><td class="num quote-side quote-ask" data-lab="Yes ask">${quoteSide(m.ask)}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
+          <td class="num yes-price" data-lab="Yes price">${mid == null ? '—' : cents(mid)}</td><td class="num quote-side quote-bid" data-lab="Yes bid">${quoteSide(m.bid, 'No bid')}</td><td class="num quote-side quote-ask" data-lab="Yes ask">${quoteSide(m.ask, 'No ask')}</td><td class="num market-volume" data-lab="24h volume">${num(Math.round(+m.v24 || 0))}</td><td class="num market-interest" data-lab="Open interest">${num(Math.round(+m.oi || 0))}</td>
           <td class="num xlink"><a href="${kalshiUrl(m)}" target="_blank" rel="noopener" aria-label="Open on Kalshi">${ICON.ext}</a></td></tr>`];
       });
       const pages = Math.max(1, Math.ceil(d.matched / d.per)), note = spotListNote(d.spot, d.markets);
