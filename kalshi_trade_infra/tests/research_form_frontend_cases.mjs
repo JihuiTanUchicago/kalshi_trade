@@ -180,7 +180,9 @@ export function researchFormCases({name, frontend}) {
     const me = {billing_enabled: true, credit_balance: 20, auto_reload: null};
     const f = await form({me, over: {'/api/research/estimate': fail, '/api/research/context': fail}});
     assert.equal(f.root.querySelector('#rcost').textContent,
-      'The cost estimate didn’t load. It’s charged to your credits as it runs, and you can stop it any time from its session page.');
+      'The cost estimate didn’t load. It runs until you stop it from its session page, using your credits as it goes, and keeps running if you leave this page.');
+    // One line says it: the run-until-stopped hint under it steps aside rather than repeat "credits as it goes".
+    assert.equal(f.root.querySelector('#rf-hint').hidden, true);
     f.clearTimers();
     // Answered, with no figure for the model: there is none yet.
     const g = await form({me, estimate: {yours: null, sessions: 0, typical: {}}});

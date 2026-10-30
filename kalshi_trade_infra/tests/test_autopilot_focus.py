@@ -210,6 +210,29 @@ def test_story_says_when_the_last_check_in_is_late(monkeypatch):
     assert "checks in about every" in server._autopilot_story({"autopilot": True, "last_review_at": None})[0]
 
 
+def test_a_brand_new_autopilot_isnt_between_research_runs(monkeypatch):
+    """A user who has never run research (research.researched false; the seeded example left out) read "It's between
+    research runs". The line says no research has run yet and that the first session starts at its next check-in, at
+    the same cadence; a late check-in is still said. Any research ever, or a payload without the field, reads as before."""
+    from datetime import datetime, timedelta
+
+    from app.web.routes import chat as chat_routes
+    now = datetime(2026, 10, 25, 16, 0)
+    monkeypatch.setattr(server.repo, "now_utc", lambda: now)
+    fresh = {"autopilot": True, "last_review_at": None, "research": {"active": [], "researched": False}}
+    line = server._autopilot_story(fresh)[0]
+    assert line == ("Right now no research has run yet. Its first research session starts at its next check-in; it checks "
+                    "in about every %d minutes." % max(1, chat_routes.COPILOT_REVIEW_MINUTES))
+    assert "between research runs" not in " ".join(server._autopilot_story(fresh))
+    late = server._autopilot_story(dict(fresh, last_review_at=now - timedelta(hours=5)))[0]
+    assert late == "Right now no research has run yet. Its last check-in was 5 hours ago, longer than usual."
+    # Researching its first session, or reviewing, says that instead.
+    assert server._autopilot_story(dict(fresh, research={"active": ["Bitcoin"], "researched": False}))[0] == \
+        "Right now it’s researching Bitcoin."
+    for research in ({"active": [], "researched": True}, {"active": []}):
+        assert server._autopilot_story(dict(fresh, research=research))[0].startswith("Right now it’s between research runs. It checks")
+
+
 def test_story_says_a_queued_or_running_review_is_happening_now(monkeypatch):
     # Switching on queues the first review at once; the panel said "between research runs, checks in
     # about every 10 minutes" under a Working pulse while the user waited to see it move.

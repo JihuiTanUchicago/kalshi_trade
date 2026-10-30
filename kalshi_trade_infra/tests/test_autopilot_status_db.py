@@ -201,6 +201,12 @@ def test_the_merged_reads_answer_as_the_reads_they_replace(conn, frozen):
         for balance in (False, True):
             got, ref = repo.credit_week(cur, uid, since, balance=balance), credit_reference(cur, uid, since, balance=balance)
             assert got == ref and all(type(v) is float for v in got["by_source"].values()), (uid, balance)
+    # Whether it has ever researched: a new account's seeded example doesn't count; an old session past the week does.
+    alone = _account(conn, "fresh", busy=False)["uid"]
+    assert repo.autopilot_pulse(cur, alone, since)["researched"] is False
+    old = repo.create_run(cur, alone, "research", market="btc15m")
+    cur.execute("UPDATE app_agent_runs SET status='succeeded', created_at=%s WHERE id=%s", (NOW - timedelta(days=30), old))
+    assert repo.autopilot_pulse(cur, alone, since)["researched"] is True
     busy = _account(conn, "shape")
     got = repo.autopilot_pulse(cur, busy["uid"], since, review=True)
     assert [r["id"] for r in got["research_live"]] == [busy["live"]]  # the paused session isn't in flight

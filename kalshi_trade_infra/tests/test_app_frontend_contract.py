@@ -803,6 +803,11 @@ def _passed(title='Rain tails', market='kxrainnyc', in_focus=True, candidate=Fal
     (_idle_d(), [], [], None, [_passed(retired=True)], 'no_strategies',
      "Nothing is on paper: the strategy that passed was stopped on paper, and no new one has passed since. It’s "
      "between research runs.", None),
+    # Never researched (the seeded example aside): nothing could have passed, and it isn't "between research runs".
+    (_idle_d(research={'active': [], 'researched': False}), [], [], None, [], 'no_strategies',
+     "Nothing is on paper yet: no research has run yet. Its first research session starts at its next check-in.", None),
+    (_idle_d(research={'active': ['BTC 15m'], 'researched': False}), [], [], None, [], 'researching',
+     "Nothing is on paper yet: no strategy has passed its research tests. It’s researching BTC 15m.", None),
 ])
 def test_idle_reason_names_why_nothing_trades(d, paper_run, paused, age, passed, code, line, action):
     idle = server._idle_reason(d, paper_run, paused, age, passed)

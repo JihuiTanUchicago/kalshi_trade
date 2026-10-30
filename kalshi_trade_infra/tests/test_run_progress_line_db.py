@@ -125,3 +125,55 @@ def test_a_running_sessions_progress_lines_count_the_uncleared_passes_apart(conn
         "12 tested so far, 1 cleared every check; 2 more passed their first test, then weren’t cleared to trade. "
         "Looking for more; you can stop it anytime."]
     assert counting.later == 1
+
+
+def test_a_finished_sessions_deployed_pass_carries_the_strategies_lists_paper_record(conn, monkeypatch):
+    """get_run sends a deployed pass's `real` and `books` as /api/strategies does, from one statement that sums
+    its deployments with the simulated-venue count (the instant fills the track record leaves out); a session
+    whose pass isn't deployed reads none. Paper and demo stay apart. Written through the repository layer only."""
+    from app import repository as repo
+    from app import server
+    from app.services import book_memo
+    from app.trading import spec as specmod
+
+    cur = conn.cursor()
+    uid = repo.upsert_google_user(cur, "test:" + uuid.uuid4().hex, "sessionreal@example.invalid", "R", None)["id"]
+    spec = specmod.validate({"side": "yes", "entry": {"min_edge": 0.05}, "sizing": {"stake": 5.0, "max_positions": 1}})
+    result = {"capital": 10.0, "out_of_sample": {"trades": 40, "pnl": 6.0, "win_rate": 0.6}}
+
+    def session(title):
+        run = repo.create_run(cur, uid, "research", "btc15m", "custom", "idea")
+        cur.execute("UPDATE app_agent_runs SET status='succeeded', finished_at=%s WHERE id=%s", (repo.now_utc(), run))
+        return run, repo.insert_strategy(cur, uid, run, None, "btc15m", "custom", title, "t", spec, "passed", dict(result))
+
+    run, sid = session("Late fade")
+    idle_run, idle_sid = session("Early fade")
+    paper, demo = (repo.create_deployment(cur, uid, sid, "btc15m", m) for m in ("paper", "demo"))
+    close, tag = repo.now_utc() + timedelta(hours=1), uuid.uuid4().hex[:6].upper()
+    for i, (did, mode, pnl, ref) in enumerate([(paper, "paper", 1.25, "sim:a"), (paper, "paper", -0.40, "sim:b"),
+                                                (paper, "paper", 0.35, None), (demo, "demo", 2.00, "demo:a")]):
+        repo.insert_closed_position(cur, did, uid, mode, "KXSR%s-%d" % (tag, i), "yes", 2, 0.40, 0.02, 0.60, 0.02, pnl,
+                                    "take_profit", close, order_ref=ref)
+    repo.insert_position(cur, paper, uid, "paper", "KXSR%s-OPEN" % tag, "yes", 1, 0.30, 0.01, close, "sim:o")
+    user = repo.get_user(cur, uid)
+    try:
+        counting = _Counting(cur)
+        monkeypatch.setattr(conn, "cursor", lambda *a, **k: counting)
+        card = server.get_run(server.Ctx(conn, user, (str(run),), {}, {}, None))["strategies"][0]
+        sums = [s for s in counting.sqls if "LEFT JOIN (SELECT p.deployment_id" in s]
+        assert len(sums) == 1 and not any("app_positions WHERE deployment_id IN" in s for s in counting.sqls)
+        counting.sqls.clear()
+        idle = server.get_run(server.Ctx(conn, user, (str(idle_run),), {}, {}, None))["strategies"][0]
+        assert idle["id"] == idle_sid and "real" not in idle and "books" not in idle
+        assert not any("LEFT JOIN (SELECT p.deployment_id" in s for s in counting.sqls)
+        monkeypatch.undo()
+        assert card["books"] == ["paper", "demo"]
+        assert (card["real"]["mode"], card["real"]["pnl"], card["real"]["trades"], card["real"]["open"]) == ("paper", 1.2, 3, 1)
+        assert card["real"]["instant_fills"] == 1 and card["real"]["demo"] == {"pnl": 2.0, "trades": 1, "open": 0}
+        book_memo.clear()
+        listed = next(c for c in server.list_strategies(server.Ctx(conn, user, (), {}, {}, None))["strategies"] if c["id"] == sid)
+        assert listed["real"] == card["real"] and listed["books"] == card["books"]
+    finally:
+        monkeypatch.undo()
+        for did in (paper, demo):
+            repo.set_deployment_status(cur, uid, did, "stopped")

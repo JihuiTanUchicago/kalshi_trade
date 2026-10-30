@@ -417,4 +417,22 @@ export function runPageCases({name, frontend}) {
     // A demo or live record is never called paper.
     assert.doesNotMatch(await said(strat({books: ['demo'], real: {pnl: 2, trades: 1, open: 0, mode: 'demo'}})), /ri-paper|Paper since deploying/);
   });
+
+  // The session endpoint now sends a deployed pass's `real` as /api/strategies does (strategies._book_totals: pnl,
+  // trades, open, paused, the paper book's slippage_estimate, instant_fills from the same read; live and mode; its
+  // demo book beside, never added in). The finished session's "Already deployed" line reads it, and says it once.
+  test(`${name}: a finished session's deployed pass says its paper record from the session endpoint's real, once`, async () => {
+    const real = {pnl: 3.2, trades: 14, open: 1, paused: false, slippage_estimate: {pnl: 2.85, per_fill_cents: 0.5},
+      instant_fills: 2, live: false, mode: 'paper', demo: {pnl: 0.5, trades: 1, open: 0}};
+    const f = await open({status: 'succeeded', stop_reason: 'limit', hypotheses_tried: 1, strategies_passed: 1}, [],
+      [{id: 42, title: 'Late snap-back', status: 'passed', market: 'btc15m', direction: 'mean_reversion',
+        in_sample: {pnl: 14.2, trades: 60}, out_of_sample: {pnl: 8.52, trades: 30, days: 12}, deployed: true,
+        books: ['paper', 'demo'], real}]);
+    const html = list(f).replace(/⁠/g, '');
+    assert.match(html, /<a href="\/deploy">Already deployed: see it on Deploy<\/a><span class="ri-paper">\u00a0· <b>Paper since deploying:<\/b> <span class="[^"]*">\+\$3\.20<\/span> · 14 trades, 2 of them instant fills, left out of the track record · after Kalshi fees and the spread<\/span>/);
+    // Said once: Meridian's Status cell keeps the demo line and leaves the paper figure to the line above.
+    assert.equal(html.match(/\+\$3\.20/g).length, 1);
+    if (html.includes('data-lab="Status"')) assert.match(html, /Demo: <span class="gain">\+\$0\.50<\/span>/);
+    assert.doesNotMatch(html, /\$3\.70/);  // paper and demo are never added
+  });
 }

@@ -132,7 +132,7 @@ def _pulse_row(book=None, deps=()):
     book = book or {"n": 0, "closed": 0, "top": 0}
     return {"pos_n": book["n"], "pos_closed": book["closed"], "pos_top": book["top"], "runs_7d": 0, "tested_7d": 0,
             "passed_7d": 0, "research_live": None, "review_live": None, "last_review_at": None, "chat_n": 3,
-            "chat_top": 88, "kalshi_key": 1, "dep_strategies": json.dumps([[d["id"], d["strategy_id"]] for d in deps]),
+            "chat_top": 88, "kalshi_key": 1, "researched": 1, "dep_strategies": json.dumps([[d["id"], d["strategy_id"]] for d in deps]),
             "engine_age": 20}
 
 
@@ -500,6 +500,55 @@ def test_the_autopilot_week_counts_only_cleared_passes_and_judges_them_once_per_
     out, reads, log = poll(0)
     assert not reads and not any("app_experiment_results" in s for s, _ in log)
     assert (out["research"]["passed_7d"], out["research"]["not_cleared_7d"]) == (0, 0)
+
+
+def _session_rows(deployed):
+    """_board_rows' strategy as a pass of session 41 (deployed or not), its paper deployment carrying the
+    simulated-venue count the session's one read sums with its totals (10 of its 12 closed trades)."""
+    rows = _board_rows()
+    rows["FROM app_strategies s LEFT JOIN app_agent_runs r"] = [
+        dict(rows["FROM app_strategies s LEFT JOIN app_agent_runs r"][0], run_id=41, active_deps=2 if deployed else 0,
+             live_deps=0, removed_deps=0)]
+    key = "FROM app_deployments d JOIN app_strategies s ON s.id=d.strategy_id LEFT JOIN"
+    rows[key] = [dict(d, sim_closed=10 if d["mode"] == "paper" else 0) for d in rows[key]]
+    # The Strategies list's own instant-fill read (book_memo.realistic_paper_closed), for the comparison below.
+    rows["SELECT deployment_id, COUNT(*) AS n FROM app_positions"] = [{"deployment_id": 5, "n": 10}]
+    return rows
+
+
+def test_a_finished_sessions_deployed_pass_carries_the_strategies_lists_real_in_one_read(production):
+    """The session page's "Already deployed" line says its paper record since deploying: get_run sends the
+    deployed pass's `real` (and `books`) as /api/strategies sends them, from one more statement (the
+    deployments summed for that strategy, with the simulated-venue count from the same rows), and none
+    when no pass is deployed. Paper and demo stay apart: the demo book rides beside, never added in."""
+    from app.web.routes import strategies as strategy_routes
+
+    run = {"run_status": "succeeded", "params": ("41",), "query": {"after": "0"}}
+    out, logs = {}, {}
+    for deployed in (False, True):
+        log = []
+        out[deployed] = server.get_run(_ctx(log, 10.0, extra=_session_rows(deployed), **run))
+        logs[deployed] = log
+    sums = [p for s, p in logs[True] if "LEFT JOIN (SELECT p.deployment_id" in s]
+    assert sums == [("sim:%", 7, 9, 7, 9)]  # one read, kept to the deployed strategy's own deployments
+    # Every other statement is one the undeployed session sends too (which also asks whether the autopilot
+    # would deploy its pass), so the deployed one costs at most one more.
+    assert {s for s, _ in logs[True] if "LEFT JOIN (SELECT p.deployment_id" not in s} <= {s for s, _ in logs[False]}
+    assert len(logs[True]) <= len(logs[False]) + 1
+    assert not any("LEFT JOIN (SELECT p.deployment_id" in s or "sim:%" in p for s, p in logs[False])
+    repeats = sorted({s for s in logs[True] if logs[True].count(s) > 1})
+    assert not repeats
+    plain, card = out[False]["strategies"][0], out[True]["strategies"][0]
+    assert "real" not in plain and "books" not in plain
+    assert card["books"] == ["paper", "demo"]
+    assert card["real"] == {"pnl": 1.5, "trades": 12, "open": 1, "paused": False, "live": False, "mode": "paper",
+                            "slippage_estimate": card["real"]["slippage_estimate"], "instant_fills": 2,
+                            "demo": {"pnl": 1.5, "trades": 12, "open": 1}}
+    assert card["real"]["slippage_estimate"]["pnl"] < card["real"]["pnl"]
+    # The same shape /api/strategies stamps, from its own reads (the book memo and its instant-fill read).
+    listed = [{"id": 9, "deployed": True}]
+    strategy_routes._attach_real_records(_ctx([], 10.0, extra=_session_rows(True)).cur, 7, listed)
+    assert listed[0]["real"] == card["real"] and listed[0]["books"] == card["books"]
 
 
 def test_the_run_page_reads_the_dream_line_once_a_minute_not_every_poll(production, monkeypatch):

@@ -254,6 +254,10 @@ def _research_activity(cur, uid: int, pulse: Optional[Dict] = None, spent: Optio
             "passed_7d": pulse["passed_7d"] - not_cleared,
             "not_cleared_7d": not_cleared,
             "runs_7d": pulse["runs_7d"],
+            # Whether any research session has ever run (the seeded example left out), so a brand-new
+            # autopilot isn't said to be "between research runs" before its first one. A pulse without
+            # the field reads as before.
+            "researched": bool(pulse.get("researched", True)),
             # What research actually debited this week (the credit ledger), not tokens re-priced:
             # re-pricing billed a screen-arm run's screen tokens at the developer model's rate.
             "cost_7d": credit_usd(spent),
@@ -426,12 +430,18 @@ def _autopilot_now(d: Dict) -> str:
               ("Its review hasn’t checked in for %s. A review that quiet is normally stopped, and the next one "
                "starts on schedule." % _span(mins))
     else:
-        now = "Right now it’s between research runs. It checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
+        # Before any research session has run (the seeded example left out), "between research runs" said
+        # it had run some: a brand-new autopilot says its first one starts at a check-in instead.
+        first = (d.get("research") or {}).get("researched", True) is False
+        lead = "Right now no research has run yet." if first else "Right now it’s between research runs."
+        every = "checks in about every %d minutes." % max(1, COPILOT_REVIEW_MINUTES)
+        now = ("%s Its first research session starts at its next check-in; it %s" % (lead, every)) if first \
+            else "%s It %s" % (lead, every)
         quiet = _quiet_minutes(d.get("last_review_at"))
         if quiet:
             # A stalled worker would leave "checks in every 10 minutes" on screen for hours; say how long it's been.
             # Same steps as the "Last reviewed" figure beside it (sinceMin), so the two never disagree.
-            now = "Right now it’s between research runs. Its last check-in was %s ago, longer than usual." % _span(quiet)
+            now = "%s Its last check-in was %s ago, longer than usual." % (lead, _span(quiet))
     return now
 
 
@@ -801,6 +811,10 @@ def _idle_reason(d: Dict, paper_run: List[Dict], paused: List[Dict], engine_age,
         return _idle(code, "Nothing is on paper: %s that passed %s stopped on paper, and no new one has passed since. %s" % (
             "the strategy" if len(retired) == 1 else "the %d strategies" % len(retired),
             "was" if len(retired) == 1 else "were", doing))
+    if code == "no_strategies" and (d.get("research") or {}).get("researched", True) is False:
+        # Nothing has been researched, so nothing could pass its tests: say so, not "no strategy has passed".
+        return _idle(code, "Nothing is on paper yet: no research has run yet. Its first research session starts at "
+                           "its next check-in.")
     return _idle(code, "Nothing is on paper yet: no strategy has passed its research tests. %s" % doing)
 
 

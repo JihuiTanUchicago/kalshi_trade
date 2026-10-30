@@ -1984,7 +1984,9 @@
     const body = now + beside + (p ? pastFig({ paper: p }) : '');
     return `<td class="num paper-col${body ? '' : ' nil'}" data-lab="Paper since deploying">${body || '\u2014'}</td>`;
   };
-  // The Status cell's own record beside a Paper P&L column: everything but the paper book the column shows.
+  // The Status cell's own record beside a Paper P&L column: everything but the paper book the column shows. A session's
+  // row whose next line already says its paper record (opts.paperNext, "Already deployed · Paper since deploying") keeps
+  // only its demo line here, so the paper figure isn't said twice.
   const statusReal = (s, col) => (col && paperBook(s) ? realDemo(s.real) : realFig(s.real));
   const statusPast = (s, col) => {
     if (!col || !pastPaper(s)) return pastFig(s.past);
@@ -2040,7 +2042,7 @@
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
       ${opts.paper ? paperCell(s) : ''}
       ${opts.inRun ? '' : `<td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>`}
-      <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${bookLive(s) ? liveWaitLine() : ''}${statusReal(s, opts.paper)}` : ''}${researchOnly(s) ? '' : statusPast(s, opts.paper)}</td>
+      <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${bookLive(s) ? liveWaitLine() : ''}${statusReal(s, opts.paper || opts.paperNext)}` : ''}${researchOnly(s) ? '' : statusPast(s, opts.paper)}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">${gl('Realized P&amp;L', 'realized')}</th><th class="num">${gl('Unrealized', 'unrealized')}</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
