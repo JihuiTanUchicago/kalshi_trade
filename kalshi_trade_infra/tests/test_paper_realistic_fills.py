@@ -504,6 +504,11 @@ def test_autopilot_story_says_what_it_is_doing_in_plain_words():
                        "(Rain over NYC), and only if it’s up by then.")
     assert "about a day" in server._autopilot_story(dict(d2, paper_progress=dict(
         d2["paper_progress"], soonest_days=1.2, soonest_title="X")))[2]
+    # Said as Deploy's road line says the same estimate (core.js roadDays): a half rounds up and under a day
+    # says so. An estimate of 22.5 days read "about 22 days" here beside Deploy's "about 23 days" (walk 2026-10-30).
+    for days, words in ((22.5, "is about 23 days ("), (2.5, "is about 3 days ("), (0.4, "is under a day ("), (1.0, "is about a day (")):
+        assert words in server._autopilot_story(dict(d2, paper_progress=dict(
+            d2["paper_progress"], soonest_days=days, soonest_title="X")))[2], days
     # Bought but not settled: it says so instead of "none has traded yet".
     story = server._autopilot_story(dict(d, paper_open=4))
     assert story[2] == "3 strategies are on paper (pretend money). 4 positions are open, waiting to settle; none has closed yet."
