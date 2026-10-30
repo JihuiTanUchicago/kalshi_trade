@@ -416,6 +416,12 @@ export function exploreSpotListCases({name, frontend, storageFor, railOpenWide})
     f.location.search = '?m=' + T;
     await f.viewMarketDetail(T); await settle();
     assert.equal(back(f), '/explore?q=5pm&sort=oi&page=0&show=bitcoin', 'Bitcoin, the search and the sort are still on');
+    // Walked 2026-10-30 at 390px: the only way back sat at the foot, about three screens down. A small link at the top
+    // goes to the same list, filter kept, beside the foot's.
+    const backs = f.root.querySelectorAll('a').filter((a) => /Back to Explore/.test(a.textContent)).map((a) => a.getAttribute('href').replace(/&amp;/g, '&'));
+    assert.deepEqual(backs, ['/explore?q=5pm&sort=oi&page=0&show=bitcoin', '/explore?q=5pm&sort=oi&page=0&show=bitcoin'], 'one at the top, one at the foot');
+    assert.ok(f.root.querySelector('.mk-back a'), 'the top one is above the page title');
+    assert.match(f.root.innerHTML, /class="mk-back"[^]*class="board-title"/);
     f.clearTimers();
     // A reload of the market page in the same tab keeps it, and so does the page Kalshi has no market for.
     const g = frontend({fetchImpl, session});

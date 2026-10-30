@@ -3068,6 +3068,10 @@
     chip: (iso, s) => (s > 0 ? `closes ${keepZone(settleAt(iso))}${s < 3600 ? `${SEP}in ${soonText(s)}` : ''}` : `closed ${keepZone(settleAt(iso))}`),
     left: (iso, s) => (s > 0 ? leftText(s) : 'Closed'),
     when: (iso, s) => `${s > 0 ? 'closes' : 'closed'} ${keepZone(settleAt(iso))}`,
+    // The market page's close figure's own label: walked 2026-10-30, a page left open past the close read "Closes 04:35 EDT"
+    // over "Closed, result pending" until a reload. It turns to "Closed" with the line under it, as a page opened after the
+    // close (or a settled market) already reads.
+    lab: (iso, s) => (s > 0 ? 'Closes' : 'Closed'),
     in: (iso, s) => (s <= 0 ? 'Closed, result pending' : s < 172800 ? 'in ' + soonText(s) : ''),
     // The status line under a market page's name: an open market's "Open for trading" read on after its close until a
     // reload, beside a Closes figure already saying "Closed, result pending". Only an open status follows the clock.
@@ -3229,14 +3233,16 @@
     const closeSkew = d.as_of && !d.snapshot ? (Date.now() - Date.parse(d.as_of)) / 1000 || 0 : 0;
     const closedNow = settled || ['closed', 'determined', 'settled', 'finalized'].includes(d.status) || (d.close_time && closeLeft(d.close_time, closeSkew) <= 0);
     const closesFig = !d.close_time ? fig('Closes', '—') : closedNow ? fig('Closed', keepZone(settleAt(d.close_time)))
-      : fig('Closes', keepZone(settleAt(d.close_time)), { small: liveClose(d.close_time, 'in', { skew: closeSkew }) });
+      : fig(liveClose(d.close_time, 'lab', { skew: closeSkew }), keepZone(settleAt(d.close_time)), { small: liveClose(d.close_time, 'in', { skew: closeSkew }) });
     const kalshiLink = `https://kalshi.com/markets/${encodeURIComponent((d.series || '').toLowerCase())}`;
     // The line under the name says what the code is, as a position does (kalshiRef): "Kalshi contract KX…", not a bare ticker.
     // An open market's status follows the same clock as its Closes figure (closeClock), flipping to "Closed, result
     // pending" once the close passes; Kalshi's own closed and settled statuses stay as Kalshi sent them.
     const statusLine = d.close_time && (d.status === 'active' || d.status === 'open') ? liveClose(d.close_time, 'status', { skew: closeSkew })
       : esc(MKT_STATUS[d.status] || d.status || 'Market');
-    shell('/explore', boardTitle(label, [esc(contractMarket(d.ticker)), statusLine].filter(Boolean).join(SEP) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
+    // The way back sits at the top as well as the foot: on a 390px phone the foot's "Back to Explore" was about three
+    // screens down. Both go to the list this tab last showed, its filter kept (exploreBackHref).
+    shell('/explore', `<p class="mk-back"><a href="${esc(exploreBackHref())}">← Back to Explore</a></p>` + boardTitle(label, [esc(contractMarket(d.ticker)), statusLine].filter(Boolean).join(SEP) + (d.ticker ? SEP + kalshiRef(d.ticker) : '')) +
       '<dl class="figures measure" style="margin-top:14px">' +
         (settled ? fig('Result', d.result === 'yes' ? 'Yes' : 'No', { small: d.result === 'yes' ? 'each Yes contract paid $1' : 'each No contract paid $1' })
           : fig('Yes price', mid == null ? '—' : cents(mid), { small: priceSub })) + fig('24h volume', num(Math.round(+d.volume_24h || 0)), { small: 'contracts traded' }) +
@@ -4271,6 +4277,16 @@
   const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
     '.figures .m', '.fig', 'td.num', 'dd', '.mk', '#dash-ap', 'td[data-lab="Market"]', '.board-title', '.sect-head'];
   const AP_UNDER_SEL = AP_UNDER.join(', ');
+  // Explore and a market page (both /explore) are lists you scroll through, and stepping aside there hid the pill for
+  // good: walked 2026-10-30 at 390px, every Explore row is a link and its figures sit at the right, so the pill was
+  // gone at 178 of 181 scroll positions (all but the foot), and on a market page at about four in five (its figures,
+  // headings and raw-data rows). A reader browsing markets couldn't open the chat. There the pill holds its place over
+  // what scrolls past it, as a floating button does over a list: a list row, a figure or a heading moves out from
+  // under it with the page, and the body's bottom room (app.css) lets the last row and the page's foot clear it. It
+  // still steps aside for a button, a field or a link outside a list row (the pager, Download CSV, Back to Explore,
+  // Research this market), which it would otherwise sit on as they pass. Every other page keeps AP_UNDER.
+  const AP_HOLD_PATH = /^\/explore\/?$/;
+  const AP_PRESS_SEL = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]'].join(', ');
   // apYield hit-tests the page (elementsFromPoint), which lays it out and pre-paints it then and there. Run
   // from the pill's render, inside a page's first render, it fixed Research half drawn on a phone: the list
   // that moves above the form a moment later counted as a layout shift of 0.68, though no frame showed
@@ -4319,8 +4335,9 @@
     const over = (r) => !!(r && r.width && r.right > L && r.left < R && r.bottom > T && r.top < B);
     // One pass over the page (it was one per kind of thing), stopping at the first thing it covers.
     let covers = false;
-    for (const el of document.body.querySelectorAll(AP_UNDER_SEL)) {
-      if (box.contains(el)) continue;
+    const hold = AP_HOLD_PATH.test(location.pathname);
+    for (const el of document.body.querySelectorAll(hold ? AP_PRESS_SEL : AP_UNDER_SEL)) {
+      if (box.contains(el) || (hold && el.closest && el.closest('tbody'))) continue;
       const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
       if (!over(r)) continue;
       const v = styleOf && styleOf(el).position === 'fixed' ? r : visible(el, r);
