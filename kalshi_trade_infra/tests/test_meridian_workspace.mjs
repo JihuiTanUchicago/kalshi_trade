@@ -2161,7 +2161,7 @@ test('Research run polling keeps one current stage through unknown events, pause
   };
   await advance('queued', [], null, []);
   const stages = f.root.querySelector('#rsiobs .rsi-labels');
-  assert.equal(stages.tag, 'ol'); assert.deepEqual(stages.querySelectorAll('li').map(label => label.textContent), ['Explore', 'Backtest', 'Validate', 'Refine']);
+  assert.equal(stages.tag, 'ol'); assert.deepEqual(stages.querySelectorAll('li').map(label => label.textContent), ['Explore', 'Backtest', 'Check', 'Improve']);
   assert.equal(f.root.querySelector('.run-header > #runact'), f.root.querySelector('#runact'));
   const passed = () => f.root.querySelectorAll('#runfigs .m').find(fig => fig.querySelector('dt').textContent === 'Passed').querySelector('.fig').textContent;
   assert.equal(passed(), '0');
@@ -6493,7 +6493,7 @@ test('Meridian: a research session the autopilot started says so on the active c
   f.clearTimers();
   for (const [run, said, not] of [[ap, /BTC 15-min up\/down · Started by autopilot/, /· Session/],
     [{...ap, direction: 'momentum'}, /· Momentum · Started by autopilot/, /· Session/],
-    [mine, /· Momentum/, /Started by autopilot/], [{...ap, by_autopilot: 0}, /· Session/, /Started by autopilot/]]) {
+    [mine, /· Momentum/, /Started by autopilot/], [{...ap, by_autopilot: 0}, /BTC 15-min up\/down/, /Started by autopilot|· Session/]]) {
     const g = frontend({fetchImpl: path => { assert.ok(path.startsWith('/api/runs/' + run.id)); return response({run, events: []}); }});
     g.S.me.directions = [{key: 'momentum', label: 'Momentum', brief: ''}];
     await g.viewRun(run.id);

@@ -130,7 +130,7 @@ test('a failed model save restores the existing preference without changing trad
   // Said in the panel, beside the control (alert0 put it on the page under the panel).
   assert.deepEqual(f.alerts, []); assert.match(f.box.querySelector('#apf-flash').innerHTML, /error-text">Synthetic model preference rejection/);
   assert.deepEqual(posts(f).map(row => row.path), ['/api/autopilot/model']);
-  assert.equal(f.apLiveBlock(status()), 'Live trading isn’t available on this server yet. ');
+  assert.equal(f.apLiveBlock(status()), 'Live trading isn’t open yet. ');
 });
 
 test('live autopilot with autopilot off says plainly that autopilot (paper) comes first, and why', () => {
@@ -238,7 +238,7 @@ test('status updates show last review and synchronize the model only when it is 
   f.apUpdate(f.box, status({model: 'sonnet'})); assert.equal(select.value, 'opus');
   select.disabled = false; f.apUpdate(f.box, status({model: 'sonnet'})); assert.equal(select.value, 'sonnet');
   assert.doesNotMatch(f.box.querySelector('#apf-stats').innerHTML, /Last check-in/);
-  assert.match(f.box.querySelector('#apf-gates').textContent, /Live trading isn’t available on this server yet\./);
+  assert.match(f.box.querySelector('#apf-gates').textContent, /Live trading isn’t open yet\./);
   assert.equal(posts(f).length, 0);
 });
 
@@ -337,7 +337,7 @@ test('with live trading off on the server, the panel says so in one line instead
   const controls = () => f.box.querySelector('#apf-controls').innerHTML, gates = () => f.box.querySelector('#apf-gates').textContent;
   f.apUpdate(f.box, status({live_enabled: false}));
   assert.doesNotMatch(controls(), /livearm|Enable live autopilot/);
-  assert.equal(gates(), 'Live trading isn’t available on this server yet. ');
+  assert.equal(gates(), 'Live trading isn’t open yet. ');
   assert.match(controls(), /See what’s trading/);
   // Live available: the button is exactly as before, greyed until a Kalshi key is connected.
   f.apUpdate(f.box, status({live_enabled: true, kalshi_connected: false}));
