@@ -2267,9 +2267,9 @@ test('a session row’s cost keeps its own line in the Market column, and the ex
   assert.doesNotMatch(ex.match(/<span class="run-meta">.*?<\/span><span class="run-when">/s)[0], /example Tau ran|Cost/);
   const css = readFileSync(new URL('../app/static/app.meridian.css', import.meta.url), 'utf8');
   const rule = (sel) => [...css.matchAll(new RegExp('\\n' + sel.replace(/[.()]/g, '\\$&') + ' \\{([^}]*)\\}', 'g'))].map((m) => m[1]).join(';');
-  assert.match(rule('.research-history .run-cost'), /display: block; white-space: nowrap;/);
+  // It wraps in that column, never leaving one word on its last line (test_ui_layout.mjs: kept to one line it was cut).
+  assert.match(rule('.research-history .run-cost'), /display: block; white-space: normal; text-wrap: pretty;/);
   assert.match(rule('.research-history .run-cost .run-sep'), /display: none;/);
-  assert.match(rule('.research-history .run-cost .run-cred'), /white-space: normal;/);
   assert.match(rule('.research-history .run-meta'), /-webkit-line-clamp: none;/);
   assert.match(rule('.research-history .run-note'), /grid-column: 1; grid-row: 2;/);
   f.clearTimers();

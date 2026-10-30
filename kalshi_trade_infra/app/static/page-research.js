@@ -524,8 +524,8 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
   const spentSoFar = (v, none = 'None yet') => (+v >= 0.005 ? usd(v) : +v > 0 ? 'under $0.01' : none);
   // It names the credits it came from, as the session page does ("from your credits"): a bare "Cost: $3.12" sat
   // in a list a reader could take for a loss.
-  // On Meridian the unit is its own span, so the 120px Market column breaks before it and keeps "Cost: $3.12" whole
-  // (.run-cred).
+  // On Meridian the unit is its own span, kept whole by its no-break space, so the 120px Market column breaks
+  // before it and keeps "Cost: $3.12" on its line (.run-cost).
   const CRED = '<span class="run-cred"> in credits</span>';
   const runCred = tau ? ' in credits' : CRED;
   // A finished session that spent nothing says "Cost: none" (final, so not "none yet"), in the words a live one
@@ -1557,7 +1557,13 @@ ${tau ? `        <h2>${ICON.spark2}New research session</h2>` : ''}
         if (v != null && +v > 0) { usual = +v; repaintFigs(); }
       }).catch(() => { /* no estimate: the cost stands alone */ });
     };
-    const load = async (cfg) => {
+    // The 2s poll, a press of Pause or Resume (its reload) and Meridian's "Show all" each read the lines after the
+    // last one here: with the poll's read still out, both answers held the same lines, and the log showed them twice
+    // and counted their ideas twice. One read at a time: one asked for while another is out goes after it, from
+    // where that one left off. The press's own write is sent at once and once; only its reread waits.
+    let reading = Promise.resolve();
+    const load = (cfg) => (reading = reading.catch(() => {}).then(() => read(cfg)));
+    const read = async (cfg) => {
       const asked = after;
       const d = await api(`/api/runs/${id}?after=${after}`, undefined, cfg);
       const r = d.run;
