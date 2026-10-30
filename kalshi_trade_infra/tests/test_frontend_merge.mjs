@@ -6005,3 +6005,25 @@ test('Tau: the composer’s hint fits its one line at 390px, with a curly apostr
   assert.match(css, /@media \(max-width: 680px\) \{[^\n]*\.post-tools > \.post-strat-f \{ flex-basis: 100%; \}/);
   f.clearTimers();
 });
+
+test('Tau: the Passed filter with nothing passed says so and points to Research, not "Try another filter"', async () => {
+  // A first session where every idea failed: the dashboard's "See passed strategies" opens /strategies?status=passed.
+  const f = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 2, passed: 0, failed: 0, rejected: 2}}) : response({}))});
+  f.S.me.user.autopilot = false;
+  f.location.pathname = '/strategies'; f.location.search = '?status=passed';
+  await f.viewStrategies(); await flush(); await flush();
+  let empty = f.root.querySelector('#slips .empty');
+  assert.match(empty.innerHTML, /None of your strategies has passed its tests yet\. Most ideas fail; the ones that pass land here\./);
+  assert.doesNotMatch(empty.innerHTML, /Try another filter/);
+  assert.deepEqual(empty.querySelectorAll('a.btn').map(a => a.getAttribute('href')), ['/research']);
+  // A filter that matches nothing for another reason (a market with no passes while others passed) still says to try another.
+  const g = frontend({fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 3, passed: 1, failed: 1, rejected: 1}}) : response({}))});
+  g.location.pathname = '/strategies'; g.location.search = '?status=passed&market=nba';
+  await g.viewStrategies(); await flush(); await flush();
+  empty = g.root.querySelector('#slips .empty');
+  assert.match(empty.innerHTML, /Try another filter\./);
+  assert.equal(empty.querySelectorAll('a.btn').length, 0);
+  f.clearTimers(); g.clearTimers();
+});

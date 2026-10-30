@@ -6719,3 +6719,20 @@ test('Meridian Research: the outlined New session button stays readable when hov
   assert.match(css, /\.research-page \.research-create > summary \{[^}]*background: transparent;[^}]*color: var\(--ink\); \}/);
   assert.match(css, /\n\.research-page \.research-create > summary:hover \{ background: var\(--ink\); color: #F1F3ED; \}/);
 });
+
+test('Meridian: the Passed filter with nothing passed says so and offers a new session, not "Try another filter"', async () => {
+  // A first session where every idea failed: the dashboard's "See passed strategies" opens /strategies?status=passed.
+  const f = frontend({search: '?status=passed', fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 2, passed: 0, failed: 0, rejected: 2}}) : response({}))});
+  f.S.me.user.autopilot = false;
+  await f.viewStrategies(); await flush(); await flush();
+  const empty = f.root.querySelector('#slips .empty');
+  assert.equal(empty.querySelector('h3').textContent, 'No strategy has passed yet');
+  assert.doesNotMatch(empty.innerHTML, /Try another filter/);
+  assert.deepEqual(empty.querySelectorAll('a.btn').map(a => a.getAttribute('href')), ['/research?new=1']);
+  // Another filter that matches nothing still says to try another.
+  const g = frontend({search: '?status=passed&market=nba', fetchImpl: path => (path.startsWith('/api/strategies?')
+    ? response({strategies: [], counts: {total: 3, passed: 1, failed: 1, rejected: 1}}) : response({}))});
+  await g.viewStrategies(); await flush(); await flush();
+  assert.match(g.root.querySelector('#slips .empty').innerHTML, /<h3>No matching strategies<\/h3><p>Try another filter\.<\/p>/);
+});
