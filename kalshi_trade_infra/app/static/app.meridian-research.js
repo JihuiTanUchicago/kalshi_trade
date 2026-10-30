@@ -6,7 +6,7 @@ window.TauPage('research', (T) => {
   const {
     alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
-    markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
+    markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionNo, sessionTitle, shell, strategySlip, strategyTable, tzName, usd, waitSpan, when,
     whyFailedHtml, wireMarketPicker
   } = T;
@@ -1280,7 +1280,9 @@ window.TauPage('research', (T) => {
         : `${num(gapN)} more idea${gapN === 1 ? '' : 's'} still being tested.`;
       // A passed one says what happens next, as Tau's Ideas tested rows do: a running session's passed card said
       // only “Passed”, with no word on whether to deploy it or wait for the autopilot (walk 2026-10-28).
-      const passedNext = (s) => s.status !== 'passed' ? '' : s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
+      // A deployed one adds its paper record since deploying when the session's data carries one (a card's `real` in
+      // paper mode, as the Strategies list has it). Paper money only, never added to a demo or live book. Display only.
+      const passedNext = (s) => s.status !== 'passed' ? '' : s.deployed ? `<a href="/deploy">Already deployed: see it on Deploy</a>${s.real && s.real.mode === 'paper' ? `<span class="ri-paper">${SEP}${paperSince(s.real)}</span>` : ''}`
         : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}` : 'Open it to deploy on paper';  // its title above is the link
       const artifacts = root.querySelector('#run-artifacts'), strategies = (d.strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
       const focusedArtifact = artifacts.querySelector('a:focus')?.getAttribute('href');

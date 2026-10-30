@@ -1882,8 +1882,10 @@
   const money = (v) => `<span class="${tone(v == null ? v : halfUp(+v))}">${usd(v, true)}</span>`;
   // `inRun`: the table sits on its own session's page, where every row's "Ideas tested" was that session's
   // count again (a running session's counter, behind the Tested figure above it), so the column is left out.
-  const STRAT_HEAD = (pick, inRun) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Backtest P&amp;L</th><th class="num">Trades</th><th class="num">Win</th>${inRun ? '' : '<th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th>'}<th>Status</th></tr></thead>`;
-  const strategyTable = (rows, pick, inRun) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick, inRun)}<tbody>${rows}</tbody></table></div>`;
+  // The Paper P&L column (paperCell, below), only on a list with a row that has a paper book now or had one.
+  const PAPER_TIP = 'What it has made on paper (pretend money) since you deployed it, after Kalshi fees and the spread. Never added to its demo or live money.';
+  const STRAT_HEAD = (pick, inRun, paper) => `<thead><tr>${pick ? '<th class="pickcol"><input type="checkbox" id="pick-all" aria-label="Select all deployable"></th>' : ''}<th>Strategy</th><th>Market</th><th class="num">Backtest P&amp;L</th><th class="num">Trades</th><th class="num">Win</th>${paper ? `<th class="num" title="${PAPER_TIP}">Paper P&amp;L</th>` : ''}${inRun ? '' : '<th class="num" title="Every idea this research session tested, the passing one included">Ideas tested</th>'}<th>Status</th></tr></thead>`;
+  const strategyTable = (rows, pick, inRun, paper) => `<div class="sheet"><table class="stack t-strat">${STRAT_HEAD(pick, inRun, paper)}<tbody>${rows}</tbody></table></div>`;
   // Bulk deploy offers only passed strategies that aren't already running: ticking one that is
   // would start a second deployment of the same rules and double its positions. A pass a later check
   // left uncleared (`verdict`: Missed final test, Held back) is left out too; its own page says why.
@@ -1928,7 +1930,9 @@
     ? `, ${num(+r.instant_fills)} of them ${+r.instant_fills === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record` : '');
   // A paper card's book also says it after typical live slippage (the server's slippage_estimate), on a line of
   // its own under the figure; a live card shows live money and a demo line beside paper is never estimated.
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.mode === 'paper' && r.trades && slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}${r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}</div>` : ''}` : '';
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.mode === 'paper' && r.trades && slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}${realDemo(r)}` : '';
+  // A paper book's demo book beside it (the server's real.demo): its own line, never added in.
+  const realDemo = (r) => r && r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}</div>` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
   // badge: "Deployed" alone left a paper, a demo and a paper-and-demo strategy looking the same.
   const bookLive = (s) => !!s.deploy_live || (Array.isArray(s.books) && s.books.includes('live'));
@@ -1954,6 +1958,39 @@
     const p = past[m], n = +p.trades || 0;
     return `<div class="sub-fig real-fig past-fig">Removed from ${m}: ${n ? `${money(+p.pnl || 0)}\u00a0· ${realTrades(n)}${pastInstant(m, p, n)}` : 'no closed trades'}</div>`;
   }).join('') : '';
+  // Paper money since deploying, beside the backtest (walk 2026-10-30, "is the autopilot making money?"): the list's
+  // rows led with the backtest figure and kept the paper result at the far end of the Status cell, and a strategy page
+  // led with green backtest figures over its "Since deploying" record further down. A row whose shown book is paper
+  // (the server's `real` in paper mode), or that was removed from paper (`past.paper`), shows that paper money in a
+  // Paper P&L column of its own; its demo and live books keep their lines in Status, never added in. A live row's
+  // server record is its live book alone, so its paper book is on its page.
+  const paperBook = (s) => (!researchOnly(s) && s.deployed && s.real && s.real.mode === 'paper' ? s.real : null);
+  const paperBeside = (s) => !researchOnly(s) && !!s.deployed && !!s.real && s.real.mode === 'live' && Array.isArray(s.books) && s.books.includes('paper');
+  const pastPaper = (s) => (!researchOnly(s) && s.past && typeof s.past === 'object' && s.past.paper ? s.past.paper : null);
+  // Whether a list needs the column: a row with a paper book now or one removed from paper.
+  const paperShown = (s) => !!(paperBook(s) || paperBeside(s) || pastPaper(s));
+  // One paper book in a line ({pnl, trades, instant_fills}, as the server's book totals send it), for the strategy page's
+  // head and a finished session's "Already deployed": paper money net of Kalshi fees and the spread, with its instant
+  // fills counted as the track record leaves them out. Never demo or live money.
+  const paperSince = (r) => `<b>Paper since deploying:</b> ${+r.trades ? `${money(+r.pnl || 0)}\u00a0· ${realTrades(+r.trades)}${pastInstant('paper', r, +r.trades)}\u00a0· ${PAPER_NET}` : 'no closed paper trades yet'}`;
+  // The column's cell: the paper figure first, as the Backtest P&L cell leads with its own, then what it covers. On a phone
+  // the stacked card names it (data-lab) under the backtest's figures.
+  const paperCell = (s) => {
+    const r = paperBook(s), p = pastPaper(s);
+    const now = !r ? '' : !r.trades ? '<div class="sub-fig real-fig">No closed paper trades yet</div>'
+      : r.instant_only ? `${money(r.pnl)}<div class="sub-fig real-fig">${r.trades === 1 ? 'Its only trade was an instant fill' : `All ${num(r.trades)} of its trades were instant fills`}, left out of the track record\u00a0· ${PAPER_NET}</div>`
+      : `${money(r.pnl)}<div class="sub-fig real-fig">since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${PAPER_NET}</div>${slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}`;
+    const beside = !r && paperBeside(s) ? `<div class="sub-fig real-fig"><a href="/strategies/${s.id}">Its paper book is on its page</a></div>` : '';
+    const body = now + beside + (p ? pastFig({ paper: p }) : '');
+    return `<td class="num paper-col${body ? '' : ' nil'}" data-lab="Paper since deploying">${body || '\u2014'}</td>`;
+  };
+  // The Status cell's own record beside a Paper P&L column: everything but the paper book the column shows.
+  const statusReal = (s, col) => (col && paperBook(s) ? realDemo(s.real) : realFig(s.real));
+  const statusPast = (s, col) => {
+    if (!col || !pastPaper(s)) return pastFig(s.past);
+    const { paper, ...rest } = s.past;
+    return pastFig(rest);
+  };
   function strategySlip(s, reg, opts = {}) {
     const oos = s.out_of_sample, ins = s.in_sample || {};
     const m = oos || ins;
@@ -2001,8 +2038,9 @@
       <td class="num" data-lab="Backtest P&amp;L">${m.pnl == null ? '\u2014' : noPass ? `<span class="pnl-nopass">${usd(m.pnl, true)}</span>` : money(m.pnl)}${pnlSub}</td>
       <td class="num" data-lab="Trades">${m.trades == null ? '\u2014' : num(m.trades)}</td>
       <td class="num" data-lab="Win">${pct(m.win_rate, false)}</td>
+      ${opts.paper ? paperCell(s) : ''}
       ${opts.inRun ? '' : `<td class="num${tried === '\u2014' ? ' nil' : ''}" data-lab="Ideas tested">${esc(tried)}</td>`}
-      <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${bookLive(s) ? liveWaitLine() : ''}${realFig(s.real)}` : ''}${researchOnly(s) ? '' : pastFig(s.past)}</td>
+      <td class="act st" data-lab="Status">${statusMark(s)}${researchBadge(s)}${s.deployed && !researchOnly(s) ? ` ${bookBadge(s)}${s.real && s.real.paused ? ' ' + mark('paused') : ''}${bookLive(s) ? liveWaitLine() : ''}${statusReal(s, opts.paper)}` : ''}${researchOnly(s) ? '' : statusPast(s, opts.paper)}</td>
     </tr>`;
   }
   const DEP_HEAD = (controls) => `<thead><tr><th>Strategy</th><th>Status</th><th class="num">${gl('Realized P&amp;L', 'realized')}</th><th class="num">${gl('Unrealized', 'unrealized')}</th><th class="num">Trades</th>${controls ? '<th class="act"><span class="vh">Actions</span></th>' : ''}</tr></thead>`;
@@ -4645,7 +4683,7 @@
     exampleLine, exitWord, failText, feedMd, fig, fillLiveRow, flash, fmt0, fold, gl, glo, GLOSSARY, go, halfUp,
     holdFocus, ICON, isPerpetual, KIND_LABEL, loadFail, loading, loadStripe, logTime, mark, marketKalshiUrl,
     marketLabel, marketPicker, marketShort, markQuietRows, mdLite, MKT_SHORT, money, notice, num, overDays,
-    paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount, slipEst, slipTip, PAPER_COUNT_WHY,
+    paced, paceDay, paceTooSoon, paceWords, pageAssets, paint, paintDashAp, painted, paintRows, paperAgain, PAPER_NET, paperCount, paperShown, paperSince, slipEst, slipTip, PAPER_COUNT_WHY,
     pausesIn, pct, PERPS_SCENARIO, phone, poll, realTrades, refreshAutopilot, refreshed, registry, render,
     researchBadge, researchOnly, roadDays, root, rpUnderwater, runKind, runTag, runWaitLine, runwayLabel, S,
     sessionNo, sessionTitle, settleAt, markedAt, shell, sinceMin, smooth, statusMark, strategySlip, strategyTable,

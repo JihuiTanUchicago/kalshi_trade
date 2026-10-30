@@ -398,4 +398,23 @@ export function runPageCases({name, frontend}) {
     if (host) assert.match(host.innerHTML, /<p>1 listed · 1 more still being tested · tap one for its story<\/p>/);
     else assert.match(list(f), /1 more idea still being tested/);
   });
+
+  // Walk 2026-10-30: a deployed strategy's finished session said only "Already deployed: see it on Deploy". When the
+  // session's data carries its paper record (a card's `real` in paper mode, as the Strategies list has it), the line
+  // says it too: paper money, net of fees, never added to a demo book. Without one, the link stands alone.
+  test(`${name}: a finished session's deployed strategy says its paper record since deploying when its data has one`, async () => {
+    const strat = (o) => ({id: 42, title: 'Late snap-back', status: 'passed', market: 'btc15m', direction: 'mean_reversion',
+      in_sample: {pnl: 14.2, trades: 60}, out_of_sample: {pnl: 8.52, trades: 30, days: 12}, deployed: true, ...o});
+    const said = async (s) => {
+      const f = await open({status: 'succeeded', stop_reason: 'limit', hypotheses_tried: 1, strategies_passed: 1}, [], [s]);
+      return list(f).replace(/⁠/g, '');
+    };
+    const paper = await said(strat({books: ['paper', 'demo'], real: {pnl: 3.2, trades: 14, open: 0, mode: 'paper', demo: {pnl: 0.5, trades: 1, open: 0}}}));
+    assert.match(paper, /<a href="\/deploy">Already deployed: see it on Deploy<\/a><span class="ri-paper"> · <b>Paper since deploying:<\/b> <span class="[^"]*">\+\$3\.20<\/span> · 14 trades · after Kalshi fees and the spread<\/span>/);
+    assert.doesNotMatch(paper, /\$3\.70/);
+    const plainLink = await said(strat());
+    assert.match(plainLink, /<a href="\/deploy">Already deployed: see it on Deploy<\/a>/); assert.doesNotMatch(plainLink, /ri-paper|Paper since deploying/);
+    // A demo or live record is never called paper.
+    assert.doesNotMatch(await said(strat({books: ['demo'], real: {pnl: 2, trades: 1, open: 0, mode: 'demo'}})), /ri-paper|Paper since deploying/);
+  });
 }

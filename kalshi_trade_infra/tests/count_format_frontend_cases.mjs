@@ -21,6 +21,12 @@ export function countFormatCases({name, frontend, detailStrategy, strategyFronte
     assert.match(row, /data-lab="Ideas tested"[^>]*>1,201</);
     assert.match(plain(row), /1,201 trades/);
     assert.doesNotMatch(plain(row), /1201/);
+    // In the list's Paper P&L column too, as is a removed paper book's count.
+    const col = f.strategySlip(detailStrategy({id: 46, title: 'Busy', out_of_sample: big, deployed: true, books: ['paper'],
+      real: {pnl: 12.5, trades: 1201, open: 0, mode: 'paper'}, past: {paper: {pnl: 1, trades: 1202, deployments: 1}}}), null, {paper: true});
+    const cell = col.match(/data-lab="Paper since deploying">([\s\S]*?)<\/td>/)[1];
+    assert.match(plain(cell), /since deploying · 1,201 trades/); assert.match(plain(cell), /Removed from paper: .*1,202 trades/);
+    assert.doesNotMatch(plain(col), /1201|1202/);
   });
 
   test(`${name}: a shared Community card counts its trades as "1,201", whichever figure it shares`, () => {

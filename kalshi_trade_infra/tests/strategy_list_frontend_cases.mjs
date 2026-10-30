@@ -392,4 +392,74 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     const unseen = src.match(/\n {4}unseen: \['Later-period P&L \(unseen data\)', '([^']*)'\]/)[1];
     assert.match(unseen, /after its split date, on a held-out slice/); assert.doesNotMatch(unseen, /wasn’t held out/);
   });
+
+  // Walk 2026-10-30 ("is the autopilot making money?"): a deployed row led with its backtest figure and kept its paper
+  // result at the far end of the Status cell. With the list's Paper P&L column on, the paper money sits beside the
+  // backtest's columns, labelled paper and net of fees; demo and live keep their own lines in Status, never added in.
+  test(`${name}: a row's paper result since deploying sits in a Paper P&L column beside the backtest, never added to demo or live`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const col = (s) => f.strategySlip(detailStrategy({id: 46, title: 'List fixture', ...s}), null, {paper: true});
+    const cell = (html) => (html.match(/<td class="num paper-col[^"]*" data-lab="Paper since deploying">([\s\S]*?)<\/td>/) || [])[1];
+    const status = (html) => html.match(/<td class="act st" data-lab="Status">([\s\S]*?)<\/td>/)[1];
+    const both = col({deployed: true, books: ['paper', 'demo'], real: {pnl: 3.2, trades: 14, open: 1, mode: 'paper', demo: {pnl: 0.5, trades: 1, open: 0}}});
+    // The figure leads, as the backtest cell's does, then what it covers.
+    assert.equal(plain(cell(both)), '+$3.20since deploying · 14 trades · after Kalshi fees and the spread');
+    assert.match(cell(both), /^<span class="[^"]*">\+\$3\.20<\/span><div class="sub-fig real-fig">since deploying/);
+    // Its cell stands right after the backtest's Win column, before Ideas tested.
+    const at = (k) => both.indexOf(k);
+    assert.ok(at('data-lab="Win"') < at('data-lab="Paper since deploying"') && at('data-lab="Paper since deploying"') < at('data-lab="Ideas tested"'));
+    // Status keeps its badge and the demo book's own line; the paper line isn't said twice, and nothing is summed.
+    assert.match(status(both), /On paper \+ demo/);
+    assert.match(plain(status(both)), /Demo: \+\$0\.50 · 1 trade · after Kalshi fees/);
+    assert.doesNotMatch(status(both), /3\.20|on paper since deploying/);
+    assert.doesNotMatch(both, /\$3\.70/);
+    // A paper book's instant fills ride in the column with it.
+    assert.match(cell(col({deployed: true, books: ['paper'], real: {pnl: 1.3, trades: 2, open: 0, mode: 'paper', instant_fills: 1}})),
+      /since deploying · 2 trades, 1 of them an instant fill, left out of the track record · after Kalshi fees and the spread/);
+    assert.match(plain(cell(col({deployed: true, books: ['paper'], real: {pnl: 3.8, trades: 2, open: 0, mode: 'paper', instant_only: true}}))),
+      /^\+\$3\.80All 2 of its trades were instant fills, left out of the track record · after Kalshi fees and the spread$/);
+    assert.equal(plain(cell(col({deployed: true, books: ['paper'], real: {pnl: 0, trades: 0, open: 1, mode: 'paper'}}))), 'No closed paper trades yet');
+    // Removed from paper: in the column; removed from demo stays in Status, each on its own line.
+    const past = col({deployed: false, past: {paper: {pnl: -13.56, trades: 9, deployments: 1}, demo: {pnl: 1, trades: 1, deployments: 1}}});
+    assert.match(plain(cell(past)), /^Removed from paper: −\$13\.56 · 9 trades$/);
+    assert.match(status(past), /Removed from demo/); assert.doesNotMatch(status(past), /Removed from paper/);
+    // A live row's record is its live book alone: live money stays in Status, and the column points to its page.
+    const live = col({deployed: true, deploy_live: true, books: ['live', 'paper'], real: {pnl: 2, trades: 3, open: 0, mode: 'live', live: true}});
+    assert.match(cell(live), /<a href="\/strategies\/46">Its paper book is on its page<\/a>/);
+    assert.doesNotMatch(cell(live), /\$2\.00/); assert.match(status(live), /\+\$2\.00<\/span> since deploying/);
+    // A demo-only row and a row never deployed: an empty cell (hidden on a phone), demo money in Status alone.
+    const demo = col({deployed: true, books: ['demo'], real: {pnl: 2, trades: 1, open: 0, mode: 'demo'}});
+    assert.equal(cell(demo), '—'); assert.match(demo, /class="num paper-col nil"/); assert.match(status(demo), /on demo since deploying/);
+    assert.equal(cell(col({})), '—');
+    // A research-only strategy never shows a book record, even if one leaks in.
+    assert.equal(cell(col({kind: 'code', research_only: true, deployed: true, real: {pnl: 1, trades: 1, open: 0, mode: 'paper'}})), '—');
+  });
+
+  test(`${name}: the list shows the Paper P&L column only when a row on the page has a paper record, each row a cell under it`, async () => {
+    const open = async (strategies) => {
+      const f = frontend({fetchImpl: () => response({counts: {total: strategies.length, passed: strategies.length}, matched: strategies.length, pages: 1, strategies})});
+      f.location.pathname = '/strategies'; f.location.search = '?status=';
+      await f.viewStrategies(); await flush();
+      return f.root.querySelector('#slips').innerHTML;
+    };
+    const shape = (html) => {
+      const table = html.match(/<table class="stack t-strat">[\s\S]*?<\/table>/)[0];
+      const head = (table.match(/<thead>[\s\S]*?<\/thead>/)[0].match(/<th[ >]/g) || []).length;
+      const rows = (table.match(/<tbody>[\s\S]*?<\/tbody>/)[0].match(/<tr[ >][\s\S]*?<\/tr>/g) || []).map((r) => (r.match(/<td[ >]/g) || []).length);
+      return {head, rows};
+    };
+    const on = await open([detailStrategy({id: 60, title: 'On paper', deployed: true, books: ['paper'], real: {pnl: 3.2, trades: 14, open: 0, mode: 'paper'}}),
+      detailStrategy({id: 61, title: 'Not deployed'})]);
+    assert.match(on, /<th class="num" title="What it has made on paper \(pretend money\) since you deployed it, after Kalshi fees and the spread\. Never added to its demo or live money\.">Paper P&amp;L<\/th>/);
+    const s1 = shape(on);
+    assert.ok(s1.rows.length === 2 && s1.rows.every((n) => n === s1.head), JSON.stringify(s1));
+    // A row removed from paper is a paper record too.
+    assert.match(await open([detailStrategy({id: 62, title: 'Removed', past: {paper: {pnl: 1, trades: 2, deployments: 1}}})]), /Paper P&amp;L<\/th>/);
+    // No paper record on the page: no column of dashes, and the rows match the head.
+    const off = await open([detailStrategy({id: 61, title: 'Not deployed'}), detailStrategy({id: 63, title: 'Demo only', deployed: true, books: ['demo'],
+      real: {pnl: 2, trades: 1, open: 0, mode: 'demo'}})]);
+    assert.doesNotMatch(off, /Paper P&amp;L|paper-col/);
+    const s2 = shape(off);
+    assert.ok(s2.rows.length === 2 && s2.rows.every((n) => n === s2.head), JSON.stringify(s2));
+  });
 }

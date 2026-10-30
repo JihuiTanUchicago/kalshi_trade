@@ -8,7 +8,7 @@ window.TauPage('strategies', (T) => {
     catOrder, cents, chartWidth, CODE_RESEARCH_ONLY, contractLink, contractName, DEMO_BOOK, demoCashRead, demoHealthLine, DEP_DONE, depIdle,
     depActed, depSaid, depWrite, dirLabel, equityChart, errText, esc, EXAMPLE_NOTE, EXAMPLE_TAG, exitWord, fig, flash, fmt0, fold, fundsLinked,
     gl, glo, gloSep, go, ICON, isPerpetual, kalshiRef, liveOpen, liveWaitMark, loadFail, loading, mark, marketKalshiUrl, marketLabel, marketShort, mdLite,
-    money, notice, num, overDays, pageLede, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
+    money, notice, num, overDays, paperShown, paperSince, pageLede, paperAgain, PAPER_NET, pct, PERPS_SCENARIO, refreshed, registry, render, researchBadge,
     researchOnly, roadDays, root, rpUnderwater, S, SEP, sepLine, settleAt, markedAt, shell, slipEst, smooth, statusMark, strategySlip, strategyTable,
     tone, tradePrice, usd, when, whyFailedHtml
   } = T;
@@ -351,7 +351,9 @@ window.TauPage('strategies', (T) => {
       }
       const list = d.strategies, reg = registry(list.map((s) => s.equity));
       const anyPassed = list.some(bulkDeployable);
-      slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed })).join(''), anyPassed)
+      // A Paper P&L column beside the backtest's, when a row on this page has a paper book now or had one.
+      const paperCol = list.some(paperShown);
+      slipsEl.innerHTML = strategyTable(list.map((s) => strategySlip(s, reg, { pick: anyPassed, paper: paperCol })).join(''), anyPassed, false, paperCol)
         + (d.pages > 1 ? `<div class="xpage">${sp > 0 ? `<button class="btn sm" data-sp="${sp - 1}">← Prev</button>` : '<span></span>'}<span class="lab">Page ${sp + 1} of ${num(d.pages)}${SEP}${num(d.matched)} strategies</span>${sp + 1 < d.pages ? `<button class="btn sm" data-sp="${sp + 1}">Next →</button>` : '<span></span>'}</div>` : '');
       slipsEl.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => {
         sp = +b.dataset.sp;
@@ -412,6 +414,16 @@ window.TauPage('strategies', (T) => {
   const instantNote = (k, n, cls) => (!(k > 0) || !(n > 0) ? '' : `<p class="${cls}">${k >= n
     ? (n === 1 ? 'This trade was an instant fill' : `All ${num(n)} of these trades were instant fills`)
     : `${num(k)} of these ${num(n)} trades ${k === 1 ? 'was an instant fill' : 'were instant fills'}`}, filled whole at the quoted price without checking how many contracts Kalshi’s order book offered there. The track record leaves ${k === 1 ? 'it' : 'them'} out, and so does the count of realistic paper trades toward live.</p>`);
+  // Its paper book since deploying in one line, above the backtest figures (walk 2026-10-30: a passed strategy's page led
+  // with green backtest figures while its paper result sat in "Since deploying" further down). The same figures as that
+  // section's Paper line (bookTotal: the server's book_totals, the Strategies list's own sum), paper money only: its demo
+  // and live books stay on their own lines below, never added in. Display only.
+  function paperTop(s) {
+    const ds = (s.deployments || []).filter((d) => d.mode === 'paper');
+    if (researchOnly(s) || !ds.length) return '';
+    const { pnl, trades, instant } = bookTotal(s, 'paper', ds);
+    return `<p class="paper-top">${paperSince({ pnl, trades, instant_fills: instant })}${SEP}<a href="#since-deploying">Details below</a></p>`;
+  }
   // What the strategy has actually done since it was deployed, per mode (live, demo, paper), from
   // its deployments' realized P&L. The page otherwise shows only the backtest.
   function realRecord(s) {
@@ -479,7 +491,7 @@ window.TauPage('strategies', (T) => {
     // Deployed and removed the same day read "Oct 27–Oct 27" (walked 2026-10-27): one date says it.
     const daySpan = (from, to) => (day(from) === day(to) ? day(from) : `${day(from)}\u2013${day(to)}`);
     const pastLine = past.length ? `<p class="sub-fig past-deps"><b>Past deployments:</b> ${past.slice(0, 3).map((p) => `<span class="nobr">${label[p.mode] || esc(p.mode)} ${daySpan(p.created_at, p.removed_at)}</span>, ${pastFig(p)}`).join(SEP)}${past.length > 3 ? `${SEP}${num(past.length - 3)} earlier` : ''}</p>` : '';
-    return lines || pastLine ? `<section class="real-record" aria-label="Since deploying"><h2 class="paper-h">Since deploying</h2>${lines}${pastLine}</section>` : '';
+    return lines || pastLine ? `<section class="real-record" id="since-deploying" aria-label="Since deploying"><h2 class="paper-h">Since deploying</h2>${lines}${pastLine}</section>` : '';
   }
   // Road to live in words, from the checks the server sends (live-readiness): what is left, each with
   // what it has and what it needs, and when the trades, events and hours could be in at the pace it
@@ -820,6 +832,7 @@ window.TauPage('strategies', (T) => {
           <article class="sheet-doc paper">
             ${!hasExp ? `<div class="legacy-verdict">${verdictBody}</div>` : ''}
             ${quickHtml}
+            ${paperTop(s)}
             <dl class="figures measure" id="figs" data-cols="${figCols(figsFor(s))}">${figsFor(s)}</dl>
             ${restricted ? '' : realRecord(s)}
             ${s.shared_from ? `<div class="paper-byline"><span class="mk shared">${ICON.share}Shared by ${esc(s.shared_from)}</span></div>` : ''}
