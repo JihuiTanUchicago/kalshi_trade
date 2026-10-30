@@ -1316,6 +1316,24 @@
         </div>
       </section>`;
   }
+  // Settings' Account section: who is signed in, and where the rest of the account lives. Name and email come from
+  // Google (sign-in refreshes them), so they read as facts with where to change them; the Kalshi keys and the card
+  // are changed on Funds and Billing, which Settings named nowhere (walk 2026-10-30: "where do I manage my key?").
+  function accountSettings() {
+    const me = S.me || {}, u = me.user || {};
+    const keys = `${me.kalshi_connected ? 'Live key connected' : 'No live key'}${SEP}${me.kalshi_dev_connected ? 'demo key connected' : 'no demo key'}`;
+    const row = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+    return `<section class="sect account-settings"><div class="section-head"><h2>Account</h2><p>Signed in with Google</p></div>
+        <dl class="acct-rows">
+          ${row('Name', u.name ? esc(u.name) : 'Not set')}
+          ${row('Email', u.email ? esc(u.email) : 'Not set')}
+          ${u.username ? row('Community name', '@' + esc(u.username)) : ''}
+          ${row('Kalshi keys', `<span>${keys}</span><a href="/funds#connect-kalshi">Manage keys on Funds</a>`)}
+          ${row('Credits and card', '<a href="/billing">Billing</a>')}
+        </dl>
+        <p class="hint acct-hint">Your name and email come from your Google account. Change them there, and Tau shows the new ones the next time you sign in.</p>
+      </section>`;
+  }
   function wireEmailSettings() {
     const sw = root.querySelector('#email-optional');
     if (!sw) return;
@@ -1346,7 +1364,8 @@
         <p class="hint" style="margin-top:12px;max-width:420px">Changes how every page looks, wherever you sign in. Switching reloads Tau; you can switch back here anytime.</p>
         <div id="theme-flash"></div>
       </section>
-      ${emailSettings()}`);
+      ${emailSettings()}
+      ${accountSettings()}`);
     wireEmailSettings();
     root.querySelectorAll('[data-theme]').forEach((b) => (b.onclick = () => {
       const key = b.dataset.theme;
@@ -1614,7 +1633,19 @@
     try { await api('/api/logout', {}); }
     catch (e) { if (e.status !== 401) { flash(where, SIGNOUT_FAIL, 'bad'); return false; } }
     S.me = null;
+    forgetDrafts();
     return true;
+  }
+  // Signing out leaves nothing of the reader's own words on the device: the research idea not yet started
+  // (app-research.js, this tab) and the autopilot message not yet sent (app-autopilot.js, kept per account).
+  // A session that ended by itself keeps them, so signing back in finds them where they were.
+  function forgetDrafts() {
+    try { sessionStorage.removeItem('tau_research_draft'); } catch (e) { /* private mode */ }
+    try {
+      const mine = [];
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf('tau_ap_draft:') === 0) mine.push(k); }
+      mine.forEach((k) => localStorage.removeItem(k));
+    } catch (e) { /* private mode */ }
   }
   // The profile menu's sign-out note, at the top of the page.
   function signOutNote() {

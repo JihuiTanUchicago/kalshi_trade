@@ -82,6 +82,17 @@ test('the app bundle reports through window.__tauReport as api or view', () => {
     [['api', 'GET /api/strategies/:id failed (503)'], ['view', 'RangeError: Invalid time value']]);
 });
 
+test('a read that came back 401 (the session ended; the app went to sign-in) is not a page error', () => {
+  const p = page();
+  const ended = Object.assign(new Error('Please sign in.'), {status: 401});
+  p.reject(ended);
+  assert.equal(p.sent.length, 0);
+  // Any other refusal, or a plain object that only says 401, is still reported.
+  p.reject(Object.assign(new Error('Not found'), {status: 404}));
+  p.reject({status: 401});
+  assert.deepEqual(p.sent.map((s) => s.body.message), ['Not found', 'A non-Error value (object)']);
+});
+
 test("another origin's opaque error or a browser extension's is not reported", () => {
   const p = page();
   p.listeners.error[0]({message: 'Script error.', filename: '', lineno: 0, colno: 0, error: null});

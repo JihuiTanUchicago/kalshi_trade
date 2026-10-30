@@ -251,7 +251,8 @@ loadPollCases({name: 'Tau', frontend, railOpenWide: [['tau_hotrail', '1']],
 pageFileCases({name: 'Tau', frontend, prefix: 'app-', pagesKey: 'tauPages',
   storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
 settingsCases({name: 'Tau', frontend, current: 'tau', cardWallOpts: () => ({stripe: STRIPE_STUB}),
-  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v))})});
+  storageFor: m => ({getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)),
+    removeItem: k => m.delete(k), key: i => [...m.keys()][i] ?? null, get length() { return m.size; }})});
 const funds = () => ({kalshi: {connected: false}, kalshi_dev: {connected: false},
   demo: {capital: 1000, equity: 1001, realized: 1}, paper: {cash: 1000, ledger: [
     {created_at: '2026-10-17T10:00:00Z', memo: '<script>ledger</script>', amount: 10},
