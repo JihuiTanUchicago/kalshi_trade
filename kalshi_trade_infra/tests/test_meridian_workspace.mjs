@@ -6552,7 +6552,7 @@ test('Meridian: a strategy that did not pass shows its backtest P&L muted, at th
 
 // After every helper it reads (billingPage, the dashboard and autopilot fixtures) is defined.
 firstHourCases({name: 'Meridian', frontend, billingPage, cardedBilling, dashboard: dashboardData, apStatus, fundsData: funds});
-firstTenMinutesCases({name: 'Meridian', frontend, dashboard: dashboardData, apStatus});
+firstTenMinutesCases({name: 'Meridian', frontend, dashboard: dashboardData, apStatus, billingPage, cardedBilling});
 fundsTrustCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
 fundsWalkCases({name: 'Meridian', frontend, fundsData: funds, dashboard: dashboardData, detailStrategy, strategyFrontend});
 chatPanelCases({name: 'Meridian', frontend, storageFor: m => m});

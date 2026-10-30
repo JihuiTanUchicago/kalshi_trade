@@ -12,7 +12,8 @@ window.TauPage('billing', (T) => {
 
   async function viewBilling() {
     const gen = S.gen;
-    shell('/billing', boardTitle('Billing') + '<details class="billing-pricing"><summary>Credit pricing</summary><p>Credits pay for research and chat, billed per token for the model you pick. Paper and live trading are free. The <a href="/research">research form</a> shows what a session usually costs before you start.</p></details>' +
+    // "Billed per token" was a word a new customer had to look up: the line says what a token measures.
+    shell('/billing', boardTitle('Billing') + '<details class="billing-pricing"><summary>Credit pricing</summary><p>Credits pay for research and chat, billed by how much text the model you pick reads and writes (its tokens). Paper and live trading are free. The <a href="/research">research form</a> shows what a session usually costs before you start.</p></details>' +
       '<dl class="figures measure" id="bfigs" style="margin-top:14px"></dl><p class="hint bill-split" id="bsplit"></p><p class="stale-note" id="bill-stale" role="status"></p>', loading(360));
     let stripe = null, card = null;
     // Below the research floor no new research starts, so the balance reads as a problem.

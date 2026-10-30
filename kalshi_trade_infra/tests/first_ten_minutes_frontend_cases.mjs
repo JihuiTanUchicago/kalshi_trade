@@ -2,14 +2,14 @@
 // minutes, walked 2026-10-30 at 390px and 1280px. Once autopilot is on, the dashboard's autopilot card said
 // "It's researching Bitcoin up or down in 15 minutes" with nothing to press, and the session itself was two pages
 // away (Research, then the row); the card now ends on the server's link to it. The heading's "1 agent researching"
-// is a link to Research in both themes (only Meridian's was).
+// is a link to Research in both themes (only Meridian's was). Billing says what a token is instead of "billed per token".
 import assert from './assert_text.mjs';
 import {test} from 'node:test';
 
 const response = (data, status = 200) => ({ok: status < 400, status, json: async () => data});
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-export function firstTenMinutesCases({name, frontend, dashboard, apStatus}) {
+export function firstTenMinutesCases({name, frontend, dashboard, apStatus, billingPage, cardedBilling}) {
   const open = async (board, status) => {
     const f = frontend({fetchImpl: (path) => {
       if (path.startsWith('/api/dashboard')) return response(board);
@@ -50,5 +50,13 @@ export function firstTenMinutesCases({name, frontend, dashboard, apStatus}) {
     assert.ok(link, 'the count is a link');
     assert.equal(link.getAttribute('href'), '/research');
     f.clearTimers();
+  });
+
+  test(`${name}: Billing says what credits are billed by in words a new customer knows`, async () => {
+    const f = billingPage(cardedBilling());
+    await f.viewBilling(); await flush();
+    const text = f.root.textContent.replace(/\s+/g, ' ');
+    assert.match(text, /billed by how much text the model you pick reads and writes \(its tokens\)\. Paper and live trading/);
+    assert.doesNotMatch(text, /per token/);
   });
 }
