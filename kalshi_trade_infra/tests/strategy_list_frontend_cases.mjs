@@ -426,13 +426,26 @@ export function strategyListCases({name, frontend, detailStrategy}) {
     // A live row's record is its live book alone: live money stays in Status, and the column points to its page.
     const live = col({deployed: true, deploy_live: true, books: ['live', 'paper'], real: {pnl: 2, trades: 3, open: 0, mode: 'live', live: true}});
     assert.match(cell(live), /<a href="\/strategies\/46">Its paper book is on its page<\/a>/);
-    assert.doesNotMatch(cell(live), /\$2\.00/); assert.match(status(live), /\+\$2\.00<\/span> since deploying/);
+    assert.doesNotMatch(cell(live), /\$2\.00/); assert.match(status(live), /\+\$2\.00<\/span> on live since deploying/);
     // A demo-only row and a row never deployed: an empty cell (hidden on a phone), demo money in Status alone.
     const demo = col({deployed: true, books: ['demo'], real: {pnl: 2, trades: 1, open: 0, mode: 'demo'}});
     assert.equal(cell(demo), '—'); assert.match(demo, /class="num paper-col nil"/); assert.match(status(demo), /on demo since deploying/);
     assert.equal(cell(col({})), '—');
     // A research-only strategy never shows a book record, even if one leaks in.
     assert.equal(cell(col({kind: 'code', research_only: true, deployed: true, real: {pnl: 1, trades: 1, open: 0, mode: 'paper'}})), '—');
+  });
+
+  // Walk 2026-10-30 (live, paper and demo strategies on one list): a live row's record read "+$0.27 since deploying ·
+  // 4 trades · after Kalshi fees" beside "+$3.53 on demo since deploying" and a paper column, the one figure on the list
+  // that didn't say which money it was. It names its book and says it is real money, as the strategy page does.
+  test(`${name}: a live row's since-deploying figure says it is live, real money, as the demo and paper rows name theirs`, () => {
+    const f = frontend({fetchImpl: () => response({})});
+    const row = (real) => plain(f.strategySlip(detailStrategy({id: 47, title: 'Live fixture', deployed: true, deploy_live: true, books: ['live'], real}), null, {})).replace(/\u00a0/g, ' ');
+    assert.match(row({pnl: 0.27, trades: 4, open: 0, mode: 'live', live: true}), /\+\$0\.27 on live since deploying · 4 trades · real money, after Kalshi fees/);
+    assert.match(row({pnl: 0, trades: 0, open: 2, mode: 'live', live: true}), /No closed live trades yet/);
+    // Demo and paper keep their own words; nothing calls them real money.
+    assert.doesNotMatch(row({pnl: 1, trades: 1, open: 0, mode: 'demo'}), /real money|on live/);
+    assert.doesNotMatch(row({pnl: 1, trades: 1, open: 0, mode: 'paper'}), /real money|on live/);
   });
 
   test(`${name}: the list shows the Paper P&L column only when a row on the page has a paper record, each row a cell under it`, async () => {

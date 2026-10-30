@@ -559,7 +559,9 @@
   const runTag = (r) => r.example ? ' ' + EXAMPLE_TAG : +r.by_autopilot ? ' ' + AP_RUN_TAG : '';
   // What each figure is net of, as the dashboard and Deploy say it: "+$1.00 on paper since deploying" left out that
   // Kalshi's fees (and, on paper, the spread) were already taken off.
-  const realNet = (mode) => (mode === 'paper' ? PAPER_NET : 'after Kalshi fees');
+  // A live book says it is real money, as the strategy page's Since deploying does: on the Strategies list a live row
+  // read "+$0.27 since deploying" beside rows saying "on demo" and "on paper" (walk 2026-10-30).
+  const realNet = (mode) => (mode === 'paper' ? PAPER_NET : mode === 'live' ? 'real money, after Kalshi fees' : 'after Kalshi fees');
   // A paper book whose closed trades were all instant fills (the server's `instant_only`, counted as the track record
   // counts them) says so: the track record leaves those trades out and names the strategy on a row saying so, while
   // "+$3.80 on paper since deploying \u00b7 2 trades" here read as a record.
@@ -570,7 +572,7 @@
     ? `, ${num(+r.instant_fills)} of them ${+r.instant_fills === 1 ? 'an instant fill' : 'instant fills'}, left out of the track record` : '');
   // A paper card's book also says it after typical live slippage (the server's slippage_estimate), on a line of
   // its own under the figure; a live card shows live money and a demo line beside paper is never estimated.
-  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : 'No closed trades yet'}</div>${r.mode === 'paper' && r.trades && slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}${realDemo(r)}` : '';
+  const realFig = (r) => r ? `<div class="sub-fig real-fig">${r.trades && r.instant_only && r.mode === 'paper' ? realInstant(r) : r.trades ? `${money(r.pnl)} ${r.mode === 'demo' ? 'on demo ' : r.mode === 'paper' ? 'on paper ' : r.mode === 'live' ? 'on live ' : ''}since deploying\u00a0· ${realTrades(r.trades)}${realSome(r)}\u00a0· ${realNet(r.mode)}` : r.mode === 'demo' ? 'No closed demo trades yet' : r.mode === 'paper' ? 'No closed paper trades yet' : r.mode === 'live' ? 'No closed live trades yet' : 'No closed trades yet'}</div>${r.mode === 'paper' && r.trades && slipEst(r.slippage_estimate) ? `<div class="sub-fig real-fig real-slip">${slipEst(r.slippage_estimate)}</div>` : ''}${realDemo(r)}` : '';
   // A paper book's demo book beside it (the server's real.demo): its own line, never added in.
   const realDemo = (r) => r && r.demo ? `<div class="sub-fig real-fig">Demo: ${r.demo.trades ? `${money(r.demo.pnl)}\u00a0· ${realTrades(r.demo.trades)}\u00a0· ${realNet('demo')}` : 'no closed trades yet'}</div>` : '';
   // The books a deployed strategy runs in now (the server's `books`: live, paper, demo), named on its
