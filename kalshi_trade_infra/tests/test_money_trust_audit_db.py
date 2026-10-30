@@ -290,6 +290,13 @@ def test_every_page_shows_one_number_per_figure(conn, quiet):
     assert "paper 1 open, $%.2f entry notional; demo 1 open, $%.2f entry notional; live 1 open, $%.2f entry notional" % (
         dash["paper"]["open_at_cost"], dash["demo"]["open_at_cost"], dash["live"]["open_at_cost"]) in brief
     assert "Aggregate open exposure" not in brief
+    # Each book's day as the dashboard's "realized today (UTC)", and each deployment's figure as its Deploy row.
+    assert "Realized today (UTC, since 00:00 UTC): paper %s; demo %s; live (real money) %s." % (
+        money(dash["paper"]["today_pnl"]), money(dash["demo"]["today_pnl"]), money(dash["live"]["today_pnl"])) in brief
+    lines = {int(m.group(1)): m.group(0) for m in re.finditer(r"^- deployment_id=(\d+) .*$", brief, re.M)}
+    assert lines
+    for did, line in lines.items():
+        assert " realized %s, " % money(board_rows[did]["realized_pnl"]) in line and "$-" not in line, line
 
     # -- live is never in a figure with paper or demo money ----------------------------------------------------
     mixed = {_c(book["live"] + book["paper"]), _c(book["live"] + book["demo"]), _c(book["live"] + book["paper"] + book["demo"])}

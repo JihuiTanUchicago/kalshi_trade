@@ -4730,6 +4730,44 @@ def _deployment_words(d: Dict) -> str:
                                  d.get("mode") or "paper", state)
 
 
+def _usd(v) -> str:
+    """Money as the pages show it, for the context a chat reply quotes: rounded once, half up (money.cents),
+    the sign before the dollar ("-$12.76"). "$%.2f" rounded the binary float, so a demo deployment's exact
+    $3.5250 read $3.52 here beside Deploy's $3.53, and a loss read "$-12.76". None (no figure) reads n/a."""
+    if v is None:
+        return "n/a"
+    c = cents(v)
+    return ("-$%.2f" % -c) if c < 0 else "$%.2f" % c
+
+
+def _credits_usd(v) -> str:
+    """A credits balance as Billing shows it (views.credit_cents: the ledger's six places, then half up to the
+    cent), so $0.105 left reads $0.11 here as there; "%.2f" of the float said $0.10."""
+    from decimal import ROUND_HALF_UP, Decimal
+    return "$%.2f" % Decimal(str(v or 0)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+# A stored pause reason the user's own action wrote, as Deploy says it (views._pause_clause).
+_USER_PAUSES = {"By you": "the user paused it", "Kill switch": "the user pressed Kill",
+                "Approved agent proposal": "the user approved a proposal to pause it"}
+
+
+def _deployment_state(d: Dict) -> str:
+    """A deployment's status for the context, with what Deploy says beside it: a running live one while live
+    trading is closed places no orders (the dashboard counts it as placing none, not running), and a paused or
+    stopped one says why (its stored reason, so a reply asked "why did it pause?" has the answer even once the
+    pause's chat line is older than the transcript)."""
+    status = d.get("status") or ""
+    if d.get("mode") == "live" and status == "running" and not _live_switch_open():
+        return status + " (waiting: live trading isn’t open yet, so it places no orders)"
+    raw = (d.get("status_reason") or "").strip()
+    if status == "running" or not raw:
+        return status
+    why = _USER_PAUSES.get(raw) or customer_text.clean(customer_text.tournament_status(raw), "") or ""
+    return "%s (why: %s)" % (status, why[:200].rstrip(".")) if why else status
+
+
 def _copilot_context(cur, user: Dict) -> str:
     deps = repo.list_deployments(cur, user["id"])
     passed = [s for s in repo.list_strategies(cur, user["id"], status="passed", limit=20)]
@@ -4759,7 +4797,11 @@ def _copilot_context(cur, user: Dict) -> str:
             sum(1 for d in running if d["mode"] == "paper"),
             " (%s)" % ", ".join("#%s" % d["id"] for d in running if d["mode"] == "paper") if any(d["mode"] == "paper" for d in running) else "",
             sum(1 for d in running if d["mode"] == "live"),
-            " (%s)" % ", ".join("#%s" % d["id"] for d in running if d["mode"] == "live") if any(d["mode"] == "live" for d in running) else ""),
+            " (%s)" % ", ".join("#%s" % d["id"] for d in running if d["mode"] == "live") if any(d["mode"] == "live" for d in running) else "")
+        # The dashboard and Deploy say a running live deployment places no orders while the live switch is
+        # closed; counted as live here, a reply asked "how is my live strategy doing?" said it trades real money.
+        + (" Live trading isn’t open yet on this server, so the live ones place no orders: they are waiting, "
+           "never trading real money." if any(d["mode"] == "live" for d in running) and not _live_switch_open() else ""),
         "RESEARCH RUNNING RIGHT NOW: %d.%s" % (active_research, "" if active_research else
             " NONE is running — any research you mentioned in earlier messages has ALREADY FINISHED "
             "(its outcome is listed below). Do NOT tell the user research is 'still running'."),
@@ -4793,10 +4835,11 @@ def _copilot_context(cur, user: Dict) -> str:
         oos = ((d.get("result") or {}).get("out_of_sample") or {})
         lines.append(
             # "<mode> record:", not "live:": reviews read the old wording and called paper legs Live.
-            "- deployment_id=%s \"%s\" market=%s mode=%s status=%s %s record: %s closed trades, %s wins, realized $%.2f, %s open; "
-            "backtest unseen-data: pnl $%s over %s trades, max drawdown $%s; %sspec=%s"
-            % (d["id"], d["title"], d["market"], d["mode"], d["status"], d["mode"], d["closed_trades"], d["wins"],
-               float(d["realized_pnl"]), d["open_positions"], oos.get("pnl"), oos.get("trades"), oos.get("max_drawdown"),
+            # Its realized figure is Deploy's (money.cents) and its status says what Deploy's row says beside it.
+            "- deployment_id=%s \"%s\" market=%s mode=%s status=%s %s record: %s closed trades, %s wins, realized %s, %s open; "
+            "backtest unseen-data: pnl %s over %s trades, max drawdown %s; %sspec=%s"
+            % (d["id"], d["title"], d["market"], d["mode"], _deployment_state(d), d["mode"], d["closed_trades"], d["wins"],
+               _usd(d["realized_pnl"]), d["open_positions"], _usd(oos.get("pnl")), oos.get("trades"), _usd(oos.get("max_drawdown")),
                _deployment_age_text(d), json.dumps(d["spec"], separators=(",", ":")))
         )
         scan = d.get("scan") or {}
@@ -4864,8 +4907,8 @@ def _copilot_context(cur, user: Dict) -> str:
         except Exception:
             cand = False
         any_candidate = any_candidate or cand
-        lines.append("- strategy_id=%s \"%s\" market=%s unseen-data pnl $%s over %s trades — %s"
-                     % (s["id"], s["title"], s["market"], oos.get("pnl"), oos.get("trades"),
+        lines.append("- strategy_id=%s \"%s\" market=%s unseen-data pnl %s over %s trades — %s"
+                     % (s["id"], s["title"], s["market"], _usd(oos.get("pnl")), oos.get("trades"),
                         "DEPLOYMENT-CANDIDATE: ready to promote to PAPER now" if cand else
                         "not yet a deployment candidate (dig deeper before it can deploy)"))
     if not spare:
@@ -4922,11 +4965,12 @@ def _copilot_context(cur, user: Dict) -> str:
         if repo.get_kalshi_dev_key(cur, user["id"]) is None:
             demo = "no Kalshi demo key connected, so demo can't trade until the user adds one on Funds"
         else:
-            demo = "Tau's demo book $%.2f (Tau's own figure, not the Kalshi demo account's cash)" % float(
+            demo = "Tau's demo book %s (Tau's own figure, not the Kalshi demo account's cash)" % _usd(
                 repo.demo_equity(cur, user["id"]).get("equity") or 0)
-        lines += ["", "Account & budget: paper cash $%.2f, %s, research credits $%.2f left. Real, "
+        # Each figure as its page rounds it: paper cash as the dashboard and Funds (money.cents), credits as Billing.
+        lines += ["", "Account & budget: paper cash %s, %s, research credits %s left. Real, "
                       "fee-surviving money is the goal — a validated edge only counts once it holds up on a live book."
-                  % (paper, demo, credits)]
+                  % (_usd(paper), demo, _credits_usd(credits))]
     except Exception:
         pass
     # PORTFOLIO VIEW: each book's open exposure vs the user's caps, so the review manages the whole
@@ -4944,17 +4988,20 @@ def _copilot_context(cur, user: Dict) -> str:
         pass
     # What each book has realized, as the dashboard shows it (one read of the closed positions), so a
     # reply asked "what have I made" quotes the page's figure: the per-deployment lines above leave
-    # out removed deployments and deleted strategies, and adding them up mixed rounded figures.
+    # out removed deployments and deleted strategies, and adding them up mixed rounded figures. Today's figure
+    # is each book's "realized today (UTC)" from the same read: without it a reply asked "what did I make today?"
+    # had only the all-time figures and the per-deployment lines to work from.
     try:
         realized, closed, _ = repo.closed_book_totals(cur, user["id"], repo.now_utc().replace(hour=0, minute=0, second=0))
         demo_since = repo.demo_equity(cur, user["id"], realized=realized["demo"][0])
-        usd = lambda v: ("-$%.2f" % -v) if v < 0 else "$%.2f" % v  # noqa: E731
         lines.append("Realized P&L by book, closed trades only (the dashboard's figures; never add books together): "
                      "paper %s over %d closed trades, all time; demo %s %s; live (real money) %s over %d "
-                     "closed trades, all time. Removed deployments and deleted strategies are included."
-                     % (usd(cents(realized["paper"][0])), closed.get("paper", 0), usd(demo_since["realized"]),
+                     "closed trades, all time. Removed deployments and deleted strategies are included. "
+                     "Realized today (UTC, since 00:00 UTC): paper %s; demo %s; live (real money) %s."
+                     % (_usd(realized["paper"][0]), closed.get("paper", 0), _usd(demo_since["realized"]),
                         "since its last reload" if demo_since.get("before_reload") else "all time",
-                        usd(cents(realized["live"][0])), closed.get("live", 0)))
+                        _usd(realized["live"][0]), closed.get("live", 0),
+                        _usd(realized["paper"][1]), _usd(realized["demo"][1]), _usd(realized["live"][1])))
     except Exception:
         pass
     try:

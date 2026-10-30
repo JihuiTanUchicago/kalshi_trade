@@ -172,3 +172,82 @@ def test_budget_line_says_there_is_no_demo_key_instead_of_a_demo_figure(monkeypa
     ctx = agent._copilot_context(None, USER)
     assert "Tau's demo book $500.00 (Tau's own figure, not the Kalshi demo account's cash)" in ctx
     assert "no Kalshi demo key" not in ctx and "demo equity" not in ctx
+
+
+# -- the chat's figures are the pages' (money trust audit, 2026-10-30) ---------------------------------------
+
+
+def test_each_deployment_line_says_deploys_figure_rounded_once_with_the_sign_before_the_dollar(monkeypatch):
+    # "realized $%.2f" rounded the binary float: a demo deployment's exact $3.5250 read $3.52 beside Deploy's
+    # $3.53 (money.cents), and a loss read "$-12.76" where every page says -$12.76.
+    deps = [dict(_dep(5, mode="demo"), title="XRP trend rider", realized_pnl=3.5250,
+                 result={"out_of_sample": {"pnl": -1.005, "trades": 40, "max_drawdown": 4.1}}),
+            dict(_dep(6, status="paused"), title="ETH grind", realized_pnl=-12.7575)]
+    _wire(monkeypatch, deps=deps)
+    ctx = agent._copilot_context(None, USER)
+    assert "demo record: 0 closed trades, 0 wins, realized $3.53, 0 open;" in ctx
+    assert "realized -$12.76, 0 open;" in ctx and "$-" not in ctx
+    assert "backtest unseen-data: pnl -$1.01 over 40 trades, max drawdown $4.10;" in ctx
+    assert "backtest unseen-data: pnl n/a over None trades, max drawdown n/a;" in ctx  # no figure: never "$None"
+
+
+def test_the_budget_line_rounds_paper_cash_and_credits_as_their_pages_do(monkeypatch):
+    # Paper cash as the dashboard and Funds round it (money.cents); credits as Billing does (the ledger's six
+    # places, then half up). "%.2f" of the floats said $994.64 and $1.00 beside the pages' $994.65 and $1.01.
+    _wire(monkeypatch, paper_balance=lambda cur, uid: 994.645)
+    monkeypatch.setattr(agent.repo, "credit_balance", lambda cur, uid: 1.005)
+    ctx = agent._copilot_context(None, USER)
+    assert "paper cash $994.65," in ctx and "research credits $1.01 left" in ctx
+
+
+def test_the_realized_line_carries_each_books_day_as_the_dashboard_labels_it(monkeypatch):
+    # The dashboard's books say "realized today (UTC)"; the context had only the all-time figures, so a reply
+    # asked "what did I make today?" had nothing of the page's to quote. Each book apart, never summed.
+    _wire(monkeypatch)
+    monkeypatch.setattr(agent.repo, "user_open_exposure", lambda cur, uid, mode=None: {"n": 0, "notional": 0})
+    monkeypatch.setattr(agent.repo, "closed_book_totals", lambda cur, uid, day: (
+        {"paper": (5.2125, 10.0), "demo": (3.525, 3.435), "live": (2.0360, -7.3575)},
+        {"paper": 11, "demo": 3, "live": 11}, {}))
+    monkeypatch.setattr(agent.repo, "demo_equity", lambda cur, uid, realized=None: {"equity": 1003.53, "realized": 3.53,
+                                                                                  "before_reload": 0.0})
+    ctx = agent._copilot_context(None, USER)
+    assert "Realized today (UTC, since 00:00 UTC): paper $10.00; demo $3.44; live (real money) -$7.36." in ctx
+    assert "$2.64" not in ctx and "$6.08" not in ctx  # live + paper, live + paper + demo: never one figure
+
+
+def test_a_running_live_deployment_waits_while_live_trading_is_closed_as_deploy_says(monkeypatch):
+    # The dashboard counts a running live deployment as "placing no orders" while the server's live switch is
+    # closed, and Deploy says it waits; the context said "1 live (#1)" and "status=running", so a reply asked
+    # "how is my live strategy doing?" could say it trades real money.
+    _wire(monkeypatch, deps=[_dep(1, mode="live"), _dep(4)])
+    monkeypatch.setattr(agent, "_live_switch_open", lambda: False)
+    ctx = agent._copilot_context(None, USER)
+    assert ("DEPLOYMENTS RUNNING RIGHT NOW: 1 on paper (#4), 1 live (#1). Live trading isn’t open yet on this server, "
+            "so the live ones place no orders: they are waiting, never trading real money.") in ctx
+    assert "mode=live status=running (waiting: live trading isn’t open yet, so it places no orders) live record:" in ctx
+    assert "mode=paper status=running paper record:" in ctx
+    monkeypatch.setattr(agent, "_live_switch_open", lambda: True)
+    ctx = agent._copilot_context(None, USER)
+    assert "DEPLOYMENTS RUNNING RIGHT NOW: 1 on paper (#4), 1 live (#1).\n" in ctx
+    assert "waiting" not in ctx and "mode=live status=running live record:" in ctx
+
+
+def test_a_paused_deployment_says_why_so_a_reply_can_answer_why_it_paused(monkeypatch):
+    # Deploy's row says why each one is paused; the context said only "status=paused", so "why did autopilot
+    # pause it?" had an answer only while the engine's chat line was still in the transcript's last 20 lines.
+    deps = [dict(_dep(6, status="paused"), status_reason="Lost $12.76, more than the $8.20 guard (2x its worst "
+                                                             "backtest drawdown)."),
+            dict(_dep(2, mode="live", status="paused"), status_reason="Kill switch"),
+            dict(_dep(3, status="paused"), status_reason="Autopilot daily loss limit hit"),
+            dict(_dep(7, status="paused"), status_reason="Traceback (most recent call last): boom"),
+            dict(_dep(8, status="stopped"), status_reason="Tournament: retired, no trade in 9 days on paper: its "
+                                                              "entry rule never fires on the live book")]
+    _wire(monkeypatch, deps=deps)
+    ctx = agent._copilot_context(None, USER)
+    assert ("status=paused (why: Lost $12.76, more than the $8.20 guard (2x its worst backtest drawdown)) paper "
+            "record:") in ctx
+    assert "mode=live status=paused (why: the user pressed Kill) live record:" in ctx
+    assert "status=paused (why: Autopilot daily loss limit hit) paper record:" in ctx
+    assert 'deployment_id=7 "t" market=btc15m mode=paper status=paused paper record:' in ctx  # a raw error: no why
+    assert "Traceback" not in ctx
+    assert "status=stopped (why: The paper tournament removed it: no trade in 9 days, as its entry rule" in ctx
