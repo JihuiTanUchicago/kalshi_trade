@@ -163,6 +163,13 @@ def exhausted(ledger: Dict, market: str, min_tested: int = EXHAUSTED_MIN) -> Lis
             if m != "unbucketed" and c["tested"] >= min_tested and not c["gated"]]
 
 
+def market_exhausted(ledger: Dict, market: str, min_tested: int = EXHAUSTED_MIN) -> bool:
+    """Every named mechanism tested at least min_tested times on `market`, none reaching the gate."""
+    from app.research.rsi import MECHANISMS
+    names = {name for name, _ in MECHANISMS}
+    return bool(names) and names <= set(exhausted(ledger, market, min_tested))
+
+
 def untried(ledger: Dict, market: str) -> List[tuple]:
     """(mechanism, times tested on sibling markets) for named mechanisms never tested on `market`."""
     from app.research.rsi import MECHANISMS

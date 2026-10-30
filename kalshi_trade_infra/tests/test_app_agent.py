@@ -655,6 +655,37 @@ def test_log_keeps_full_market_choice_reasoning(monkeypatch):
     assert long_why in chose  # full reasoning survives end to end — no mid-word truncation
 
 
+def test_autopilot_research_skips_markets_long_term_memory_marks_exhausted(monkeypatch):
+    # Todd 2026-10-30: no taker research on exhausted markets; a data re-test (rsi_repair) still runs.
+    monkeypatch.setattr(agent, "_researchable_keys", lambda cur: ["btc15m", "btc_daily"])
+    exh = {"btc15m", "btc_daily"}
+    monkeypatch.setattr(agent, "exhausted_markets", lambda cur, uid, ks: [k for k in ks if k in exh])
+    brief = {**RUN, "market": None, "brief": True, "prompt": "Order-flow imbalance.", "max_hypotheses": 1}
+    store = Store(monkeypatch)
+    model, prompts = scripted([])
+    agent.run_research(Conn(), brief, model=model, dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[:2] == ("stopped", agent.EXHAUSTED_RUN_ERROR) and prompts == []  # no model spend
+
+    # Queued on an exhausted market while another is open: the angle moves to the open one.
+    exh = {"btc15m"}
+    store = Store(monkeypatch)
+    seen = []
+    monkeypatch.setattr(agent, "_pick_market", lambda run, model, usage, log, keys, history: seen.append(keys) or "btc_daily")
+    model, _ = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**brief, "market": "btc15m"}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert seen == [["btc_daily"]] and store.finished[0] == "succeeded"
+
+    # A re-test on data collected for an idea is the new-data lane: it runs on the exhausted market.
+    exh = {"btc15m", "btc_daily"}
+    store = Store(monkeypatch)
+    retest = agent.rsi_repair.requeue_prompt({"kind": "history", "need": "", "idea_title": "X", "idea_why": "no data"})
+    model, _ = scripted([plan(), hyps(WINNER)])
+    agent.run_research(Conn(), {**brief, "market": "btc15m", "prompt": retest}, model=model,
+                       dataset_fn=lambda m, h=None: _dataset(n_contracts=60))
+    assert store.finished[0] == "succeeded"
+
+
 def test_hypothesis_event_carries_thesis_and_mechanism(monkeypatch):
     store = Store(monkeypatch)
     hyp_json = "```json\n%s\n```" % json.dumps({"hypotheses": [

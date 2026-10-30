@@ -19,6 +19,22 @@
   alert now include the app's real-money book (app_positions mode 'live', one line per deployment),
   not only the legacy live_* tables. "Live:" still lists legacy model switches only.
 
+## Autopilot stops taker research on exhausted markets (2026-10-30)
+Todd's pick at 16:20Z on the card "Keep spending ~$200/day on Bitcoin taker research, or move it?": move the
+spend to the maker lane on paper and to ideas that need new data. Long-term memory then showed all 14
+mechanism buckets tested 10+ times with 0 gated on btc15m, btc15m_tick and btc_daily (215 runs, 1,734 ideas).
+- `rsi_sleep.market_exhausted`: every named mechanism exhausted on the market. `agent.exhausted_markets`
+  reads the family's latest memory once. A market with no memory, or with one untried bucket, is open.
+- Autopilot only (manual research is not limited): act() refuses a research angle when every in-scope
+  market, or every market the angle names, is exhausted, and reroutes one queued on an exhausted market;
+  run_research leaves exhausted markets out of a delegated pick (before `_keys_for_angle`) and finishes
+  `stopped` with no model spend when nothing is left; the research floor stands down; the review reads
+  an "Exhausted markets" line, so idle reads as intended, not as a stall.
+- The new-data lane stays open: a `rsi_repair` re-test ("Re-test ... has been collected") runs on an
+  exhausted market. The maker lab keeps its own timer; the maker-lane thread raised policies per run.
+- Kill switch `TAU_AUTOPILOT_SKIP_EXHAUSTED=0`. Watch: autopilot research runs/day and $/day (was ~65
+  runs and ~$200/day on BTC), data re-tests started, maker lab runs.
+
 ## Research RSI: a sleep step that consolidates long-term memory (2026-10-28)
 After SLEEP (Behrouz et al. 2026, arXiv 2606.03979): fast memory is consolidated into slow memory that
 grows instead of being overwritten. Prompted, not fine-tuned, so both memories are prompt text.

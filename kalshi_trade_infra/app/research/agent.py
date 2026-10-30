@@ -44,6 +44,7 @@ from app.adapters.llm import models_catalog as catalog
 from app.research import partitions
 from app import repository as repo
 from app.research import research_repository as rr
+from app.research import rsi_repair
 from app.trading import spec as specmod
 from app.research import stats
 from app.adapters.llm.llm import LLMError, ModelFn, Usage, ask_json, claude, current_model, public_message
@@ -753,6 +754,64 @@ def autopilot_scope_line() -> str:
                 ", ".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS),
                 "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS),
                 "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS)))
+
+
+# Todd 2026-10-30 16:20Z (card "Keep spending ~$200/day on Bitcoin taker research, or move it?"): move
+# the spend. Long-term memory (rsi_sleep) then had every mechanism bucket tested 10+ times with 0 gated
+# on btc15m, btc15m_tick and btc_daily (215 runs, 1,734 ideas). Autopilot no longer starts taker research
+# on such a market; a re-test on data collected for an idea (rsi_repair) still runs, and the maker lab
+# has its own timer. Research a person starts by hand is not limited. 0 turns it off.
+AUTOPILOT_SKIP_EXHAUSTED = os.getenv("TAU_AUTOPILOT_SKIP_EXHAUSTED", "1") != "0"
+
+
+def exhausted_markets(cur, user_id: int, keys: List[str]) -> List[str]:
+    """The keys whose long-term memory has every mechanism exhausted, so autopilot skips them."""
+    from app.research import rsi, rsi_sleep
+    if not AUTOPILOT_SKIP_EXHAUSTED or not rsi_sleep.enabled():
+        return []
+    ledgers: Dict[str, Dict] = {}
+    out = []
+    for k in keys:
+        fam = rsi.family(k)
+        if fam not in ledgers:
+            try:
+                ledgers[fam] = (rsi_sleep.latest(cur, user_id, fam) or {}).get("ledger") or {}
+            except Exception:  # noqa: BLE001 - no memory (or no table yet) means nothing is exhausted
+                ledgers[fam] = {}
+        if rsi_sleep.market_exhausted(ledgers[fam], k):
+            out.append(k)
+    return out
+
+
+def _autopilot_research_keys(cur, user_id: int) -> List[str]:
+    """Markets autopilot may research: researchable, in the user's focus and in the crypto scope."""
+    return focus_keys(cur, user_id, [k for k in _researchable_keys(cur) if autopilot_scope_ok(k)])
+
+
+def autopilot_research_exhausted(cur, user_id: int) -> bool:
+    """True when every market autopilot may research is exhausted: no taker research to start."""
+    keys = _autopilot_research_keys(cur, user_id)
+    return bool(keys) and set(keys) <= set(exhausted_markets(cur, user_id, keys))
+
+
+EXHAUSTED_RUN_ERROR = ("Every kind of idea has been tried on the markets autopilot researches, with nothing passing, "
+                       "so this session did not start. Autopilot now spends on market making (on paper) and on "
+                       "re-testing ideas when the data they needed arrives.")
+
+
+def _exhausted_line(cur, user_id: int) -> str:
+    keys = _autopilot_research_keys(cur, user_id)
+    exh = exhausted_markets(cur, user_id, keys)
+    if not exh:
+        return ""
+    if set(keys) <= set(exh):
+        return ("Exhausted markets (the user's decision): long-term memory shows every mechanism tested 10+ times "
+                "with nothing reaching the gate on every market you may research (%s). Autopilot does NOT start "
+                "research on them; that spend moved to market making (its own paper lab) and to re-tests when "
+                "data collected for an idea arrives. Do not propose research now; that is expected, not a stall."
+                % ", ".join(sorted(exh)))
+    return ("Exhausted markets (the user's decision), do NOT propose research on these: %s. Long-term memory "
+            "shows every mechanism tested 10+ times there with nothing reaching the gate." % ", ".join(sorted(exh)))
 
 
 def _coin_aliases() -> Dict[str, List[str]]:
@@ -2784,6 +2843,14 @@ def run_research(
             log("step", "Crypto research is limited to %s now — picking a market inside that for this angle."
                 % "/".join(c.upper() for c in AUTOPILOT_CRYPTO_COINS))
             market = None
+        # A data re-test (rsi_repair) is the new-data lane: it may run on an exhausted market.
+        skip_exhausted = run.get("brief") and not rsi_repair.is_retest(run.get("prompt"))
+        if market and skip_exhausted and not ckpt.get("market") and exhausted_markets(cur, user_id, [market]):
+            # Queued on a market long-term memory has since marked exhausted: keep the angle, pick another.
+            log("step", "Every kind of idea has been tried on %s with nothing passing, so autopilot no longer "
+                "researches it — picking another market for this angle."
+                % (MARKETS[market].customer_label if market in MARKETS else market))
+            market = None
         if not market:  # user left it to the agent — it picks the market from the idea first
             if resuming and ckpt.get("market"):
                 market = ckpt["market"]  # already chosen on the first attempt; don't re-spend the pick
@@ -2793,6 +2860,11 @@ def run_research(
                 ready = focus_keys(cur, user_id, _researchable_keys(cur))
                 if run.get("brief"):
                     ready = [k for k in ready if autopilot_scope_ok(k)] or ready
+                if skip_exhausted and ready:
+                    exh = exhausted_markets(cur, user_id, ready)
+                    if set(ready) <= set(exh):
+                        raise NoData(EXHAUSTED_RUN_ERROR)  # finishes "stopped": nothing to research, not a failure
+                    ready = [k for k in ready if k not in exh]
                 if not ready:
                     raise RuntimeError("No market inside your autopilot focus is open for research right now.")
                 keys = [k for k in ready if k not in blocked] or _least_recent_markets(cur, user_id, ready)
@@ -3787,9 +3859,14 @@ def _cooldown_line(cur, user_id: int) -> str:
     blocked = _research_blocked_markets(cur, user_id)
     scope = autopilot_scope_line()
     scope = scope + "\n" if scope else ""
+    exh = _exhausted_line(cur, user_id)
+    scope += exh + "\n" if exh else ""
+    if exh and autopilot_research_exhausted(cur, user_id):
+        return scope.rstrip("\n")
     if not blocked:
         return scope + "Research cooldown: none, every market is open for a fresh research line."
     allowed = [k for k in focus_keys(cur, user_id, _researchable_keys(cur)) if autopilot_scope_ok(k)]
+    allowed = [k for k in allowed if k not in exhausted_markets(cur, user_id, allowed)]
     if allowed and all(k in blocked for k in allowed):
         # Prod 2026-10-26 15:27-16:27Z: Bitcoin-only left 2-3 markets, all on cooldown, and reviews
         # read "do NOT propose these" as "no research": nothing started for an hour.
@@ -4406,6 +4483,18 @@ def act(cur, user: Dict, action: Dict, autopilot: bool, dataset_fn=backtest.data
             return ("Started a new research session digging deeper into “%s”: I’ll refine and "
                     "stress-test its mechanism, and every variant still has to pass the same gates. "
                     "Follow it on the Research page." % strat["title"], None)
+        if autopilot and not sid and not rsi_repair.is_retest(idea):
+            scoped = _autopilot_research_keys(cur, user_id)
+            exh = exhausted_markets(cur, user_id, scoped)
+            named = _named_markets(idea, scoped) if exh else []
+            if exh and (set(scoped) <= set(exh) or (named and set(named) <= set(exh))):
+                # Customer words: the autopilot panel shows this line as its last move.
+                return ("I didn’t start that: every kind of idea has been tried on %s with nothing passing. As you "
+                        "decided, autopilot now spends on market making (on paper) and on re-testing ideas when the "
+                        "data they needed arrives." % " and ".join(
+                            MARKETS[k].customer_label for k in sorted(named or exh) if k in MARKETS)), None
+            if market in exh:
+                market = None  # the picker below chooses a market that isn't exhausted
         if autopilot and not sid:
             blocked = _research_blocked_markets(cur, user_id)
             if market is None or market in blocked:

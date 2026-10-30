@@ -215,7 +215,11 @@ def research_floor_due(cur, uid: int) -> bool:
     if agent.MAX_GLOBAL_ACTIVE_RESEARCH and repo.count_active_research(cur) >= agent.MAX_GLOBAL_ACTIVE_RESEARCH:
         return False
     last = repo.list_runs(cur, uid, limit=1)
-    return not last or now - last[0]["created_at"] >= timedelta(minutes=RESEARCH_FLOOR_MINUTES)
+    if last and now - last[0]["created_at"] < timedelta(minutes=RESEARCH_FLOOR_MINUTES):
+        return False
+    # Todd 2026-10-30: no taker research on markets long-term memory marks exhausted. When that is every
+    # market the autopilot may research, idle is the intended state, not a stall.
+    return not agent.autopilot_research_exhausted(cur, uid)
 
 
 def start_research_floor(cur) -> list:
