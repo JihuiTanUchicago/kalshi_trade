@@ -817,4 +817,39 @@ export function strategyPageCases({name, frontend, detailStrategy, strategyFront
     assert.match(g.root.querySelector('#road-live-body .road-sum').textContent, /^3 of \d+ checks left before/);
     if (g.clearTimers) g.clearTimers();
   });
+
+  // Walk 2026-10-30 ("is the autopilot making money?"): a passed strategy's page led with green backtest figures while
+  // its paper result sat under "Since deploying" further down. A strategy on paper says that record in one line above
+  // the backtest figures: the same figures as Since deploying's Paper line, paper money only, never added to demo.
+  test(`${name}: a deployed strategy's paper record since deploying reads first, above the backtest figures`, async () => {
+    const deployments = [
+      {id: 3, mode: 'paper', status: 'running', realized_pnl: 3.2, closed_trades: 14, open_positions: 1, created_at: '2026-10-18T08:00:00Z'},
+      {id: 4, mode: 'demo', status: 'running', realized_pnl: 0.5, closed_trades: 1, open_positions: 0, created_at: '2026-10-18T08:00:00Z'}];
+    const page = async (o) => {
+      const f = await open({status: 'passed', ...o});
+      const top = f.root.querySelector('.paper-top');
+      return {f, top, text: top ? top.textContent.replace(/⁠/g, '').replace(/\s+/g, ' ') : null};
+    };
+    const {f, top, text} = await page({deployments, book_totals: {paper: {pnl: 3.2, trades: 14, open: 1}, demo: {pnl: 0.5, trades: 1, open: 0}}});
+    assert.ok(top, 'a one-line paper record up top');
+    assert.equal(text, 'Paper since deploying: +$3.20 · 14 trades · after Kalshi fees and the spread · Details below');
+    assert.doesNotMatch(text, /0\.50|3\.70|Demo|demo/);
+    // Its link goes to the section with the per-book lines, which says the same paper figure.
+    assert.match(top.innerHTML, /<a href="#since-deploying">Details below<\/a>/);
+    assert.ok(f.root.querySelector('#since-deploying'));
+    assert.match(f.root.querySelector('#since-deploying').textContent.replace(/⁠/g, ''), /\+\$3\.20 realized over 14 closed trades/);
+    // It stands above the backtest figures: Tau's in the head before #figs, Meridian's in the paper before them.
+    const host = f.root.querySelector('#paper-top');
+    if (host) assert.ok(host.querySelector('.paper-top'));
+    else assert.ok(main(f).indexOf('class="paper-top"') < main(f).indexOf('id="figs"') && main(f).indexOf('id="figs"') < main(f).indexOf('id="since-deploying"'));
+    // The server's exact book total and its instant fills, as the track record leaves them out.
+    assert.match((await page({deployments, book_totals: {paper: {pnl: 3.21, trades: 14, open: 1, instant_fills: 2}}})).text,
+      /^Paper since deploying: \+\$3\.21 · 14 trades, 2 of them instant fills, left out of the track record · after Kalshi fees and the spread/);
+    assert.match((await page({deployments: [{...deployments[0], realized_pnl: 0, closed_trades: 0}]})).text, /^Paper since deploying: no closed paper trades yet/);
+    // Not on paper (never deployed, demo only, or only removed from paper): no line up top.
+    assert.equal((await page({deployments: []})).top, null);
+    assert.equal((await page({deployments: [deployments[1]]})).top, null);
+    assert.equal((await page({deployments: [], past_deployments: [{id: 7, mode: 'paper', created_at: '2026-09-20T08:00:00+00:00',
+      removed_at: '2026-09-21T08:00:00+00:00', realized_pnl: 5.72, closed_trades: 14}]})).top, null);
+  });
 }

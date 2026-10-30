@@ -6,7 +6,7 @@ window.TauPage('research', (T) => {
   const {
     alert0, announce, api, ApiError, apNudge, apWhenSpan, armed, boardTitle, busy, clearTimers, errText, loadFail, clipWords, esc, EXAMPLE_NOTE, exampleLine,
     failText, feedMd, fig, fillLiveRow, flash, gl, glo, GLOSSARY, go, ICON, loading, logTime, marketPicker, marketShort,
-    markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, pct, phone, poll, root, runKind, runTag,
+    markQuietRows, mdLite, MKT_SHORT, num, paint, paintRows, paperSince, pct, phone, poll, root, runKind, runTag,
     runWaitLine, S, SEP, sessionTitle, shell, tzName, usd, waitSpan, when, whyFailedHtml, wireMarketPicker
   } = T;
 
@@ -1263,6 +1263,10 @@ window.TauPage('research', (T) => {
     if (gap <= 0) return '';
     return (drop ? `${SEP}${num(drop)} more dropped before testing` : '') + (testing ? `${SEP}${num(testing)} ${drop ? '' : 'more '}still being tested` : '');
   };
+  // A deployed pass's line, with its paper record since deploying when the session's data carries one (a card's `real`
+  // in paper mode, as the Strategies list has it): "Already deployed" alone sent a reader to Deploy to learn whether it
+  // made anything. Paper money only; a demo or live book is never added in. Display only.
+  const deployedNext = (s) => `<a href="/deploy">Already deployed: see it on Deploy</a>${s.real && s.real.mode === 'paper' ? `<span class="ri-paper">${SEP}${paperSince(s.real)}</span>` : ''}`;
   function runIdeas(strategies, whyBySid, open, gap = '') {
     const list = (strategies || []).slice().sort((a, b) => cleared(b) - cleared(a));
     if (!list.length) return '';
@@ -1271,7 +1275,7 @@ window.TauPage('research', (T) => {
       const why = whyBySid.get(s.id) || [];
       const said = laterMissed(s) ? `Passed validation, then missed the final test: ${esc(lcFirst(s.later_missed[0].label))}`
         : heldBack(s) ? `Held back after passing its tests: ${heldWhy(s)}`
-        : s.status === 'passed' ? (s.deployed ? '<a href="/deploy">Already deployed: see it on Deploy</a>'
+        : s.status === 'passed' ? (s.deployed ? deployedNext(s)
         : s.autopilot_next ? `The autopilot puts it on paper at its next check-in${apWhenSpan()}`
         : `<a href="/strategies/${s.id}">Open it to deploy on paper</a>`)
         : why.length ? `${esc(why[0].label)}${why.length > 1 ? `${SEP}${why.length - 1} more check${why.length > 2 ? 's' : ''}` : ''}` : '';
