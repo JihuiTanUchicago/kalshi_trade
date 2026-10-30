@@ -4277,36 +4277,29 @@
   // The collapsed pill floats over the bottom-right corner, which is where pages put their actions:
   // on Research it sat on the Start session row (desktop) and covered the button (phone), and walks
   // found it on Billing's Add credits note, the run page's Pause and Cancel, and Funds' fields.
-  // While it would cover anything you can press or type in, or a figure (a balance, a P&L, a stacked
-  // card's number, a list's value), or the dashboard's autopilot card (which already says what the
-  // pill would), it fades and lets clicks through, and comes back once that scrolls away. The body's
-  // bottom padding (app.css) leaves a clear strip under every page's last row, so scrolling to the
-  // foot of any page brings it back. Only what shows through counts: a figure clipped out of view by
-  // its panel, or under the masthead, is not covered. Focus on the pill (keyboard) keeps it shown.
-  // The open panel is left alone: the user opened it. A status mark counts too: on a 390px phone the pill sat on
-  // the first Deploy card's Status marks ("Paused", "Paper"), which say which money a row is and whether it trades.
-  // So does a stacked card's Market line (Strategies, Deploy) and a page's or section's heading: on a 390px phone the
-  // pill sat on "ETH 15-min up/down · Volatility mispricing" as the list scrolled, and on a market page's "Price
-  // history · Yes price · Kalshi hourly candles" as it opened. And a Deploy row's name block (its title and the lines
-  // under it: sizing, why it waits, its record toward live) and a strategy page's "Since deploying" record: at 390px the
-  // pill sat on the second Deploy row's title and lines as the board scrolled, and on "Since deploying" as the strategy
-  // page opened, the first thing it says about how the strategy is doing. And a table's column headers (thead th): at
-  // 1280px the pill sat on the "Settles" header of Deploy's open positions, the column's only label. A phone's stacked
-  // tables hide their thead (each cell carries its own label), so there it never counts.
-  const AP_UNDER = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]',
-    '.figures .m', '.fig', 'td.num', 'dd', '.mk', '#dash-ap', 'td[data-lab="Market"]', '.board-title', '.sect-head',
-    '.t-dep td.name', '.real-record', 'thead th'];
-  const AP_UNDER_SEL = AP_UNDER.join(', ');
-  // Explore and a market page (both /explore) are lists you scroll through, and stepping aside there hid the pill for
-  // good: walked 2026-10-30 at 390px, every Explore row is a link and its figures sit at the right, so the pill was
-  // gone at 178 of 181 scroll positions (all but the foot), and on a market page at about four in five (its figures,
-  // headings and raw-data rows). A reader browsing markets couldn't open the chat. There the pill holds its place over
-  // what scrolls past it, as a floating button does over a list: a list row, a figure or a heading moves out from
-  // under it with the page, and the body's bottom room (app.css) lets the last row and the page's foot clear it. It
-  // still steps aside for a button, a field or a link outside a list row (the pager, Download CSV, Back to Explore,
-  // Research this market), which it would otherwise sit on as they pass. Every other page keeps AP_UNDER.
-  const AP_HOLD_PATH = /^\/explore\/?$/;
+  // While it would cover anything you can press or type in (a link, a button, a field, a switch, a tab), it fades
+  // and lets clicks through, and comes back once that scrolls away. Only what shows through counts: a control
+  // clipped out of view by its panel, or under the masthead, is not covered. Focus on the pill (keyboard) keeps it
+  // shown. The open panel is left alone: the user opened it.
+  // Everything else holds the pill's place and scrolls out from under it, as under any floating button: a figure, a
+  // status mark, a heading, a row's name and lines, a column header, the dashboard's autopilot card. It used to step
+  // aside for those too, added one walk at a time, until it hid for good: walked 2026-10-30 on a 390px phone (6 paper
+  // deployments, 20 open positions) it showed at 25 of 742 scroll positions on Deploy, 23% of the dashboard's and
+  // 57% of a strategy page's, and a customer couldn't reach the chat there. The body's bottom
+  // padding (app.css) leaves a clear strip under every page's last row, so the last figure on any page scrolls clear
+  // of the pill too: none is hidden for good. What can't scroll away can't be left under it: a bar pinned to the
+  // screen's foot (AP_PINNED, every sticky or fixed box app.css pins to the bottom below the pill's layer; the
+  // version bar sits above the pill, the hot-markets rail on the left) sends it aside, words and all.
   const AP_PRESS_SEL = ['a[href]', 'button', 'input', 'select', 'textarea', 'summary', '.switch', '[role="button"]', '[role="tab"]'].join(', ');
+  const AP_PINNED = ['.bulkbar', '.composer-post'];
+  const AP_YIELD_SEL = [AP_PRESS_SEL, ...AP_PINNED].join(', ');
+  // Explore and a market page (both /explore) are lists whose every row is a link with its figures at the right:
+  // stepping aside for a row hid the pill at 178 of 181 scroll positions (walked 2026-10-30 at 390px). There it
+  // holds its place over a list row's link too (rows stream past; it isn't on any one for long), and still steps
+  // aside for a button, a field or a link outside a row (the pager, Download CSV, Back to Explore, Research this
+  // market). Other pages' rows carry their own controls (Deploy's Pause and Stop), so there a row's link or button
+  // sends it aside like any other.
+  const AP_HOLD_PATH = /^\/explore\/?$/;
   // apYield hit-tests the page (elementsFromPoint), which lays it out and pre-paints it then and there. Run
   // from the pill's render, inside a page's first render, it fixed Research half drawn on a phone: the list
   // that moves above the form a moment later counted as a layout shift of 0.68, though no frame showed
@@ -4353,10 +4346,10 @@
       return { left, right, top, bottom, width: Math.max(0, right - left) };
     };
     const over = (r) => !!(r && r.width && r.right > L && r.left < R && r.bottom > T && r.top < B);
-    // One pass over the page (it was one per kind of thing), stopping at the first thing it covers.
+    // One pass over the page's controls and pinned bars, stopping at the first one it covers.
     let covers = false;
     const hold = AP_HOLD_PATH.test(location.pathname);
-    for (const el of document.body.querySelectorAll(hold ? AP_PRESS_SEL : AP_UNDER_SEL)) {
+    for (const el of document.body.querySelectorAll(AP_YIELD_SEL)) {
       if (box.contains(el) || (hold && el.closest && el.closest('tbody'))) continue;
       const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
       if (!over(r)) continue;
