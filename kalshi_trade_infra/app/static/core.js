@@ -250,6 +250,6 @@
     esc, SEP, sepLine, mdInline, mdLite, feedMd, authorLine, fmt2, fmt0, halfUp, WJ, plain, usd, pct, cents,
     isPerpetual, researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, WEEKDAY_DAY,
     YEAR_DAY, UTC_MONTH, clock, tzName, logTime, settleAt, markOld, markFig, keepZone, num, compact, clipWords, age,
-    sum4, money, kfmt, sinceMin, PAPER_NET, NOT_MARKED, slipEst, slipTip
+    sum4, money, kfmt, sinceMin, PAPER_NET, NOT_MARKED, slipText, slipEst, slipTip
   });
 })();
