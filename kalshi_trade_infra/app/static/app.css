@@ -1126,6 +1126,7 @@ details.raw pre { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospac
 .funds-page .t-ledger th:first-child { width: 6.5em; }
 .funds-page .t-ledger th.num { width: 8.5em; }
 .funds-page .t-ledger td.num { overflow-wrap: normal; white-space: nowrap; }
+.funds-page .ledger-older:not(:empty), .funds-page #lflash:not(:empty) { margin-top: 12px; }  /* "Show older entries" under the newest 50 */
 @media (min-width: 900px) {
   .funds-page .funds { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
   .funds-page .funds-history { grid-column: 1; grid-row: 1; }

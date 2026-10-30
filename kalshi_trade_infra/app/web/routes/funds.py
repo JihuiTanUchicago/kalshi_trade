@@ -122,6 +122,21 @@ def funds_cash(ctx: Ctx):
     raise ApiError(400, "Choose live or demo.")
 
 
+def funds_ledger(ctx: Ctx):
+    """GET /api/funds/ledger?before=<entry id>: the next LEDGER_LISTED paper-history entries older than that one,
+    for Funds' "Show older entries" (clicked, never polled). /api/funds lists only the newest LEDGER_LISTED, so
+    a six-month account's paper history held its last two days. {"ledger", "more"}: `more` says whether older
+    entries remain. One read, LEDGER_LISTED + 1 rows at most; no balance or total comes from it."""
+    try:
+        before = int(ctx.query.get("before"))
+    except (TypeError, ValueError):
+        raise ApiError(400, "Bad entry id.")
+    if before <= 0:
+        raise ApiError(400, "Bad entry id.")
+    rows = list(repo.ledger_rows_before(ctx.cur, ctx.uid, before, repo.LEDGER_LISTED + 1))
+    return {"ledger": rows[:repo.LEDGER_LISTED], "more": len(rows) > repo.LEDGER_LISTED}
+
+
 def paper_transfer(ctx: Ctx):
     kind = ctx.body.get("kind")
     if kind not in ("deposit", "withdraw", "reset"):

@@ -1101,6 +1101,21 @@
   // A days figure as when something happens: "in about 2 days", "in under a day".
   const inDays = (days) => 'in ' + runwayLabel(days).toLowerCase();
 
+  // ---------- a list read a page at a time ----------
+  // A list whose newest page is polled and whose older pages are read on request (Funds' paper history: "Show older
+  // entries") keeps its older rows under each fresh newest page only while the two still join: `kept` (rows read
+  // before, by id, newest first) must share a row with `first` (the fresh newest page), or rows that came in between
+  // could be missing. Returns the kept rows older than all of `first`, newest first, once each; [] when `first` holds
+  // every row (shorter than `page`: a paper reset leaves one); null when they no longer join (a reset, or more than a
+  // page came in between), and the list starts again from its newest page.
+  const olderRows = (first, kept, page) => {
+    if (first.length < page || !kept.length) return [];
+    const ids = new Set(first.map((r) => r.id));
+    if (!kept.some((r) => ids.has(r.id))) return null;
+    const low = Math.min(...first.map((r) => +r.id)), seen = new Set();
+    return kept.filter((r) => +r.id < low && !seen.has(r.id) && seen.add(r.id)).sort((a, b) => b.id - a.id);
+  };
+
   window.TauCore = Object.freeze({
     esc, SEP, sepLine, mdInline, mdLite, feedMd, authorLine, fmt0, halfUp, WJ, plain, usd, pct, cents, isPerpetual,
     researchOnly, researchBadge, tone, when, bellTime, dateFmt, CLOCK, CLOCK_ZONE, WEEKDAY_DAY, clock, tzName,
@@ -1119,6 +1134,6 @@
     shortReason, sinceRunsState, sinceSplit, sinceLinks, demoHealthLine, tradesCsv, AP_PICKING, AP_IDLE_PAPER,
     apPillLabel, apAgo, apEvery, FOCUS_WORDS, creditsPaid, apWeekSpent, INSTANT_WHY, PAPER_COUNT_WHY, paperCount,
     exitWord, AP_FOCUS, KIND_LABEL, runwayLabel, paceTooSoon, paceDay, paceWords, inDays, pageLede, deploymentMode,
-    sessionNo
+    sessionNo, olderRows
   });
 })();

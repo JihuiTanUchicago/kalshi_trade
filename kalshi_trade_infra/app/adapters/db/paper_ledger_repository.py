@@ -75,10 +75,30 @@ def paper_ledger_version(cur, user_id: int) -> Tuple[int, int]:
     return int(r.get("n") or 0), int(r.get("top") or 0)
 
 
-def ledger_rows(cur, user_id: int, limit: int = 50) -> List[Dict]:
+# How many entries Funds' paper history lists at a time: the newest LEDGER_LISTED in /api/funds, then each
+# "Show older entries" page.
+LEDGER_LISTED = 50
+
+
+def ledger_rows(cur, user_id: int, limit: int = LEDGER_LISTED) -> List[Dict]:
     cur.execute(
         "SELECT id, kind, amount, memo, created_at FROM app_ledger WHERE user_id=%s ORDER BY id DESC LIMIT %s",
         (user_id, limit),
+    )
+    return cur.fetchall()
+
+
+def ledger_rows_before(cur, user_id: int, before: int, limit: int = LEDGER_LISTED) -> List[Dict]:
+    """The user's paper-ledger entries older than entry `before`, newest first, at most `limit`: the next
+    page of Funds' paper history, in ledger_rows' order (id DESC) and columns. One statement on the user's
+    own rows: idx_ledger_user_time leads with user_id and carries the id, so `id<` is checked in the index.
+    Left to itself MariaDB may walk the primary key down from `before` through every account's entries (it
+    did for a 300-entry account beside four busier ones), which grows with the whole table; forced, the read
+    grows only with this user's own entries (~0.8ms at 300, ~8ms at 43k, local MariaDB 2026-10-30)."""
+    cur.execute(
+        "SELECT id, kind, amount, memo, created_at FROM app_ledger FORCE INDEX (idx_ledger_user_time) "
+        "WHERE user_id=%s AND id<%s ORDER BY id DESC LIMIT %s",
+        (user_id, before, limit),
     )
     return cur.fetchall()
 

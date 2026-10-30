@@ -358,6 +358,60 @@ def test_key_errors_say_plainly_what_is_wrong_and_never_echo_the_key(monkeypatch
     assert pem not in str(e.value)
 
 
+class _LedgerCur(FakeCur):
+    """Answers the paper-history reads from `rows` ({"id", "user_id", ...}) as MySQL would, and logs each one."""
+
+    def __init__(self, rows, log):
+        self.rows, self.log, self._out = rows, log, []
+
+    def execute(self, sql, params=()):
+        self.log.append((" ".join(sql.split()), params))
+        uid, before, limit = (params[0], params[1], params[2]) if "id<%s" in sql else (params[0], None, params[1])
+        mine = [r for r in self.rows if r["user_id"] == uid and (before is None or r["id"] < before)]
+        self._out = [{k: r[k] for k in ("id", "kind", "amount", "memo", "created_at")}
+                     for r in sorted(mine, key=lambda r: -r["id"])[:limit]]
+
+    def fetchall(self):
+        return list(self._out)
+
+
+def test_funds_paper_history_pages_older_entries_and_refuses_a_bad_id():
+    # Walked 2026-10-30 on a six-month account (~300 paper entries): Funds' history held the newest 50, about two days,
+    # and no way to the rest. /api/funds/ledger?before=<id> answers the next older page, {ledger, more}, in the
+    # first page's order; never another user's entry, never a balance.
+    rows = [{"id": i, "user_id": 1 if i % 3 else 2, "kind": "trade", "amount": -1.0, "memo": "#%d" % i, "created_at": None}
+            for i in range(1, 260)]  # user 1's entries interleaved with user 2's
+    log = []
+
+    def page(before):
+        conn = FakeConn()
+        conn.cursor = lambda: _LedgerCur(rows, log)
+        return server.funds_ledger(server.Ctx(conn, {"id": 1, "autopilot": 0}, (), {"before": before}, {}, None))
+
+    mine = sorted((r["id"] for r in rows if r["user_id"] == 1), reverse=True)  # 173 entries
+    first = server.repo.ledger_rows(_LedgerCur(rows, log), 1)
+    assert [r["id"] for r in first] == mine[:50]
+    shown, got = [r["id"] for r in first], None
+    while got is None or got["more"]:
+        got = page(str(shown[-1]))
+        assert set(got) == {"ledger", "more"}
+        assert 0 < len(got["ledger"]) <= server.repo.LEDGER_LISTED
+        assert [r["id"] for r in got["ledger"]] == sorted((r["id"] for r in got["ledger"]), reverse=True)
+        shown += [r["id"] for r in got["ledger"]]
+    assert shown == mine  # every entry once, newest first, none of user 2's
+    assert len(mine) == 173 and len(log) == 1 + 3  # the first page, then one bounded read a page: 50, 50, 23
+    assert all(p[-1] == server.repo.LEDGER_LISTED + 1 for _, p in log[1:])
+    # `more` from the one extra row: exactly 50 older entries is the last page.
+    assert page(str(mine[100]))["more"] is True
+    last = page(str(mine[122]))
+    assert len(last["ledger"]) == 50 and last["more"] is False
+    assert page(str(mine[-1])) == {"ledger": [], "more": False}
+    for bad in (None, "", "abc", "12x", "0", "-4", "1.5"):
+        with pytest.raises(server.ApiError) as e:
+            page(bad)
+        assert e.value.status == 400 and str(e.value) == "Bad entry id."
+
+
 def test_funds_reads_the_demo_balance_and_a_new_key_is_never_shown_an_old_balance(monkeypatch):
     """Funds says "Connected ✓ (balance $X)" for both keys from the existing cached reads; saving a key
     replaces what those caches hold, so the line never shows the previous key's cash."""
